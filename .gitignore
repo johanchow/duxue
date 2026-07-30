@@ -1,0 +1,10 @@
+venv
+output
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pem
+.env
+.env.prod
+.DS_Store

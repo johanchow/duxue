@@ -1,0 +1,26 @@
+# 核心视频处理
+opencv-python>=4.8.0
+
+# 模型推理
+torch>=2.1.0
+torchvision>=0.16.0
+transformers>=4.50.0
+accelerate>=0.27.0
+Pillow>=10.0.0
+
+# 微调框架（云 GPU 使用）
+# llamafactory  # pip install llamafactory
+
+# 第二阶段分类 - Embedding 方案
+sentence-transformers>=3.0.0
+
+# 数据处理
+tqdm>=4.66.0
+pyyaml>=6.0
+numpy>=1.24.0
+
+# 评估
+scikit-learn>=1.3.0
+
+# Mac MLX 微调（仅 Apple Silicon）
+# mlx-vlm  # pip install mlx-vlm
