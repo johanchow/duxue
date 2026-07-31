@@ -174,10 +174,10 @@ sequenceDiagram
     APP->>API: POST /wards/{ward_id}/devices/invite
     API-->>APP: { invite_code: "A3F9K2", qr_image_url }
     APP->>APP: pretty_qr_code 渲染二维码 + 展示 6 位邀请码
-    Note over APP,CAM: Guardian 拿摄像设备扫码
+    Note over APP,CAM: Guardian 拿摄像设备扫码（邀请码 10 分钟内有效）
 
     CAM->>API: POST /devices/bind { invite_code }
-    API-->>CAM: { stream_key, rtmp_url }
+    API-->>CAM: { device_token, ward_name, capture_interval_seconds }
 
     APP->>APP: 轮询 GET /wards/{ward_id}/devices
     APP->>APP: 检测到新设备上线，更新 UI 状态
@@ -370,8 +370,10 @@ dev_dependencies:
 |------|---------|
 | 并发 401 刷新 Token | AuthInterceptor 用 `Completer` 加锁，只触发一次 refresh |
 | Refresh Token 也过期 | 清除本地 Token，跳转登录页 |
-| 报告生成中（ward 推流刚结束）| 展示"报告生成中"状态，定时轮询直到可用 |
+| 报告生成中 | 当日帧在夜间批量分析，报告次日可见。展示"分析中，报告将于次日就绪"状态，不要让用户以为是加载失败 |
+| 报告基于旧配置生成 | `reports.profile_changed=true` 时在报告页顶部提示"本报告基于修改前的分析配置生成" |
 | 无监控数据的日期 | 展示空状态页，引导 guardian 检查设备连接 |
+| 设备掉线 | 服务端心跳超时 3 分钟即推送通知。设备列表需明显区分"在线 / 离线"，离线项提示"可能需要在摄像手机上点击通知恢复监控" |
 | 行为时间轴图表复杂度 | 用 `CustomPainter` 手绘色块，不依赖 fl_chart |
 | build_runner 性能 | 配置 `build.yaml` 只扫描 `lib/` 目录，避免全量重新生成 |
 

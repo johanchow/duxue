@@ -15,6 +15,10 @@
 
   C. 批量测试整个文件夹（输出汇总表格）
        python scripts/0_quicktest.py --folder data/frames --mode api
+
+⚠️ 素材必须用真实机位拍摄（侧后方 45° 俯拍、不含正脸、实际使用的那台旧手机）。
+   用正面网络图库照片测出的结果无法推断真实场景表现——两者在视角、画质、
+   光照上差异都很大，而本项目恰恰要在"看不到脸"的前提下做判断。
 """
 
 import json
@@ -26,23 +30,32 @@ from pathlib import Path
 
 
 # ── 与 3_prepare_dataset.py 保持一致的 Prompt ──
-STRUCTURED_PROMPT = """请观察这张图片，用结构化 JSON 描述图中学生的行为状态。
+# 字段定义见 docs/ARCHITECTURE.md §4.2（duxue-server）
+#
+# 注意机位说明是必需的：实际摄像头架在被观察者侧后方约 45° 俯拍，
+# 拍不到正脸。不加这段说明时，模型容易因为看不到面部而大量输出
+# "不可见" 或拒绝判断，导致结构化字段整体失效。
+STRUCTURED_PROMPT = """这张图片来自架设在学生侧后方约 45°、略高于头顶的摄像头，
+画面通常只能看到学生的后脑勺、肩背、手部和桌面，看不到正脸和眼睛，这是正常的。
+
+请基于**能看到的部分**（手在做什么、桌上有什么、头朝哪个方向、身体姿态），
+用结构化 JSON 描述该学生的行为状态。
 
 要求：
 - 输出合法的 JSON，不要包含任何其他文字
 - 每个字段用简短的自然语言短句描述，不要使用固定词表
-- 看不清的字段写 "不可见"
+- 不要依赖面部表情或眼神，看不到脸属于正常情况，不要因此写"不可见"
+- 确实被遮挡或超出画面的部位，才写 "不可见"
 
 输出格式：
 {
-  "body_pos":    "人物整体姿态描述",
-  "head_pose":   "头部方向和角度描述",
-  "gaze_target": "目光注视目标描述",
-  "hand_action": "手部动作描述",
-  "desk_object": "桌面可见物品描述",
-  "seat_status": "是否在座位上的描述",
-  "motion_state":"当前动作是否持续稳定",
-  "desc_summary":"一句话整体摘要"
+  "hand_action":     "手部动作描述，如握笔书写/翻书/摆弄物品/持手机/双手空置",
+  "desk_objects":    "桌面可见物品描述，如摊开的课本和铅笔/手机/玩具/空桌面",
+  "head_orientation":"头部朝向描述，如低头朝向桌面/转向侧方/抬头朝前（不需看到眼睛）",
+  "body_pos":        "身体姿态描述，如端坐/前倾/趴在桌上/后靠椅背",
+  "seat_status":     "在座状态描述，如在座位上/已离座/不在画面中",
+  "motion_state":    "运动状态描述，如静止/小幅活动/大幅移动",
+  "desc_summary":    "一句话整体摘要"
 }"""
 
 
@@ -161,9 +174,15 @@ def parse_json_output(raw: str) -> dict | None:
 # ──────────────────────────────────────────────
 
 def try_classify(structured: dict) -> str | None:
-    """如果 classifier/ 配置存在，尝试用规则分类"""
+    """如果 classifier/ 配置存在，尝试用规则分类。
+
+    失败时打印原因而不是静默跳过——两者在终端上看起来一样（都是没有
+    分类输出），但含义完全不同：一个是"没配置分类层"，另一个是
+    "分类层崩了"。静默吞掉异常会让人误判为前者。
+    """
     rules_file = Path(__file__).parent.parent / "classifier" / "rules.yaml"
     if not rules_file.exists():
+        print(f"\n[分类层] 跳过：未找到 {rules_file}")
         return None
 
     try:
@@ -171,11 +190,15 @@ def try_classify(structured: dict) -> str | None:
         clf_module = import_module("5_classify")
         clf = clf_module.RuleClassifier(str(rules_file))
 
-        # 把结构化字段拼成一句描述供规则匹配
-        combined = " ".join(v for v in structured.values() if isinstance(v, str))
-        label, conf = clf.classify(combined)
+        # 直接传字典：分类器按字段取值，桌面静物不参与行为判定
+        label, conf = clf.classify(structured)
         return f"{label}（置信度 {conf}）"
-    except Exception:
+    except ImportError as e:
+        print(f"\n[分类层] 跳过：缺少依赖 —— {e}")
+        print("  安装：pip install -r requirements-ml.txt")
+        return None
+    except Exception as e:
+        print(f"\n[分类层] 跳过：{type(e).__name__} —— {e}")
         return None
 
 
@@ -221,8 +244,8 @@ def main():
     src.add_argument("--folder", help="批量测试文件夹")
     parser.add_argument("--mode",  default="api",   choices=["api", "local"],
                         help="推理方式：api（默认）或 local")
-    parser.add_argument("--model", default="qwen-vl-max",
-                        help="API 模式下的模型名（默认 qwen-vl-max），"
+    parser.add_argument("--model", default="qwen3-vl-flash",
+                        help="API 模式下的模型名（默认 qwen3-vl-flash，与生产一致），"
                              "local 模式下填本地路径或 HuggingFace 模型名")
     args = parser.parse_args()
 

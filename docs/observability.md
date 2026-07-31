@@ -13,9 +13,9 @@
 ```
 guardian 在 App 查看报告
     ↑
-duxue-server 聚合行为分析
-    ↑ REST API / Webhook
-duxue-cam 持续推流（Android 长驻 Foreground Service）
+duxue-server 批量 AI 分析 + 报告聚合
+    ↑ REST API（帧元数据 / 心跳）
+duxue-cam 定时抓拍上传（Android 长驻 Foreground Service）
 ```
 
 三端之间存在跨进程、跨网络的依赖，单端日志无法定位跨端问题。可观测性目标：
@@ -23,7 +23,8 @@ duxue-cam 持续推流（Android 长驻 Foreground Service）
 | 目标 | 说明 |
 |------|------|
 | **端到端链路串联** | 一个用户请求从 App → Server → Celery Worker 全程可追踪 |
-| **推流健康感知** | 实时掌握 RTMP 断流、重连、截帧失败等关键事件 |
+| **采集健康感知** | 掌握设备心跳中断、帧上传失败、本地队列积压等关键事件 |
+| **成本可见** | 每日实际推理帧数、Batch 降级率——第一期不做帧过滤，这两项直接反映账单 |
 | **AI 推理性能** | 监控 VLM 推理延迟、Celery 队列积压，防止分析任务堆积 |
 | **三端统一入口** | 日志、链路、指标汇聚到同一个 Dashboard，减少工具切换 |
 
@@ -61,7 +62,7 @@ duxue-cam 持续推流（Android 长驻 Foreground Service）
 │  duxue-app (Flutter)    duxue-cam (Android)                 │
 │  opentelemetry-dart     opentelemetry-android               │
 │  ── Traces ──────────── Traces ────────────                 │
-│  ── Logs (手动 trace_id) Logs (手动 trace_id)              │
+│  ── Logs (手动 trace_id) Logs (手动 trace_id)                │
 │                    │                   │                    │
 │  duxue-server (Python)                 │                    │
 │  opentelemetry-sdk                     │                    │
@@ -127,19 +128,27 @@ Python 端使用 OTEL Log Bridge，structlog 日志经 OTLP 导出到 Loki，每
 |--------|------|------|
 | `duxue.ai.inference_duration_seconds` | Histogram | VLM 推理耗时分布 |
 | `duxue.celery.queue_depth` | Gauge | Celery 队列待处理任务数 |
-| `duxue.capture.frames_total` | Counter | 截帧总数（含成功/失败标签） |
-| `duxue.stream.active_count` | Gauge | 当前在线推流设备数 |
+| `duxue.capture.frames_total` | Counter | 接收帧总数（含成功/失败标签） |
+| `duxue.device.online_count` | Gauge | 当前在线设备数（按心跳判定） |
+| `duxue.vlm.frames_analyzed_daily` | Counter | **每日实际推理帧数。**第一期不做帧过滤，这个数字直接等于账单，也是判断何时该推进自部署的依据 |
+| `duxue.batch.fallback_ratio` | Gauge | **降级到实时 API 的批次占比。**长期偏高说明 Batch 实际时延不可靠，需重新评估该方案 |
+
+> 后两个是**成本指标**，优先级不低于性能指标——它们失效时系统功能完全正常，只是账单翻几倍，没有指标就发现不了。
 
 ### 4.2 duxue-cam（Android / Kotlin）
 
-Cam App 的可观测性核心是 **推流生命周期事件**，OTEL SDK 负责 HTTP API 调用的链路，推流状态通过 Span 事件手动记录：
+Cam App 的可观测性核心是**采集与上传链路的健康度**。OTEL SDK 负责 HTTP 调用链路，本地状态通过手动埋点记录：
 
 | 关键事件 | 上报方式 | 说明 |
 |---------|---------|------|
 | 设备绑定（`/devices/bind`） | HTTP 自动插桩 | Retrofit + OkHttp 自动产生 span |
-| 推流开始/停止 | 手动 Span | 创建 `streaming.session` span，覆盖整个推流周期 |
-| 断流重连 | Span Event | 在 session span 上添加事件，记录重连次数和原因 |
-| 重连失败放弃 | Span + 错误标记 | 标记 span 为 ERROR，附带 `stream_key` 属性 |
+| 单帧上传 | HTTP 自动插桩 | 覆盖申请预签名 URL → PUT OSS → 提交元数据三段 |
+| 上传失败与重试 | Span Event | 记录失败原因（网络 / 预签名过期 / 服务端 5xx）与重试次数 |
+| 本地队列积压数 | Gauge（随心跳上报） | **最重要的单项指标**：积压持续增长是网络或服务端问题的最早信号 |
+| 抓拍失败 | Span + 错误标记 | CameraX 异常（摄像头被占用等） |
+| 服务被系统回收 | 手动事件 | 用于评估各厂商机型的保活成功率 |
+
+> 队列积压数建议随心跳一并上报到服务端，而非只靠 OTEL——移动端 OTEL 在应用被杀时可能来不及导出，而心跳是必发请求。
 
 日志：在每条 Timber 日志中手动注入当前 span 的 `trace_id`，通过 Loki 的 derived field 配置实现日志→链路跳转。
 
@@ -151,7 +160,7 @@ App 端所有 HTTP 请求通过 dio Interceptor 统一注入 `traceparent` Heade
 |---------|---------|
 | 查询报告 | dio 自动产生 span + 注入 header |
 | 生成邀请码 | 同上 |
-| WebSocket 设备状态 | 手动创建 span，记录连接建立和断开 |
+| 设备状态轮询 | 同上 |
 | 页面导航 | 可选：为每个路由创建 span（低优先级） |
 
 ---
@@ -163,8 +172,9 @@ App 端所有 HTTP 请求通过 dio Interceptor 统一注入 `traceparent` Heade
 | Dashboard | 受众 | 核心面板 |
 |-----------|------|---------|
 | **系统健康总览** | 运维/开发 | API 请求成功率、Celery 队列深度、在线设备数、错误率趋势 |
-| **AI 推理性能** | 开发 | VLM 推理 P50/P95/P99、任务队列等待时长、截帧成功率 |
-| **推流监控** | 运维 | 活跃推流数、断流事件时间线、重连成功率 |
+| **AI 推理性能** | 开发 | VLM 推理 P50/P95/P99、任务队列等待时长、批次完成时长分布 |
+| **成本监控** | 开发/运营 | 每日实际 VLM 调用帧数、Batch 降级率、单 ward 日均成本趋势 |
+| **采集监控** | 运维 | 在线设备数、帧上传成功率、各设备本地队列积压趋势、心跳掉线事件时间线 |
 | **链路追踪（Tempo）** | 开发排障 | 按 trace_id / ward_id / service 过滤，查端到端链路 |
 
 ### 5.2 三信号联动路径
@@ -275,7 +285,7 @@ Flutter 通过 `--dart-define` 在构建时注入配置，运行时通过 `Strin
 | 端 | service.name | 说明 |
 |----|-------------|------|
 | duxue-server | `duxue-server` | FastAPI 主进程与 Celery Worker 共用，通过 `service.component` 区分 |
-| duxue-cam | `duxue-cam` | Android 摄像端 |
+| duxue-cam | `duxue-cam` | Android 采集端 |
 | duxue-app | `duxue-app` | Flutter Guardian 端 |
 
 ---
@@ -287,11 +297,16 @@ Flutter 通过 `--dart-define` 在构建时注入配置，运行时通过 `Strin
 | 阶段 | 内容 | 预计工时 | 产出 |
 |------|------|---------|------|
 | **Phase 1** | 注册 Grafana Cloud + Server 端配置环境变量（OTEL 自动插桩） | 半天 | FastAPI/Celery/SQLAlchemy 全链路可见，零代码改动 |
-| **Phase 2** | App 端 dio Interceptor 注入 traceparent + dart-define 配置 | 半天 | App → Server 跨端链路串联 |
-| **Phase 3** | Cam 端推流 Span 手动埋点 + BuildConfig 配置 | 半天 | 推流事件可追踪 |
-| **Phase 4** | Server 端自定义业务指标 + Grafana 告警规则 | 1 天 | AI 推理性能 + 队列积压告警 |
+| **Phase 2** | Server 端成本指标（`vlm.frames_analyzed_daily`、`batch.fallback_ratio`）+ 告警规则 | 半天 | 成本失控可被立刻发现 |
+| **Phase 3** | App 端 dio Interceptor 注入 traceparent + dart-define 配置 | 半天 | App → Server 跨端链路串联 |
+| **Phase 4** | Cam 端上传链路埋点 + 队列积压随心跳上报 | 半天 | 采集异常可追踪 |
+| **Phase 5** | 其余 Server 自定义业务指标 + 完整告警覆盖 | 1 天 | AI 推理性能 + 队列积压告警 |
 
 > Phase 1 全程不改业务代码，只加环境变量，可独立上线验证效果。
+>
+> **Phase 2 提前到移动端之前**，因为成本类问题发生时系统功能完全正常，只是账单翻几倍——没有指标就发现不了，而移动端的问题用户会直接反馈。
+>
+> 移动端 OTEL SDK 成熟度仍不足（Logs 信号在 Android/Flutter 侧为实验阶段，需手动注入 trace_id）。若 Phase 3/4 投入产出比不佳，可先只接 Sentry 收 crash，能覆盖绝大部分移动端排障需求。
 
 ---
 

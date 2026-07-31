@@ -180,13 +180,13 @@ Android 签名是发版的关键环节，Keystore 丢失意味着无法更新已
 
 - Keystore 一旦丢失，只能重新签名发布新 App（旧用户无法通过覆盖安装更新），视同"换新 App"
 - 不同构建环境（本地 / CI）必须使用同一个 Keystore，不能各自生成
-- `minifyEnabled = true`（ProGuard 混淆）在 Release 构建中必须开启，注意配置 keep rules 防止 RootEncoder 等反射调用被混淆
+- `minifyEnabled = true`（ProGuard 混淆）在 Release 构建中必须开启，注意为 Retrofit/Gson 数据模型与 Room 实体配置 keep rules，防止反射调用被混淆
 
 ---
 
 ## 六、多环境配置
 
-Cam App 逻辑简单，主要需要区分 API 地址（绑定接口）和 RTMP 服务器地址。
+Cam App 逻辑简单，需要区分环境的只有读学服务器的 API 地址（绑定、上传 URL 申请、帧元数据、心跳都走它）。OSS 地址由服务端在预签名 URL 中返回，不需要客户端配置。
 
 | 环境 | 用途 | 构建方式 |
 |------|------|---------|
@@ -206,7 +206,7 @@ Cam App 逻辑简单，主要需要区分 API 地址（绑定接口）和 RTMP �
 | `versionName` | 语义化版本（如 `1.2.0`） | 开发者手动更新到 `build.gradle.kts`，合并到 main 前更新 |
 
 版本号规则：
-- `patch`（1.0.**x**）：Bug 修复、推流稳定性改进
+- `patch`（1.0.**x**）：Bug 修复、抓拍与上传稳定性改进
 - `minor`（1.**x**.0）：新增功能（如新增设置项、支持新硬件）
 - `major`（**x**.0.0）：重大架构调整或与服务端协议不兼容的变更
 

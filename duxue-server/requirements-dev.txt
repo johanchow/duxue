@@ -1,0 +1,9 @@
+# 开发与测试依赖（不进生产镜像）
+#
+#   pip install -r requirements.txt -r requirements-dev.txt
+
+pytest>=8.3.0
+pytest-asyncio>=0.24.0
+httpx>=0.28.0            # FastAPI TestClient
+testcontainers[postgres]>=4.8.0   # 集成测试起临时 PostgreSQL
+ruff>=0.8.0

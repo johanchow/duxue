@@ -1,26 +1,48 @@
-# 核心视频处理
-opencv-python>=4.8.0
+# 服务端应用依赖（api / worker / beat 容器）
+#
+# 离线实验管线（试 prompt、标注、微调、评估）的依赖见 requirements-ml.txt。
+# 两者刻意分开：torch + transformers 会让服务镜像膨胀到数 GB，
+# 而服务端第一期不做任何本地模型推理，用不到它们。
 
-# 模型推理
-torch>=2.1.0
-torchvision>=0.16.0
-transformers>=4.50.0
-accelerate>=0.27.0
-Pillow>=10.0.0
+# ── Web 框架
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+pydantic>=2.9.0
+pydantic-settings>=2.6.0
+python-multipart>=0.0.12
 
-# 微调框架（云 GPU 使用）
-# llamafactory  # pip install llamafactory
+# ── 数据库
+sqlalchemy[asyncio]>=2.0.36
+asyncpg>=0.30.0
+alembic>=1.14.0
 
-# 第二阶段分类 - Embedding 方案
+# ── 任务队列
+celery>=5.4.0
+redis>=5.2.0
+
+# ── 对象存储（帧图片，预签名 URL 直传）
+oss2>=2.19.0
+
+# ── AI 推理（百炼 Batch API，兼容 OpenAI 接口）
+openai>=1.57.0
+
+# ── 第二阶段分类（文本嵌入相似度）
 sentence-transformers>=3.0.0
-
-# 数据处理
-tqdm>=4.66.0
-pyyaml>=6.0
 numpy>=1.24.0
 
-# 评估
-scikit-learn>=1.3.0
+# ── 认证
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
 
-# Mac MLX 微调（仅 Apple Silicon）
-# mlx-vlm  # pip install mlx-vlm
+# ── 工具
+pyyaml>=6.0
+httpx>=0.28.0
+
+# ── 可观测性（OTEL 自动插桩，靠环境变量启用，零业务代码改动）
+opentelemetry-distro>=0.50b0
+opentelemetry-exporter-otlp>=1.29.0
+opentelemetry-instrumentation-fastapi>=0.50b0
+opentelemetry-instrumentation-sqlalchemy>=0.50b0
+opentelemetry-instrumentation-celery>=0.50b0
+opentelemetry-instrumentation-redis>=0.50b0
+structlog>=24.4.0

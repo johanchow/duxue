@@ -26,6 +26,16 @@ ROOT = Path(__file__).parent.parent
 # 方式 1：关键词规则匹配
 # ──────────────────────────────────────────────
 
+# 默认参与行为判定的字段。注意 desk_objects 不在其中：它是桌面静物
+# 清单，"桌上放着手机" 与 "手里拿着手机" 在拼接成一句后无法区分，会把
+# 边写作业边把手机搁在桌上的场景误判成玩手机——而书桌上摆着手机、
+# 平板恰恰是最常见的情形。物品只说明现场有什么，不说明人在做什么。
+BEHAVIOR_FIELDS = [
+    "hand_action", "head_orientation", "body_pos",
+    "seat_status", "motion_state", "desc_summary",
+]
+
+
 class RuleClassifier:
     def __init__(self, rules_file: str = None):
         rules_file = rules_file or str(ROOT / "classifier" / "rules.yaml")
@@ -35,14 +45,32 @@ class RuleClassifier:
         self.rules = sorted(config["rules"], key=lambda r: -r["priority"])
         self.default_label = config.get("default_label", "走神/玩耍")
 
-    def classify(self, description: str) -> tuple[str, float]:
+    @staticmethod
+    def _text_for(description: str | dict, scope: list[str] | None) -> str:
+        """取出参与匹配的文本。
+
+        传 str 时按整句匹配（向后兼容）；传 structured_fields dict 时
+        只拼接 scope 指定的字段，默认 BEHAVIOR_FIELDS。
         """
+        if isinstance(description, str):
+            return description.lower()
+
+        fields = scope or BEHAVIOR_FIELDS
+        return " ".join(
+            str(description.get(f, "")) for f in fields
+        ).lower()
+
+    def classify(self, description: str | dict) -> tuple[str, float]:
+        """
+        Args:
+            description: 整句描述，或 VLM 输出的 structured_fields 字典。
+                         传字典才能享受分字段匹配，避免静物词污染行为判定。
         Returns:
             (label, confidence)  confidence 为 1.0（规则命中）或 0.0（fallback）
         """
-        desc = description.lower()
-
         for rule in self.rules:
+            desc = self._text_for(description, rule.get("scope"))
+
             # 检查 any_of（至少一个关键词命中）
             any_hit = any(kw in desc for kw in rule.get("any_of", []))
             if not any_hit:
@@ -104,12 +132,19 @@ class EmbeddingClassifier:
             centroid = centroid / np.linalg.norm(centroid)
             self._centroids[cat["label"]] = centroid
 
-    def classify(self, description: str) -> tuple[str, float]:
+    def classify(self, description: str | dict) -> tuple[str, float]:
         """
         Returns:
             (label, confidence)  confidence 为余弦相似度最大值
         """
         self._load_model()
+
+        # 与规则层保持同一套字段口径，同样把 desk_objects 排除在外：
+        # 一长串静物清单会稀释掉行为语义，让质心相似度失真。
+        if isinstance(description, dict):
+            description = " ".join(
+                str(description.get(f, "")) for f in BEHAVIOR_FIELDS
+            )
 
         query_vec = self._model.encode([description], normalize_embeddings=True)[0]
 
@@ -157,7 +192,7 @@ class AutoClassifier:
         self.rule_clf = RuleClassifier(rules_file)
         self.emb_clf  = EmbeddingClassifier(categories_file)
 
-    def classify(self, description: str) -> tuple[str, float]:
+    def classify(self, description: str | dict) -> tuple[str, float]:
         label, conf = self.rule_clf.classify(description)
         if conf > 0:
             return label, conf

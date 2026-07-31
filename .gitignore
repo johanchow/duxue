@@ -5,6 +5,12 @@ __pycache__/
 *.pyo
 *.pyd
 *.pem
-.env
-.env.prod
 .DS_Store
+
+# 环境变量：通配所有 .env*，只放行模板文件。
+# 仅忽略 .env 和 .env.prod 是不够的——.env.dev 同样含数据库凭证。
+.env*
+!.env.example
+
+# 帧图片素材（含真实场景照片，属敏感数据，不入 Git）
+duxue-server/data/frames/
