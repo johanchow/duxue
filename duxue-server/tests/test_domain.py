@@ -1,0 +1,46 @@
+from __future__ import annotations
+
+import unittest
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+from app.domain import Point, RuleClassifier, build_segments, smooth
+from app.services import classify_for_ward
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from app.database import Base
+from app.models import AnalysisProfile, BehaviorLabelConfig, Guardian, Tenant, User, Ward
+from app.security import hash_secret
+
+
+class DomainTest(unittest.TestCase):
+    def setUp(self):
+        self.classifier = RuleClassifier(Path(__file__).parents[1] / "classifier" / "rules.yaml")
+
+    def test_desk_phone_does_not_override_writing(self):
+        label, _ = self.classifier.classify({"hand_action": "右手握笔书写", "desk_objects": "桌面放着手机"})
+        self.assertEqual(label, "学习")
+
+    def test_middle_noise_is_smoothed_and_merged(self):
+        base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        points = [Point(str(i), base + timedelta(seconds=i * 15), label, 1.0) for i, label in enumerate(["学习", "走神/玩耍", "学习"])]
+        segments = build_segments(smooth(points))
+        self.assertEqual(len(segments), 1)
+        self.assertEqual(segments[0]["label"], "学习")
+        self.assertEqual(segments[0]["duration_seconds"], 45)
+
+    def test_custom_profile_label_precedes_defaults(self):
+        local_engine = create_engine("sqlite://"); Base.metadata.create_all(local_engine)
+        db = sessionmaker(bind=local_engine, expire_on_commit=False)()
+        tenant = Tenant(name="profile-test"); db.add(tenant); db.flush()
+        guardian_user = User(tenant_id=tenant.id, type="guardian"); db.add(guardian_user); db.flush()
+        db.add(Guardian(id=guardian_user.id, name="g", email=f"{tenant.id}@example.com", password_hash=hash_secret("password123")))
+        profile = AnalysisProfile(tenant_id=tenant.id, created_by=guardian_user.id, name="custom"); db.add(profile); db.flush()
+        ward_user = User(tenant_id=tenant.id, type="ward"); db.add(ward_user); db.flush()
+        ward = Ward(id=ward_user.id, tenant_id=tenant.id, display_name="w", analysis_profile_id=profile.id); db.add(ward)
+        db.add(BehaviorLabelConfig(tenant_id=tenant.id, profile_id=profile.id, label_name="咬手指", field_prototypes={"hand_action": ["咬手指"]}, priority=10)); db.commit()
+        label, confidence = classify_for_ward(db, ward, {"hand_action": "右手正在咬手指"})
+        self.assertEqual(label, "咬手指"); self.assertGreater(confidence, 0.5); db.close()
+
+
+if __name__ == "__main__": unittest.main()

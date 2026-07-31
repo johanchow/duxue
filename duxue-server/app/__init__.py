@@ -1,0 +1,1 @@
+"""Duxue server application."""
