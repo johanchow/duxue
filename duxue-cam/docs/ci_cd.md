@@ -89,7 +89,7 @@ duxue/
 └── .github/
     └── workflows/
         ├── cam-ci.yml        # PR / main：测试、Lint、Debug APK
-        └── cam-release.yml   # cam-v* Tag：签名 APK + 上传服务器
+        └── cam-release.yml   # main：签名 APK + 上传生产下载站；cam-v* Tag 额外创建 Release
 ```
 
 文件已随代码提供；提交到 GitHub 后 Actions 会自动识别。完整 Secret 清单见仓库根目录的 [`docs/deployment.md`](../../docs/deployment.md)。
@@ -110,8 +110,8 @@ duxue/
 | 分支 / 事件 | 触发动作 | 说明 |
 |------------|---------|------|
 | PR 提交 | 只跑测试 + 静态检查 | 保证合并前质量 |
-| `main` 分支 push | 构建 Debug APK + 上传到 staging 下载地址 | 供内部测试 |
-| Tag `v*`（如 `v1.2.0`） | 构建 Release APK + 签名 + 上传到正式下载地址 + 创建 GitHub Release | 正式发版 |
+| `main` 分支 push | 构建 Release APK + 签名 + 更新正式下载地址 | 合并即上线 |
+| Tag `cam-v*`（如 `cam-v1.2.0`） | 构建 Release APK + 签名 + 更新正式下载地址 + 创建 GitHub Release | 留存可回退版本 |
 
 ### 流水线阶段
 
@@ -190,9 +190,8 @@ Cam App 逻辑简单，需要区分环境的只有读学服务器的 API 地址�
 
 | 环境 | 用途 | 构建方式 |
 |------|------|---------|
-| debug | 本地开发，连本机 Docker 后端 | `assembleDebug`，硬编本地地址 |
-| staging | 内测，连 staging 服务器 | `assembleStagingRelease`（Build Variant） |
-| release | 正式版，连生产服务器 | `assembleRelease` |
+| debug | 本地开发与测试，连本机 Docker 后端 | `assembleDebug`，传入本机地址 |
+| release | 合并 `main` 后的正式版，连生产服务器 | `assembleRelease` |
 
 通过 Android 的 **Build Variant** 机制在编译时注入不同的 `BuildConfig` 字段，不需要运行时配置文件，更安全。
 

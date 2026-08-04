@@ -6,4 +6,4 @@
 
 生产构建通过 Gradle property 或环境变量注入公开 API 地址：`gradle :app:assembleRelease -PapiBaseUrl=https://api.example.com`。不要把服务端 `.env.prod` 或任何数据库、OSS、Redis 凭证打进 APK。
 
-GitHub Actions 的 Cam 发布使用 `cam-v*` Tag，签名和下载站部署所需 Secret 见仓库根目录的 [部署说明](../docs/deployment.md)。
+Cam 相关改动合并至 `main` 后自动构建并更新正式下载包；`cam-v*` Tag 额外创建可回退的 GitHub Release。签名和下载站部署所需 Secret 见仓库根目录的 [部署说明](../docs/deployment.md)。
