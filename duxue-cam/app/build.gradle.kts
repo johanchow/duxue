@@ -5,6 +5,27 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+val apiBaseUrl = providers.gradleProperty("apiBaseUrl")
+    .orElse(providers.environmentVariable("API_BASE_URL"))
+    .getOrElse("http://10.0.2.2:8000")
+    .trim()
+    .let { if (it.endsWith('/')) it else "$it/" }
+
+val releaseStoreFile = providers.gradleProperty("storeFile")
+    .orElse(providers.environmentVariable("KEYSTORE_FILE"))
+val releaseStorePassword = providers.gradleProperty("storePassword")
+    .orElse(providers.environmentVariable("KEYSTORE_PASSWORD"))
+val releaseKeyAlias = providers.gradleProperty("keyAlias")
+    .orElse(providers.environmentVariable("KEY_ALIAS"))
+val releaseKeyPassword = providers.gradleProperty("keyPassword")
+    .orElse(providers.environmentVariable("KEY_PASSWORD"))
+val releaseVersionCode = providers.gradleProperty("versionCode")
+    .orElse(providers.environmentVariable("GITHUB_RUN_NUMBER"))
+    .map(String::toInt)
+    .getOrElse(1)
+val releaseVersionName = providers.gradleProperty("versionName")
+    .getOrElse("0.1.0")
+
 android {
     namespace = "com.duxue.cam"
     compileSdk = 35
@@ -12,11 +33,26 @@ android {
         applicationId = "com.duxue.cam"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
-        buildConfigField("String", "API_BASE_URL", "\"${project.findProperty("apiBaseUrl") ?: "http://10.0.2.2:8000/"}\"")
+        versionCode = releaseVersionCode
+        versionName = releaseVersionName
+        buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
     }
     buildFeatures { compose = true; buildConfig = true }
+    signingConfigs {
+        create("release") {
+            releaseStoreFile.orNull?.let { storeFile = file(it) }
+            storePassword = releaseStorePassword.orNull
+            keyAlias = releaseKeyAlias.orNull
+            keyPassword = releaseKeyPassword.orNull
+        }
+    }
+    buildTypes {
+        release {
+            signingConfig = signingConfigs.getByName("release")
+            isMinifyEnabled = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
+    }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
 }

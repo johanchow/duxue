@@ -3,6 +3,9 @@ import 'core/api_client.dart';
 import 'core/models.dart';
 import 'core/token_storage.dart';
 
+/// Compile with `--dart-define=API_BASE_URL=https://api.example.com`.
+/// This is intentionally a build-time value: mobile clients cannot read the
+/// server's `.env.prod` after they have been installed.
 const apiBaseUrl = String.fromEnvironment('API_BASE_URL', defaultValue: 'http://10.0.2.2:8000');
 final tokenStorageProvider = Provider((_) => const TokenStorage());
 final apiProvider = Provider((ref) => ApiClient(baseUrl: apiBaseUrl, tokens: ref.watch(tokenStorageProvider)));

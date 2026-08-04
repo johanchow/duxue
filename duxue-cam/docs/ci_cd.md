@@ -82,17 +82,17 @@ ssh-keygen -t ed25519 -C "github-actions-duxue-cam" -f ~/.ssh/duxue_cam_deploy
 
 ### 第五步：创建 GitHub Actions 工作流文件
 
-在项目中创建目录和文件：
+本仓库是 monorepo，工作流必须建在**仓库根目录**（而不是 `duxue-cam/.github`）：
 
 ```
-duxue-cam/
+duxue/
 └── .github/
     └── workflows/
-        ├── test.yml        # PR 触发：只跑测试
-        └── release.yml     # Tag 触发：构建签名 APK + 上传服务器
+        ├── cam-ci.yml        # PR / main：测试、Lint、Debug APK
+        └── cam-release.yml   # cam-v* Tag：签名 APK + 上传服务器
 ```
 
-这两个文件提交到 Git 后，GitHub 会自动识别并启用对应的流水线。
+文件已随代码提供；提交到 GitHub 后 Actions 会自动识别。完整 Secret 清单见仓库根目录的 [`docs/deployment.md`](../../docs/deployment.md)。
 
 ### 第六步：验证流水线
 

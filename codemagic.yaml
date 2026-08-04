@@ -1,0 +1,20 @@
+# Codemagic requires this file at the Git repository root.  Store production
+# credentials in the Codemagic UI environment groups, never in this file.
+workflows:
+  guardian-test:
+    name: Guardian App quality gate
+    triggering:
+      events:
+        - pull_request
+      branch_patterns:
+        - pattern: main
+          include: true
+    environment:
+      flutter: stable
+    scripts:
+      - name: Install packages
+        script: cd duxue-app && flutter pub get
+      - name: Static analysis
+        script: cd duxue-app && flutter analyze
+      - name: Run tests
+        script: cd duxue-app && flutter test

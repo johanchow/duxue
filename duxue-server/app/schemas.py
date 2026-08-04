@@ -41,13 +41,11 @@ class TokenPair(BaseModel):
 
 class WardCreate(BaseModel):
     display_name: str = Field(min_length=1, max_length=100)
-    birth_year: int | None = None
     notes: str | None = None
 
 
 class WardPatch(BaseModel):
     display_name: str | None = None
-    birth_year: int | None = None
     notes: str | None = None
     analysis_profile_id: str | None = None
 
@@ -55,7 +53,6 @@ class WardPatch(BaseModel):
 class WardOut(ORMModel):
     id: str
     display_name: str
-    birth_year: int | None
     notes: str | None
     analysis_profile_id: str | None
 

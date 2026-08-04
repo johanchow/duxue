@@ -42,6 +42,7 @@ class EndToEndTest(unittest.TestCase):
         })
         self.assertEqual(registration.status_code, 201, registration.text)
         guardian_token = registration.json()["access_token"]
+        self.assertEqual(self.request("GET", "/admin/summary", token=guardian_token).status_code, 200)
 
         ward_response = self.request("POST", "/wards", token=guardian_token, json={"display_name": "小读"})
         self.assertEqual(ward_response.status_code, 201, ward_response.text)

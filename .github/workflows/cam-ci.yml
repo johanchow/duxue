@@ -1,0 +1,41 @@
+name: Cam CI
+
+on:
+  pull_request:
+    paths:
+      - "duxue-cam/**"
+      - ".github/workflows/cam-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "duxue-cam/**"
+      - ".github/workflows/cam-ci.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cam-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: duxue-cam
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+      - run: gradle :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cam-debug-apk
+          path: duxue-cam/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error

@@ -1,0 +1,70 @@
+# Local-only dependency overrides. Do not use this file on ECS.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: duxue
+      POSTGRES_USER: duxue
+      POSTGRES_PASSWORD: duxue
+    ports: ["5432:5432"]
+    volumes: ["postgres-data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U duxue -d duxue"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+
+  migrate:
+    environment:
+      DATABASE_URL: postgresql+psycopg://duxue:duxue@postgres:5432/duxue
+      REDIS_URL: redis://redis:6379/0
+      STORAGE_BACKEND: local
+      AUTO_CREATE_SCHEMA: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    environment:
+      DATABASE_URL: postgresql+psycopg://duxue:duxue@postgres:5432/duxue
+      REDIS_URL: redis://redis:6379/0
+      STORAGE_BACKEND: local
+      AUTO_CREATE_SCHEMA: "false"
+    volumes: ["./data/uploads:/app/data/uploads"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  worker:
+    environment:
+      DATABASE_URL: postgresql+psycopg://duxue:duxue@postgres:5432/duxue
+      REDIS_URL: redis://redis:6379/0
+      STORAGE_BACKEND: local
+      AUTO_CREATE_SCHEMA: "false"
+    volumes: ["./data/uploads:/app/data/uploads"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  beat:
+    environment:
+      DATABASE_URL: postgresql+psycopg://duxue:duxue@postgres:5432/duxue
+      REDIS_URL: redis://redis:6379/0
+      STORAGE_BACKEND: local
+      AUTO_CREATE_SCHEMA: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+volumes:
+  postgres-data:

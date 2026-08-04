@@ -507,13 +507,12 @@ erDiagram
         string name
         string email
         string password_hash
-        enum role "owner|admin|teacher|parent"
+        enum role "admin|guardian"
     }
 
     user_wards {
         uuid id PK "= users.id"
         string display_name
-        int birth_year
         string notes
         uuid analysis_profile_id FK "可为空，空则用系统默认"
     }
@@ -522,7 +521,6 @@ erDiagram
         uuid id PK
         uuid guardian_id FK
         uuid ward_id FK
-        string relation_type "parent|teacher|guardian"
         timestamp created_at
     }
 

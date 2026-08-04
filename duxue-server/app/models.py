@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime, timezone
 
-from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, CheckConstraint, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .database import Base
@@ -35,11 +35,12 @@ class User(Base):
 
 class Guardian(Base):
     __tablename__ = "user_guardians"
+    __table_args__ = (CheckConstraint("role IN ('admin', 'guardian')", name="ck_guardian_role"),)
     id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     name: Mapped[str] = mapped_column(String(100))
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
-    role: Mapped[str] = mapped_column(String(20), default="parent")
+    role: Mapped[str] = mapped_column(String(20), default="guardian")
 
 
 class Ward(Base):
@@ -47,7 +48,6 @@ class Ward(Base):
     id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), index=True)
     display_name: Mapped[str] = mapped_column(String(100))
-    birth_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     analysis_profile_id: Mapped[str | None] = mapped_column(ForeignKey("analysis_profiles.id"), nullable=True)
 
@@ -59,7 +59,6 @@ class GuardianWard(Base):
     tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), index=True)
     guardian_id: Mapped[str] = mapped_column(ForeignKey("user_guardians.id", ondelete="CASCADE"))
     ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id", ondelete="CASCADE"))
-    relation_type: Mapped[str] = mapped_column(String(30), default="guardian")
 
 
 class RefreshToken(Base):

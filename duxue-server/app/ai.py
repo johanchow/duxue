@@ -46,7 +46,7 @@ class DashscopeInference:
                 handle.write(json.dumps(_request(frame, prompts.get(frame.ward_id, "")), ensure_ascii=False) + "\n")
         try:
             uploaded = self.client.files.create(file=path, purpose="batch")
-            batch = self.client.batches.create(input_file_id=uploaded.id, endpoint="/v1/chat/completions", completion_window="24h", metadata={"ds_name": f"duxue-{frames[0].captured_at.date()}"})
+            batch = self.client.batches.create(input_file_id=uploaded.id, endpoint="/v1/chat/completions", completion_window=settings.batch_completion_window, metadata={"ds_name": f"duxue-{frames[0].captured_at.date()}"})
             return batch.id
         finally:
             path.unlink(missing_ok=True)

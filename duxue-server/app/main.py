@@ -28,14 +28,15 @@ from .storage import LocalStorage, storage
 app = FastAPI(title="读学 Server", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:4173", "http://127.0.0.1:4173"],
+    allow_origins=list(settings.cors_allow_origins),
     allow_methods=["*"], allow_headers=["*"],
 )
 
 
 @app.on_event("startup")
 def startup() -> None:
-    Base.metadata.create_all(engine)
+    if settings.auto_create_schema:
+        Base.metadata.create_all(engine)
 
 
 def _tokens(db: Session, guardian: Guardian, tenant_id: str) -> TokenPair:
@@ -76,7 +77,7 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)) -> TokenPair:
     user = User(tenant_id=tenant.id, type="guardian")
     db.add(user)
     db.flush()
-    guardian = Guardian(id=user.id, name=body.name, email=email, password_hash=hash_secret(body.password), role="owner")
+    guardian = Guardian(id=user.id, name=body.name, email=email, password_hash=hash_secret(body.password), role="admin")
     db.add(guardian)
     db.commit()
     return _tokens(db, guardian, tenant.id)
@@ -177,7 +178,7 @@ def invite_device(ward_id: str, principal: Principal = Depends(current_guardian)
 @app.get("/wards/{ward_id}/devices")
 def list_devices(ward_id: str, principal: Principal = Depends(current_guardian), db: Session = Depends(get_db)):
     owned_ward(db, principal.tenant_id, ward_id)
-    cutoff = now() - timedelta(minutes=3)
+    cutoff = now() - timedelta(seconds=settings.heartbeat_timeout_seconds)
     devices = db.query(Device).filter(Device.tenant_id == principal.tenant_id, Device.ward_id == ward_id).all()
     result = []
     for device in devices:
@@ -392,7 +393,7 @@ def weekly_trend(ward_id: str, end_date: date | None = None, principal: Principa
 
 @app.get("/admin/summary")
 def admin_summary(principal: Principal = Depends(current_guardian), db: Session = Depends(get_db)):
-    if principal.role not in {"owner", "admin"}:
+    if principal.role != "admin":
         raise HTTPException(403, "admin role required")
     return {
         "wards": db.query(Ward).filter(Ward.tenant_id == principal.tenant_id).count(),

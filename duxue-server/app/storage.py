@@ -55,7 +55,7 @@ class LocalStorage:
         return self.path(key).read_bytes()
 
     def upload_url(self, key: str, base_url: str, content_type: str) -> tuple[str, int, dict]:
-        expires, signature = self.sign(key)
+        expires, signature = self.sign(key, settings.oss_presign_expire_seconds)
         return f"{base_url.rstrip('/')}/uploads/{key}?expires={expires}&signature={signature}", expires, {"Content-Type": content_type}
 
 
@@ -66,22 +66,23 @@ class OssStorage:
         except ImportError as exc:
             raise RuntimeError("oss2 is required when STORAGE_BACKEND=oss") from exc
         auth = oss2.Auth(settings.oss_access_key_id, settings.oss_access_key_secret)
-        self.bucket = oss2.Bucket(auth, settings.oss_endpoint, settings.oss_bucket)
+        self.public_bucket = oss2.Bucket(auth, settings.oss_endpoint, settings.oss_bucket)
+        self.internal_bucket = oss2.Bucket(auth, settings.oss_endpoint_internal, settings.oss_bucket)
 
     def upload_url(self, key: str, base_url: str, content_type: str) -> tuple[str, int, dict]:
-        expires = int(time.time()) + 300
-        url = self.bucket.sign_url("PUT", key, 300, headers={"Content-Type": content_type})
+        expires = int(time.time()) + settings.oss_presign_expire_seconds
+        url = self.public_bucket.sign_url("PUT", key, settings.oss_presign_expire_seconds, headers={"Content-Type": content_type})
         return url, expires, {"Content-Type": content_type}
 
     def exists(self, key: str) -> bool:
-        return self.bucket.object_exists(key)
+        return self.internal_bucket.object_exists(key)
 
     def read_bytes(self, key: str) -> bytes:
-        return self.bucket.get_object(key).read()
+        return self.internal_bucket.get_object(key).read()
 
     def delete(self, key: str | None) -> None:
         if key:
-            self.bucket.delete_object(key)
+            self.internal_bucket.delete_object(key)
 
 
 storage = OssStorage() if settings.storage_backend == "oss" else LocalStorage()

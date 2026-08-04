@@ -16,7 +16,7 @@ from app.services import analyze_and_generate, utc_bounds
 celery_app = Celery("duxue", broker=settings.redis_url, backend=settings.redis_url)
 celery_app.conf.timezone = "Asia/Shanghai"
 celery_app.conf.beat_schedule = {
-    "submit-daily-batches": {"task": "duxue.submit_daily_batches", "schedule": crontab(hour=22, minute=0)},
+    "submit-daily-batches": {"task": "duxue.submit_daily_batches", "schedule": crontab(hour=settings.batch_submit_hour, minute=0)},
     "poll-batches": {"task": "duxue.poll_batches", "schedule": crontab(minute="*/10")},
     "offline-devices": {"task": "duxue.mark_offline_devices", "schedule": crontab(minute="*")},
     "purge-expired-frames": {"task": "duxue.purge_expired_frames", "schedule": crontab(hour=3, minute=20)},
@@ -63,7 +63,7 @@ def poll_batches() -> int:
             status, results = client.retrieve(batch.provider_batch_id)
             frames = db.query(Frame).filter(Frame.tenant_id == batch.tenant_id, Frame.batch_id == batch.id).all()
             submitted_at = batch.submitted_at.replace(tzinfo=timezone.utc) if batch.submitted_at.tzinfo is None else batch.submitted_at
-            if status != "completed" and now() - submitted_at >= timedelta(hours=20):
+            if status != "completed" and now() - submitted_at >= timedelta(hours=settings.batch_fallback_after_hours):
                 prompts = _prompt_map(db, {frame.ward_id for frame in frames})
                 for frame in frames:
                     if frame.id not in results: results[frame.id] = client.realtime(frame, prompts.get(frame.ward_id, ""))
@@ -86,7 +86,7 @@ def poll_batches() -> int:
 def mark_offline_devices() -> int:
     db = SessionLocal()
     try:
-        cutoff = now() - timedelta(minutes=3)
+        cutoff = now() - timedelta(seconds=settings.heartbeat_timeout_seconds)
         count = db.query(Device).filter(Device.status == "online", Device.last_heartbeat_at < cutoff).update({Device.status: "offline"}, synchronize_session=False)
         db.commit(); return count
     finally: db.close()
