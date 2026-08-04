@@ -28,7 +28,7 @@ ENV_FILE=.env.prod docker compose up -d api worker beat
 
 生产环境还需把 Admin Web 的实际 HTTPS Origin 填入 `CORS_ALLOW_ORIGINS`；不要使用 `*`，因为 Guardian 的 JWT 请求需要受限的浏览器跨域策略。
 
-GitHub Actions 的构建与部署配置见仓库根目录的 [部署说明](../docs/deployment.md)。服务端发布使用 `server-v*` Tag：镜像先推送至 GHCR，再在目标机执行迁移并重启服务。
+GitHub Actions 的构建与部署配置见仓库根目录的 [部署说明](../docs/deployment.md)。Server 相关改动合并至 `main` 后，镜像会推送至 GitHub Container Registry（GHCR），再在生产机执行迁移并重启服务。
 
 本地完整栈则额外叠加 `docker-compose.local.yml`：
 

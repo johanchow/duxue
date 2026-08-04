@@ -106,7 +106,6 @@ iOS 签名是整个流程中最复杂的部分，需要提前完成以下准备�
 
 | 变量名 | 类型 | 说明 |
 |--------|------|------|
-| `API_BASE_URL_STAGING` | String（加密） | Staging 环境 API 地址 |
 | `API_BASE_URL_PROD` | String（加密） | 生产环境 API 地址 |
 | `APP_STORE_CONNECT_KEY_IDENTIFIER` | String | Apple API Key 的 Key ID |
 | `APP_STORE_CONNECT_ISSUER_ID` | String | Apple API Key 的 Issuer ID |
@@ -187,15 +186,14 @@ iOS 签名是整个流程中最复杂的部分，需要提前完成以下准备�
 
 ## 五、多环境配置
 
-App 需要区分开发、测试、生产三个环境，通过 `--dart-define` 注入环境变量，不在代码中硬编写 API 地址。
+App 只区分本地开发测试与生产，通过 `--dart-define` 注入环境变量，不在代码中硬编写 API 地址。
 
 | 环境 | API 地址来源 | 发布渠道 |
 |------|------------|---------|
-| dev | 本地 Docker（localhost） | 开发者本机 run |
-| staging | staging 服务器 | TestFlight / Android Internal |
-| production | 生产服务器 | App Store / Google Play Production |
+| dev | 本地 Docker（localhost） | 开发者本机 run / 本地测试 |
+| production | 生产服务器 | 合并 `main` 后的发行构建 |
 
-Codemagic 的不同 workflow 分别注入对应的 `API_BASE_URL` 环境变量，构建产物与环境严格对应，不会出现"测试版 App 打到生产环境"的问题。
+Codemagic 的生产 workflow 只注入 `API_BASE_URL_PROD`；本地调试时由开发者显式传入本机 API 地址。
 
 ---
 

@@ -50,12 +50,11 @@
 
 > 公网 Endpoint 也要记录：预签名 URL 是给手机用的，必须走公网；而服务端 Worker 打包批次时读取帧图片走内网（免流量费）。两个地址都要配。
 
-### 1.5 ACR 容器镜像服务
+### 1.5 GitHub Container Registry（GHCR）
 
-- **入口**：阿里云控制台 → 容器镜像服务 → 个人版（免费）
-- **操作**：开通后创建一个命名空间（如 `duxue`）
-- **地域**：与 ECS 同一地域
-- **需记录**：Registry 地址（如 `registry.cn-hangzhou.aliyuncs.com`）、命名空间名称
+- **入口**：GitHub 仓库关联的 Packages 页面
+- **操作**：无需预先创建仓库。首次合并到 `main` 时，GitHub Actions 会自动发布 `ghcr.io/<GitHub 用户或组织>/duxue-server`
+- **需确认**：Package 设为 private，并允许当前仓库的 Actions 访问；ECS 使用 classic PAT（`read:packages`）拉取
 
 ### 1.6 域名
 
@@ -70,12 +69,12 @@
 - **需申请的域名**：`api.yourdomain.com`、`admin.yourdomain.com`（按实际域名申请）
 - **备案通过后**再申请，否则审核会失败
 
-### 1.8 RAM 子账号（用于 CI/CD 鉴权）
+### 1.8 GitHub Packages 拉取令牌（供 ECS 使用）
 
-- **入口**：阿里云控制台 → 访问控制 RAM → 用户 → 创建用户
-- **用途**：GitHub Actions 推送 Docker 镜像到 ACR 时使用，不要用主账号的 AccessKey
-- **权限**：只授予 `AliyunContainerRegistryFullAccess`（ACR 读写）
-- **需记录**：AccessKey ID、AccessKey Secret（创建时立即保存，之后无法再查看）
+- **入口**：GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)
+- **用途**：ECS 拉取私有 GHCR 镜像；GitHub Actions 推送镜像使用内置 `GITHUB_TOKEN`，不需要 PAT
+- **权限**：仅 `read:packages`，并确保令牌所属账号对该 Package 有读取权限
+- **需记录**：GitHub 用户名与 PAT；PAT 只在创建时显示一次
 
 > **备案说明**：ICP 备案是国内服务器绑定域名的法规要求，周期长，**优先提交**，其他准备工作可并行进行。
 
@@ -168,8 +167,7 @@ git --version
 ### 3.4 创建工作目录
 
 ```bash
-sudo mkdir -p /opt/duxue
-sudo chown $USER:$USER /opt/duxue
+mkdir -p /home/duxue/duxue-server
 ```
 
 ### 3.5 配置 Deploy Key（供 CI/CD 从 GitHub 拉代码）
@@ -189,7 +187,7 @@ cat ~/.ssh/ecs_deploy.pub
 在本地执行（将生产环境变量文件上传到 ECS）：
 
 ```bash
-scp -i ali-ecs.pem .env.prod duxue@47.107.176.107:/opt/duxue/.env.prod
+scp -i ali-ecs.pem .env.prod duxue@47.107.176.107:/home/duxue/duxue-server/.env.prod
 ```
 
 ### 3.7 阿里云安全组放行端口
@@ -312,7 +310,7 @@ keytool -genkeypair \
 
 ## 六、环境变量 / .env.prod
 
-以下变量需要在 ECS 的 `/opt/duxue/.env.prod` 中配置，**此文件永远不提交 Git**：
+以下变量需要在 ECS 的 `/home/duxue/duxue-server/.env.prod` 中配置，**此文件永远不提交 Git**：
 
 ```bash
 # ── 数据库（阿里云 RDS 连接串）
@@ -372,8 +370,8 @@ APP_BASE_URL=https://你的域名
 
 | Secret 名称 | 值 | 说明 |
 |------------|-----|------|
-| `ACR_USERNAME` | 阿里云 RAM 子账号 AccessKey ID | 用于推送 Docker 镜像 |
-| `ACR_PASSWORD` | 阿里云 RAM 子账号 AccessKey Secret | |
+| `GHCR_USERNAME` | 有读取容器包权限的 GitHub 用户名 | ECS 登录 GHCR |
+| `GHCR_PULL_TOKEN` | classic PAT（仅 `read:packages`） | ECS 拉取私有镜像 |
 | `ECS_HOST` | ECS 公网 IP 或域名 | |
 | `ECS_USER` | SSH 登录用户名（如 ubuntu） | |
 | `ECS_SSH_KEY` | 部署用 SSH 私钥内容 | 对应 ECS 上 authorized_keys 的公钥 |
@@ -414,12 +412,12 @@ APP_BASE_URL=https://你的域名
     └─ 配置 CORS（允许 PUT）
     └─ 配置生命周期规则（frames/ 前缀 90 天后删除）
     └─ training/ 前缀不挂生命周期规则（训练集候选帧长期保留）
-□ 开通 ACR，新建命名空间
+□ 确认 GitHub Packages 已启用；准备 ECS 拉取私有 GHCR 镜像的 `read:packages` PAT
 □ 注册域名，提交 ICP 备案（备案期间可并行进行其他工作）
 □ 申请免费 SSL 证书（备案通过后）
 □ ECS 安装 Docker / Docker Compose / Git
 □ ECS 安全组放行端口（80 / 443 / 22，不需要 1935）
-□ 创建 /opt/duxue/ 工作目录
+□ 创建 /home/duxue/duxue-server/ 工作目录（与 server-deploy.yml 中 DEPLOY_PATH 一致）
 □ 配置 ECS Deploy Key 并添加到 GitHub 仓库
 ```
 
@@ -451,7 +449,7 @@ APP_BASE_URL=https://你的域名
 ### 阶段四：写入生产配置
 
 ```
-□ 编写 /opt/duxue/.env.prod（见第六节）
+□ 编写 /home/duxue/duxue-server/.env.prod（见第六节）
 □ 确认 .gitignore 覆盖 .env* 通配（并对 .env.example 加白名单例外）
 □ 在 ECS 上执行第一次 git clone，验证 Deploy Key 有效
 □ 执行 docker compose up -d，验证 api / worker / beat 三个容器启动正常
@@ -463,7 +461,7 @@ APP_BASE_URL=https://你的域名
 
 ```
 □ HTTPS 访问 API 域名，返回 200
-□ Guardian App 连接 staging 环境，完成注册/登录/创建 ward
+□ Guardian App 连接生产环境，完成注册/登录/创建 ward
 □ Cam App 安装 APK，输入邀请码绑定设备
 □ 验证帧上传链路：申请预签名 URL → PUT 到 OSS → 提交元数据 → frames 表有记录
 □ 验证断网补传：飞行模式 5 分钟后恢复，确认积压帧按时间序补齐

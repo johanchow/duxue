@@ -2,30 +2,33 @@ name: Release Cam APK
 
 on:
   push:
+    branches: [main]
     tags: ["cam-v*"]
+    paths:
+      - "duxue-cam/**"
+      - ".github/workflows/cam-release.yml"
   workflow_dispatch:
     inputs:
       version:
         description: Version name, for example 1.2.0
         required: true
-      environment:
-        description: Target deployment environment
-        required: true
-        default: staging
-        type: choice
-        options: [staging, production]
 
 permissions:
   contents: write
 
 concurrency:
-  group: cam-release-${{ inputs.environment || 'production' }}
+  group: cam-release-production
   cancel-in-progress: false
+
+env:
+  DEPLOY_SERVER_USER: duxue
+  DEPLOY_SERVER_PORT: "22"
+  SSH_OPTS: -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
 
 jobs:
   release:
     runs-on: ubuntu-latest
-    environment: ${{ inputs.environment || 'production' }}
+    environment: production
     defaults:
       run:
         working-directory: duxue-cam
@@ -53,6 +56,7 @@ jobs:
         run: |
           version="$RELEASE_VERSION"
           version="${version#cam-v}"
+          [ "$version" = "main" ] && version="0.1.0"
           gradle :app:assembleRelease -PapiBaseUrl="$API_BASE_URL" -PversionName="$version" -PversionCode="$GITHUB_RUN_NUMBER"
           cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/cam-${version}.apk"
       - uses: actions/upload-artifact@v4
@@ -63,23 +67,22 @@ jobs:
       - name: Configure deployment SSH key
         env:
           DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
-          DEPLOY_SERVER_KNOWN_HOSTS: ${{ secrets.DEPLOY_SERVER_KNOWN_HOSTS }}
         run: |
           install -m 700 -d ~/.ssh
           printf '%s' "$DEPLOY_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          printf '%s\n' "$DEPLOY_SERVER_KNOWN_HOSTS" > ~/.ssh/known_hosts
       - name: Publish APK to download host
         env:
           DEPLOY_SERVER_HOST: ${{ secrets.DEPLOY_SERVER_HOST }}
-          DEPLOY_SERVER_USER: ${{ secrets.DEPLOY_SERVER_USER }}
-          DEPLOY_SERVER_PORT: ${{ secrets.DEPLOY_SERVER_PORT || '22' }}
           DEPLOY_APK_PATH: ${{ secrets.DEPLOY_APK_PATH }}
           RELEASE_VERSION: ${{ inputs.version || github.ref_name }}
         run: |
           version="${RELEASE_VERSION#cam-v}"
-          scp -P "$DEPLOY_SERVER_PORT" "$RUNNER_TEMP/cam-${version}.apk" "$DEPLOY_SERVER_USER@$DEPLOY_SERVER_HOST:$DEPLOY_APK_PATH/cam-${version}.apk"
-          ssh -p "$DEPLOY_SERVER_PORT" "$DEPLOY_SERVER_USER@$DEPLOY_SERVER_HOST" "cp '$DEPLOY_APK_PATH/cam-${version}.apk' '$DEPLOY_APK_PATH/cam-latest.apk'"
+          [ "$version" = "main" ] && version="0.1.0"
+          scp $SSH_OPTS -P "$DEPLOY_SERVER_PORT" "$RUNNER_TEMP/cam-${version}.apk" \
+            "$DEPLOY_SERVER_USER@$DEPLOY_SERVER_HOST:$DEPLOY_APK_PATH/cam-${version}.apk"
+          ssh $SSH_OPTS -p "$DEPLOY_SERVER_PORT" "$DEPLOY_SERVER_USER@$DEPLOY_SERVER_HOST" \
+            "cp '$DEPLOY_APK_PATH/cam-${version}.apk' '$DEPLOY_APK_PATH/cam-latest.apk'"
       - name: Create GitHub release
         if: startsWith(github.ref, 'refs/tags/')
         env:

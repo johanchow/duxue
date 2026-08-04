@@ -871,7 +871,7 @@ server/
 | 服务器 | **ECS**（2核4G 起步） | 运行 FastAPI + Celery worker/beat 容器 |
 | 数据库 | **RDS for PostgreSQL** | 托管，自动备份，开发/生产各一个实例 |
 | 缓存/队列 | **云数据库 Redis** | 托管，Celery Broker，开发/生产各一个实例 |
-| 镜像仓库 | **ACR（容器镜像服务）** | 存储 Docker 镜像，国内拉取速度快 |
+| 镜像仓库 | **GitHub Container Registry（GHCR）** | 存储 Docker 镜像；Actions 用内置令牌推送，ECS 用只读 PAT 拉取 |
 | 文件存储 | **OSS** | 帧图片，Cam 端预签名直传；配生命周期规则自动清理 |
 | 域名/HTTPS | **SLB + SSL 证书** | 反向代理，443 终结 TLS |
 
@@ -902,13 +902,13 @@ server/
                  │ push 镜像
                  ▼
   ┌──────────────────────────────┐
-  │       阿里云 ACR              │
+  │       GitHub GHCR             │
   │     （镜像中转仓库）           │
   │  duxue-server:latest         │
   │  duxue-server:{git-sha}      │
   └──────────────┬───────────────┘
                  │ SSH 登录 ECS，执行：
-                 │   git pull（拉取最新 compose 文件）
+                 │   scp 上传最新 compose 文件
                  │   docker compose pull
                  │   alembic upgrade head（迁移）
                  │   docker compose up -d
@@ -936,7 +936,7 @@ sequenceDiagram
     participant DEV as 开发者本地
     participant GH as GitHub 仓库
     participant CI as GitHub Actions<br/>（临时虚拟机）
-    participant ACR as 阿里云 ACR<br/>（镜像仓库）
+    participant GHCR as GitHub GHCR<br/>（镜像仓库）
     participant ECS as 阿里云 ECS<br/>（生产服务器）
     participant RDS as 阿里云 RDS<br/>（PostgreSQL）
 
@@ -947,14 +947,14 @@ sequenceDiagram
         Note over CI: CI 阶段
         CI->>CI: pytest（跑单测）
         CI->>CI: docker build（构建镜像）
-        CI->>ACR: docker push（上传镜像）
+        CI->>GHCR: docker push（上传镜像）
     end
 
     rect rgb(240, 255, 240)
         Note over CI,ECS: CD 阶段（SSH 远程执行）
         CI->>ECS: SSH 连接
-        ECS->>GH: git pull（拉取最新 compose 文件）
-        ECS->>ACR: docker compose pull（拉取新镜像）
+        CI->>ECS: scp 上传 docker-compose.yml
+        ECS->>GHCR: docker compose pull（拉取新镜像）
         ECS->>RDS: alembic upgrade head（执行 DB 迁移）
         ECS->>ECS: docker compose up -d（滚动重启容器）
         CI-->>ECS: SSH 断开
@@ -1009,7 +1009,7 @@ docker compose up api worker beat
 生产部署（由 GitHub Actions 在 ECS 上执行）：
 ```bash
 ENV_FILE=.env.prod \
-API_IMAGE=registry.cn-hangzhou.aliyuncs.com/xxx/duxue-server:{git-sha} \
+DUXUE_SERVER_IMAGE=ghcr.io/<GitHub 用户或组织>/duxue-server:{git-sha} \
 docker compose up -d api worker beat
 ```
 
@@ -1019,14 +1019,14 @@ docker compose up -d api worker beat
 
 | 文件 | 触发条件 | 作用 |
 |------|---------|------|
-| `deploy-server.yml` | push 到 main，且 `duxue-server/**` 有变更 | 正常发布流程（测试 → 构建 → 部署） |
-| `rollback-server.yml` | 手动触发，输入目标 git sha | 回滚到指定版本 |
+| `server-ci.yml` | PR / main，且 `duxue-server/**` 有变更 | 测试与镜像构建校验 |
+| `server-deploy.yml` | main，且 `duxue-server/**` 有变更；或手动触发 | 构建并推送 GHCR，再迁移与部署 |
 
 具体实现见 `.github/workflows/` 目录。
 
 ### 8.6 回滚方式
 
-每次构建都以 `git sha` 作为镜像 tag 存入 ACR，回滚通过 GitHub Actions 手动触发，**无需登录 ECS**。
+每次构建都以 `git sha` 作为镜像 tag 存入 GHCR，回滚通过 GitHub Actions 手动触发，**无需登录 ECS**。
 
 **操作步骤：**
 
