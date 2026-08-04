@@ -1,0 +1,94 @@
+name: Deploy Server
+
+on:
+  push:
+    branches: [main]
+    tags: ["server-v*"]
+    paths:
+      - "duxue-server/**"
+      - ".github/workflows/server-deploy.yml"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: GitHub Environment containing the deployment secrets
+        required: true
+        default: staging
+        type: choice
+        options: [staging, production]
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: server-deploy-${{ inputs.environment || (github.ref == 'refs/heads/main' && 'staging') || 'production' }}
+  cancel-in-progress: false
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/duxue-server
+  DEPLOY_ENVIRONMENT: ${{ inputs.environment || (github.ref == 'refs/heads/main' && 'staging') || 'production' }}
+
+jobs:
+  test:
+    uses: ./.github/workflows/server-ci.yml
+    permissions:
+      contents: read
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || (github.ref == 'refs/heads/main' && 'staging') || 'production' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: duxue-server
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.IMAGE_NAME }}:${{ env.DEPLOY_ENVIRONMENT }}
+      - name: Configure deployment SSH key
+        env:
+          DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+          DEPLOY_SERVER_KNOWN_HOSTS: ${{ secrets.DEPLOY_SERVER_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s' "$DEPLOY_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$DEPLOY_SERVER_KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - name: Upload Compose definition
+        env:
+          DEPLOY_SERVER_HOST: ${{ secrets.DEPLOY_SERVER_HOST }}
+          DEPLOY_SERVER_USER: ${{ secrets.DEPLOY_SERVER_USER }}
+          DEPLOY_SERVER_PORT: ${{ secrets.DEPLOY_SERVER_PORT || '22' }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          scp -P "$DEPLOY_SERVER_PORT" duxue-server/docker-compose.yml "$DEPLOY_SERVER_USER@$DEPLOY_SERVER_HOST:$DEPLOY_PATH/docker-compose.yml"
+      - name: Migrate and start services
+        env:
+          DEPLOY_SERVER_HOST: ${{ secrets.DEPLOY_SERVER_HOST }}
+          DEPLOY_SERVER_USER: ${{ secrets.DEPLOY_SERVER_USER }}
+          DEPLOY_SERVER_PORT: ${{ secrets.DEPLOY_SERVER_PORT || '22' }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
+          GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
+        run: |
+          ssh -p "$DEPLOY_SERVER_PORT" "$DEPLOY_SERVER_USER@$DEPLOY_SERVER_HOST" \
+            "cd '$DEPLOY_PATH' && \
+             printf '%s' '$GHCR_PULL_TOKEN' | docker login ghcr.io -u '$GHCR_USERNAME' --password-stdin && \
+             export ENV_FILE=.env.prod DUXUE_SERVER_IMAGE='${IMAGE_NAME}:${GITHUB_SHA}' && \
+             docker compose --profile tools pull migrate && \
+             docker compose --profile tools run --rm migrate && \
+             docker compose pull api worker beat && \
+             docker compose up -d --no-build api worker beat && \
+             docker image prune -f"
+      - name: Verify API health
+        env:
+          DEPLOY_HEALTHCHECK_URL: ${{ secrets.DEPLOY_HEALTHCHECK_URL }}
+        run: curl --fail --retry 12 --retry-delay 5 --retry-connrefused "$DEPLOY_HEALTHCHECK_URL/health"

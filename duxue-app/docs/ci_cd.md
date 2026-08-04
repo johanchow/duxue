@@ -39,14 +39,14 @@ Codemagic 的配置分为两部分：**仓库内的配置文件**（`codemagic.y
 
 ### 第二步：创建 codemagic.yaml 配置文件
 
-在项目根目录创建：
+Codemagic 读取仓库根目录的 `codemagic.yaml`。当前项目是 monorepo，因此该文件应位于 `duxue/codemagic.yaml`，而不是 `duxue-app/` 子目录：
 
 ```
-duxue-app/
+duxue/
 └── codemagic.yaml    # Codemagic 读取此文件作为流水线定义
 ```
 
-此文件提交到 Git，Codemagic 每次构建时自动读取最新版本。
+此文件提交到 Git，Codemagic 每次构建时自动读取最新版本。注意：当前尚未提交 `duxue-app/android` 与 `duxue-app/ios` 工程，生成并提交它们前无法产出可签名的 AAB/IPA，详见 [`docs/deployment.md`](../../docs/deployment.md)。
 
 ### 第三步：生成并托管 Android Keystore
 

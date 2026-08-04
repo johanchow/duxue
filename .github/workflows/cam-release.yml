@@ -1,0 +1,88 @@
+name: Release Cam APK
+
+on:
+  push:
+    tags: ["cam-v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version name, for example 1.2.0
+        required: true
+      environment:
+        description: Target deployment environment
+        required: true
+        default: staging
+        type: choice
+        options: [staging, production]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cam-release-${{ inputs.environment || 'production' }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || 'production' }}
+    defaults:
+      run:
+        working-directory: duxue-cam
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+      - name: Restore signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/duxue-cam.keystore"
+      - name: Build signed release APK
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          KEYSTORE_FILE: ${{ runner.temp }}/duxue-cam.keystore
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          RELEASE_VERSION: ${{ inputs.version || github.ref_name }}
+        run: |
+          version="$RELEASE_VERSION"
+          version="${version#cam-v}"
+          gradle :app:assembleRelease -PapiBaseUrl="$API_BASE_URL" -PversionName="$version" -PversionCode="$GITHUB_RUN_NUMBER"
+          cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/cam-${version}.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cam-release-apk
+          path: ${{ runner.temp }}/cam-*.apk
+          if-no-files-found: error
+      - name: Configure deployment SSH key
+        env:
+          DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+          DEPLOY_SERVER_KNOWN_HOSTS: ${{ secrets.DEPLOY_SERVER_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s' "$DEPLOY_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$DEPLOY_SERVER_KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - name: Publish APK to download host
+        env:
+          DEPLOY_SERVER_HOST: ${{ secrets.DEPLOY_SERVER_HOST }}
+          DEPLOY_SERVER_USER: ${{ secrets.DEPLOY_SERVER_USER }}
+          DEPLOY_SERVER_PORT: ${{ secrets.DEPLOY_SERVER_PORT || '22' }}
+          DEPLOY_APK_PATH: ${{ secrets.DEPLOY_APK_PATH }}
+          RELEASE_VERSION: ${{ inputs.version || github.ref_name }}
+        run: |
+          version="${RELEASE_VERSION#cam-v}"
+          scp -P "$DEPLOY_SERVER_PORT" "$RUNNER_TEMP/cam-${version}.apk" "$DEPLOY_SERVER_USER@$DEPLOY_SERVER_HOST:$DEPLOY_APK_PATH/cam-${version}.apk"
+          ssh -p "$DEPLOY_SERVER_PORT" "$DEPLOY_SERVER_USER@$DEPLOY_SERVER_HOST" "cp '$DEPLOY_APK_PATH/cam-${version}.apk' '$DEPLOY_APK_PATH/cam-latest.apk'"
+      - name: Create GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.version || github.ref_name }}
+        run: gh release create "$RELEASE_VERSION" "$RUNNER_TEMP"/cam-*.apk --generate-notes

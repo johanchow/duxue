@@ -14,3 +14,12 @@ __pycache__/
 
 # 帧图片素材（含真实场景照片，属敏感数据，不入 Git）
 duxue-server/data/frames/
+duxue-server/data/uploads/
+duxue-server/*.db
+
+# 移动端构建产物与本机配置
+duxue-cam/.gradle/
+duxue-cam/local.properties
+duxue-cam/**/build/
+duxue-app/.dart_tool/
+duxue-app/build/

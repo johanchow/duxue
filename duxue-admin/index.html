@@ -1,0 +1,7 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>读学运营台</title><link rel="stylesheet" href="style.css"></head>
+<body><main>
+  <header><div><span class="brand">读学</span><span class="muted">运营台</span></div><button id="logout" class="ghost hidden">退出</button></header>
+  <section id="login" class="panel login"><h1>欢迎回来</h1><p class="muted">使用 owner 或 admin 账号登录</p><form id="login-form"><label>邮箱<input id="email" type="email" required></label><label>密码<input id="password" type="password" required></label><button>登录</button><p id="login-error" class="error"></p></form></section>
+  <section id="dashboard" class="hidden"><div class="title"><div><h1>系统概况</h1><p class="muted">当前租户的运行状态</p></div><button id="refresh" class="ghost">刷新</button></div><div id="metrics" class="metrics"></div><h2>被监护者与设备</h2><div id="wards" class="panel"></div></section>
+</main><script src="app.js"></script></body></html>
