@@ -27,8 +27,7 @@ oss2>=2.19.0
 # ── AI 推理（百炼 Batch API，兼容 OpenAI 接口）
 openai>=1.57.0
 
-# ── 第二阶段分类（文本嵌入相似度）
-sentence-transformers>=3.0.0
+# ── 数值计算
 numpy>=1.24.0
 
 # ── 认证

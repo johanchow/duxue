@@ -42,7 +42,13 @@ class MainActivity : ComponentActivity() {
         var backlog by remember { mutableIntStateOf(0) }
         LaunchedEffect(token) { while (token != null) { backlog = app.queue.size(); delay(2_000) } }
         val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-            if (granted) { ContextCompat.startForegroundService(this, Intent(this, CaptureService::class.java)); running = true }
+            if (granted) {
+                ContextCompat.startForegroundService(
+                    this@MainActivity,
+                    Intent(this@MainActivity, CaptureService::class.java),
+                )
+                running = true
+            }
         }
         Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically), horizontalAlignment = Alignment.CenterHorizontally) {
             Text("读学Eye", style = MaterialTheme.typography.headlineLarge)
@@ -58,7 +64,13 @@ class MainActivity : ComponentActivity() {
                 Text(if (running) "运行中 · 每 ${app.store.intervalSeconds} 秒抓拍" else "已停止")
                 Text("待补传：$backlog 张")
                 Button(onClick = {
-                    if (running) { startService(Intent(this, CaptureService::class.java).setAction(CaptureService.ACTION_STOP)); running = false }
+                    if (running) {
+                        stopService(
+                            Intent(this@MainActivity, CaptureService::class.java)
+                                .setAction(CaptureService.ACTION_STOP),
+                        )
+                        running = false
+                    }
                     else permission.launch(Manifest.permission.CAMERA)
                 }) { Text(if (running) "停止监控" else "开始监控") }
                 Button(onClick = { app.store.clear(); token = null; running = false }) { Text("解除本机绑定") }

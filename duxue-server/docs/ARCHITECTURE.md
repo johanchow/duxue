@@ -1019,7 +1019,7 @@ docker compose up -d api worker beat
 
 | 文件 | 触发条件 | 作用 |
 |------|---------|------|
-| `server-ci.yml` | PR / main，且 `duxue-server/**` 有变更 | 测试与镜像构建校验 |
+| `server-ci.yml` | PR，且 `duxue-server/**` 有变更 | 测试与镜像构建校验 |
 | `server-deploy.yml` | main，且 `duxue-server/**` 有变更；或手动触发 | 构建并推送 GHCR，再迁移与部署 |
 
 具体实现见 `.github/workflows/` 目录。

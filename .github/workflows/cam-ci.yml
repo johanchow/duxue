@@ -1,16 +1,11 @@
 name: Cam CI
 
 on:
+  workflow_call:
   pull_request:
     paths:
       - "duxue-cam/**"
       - ".github/workflows/cam-ci.yml"
-  push:
-    branches: [main]
-    paths:
-      - "duxue-cam/**"
-      - ".github/workflows/cam-ci.yml"
-
 permissions:
   contents: read
 

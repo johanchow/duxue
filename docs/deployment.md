@@ -4,11 +4,11 @@
 
 | 工作流 | 触发条件 | 结果 |
 |---|---|---|
-| `server-ci.yml` | Server 相关 PR、`main` 推送 | Pytest、构建 Docker 镜像 |
+| `server-ci.yml` | Server 相关 PR | Pytest、构建 Docker 镜像 |
 | `server-deploy.yml` | Server 相关 `main` 推送或手动触发 | 推送 GHCR 镜像、远端迁移、启动 API/Worker/Beat、健康检查 |
-| `cam-ci.yml` | Cam 相关 PR、`main` 推送 | Kotlin 单测、Lint、Debug APK |
+| `cam-ci.yml` | Cam 相关 PR | Kotlin 单测、Lint、Debug APK |
 | `cam-release.yml` | Cam 相关 `main` 推送、`cam-v*` Tag 或手动触发 | 签名 Release APK、更新正式下载包；Tag 额外创建 GitHub Release |
-| `app-ci.yml` | Guardian 相关 PR、`main` 推送 | Flutter 静态检查与测试 |
+| `app-ci.yml` | Guardian 相关 PR | Flutter 静态检查与测试 |
 
 Guardian 的商店构建继续由 Codemagic 负责；当前仓库未提交 `duxue-app/android` 和 `duxue-app/ios` 原生工程，故不能安全地配置 AAB/IPA 自动发布。先在开发机确认应用标识后生成并提交这些工程：
 
@@ -76,4 +76,4 @@ https://$DEPLOY_SERVER_HOST/api/health
 
 `DEPLOY_SERVER_USER` / `DEPLOY_SERVER_PORT` 已写死在 `cam-release.yml`。
 
-Server 与 Cam 的相关改动合并到 `main` 后都会自动部署到 `production`。Cam 的 `cam-v*` Tag 额外创建带版本 APK 的 GitHub Release，便于回退。开发和测试仅在本地进行，不设远端 staging。
+三端 CI 仅在 PR 阶段运行。Server 与 Cam 的相关改动合并到 `main` 后直接部署到 `production`，不会再次运行 CI。Cam 的 `cam-v*` Tag 额外创建带版本 APK 的 GitHub Release，便于回退。开发和测试仅在本地进行，不设远端 staging。
