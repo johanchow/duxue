@@ -88,7 +88,7 @@ ssh-keygen -t ed25519 -C "github-actions-duxue-cam" -f ~/.ssh/duxue_cam_deploy
 duxue/
 └── .github/
     └── workflows/
-        ├── cam-ci.yml        # PR / main：测试、Lint、Debug APK
+        ├── cam-ci.yml        # PR：测试、Lint、Debug APK
         └── cam-release.yml   # main：签名 APK + 上传生产下载站；cam-v* Tag 额外创建 Release
 ```
 

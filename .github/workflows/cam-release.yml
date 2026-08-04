@@ -26,7 +26,13 @@ env:
   SSH_OPTS: -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
 
 jobs:
+  test:
+    uses: ./.github/workflows/cam-ci.yml
+    permissions:
+      contents: read
+
   release:
+    needs: test
     runs-on: ubuntu-latest
     environment: production
     defaults:

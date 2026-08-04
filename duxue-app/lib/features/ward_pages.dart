@@ -12,6 +12,7 @@ class WardListPage extends ConsumerWidget {
     return Scaffold(appBar: AppBar(title: const Text('被监护者'), actions: [IconButton(onPressed: () => ref.read(authProvider.notifier).logout(), icon: const Icon(Icons.logout))]),
       body: wards.when(loading: () => const Center(child: CircularProgressIndicator()), error: (e, _) => Center(child: Text('加载失败：$e')), data: (items) => items.isEmpty ? const Center(child: Text('还没有档案，点击右下角创建')) : ListView.separated(
         padding: const EdgeInsets.all(16), itemCount: items.length, separatorBuilder: (_, __) => const SizedBox(height: 8), itemBuilder: (_, index) { final ward = items[index]; return Card(child: ListTile(leading: const CircleAvatar(child: Icon(Icons.person)), title: Text(ward.displayName), subtitle: const Text('查看设备与报告'), trailing: const Icon(Icons.chevron_right), onTap: () => context.go('/wards/${ward.id}', extra: ward))); }),
+      ),
       floatingActionButton: FloatingActionButton.extended(onPressed: () => _create(context, ref), icon: const Icon(Icons.add), label: const Text('新建档案')),
     );
   }
@@ -28,7 +29,7 @@ class WardDetailPage extends ConsumerWidget {
     final devices = ref.watch(devicesProvider(ward.id));
     return Scaffold(appBar: AppBar(title: Text(ward.displayName)), body: ListView(padding: const EdgeInsets.all(16), children: [
       Text('摄像设备', style: Theme.of(context).textTheme.titleLarge), const SizedBox(height: 8),
-      devices.when(loading: () => const LinearProgressIndicator(), error: (e, _) => Text('设备加载失败：$e'), data: (items) => Column(children: items.map((device) => Card(child: ListTile(leading: Icon(device.status == 'online' ? Icons.videocam : Icons.videocam_off), title: Text(device.status == 'online' ? '在线' : '离线'), subtitle: Text(device.lastSeenAt == null ? '尚未绑定' : '最后心跳 ${device.lastSeenAt!.toLocal()}'))).toList())),
+      devices.when(loading: () => const LinearProgressIndicator(), error: (e, _) => Text('设备加载失败：$e'), data: (items) => Column(children: items.map((device) => Card(child: ListTile(leading: Icon(device.status == 'online' ? Icons.videocam : Icons.videocam_off), title: Text(device.status == 'online' ? '在线' : '离线'), subtitle: Text(device.lastSeenAt == null ? '尚未绑定' : '最后心跳 ${device.lastSeenAt!.toLocal()}')))).toList())),
       const SizedBox(height: 12), OutlinedButton.icon(onPressed: () => _invite(context, ref), icon: const Icon(Icons.qr_code), label: const Text('添加摄像设备')),
       const SizedBox(height: 28), Text('行为报告', style: Theme.of(context).textTheme.titleLarge), const SizedBox(height: 8), Card(child: ListTile(leading: const Icon(Icons.analytics), title: const Text('今日日报'), subtitle: const Text('分析完成后展示占比与时间轴'), trailing: const Icon(Icons.chevron_right), onTap: () => context.go('/wards/${ward.id}/report', extra: ward))),
     ]));

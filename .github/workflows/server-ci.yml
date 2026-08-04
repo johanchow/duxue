@@ -6,12 +6,6 @@ on:
     paths:
       - "duxue-server/**"
       - ".github/workflows/server-ci.yml"
-  push:
-    branches: [main]
-    paths:
-      - "duxue-server/**"
-      - ".github/workflows/server-ci.yml"
-
 permissions:
   contents: read
 
