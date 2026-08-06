@@ -23,3 +23,7 @@ duxue-cam/local.properties
 duxue-cam/**/build/
 duxue-app/.dart_tool/
 duxue-app/build/
+
+www.duxuelai.xyz_nginx
+duxue-cam/.idea/
+.metadata
