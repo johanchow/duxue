@@ -25,14 +25,24 @@ class AuthController extends AsyncNotifier<bool> {
       (await ref.read(tokenStorageProvider).access) != null;
   Future<void> login(String email, String password) async {
     state = const AsyncLoading();
-    await ref.read(apiProvider).login(email, password);
-    state = const AsyncData(true);
+    try {
+      await ref.read(apiProvider).login(email, password);
+      state = const AsyncData(true);
+    } catch (_) {
+      state = const AsyncData(false);
+      rethrow;
+    }
   }
 
   Future<void> register(String name, String email, String password) async {
     state = const AsyncLoading();
-    await ref.read(apiProvider).register(name, email, password);
-    state = const AsyncData(true);
+    try {
+      await ref.read(apiProvider).register(name, email, password);
+      state = const AsyncData(true);
+    } catch (_) {
+      state = const AsyncData(false);
+      rethrow;
+    }
   }
 
   Future<void> logout() async {

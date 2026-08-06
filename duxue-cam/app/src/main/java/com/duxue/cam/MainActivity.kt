@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Intent
 import android.os.Bundle
 import android.os.SystemClock
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -26,6 +27,8 @@ import com.duxue.cam.data.BindRequest
 import com.duxue.cam.service.CaptureService
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import retrofit2.HttpException
+import java.io.IOException
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -57,7 +60,10 @@ class MainActivity : ComponentActivity() {
                 Button(enabled = code.length == 6, onClick = {
                     lifecycleScope.launch { runCatching { app.api.bind(BindRequest(code, SystemClock.elapsedRealtime())) }.onSuccess {
                         app.store.token = it.token; app.store.wardName = it.wardName; app.store.intervalSeconds = it.intervalSeconds; token = it.token; message = "已绑定 ${it.wardName}"
-                    }.onFailure { message = it.message ?: "绑定失败" } }
+                    }.onFailure {
+                        Log.e(TAG, "Device binding failed", it)
+                        message = bindFailureMessage(it)
+                    } }
                 }) { Text("绑定设备") }
             } else {
                 Text("已绑定：${app.store.wardName}")
@@ -78,4 +84,21 @@ class MainActivity : ComponentActivity() {
             if (message.isNotBlank()) Text(message)
         }
     }
+
+    private fun bindFailureMessage(error: Throwable): String = when (error) {
+        is HttpException -> when (error.code()) {
+            400 -> "邀请码无效或已过期，请重新获取后再试"
+            429 -> "请求过于频繁，请稍后再试"
+            in 500..599 -> "测试服务器暂时异常，请稍后再试"
+            else -> "绑定失败（服务器返回 ${error.code()}）"
+        }
+        is IOException -> when {
+            error.message?.contains("reset", ignoreCase = true) == true ->
+                "网络连接被服务器重置，请检查网络后重试"
+            else -> "无法连接测试服务器，请检查网络后重试"
+        }
+        else -> "绑定失败，请稍后再试"
+    }
+
+    companion object { private const val TAG = "DuxueCam" }
 }

@@ -5,7 +5,7 @@ import 'token_storage.dart';
 
 class ApiClient {
   ApiClient({required String baseUrl, required this.tokens}) {
-    dio = Dio(BaseOptions(baseUrl: baseUrl));
+    dio = Dio(_options(baseUrl));
     dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) async {
@@ -20,6 +20,13 @@ class ApiClient {
   late final Dio dio;
   final TokenStorage tokens;
   Completer<String>? _refreshing;
+
+  static BaseOptions _options(String baseUrl) => BaseOptions(
+        baseUrl: baseUrl,
+        connectTimeout: const Duration(seconds: 10),
+        sendTimeout: const Duration(seconds: 15),
+        receiveTimeout: const Duration(seconds: 20),
+      );
 
   Future<void> _handleError(
     DioException error,
@@ -48,9 +55,10 @@ class ApiClient {
     try {
       final refresh = await tokens.refresh;
       if (refresh == null) throw StateError('No refresh token');
-      final response = await Dio(
-        BaseOptions(baseUrl: dio.options.baseUrl),
-      ).post('/auth/refresh', data: {'refresh_token': refresh});
+      final response = await Dio(_options(dio.options.baseUrl)).post(
+        '/auth/refresh',
+        data: {'refresh_token': refresh},
+      );
       final access = response.data['access_token'] as String;
       await tokens.save(access, response.data['refresh_token']);
       _refreshing!.complete(access);
