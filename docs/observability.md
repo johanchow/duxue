@@ -2,7 +2,7 @@
 
 > 版本 v1.0 | 覆盖：duxue-server · duxue-cam · duxue-app
 >
-> 全系统架构见：[docs/ARCHITECTURE.md](./ARCHITECTURE.md)
+> 全系统架构见：[docs/technical/ARCHITECTURE.md](./technical/ARCHITECTURE.md)
 
 ---
 
