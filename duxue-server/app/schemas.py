@@ -94,3 +94,31 @@ class AnalyzeDayRequest(BaseModel):
     ward_id: str
     report_date: date
     results: dict[str, dict[str, Any]] = Field(default_factory=dict)
+
+class WardBindRequest(BaseModel):
+    invite_code: str = Field(min_length=8, max_length=8)
+    pin: str = Field(pattern=r"^\d{4,8}$")
+
+class WardLoginRequest(BaseModel):
+    ward_id: str
+    pin: str = Field(pattern=r"^\d{4,8}$")
+
+class AssignmentCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=300)
+    details: str | None = None
+    due_date: date | None = None
+
+class PlanDraft(BaseModel):
+    plan_date: date
+    items: list[dict[str, Any]] = Field(min_length=1)
+
+class MessageCreate(BaseModel):
+    content: str = Field(min_length=1, max_length=4000)
+
+class SessionFinish(BaseModel):
+    active_seconds: int = Field(ge=0)
+
+class SelfReviewCreate(BaseModel):
+    feeling: str = Field(min_length=1, max_length=40)
+    reflection: str | None = Field(default=None, max_length=2000)
+    timeline_json: list[dict[str, Any]] = Field(default_factory=list)

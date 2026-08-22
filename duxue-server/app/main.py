@@ -10,15 +10,17 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import Base, engine, get_db
-from .dependencies import Principal, current_device, current_guardian
+from .dependencies import Principal, current_device, current_guardian, current_ward
 from .models import (
     AnalysisProfile, BehaviorLabelConfig, BehaviorSegment, Device, Frame, FramePrediction,
-    Guardian, GuardianWard, RefreshToken, Report, Tenant, User, Ward, now,
+    Guardian, GuardianWard, RefreshToken, Report, Tenant, User, Ward, WardCredential, WardInvite,
+    Assignment, DailyPlan, PlanItem, StudySession, StudyMessage, SelfReview, FocusKit, now,
 )
 from .schemas import (
     AnalyzeDayRequest, DeviceBind, FrameCreate, LabelCreate, LoginRequest, ProfileCreate,
     ProfilePatch, RefreshRequest, RegisterRequest, TokenPair, UploadUrlRequest, WardCreate,
-    WardOut, WardPatch,
+    WardOut, WardPatch, WardBindRequest, WardLoginRequest, AssignmentCreate, PlanDraft,
+    MessageCreate, SessionFinish, SelfReviewCreate,
 )
 from .security import create_access_token, hash_secret, random_token, token_hash, verify_secret
 from .services import analyze_and_generate, corrected_time, make_invite_code, owned_ward, utc_bounds
@@ -64,6 +66,118 @@ def _report(report: Report) -> dict:
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+def _ward_owned(principal: Principal, ward_id: str) -> None:
+    if principal.user_id != ward_id:
+        raise HTTPException(403, "ward may only access own data")
+
+
+@app.post("/wards/{ward_id}/login-invite", status_code=201)
+def ward_login_invite(ward_id: str, principal: Principal = Depends(current_guardian), db: Session = Depends(get_db)):
+    owned_ward(db, principal.tenant_id, ward_id)
+    code = secrets.token_hex(4).upper()
+    row = WardInvite(tenant_id=principal.tenant_id, ward_id=ward_id, code=code, expires_at=now() + timedelta(minutes=10))
+    db.add(row); db.commit()
+    return {"ward_id": ward_id, "invite_code": code, "expires_at": row.expires_at}
+
+@app.post("/ward-auth/bind")
+def ward_bind(body: WardBindRequest, db: Session = Depends(get_db)):
+    invite = db.query(WardInvite).filter(WardInvite.code == body.invite_code.upper(), WardInvite.consumed_at.is_(None)).one_or_none()
+    if invite is None or invite.expires_at.replace(tzinfo=timezone.utc) < now():
+        raise HTTPException(400, "invite code is invalid or expired")
+    credential = db.get(WardCredential, invite.ward_id)
+    if credential is None:
+        credential = WardCredential(ward_id=invite.ward_id, pin_hash=hash_secret(body.pin)); db.add(credential)
+    else: credential.pin_hash = hash_secret(body.pin)
+    invite.consumed_at = now(); db.commit()
+    return {"ward_id": invite.ward_id, "access_token": create_access_token(user_id=invite.ward_id, tenant_id=invite.tenant_id, role="ward"), "token_type": "bearer"}
+
+@app.post("/ward-auth/login")
+def ward_login(body: WardLoginRequest, db: Session = Depends(get_db)):
+    credential = db.get(WardCredential, body.ward_id); ward = db.get(Ward, body.ward_id)
+    if credential is None or ward is None or not verify_secret(body.pin, credential.pin_hash): raise HTTPException(401, "invalid ward credentials")
+    return {"ward_id": ward.id, "access_token": create_access_token(user_id=ward.id, tenant_id=ward.tenant_id, role="ward"), "token_type": "bearer"}
+
+@app.post("/wards/{ward_id}/assignments", status_code=201)
+def create_assignment(ward_id: str, body: AssignmentCreate, principal: Principal = Depends(current_guardian), db: Session = Depends(get_db)):
+    owned_ward(db, principal.tenant_id, ward_id); row = Assignment(tenant_id=principal.tenant_id, ward_id=ward_id, **body.model_dump()); db.add(row); db.commit(); db.refresh(row)
+    return {"id": row.id, "title": row.title, "status": row.status, "source": row.source}
+
+@app.get("/wards/{ward_id}/assignments")
+def assignments(ward_id: str, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
+    _ward_owned(principal, ward_id); return [{"id": x.id, "title": x.title, "details": x.details, "due_date": x.due_date, "status": x.status} for x in db.query(Assignment).filter_by(tenant_id=principal.tenant_id, ward_id=ward_id, status="open").all()]
+
+@app.put("/wards/{ward_id}/plans/{plan_date}")
+def save_plan(ward_id: str, plan_date: date, body: PlanDraft, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
+    _ward_owned(principal, ward_id)
+    if body.plan_date != plan_date: raise HTTPException(400, "date mismatch")
+    plan = db.query(DailyPlan).filter_by(tenant_id=principal.tenant_id, ward_id=ward_id, plan_date=plan_date).one_or_none()
+    if plan is None: plan = DailyPlan(tenant_id=principal.tenant_id, ward_id=ward_id, plan_date=plan_date); db.add(plan); db.flush()
+    if plan.status == "confirmed": raise HTTPException(409, "confirmed plan cannot be changed")
+    db.query(PlanItem).filter_by(plan_id=plan.id).delete()
+    for position, item in enumerate(body.items): db.add(PlanItem(plan_id=plan.id, assignment_id=item.get("assignment_id"), title=item.get("title", "学习任务"), position=position, planned_minutes=int(item.get("planned_minutes", 30))))
+    db.commit(); return {"id": plan.id, "status": plan.status}
+
+@app.post("/wards/{ward_id}/plans/{plan_date}/confirm")
+def confirm_plan(ward_id: str, plan_date: date, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
+    _ward_owned(principal, ward_id); plan = db.query(DailyPlan).filter_by(tenant_id=principal.tenant_id, ward_id=ward_id, plan_date=plan_date).one_or_none()
+    if plan is None: raise HTTPException(404, "plan not found")
+    plan.status = "confirmed"; plan.confirmed_at = now(); db.commit(); return {"id": plan.id, "status": plan.status}
+
+@app.get("/wards/{ward_id}/plans/{plan_date}")
+def get_plan(ward_id: str, plan_date: date, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
+    _ward_owned(principal, ward_id); plan = db.query(DailyPlan).filter_by(tenant_id=principal.tenant_id, ward_id=ward_id, plan_date=plan_date).one_or_none()
+    if plan is None: raise HTTPException(404, "plan not found")
+    return {"id": plan.id, "status": plan.status, "items": [{"id": x.id, "title": x.title, "planned_minutes": x.planned_minutes, "status": x.status} for x in db.query(PlanItem).filter_by(plan_id=plan.id).order_by(PlanItem.position)]}
+
+@app.post("/plan-items/{item_id}/sessions", status_code=201)
+def start_session(item_id: str, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
+    item = db.get(PlanItem, item_id); plan = db.get(DailyPlan, item.plan_id) if item else None
+    if plan is None or plan.ward_id != principal.user_id: raise HTTPException(404, "plan item not found")
+    row = StudySession(tenant_id=principal.tenant_id, ward_id=principal.user_id, plan_item_id=item.id); item.status="active"; db.add(row); db.commit(); return {"id": row.id, "status": row.status}
+
+@app.post("/sessions/{session_id}/messages")
+def tutor(session_id: str, body: MessageCreate, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
+    session = db.get(StudySession, session_id)
+    if session is None or session.ward_id != principal.user_id: raise HTTPException(404, "session not found")
+    db.add(StudyMessage(session_id=session_id, role="ward", content=body.content, is_stuck_point=True))
+    # Model routing remains injectable; this safe fallback keeps an unavailable provider from blocking study.
+    answer = "先别急着找答案。你能说说题目已知什么、要解决什么吗？把第一步写出来，我们一起检查。"
+    db.add(StudyMessage(session_id=session_id, role="assistant", content=answer)); db.commit(); return {"role": "assistant", "content": answer, "mode": "socratic"}
+
+@app.post("/sessions/{session_id}/finish")
+def finish_session(session_id: str, body: SessionFinish, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
+    session = db.get(StudySession, session_id)
+    if session is None or session.ward_id != principal.user_id: raise HTTPException(404, "session not found")
+    session.status="completed"; session.ended_at=now(); session.active_seconds=body.active_seconds; db.get(PlanItem, session.plan_item_id).status="completed"; db.commit(); return {"status": "completed"}
+
+@app.post("/wards/{ward_id}/reviews/{review_date}")
+def submit_review(ward_id: str, review_date: date, body: SelfReviewCreate, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
+    _ward_owned(principal, ward_id); row=db.query(SelfReview).filter_by(tenant_id=principal.tenant_id, ward_id=ward_id, review_date=review_date).one_or_none()
+    if row is None: row=SelfReview(tenant_id=principal.tenant_id, ward_id=ward_id, review_date=review_date, **body.model_dump()); db.add(row)
+    else:
+        for k,v in body.model_dump().items(): setattr(row,k,v)
+    kit=db.query(FocusKit).filter_by(tenant_id=principal.tenant_id,ward_id=ward_id,review_date=review_date).one_or_none()
+    if kit is None: db.add(FocusKit(tenant_id=principal.tenant_id, ward_id=ward_id, review_date=review_date, advice="遇到卡住时，先停两分钟写下已知条件，再继续下一步。"))
+    db.commit(); return {"status":"submitted"}
+
+@app.get("/wards/{ward_id}/reviews/{review_date}/insight")
+def ward_insight(ward_id: str, review_date: date, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
+    _ward_owned(principal, ward_id); review=db.query(SelfReview).filter_by(tenant_id=principal.tenant_id,ward_id=ward_id,review_date=review_date).one_or_none()
+    if review is None: return {"status":"locked"}
+    report=db.query(Report).filter_by(tenant_id=principal.tenant_id,ward_id=ward_id,report_date=review_date).one_or_none(); kit=db.query(FocusKit).filter_by(tenant_id=principal.tenant_id,ward_id=ward_id,review_date=review_date).one()
+    return {"status":"ready","subjective_timeline":review.timeline_json,"objective_timeline": report.timeline_json if report else [],"advice":kit.advice}
+
+@app.get("/wards/{ward_id}/guardian-story/{story_date}")
+def guardian_story(ward_id: str, story_date: date, principal: Principal = Depends(current_guardian), db: Session = Depends(get_db)):
+    owned_ward(db, principal.tenant_id, ward_id)
+    review=db.query(SelfReview).filter_by(tenant_id=principal.tenant_id,ward_id=ward_id,review_date=story_date).one_or_none()
+    if review is None: return {"status":"locked"}
+    report=db.query(Report).filter_by(tenant_id=principal.tenant_id,ward_id=ward_id,report_date=story_date).one_or_none()
+    sessions=db.query(StudySession).filter_by(tenant_id=principal.tenant_id,ward_id=ward_id).all()
+    stuck=sum(db.query(StudyMessage).filter_by(session_id=s.id,is_stuck_point=True).count() for s in sessions)
+    return {"status":"ready","total_seconds":sum(s.active_seconds for s in sessions),"behavior":report.label_breakdown if report else {},"stuck_points":stuck,"communication_suggestions":["可以先肯定孩子今天愿意自己完成计划。", "试着问：哪一步最让你费劲？我想听你讲讲。"]}
 
 
 @app.post("/auth/register", response_model=TokenPair, status_code=201)
@@ -119,6 +233,9 @@ def create_ward(body: WardCreate, principal: Principal = Depends(current_guardia
     db.flush()
     ward = Ward(id=user.id, tenant_id=principal.tenant_id, **body.model_dump())
     db.add(ward)
+    # PostgreSQL validates this FK immediately; persist user_wards before
+    # adding guardian_ward_relations rather than relying on ORM insert order.
+    db.flush()
     db.add(GuardianWard(tenant_id=principal.tenant_id, guardian_id=principal.user_id, ward_id=user.id))
     db.commit()
     db.refresh(ward)

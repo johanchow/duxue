@@ -133,6 +133,15 @@ class WardDetailPage extends ConsumerWidget {
           const SizedBox(height: 8),
           Card(
             child: ListTile(
+              leading: const Icon(Icons.auto_stories),
+              title: const Text('一日故事 MVP'),
+              subtitle: const Text('交作业、生成孩子绑定码与查看当晚报告'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => context.go('/wards/$wardId/story'),
+            ),
+          ),
+          Card(
+            child: ListTile(
               leading: const Icon(Icons.analytics),
               title: const Text('今日日报'),
               subtitle: const Text('选择日期查看行为占比与时间轴'),

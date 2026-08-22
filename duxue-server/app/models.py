@@ -175,3 +175,94 @@ class Report(Base):
     profile_changed: Mapped[bool] = mapped_column(Boolean, default=False)
     status: Mapped[str] = mapped_column(String(30), default="ready")
     generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+# The daily-story tables deliberately keep the plan and its execution separate:
+# guardians can supply work, but only a ward session can confirm/execute it.
+class WardCredential(Base):
+    __tablename__ = "ward_credentials"
+    ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id", ondelete="CASCADE"), primary_key=True)
+    pin_hash: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+class WardInvite(Base):
+    __tablename__ = "ward_invites"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), index=True)
+    ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id", ondelete="CASCADE"), index=True)
+    code: Mapped[str] = mapped_column(String(8), unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+class Assignment(Base):
+    __tablename__ = "assignments"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), index=True)
+    ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(300))
+    details: Mapped[str | None] = mapped_column(Text, nullable=True)
+    due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    source: Mapped[str] = mapped_column(String(20), default="guardian")
+    status: Mapped[str] = mapped_column(String(20), default="open")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+class DailyPlan(Base):
+    __tablename__ = "daily_plans"
+    __table_args__ = (UniqueConstraint("tenant_id", "ward_id", "plan_date"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), index=True)
+    ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id", ondelete="CASCADE"), index=True)
+    plan_date: Mapped[date] = mapped_column(Date, index=True)
+    status: Mapped[str] = mapped_column(String(20), default="draft")
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+class PlanItem(Base):
+    __tablename__ = "plan_items"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    plan_id: Mapped[str] = mapped_column(ForeignKey("daily_plans.id", ondelete="CASCADE"), index=True)
+    assignment_id: Mapped[str | None] = mapped_column(ForeignKey("assignments.id"), nullable=True)
+    title: Mapped[str] = mapped_column(String(300))
+    position: Mapped[int] = mapped_column(Integer)
+    planned_minutes: Mapped[int] = mapped_column(Integer, default=30)
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+
+class StudySession(Base):
+    __tablename__ = "study_sessions"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), index=True)
+    ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id", ondelete="CASCADE"), index=True)
+    plan_item_id: Mapped[str] = mapped_column(ForeignKey("plan_items.id"), index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    active_seconds: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(20), default="active")
+
+class StudyMessage(Base):
+    __tablename__ = "study_messages"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    session_id: Mapped[str] = mapped_column(ForeignKey("study_sessions.id", ondelete="CASCADE"), index=True)
+    role: Mapped[str] = mapped_column(String(20))
+    content: Mapped[str] = mapped_column(Text)
+    is_stuck_point: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+class SelfReview(Base):
+    __tablename__ = "self_reviews"
+    __table_args__ = (UniqueConstraint("tenant_id", "ward_id", "review_date"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), index=True)
+    ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id", ondelete="CASCADE"), index=True)
+    review_date: Mapped[date] = mapped_column(Date, index=True)
+    feeling: Mapped[str] = mapped_column(String(40))
+    reflection: Mapped[str | None] = mapped_column(Text, nullable=True)
+    timeline_json: Mapped[list] = mapped_column(JSON, default=list)
+    submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+class FocusKit(Base):
+    __tablename__ = "focus_kits"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), index=True)
+    ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id", ondelete="CASCADE"), index=True)
+    review_date: Mapped[date] = mapped_column(Date, index=True)
+    advice: Mapped[str] = mapped_column(Text)
+    saved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

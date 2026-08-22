@@ -5,6 +5,7 @@ import 'features/login_page.dart';
 import 'features/report_page.dart';
 import 'features/ward_pages.dart';
 import 'features/profile_pages.dart';
+import 'features/day_story_pages.dart';
 import 'providers.dart';
 
 void main() => runApp(const ProviderScope(child: DuxueApp()));
@@ -20,6 +21,7 @@ final routerProvider = Provider<GoRouter>((ref) {
     },
     routes: [
       GoRoute(path: '/login', builder: (_, __) => const LoginPage()),
+      GoRoute(path: '/ward-bind', builder: (_, __) => const WardBindPage()),
       GoRoute(
         path: '/wards',
         builder: (_, __) => const WardListPage(),
@@ -43,6 +45,11 @@ final routerProvider = Provider<GoRouter>((ref) {
                 path: 'profiles',
                 builder: (_, state) =>
                     ProfileListPage(wardId: state.pathParameters['id']!),
+              ),
+              GoRoute(
+                path: 'story',
+                builder: (_, state) =>
+                    GuardianStoryPage(wardId: state.pathParameters['id']!),
               ),
             ],
           ),

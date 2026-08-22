@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../providers.dart';
 
 class LoginPage extends ConsumerStatefulWidget {
@@ -90,6 +91,11 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                   TextButton(
                     onPressed: () => setState(() => registering = !registering),
                     child: Text(registering ? '已有账号？登录' : '没有账号？注册'),
+                  ),
+                  TextButton.icon(
+                    onPressed: () => context.go('/ward-bind'),
+                    icon: const Icon(Icons.child_care),
+                    label: const Text('我是学生，用绑定码进入'),
                   ),
                   if (kDebugMode) ...[
                     const SizedBox(height: 12),

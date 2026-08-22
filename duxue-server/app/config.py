@@ -63,6 +63,12 @@ class Settings:
     dashscope_api_key: str = os.getenv("VLM_API_KEY") or os.getenv("DASHSCOPE_API_KEY", "")
     dashscope_base_url: str = os.getenv("VLM_BATCH_BASE_URL") or os.getenv("VLM_API_BASE_URL") or os.getenv("DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
     vlm_model: str = os.getenv("VLM_MODEL_NAME") or os.getenv("VLM_MODEL", "qwen3-vl-flash")
+    # Each text use case is independently routable.  A provider migration only
+    # changes environment values; records retain the factual inputs, not a model
+    # specific response schema.
+    tutoring_model: str = os.getenv("TUTORING_MODEL_NAME") or os.getenv("VLM_MODEL_NAME") or "qwen3-vl-flash"
+    insight_model: str = os.getenv("INSIGHT_MODEL_NAME") or os.getenv("VLM_MODEL_NAME") or "qwen3-vl-flash"
+    guardian_story_model: str = os.getenv("GUARDIAN_STORY_MODEL_NAME") or os.getenv("VLM_MODEL_NAME") or "qwen3-vl-flash"
     batch_completion_window: str = os.getenv("VLM_BATCH_COMPLETION_WINDOW", "24h")
     batch_submit_hour: int = int(os.getenv("VLM_BATCH_SUBMIT_HOUR", "22"))
     batch_fallback_after_hours: int = int(os.getenv("VLM_BATCH_FALLBACK_AFTER_HOURS", "20"))

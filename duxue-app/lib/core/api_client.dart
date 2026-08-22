@@ -203,5 +203,61 @@ class ApiClient {
 
   Future<void> deleteLabel(String profileId, String labelId) async =>
       dio.delete('/analysis-profiles/$profileId/labels/$labelId');
+  Future<Map<String, dynamic>> createAssignment(
+          String wardId, String title) async =>
+      Map<String, dynamic>.from(
+          (await dio.post('/wards/$wardId/assignments', data: {'title': title}))
+              .data);
+  Future<Map<String, dynamic>> wardInvite(String wardId) async =>
+      Map<String, dynamic>.from(
+          (await dio.post('/wards/$wardId/login-invite')).data);
+  Future<String> bindWard(String code, String pin) async {
+    final data = Map<String, dynamic>.from((await dio
+            .post('/ward-auth/bind', data: {'invite_code': code, 'pin': pin}))
+        .data);
+    await tokens.saveWard(
+        data['access_token'] as String, data['ward_id'] as String);
+    return data['ward_id'] as String;
+  }
+
+  Future<String> wardLogin(String wardId, String pin) async {
+    final data = Map<String, dynamic>.from((await dio
+            .post('/ward-auth/login', data: {'ward_id': wardId, 'pin': pin}))
+        .data);
+    await tokens.saveWard(data['access_token'] as String, wardId);
+    return wardId;
+  }
+
+  Future<List<dynamic>> assignments(String wardId) async =>
+      (await dio.get('/wards/$wardId/assignments')).data as List<dynamic>;
+  Future<Map<String, dynamic>> savePlan(String wardId, DateTime day,
+          List<Map<String, dynamic>> items) async =>
+      Map<String, dynamic>.from((await dio.put(
+              '/wards/$wardId/plans/${_day(day)}',
+              data: {'plan_date': _day(day), 'items': items}))
+          .data);
+  Future<void> confirmPlan(String wardId, DateTime day) =>
+      dio.post('/wards/$wardId/plans/${_day(day)}/confirm');
+  Future<Map<String, dynamic>> plan(String wardId, DateTime day) async =>
+      Map<String, dynamic>.from(
+          (await dio.get('/wards/$wardId/plans/${_day(day)}')).data);
+  Future<Map<String, dynamic>> startSession(String itemId) async =>
+      Map<String, dynamic>.from(
+          (await dio.post('/plan-items/$itemId/sessions')).data);
+  Future<String> ask(String sessionId, String content) async => (await dio
+          .post('/sessions/$sessionId/messages', data: {'content': content}))
+      .data['content'] as String;
+  Future<void> finishSession(String sessionId, int seconds) => dio
+      .post('/sessions/$sessionId/finish', data: {'active_seconds': seconds});
+  Future<void> review(String wardId, DateTime day, String feeling) =>
+      dio.post('/wards/$wardId/reviews/${_day(day)}',
+          data: {'feeling': feeling, 'timeline_json': []});
+  Future<Map<String, dynamic>> insight(String wardId, DateTime day) async =>
+      Map<String, dynamic>.from(
+          (await dio.get('/wards/$wardId/reviews/${_day(day)}/insight')).data);
+  Future<Map<String, dynamic>> guardianStory(
+          String wardId, DateTime day) async =>
+      Map<String, dynamic>.from(
+          (await dio.get('/wards/$wardId/guardian-story/${_day(day)}')).data);
   String _day(DateTime value) => value.toIso8601String().substring(0, 10);
 }
