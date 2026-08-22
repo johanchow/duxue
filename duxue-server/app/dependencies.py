@@ -6,7 +6,7 @@ from fastapi import Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 
 from .database import get_db
-from .models import Device, Guardian
+from .models import Device, Guardian, Ward
 from .security import decode_access_token, token_hash
 
 
@@ -31,6 +31,15 @@ def current_guardian(authorization: str | None = Header(default=None), db: Sessi
     if db.get(Guardian, claims["sub"]) is None:
         raise HTTPException(401, "guardian no longer exists")
     return Principal(claims["sub"], claims["tenant_id"], claims["role"])
+
+def current_ward(authorization: str | None = Header(default=None), db: Session = Depends(get_db)) -> Principal:
+    try:
+        claims = decode_access_token(_bearer(authorization))
+    except ValueError:
+        raise HTTPException(401, "invalid or expired access token")
+    if claims.get("role") != "ward" or db.get(Ward, claims["sub"]) is None:
+        raise HTTPException(403, "ward login required")
+    return Principal(claims["sub"], claims["tenant_id"], "ward")
 
 
 def current_device(authorization: str | None = Header(default=None), db: Session = Depends(get_db)) -> Device:

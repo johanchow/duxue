@@ -99,6 +99,26 @@ class EndToEndTest(unittest.TestCase):
         )
         self.assertEqual(forbidden_by_isolation.status_code, 404)
 
+    def test_day_story_requires_ward_review_before_insights(self):
+        token = self.request("POST", "/auth/register", json={"name":"家长2","email":"story@example.com","password":"password123"}).json()["access_token"]
+        ward = self.request("POST", "/wards", token=token, json={"display_name":"小读2"}).json()["id"]
+        assignment = self.request("POST", f"/wards/{ward}/assignments", token=token, json={"title":"数学作业"})
+        self.assertEqual(assignment.status_code, 201)
+        invite = self.request("POST", f"/wards/{ward}/login-invite", token=token).json()
+        ward_token = self.request("POST", "/ward-auth/bind", json={"invite_code":invite["invite_code"],"pin":"1234"}).json()["access_token"]
+        day = datetime.now(timezone.utc).date().isoformat()
+        self.assertEqual(self.request("GET", f"/wards/{ward}/guardian-story/{day}", token=token).json()["status"], "locked")
+        assignment_id = self.request("GET", f"/wards/{ward}/assignments", token=ward_token).json()[0]["id"]
+        self.assertEqual(self.request("PUT", f"/wards/{ward}/plans/{day}", token=ward_token, json={"plan_date":day,"items":[{"assignment_id":assignment_id,"title":"数学作业","planned_minutes":30}]}).status_code, 200)
+        self.assertEqual(self.request("POST", f"/wards/{ward}/plans/{day}/confirm", token=ward_token).status_code, 200)
+        plan = self.request("GET", f"/wards/{ward}/plans/{day}", token=ward_token).json()
+        session = self.request("POST", f"/plan-items/{plan['items'][0]['id']}/sessions", token=ward_token).json()["id"]
+        self.assertEqual(self.request("POST", f"/sessions/{session}/messages", token=ward_token, json={"content":"我不会这题"}).json()["mode"], "socratic")
+        self.assertEqual(self.request("POST", f"/sessions/{session}/finish", token=ward_token, json={"active_seconds":1800}).status_code, 200)
+        self.assertEqual(self.request("POST", f"/wards/{ward}/reviews/{day}", token=ward_token, json={"feeling":"顺利","timeline_json":[]}).status_code, 200)
+        self.assertEqual(self.request("GET", f"/wards/{ward}/reviews/{day}/insight", token=ward_token).json()["status"], "ready")
+        self.assertEqual(self.request("GET", f"/wards/{ward}/guardian-story/{day}", token=token).json()["status"], "ready")
+
 
 if __name__ == "__main__":
     unittest.main()
