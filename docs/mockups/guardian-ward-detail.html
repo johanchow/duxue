@@ -648,6 +648,12 @@
     .view-screen { display: none; }
     .view-screen.active { display: block; }
 
+    .screen.view-screen.active,
+    #detailScreen.active {
+      flex: 1;
+      overflow-y: auto;
+    }
+
     .settings-hero {
       text-align: center;
       padding: 8px 0 20px;
@@ -785,13 +791,72 @@
       padding: 0 4px 14px;
     }
 
+    /* ── Guardian bottom tabs (设备关联后) ── */
+    .guardian-tab-view { display: none; }
+    .guardian-tab-view.active { display: block; }
+
+    .bottom-nav {
+      height: 62px;
+      border-top: 1px solid var(--border);
+      background: var(--card);
+      display: none;
+      flex-shrink: 0;
+      padding-bottom: 8px;
+    }
+    .bottom-nav.visible { display: flex; }
+
+    .nav-item {
+      flex: 1;
+      border: none;
+      background: transparent;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      cursor: pointer;
+      color: var(--text-secondary);
+      font-family: inherit;
+      padding-top: 6px;
+    }
+    .nav-item .icon { font-size: 1.15rem; }
+    .nav-item .lbl { font-size: 0.62rem; font-weight: 500; }
+    .nav-item.active { color: var(--primary); }
+    .nav-item.active .lbl { font-weight: 700; }
+
+    .report-hero {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+    .report-hero h3 { font-size: 1rem; font-weight: 700; margin-bottom: 6px; }
+    .report-hero p { font-size: 0.8rem; color: var(--text-secondary); line-height: 1.45; }
+    .report-stat-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .report-stat {
+      background: #f8fafc;
+      border-radius: 10px;
+      padding: 10px;
+      text-align: center;
+    }
+    .report-stat .v { font-size: 1.1rem; font-weight: 700; color: var(--primary); }
+    .report-stat .l { font-size: 0.65rem; color: var(--text-secondary); margin-top: 2px; }
+
+    .report-dim { opacity: 0.55; pointer-events: none; }
+
   </style>
 </head>
 <body>
 
   <div class="page-header">
     <h1>Guardian · Ward 详情页原型</h1>
-    <p>Guardian 从「被监护者列表」进入某个孩子的详情。点击 ⚙ 进入完整设置页（非弹窗）。</p>
+    <p>未关联设备：单页引导绑定。关联后：底部 Tab「今日 · 报告 · 设置」，与 Ward 端交互对称。</p>
   </div>
 
   <div class="controls">
@@ -813,7 +878,7 @@
         <div class="app-bar">
           <button class="back hidden" id="backBtn" aria-label="返回" type="button">‹</button>
           <h2 id="appBarTitle">小宇</h2>
-          <button class="settings" id="settingsBtn" aria-label="设置" title="设置">⚙</button>
+          <span style="width:40px"></span>
         </div>
 
         <!-- 详情主屏 -->
@@ -858,275 +923,187 @@
             <p class="cta-hint">扫码绑定 · 邀请码 10 分钟内有效<br>建议侧后方 45° 俯拍书桌</p>
           </div>
 
-          <!-- ── State B: linked online ── -->
-          <div class="state" id="state-linked">
-            <div class="status-banner online">
-              <span class="status-dot"></span>
-              读学Eye 在线 · 正在安静记录学习过程
-            </div>
-
-            <div class="mini-stats">
-              <div class="stat-box">
-                <div class="val">42m</div>
-                <div class="lbl">今日有效学习</div>
-              </div>
-              <div class="stat-box">
-                <div class="val">2/3</div>
-                <div class="lbl">任务已完成</div>
-              </div>
-            </div>
-
-            <div class="card" data-workspace="linked">
-              <div class="card-toolbar">
-                <div class="seg-control">
-                  <button class="seg-btn active" data-panel="tasks" type="button">今日任务</button>
-                  <button class="seg-btn" data-panel="schedule" type="button">今日计划</button>
-                </div>
-                <button class="add-task-btn workspace-action" type="button" aria-label="增加任务" title="增加任务">+</button>
+          <!-- ── 设备已关联：底部 Tab ── -->
+          <div class="state" id="state-ready">
+            <div class="guardian-tab-view active" data-gtab="today">
+              <div class="status-banner online" id="deviceBanner">
+                <span class="status-dot"></span>
+                <span id="deviceBannerText">读学Eye 在线 · 正在安静记录学习过程</span>
               </div>
 
-              <div class="panel active" data-panel="tasks">
-                <div class="task-item">
-                  <div class="task-check done">✓</div>
-                  <div class="task-body">
-                    <div class="title done">数学练习册 P12-15</div>
-                    <div class="meta">已加入计划 · 已完成 25 分钟</div>
-                  </div>
-                  <span class="task-tag guardian">外部</span>
+              <div class="mini-stats">
+                <div class="stat-box">
+                  <div class="val" id="statLearnVal">42m</div>
+                  <div class="lbl">今日有效学习</div>
                 </div>
-                <div class="task-item">
-                  <div class="task-check done">✓</div>
-                  <div class="task-body">
-                    <div class="title done">英语单词默写</div>
-                    <div class="meta">已加入计划 · 已完成 17 分钟</div>
-                  </div>
-                  <span class="task-tag">自主</span>
-                </div>
-                <div class="task-item">
-                  <div class="task-check"></div>
-                  <div class="task-body">
-                    <div class="title">阅读《昆虫记》20 页</div>
-                    <div class="meta">任务池 · 尚未排入今日计划</div>
-                  </div>
-                  <span class="task-tag">自主</span>
+                <div class="stat-box">
+                  <div class="val" id="statTaskVal">2/3</div>
+                  <div class="lbl">任务已完成</div>
                 </div>
               </div>
 
-              <div class="panel" data-panel="schedule">
-                <div class="plan-status">✓ 孩子已于 18:40 确认今日计划</div>
-                <div class="timeline">
-                  <div class="tl-item">
-                    <div class="tl-rail">
-                      <span class="tl-time">19:00</span>
-                      <div class="tl-line"></div>
+              <div class="card" data-workspace="main">
+                <div class="card-toolbar">
+                  <div class="seg-control">
+                    <button class="seg-btn active" data-panel="tasks" type="button">今日任务</button>
+                    <button class="seg-btn" data-panel="schedule" type="button">今日计划</button>
+                  </div>
+                  <button class="add-task-btn workspace-action" type="button" aria-label="增加任务" title="增加任务">+</button>
+                </div>
+
+                <div class="panel active" data-panel="tasks" id="todayTasksPanel">
+                  <div class="task-item">
+                    <div class="task-check done">✓</div>
+                    <div class="task-body">
+                      <div class="title done">数学练习册 P12-15</div>
+                      <div class="meta">已加入计划 · 已完成 25 分钟</div>
                     </div>
-                    <div class="tl-dot done"></div>
-                    <div class="tl-body done">
-                      <h4>数学练习册 P12-15</h4>
-                      <p>计划 40 分钟 · 实际 25 分钟 · 已完成</p>
+                    <span class="task-tag guardian">外部</span>
+                  </div>
+                  <div class="task-item">
+                    <div class="task-check done">✓</div>
+                    <div class="task-body">
+                      <div class="title done">英语单词默写</div>
+                      <div class="meta">已加入计划 · 已完成 17 分钟</div>
+                    </div>
+                    <span class="task-tag">自主</span>
+                  </div>
+                  <div class="task-item" id="pendingTaskRow">
+                    <div class="task-check"></div>
+                    <div class="task-body">
+                      <div class="title">阅读《昆虫记》20 页</div>
+                      <div class="meta">任务池 · 尚未排入今日计划</div>
+                    </div>
+                    <span class="task-tag">自主</span>
+                  </div>
+                </div>
+
+                <div class="panel" data-panel="schedule" id="todaySchedulePanel">
+                  <div class="plan-status" id="planStatusBar">✓ 孩子已于 18:40 确认今日计划</div>
+                  <div class="timeline" id="planTimeline">
+                    <div class="tl-item">
+                      <div class="tl-rail"><span class="tl-time">19:00</span><div class="tl-line"></div></div>
+                      <div class="tl-dot done"></div>
+                      <div class="tl-body done"><h4>数学练习册 P12-15</h4><p>计划 40 分钟 · 实际 25 分钟 · 已完成</p></div>
+                    </div>
+                    <div class="tl-item">
+                      <div class="tl-rail"><span class="tl-time">19:35</span><div class="tl-line"></div></div>
+                      <div class="tl-dot break"></div>
+                      <div class="tl-body"><h4>休息</h4><p>计划 10 分钟</p></div>
+                    </div>
+                    <div class="tl-item">
+                      <div class="tl-rail"><span class="tl-time">19:45</span><div class="tl-line"></div></div>
+                      <div class="tl-dot done"></div>
+                      <div class="tl-body done"><h4>英语单词默写</h4><p>计划 20 分钟 · 实际 17 分钟 · 已完成</p></div>
+                    </div>
+                    <div class="tl-item">
+                      <div class="tl-rail"><span class="tl-time">20:10</span></div>
+                      <div class="tl-dot current"></div>
+                      <div class="tl-body current"><h4>阅读《昆虫记》20 页</h4><p>计划 30 分钟 · 进行中</p></div>
                     </div>
                   </div>
-                  <div class="tl-item">
-                    <div class="tl-rail">
-                      <span class="tl-time">19:35</span>
-                      <div class="tl-line"></div>
-                    </div>
-                    <div class="tl-dot break"></div>
-                    <div class="tl-body">
-                      <h4>休息</h4>
-                      <p>计划 10 分钟</p>
-                    </div>
-                  </div>
-                  <div class="tl-item">
-                    <div class="tl-rail">
-                      <span class="tl-time">19:45</span>
-                      <div class="tl-line"></div>
-                    </div>
-                    <div class="tl-dot done"></div>
-                    <div class="tl-body done">
-                      <h4>英语单词默写</h4>
-                      <p>计划 20 分钟 · 实际 17 分钟 · 已完成</p>
-                    </div>
-                  </div>
-                  <div class="tl-item">
-                    <div class="tl-rail">
-                      <span class="tl-time">20:10</span>
-                    </div>
-                    <div class="tl-dot current"></div>
-                    <div class="tl-body current">
-                      <h4>阅读《昆虫记》20 页</h4>
-                      <p>计划 30 分钟 · 进行中</p>
-                    </div>
+                </div>
+              </div>
+
+              <div class="card" style="margin-top:10px" id="wardSummaryCard">
+                <div class="list-row" style="padding:14px 16px;display:flex;align-items:center;gap:12px">
+                  <div class="list-icon" style="width:40px;height:40px;border-radius:12px;background:#ede9fe;display:grid;place-items:center">🎙</div>
+                  <div class="list-body" style="flex:1">
+                    <h4 style="font-size:0.9rem;font-weight:600">孩子尚未完成口述总结</h4>
+                    <p style="font-size:0.75rem;color:var(--text-secondary);margin-top:2px">完成后这里会显示摘要</p>
                   </div>
                 </div>
               </div>
             </div>
 
-            <div class="section-title">学习与报告</div>
-            <div class="card">
-              <div class="nav-row">
-                <div class="nav-icon report">📖</div>
-                <div class="nav-text">
-                  <h4>今日日报</h4>
-                  <p>专注占比 68% · 3 次短暂休息 · 昨晚已复盘</p>
+            <div class="guardian-tab-view" data-gtab="report">
+              <div class="report-hero" id="reportHero">
+                <h3>今日日报</h3>
+                <p id="reportSummary">专注占比 68% · 3 次短暂休息 · 孩子已于昨晚复盘</p>
+                <div class="report-stat-row">
+                  <div class="report-stat"><div class="v" id="rptVal1">42m</div><div class="l">有效学习</div></div>
+                  <div class="report-stat"><div class="v" id="rptVal2">68%</div><div class="l">专注占比</div></div>
+                  <div class="report-stat"><div class="v" id="rptVal3">3</div><div class="l">短暂休息</div></div>
                 </div>
-                <span class="nav-chevron">›</span>
-              </div>
-              <div class="nav-row">
-                <div class="nav-icon trend">📈</div>
-                <div class="nav-text">
-                  <h4>近 7 天学习趋势</h4>
-                  <p>本周日均 38 分钟 · 比上周 +12%</p>
-                </div>
-                <span class="nav-chevron">›</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- ── State C: linked offline ── -->
-          <div class="state" id="state-offline">
-            <div class="status-banner offline">
-              <span class="status-dot"></span>
-              设备离线 · 报告可能不完整
-              <span style="margin-left:auto;font-weight:600;cursor:pointer">排查</span>
-            </div>
-
-            <div class="mini-stats">
-              <div class="stat-box">
-                <div class="val" style="color:#94a3b8">—</div>
-                <div class="lbl">今日有效学习</div>
-              </div>
-              <div class="stat-box">
-                <div class="val">1/2</div>
-                <div class="lbl">任务已完成</div>
-              </div>
-            </div>
-
-            <div class="card" data-workspace="offline">
-              <div class="card-toolbar">
-                <div class="seg-control">
-                  <button class="seg-btn active" data-panel="tasks" type="button">今日任务</button>
-                  <button class="seg-btn" data-panel="schedule" type="button">今日计划</button>
-                </div>
-                <button class="add-task-btn workspace-action" type="button" aria-label="增加任务" title="增加任务">+</button>
               </div>
 
-              <div class="panel active" data-panel="tasks">
-                <div class="task-item">
-                  <div class="task-check done">✓</div>
-                  <div class="task-body">
-                    <div class="title done">语文阅读理解</div>
-                    <div class="meta">已加入计划 · 已完成</div>
+              <div class="section-title">近 7 天趋势</div>
+              <div class="card">
+                <div class="nav-row">
+                  <div class="nav-icon trend">📈</div>
+                  <div class="nav-text">
+                    <h4>学习时长变化</h4>
+                    <p id="trendSummary">本周日均 38 分钟 · 比上周 +12%</p>
                   </div>
-                  <span class="task-tag guardian">外部</span>
-                </div>
-                <div class="task-item">
-                  <div class="task-check"></div>
-                  <div class="task-body">
-                    <div class="title">错题整理</div>
-                    <div class="meta">任务池 · 尚未排入今日计划</div>
-                  </div>
-                  <span class="task-tag">自主</span>
+                  <span class="nav-chevron">›</span>
                 </div>
               </div>
 
-              <div class="panel" data-panel="schedule">
-                <div class="plan-status pending">⏳ 孩子尚未确认今日计划</div>
-                <div class="timeline">
-                  <div class="tl-item">
-                    <div class="tl-rail">
-                      <span class="tl-time">—</span>
-                    </div>
-                    <div class="tl-dot"></div>
-                    <div class="tl-body">
-                      <h4>暂无正式计划</h4>
-                      <p>任务已在池中，等待孩子安排并确认时间轴</p>
-                    </div>
+              <div class="section-title">沟通建议</div>
+              <div class="card">
+                <div class="nav-row">
+                  <div class="nav-icon report">💬</div>
+                  <div class="nav-text">
+                    <h4>今晚怎么聊</h4>
+                    <p id="commSummary">基于事实的正向沟通话术 · 孩子自评后可查看</p>
                   </div>
+                  <span class="nav-chevron">›</span>
                 </div>
               </div>
             </div>
 
-            <div class="section-title">学习与报告</div>
-            <div class="card">
-              <div class="nav-row" style="opacity:0.55">
-                <div class="nav-icon report">📖</div>
-                <div class="nav-text">
-                  <h4>今日日报</h4>
-                  <p>设备离线，数据同步中…</p>
-                </div>
-                <span class="nav-chevron">›</span>
+            <div class="guardian-tab-view" data-gtab="settings">
+              <div class="settings-group-label">档案</div>
+              <div class="settings-group">
+                <button class="settings-row" id="openNameBtn" type="button">
+                  <div class="s-icon profile">✏️</div>
+                  <div class="s-body"><h4>显示名称</h4><p>在 App 中展示的名字</p></div>
+                  <span class="s-value">小宇</span>
+                  <span class="nav-chevron">›</span>
+                </button>
               </div>
-              <div class="nav-row">
-                <div class="nav-icon trend">📈</div>
-                <div class="nav-text">
-                  <h4>近 7 天学习趋势</h4>
-                  <p>查看历史完整数据</p>
-                </div>
-                <span class="nav-chevron">›</span>
+              <p class="settings-id-hint">档案 ID · ward_8f3a2b1c</p>
+
+              <div class="settings-group-label">设备</div>
+              <div class="settings-group">
+                <button class="settings-row" id="openDeviceBtn" type="button">
+                  <div class="s-icon device">📷</div>
+                  <div class="s-body">
+                    <h4>读学Eye 设备</h4>
+                    <p id="settingsDeviceDesc">已绑定 1 台 · 在线 · 2 分钟前心跳</p>
+                  </div>
+                  <span class="nav-chevron">›</span>
+                </button>
               </div>
+
+              <div class="settings-group-label">分析配置</div>
+              <div class="settings-group">
+                <button class="settings-row" id="openAnalysisBtn" type="button">
+                  <div class="s-icon analysis">🧠</div>
+                  <div class="s-body">
+                    <h4>分析配置</h4>
+                    <p>系统默认 · 12 个行为标签</p>
+                  </div>
+                  <span class="nav-chevron">›</span>
+                </button>
+              </div>
+
+              <div class="settings-delete-wrap">
+                <div class="settings-group">
+                  <button class="settings-row danger" type="button">
+                    <div class="s-icon danger">🗑</div>
+                    <div class="s-body"><h4>删除档案</h4><p>永久删除该被监护者及关联数据</p></div>
+                    <span class="nav-chevron">›</span>
+                  </button>
+                </div>
+              </div>
+              <p class="settings-footnote">分析配置有系统默认值，不修改也能正常工作。</p>
             </div>
           </div>
 
         </div>
 
-        <!-- 设置页 -->
-        <div class="screen view-screen" id="settingsScreen">
-          <div class="settings-group-label">档案</div>
-          <div class="settings-group">
-            <button class="settings-row" id="openNameBtn" type="button">
-              <div class="s-icon profile">✏️</div>
-              <div class="s-body">
-                <h4>显示名称</h4>
-                <p>在 App 中展示的名字</p>
-              </div>
-              <span class="s-value">小宇</span>
-              <span class="nav-chevron">›</span>
-            </button>
-          </div>
-          <p class="settings-id-hint">档案 ID · ward_8f3a2b1c（排查问题时使用）</p>
-
-          <div class="settings-group-label">设备</div>
-          <div class="settings-group">
-            <button class="settings-row" id="openDeviceBtn" type="button">
-              <div class="s-icon device">📷</div>
-              <div class="s-body">
-                <h4>读学Eye 设备</h4>
-                <p id="settingsDeviceDesc">已绑定 1 台 · 在线 · 2 分钟前心跳</p>
-              </div>
-              <span class="nav-chevron">›</span>
-            </button>
-          </div>
-
-          <div class="settings-group-label">分析配置</div>
-          <div class="settings-group">
-            <button class="settings-row" id="openAnalysisBtn" type="button">
-              <div class="s-icon analysis">🧠</div>
-              <div class="s-body">
-                <h4>分析配置</h4>
-                <p id="settingsAnalysisDesc">系统默认 · 12 个行为标签 · 默认观察提示词</p>
-              </div>
-              <span class="nav-chevron">›</span>
-            </button>
-          </div>
-
-          <div class="settings-delete-wrap">
-            <div class="settings-group">
-              <button class="settings-row danger" type="button">
-                <div class="s-icon danger">🗑</div>
-                <div class="s-body">
-                  <h4>删除档案</h4>
-                  <p>永久删除该被监护者及关联数据</p>
-                </div>
-                <span class="nav-chevron">›</span>
-              </button>
-            </div>
-          </div>
-
-          <p class="settings-footnote">分析配置有系统默认值，不修改也能正常工作。</p>
-        </div>
-
-        <!-- 三级：修改名称 -->
+        <!-- 三级设置子页 -->
         <div class="screen view-screen" id="nameSettingsScreen">
           <p class="settings-sub-hint">修改后在 App 各处显示的新名字。</p>
           <div class="settings-group">
@@ -1209,44 +1186,58 @@
           </div>
         </div>
 
+        <nav class="bottom-nav" id="guardianBottomNav">
+          <button class="nav-item active" data-gtab="today" type="button">
+            <span class="icon">📋</span>
+            <span class="lbl">今日</span>
+          </button>
+          <button class="nav-item" data-gtab="report" type="button">
+            <span class="icon">📊</span>
+            <span class="lbl">报告</span>
+          </button>
+          <button class="nav-item" data-gtab="settings" type="button">
+            <span class="icon">⚙️</span>
+            <span class="lbl">设置</span>
+          </button>
+        </nav>
+
       </div>
     </div>
   </div>
 
   <script>
-    const tabs = document.querySelectorAll('.tab-btn');
+    const tabs = document.querySelectorAll('.controls .tab-btn');
     const states = {
       'no-device': document.getElementById('state-no-device'),
-      'linked': document.getElementById('state-linked'),
-      'offline': document.getElementById('state-offline'),
+      'linked': document.getElementById('state-ready'),
+      'offline': document.getElementById('state-ready'),
     };
-    const settingsBtn = document.getElementById('settingsBtn');
     const backBtn = document.getElementById('backBtn');
     const appBarTitle = document.getElementById('appBarTitle');
     const detailScreen = document.getElementById('detailScreen');
-    const settingsScreen = document.getElementById('settingsScreen');
+    const bottomNav = document.getElementById('guardianBottomNav');
     const nameSettingsScreen = document.getElementById('nameSettingsScreen');
     const deviceSettingsScreen = document.getElementById('deviceSettingsScreen');
     const analysisSettingsScreen = document.getElementById('analysisSettingsScreen');
     const settingsDeviceDesc = document.getElementById('settingsDeviceDesc');
     const deviceDetailDesc = document.getElementById('deviceDetailDesc');
 
+    const subScreens = { name: nameSettingsScreen, device: deviceSettingsScreen, analysis: analysisSettingsScreen };
+    const subTitles = { name: '显示名称', device: '读学Eye 设备', analysis: '分析配置' };
+
     let currentStateKey = 'no-device';
-    let navStack = ['detail']; // detail | settings | name | device | analysis
+    let currentGTab = 'today';
+    let navStack = ['detail'];
 
-    const subScreens = {
-      settings: settingsScreen,
-      name: nameSettingsScreen,
-      device: deviceSettingsScreen,
-      analysis: analysisSettingsScreen,
-    };
-
-    const subTitles = {
-      settings: '设置',
-      name: '显示名称',
-      device: '读学Eye 设备',
-      analysis: '分析配置',
-    };
+    function switchGuardianTab(gtab) {
+      currentGTab = gtab;
+      document.querySelectorAll('.guardian-tab-view').forEach(v => {
+        v.classList.toggle('active', v.dataset.gtab === gtab);
+      });
+      document.querySelectorAll('#guardianBottomNav .nav-item').forEach(item => {
+        item.classList.toggle('active', item.dataset.gtab === gtab);
+      });
+    }
 
     function hideAllScreens() {
       detailScreen.classList.remove('active');
@@ -1261,13 +1252,14 @@
         detailScreen.classList.add('active');
         appBarTitle.textContent = '小宇';
         backBtn.classList.add('hidden');
-        const showSettings = currentStateKey !== 'no-device';
-        settingsBtn.style.visibility = showSettings ? 'visible' : 'hidden';
+        const ready = currentStateKey !== 'no-device';
+        bottomNav.classList.toggle('visible', ready);
+        if (ready) switchGuardianTab(currentGTab);
       } else {
         subScreens[top].classList.add('active');
         appBarTitle.textContent = subTitles[top];
         backBtn.classList.remove('hidden');
-        settingsBtn.style.visibility = 'hidden';
+        bottomNav.classList.remove('visible');
       }
     }
 
@@ -1283,69 +1275,97 @@
       }
     }
 
-    function openSettings() {
-      navStack = ['detail', 'settings'];
-      renderNav();
-      updateSettingsDeviceInfo();
-    }
+    function applyReadyState(mode) {
+      const banner = document.getElementById('deviceBanner');
+      const bannerText = document.getElementById('deviceBannerText');
+      const statLearn = document.getElementById('statLearnVal');
+      const statTask = document.getElementById('statTaskVal');
+      const reportHero = document.getElementById('reportHero');
+      const reportSummary = document.getElementById('reportSummary');
+      const planStatus = document.getElementById('planStatusBar');
+      const pendingTask = document.getElementById('pendingTaskRow');
+      const commSummary = document.getElementById('commSummary');
 
-    function closeSettings() {
-      navStack = ['detail'];
-      renderNav();
-    }
-
-    function updateSettingsDeviceInfo() {
-      if (currentStateKey === 'offline') {
-        const text = '已绑定 1 台 · 离线 · 最后心跳 35 分钟前';
-        settingsDeviceDesc.textContent = text;
+      if (mode === 'offline') {
+        banner.className = 'status-banner offline';
+        bannerText.innerHTML = '设备离线 · 报告可能不完整 <span style="margin-left:auto;font-weight:600;cursor:pointer">排查</span>';
+        statLearn.textContent = '—';
+        statLearn.style.color = '#94a3b8';
+        statTask.textContent = '1/2';
+        settingsDeviceDesc.textContent = '已绑定 1 台 · 离线 · 最后心跳 35 分钟前';
         deviceDetailDesc.textContent = '读学Eye · 离线 · 最后心跳 35 分钟前';
+        reportHero.classList.add('report-dim');
+        reportSummary.textContent = '设备离线，数据同步中…';
+        document.getElementById('rptVal1').textContent = '—';
+        document.getElementById('rptVal2').textContent = '—';
+        document.getElementById('rptVal3').textContent = '—';
+        document.getElementById('trendSummary').textContent = '查看历史完整数据';
+        commSummary.textContent = '设备恢复后可查看';
+        planStatus.className = 'plan-status pending';
+        planStatus.textContent = '⏳ 孩子尚未确认今日计划';
+        if (pendingTask) pendingTask.style.display = 'none';
       } else {
-        const summary = '已绑定 1 台 · 在线 · 2 分钟前心跳';
-        const detail = '读学Eye · 在线 · 最后心跳 2 分钟前';
-        settingsDeviceDesc.textContent = summary;
-        deviceDetailDesc.textContent = detail;
+        banner.className = 'status-banner online';
+        bannerText.textContent = '读学Eye 在线 · 正在安静记录学习过程';
+        statLearn.textContent = '42m';
+        statLearn.style.color = '';
+        statTask.textContent = '2/3';
+        settingsDeviceDesc.textContent = '已绑定 1 台 · 在线 · 2 分钟前心跳';
+        deviceDetailDesc.textContent = '读学Eye · 在线 · 最后心跳 2 分钟前';
+        reportHero.classList.remove('report-dim');
+        reportSummary.textContent = '专注占比 68% · 3 次短暂休息 · 孩子已于昨晚复盘';
+        document.getElementById('rptVal1').textContent = '42m';
+        document.getElementById('rptVal2').textContent = '68%';
+        document.getElementById('rptVal3').textContent = '3';
+        document.getElementById('trendSummary').textContent = '本周日均 38 分钟 · 比上周 +12%';
+        commSummary.textContent = '基于事实的正向沟通话术 · 孩子自评后可查看';
+        planStatus.className = 'plan-status';
+        planStatus.textContent = '✓ 孩子已于 18:40 确认今日计划';
+        if (pendingTask) pendingTask.style.display = '';
       }
     }
 
     function switchState(key) {
       currentStateKey = key;
       tabs.forEach(t => t.classList.toggle('active', t.dataset.state === key));
-      Object.entries(states).forEach(([k, el]) => el.classList.toggle('active', k === key));
-      closeSettings();
-      settingsBtn.classList.toggle('visible', key !== 'no-device');
+      document.getElementById('state-no-device').classList.toggle('active', key === 'no-device');
+      document.getElementById('state-ready').classList.toggle('active', key !== 'no-device');
+      navStack = ['detail'];
+      currentGTab = 'today';
+      if (key !== 'no-device') applyReadyState(key);
+      renderNav();
     }
 
     tabs.forEach(btn => btn.addEventListener('click', () => switchState(btn.dataset.state)));
 
-    settingsBtn.addEventListener('click', () => {
-      if (settingsBtn.classList.contains('visible')) openSettings();
+    document.querySelectorAll('#guardianBottomNav .nav-item').forEach(item => {
+      item.addEventListener('click', () => {
+        navStack = ['detail'];
+        switchGuardianTab(item.dataset.gtab);
+        renderNav();
+      });
     });
 
     backBtn.addEventListener('click', popNav);
-
     document.getElementById('openNameBtn').addEventListener('click', () => pushNav('name'));
     document.getElementById('openDeviceBtn').addEventListener('click', () => pushNav('device'));
     document.getElementById('openAnalysisBtn').addEventListener('click', () => pushNav('analysis'));
 
-    switchState('no-device');
-
-    // 今日任务 ↔ 今日计划 segmented control
     document.querySelectorAll('.card[data-workspace]').forEach(card => {
       const segBtns = card.querySelectorAll('.seg-btn');
       const panels = card.querySelectorAll('.panel');
       const actionBtn = card.querySelector('.workspace-action');
-
       segBtns.forEach(btn => {
         btn.addEventListener('click', () => {
           const key = btn.dataset.panel;
           segBtns.forEach(b => b.classList.toggle('active', b === btn));
           panels.forEach(p => p.classList.toggle('active', p.dataset.panel === key));
-          if (actionBtn) {
-            actionBtn.style.visibility = key === 'tasks' ? 'visible' : 'hidden';
-          }
+          if (actionBtn) actionBtn.style.visibility = key === 'tasks' ? 'visible' : 'hidden';
         });
       });
     });
+
+    switchState('no-device');
   </script>
 </body>
 </html>

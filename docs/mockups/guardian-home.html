@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>读学 · Guardian 首页原型</title>
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-light: #dbeafe;
+      --surface: #f8fafc;
+      --card: #ffffff;
+      --text: #0f172a;
+      --text-secondary: #64748b;
+      --border: #e2e8f0;
+      --success-bg: #f0fdf4;
+      --warning-bg: #fffbeb;
+      --radius: 16px;
+      --phone-w: 390px;
+      --phone-h: 844px;
+      --tab-h: 62px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      background: linear-gradient(135deg, #e0e7ff 0%, #f1f5f9 50%, #e2e8f0 100%);
+      min-height: 100vh; color: var(--text); padding: 24px 16px 40px;
+    }
+
+    .page-header { max-width: 680px; margin: 0 auto 20px; text-align: center; }
+    .page-header h1 { font-size: 1.35rem; font-weight: 700; margin-bottom: 6px; }
+    .page-header p { color: var(--text-secondary); font-size: 0.88rem; line-height: 1.55; }
+
+    .controls {
+      max-width: 960px; margin: 0 auto 24px;
+      display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
+    }
+    .tab-btn {
+      border: 1.5px solid var(--border); background: var(--card);
+      padding: 7px 14px; border-radius: 999px; font-size: 0.82rem; cursor: pointer;
+    }
+    .tab-btn.active { background: var(--primary); border-color: var(--primary); color: #fff; font-weight: 600; }
+
+    .layout { display: flex; justify-content: center; }
+    .phone-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+    .phone-label { font-size: 0.78rem; color: var(--text-secondary); font-weight: 600; }
+
+    .phone {
+      width: var(--phone-w); height: var(--phone-h);
+      background: var(--surface); border-radius: 40px;
+      box-shadow: 0 20px 60px rgba(15, 23, 42, 0.18), inset 0 0 0 10px #1e293b;
+      overflow: hidden; display: flex; flex-direction: column; position: relative;
+    }
+
+    .status-bar {
+      height: 44px; padding: 12px 24px 0;
+      display: flex; justify-content: space-between;
+      font-size: 0.75rem; font-weight: 600; flex-shrink: 0;
+    }
+
+    .app-bar {
+      height: 56px; padding: 0 16px;
+      display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+    }
+    .app-bar h2 { font-size: 1.125rem; font-weight: 600; }
+    .app-bar .sub { font-size: 0.72rem; color: var(--text-secondary); font-weight: 500; margin-top: 1px; }
+
+    .screen { flex: 1; overflow-y: auto; padding: 0 16px 16px; scrollbar-width: none; }
+    .screen::-webkit-scrollbar { display: none; }
+
+    .main-view { display: none; }
+    .main-view.active { display: block; }
+
+    .hero-intro { font-size: 0.85rem; color: var(--text-secondary); line-height: 1.5; margin-bottom: 16px; }
+
+    .section-label {
+      font-size: 0.72rem; font-weight: 600; color: var(--text-secondary);
+      letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 10px;
+    }
+
+    .card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); overflow: hidden; margin-bottom: 10px;
+    }
+
+    .ward-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 16px; margin-bottom: 10px;
+      cursor: pointer; text-decoration: none; color: inherit; display: block;
+    }
+    .ward-card:hover { border-color: #bfdbfe; box-shadow: 0 4px 16px rgba(37, 99, 235, 0.1); }
+    .ward-card.needs-setup { border-style: dashed; border-color: #cbd5e1; }
+
+    .ward-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+    .ward-avatar {
+      width: 48px; height: 48px; border-radius: 50%;
+      background: var(--primary-light); color: var(--primary);
+      font-size: 1.1rem; font-weight: 700; display: grid; place-items: center;
+    }
+    .ward-avatar.alt { background: #fce7f3; color: #db2777; }
+    .ward-avatar.alt2 { background: #dcfce7; color: #16a34a; }
+    .ward-title { flex: 1; }
+    .ward-title h3 { font-size: 1rem; font-weight: 700; }
+    .ward-title p { font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px; }
+    .chevron { color: #cbd5e1; font-size: 1.2rem; }
+
+    .status-pill {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-size: 0.68rem; font-weight: 600; padding: 3px 8px; border-radius: 999px; margin-bottom: 10px;
+    }
+    .status-pill.online { background: var(--success-bg); color: #166534; }
+    .status-pill.offline { background: var(--warning-bg); color: #92400e; }
+    .status-pill.none { background: #f1f5f9; color: var(--text-secondary); }
+    .status-pill .dot { width: 6px; height: 6px; border-radius: 50%; background: #16a34a; }
+
+    .ward-stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+    .ward-stat { background: #f8fafc; border-radius: 10px; padding: 8px 6px; text-align: center; }
+    .ward-stat .v { font-size: 0.95rem; font-weight: 700; color: var(--primary); }
+    .ward-stat .l { font-size: 0.62rem; color: var(--text-secondary); margin-top: 2px; }
+    .ward-summary {
+      font-size: 0.78rem; color: var(--text-secondary); line-height: 1.45;
+      margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);
+    }
+
+    .add-ward-btn {
+      width: 100%; border: 1.5px dashed #93c5fd; background: #eff6ff;
+      border-radius: var(--radius); padding: 16px;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      color: var(--primary); font-size: 0.9rem; font-weight: 600;
+      cursor: pointer; font-family: inherit; margin-top: 4px;
+    }
+
+    .empty { text-align: center; padding: 48px 20px 32px; }
+    .empty .icon { font-size: 3rem; margin-bottom: 16px; opacity: 0.5; }
+    .empty h3 { font-size: 1.05rem; font-weight: 700; margin-bottom: 8px; }
+    .empty p { font-size: 0.85rem; color: var(--text-secondary); line-height: 1.5; margin-bottom: 24px; }
+    .btn-primary {
+      border: none; background: var(--primary); color: #fff;
+      padding: 14px 24px; border-radius: 12px; font-size: 0.9rem; font-weight: 600;
+      cursor: pointer; font-family: inherit;
+    }
+
+    /* 决策 */
+    .decision-item {
+      display: flex; gap: 12px; padding: 14px 16px; cursor: pointer;
+      border: none; background: var(--card); width: 100%; text-align: left;
+      font-family: inherit; color: inherit;
+    }
+    .decision-item:hover { background: #f8fafc; }
+    .decision-item + .decision-item { border-top: 1px solid var(--border); }
+    .decision-item .d-icon {
+      width: 40px; height: 40px; border-radius: 12px;
+      display: grid; place-items: center; font-size: 1.1rem; flex-shrink: 0;
+    }
+    .decision-item .d-body { flex: 1; }
+    .decision-item .d-body h4 { font-size: 0.9rem; font-weight: 600; }
+    .decision-item .d-body p { font-size: 0.75rem; color: var(--text-secondary); margin-top: 3px; line-height: 1.4; }
+    .decision-item .d-meta { font-size: 0.68rem; color: var(--primary); font-weight: 600; margin-bottom: 2px; }
+    .badge-new {
+      font-size: 0.65rem; background: #fee2e2; color: #dc2626;
+      padding: 2px 6px; border-radius: 999px; font-weight: 600; flex-shrink: 0; align-self: center;
+    }
+
+    /* 我的 */
+    .profile-hero {
+      text-align: center; padding: 20px 0 24px;
+    }
+    .profile-hero .avatar {
+      width: 72px; height: 72px; border-radius: 50%;
+      background: var(--primary-light); color: var(--primary);
+      font-size: 1.6rem; font-weight: 700;
+      display: grid; place-items: center; margin: 0 auto 10px;
+    }
+    .profile-hero h3 { font-size: 1.1rem; font-weight: 700; }
+    .profile-hero p { font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px; }
+
+    .settings-row {
+      display: flex; align-items: center; gap: 12px; padding: 14px 16px;
+      cursor: pointer; border: none; background: var(--card); width: 100%;
+      text-align: left; font-family: inherit; color: inherit;
+    }
+    .settings-row:hover { background: #f8fafc; }
+    .settings-row + .settings-row { border-top: 1px solid var(--border); }
+    .settings-row.danger .s-body h4 { color: #dc2626; }
+    .s-icon {
+      width: 32px; height: 32px; border-radius: 8px;
+      display: grid; place-items: center; font-size: 1rem;
+    }
+    .s-body { flex: 1; }
+    .s-body h4 { font-size: 0.9rem; font-weight: 500; }
+    .s-body p { font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px; }
+    .s-value { font-size: 0.78rem; color: var(--text-secondary); }
+
+    .bottom-nav {
+      height: var(--tab-h); border-top: 1px solid var(--border);
+      background: var(--card); display: flex; flex-shrink: 0; padding-bottom: 8px;
+    }
+    .nav-item {
+      flex: 1; border: none; background: transparent;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 3px; cursor: pointer; color: var(--text-secondary); font-family: inherit; padding-top: 6px;
+      position: relative;
+    }
+    .nav-item .icon { font-size: 1.15rem; }
+    .nav-item .lbl { font-size: 0.62rem; font-weight: 500; }
+    .nav-item.active { color: var(--primary); }
+    .nav-item.active .lbl { font-weight: 700; }
+    .nav-item .dot {
+      width: 6px; height: 6px; border-radius: 50%; background: #ef4444;
+      position: absolute; top: 6px; margin-left: 18px;
+    }
+
+    .overlay {
+      display: none; position: absolute; inset: 0;
+      background: rgba(15, 23, 42, 0.45); z-index: 30;
+      border-radius: 30px; align-items: flex-end;
+    }
+    .overlay.open { display: flex; }
+    .sheet {
+      width: 100%; background: var(--card);
+      border-radius: 20px 20px 0 0; padding: 12px 20px 28px; max-height: 70%;
+      overflow-y: auto;
+    }
+    .sheet-handle { width: 36px; height: 4px; background: var(--border); border-radius: 2px; margin: 0 auto 16px; }
+    .sheet h3 { font-size: 1.05rem; font-weight: 700; margin-bottom: 4px; }
+    .sheet .desc { font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.45; }
+    .sheet input {
+      width: 100%; border: 1px solid var(--border); border-radius: 10px;
+      padding: 12px 14px; font-size: 1rem; font-family: inherit; margin-bottom: 12px;
+    }
+    .sheet-actions { display: flex; gap: 8px; }
+    .sheet-actions button { flex: 1; padding: 12px; border-radius: 10px; font-weight: 600; font-family: inherit; cursor: pointer; }
+    .sheet-cancel { border: 1px solid var(--border); background: var(--card); }
+    .sheet-submit { border: none; background: var(--primary); color: #fff; }
+
+    .co-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 12px 0; border-top: 1px solid var(--border); font-size: 0.88rem;
+    }
+    .co-row:first-of-type { border-top: none; }
+    .co-tag { font-size: 0.7rem; background: #f1f5f9; padding: 2px 8px; border-radius: 999px; color: var(--text-secondary); }
+
+    .link-note {
+      max-width: 390px; margin-top: 12px; font-size: 0.75rem;
+      color: var(--text-secondary); text-align: center; line-height: 1.45;
+    }
+    .link-note a { color: var(--primary); }
+
+    .hint-box {
+      background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 12px;
+      padding: 12px 14px; font-size: 0.78rem; color: #1e40af; line-height: 1.45; margin-bottom: 14px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="page-header">
+    <h1>Guardian 登录后 · 主导航</h1>
+    <p>全局仅 <strong>孩子 · 决策 · 我的</strong>。「洞察」「传递」进入具体 Ward 后才有（详情 Tab：今日 / 报告 / 设置）。</p>
+  </div>
+
+  <div class="controls">
+    <button class="tab-btn active" data-preview="children-list">孩子 · 有列表</button>
+    <button class="tab-btn" data-preview="children-empty">孩子 · 空状态</button>
+    <button class="tab-btn" data-preview="decision">决策 Tab</button>
+    <button class="tab-btn" data-preview="profile">我的 Tab</button>
+  </div>
+
+  <div class="layout">
+    <div class="phone-wrap">
+      <span class="phone-label">Guardian · 3 Tab · 390 × 844</span>
+      <div class="phone">
+        <div class="status-bar"><span>20:32</span><span>5G ▮▮▮</span></div>
+
+        <div class="app-bar">
+          <div>
+            <h2 id="appBarTitle">孩子</h2>
+            <div class="sub" id="appBarSub">小宇的家庭</div>
+          </div>
+        </div>
+
+        <div class="screen">
+
+          <!-- ══ 孩子 Tab ══ -->
+          <div class="main-view active" id="main-children">
+            <div id="children-list">
+              <div class="section-label">我的孩子 · 3 人</div>
+
+              <a class="ward-card" href="guardian-ward-detail.html">
+                <div class="ward-head">
+                  <div class="ward-avatar">宇</div>
+                  <div class="ward-title"><h3>小宇</h3><p>五年级 · 计划进行中</p></div>
+                  <span class="chevron">›</span>
+                </div>
+                <span class="status-pill online"><span class="dot"></span>读学Eye 在线</span>
+                <div class="ward-stats">
+                  <div class="ward-stat"><div class="v">2/3</div><div class="l">任务</div></div>
+                  <div class="ward-stat"><div class="v">42m</div><div class="l">学习</div></div>
+                  <div class="ward-stat"><div class="v">—</div><div class="l">总结</div></div>
+                </div>
+                <div class="ward-summary">进行中：英语单词默写</div>
+              </a>
+
+              <a class="ward-card" href="guardian-ward-detail.html">
+                <div class="ward-head">
+                  <div class="ward-avatar alt">涵</div>
+                  <div class="ward-title"><h3>小涵</h3><p>三年级 · 已口述总结</p></div>
+                  <span class="chevron">›</span>
+                </div>
+                <span class="status-pill offline"><span class="dot" style="background:#d97706"></span>设备离线</span>
+                <div class="ward-stats">
+                  <div class="ward-stat"><div class="v">1/2</div><div class="l">任务</div></div>
+                  <div class="ward-stat"><div class="v" style="color:#94a3b8">—</div><div class="l">学习</div></div>
+                  <div class="ward-stat"><div class="v">✓</div><div class="l">总结</div></div>
+                </div>
+              </a>
+
+              <a class="ward-card needs-setup" href="guardian-ward-detail.html">
+                <div class="ward-head">
+                  <div class="ward-avatar alt2">宝</div>
+                  <div class="ward-title"><h3>大宝</h3><p>待绑定设备</p></div>
+                  <span class="chevron">›</span>
+                </div>
+                <span class="status-pill none">📷 待绑定读学Eye</span>
+              </a>
+
+              <button class="add-ward-btn" id="openAddSheet" type="button">+ 新增孩子档案</button>
+            </div>
+
+            <div id="children-empty" style="display:none">
+              <div class="empty">
+                <div class="icon">👨‍👩‍👧</div>
+                <h3>还没有孩子档案</h3>
+                <p>添加第一个孩子，进入详情后可绑定设备、传递作业。</p>
+                <button class="btn-primary" id="openAddSheetEmpty" type="button">添加孩子</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ══ 决策 Tab ══ -->
+          <div class="main-view" id="main-decision">
+            <p class="hero-intro">系统建议你判断、回应或沟通的事项；点条目进入对应孩子的详情。</p>
+
+            <div class="section-label">待处理 · 2</div>
+            <div class="card">
+              <button class="decision-item" type="button" onclick="location.href='guardian-ward-detail.html'">
+                <div class="d-icon" style="background:#ede9fe">💬</div>
+                <div class="d-body">
+                  <div class="d-meta">小涵 · 报告</div>
+                  <h4>今晚怎么聊</h4>
+                  <p>孩子已口述总结，查看基于事实的沟通建议</p>
+                </div>
+                <span class="badge-new">新</span>
+                <span class="chevron">›</span>
+              </button>
+              <button class="decision-item" type="button" onclick="location.href='guardian-ward-detail.html'">
+                <div class="d-icon" style="background:#fef3c7">📝</div>
+                <div class="d-body">
+                  <div class="d-meta">小宇 · 计划</div>
+                  <h4>对今日计划留言</h4>
+                  <p>孩子确认了 3 项任务，你可以补充意见（不能改计划）</p>
+                </div>
+                <span class="chevron">›</span>
+              </button>
+            </div>
+
+            <div class="section-label">已处理</div>
+            <div class="card">
+              <button class="decision-item" type="button" style="opacity:0.65">
+                <div class="d-icon" style="background:#f1f5f9">✓</div>
+                <div class="d-body">
+                  <div class="d-meta">小宇 · 昨天</div>
+                  <h4>沟通建议已读</h4>
+                  <p>你采纳了「先问感受再聊数学」的建议</p>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          <!-- ══ 我的 Tab ══ -->
+          <div class="main-view" id="main-profile">
+            <div class="profile-hero">
+              <div class="avatar">林</div>
+              <h3>林女士</h3>
+              <p>家长 · 小宇的家庭</p>
+            </div>
+
+            <div class="section-label">账号</div>
+            <div class="card">
+              <button class="settings-row" id="openAccountSheet" type="button">
+                <div class="s-icon" style="background:#dbeafe">👤</div>
+                <div class="s-body"><h4>账号资料</h4><p>昵称、用户名</p></div>
+                <span class="s-value">林女士</span>
+                <span class="chevron">›</span>
+              </button>
+              <button class="settings-row" type="button">
+                <div class="s-icon" style="background:#f1f5f9">🔐</div>
+                <div class="s-body"><h4>登录方式</h4><p>当前：微信登录</p></div>
+                <span class="chevron">›</span>
+              </button>
+            </div>
+
+            <div class="section-label">家庭</div>
+            <div class="card">
+              <button class="settings-row" id="openCoSheet" type="button">
+                <div class="s-icon" style="background:#dcfce7">👥</div>
+                <div class="s-body"><h4>共管成员</h4><p>邀请其他监护人共同关注</p></div>
+                <span class="s-value">2 人</span>
+                <span class="chevron">›</span>
+              </button>
+              <button class="settings-row" id="goManageWards" type="button">
+                <div class="s-icon" style="background:#fef3c7">📋</div>
+                <div class="s-body"><h4>孩子档案管理</h4><p>新增或查看全部孩子</p></div>
+                <span class="s-value">3 人</span>
+                <span class="chevron">›</span>
+              </button>
+            </div>
+
+            <div class="card" style="margin-top:16px">
+              <button class="settings-row danger" type="button">
+                <div class="s-icon" style="background:#fee2e2">⎋</div>
+                <div class="s-body"><h4>退出登录</h4></div>
+                <span class="chevron">›</span>
+              </button>
+            </div>
+          </div>
+
+        </div>
+
+        <nav class="bottom-nav">
+          <button class="nav-item active" data-main="children" type="button">
+            <span class="icon">👧</span>
+            <span class="lbl">孩子</span>
+          </button>
+          <button class="nav-item" data-main="decision" type="button">
+            <span class="icon">⚖️</span>
+            <span class="lbl">决策</span>
+            <span class="dot"></span>
+          </button>
+          <button class="nav-item" data-main="profile" type="button">
+            <span class="icon">👤</span>
+            <span class="lbl">我的</span>
+          </button>
+        </nav>
+
+        <!-- 新增孩子 -->
+        <div class="overlay" id="addSheet">
+          <div class="sheet">
+            <div class="sheet-handle"></div>
+            <h3>新增孩子档案</h3>
+            <p class="desc">创建后进入该孩子详情，可绑定设备、传递作业；并生成孩子加入家庭的绑定码。</p>
+            <input type="text" placeholder="孩子显示名称" />
+            <div class="sheet-actions">
+              <button class="sheet-cancel" id="closeAddSheet" type="button">取消</button>
+              <button class="sheet-submit" type="button">创建并进入</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 账号资料 -->
+        <div class="overlay" id="accountSheet">
+          <div class="sheet">
+            <div class="sheet-handle"></div>
+            <h3>账号资料</h3>
+            <p class="desc">Guardian 在 App 内显示的名称。</p>
+            <input type="text" value="林女士" />
+            <div class="sheet-actions">
+              <button class="sheet-cancel" id="closeAccountSheet" type="button">取消</button>
+              <button class="sheet-submit" type="button">保存</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 共管成员 -->
+        <div class="overlay" id="coSheet">
+          <div class="sheet">
+            <div class="sheet-handle"></div>
+            <h3>共管成员</h3>
+            <p class="desc">共同关注同一批孩子；权限可在邀请时设定。</p>
+            <div class="co-row"><span>林女士（你）</span><span class="co-tag">主监护人</span></div>
+            <div class="co-row"><span>爸爸</span><span class="co-tag">完全管理</span></div>
+            <button class="add-ward-btn" style="margin-top:16px;border-style:solid;background:var(--card)" type="button">+ 邀请共管</button>
+          </div>
+        </div>
+
+      </div>
+
+      <p class="link-note">
+        Ward 详情内：<strong>今日</strong>（含传递 +）· <strong>报告</strong>（洞察）· <strong>设置</strong><br>
+        <a href="guardian-ward-detail.html">打开 Ward 详情原型 →</a>
+      </p>
+    </div>
+  </div>
+
+  <script>
+    const mainViews = {
+      children: document.getElementById('main-children'),
+      decision: document.getElementById('main-decision'),
+      profile: document.getElementById('main-profile'),
+    };
+    const navItems = document.querySelectorAll('.nav-item[data-main]');
+    const appBarTitle = document.getElementById('appBarTitle');
+    const appBarSub = document.getElementById('appBarSub');
+    const titles = { children: '孩子', decision: '决策', profile: '我的' };
+    const subs = { children: '小宇的家庭', decision: '待你判断的事项', profile: '账号与家庭' };
+
+    let currentMain = 'children';
+
+    function switchMain(key) {
+      currentMain = key;
+      Object.entries(mainViews).forEach(([k, el]) => el.classList.toggle('active', k === key));
+      navItems.forEach(item => item.classList.toggle('active', item.dataset.main === key));
+      appBarTitle.textContent = titles[key];
+      appBarSub.textContent = subs[key];
+      closeAllSheets();
+    }
+
+    navItems.forEach(item => item.addEventListener('click', () => switchMain(item.dataset.main)));
+
+    document.querySelectorAll('.controls .tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.controls .tab-btn').forEach(b => b.classList.toggle('active', b === btn));
+        const p = btn.dataset.preview;
+        if (p === 'children-list') {
+          switchMain('children');
+          document.getElementById('children-list').style.display = 'block';
+          document.getElementById('children-empty').style.display = 'none';
+        } else if (p === 'children-empty') {
+          switchMain('children');
+          document.getElementById('children-list').style.display = 'none';
+          document.getElementById('children-empty').style.display = 'block';
+        } else if (p === 'decision') {
+          switchMain('decision');
+        } else if (p === 'profile') {
+          switchMain('profile');
+        }
+      });
+    });
+
+    function openSheet(id) { document.getElementById(id).classList.add('open'); }
+    function closeAllSheets() {
+      document.querySelectorAll('.overlay').forEach(o => o.classList.remove('open'));
+    }
+
+    document.getElementById('openAddSheet').addEventListener('click', () => openSheet('addSheet'));
+    document.getElementById('openAddSheetEmpty').addEventListener('click', () => openSheet('addSheet'));
+    document.getElementById('closeAddSheet').addEventListener('click', closeAllSheets);
+    document.getElementById('openAccountSheet').addEventListener('click', () => openSheet('accountSheet'));
+    document.getElementById('closeAccountSheet').addEventListener('click', closeAllSheets);
+    document.getElementById('openCoSheet').addEventListener('click', () => openSheet('coSheet'));
+    document.getElementById('goManageWards').addEventListener('click', () => switchMain('children'));
+
+    document.querySelectorAll('.overlay').forEach(o => {
+      o.addEventListener('click', e => { if (e.target === o) closeAllSheets(); });
+    });
+  </script>
+</body>
+</html>
