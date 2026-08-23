@@ -22,7 +22,7 @@ from .models import (
 from .schemas import (
     AnalyzeDayRequest, DeviceBind, FrameCreate, LabelCreate, LoginRequest, ProfileCreate,
     ProfilePatch, RefreshRequest, RegisterRequest, TokenPair, UploadUrlRequest, WardCreate,
-    WardOut, WardPatch, WardBindRequest, WardLoginRequest, AssignmentCreate, PlanDraft,
+    WardOut, WardPatch, WardBindRequest, AssignmentCreate, PlanDraft,
     MessageCreate, SessionFinish, SelfReviewCreate, TaskIntakeCleanup, TaskIntakeConfirm,
     TaskIntakeRequest,
 )
@@ -137,7 +137,14 @@ async def transcribe_voice(websocket: WebSocket) -> None:
 @app.post("/wards/{ward_id}/login-invite", status_code=201)
 def ward_login_invite(ward_id: str, principal: Principal = Depends(current_guardian), db: Session = Depends(get_db)):
     owned_ward(db, principal.user_id, ward_id)
-    code = secrets.token_hex(4).upper()
+    code = None
+    for _ in range(10):
+        candidate = f"{secrets.randbelow(1_000_000):06d}"
+        if db.query(WardInvite).filter_by(code=candidate).one_or_none() is None:
+            code = candidate
+            break
+    if code is None:
+        raise HTTPException(503, "unable to generate a binding code")
     row = WardInvite(ward_id=ward_id, code=code, expires_at=now() + timedelta(minutes=10))
     db.add(row); db.commit()
     return {"ward_id": ward_id, "invite_code": code, "expires_at": row.expires_at}
@@ -149,17 +156,11 @@ def ward_bind(body: WardBindRequest, db: Session = Depends(get_db)):
         raise HTTPException(400, "invite code is invalid or expired")
     credential = db.get(WardCredential, invite.ward_id)
     if credential is None:
-        credential = WardCredential(ward_id=invite.ward_id, pin_hash=hash_secret(body.pin)); db.add(credential)
-    else: credential.pin_hash = hash_secret(body.pin)
+        credential = WardCredential(ward_id=invite.ward_id); db.add(credential)
+    else:
+        credential.session_version += 1
     invite.consumed_at = now(); db.commit()
-    return {"ward_id": invite.ward_id, "access_token": create_access_token(user_id=invite.ward_id, role="ward"), "token_type": "bearer"}
-
-@app.post("/ward-auth/login")
-def ward_login(body: WardLoginRequest, db: Session = Depends(get_db)):
-    credential = db.get(WardCredential, body.ward_id); ward = db.get(Ward, body.ward_id)
-    if credential is None or ward is None or not verify_secret(body.pin, credential.pin_hash): raise HTTPException(401, "invalid ward credentials")
-    return {"ward_id": ward.id, "access_token": create_access_token(user_id=ward.id, role="ward"), "token_type": "bearer"}
-
+    return {"ward_id": invite.ward_id, "access_token": create_access_token(user_id=invite.ward_id, role="ward", ward_session_version=credential.session_version), "token_type": "bearer"}
 
 def _task_intake_wards(db: Session, guardian_id: str) -> list[dict]:
     rows = db.query(Ward).join(GuardianWard, GuardianWard.ward_id == Ward.id).filter(

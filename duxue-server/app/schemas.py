@@ -98,12 +98,7 @@ class AnalyzeDayRequest(BaseModel):
     results: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
 class WardBindRequest(BaseModel):
-    invite_code: str = Field(min_length=8, max_length=8)
-    pin: str = Field(pattern=r"^\d{4,8}$")
-
-class WardLoginRequest(BaseModel):
-    ward_id: str
-    pin: str = Field(pattern=r"^\d{4,8}$")
+    invite_code: str = Field(pattern=r"^\d{6}$")
 
 class AssignmentCreate(BaseModel):
     title: str = Field(min_length=1, max_length=300)

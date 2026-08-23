@@ -618,6 +618,13 @@ class _WardDetailPageState extends ConsumerState<WardDetailPage> {
 
   Widget _settings(Ward? ward) =>
       ListView(padding: const EdgeInsets.all(16), children: [
+        const SectionLabel('学生 App'),
+        AppCard(
+            onTap: _wardAppInvite,
+            child: const ListTile(
+                leading: Icon(Icons.phonelink_setup),
+                title: Text('绑定/更换学生 App 设备'),
+                subtitle: Text('生成一次性绑定码；换机后旧设备会退出'))),
         const SectionLabel('设备'),
         AppCard(
             onTap: _invite,
@@ -656,6 +663,30 @@ class _WardDetailPageState extends ConsumerState<WardDetailPage> {
       if (mounted) {
         setState(() => loadingToday = false);
       }
+    }
+  }
+
+  Future<void> _wardAppInvite() async {
+    try {
+      final invite = await ref.read(apiProvider).wardInvite(widget.wardId);
+      if (!mounted) return;
+      await showDialog<void>(
+          context: context,
+          builder: (context) => AlertDialog(
+                  title: const Text('学生 App 绑定码'),
+                  content: Column(mainAxisSize: MainAxisSize.min, children: [
+                    SelectableText(invite['invite_code'] as String,
+                        style: Theme.of(context).textTheme.headlineMedium),
+                    const SizedBox(height: 10),
+                    const Text('请在新学生 App 输入此 6 位码。首次绑定与换机相同；成功后旧设备会立即退出。'),
+                  ]),
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('完成'))
+                  ]));
+    } catch (error) {
+      if (mounted) showMessage(context, '生成学生 App 绑定码失败：$error');
     }
   }
 

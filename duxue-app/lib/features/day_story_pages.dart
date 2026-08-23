@@ -1,8 +1,19 @@
 import 'dart:async';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../providers.dart';
 import '../shared/app_ui.dart';
+
+String wardBindFailureMessage(Object error) {
+  if (error is DioException) {
+    return '绑定失败，请检查 6 位绑定码或网络后重试。';
+  }
+  // ApiClient.bindWard only reaches a non-network error after the server has
+  // accepted the binding response, usually while persisting the local session.
+  return '绑定请求已成功，但本机登录状态保存失败；请查看 Flutter 终端日志。';
+}
 
 class WardBindPage extends ConsumerStatefulWidget {
   const WardBindPage({super.key});
@@ -11,7 +22,7 @@ class WardBindPage extends ConsumerStatefulWidget {
 }
 
 class _WardBindPageState extends ConsumerState<WardBindPage> {
-  final code = TextEditingController(), pin = TextEditingController();
+  final code = TextEditingController();
   bool loading = false;
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -21,12 +32,9 @@ class _WardBindPageState extends ConsumerState<WardBindPage> {
           child: Column(children: [
             TextField(
                 controller: code,
-                decoration: const InputDecoration(labelText: '家长提供的 8 位绑定码')),
-            TextField(
-                controller: pin,
                 keyboardType: TextInputType.number,
-                obscureText: true,
-                decoration: const InputDecoration(labelText: '设置 4–8 位 PIN')),
+                maxLength: 6,
+                decoration: const InputDecoration(labelText: '家长提供的 6 位绑定码')),
             const SizedBox(height: 20),
             FilledButton(
                 onPressed: loading ? null : _bind,
@@ -35,16 +43,20 @@ class _WardBindPageState extends ConsumerState<WardBindPage> {
   Future<void> _bind() async {
     setState(() => loading = true);
     try {
-      final id =
-          await ref.read(apiProvider).bindWard(code.text.trim(), pin.text);
+      final id = await ref.read(apiProvider).bindWard(code.text.trim());
       if (mounted) {
-        Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (_) => WardDayPage(wardId: id)));
+        ref.read(authProvider.notifier).enterWard(id);
+        context.go('/ward-day/$id');
       }
-    } catch (_) {
+    } catch (error, stackTrace) {
+      final detail = error is DioException
+          ? 'HTTP ${error.response?.statusCode ?? 'network'}'
+          : error.runtimeType.toString();
+      debugPrint('Ward bind failed after submission: $detail');
+      debugPrintStack(stackTrace: stackTrace);
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('绑定失败，请检查绑定码和 PIN')));
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(wardBindFailureMessage(error))));
       }
     } finally {
       if (mounted) setState(() => loading = false);
@@ -74,8 +86,6 @@ class _GuardianStoryPageState extends ConsumerState<GuardianStoryPage> {
               onSubmitted: (_) => _add()),
           FilledButton(onPressed: _add, child: const Text('交作业')),
           const SizedBox(height: 16),
-          OutlinedButton(onPressed: _invite, child: const Text('生成孩子 App 绑定码')),
-          const SizedBox(height: 16),
           FilledButton.tonal(onPressed: _load, child: const Text('查看当晚事实报告')),
           if (s != null)
             Card(
@@ -104,22 +114,6 @@ class _GuardianStoryPageState extends ConsumerState<GuardianStoryPage> {
         .read(apiProvider)
         .createAssignment(widget.wardId, task.text.trim());
     task.clear();
-  }
-
-  Future<void> _invite() async {
-    final x = await ref.read(apiProvider).wardInvite(widget.wardId);
-    if (mounted) {
-      showDialog(
-          context: context,
-          builder: (_) => AlertDialog(
-                  title: const Text('孩子 App 绑定码'),
-                  content: SelectableText(x['invite_code']),
-                  actions: [
-                    TextButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text('完成'))
-                  ]));
-    }
   }
 
   Future<void> _load() async {

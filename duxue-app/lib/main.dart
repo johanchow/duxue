@@ -11,18 +11,29 @@ import 'shared/app_ui.dart';
 
 void main() => runApp(const ProviderScope(child: DuxueApp()));
 
+String? appRedirect(AppSession? session, String location) {
+  const publicLocations = {'/login', '/ward-bind'};
+  if (session == null && !publicLocations.contains(location)) return '/login';
+  if (session?.isWard ?? false) {
+    final wardPath = '/ward-day/${session!.wardId}';
+    return location == wardPath ? null : wardPath;
+  }
+  if (session != null && location == '/login') return '/wards';
+  return null;
+}
+
 final routerProvider = Provider<GoRouter>((ref) {
-  final authenticated = ref.watch(authProvider).valueOrNull ?? false;
+  final session = ref.watch(authProvider).valueOrNull;
   return GoRouter(
-    initialLocation: authenticated ? '/wards' : '/login',
-    redirect: (_, state) {
-      if (!authenticated && state.matchedLocation != '/login') return '/login';
-      if (authenticated && state.matchedLocation == '/login') return '/wards';
-      return null;
-    },
+    initialLocation: '/login',
+    redirect: (_, state) => appRedirect(session, state.matchedLocation),
     routes: [
       GoRoute(path: '/login', builder: (_, __) => const LoginPage()),
       GoRoute(path: '/ward-bind', builder: (_, __) => const WardBindPage()),
+      GoRoute(
+        path: '/ward-day/:id',
+        builder: (_, state) => WardDayPage(wardId: state.pathParameters['id']!),
+      ),
       GoRoute(
         path: '/wards',
         builder: (_, __) => const WardListPage(),

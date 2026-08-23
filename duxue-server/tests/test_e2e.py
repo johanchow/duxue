@@ -111,7 +111,7 @@ class EndToEndTest(unittest.TestCase):
         assignment = self.request("POST", f"/wards/{ward}/assignments", token=token, json={"title":"数学作业"})
         self.assertEqual(assignment.status_code, 201)
         invite = self.request("POST", f"/wards/{ward}/login-invite", token=token).json()
-        ward_token = self.request("POST", "/ward-auth/bind", json={"invite_code":invite["invite_code"],"pin":"1234"}).json()["access_token"]
+        ward_token = self.request("POST", "/ward-auth/bind", json={"invite_code":invite["invite_code"]}).json()["access_token"]
         day = datetime.now(timezone.utc).date().isoformat()
         self.assertEqual(self.request("GET", f"/wards/{ward}/guardian-story/{day}", token=token).json()["status"], "locked")
         assignment_id = self.request("GET", f"/wards/{ward}/assignments", token=ward_token).json()[0]["id"]
@@ -149,6 +149,22 @@ class EndToEndTest(unittest.TestCase):
                 socket.send_json({"type": "commit"})
                 self.assertEqual(socket.receive_json(), {"type": "partial", "text": "安排明天的数"})
                 self.assertEqual(socket.receive_json(), {"type": "final", "text": "安排明天的数学作业"})
+
+    def test_ward_rebinding_uses_one_time_six_digit_code_and_revokes_old_session(self):
+        guardian = self.request("POST", "/auth/register", json={"name": "换机家长", "email": "rebind@example.com", "password": "password123"}).json()["access_token"]
+        ward = self.request("POST", "/wards", token=guardian, json={"display_name": "小换", "grade_stage": "primary"}).json()["id"]
+        first_code = self.request("POST", f"/wards/{ward}/login-invite", token=guardian).json()["invite_code"]
+        self.assertRegex(first_code, r"^\d{6}$")
+        old_token = self.request("POST", "/ward-auth/bind", json={"invite_code": first_code}).json()["access_token"]
+        self.assertEqual(self.request("POST", "/ward-auth/bind", json={"invite_code": first_code}).status_code, 400)
+
+        replacement_code = self.request("POST", f"/wards/{ward}/login-invite", token=guardian).json()["invite_code"]
+        self.assertRegex(replacement_code, r"^\d{6}$")
+        new_token = self.request("POST", "/ward-auth/bind", json={"invite_code": replacement_code})
+        self.assertEqual(new_token.status_code, 200, new_token.text)
+
+        self.assertEqual(self.request("GET", f"/wards/{ward}/assignments", token=old_token).status_code, 401)
+        self.assertEqual(self.request("GET", f"/wards/{ward}/assignments", token=new_token.json()["access_token"]).status_code, 200)
 
     def test_task_intake_requires_llm_clarification_then_confirms_only_owned_wards(self):
         token = self.request("POST", "/auth/register", json={"name": "多孩家长", "email": "intake@example.com", "password": "password123"}).json()["access_token"]
