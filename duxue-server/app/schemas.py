@@ -14,7 +14,6 @@ class RegisterRequest(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     email: str
     password: str = Field(min_length=8, max_length=128)
-    tenant_name: str | None = None
 
     @field_validator("email")
     @classmethod
@@ -41,18 +40,21 @@ class TokenPair(BaseModel):
 
 class WardCreate(BaseModel):
     display_name: str = Field(min_length=1, max_length=100)
+    grade_stage: str = Field(pattern=r"^(primary|middle|high)$")
     notes: str | None = None
 
 
 class WardPatch(BaseModel):
     display_name: str | None = None
     notes: str | None = None
+    grade_stage: str | None = Field(default=None, pattern=r"^(primary|middle|high)$")
     analysis_profile_id: str | None = None
 
 
 class WardOut(ORMModel):
     id: str
     display_name: str
+    grade_stage: str
     notes: str | None
     analysis_profile_id: str | None
 

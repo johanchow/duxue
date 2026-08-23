@@ -115,7 +115,7 @@
     .status-pill.none { background: #f1f5f9; color: var(--text-secondary); }
     .status-pill .dot { width: 6px; height: 6px; border-radius: 50%; background: #16a34a; }
 
-    .ward-stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+    .ward-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .ward-stat { background: #f8fafc; border-radius: 10px; padding: 8px 6px; text-align: center; }
     .ward-stat .v { font-size: 0.95rem; font-weight: 700; color: var(--primary); }
     .ward-stat .l { font-size: 0.62rem; color: var(--text-secondary); margin-top: 2px; }
@@ -252,13 +252,27 @@
       background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 12px;
       padding: 12px 14px; font-size: 0.78rem; color: #1e40af; line-height: 1.45; margin-bottom: 14px;
     }
+    .quick-transfer {
+      width: 100%; margin: 4px 0 14px; border: none; border-radius: 14px;
+      padding: 13px 16px; display: flex; align-items: center; gap: 10px;
+      background: var(--primary); color: #fff; font: 600 0.9rem inherit; cursor: pointer;
+      box-shadow: 0 5px 14px rgba(37,99,235,.22);
+    }
+    .quick-transfer span { font-size: 1.1rem; }
+    .transfer-choice { display: flex; gap: 8px; margin: 10px 0 12px; }
+    .transfer-choice button { flex: 1; padding: 9px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); font: 0.8rem inherit; cursor: pointer; }
+    .transfer-choice button.active { border-color: var(--primary); background: var(--primary-light); color: var(--primary); font-weight: 600; }
+    .transfer-modes { display: flex; gap: 8px; margin: 0 0 12px; }
+    .transfer-modes button { flex: 1; border: 1px solid var(--border); border-radius: 10px; padding: 9px 4px; background: var(--card); color: var(--text-secondary); font: .75rem inherit; cursor: pointer; }
+    .transfer-modes button.active { background: #f8fafc; color: var(--primary); border-color: #bfdbfe; font-weight: 600; }
+    .sheet textarea { width: 100%; min-height: 84px; resize: none; border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; font: 0.9rem inherit; margin-bottom: 12px; }
   </style>
 </head>
 <body>
 
   <div class="page-header">
     <h1>Guardian 登录后 · 主导航</h1>
-    <p>全局仅 <strong>孩子 · 决策 · 我的</strong>。「洞察」「传递」进入具体 Ward 后才有（详情 Tab：今日 / 报告 / 设置）。</p>
+    <p>全局保持 <strong>孩子 · 决策 · 我的</strong>；「传递」是常驻快捷入口，洞察与计划在具体孩子详情中查看。</p>
   </div>
 
   <div class="controls">
@@ -286,6 +300,7 @@
           <!-- ══ 孩子 Tab ══ -->
           <div class="main-view active" id="main-children">
             <div id="children-list">
+              <button class="quick-transfer" id="openTransferSheet" type="button"><span>＋</span>传递作业、通知或留言</button>
               <div class="section-label">我的孩子 · 3 人</div>
 
               <a class="ward-card" href="guardian-ward-detail.html">
@@ -297,8 +312,7 @@
                 <span class="status-pill online"><span class="dot"></span>读学Eye 在线</span>
                 <div class="ward-stats">
                   <div class="ward-stat"><div class="v">2/3</div><div class="l">任务</div></div>
-                  <div class="ward-stat"><div class="v">42m</div><div class="l">学习</div></div>
-                  <div class="ward-stat"><div class="v">—</div><div class="l">总结</div></div>
+                  <div class="ward-stat"><div class="v">进行中</div><div class="l">今日计划</div></div>
                 </div>
                 <div class="ward-summary">进行中：英语单词默写</div>
               </a>
@@ -312,8 +326,7 @@
                 <span class="status-pill offline"><span class="dot" style="background:#d97706"></span>设备离线</span>
                 <div class="ward-stats">
                   <div class="ward-stat"><div class="v">1/2</div><div class="l">任务</div></div>
-                  <div class="ward-stat"><div class="v" style="color:#94a3b8">—</div><div class="l">学习</div></div>
-                  <div class="ward-stat"><div class="v">✓</div><div class="l">总结</div></div>
+                  <div class="ward-stat"><div class="v">已总结</div><div class="l">今日复盘</div></div>
                 </div>
               </a>
 
@@ -485,6 +498,23 @@
           </div>
         </div>
 
+        <div class="overlay" id="transferSheet">
+          <div class="sheet">
+            <div class="sheet-handle"></div>
+            <h3>传递给孩子</h3>
+            <p class="desc">把学校作业、通知或你的留言交给系统整理；可同时传给多个孩子，不会修改他们已确认的计划。</p>
+            <div class="transfer-choice" aria-label="选择接收对象（可多选）">
+              <button class="active" type="button">✓ 小宇</button><button type="button">小涵</button><button type="button">大宝</button>
+            </div>
+            <div class="transfer-modes" aria-label="输入方式"><button class="active" type="button">⌨️ 文字</button><button type="button">🎙 语音</button><button type="button">▣ 截图</button></div>
+            <textarea placeholder="例如：数学练习册 P16–18，明天交。"></textarea>
+            <div class="sheet-actions">
+              <button class="sheet-cancel" id="closeTransferSheet" type="button">取消</button>
+              <button class="sheet-submit" id="submitTransfer" type="button">传递并待确认</button>
+            </div>
+          </div>
+        </div>
+
       </div>
 
       <p class="link-note">
@@ -551,6 +581,19 @@
     document.getElementById('closeAccountSheet').addEventListener('click', closeAllSheets);
     document.getElementById('openCoSheet').addEventListener('click', () => openSheet('coSheet'));
     document.getElementById('goManageWards').addEventListener('click', () => switchMain('children'));
+    document.getElementById('openTransferSheet').addEventListener('click', () => openSheet('transferSheet'));
+    document.getElementById('closeTransferSheet').addEventListener('click', closeAllSheets);
+    document.getElementById('submitTransfer').addEventListener('click', () => {
+      closeAllSheets();
+      switchMain('decision');
+    });
+    document.querySelectorAll('.transfer-choice button').forEach(btn => btn.addEventListener('click', () => {
+      btn.classList.toggle('active');
+      btn.textContent = `${btn.classList.contains('active') ? '✓ ' : ''}${btn.textContent.replace(/^✓\s*/, '')}`;
+    }));
+    document.querySelectorAll('.transfer-modes button').forEach(btn => btn.addEventListener('click', () => {
+      document.querySelectorAll('.transfer-modes button').forEach(b => b.classList.toggle('active', b === btn));
+    }));
 
     document.querySelectorAll('.overlay').forEach(o => {
       o.addEventListener('click', e => { if (e.target === o) closeAllSheets(); });

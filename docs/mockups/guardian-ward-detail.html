@@ -933,12 +933,12 @@
 
               <div class="mini-stats">
                 <div class="stat-box">
-                  <div class="val" id="statLearnVal">42m</div>
-                  <div class="lbl">今日有效学习</div>
-                </div>
-                <div class="stat-box">
                   <div class="val" id="statTaskVal">2/3</div>
                   <div class="lbl">任务已完成</div>
+                </div>
+                <div class="stat-box">
+                  <div class="val" id="statPlanVal">进行中</div>
+                  <div class="lbl">孩子确认的计划</div>
                 </div>
               </div>
 
@@ -1005,12 +1005,12 @@
                 </div>
               </div>
 
-              <div class="card" style="margin-top:10px" id="wardSummaryCard">
+              <div class="card" style="margin-top:10px">
                 <div class="list-row" style="padding:14px 16px;display:flex;align-items:center;gap:12px">
                   <div class="list-icon" style="width:40px;height:40px;border-radius:12px;background:#ede9fe;display:grid;place-items:center">🎙</div>
                   <div class="list-body" style="flex:1">
-                    <h4 style="font-size:0.9rem;font-weight:600">孩子尚未完成口述总结</h4>
-                    <p style="font-size:0.75rem;color:var(--text-secondary);margin-top:2px">完成后这里会显示摘要</p>
+                    <h4 style="font-size:0.9rem;font-weight:600">等待孩子完成今日自我总结</h4>
+                    <p style="font-size:0.75rem;color:var(--text-secondary);margin-top:2px">完成后会生成今日的事实报告；不影响查看过往报告</p>
                   </div>
                 </div>
               </div>
@@ -1018,36 +1018,19 @@
 
             <div class="guardian-tab-view" data-gtab="report">
               <div class="report-hero" id="reportHero">
-                <h3>今日日报</h3>
-                <p id="reportSummary">专注占比 68% · 3 次短暂休息 · 孩子已于昨晚复盘</p>
+                <h3>今日报告等待生成</h3>
+                <p>等孩子完成自我总结后，会生成今天的学习节奏与沟通建议。</p>
+              </div>
+              <div class="section-title">过往报告</div>
+              <div class="card"><div class="nav-row"><div class="nav-icon report">✓</div><div class="nav-text"><h4>8 月 21 日 · 数学与英语</h4><p>完成 3 项任务；进入状态后更稳定。查看当日沟通建议</p></div><span class="nav-chevron">›</span></div></div>
+              <div class="section-title">过去 7 天</div>
+              <div class="card"><div class="nav-row"><div class="nav-icon trend">📈</div><div class="nav-text"><h4>学习节奏变化</h4><p>近 7 天的自评、观察记录与成长建议</p></div><span class="nav-chevron">›</span></div></div>
+              <div class="section-title">上次记录</div>
+              <div>
                 <div class="report-stat-row">
-                  <div class="report-stat"><div class="v" id="rptVal1">42m</div><div class="l">有效学习</div></div>
-                  <div class="report-stat"><div class="v" id="rptVal2">68%</div><div class="l">专注占比</div></div>
-                  <div class="report-stat"><div class="v" id="rptVal3">3</div><div class="l">短暂休息</div></div>
-                </div>
-              </div>
-
-              <div class="section-title">近 7 天趋势</div>
-              <div class="card">
-                <div class="nav-row">
-                  <div class="nav-icon trend">📈</div>
-                  <div class="nav-text">
-                    <h4>学习时长变化</h4>
-                    <p id="trendSummary">本周日均 38 分钟 · 比上周 +12%</p>
-                  </div>
-                  <span class="nav-chevron">›</span>
-                </div>
-              </div>
-
-              <div class="section-title">沟通建议</div>
-              <div class="card">
-                <div class="nav-row">
-                  <div class="nav-icon report">💬</div>
-                  <div class="nav-text">
-                    <h4>今晚怎么聊</h4>
-                    <p id="commSummary">基于事实的正向沟通话术 · 孩子自评后可查看</p>
-                  </div>
-                  <span class="nav-chevron">›</span>
+                  <div class="report-stat"><div class="v">42m</div><div class="l">有效学习</div></div>
+                  <div class="report-stat"><div class="v">68%</div><div class="l">专注占比</div></div>
+                  <div class="report-stat"><div class="v">3</div><div class="l">短暂休息</div></div>
                 </div>
               </div>
             </div>
@@ -1278,47 +1261,31 @@
     function applyReadyState(mode) {
       const banner = document.getElementById('deviceBanner');
       const bannerText = document.getElementById('deviceBannerText');
-      const statLearn = document.getElementById('statLearnVal');
       const statTask = document.getElementById('statTaskVal');
+      const statPlan = document.getElementById('statPlanVal');
       const reportHero = document.getElementById('reportHero');
-      const reportSummary = document.getElementById('reportSummary');
       const planStatus = document.getElementById('planStatusBar');
       const pendingTask = document.getElementById('pendingTaskRow');
-      const commSummary = document.getElementById('commSummary');
 
       if (mode === 'offline') {
         banner.className = 'status-banner offline';
         bannerText.innerHTML = '设备离线 · 报告可能不完整 <span style="margin-left:auto;font-weight:600;cursor:pointer">排查</span>';
-        statLearn.textContent = '—';
-        statLearn.style.color = '#94a3b8';
         statTask.textContent = '1/2';
+        statPlan.textContent = '待确认';
         settingsDeviceDesc.textContent = '已绑定 1 台 · 离线 · 最后心跳 35 分钟前';
         deviceDetailDesc.textContent = '读学Eye · 离线 · 最后心跳 35 分钟前';
         reportHero.classList.add('report-dim');
-        reportSummary.textContent = '设备离线，数据同步中…';
-        document.getElementById('rptVal1').textContent = '—';
-        document.getElementById('rptVal2').textContent = '—';
-        document.getElementById('rptVal3').textContent = '—';
-        document.getElementById('trendSummary').textContent = '查看历史完整数据';
-        commSummary.textContent = '设备恢复后可查看';
         planStatus.className = 'plan-status pending';
         planStatus.textContent = '⏳ 孩子尚未确认今日计划';
         if (pendingTask) pendingTask.style.display = 'none';
       } else {
         banner.className = 'status-banner online';
         bannerText.textContent = '读学Eye 在线 · 正在安静记录学习过程';
-        statLearn.textContent = '42m';
-        statLearn.style.color = '';
         statTask.textContent = '2/3';
+        statPlan.textContent = '进行中';
         settingsDeviceDesc.textContent = '已绑定 1 台 · 在线 · 2 分钟前心跳';
         deviceDetailDesc.textContent = '读学Eye · 在线 · 最后心跳 2 分钟前';
         reportHero.classList.remove('report-dim');
-        reportSummary.textContent = '专注占比 68% · 3 次短暂休息 · 孩子已于昨晚复盘';
-        document.getElementById('rptVal1').textContent = '42m';
-        document.getElementById('rptVal2').textContent = '68%';
-        document.getElementById('rptVal3').textContent = '3';
-        document.getElementById('trendSummary').textContent = '本周日均 38 分钟 · 比上周 +12%';
-        commSummary.textContent = '基于事实的正向沟通话术 · 孩子自评后可查看';
         planStatus.className = 'plan-status';
         planStatus.textContent = '✓ 孩子已于 18:40 确认今日计划';
         if (pendingTask) pendingTask.style.display = '';

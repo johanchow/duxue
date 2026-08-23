@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers.dart';
+import '../shared/app_ui.dart';
 
 class WardBindPage extends ConsumerStatefulWidget {
   const WardBindPage({super.key});
@@ -140,6 +141,8 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
   List<dynamic> tasks = [];
   Map<String, dynamic>? plan, insight;
   String? session, answer;
+  int tab = 0;
+  bool observing = true;
   final watch = Stopwatch();
   Timer? timer;
   @override
@@ -156,45 +159,142 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
 
   @override
   Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(['今晚的计划', 'AI 伙伴', '成长'][tab])),
+      body: switch (tab) {
+        0 => _home(context),
+        1 => _ai(context),
+        _ => _growth(context)
+      },
+      bottomNavigationBar: NavigationBar(
+          selectedIndex: tab,
+          onDestinationSelected: (value) => setState(() => tab = value),
+          destinations: const [
+            NavigationDestination(
+                icon: Icon(Icons.home_outlined),
+                selectedIcon: Icon(Icons.home),
+                label: '首页'),
+            NavigationDestination(
+                icon: Icon(Icons.chat_bubble_outline),
+                selectedIcon: Icon(Icons.chat_bubble),
+                label: 'AI 伙伴'),
+            NavigationDestination(
+                icon: Icon(Icons.eco_outlined),
+                selectedIcon: Icon(Icons.eco),
+                label: '成长')
+          ]),
+    );
+  }
+
+  Widget _home(BuildContext context) {
     final p = plan;
     final children = <Widget>[];
+    children.add(Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: StatusPill(
+            text: observing ? '学习观察中 · 仅记录，不显示实时专注判断' : '学习观察已暂停',
+            color: observing ? brandBlue : Colors.orange)));
     if (p == null) {
-      children.add(const Text('先选出今天要做的任务'));
-      children.addAll(tasks.map((x) => ListTile(
-          leading: const Icon(Icons.assignment),
-          title: Text(x['title'] as String))));
+      children.add(const Text('这是系统目前知道的任务。你可以补充、调整，再决定今天怎么安排。',
+          style: TextStyle(color: Colors.blueGrey)));
+      children.addAll(tasks.map((x) => Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: AppCard(
+              child: ListTile(
+                  leading: const Icon(Icons.assignment_outlined),
+                  title: Text(x['title'] as String),
+                  subtitle: const Text('待安排'))))));
+      children.add(const SizedBox(height: 12));
       children.add(FilledButton(
           onPressed: tasks.isEmpty ? null : _plan,
-          child: const Text('生成并确认今日计划')));
+          child: const Text('确认我的今日计划')));
     } else {
-      children.add(Text(p['status'] == 'confirmed' ? '计划已确认' : '计划草稿'));
-      children.addAll((p['items'] as List).map((x) => Card(
-          child: ListTile(
-              title: Text(x['title']),
-              trailing: FilledButton(
+      children.add(Text(p['status'] == 'confirmed' ? '这是你确认的计划' : '计划草稿',
+          style: Theme.of(context).textTheme.titleMedium));
+      children.addAll(
+        (p['items'] as List).map(
+          (x) => Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: AppCard(
+              child: ListTile(
+                title: Text(x['title']),
+                subtitle: const Text('按自己的节奏来'),
+                trailing: FilledButton(
                   onPressed: () => _start(x['id']),
-                  child: const Text('开始'))))));
-      if (session != null) {
-        children.add(_Companion(
-            seconds: watch.elapsed.inSeconds,
-            answer: answer,
-            onAsk: _ask,
-            onFinish: _finish));
-      }
-      children.add(OutlinedButton(
-          onPressed: _review, child: const Text('完成今天学习，做 30 秒自评')));
-      if (insight != null) {
-        children.add(Card(
-            child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text(
-                    '锦囊：${insight!['advice']}\nAI 行为记录：${insight!['objective_timeline']}'))));
-      }
+                  child: const Text('开始'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      children.add(const SizedBox(height: 12));
+      children.add(OutlinedButton.icon(
+          onPressed: _showObserveControls,
+          icon: const Icon(Icons.visibility_outlined),
+          label: Text(session == null
+              ? '查看学习观察状态'
+              : '学习观察中 · ${watch.elapsed.inSeconds ~/ 60} 分钟')));
+      children.add(const SizedBox(height: 8));
+      children.add(FilledButton.tonal(
+          onPressed: _review, child: const Text('完成今日计划，先说说自己的感受')));
     }
-    return Scaffold(
-        appBar: AppBar(title: const Text('我的今日计划')),
-        body: ListView(padding: const EdgeInsets.all(16), children: children));
+    return ListView(padding: const EdgeInsets.all(16), children: children);
   }
+
+  Widget _ai(BuildContext context) =>
+      ListView(padding: const EdgeInsets.all(16), children: [
+        const Text('学习卡壳时随时问，我会一步步陪你想明白。',
+            style: TextStyle(color: Colors.blueGrey)),
+        const SizedBox(height: 14),
+        if (session == null)
+          const AppCard(
+              child: Padding(
+                  padding: EdgeInsets.all(20),
+                  child: Text('先从首页开始一个计划任务，再来和 AI 伙伴一起解决问题。')))
+        else
+          _Companion(
+              seconds: watch.elapsed.inSeconds,
+              answer: answer,
+              onAsk: _ask,
+              onFinish: _finish)
+      ]);
+
+  Widget _growth(BuildContext context) =>
+      ListView(padding: const EdgeInsets.all(16), children: [
+        const SectionLabel('今天'),
+        if (insight == null)
+          const AppCard(
+              child: ListTile(
+                  leading: Icon(Icons.edit_note),
+                  title: Text('今天的反馈等待生成'),
+                  subtitle: Text('完成今天的自我总结后，这里会出现你的感受和观察记录的对照。')))
+        else
+          AppCard(
+              child: Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const ListTile(
+                            leading: Icon(Icons.compare_arrows),
+                            title: Text('你的感受与观察记录'),
+                            subtitle: Text('先看自己的体感，再一起发现学习节奏。')),
+                        Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Text('给你的小建议：${insight!['advice']}')),
+                        Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            child:
+                                Text('观察记录：${insight!['objective_timeline']}'))
+                      ]))),
+        const SectionLabel('过去的成长'),
+        const AppCard(
+            child: ListTile(
+                leading: Icon(Icons.history),
+                title: Text('历史总结与反馈'),
+                subtitle: Text('过去的成长信息始终可以查看'))),
+      ]);
 
   Future<void> _load() async {
     tasks = await ref.read(apiProvider).assignments(widget.wardId);
@@ -223,6 +323,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
     watch
       ..reset()
       ..start();
+    observing = true;
     timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {});
     });
@@ -245,11 +346,53 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
   }
 
   Future<void> _review() async {
-    await ref.read(apiProvider).review(widget.wardId, DateTime.now(), '顺利');
-    insight =
-        await ref.read(apiProvider).insight(widget.wardId, DateTime.now());
-    if (mounted) setState(() {});
+    try {
+      await ref.read(apiProvider).review(widget.wardId, DateTime.now(), '顺利');
+      insight =
+          await ref.read(apiProvider).insight(widget.wardId, DateTime.now());
+      if (mounted) setState(() => tab = 2);
+    } catch (e) {
+      if (mounted) showMessage(context, '提交自我总结失败：$e');
+    }
   }
+
+  void _showObserveControls() => showModalBottomSheet<void>(
+        context: context,
+        builder: (context) => Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('学习观察',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              Text(session == null
+                  ? '当前未开始记录。开始任务后，设备会安静记录学习过程。'
+                  : '${observing ? '正在记录' : '记录已暂停'} · 关联当前学习任务 · 已记录 ${watch.elapsed.inSeconds ~/ 60} 分钟'),
+              const SizedBox(height: 12),
+              const Text('这里不会显示实时专注或分心判断。'),
+              const SizedBox(height: 12),
+              Row(children: [
+                OutlinedButton(
+                    onPressed: () {
+                      setState(() => observing = !observing);
+                      Navigator.pop(context);
+                    },
+                    child: Text(observing ? '暂停记录' : '继续记录')),
+                const SizedBox(width: 8),
+                if (session != null)
+                  TextButton(
+                      onPressed: () async {
+                        Navigator.pop(context);
+                        await _finish();
+                      },
+                      child: const Text('结束记录')),
+              ]),
+            ],
+          ),
+        ),
+      );
 }
 
 class _Companion extends StatefulWidget {

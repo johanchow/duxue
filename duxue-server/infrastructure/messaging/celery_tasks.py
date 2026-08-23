@@ -34,19 +34,21 @@ def submit_daily_batches(day: str | None = None) -> int:
     start, end = utc_bounds(target)
     db = SessionLocal()
     try:
-        pending = db.query(Frame).filter(Frame.analyzed.is_(False), Frame.batch_id.is_(None), Frame.captured_at >= start, Frame.captured_at < end).order_by(Frame.tenant_id, Frame.captured_at).all()
-        grouped: dict[str, list[Frame]] = defaultdict(list)
-        for frame in pending: grouped[frame.tenant_id].append(frame)
+        pending = db.query(Frame).filter(Frame.analyzed.is_(False), Frame.batch_id.is_(None), Frame.captured_at >= start, Frame.captured_at < end).order_by(Frame.captured_at).all()
+        if not pending:
+            return 0
         submitted = 0
-        for tenant_id, frames in grouped.items():
+        # Batch inference no longer has a tenant partition; a batch may safely contain
+        # frames for several wards because each result is routed by its ward_id.
+        for frames in (pending,):
             client = DashscopeInference()
             provider_id = client.submit(frames, _prompt_map(db, {frame.ward_id for frame in frames}))
-            batch = AnalysisBatch(tenant_id=tenant_id, batch_date=target, provider_batch_id=provider_id, status="submitted", frame_count=len(frames))
+            batch = AnalysisBatch(batch_date=target, provider_batch_id=provider_id, status="submitted", frame_count=len(frames))
             db.add(batch); db.flush()
             for frame in frames: frame.batch_id = batch.id
             for ward_id in {frame.ward_id for frame in frames}:
-                report = db.query(Report).filter(Report.tenant_id == tenant_id, Report.ward_id == ward_id, Report.report_date == target).one_or_none()
-                if report is None: db.add(Report(tenant_id=tenant_id, ward_id=ward_id, report_date=target, status="processing"))
+                report = db.query(Report).filter(Report.ward_id == ward_id, Report.report_date == target).one_or_none()
+                if report is None: db.add(Report(ward_id=ward_id, report_date=target, status="processing"))
                 else: report.status = "processing"
             db.commit(); submitted += 1
         return submitted
@@ -61,7 +63,7 @@ def poll_batches() -> int:
         client = DashscopeInference() if batches else None
         for batch in batches:
             status, results = client.retrieve(batch.provider_batch_id)
-            frames = db.query(Frame).filter(Frame.tenant_id == batch.tenant_id, Frame.batch_id == batch.id).all()
+            frames = db.query(Frame).filter(Frame.batch_id == batch.id).all()
             submitted_at = batch.submitted_at.replace(tzinfo=timezone.utc) if batch.submitted_at.tzinfo is None else batch.submitted_at
             if status != "completed" and now() - submitted_at >= timedelta(hours=settings.batch_fallback_after_hours):
                 prompts = _prompt_map(db, {frame.ward_id for frame in frames})
@@ -73,7 +75,7 @@ def poll_batches() -> int:
                 for frame in frames:
                     if frame.id in results: by_ward[frame.ward_id][frame.id] = results[frame.id]
                 for ward_id, ward_results in by_ward.items():
-                    analyze_and_generate(db, tenant_id=batch.tenant_id, ward_id=ward_id, report_date=batch.batch_date, supplied_results=ward_results)
+                    analyze_and_generate(db, ward_id=ward_id, report_date=batch.batch_date, supplied_results=ward_results)
                 batch.status = "completed"; batch.completed_at = now(); completed += 1
             elif status in {"failed", "expired", "cancelled"}: batch.status = "failed"
             else: batch.status = "running"

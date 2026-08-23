@@ -38,6 +38,7 @@ passlib[bcrypt]>=1.7.4
 # ── 工具
 pyyaml>=6.0
 httpx>=0.28.0
+websockets>=13.0
 
 # ── 可观测性（OTEL 自动插桩，靠环境变量启用，零业务代码改动）
 opentelemetry-distro>=0.50b0

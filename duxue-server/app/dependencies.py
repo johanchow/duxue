@@ -13,7 +13,6 @@ from .security import decode_access_token, token_hash
 @dataclass(frozen=True)
 class Principal:
     user_id: str
-    tenant_id: str
     role: str
 
 
@@ -23,14 +22,19 @@ def _bearer(authorization: str | None) -> str:
     return authorization.split(" ", 1)[1]
 
 
-def current_guardian(authorization: str | None = Header(default=None), db: Session = Depends(get_db)) -> Principal:
+def guardian_principal_for_token(token: str, db: Session) -> Principal:
     try:
-        claims = decode_access_token(_bearer(authorization))
+        claims = decode_access_token(token)
     except ValueError:
         raise HTTPException(401, "invalid or expired access token")
-    if db.get(Guardian, claims["sub"]) is None:
-        raise HTTPException(401, "guardian no longer exists")
-    return Principal(claims["sub"], claims["tenant_id"], claims["role"])
+    guardian = db.get(Guardian, claims.get("sub"))
+    if guardian is None or claims.get("role") not in {"admin", "guardian"}:
+        raise HTTPException(401, "guardian login required")
+    return Principal(guardian.id, guardian.role)
+
+
+def current_guardian(authorization: str | None = Header(default=None), db: Session = Depends(get_db)) -> Principal:
+    return guardian_principal_for_token(_bearer(authorization), db)
 
 def current_ward(authorization: str | None = Header(default=None), db: Session = Depends(get_db)) -> Principal:
     try:
@@ -39,7 +43,7 @@ def current_ward(authorization: str | None = Header(default=None), db: Session =
         raise HTTPException(401, "invalid or expired access token")
     if claims.get("role") != "ward" or db.get(Ward, claims["sub"]) is None:
         raise HTTPException(403, "ward login required")
-    return Principal(claims["sub"], claims["tenant_id"], "ward")
+    return Principal(claims["sub"], "ward")
 
 
 def current_device(authorization: str | None = Header(default=None), db: Session = Depends(get_db)) -> Device:

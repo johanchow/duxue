@@ -96,8 +96,8 @@ class ApiClient {
   Future<List<Ward>> wards() async => ((await dio.get('/wards')).data as List)
       .map((item) => Ward.fromJson(item))
       .toList();
-  Future<Ward> createWard(String name) async => Ward.fromJson(
-        (await dio.post('/wards', data: {'display_name': name})).data,
+  Future<Ward> createWard(String name, String gradeStage) async => Ward.fromJson(
+        (await dio.post('/wards', data: {'display_name': name, 'grade_stage': gradeStage})).data,
       );
   Future<Ward> updateWard(String wardId, {String? analysisProfileId}) async =>
       Ward.fromJson(

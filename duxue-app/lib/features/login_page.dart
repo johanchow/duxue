@@ -17,6 +17,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   final password = TextEditingController();
   final name = TextEditingController();
   bool registering = false;
+  bool wardMode = false;
 
   @override
   void dispose() {
@@ -42,61 +43,87 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                   const Icon(Icons.auto_awesome, size: 56),
                   const SizedBox(height: 12),
                   Text('读学', style: Theme.of(context).textTheme.headlineLarge),
-                  const SizedBox(height: 24),
-                  if (registering)
-                    TextFormField(
-                      controller: name,
-                      textInputAction: TextInputAction.next,
-                      decoration: const InputDecoration(labelText: '姓名'),
-                      validator: (value) =>
-                          value == null || value.trim().isEmpty
-                              ? '请输入姓名'
-                              : null,
-                    ),
-                  TextFormField(
-                    controller: email,
-                    keyboardType: TextInputType.emailAddress,
-                    textInputAction: TextInputAction.next,
-                    autofillHints: const [
-                      AutofillHints.username,
-                      AutofillHints.email
+                  const SizedBox(height: 8),
+                  SegmentedButton<bool>(
+                    segments: const [
+                      ButtonSegment(
+                          value: true,
+                          icon: Icon(Icons.child_care),
+                          label: Text('我是孩子')),
+                      ButtonSegment(
+                          value: false,
+                          icon: Icon(Icons.family_restroom),
+                          label: Text('我是家长')),
                     ],
-                    decoration: const InputDecoration(labelText: '邮箱'),
-                    validator: _validateEmail,
+                    selected: {wardMode},
+                    onSelectionChanged: (value) =>
+                        setState(() => wardMode = value.first),
                   ),
-                  TextFormField(
-                    controller: password,
-                    obscureText: true,
-                    textInputAction: TextInputAction.done,
-                    autofillHints: const [AutofillHints.password],
-                    decoration: const InputDecoration(labelText: '密码（至少 8 位）'),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) return '请输入密码';
-                      if (registering && value.length < 8) return '密码至少需要 8 位';
-                      return null;
-                    },
-                    onFieldSubmitted: (_) => _submit(),
-                  ),
-                  const SizedBox(height: 20),
-                  FilledButton(
-                    onPressed: auth.isLoading ? null : _submit,
-                    child: Text(
-                      auth.isLoading
-                          ? '请稍候…'
-                          : registering
-                              ? '注册并登录'
-                              : '登录',
+                  const SizedBox(height: 24),
+                  if (wardMode) ...[
+                    const Text('用家长提供的绑定码进入自己的学习空间。',
+                        textAlign: TextAlign.center),
+                    const SizedBox(height: 16),
+                    FilledButton.icon(
+                      onPressed: () => context.go('/ward-bind'),
+                      icon: const Icon(Icons.vpn_key_outlined),
+                      label: const Text('输入绑定码进入'),
                     ),
-                  ),
-                  TextButton(
-                    onPressed: () => setState(() => registering = !registering),
-                    child: Text(registering ? '已有账号？登录' : '没有账号？注册'),
-                  ),
-                  TextButton.icon(
-                    onPressed: () => context.go('/ward-bind'),
-                    icon: const Icon(Icons.child_care),
-                    label: const Text('我是学生，用绑定码进入'),
-                  ),
+                  ] else ...[
+                    if (registering)
+                      TextFormField(
+                        controller: name,
+                        textInputAction: TextInputAction.next,
+                        decoration: const InputDecoration(labelText: '姓名'),
+                        validator: (value) =>
+                            value == null || value.trim().isEmpty
+                                ? '请输入姓名'
+                                : null,
+                      ),
+                    TextFormField(
+                      controller: email,
+                      keyboardType: TextInputType.emailAddress,
+                      textInputAction: TextInputAction.next,
+                      autofillHints: const [
+                        AutofillHints.username,
+                        AutofillHints.email
+                      ],
+                      decoration: const InputDecoration(labelText: '邮箱'),
+                      validator: _validateEmail,
+                    ),
+                    TextFormField(
+                      controller: password,
+                      obscureText: true,
+                      textInputAction: TextInputAction.done,
+                      autofillHints: const [AutofillHints.password],
+                      decoration:
+                          const InputDecoration(labelText: '密码（至少 8 位）'),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) return '请输入密码';
+                        if (registering && value.length < 8) {
+                          return '密码至少需要 8 位';
+                        }
+                        return null;
+                      },
+                      onFieldSubmitted: (_) => _submit(),
+                    ),
+                    const SizedBox(height: 20),
+                    FilledButton(
+                      onPressed: auth.isLoading ? null : _submit,
+                      child: Text(
+                        auth.isLoading
+                            ? '请稍候…'
+                            : registering
+                                ? '注册并登录'
+                                : '登录',
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () =>
+                          setState(() => registering = !registering),
+                      child: Text(registering ? '已有账号？登录' : '没有账号？注册'),
+                    ),
+                  ],
                   if (kDebugMode) ...[
                     const SizedBox(height: 12),
                     SelectableText(

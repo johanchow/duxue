@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .domain import Point, RuleClassifier, build_segments, smooth
-from .models import BehaviorLabelConfig, BehaviorSegment, Frame, FramePrediction, Report, Ward, now
+from .models import BehaviorLabelConfig, BehaviorSegment, Frame, FramePrediction, GuardianWard, Report, Ward, now
 
 
 classifier = RuleClassifier(Path(__file__).parents[1] / "classifier" / "rules.yaml")
@@ -21,8 +21,10 @@ def utc_bounds(day: date) -> tuple[datetime, datetime]:
     return start, start + timedelta(days=1)
 
 
-def owned_ward(db: Session, tenant_id: str, ward_id: str) -> Ward:
-    ward = db.query(Ward).filter(Ward.id == ward_id, Ward.tenant_id == tenant_id).one_or_none()
+def owned_ward(db: Session, guardian_id: str, ward_id: str) -> Ward:
+    ward = db.query(Ward).join(GuardianWard, GuardianWard.ward_id == Ward.id).filter(
+        Ward.id == ward_id, GuardianWard.guardian_id == guardian_id,
+    ).one_or_none()
     if ward is None:
         raise HTTPException(404, "ward not found")
     return ward
@@ -42,7 +44,6 @@ def classify_for_ward(db: Session, ward: Ward, fields: dict) -> tuple[str, float
     """Apply active profile labels first, then the safe system default rules."""
     if ward.analysis_profile_id:
         labels = db.query(BehaviorLabelConfig).filter(
-            BehaviorLabelConfig.tenant_id == ward.tenant_id,
             BehaviorLabelConfig.profile_id == ward.analysis_profile_id,
             BehaviorLabelConfig.is_active.is_(True),
         ).order_by(BehaviorLabelConfig.priority.desc()).all()
@@ -76,13 +77,15 @@ def corrected_time(frame_time: datetime, elapsed: int | None, bound_time: dateti
 
 
 def analyze_and_generate(
-    db: Session, *, tenant_id: str, ward_id: str, report_date: date,
+    db: Session, *, ward_id: str, report_date: date,
     supplied_results: dict[str, dict] | None = None,
 ) -> Report:
-    ward = owned_ward(db, tenant_id, ward_id)
+    ward = db.get(Ward, ward_id)
+    if ward is None:
+        raise HTTPException(404, "ward not found")
     start, end = utc_bounds(report_date)
     frames = db.query(Frame).filter(
-        Frame.tenant_id == tenant_id, Frame.ward_id == ward_id,
+        Frame.ward_id == ward_id,
         Frame.captured_at >= start, Frame.captured_at < end,
     ).order_by(Frame.captured_at).all()
     if not frames:
@@ -100,7 +103,7 @@ def analyze_and_generate(
         frame.analyzed = True
         prediction = db.query(FramePrediction).filter(FramePrediction.frame_id == frame.id).one_or_none()
         if prediction is None:
-            prediction = FramePrediction(tenant_id=tenant_id, frame_id=frame.id)
+            prediction = FramePrediction(frame_id=frame.id)
             db.add(prediction)
         prediction.behavior_label = label
         prediction.confidence = confidence
@@ -110,7 +113,6 @@ def analyze_and_generate(
 
     segments = build_segments(smooth(points), settings.capture_interval_seconds)
     db.query(BehaviorSegment).filter(
-        BehaviorSegment.tenant_id == tenant_id,
         BehaviorSegment.ward_id == ward_id,
         BehaviorSegment.report_date == report_date,
     ).delete(synchronize_session=False)
@@ -118,7 +120,7 @@ def analyze_and_generate(
     timeline: list[dict] = []
     for item in segments:
         db.add(BehaviorSegment(
-            tenant_id=tenant_id, ward_id=ward_id, report_date=report_date,
+            ward_id=ward_id, report_date=report_date,
             seg_start=item["start"], seg_end=item["end"], behavior_label=item["label"],
             frame_count=item["frame_count"], confidence_avg=item["confidence_avg"],
         ))
@@ -130,10 +132,10 @@ def analyze_and_generate(
         })
 
     report = db.query(Report).filter(
-        Report.tenant_id == tenant_id, Report.ward_id == ward_id, Report.report_date == report_date,
+        Report.ward_id == ward_id, Report.report_date == report_date,
     ).one_or_none()
     if report is None:
-        report = Report(tenant_id=tenant_id, ward_id=ward_id, report_date=report_date)
+        report = Report(ward_id=ward_id, report_date=report_date)
         db.add(report)
     report.total_seconds = sum(breakdown.values())
     report.label_breakdown = dict(breakdown)

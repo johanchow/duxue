@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import tempfile
 import unittest
+from unittest.mock import AsyncMock, patch
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -36,7 +37,7 @@ class EndToEndTest(unittest.TestCase):
             headers["Authorization"] = f"Bearer {auth}"
         return self.client.request(method, path, headers=headers, **kwargs)
 
-    def test_complete_capture_to_report_flow_and_tenant_isolation(self):
+    def test_complete_capture_to_report_flow_and_guardian_ward_isolation(self):
         registration = self.request("POST", "/auth/register", json={
             "name": "监护人", "email": "guardian@example.com", "password": "password123",
         })
@@ -44,9 +45,12 @@ class EndToEndTest(unittest.TestCase):
         guardian_token = registration.json()["access_token"]
         self.assertEqual(self.request("GET", "/admin/summary", token=guardian_token).status_code, 200)
 
-        ward_response = self.request("POST", "/wards", token=guardian_token, json={"display_name": "小读"})
+        ward_response = self.request("POST", "/wards", token=guardian_token, json={"display_name": "小读", "grade_stage": "primary"})
         self.assertEqual(ward_response.status_code, 201, ward_response.text)
+        self.assertEqual(ward_response.json()["grade_stage"], "primary")
         ward_id = ward_response.json()["id"]
+        invalid_grade = self.request("POST", "/wards", token=guardian_token, json={"display_name": "无效学段", "grade_stage": "college"})
+        self.assertEqual(invalid_grade.status_code, 422)
 
         invite = self.request("POST", f"/wards/{ward_id}/devices/invite", token=guardian_token)
         self.assertEqual(invite.status_code, 201, invite.text)
@@ -92,7 +96,7 @@ class EndToEndTest(unittest.TestCase):
         self.assertEqual(report["label_breakdown"], {"学习": 45})
 
         outsider = self.request("POST", "/auth/register", json={
-            "name": "其他租户", "email": "other@example.com", "password": "password123",
+            "name": "其他家长", "email": "other@example.com", "password": "password123",
         }).json()["access_token"]
         forbidden_by_isolation = self.request(
             "GET", f"/reports/daily?ward_id={ward_id}&date={base.date()}", token=outsider,
@@ -101,7 +105,7 @@ class EndToEndTest(unittest.TestCase):
 
     def test_day_story_requires_ward_review_before_insights(self):
         token = self.request("POST", "/auth/register", json={"name":"家长2","email":"story@example.com","password":"password123"}).json()["access_token"]
-        ward = self.request("POST", "/wards", token=token, json={"display_name":"小读2"}).json()["id"]
+        ward = self.request("POST", "/wards", token=token, json={"display_name":"小读2", "grade_stage":"middle"}).json()["id"]
         assignment = self.request("POST", f"/wards/{ward}/assignments", token=token, json={"title":"数学作业"})
         self.assertEqual(assignment.status_code, 201)
         invite = self.request("POST", f"/wards/{ward}/login-invite", token=token).json()
@@ -118,6 +122,28 @@ class EndToEndTest(unittest.TestCase):
         self.assertEqual(self.request("POST", f"/wards/{ward}/reviews/{day}", token=ward_token, json={"feeling":"顺利","timeline_json":[]}).status_code, 200)
         self.assertEqual(self.request("GET", f"/wards/{ward}/reviews/{day}/insight", token=ward_token).json()["status"], "ready")
         self.assertEqual(self.request("GET", f"/wards/{ward}/guardian-story/{day}", token=token).json()["status"], "ready")
+
+    def test_guardian_voice_socket_streams_partial_and_final_text(self):
+        token = self.request("POST", "/auth/register", json={"name": "语音家长", "email": "voice@example.com", "password": "password123"}).json()["access_token"]
+        ward = self.request("POST", "/wards", token=token, json={"display_name": "小语", "grade_stage": "high"}).json()["id"]
+
+        class FakeAsr:
+            async def send_audio(self, chunk): self.chunk = chunk
+            async def commit(self): self.committed = True
+            async def finish(self): pass
+            async def close(self): pass
+            async def events(self):
+                yield {"type": "partial", "text": "安排明天的数"}
+                yield {"type": "final", "text": "安排明天的数学作业"}
+
+        with patch("app.main.DashscopeRealtimeAsr.connect", new=AsyncMock(return_value=FakeAsr())):
+            with self.client.websocket_connect("/ws/asr/transcribe", headers={"Authorization": f"Bearer {token}"}) as socket:
+                socket.send_json({"type": "start", "ward_ids": [ward]})
+                self.assertEqual(socket.receive_json()["type"], "ready")
+                socket.send_bytes(b"pcm")
+                socket.send_json({"type": "commit"})
+                self.assertEqual(socket.receive_json(), {"type": "partial", "text": "安排明天的数"})
+                self.assertEqual(socket.receive_json(), {"type": "final", "text": "安排明天的数学作业"})
 
 
 if __name__ == "__main__":
