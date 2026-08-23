@@ -497,6 +497,16 @@ class WardDetailPage extends ConsumerStatefulWidget {
 
 class _WardDetailPageState extends ConsumerState<WardDetailPage> {
   int tab = 0;
+  Map<String, dynamic>? todayPlan;
+  List<dynamic> todayTasks = const [];
+  var loadingToday = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadToday();
+  }
+
   @override
   Widget build(BuildContext context) {
     final wards = ref.watch(wardsProvider).valueOrNull ?? const <Ward>[];
@@ -542,18 +552,45 @@ class _WardDetailPageState extends ConsumerState<WardDetailPage> {
                   ? Colors.green
                   : Colors.orange)),
       const SectionLabel('今日计划'),
-      const AppCard(
-          child: ListTile(
+      if (loadingToday)
+        const AppCard(
+            child: Center(
+                child: Padding(
+                    padding: EdgeInsets.all(20),
+                    child: CircularProgressIndicator())))
+      else if (todayPlan?['status'] == 'confirmed')
+        AppCard(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const ListTile(
+              contentPadding: EdgeInsets.zero,
               leading: Icon(Icons.check_circle_outline),
               title: Text('孩子确认的计划'),
-              subtitle: Text('计划与任务进度由孩子自己安排；家长可以传递任务或留言。'))),
-      const SizedBox(height: 10),
-      AppCard(
-          onTap: () => context.go('/wards/${widget.wardId}/story'),
-          child: const ListTile(
-              leading: Icon(Icons.add_task),
-              title: Text('传递任务与查看今晚学习故事'),
-              subtitle: Text('提交外部作业、生成孩子绑定码'))),
+              subtitle: Text('这是孩子自己确认的今日安排。')),
+          ...((todayPlan?['items'] as List<dynamic>? ?? const [])
+              .map((item) => Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(
+                        '• ${item['title']} · ${item['planned_minutes']} 分钟'),
+                  ))),
+        ]))
+      else
+        AppCard(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.format_list_bulleted),
+              title: Text('待安排任务'),
+              subtitle: Text('孩子尚未确认今日计划，以下是当前任务。')),
+          if (todayTasks.isEmpty)
+            const Text('目前没有待安排任务。')
+          else
+            ...todayTasks.map((item) => Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text('• ${item['title']}'),
+                )),
+        ])),
     ]);
   }
 
@@ -598,6 +635,29 @@ class _WardDetailPageState extends ConsumerState<WardDetailPage> {
                     ? '系统默认，不修改也能正常工作'
                     : '已使用自定义配置')))
       ]);
+
+  Future<void> _loadToday() async {
+    try {
+      final api = ref.read(apiProvider);
+      final tasks = await api.assignments(widget.wardId);
+      Map<String, dynamic>? plan;
+      try {
+        plan = await api.plan(widget.wardId, DateTime.now());
+      } catch (_) {
+        // A missing plan is the normal state before the Ward has confirmed one.
+      }
+      if (mounted) {
+        setState(() {
+          todayTasks = tasks;
+          todayPlan = plan;
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() => loadingToday = false);
+      }
+    }
+  }
 
   Future<void> _invite() async {
     try {

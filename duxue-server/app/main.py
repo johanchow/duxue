@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .asr import AsrConfigurationError, DashscopeRealtimeAsr, forward_asr_events
 from .database import Base, SessionLocal, engine, get_db
-from .dependencies import Principal, _bearer, current_device, current_guardian, current_ward, guardian_principal_for_token
+from .dependencies import Principal, _bearer, current_device, current_guardian, current_guardian_or_ward, current_ward, guardian_principal_for_token
 from .models import (
     AnalysisProfile, BehaviorLabelConfig, BehaviorSegment, Device, Frame, FramePrediction,
     Guardian, GuardianWard, RefreshToken, Report, User, Ward, WardCredential, WardInvite,
@@ -229,8 +229,10 @@ def create_assignment(ward_id: str, body: AssignmentCreate, principal: Principal
     return {"id": row.id, "title": row.title, "status": row.status, "source": row.source}
 
 @app.get("/wards/{ward_id}/assignments")
-def assignments(ward_id: str, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
-    _ward_owned(principal, ward_id); return [{"id": x.id, "title": x.title, "details": x.details, "due_date": x.due_date, "status": x.status} for x in db.query(Assignment).filter_by(ward_id=ward_id, status="open").all()]
+def assignments(ward_id: str, principal: Principal = Depends(current_guardian_or_ward), db: Session = Depends(get_db)):
+    if principal.role == "ward": _ward_owned(principal, ward_id)
+    else: owned_ward(db, principal.user_id, ward_id)
+    return [{"id": x.id, "title": x.title, "details": x.details, "due_date": x.due_date, "status": x.status} for x in db.query(Assignment).filter_by(ward_id=ward_id, status="open").all()]
 
 @app.put("/wards/{ward_id}/plans/{plan_date}")
 def save_plan(ward_id: str, plan_date: date, body: PlanDraft, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
@@ -250,8 +252,10 @@ def confirm_plan(ward_id: str, plan_date: date, principal: Principal = Depends(c
     plan.status = "confirmed"; plan.confirmed_at = now(); db.commit(); return {"id": plan.id, "status": plan.status}
 
 @app.get("/wards/{ward_id}/plans/{plan_date}")
-def get_plan(ward_id: str, plan_date: date, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
-    _ward_owned(principal, ward_id); plan = db.query(DailyPlan).filter_by(ward_id=ward_id, plan_date=plan_date).one_or_none()
+def get_plan(ward_id: str, plan_date: date, principal: Principal = Depends(current_guardian_or_ward), db: Session = Depends(get_db)):
+    if principal.role == "ward": _ward_owned(principal, ward_id)
+    else: owned_ward(db, principal.user_id, ward_id)
+    plan = db.query(DailyPlan).filter_by(ward_id=ward_id, plan_date=plan_date).one_or_none()
     if plan is None: raise HTTPException(404, "plan not found")
     return {"id": plan.id, "status": plan.status, "items": [{"id": x.id, "title": x.title, "planned_minutes": x.planned_minutes, "status": x.status} for x in db.query(PlanItem).filter_by(plan_id=plan.id).order_by(PlanItem.position)]}
 

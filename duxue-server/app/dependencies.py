@@ -46,6 +46,17 @@ def current_ward(authorization: str | None = Header(default=None), db: Session =
     return Principal(claims["sub"], "ward")
 
 
+def current_guardian_or_ward(authorization: str | None = Header(default=None), db: Session = Depends(get_db)) -> Principal:
+    token = _bearer(authorization)
+    try:
+        claims = decode_access_token(token)
+    except ValueError:
+        raise HTTPException(401, "invalid or expired access token")
+    if claims.get("role") == "ward" and db.get(Ward, claims.get("sub")) is not None:
+        return Principal(claims["sub"], "ward")
+    return guardian_principal_for_token(token, db)
+
+
 def current_device(authorization: str | None = Header(default=None), db: Session = Depends(get_db)) -> Device:
     digest = token_hash(_bearer(authorization))
     device = db.query(Device).filter(Device.device_token_hash == digest).one_or_none()

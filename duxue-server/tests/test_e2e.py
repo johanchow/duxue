@@ -118,6 +118,9 @@ class EndToEndTest(unittest.TestCase):
         self.assertEqual(self.request("PUT", f"/wards/{ward}/plans/{day}", token=ward_token, json={"plan_date":day,"items":[{"assignment_id":assignment_id,"title":"数学作业","planned_minutes":30}]}).status_code, 200)
         self.assertEqual(self.request("POST", f"/wards/{ward}/plans/{day}/confirm", token=ward_token).status_code, 200)
         plan = self.request("GET", f"/wards/{ward}/plans/{day}", token=ward_token).json()
+        guardian_plan = self.request("GET", f"/wards/{ward}/plans/{day}", token=token)
+        self.assertEqual(guardian_plan.status_code, 200, guardian_plan.text)
+        self.assertEqual(guardian_plan.json()["status"], "confirmed")
         session = self.request("POST", f"/plan-items/{plan['items'][0]['id']}/sessions", token=ward_token).json()["id"]
         self.assertEqual(self.request("POST", f"/sessions/{session}/messages", token=ward_token, json={"content":"我不会这题"}).json()["mode"], "socratic")
         self.assertEqual(self.request("POST", f"/sessions/{session}/finish", token=ward_token, json={"active_seconds":1800}).status_code, 200)
