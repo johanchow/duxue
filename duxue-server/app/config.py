@@ -69,6 +69,7 @@ class Settings:
     tutoring_model: str = os.getenv("TUTORING_MODEL_NAME") or os.getenv("VLM_MODEL_NAME") or "qwen3-vl-flash"
     insight_model: str = os.getenv("INSIGHT_MODEL_NAME") or os.getenv("VLM_MODEL_NAME") or "qwen3-vl-flash"
     guardian_story_model: str = os.getenv("GUARDIAN_STORY_MODEL_NAME") or os.getenv("VLM_MODEL_NAME") or "qwen3-vl-flash"
+    task_intake_model: str = os.getenv("TASK_INTAKE_MODEL") or os.getenv("VLM_MODEL_NAME") or "qwen3-vl-flash"
     batch_completion_window: str = os.getenv("VLM_BATCH_COMPLETION_WINDOW", "24h")
     batch_submit_hour: int = int(os.getenv("VLM_BATCH_SUBMIT_HOUR", "22"))
     batch_fallback_after_hours: int = int(os.getenv("VLM_BATCH_FALLBACK_AFTER_HOURS", "20"))

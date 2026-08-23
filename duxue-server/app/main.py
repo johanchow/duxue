@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .asr import AsrConfigurationError, DashscopeRealtimeAsr, forward_asr_events
 from .database import Base, SessionLocal, engine, get_db
-from .dependencies import Principal, _bearer, current_device, current_guardian, current_ward, guardian_principal_for_token
+from .dependencies import Principal, _bearer, current_device, current_guardian, current_guardian_or_ward, current_ward, guardian_principal_for_token
 from .models import (
     AnalysisProfile, BehaviorLabelConfig, BehaviorSegment, Device, Frame, FramePrediction,
     Guardian, GuardianWard, RefreshToken, Report, User, Ward, WardCredential, WardInvite,
@@ -22,12 +22,14 @@ from .models import (
 from .schemas import (
     AnalyzeDayRequest, DeviceBind, FrameCreate, LabelCreate, LoginRequest, ProfileCreate,
     ProfilePatch, RefreshRequest, RegisterRequest, TokenPair, UploadUrlRequest, WardCreate,
-    WardOut, WardPatch, WardBindRequest, WardLoginRequest, AssignmentCreate, PlanDraft,
-    MessageCreate, SessionFinish, SelfReviewCreate,
+    WardOut, WardPatch, WardBindRequest, AssignmentCreate, PlanDraft,
+    MessageCreate, SessionFinish, SelfReviewCreate, TaskIntakeCleanup, TaskIntakeConfirm,
+    TaskIntakeRequest,
 )
 from .security import create_access_token, hash_secret, random_token, token_hash, verify_secret
 from .services import analyze_and_generate, corrected_time, make_invite_code, owned_ward, utc_bounds
 from .storage import LocalStorage, storage
+from .task_intake import TaskIntakeError, TaskIntakeService
 
 
 app = FastAPI(title="读学 Server", version="0.1.0")
@@ -90,13 +92,10 @@ async def transcribe_voice(websocket: WebSocket) -> None:
             return
         await websocket.accept()
         start = await websocket.receive_json()
-        ward_ids = start.get("ward_ids") if start.get("type") == "start" else None
-        if not isinstance(ward_ids, list) or not ward_ids or not all(isinstance(value, str) for value in ward_ids):
-            await websocket.send_json({"type": "error", "message": "ward_ids are required"})
+        if start.get("type") != "start":
+            await websocket.send_json({"type": "error", "message": "start is required"})
             await websocket.close(code=1008)
             return
-        for ward_id in ward_ids:
-            owned_ward(db, principal.user_id, ward_id)
 
         provider = await DashscopeRealtimeAsr.connect()
         await websocket.send_json({"type": "ready", "max_seconds": settings.asr_max_record_seconds})
@@ -138,7 +137,14 @@ async def transcribe_voice(websocket: WebSocket) -> None:
 @app.post("/wards/{ward_id}/login-invite", status_code=201)
 def ward_login_invite(ward_id: str, principal: Principal = Depends(current_guardian), db: Session = Depends(get_db)):
     owned_ward(db, principal.user_id, ward_id)
-    code = secrets.token_hex(4).upper()
+    code = None
+    for _ in range(10):
+        candidate = f"{secrets.randbelow(1_000_000):06d}"
+        if db.query(WardInvite).filter_by(code=candidate).one_or_none() is None:
+            code = candidate
+            break
+    if code is None:
+        raise HTTPException(503, "unable to generate a binding code")
     row = WardInvite(ward_id=ward_id, code=code, expires_at=now() + timedelta(minutes=10))
     db.add(row); db.commit()
     return {"ward_id": ward_id, "invite_code": code, "expires_at": row.expires_at}
@@ -150,16 +156,73 @@ def ward_bind(body: WardBindRequest, db: Session = Depends(get_db)):
         raise HTTPException(400, "invite code is invalid or expired")
     credential = db.get(WardCredential, invite.ward_id)
     if credential is None:
-        credential = WardCredential(ward_id=invite.ward_id, pin_hash=hash_secret(body.pin)); db.add(credential)
-    else: credential.pin_hash = hash_secret(body.pin)
+        credential = WardCredential(ward_id=invite.ward_id); db.add(credential)
+    else:
+        credential.session_version += 1
     invite.consumed_at = now(); db.commit()
-    return {"ward_id": invite.ward_id, "access_token": create_access_token(user_id=invite.ward_id, role="ward"), "token_type": "bearer"}
+    return {"ward_id": invite.ward_id, "access_token": create_access_token(user_id=invite.ward_id, role="ward", ward_session_version=credential.session_version), "token_type": "bearer"}
 
-@app.post("/ward-auth/login")
-def ward_login(body: WardLoginRequest, db: Session = Depends(get_db)):
-    credential = db.get(WardCredential, body.ward_id); ward = db.get(Ward, body.ward_id)
-    if credential is None or ward is None or not verify_secret(body.pin, credential.pin_hash): raise HTTPException(401, "invalid ward credentials")
-    return {"ward_id": ward.id, "access_token": create_access_token(user_id=ward.id, role="ward"), "token_type": "bearer"}
+def _task_intake_wards(db: Session, guardian_id: str) -> list[dict]:
+    rows = db.query(Ward).join(GuardianWard, GuardianWard.ward_id == Ward.id).filter(
+        GuardianWard.guardian_id == guardian_id,
+    ).order_by(Ward.display_name).all()
+    return [{"id": ward.id, "display_name": ward.display_name, "grade_stage": ward.grade_stage} for ward in rows]
+
+
+def _task_intake_attachments(guardian_id: str, keys: list[str]) -> None:
+    prefix = f"guardian/{guardian_id}/task-intake/"
+    if any(not key.startswith(prefix) or not storage.exists(key) for key in keys):
+        raise HTTPException(400, "invalid task intake attachment")
+
+
+@app.post("/task-intake/upload-url")
+def task_intake_upload_url(body: UploadUrlRequest, request: Request, principal: Principal = Depends(current_guardian)):
+    extension = body.extension.lower().lstrip(".")
+    if extension not in {"jpg", "jpeg", "png", "webp"}:
+        raise HTTPException(400, "unsupported image extension")
+    if not body.content_type.startswith("image/"):
+        raise HTTPException(400, "unsupported image content type")
+    key = f"guardian/{principal.user_id}/task-intake/{secrets.token_hex(16)}.{extension}"
+    base_url = str(request.base_url) if settings.storage_backend == "local" else settings.public_base_url
+    url, expires, headers = storage.upload_url(key, base_url, body.content_type)
+    return {"upload_url": url, "oss_key": key, "expires_at": datetime.fromtimestamp(expires, timezone.utc), "headers": headers}
+
+
+@app.post("/task-intake/respond")
+def respond_to_task_intake(body: TaskIntakeRequest, principal: Principal = Depends(current_guardian), db: Session = Depends(get_db)):
+    _task_intake_attachments(principal.user_id, body.attachment_keys)
+    wards = _task_intake_wards(db, principal.user_id)
+    if not wards:
+        raise HTTPException(400, "create a ward before sending tasks")
+    try:
+        return TaskIntakeService().respond(wards=wards, request=body).model_dump(mode="json")
+    except TaskIntakeError as error:
+        raise HTTPException(502, str(error)) from error
+
+
+@app.post("/task-intake/confirm", status_code=201)
+def confirm_task_intake(body: TaskIntakeConfirm, principal: Principal = Depends(current_guardian), db: Session = Depends(get_db)):
+    _task_intake_attachments(principal.user_id, body.attachment_keys)
+    try:
+        for task in body.tasks:
+            owned_ward(db, principal.user_id, task.ward_id)
+        rows = [Assignment(ward_id=task.ward_id, title=task.title, details=task.details, due_date=task.due_date) for task in body.tasks]
+        db.add_all(rows)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    for key in body.attachment_keys:
+        storage.delete(key)
+    return {"assignments": [{"id": row.id, "ward_id": row.ward_id, "title": row.title} for row in rows]}
+
+
+@app.post("/task-intake/cleanup", status_code=204)
+def cleanup_task_intake(body: TaskIntakeCleanup, principal: Principal = Depends(current_guardian)):
+    _task_intake_attachments(principal.user_id, body.attachment_keys)
+    for key in body.attachment_keys:
+        storage.delete(key)
+
 
 @app.post("/wards/{ward_id}/assignments", status_code=201)
 def create_assignment(ward_id: str, body: AssignmentCreate, principal: Principal = Depends(current_guardian), db: Session = Depends(get_db)):
@@ -167,8 +230,10 @@ def create_assignment(ward_id: str, body: AssignmentCreate, principal: Principal
     return {"id": row.id, "title": row.title, "status": row.status, "source": row.source}
 
 @app.get("/wards/{ward_id}/assignments")
-def assignments(ward_id: str, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
-    _ward_owned(principal, ward_id); return [{"id": x.id, "title": x.title, "details": x.details, "due_date": x.due_date, "status": x.status} for x in db.query(Assignment).filter_by(ward_id=ward_id, status="open").all()]
+def assignments(ward_id: str, principal: Principal = Depends(current_guardian_or_ward), db: Session = Depends(get_db)):
+    if principal.role == "ward": _ward_owned(principal, ward_id)
+    else: owned_ward(db, principal.user_id, ward_id)
+    return [{"id": x.id, "title": x.title, "details": x.details, "due_date": x.due_date, "status": x.status} for x in db.query(Assignment).filter_by(ward_id=ward_id, status="open").all()]
 
 @app.put("/wards/{ward_id}/plans/{plan_date}")
 def save_plan(ward_id: str, plan_date: date, body: PlanDraft, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
@@ -188,8 +253,10 @@ def confirm_plan(ward_id: str, plan_date: date, principal: Principal = Depends(c
     plan.status = "confirmed"; plan.confirmed_at = now(); db.commit(); return {"id": plan.id, "status": plan.status}
 
 @app.get("/wards/{ward_id}/plans/{plan_date}")
-def get_plan(ward_id: str, plan_date: date, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
-    _ward_owned(principal, ward_id); plan = db.query(DailyPlan).filter_by(ward_id=ward_id, plan_date=plan_date).one_or_none()
+def get_plan(ward_id: str, plan_date: date, principal: Principal = Depends(current_guardian_or_ward), db: Session = Depends(get_db)):
+    if principal.role == "ward": _ward_owned(principal, ward_id)
+    else: owned_ward(db, principal.user_id, ward_id)
+    plan = db.query(DailyPlan).filter_by(ward_id=ward_id, plan_date=plan_date).one_or_none()
     if plan is None: raise HTTPException(404, "plan not found")
     return {"id": plan.id, "status": plan.status, "items": [{"id": x.id, "title": x.title, "planned_minutes": x.planned_minutes, "status": x.status} for x in db.query(PlanItem).filter_by(plan_id=plan.id).order_by(PlanItem.position)]}
 

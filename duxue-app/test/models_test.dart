@@ -1,6 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:duxue_app/core/models.dart';
 import 'package:duxue_app/core/voice_transcription_service.dart';
+import 'package:duxue_app/main.dart' show appRedirect;
+import 'package:duxue_app/providers.dart' show AppSession;
+import 'package:duxue_app/features/day_story_pages.dart'
+    show wardBindFailureMessage;
 
 void main() {
   test('voice transcription derives an authenticated server WebSocket URL', () {
@@ -8,6 +12,27 @@ void main() {
       VoiceTranscriptionService.websocketUri('https://duxuelai.xyz/api')
           .toString(),
       'wss://duxuelai.xyz/api/ws/asr/transcribe',
+    );
+  });
+
+  test('student binding stays reachable before authentication', () {
+    expect(appRedirect(null, '/ward-bind'), isNull);
+    expect(appRedirect(null, '/wards'), '/login');
+  });
+
+  test('student session is routed only to its own learning space', () {
+    const session = AppSession.ward('ward-1');
+    expect(appRedirect(session, '/ward-bind'), '/ward-day/ward-1');
+    expect(appRedirect(session, '/ward-day/ward-1'), isNull);
+    expect(appRedirect(session, '/wards'), '/ward-day/ward-1');
+  });
+
+  test(
+      'student binding does not mislabel a local post-bind failure as a code error',
+      () {
+    expect(
+      wardBindFailureMessage(StateError('secure storage unavailable')),
+      '绑定请求已成功，但本机登录状态保存失败；请查看 Flutter 终端日志。',
     );
   });
 

@@ -164,7 +164,7 @@ class Report(Base):
 class WardCredential(Base):
     __tablename__ = "ward_credentials"
     ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id", ondelete="CASCADE"), primary_key=True)
-    pin_hash: Mapped[str] = mapped_column(String(255))
+    session_version: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 class WardInvite(Base):

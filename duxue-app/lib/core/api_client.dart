@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'models.dart';
 import 'token_storage.dart';
@@ -34,7 +35,8 @@ class ApiClient {
   ) async {
     if (error.response?.statusCode != 401 ||
         error.requestOptions.path.contains('/auth/refresh') ||
-        error.requestOptions.extra['retried'] == true) {
+        error.requestOptions.extra['retried'] == true ||
+        await tokens.wardId != null) {
       return handler.next(error);
     }
     try {
@@ -96,8 +98,11 @@ class ApiClient {
   Future<List<Ward>> wards() async => ((await dio.get('/wards')).data as List)
       .map((item) => Ward.fromJson(item))
       .toList();
-  Future<Ward> createWard(String name, String gradeStage) async => Ward.fromJson(
-        (await dio.post('/wards', data: {'display_name': name, 'grade_stage': gradeStage})).data,
+  Future<Ward> createWard(String name, String gradeStage) async =>
+      Ward.fromJson(
+        (await dio.post('/wards',
+                data: {'display_name': name, 'grade_stage': gradeStage}))
+            .data,
       );
   Future<Ward> updateWard(String wardId, {String? analysisProfileId}) async =>
       Ward.fromJson(
@@ -208,24 +213,54 @@ class ApiClient {
       Map<String, dynamic>.from(
           (await dio.post('/wards/$wardId/assignments', data: {'title': title}))
               .data);
+  Future<Map<String, dynamic>> respondToTaskIntake({
+    required String content,
+    required List<Map<String, dynamic>> history,
+    required List<Map<String, dynamic>> tasks,
+    required List<String> attachmentKeys,
+  }) async =>
+      Map<String, dynamic>.from((await dio.post('/task-intake/respond', data: {
+        'content': content,
+        'history': history,
+        'tasks': tasks,
+        'attachment_keys': attachmentKeys,
+      }))
+          .data);
+
+  Future<String> uploadTaskIntakeImage(
+      Uint8List bytes, String extension) async {
+    final contentType =
+        extension.toLowerCase() == 'png' ? 'image/png' : 'image/jpeg';
+    final signed = Map<String, dynamic>.from((await dio.post(
+      '/task-intake/upload-url',
+      data: {'extension': extension, 'content_type': contentType},
+    ))
+        .data);
+    await Dio().put(
+      signed['upload_url'] as String,
+      data: bytes,
+      options:
+          Options(headers: Map<String, dynamic>.from(signed['headers'] as Map)),
+    );
+    return signed['oss_key'] as String;
+  }
+
+  Future<void> confirmTaskIntake(
+          List<Map<String, dynamic>> tasks, List<String> attachmentKeys) =>
+      dio.post('/task-intake/confirm',
+          data: {'tasks': tasks, 'attachment_keys': attachmentKeys});
+
+  Future<void> cleanupTaskIntake(List<String> attachmentKeys) => dio
+      .post('/task-intake/cleanup', data: {'attachment_keys': attachmentKeys});
   Future<Map<String, dynamic>> wardInvite(String wardId) async =>
       Map<String, dynamic>.from(
           (await dio.post('/wards/$wardId/login-invite')).data);
-  Future<String> bindWard(String code, String pin) async {
-    final data = Map<String, dynamic>.from((await dio
-            .post('/ward-auth/bind', data: {'invite_code': code, 'pin': pin}))
-        .data);
+  Future<String> bindWard(String code) async {
+    final data = Map<String, dynamic>.from(
+        (await dio.post('/ward-auth/bind', data: {'invite_code': code})).data);
     await tokens.saveWard(
         data['access_token'] as String, data['ward_id'] as String);
     return data['ward_id'] as String;
-  }
-
-  Future<String> wardLogin(String wardId, String pin) async {
-    final data = Map<String, dynamic>.from((await dio
-            .post('/ward-auth/login', data: {'ward_id': wardId, 'pin': pin}))
-        .data);
-    await tokens.saveWard(data['access_token'] as String, wardId);
-    return wardId;
   }
 
   Future<List<dynamic>> assignments(String wardId) async =>

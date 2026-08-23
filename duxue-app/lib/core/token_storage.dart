@@ -8,6 +8,7 @@ class TokenStorage {
   Future<String?> get wardId => _storage.read(key: 'ward_id');
   Future<void> save(String access, String? refresh) async {
     await _storage.write(key: 'access_token', value: access);
+    await _storage.delete(key: 'ward_id');
     if (refresh != null) {
       await _storage.write(key: 'refresh_token', value: refresh);
     }

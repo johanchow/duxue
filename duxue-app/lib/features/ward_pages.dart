@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:pretty_qr_code/pretty_qr_code.dart';
 import '../core/models.dart';
 import '../core/voice_transcription_service.dart';
@@ -190,7 +191,6 @@ class _WardListPageState extends ConsumerState<WardListPage> {
       };
 
   Future<void> _transfer(List<Ward> wards) async {
-    final selected = <String>{if (wards.isNotEmpty) wards.first.id};
     final task = TextEditingController();
     final voice = VoiceTranscriptionService(
       baseUrl: apiBaseUrl,
@@ -198,6 +198,11 @@ class _WardListPageState extends ConsumerState<WardListPage> {
     );
     Timer? recordingLimit;
     var recording = false;
+    var sending = false;
+    var readyToConfirm = false;
+    final history = <Map<String, dynamic>>[];
+    var candidates = <Map<String, dynamic>>[];
+    final attachments = <String>[];
     Future<void> stopVoice(StateSetter setSheet) async {
       if (!recording) return;
       recordingLimit?.cancel();
@@ -217,30 +222,61 @@ class _WardListPageState extends ConsumerState<WardListPage> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('传递给孩子',
+                const Text('传递任务',
                     style:
                         TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 4),
-                const Text('可多选孩子；传递内容会进入任务池，不能修改已确认计划。'),
+                const Text('说清任务和孩子；归属不明确时，我会先问你。'),
                 const SizedBox(height: 10),
-                Wrap(
-                    spacing: 8,
-                    children: wards
-                        .map((ward) => FilterChip(
-                            label: Text(ward.displayName),
-                            selected: selected.contains(ward.id),
-                            onSelected: (on) => setSheet(() => on
-                                ? selected.add(ward.id)
-                                : selected.remove(ward.id))))
-                        .toList()),
+                if (history.isEmpty)
+                  const Text('例如：小宇明天交数学练习册第 12 页；小雨朗读英语课文。'),
+                ...history.map((message) => Align(
+                      alignment: message['role'] == 'guardian'
+                          ? Alignment.centerRight
+                          : Alignment.centerLeft,
+                      child: Container(
+                        margin: const EdgeInsets.only(top: 8),
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: message['role'] == 'guardian'
+                              ? Theme.of(sheetContext)
+                                  .colorScheme
+                                  .primaryContainer
+                              : Theme.of(sheetContext)
+                                  .colorScheme
+                                  .surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(message['content'] as String),
+                      ),
+                    )),
+                if (candidates.isNotEmpty)
+                  AppCard(
+                      child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                        const Text('当前整理的任务',
+                            style: TextStyle(fontWeight: FontWeight.w700)),
+                        ...candidates.map((item) {
+                          final ward = wards
+                              .where((value) => value.id == item['ward_id'])
+                              .firstOrNull;
+                          final due = item['due_date'] == null
+                              ? ''
+                              : ' · ${item['due_date']}';
+                          return Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Text(
+                                  '${ward?.displayName ?? '待确认'}：${item['title']}$due'));
+                        }),
+                      ])),
                 const SizedBox(height: 12),
                 Row(children: [
                   GestureDetector(
                     onLongPressStart: (_) async {
-                      if (recording || selected.isEmpty) return;
+                      if (recording || sending) return;
                       try {
                         await voice.start(
-                          wardIds: selected.toList(),
                           onPartial: (text) => setSheet(() {
                             task.value = TextEditingValue(
                               text: text,
@@ -317,60 +353,137 @@ class _WardListPageState extends ConsumerState<WardListPage> {
                     padding: EdgeInsets.zero,
                     tooltip: '添加附件',
                     icon: const Icon(Icons.add_circle_outline),
-                    onPressed: recording
+                    onPressed: recording || sending
                         ? null
-                        : () => showModalBottomSheet<void>(
-                              context: sheetContext,
-                              builder: (menuContext) => SafeArea(
-                                child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      ListTile(
-                                        leading: const Icon(Icons.mic_none),
-                                        title: const Text('语音'),
-                                        subtitle: const Text('请按住输入栏左侧麦克风说话'),
-                                        onTap: () => Navigator.pop(menuContext),
-                                      ),
-                                      ListTile(
-                                        leading:
-                                            const Icon(Icons.image_outlined),
-                                        title: const Text('截图'),
-                                        subtitle: const Text('等待图片上传接口接入'),
-                                        onTap: () {
-                                          Navigator.pop(menuContext);
-                                          showMessage(context, '截图上传接口接入后即可使用');
-                                        },
-                                      ),
-                                    ]),
-                              ),
-                            ),
+                        : () async {
+                            final image = await ImagePicker().pickImage(
+                                source: ImageSource.gallery, imageQuality: 85);
+                            if (image == null || !sheetContext.mounted) return;
+                            try {
+                              final extension =
+                                  image.name.split('.').last.toLowerCase();
+                              if (!const {'jpg', 'jpeg', 'png', 'webp'}
+                                  .contains(extension)) {
+                                if (sheetContext.mounted) {
+                                  showMessage(
+                                      sheetContext, '暂只支持 JPG、PNG 或 WebP 图片');
+                                }
+                                return;
+                              }
+                              final key = await ref
+                                  .read(apiProvider)
+                                  .uploadTaskIntakeImage(
+                                      await image.readAsBytes(), extension);
+                              if (sheetContext.mounted) {
+                                setSheet(() => attachments.add(key));
+                                showMessage(sheetContext, '已添加图片，发送后我会帮你整理');
+                              }
+                            } catch (_) {
+                              if (sheetContext.mounted) {
+                                showMessage(sheetContext, '图片上传失败，请重试');
+                              }
+                            }
+                          },
                   ),
                 ]),
                 const SizedBox(height: 12),
-                FilledButton(
-                    onPressed: selected.isEmpty || recording
-                        ? null
-                        : () async {
-                            if (task.text.trim().isEmpty) return;
-                            for (final wardId in selected) {
-                              await ref
-                                  .read(apiProvider)
-                                  .createAssignment(wardId, task.text.trim());
-                            }
-                            if (sheetContext.mounted) {
-                              Navigator.pop(sheetContext);
-                            }
-                            if (mounted) {
-                              showMessage(context, '已传递，等待孩子确认安排');
-                            }
-                          },
-                    child: const Text('传递并待确认')),
+                Row(children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: recording || sending
+                          ? null
+                          : () async {
+                              if (task.text.trim().isEmpty &&
+                                  attachments.isEmpty) {
+                                return;
+                              }
+                              final content = task.text.trim();
+                              setSheet(() => sending = true);
+                              try {
+                                final result = await ref
+                                    .read(apiProvider)
+                                    .respondToTaskIntake(
+                                      content: content,
+                                      history: history,
+                                      tasks: candidates,
+                                      attachmentKeys: attachments,
+                                    );
+                                if (!sheetContext.mounted) return;
+                                setSheet(() {
+                                  history.add({
+                                    'role': 'guardian',
+                                    'content':
+                                        content.isEmpty ? '我添加了一张图片' : content
+                                  });
+                                  history.add({
+                                    'role': 'assistant',
+                                    'content':
+                                        result['assistant_text'] as String
+                                  });
+                                  candidates = (result['tasks'] as List)
+                                      .map((value) => Map<String, dynamic>.from(
+                                          value as Map))
+                                      .toList();
+                                  readyToConfirm =
+                                      result['ready_to_confirm'] as bool? ??
+                                          false;
+                                  task.clear();
+                                });
+                              } catch (_) {
+                                if (sheetContext.mounted) {
+                                  showMessage(sheetContext, '暂时无法整理任务，请重试');
+                                }
+                              } finally {
+                                if (sheetContext.mounted) {
+                                  setSheet(() => sending = false);
+                                }
+                              }
+                            },
+                      child: Text(sending ? '正在整理…' : '发送'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: !readyToConfirm || recording || sending
+                          ? null
+                          : () async {
+                              setSheet(() => sending = true);
+                              try {
+                                await ref
+                                    .read(apiProvider)
+                                    .confirmTaskIntake(candidates, attachments);
+                                if (sheetContext.mounted) {
+                                  Navigator.pop(sheetContext);
+                                }
+                                if (mounted) {
+                                  showMessage(context, '已传递，等待孩子确认安排');
+                                }
+                              } catch (_) {
+                                if (sheetContext.mounted) {
+                                  showMessage(sheetContext, '确认失败，请检查后重试');
+                                }
+                              } finally {
+                                if (sheetContext.mounted) {
+                                  setSheet(() => sending = false);
+                                }
+                              }
+                            },
+                      child: const Text('确认传递'),
+                    ),
+                  ),
+                ]),
               ]),
         ),
       ),
     );
     recordingLimit?.cancel();
     await voice.dispose();
+    if (attachments.isNotEmpty) {
+      try {
+        await ref.read(apiProvider).cleanupTaskIntake(attachments);
+      } catch (_) {}
+    }
     task.dispose();
   }
 }
@@ -384,6 +497,16 @@ class WardDetailPage extends ConsumerStatefulWidget {
 
 class _WardDetailPageState extends ConsumerState<WardDetailPage> {
   int tab = 0;
+  Map<String, dynamic>? todayPlan;
+  List<dynamic> todayTasks = const [];
+  var loadingToday = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadToday();
+  }
+
   @override
   Widget build(BuildContext context) {
     final wards = ref.watch(wardsProvider).valueOrNull ?? const <Ward>[];
@@ -429,18 +552,45 @@ class _WardDetailPageState extends ConsumerState<WardDetailPage> {
                   ? Colors.green
                   : Colors.orange)),
       const SectionLabel('今日计划'),
-      const AppCard(
-          child: ListTile(
+      if (loadingToday)
+        const AppCard(
+            child: Center(
+                child: Padding(
+                    padding: EdgeInsets.all(20),
+                    child: CircularProgressIndicator())))
+      else if (todayPlan?['status'] == 'confirmed')
+        AppCard(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const ListTile(
+              contentPadding: EdgeInsets.zero,
               leading: Icon(Icons.check_circle_outline),
               title: Text('孩子确认的计划'),
-              subtitle: Text('计划与任务进度由孩子自己安排；家长可以传递任务或留言。'))),
-      const SizedBox(height: 10),
-      AppCard(
-          onTap: () => context.go('/wards/${widget.wardId}/story'),
-          child: const ListTile(
-              leading: Icon(Icons.add_task),
-              title: Text('传递任务与查看今晚学习故事'),
-              subtitle: Text('提交外部作业、生成孩子绑定码'))),
+              subtitle: Text('这是孩子自己确认的今日安排。')),
+          ...((todayPlan?['items'] as List<dynamic>? ?? const [])
+              .map((item) => Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(
+                        '• ${item['title']} · ${item['planned_minutes']} 分钟'),
+                  ))),
+        ]))
+      else
+        AppCard(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.format_list_bulleted),
+              title: Text('待安排任务'),
+              subtitle: Text('孩子尚未确认今日计划，以下是当前任务。')),
+          if (todayTasks.isEmpty)
+            const Text('目前没有待安排任务。')
+          else
+            ...todayTasks.map((item) => Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text('• ${item['title']}'),
+                )),
+        ])),
     ]);
   }
 
@@ -468,6 +618,13 @@ class _WardDetailPageState extends ConsumerState<WardDetailPage> {
 
   Widget _settings(Ward? ward) =>
       ListView(padding: const EdgeInsets.all(16), children: [
+        const SectionLabel('学生 App'),
+        AppCard(
+            onTap: _wardAppInvite,
+            child: const ListTile(
+                leading: Icon(Icons.phonelink_setup),
+                title: Text('绑定/更换学生 App 设备'),
+                subtitle: Text('生成一次性绑定码；换机后旧设备会退出'))),
         const SectionLabel('设备'),
         AppCard(
             onTap: _invite,
@@ -485,6 +642,53 @@ class _WardDetailPageState extends ConsumerState<WardDetailPage> {
                     ? '系统默认，不修改也能正常工作'
                     : '已使用自定义配置')))
       ]);
+
+  Future<void> _loadToday() async {
+    try {
+      final api = ref.read(apiProvider);
+      final tasks = await api.assignments(widget.wardId);
+      Map<String, dynamic>? plan;
+      try {
+        plan = await api.plan(widget.wardId, DateTime.now());
+      } catch (_) {
+        // A missing plan is the normal state before the Ward has confirmed one.
+      }
+      if (mounted) {
+        setState(() {
+          todayTasks = tasks;
+          todayPlan = plan;
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() => loadingToday = false);
+      }
+    }
+  }
+
+  Future<void> _wardAppInvite() async {
+    try {
+      final invite = await ref.read(apiProvider).wardInvite(widget.wardId);
+      if (!mounted) return;
+      await showDialog<void>(
+          context: context,
+          builder: (context) => AlertDialog(
+                  title: const Text('学生 App 绑定码'),
+                  content: Column(mainAxisSize: MainAxisSize.min, children: [
+                    SelectableText(invite['invite_code'] as String,
+                        style: Theme.of(context).textTheme.headlineMedium),
+                    const SizedBox(height: 10),
+                    const Text('请在新学生 App 输入此 6 位码。首次绑定与换机相同；成功后旧设备会立即退出。'),
+                  ]),
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('完成'))
+                  ]));
+    } catch (error) {
+      if (mounted) showMessage(context, '生成学生 App 绑定码失败：$error');
+    }
+  }
 
   Future<void> _invite() async {
     try {

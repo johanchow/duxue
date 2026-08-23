@@ -15,21 +15,36 @@ final apiProvider = Provider(
   (ref) =>
       ApiClient(baseUrl: apiBaseUrl, tokens: ref.watch(tokenStorageProvider)),
 );
-final authProvider = AsyncNotifierProvider<AuthController, bool>(
+
+class AppSession {
+  const AppSession.guardian() : wardId = null;
+  const AppSession.ward(this.wardId);
+
+  final String? wardId;
+  bool get isWard => wardId != null;
+}
+
+final authProvider = AsyncNotifierProvider<AuthController, AppSession?>(
   AuthController.new,
 );
 
-class AuthController extends AsyncNotifier<bool> {
+class AuthController extends AsyncNotifier<AppSession?> {
   @override
-  Future<bool> build() async =>
-      (await ref.read(tokenStorageProvider).access) != null;
+  Future<AppSession?> build() async {
+    if (await ref.read(tokenStorageProvider).access == null) return null;
+    final wardId = await ref.read(tokenStorageProvider).wardId;
+    return wardId == null
+        ? const AppSession.guardian()
+        : AppSession.ward(wardId);
+  }
+
   Future<void> login(String email, String password) async {
     state = const AsyncLoading();
     try {
       await ref.read(apiProvider).login(email, password);
-      state = const AsyncData(true);
+      state = const AsyncData(AppSession.guardian());
     } catch (_) {
-      state = const AsyncData(false);
+      state = const AsyncData(null);
       rethrow;
     }
   }
@@ -38,17 +53,19 @@ class AuthController extends AsyncNotifier<bool> {
     state = const AsyncLoading();
     try {
       await ref.read(apiProvider).register(name, email, password);
-      state = const AsyncData(true);
+      state = const AsyncData(AppSession.guardian());
     } catch (_) {
-      state = const AsyncData(false);
+      state = const AsyncData(null);
       rethrow;
     }
   }
 
   Future<void> logout() async {
     await ref.read(tokenStorageProvider).clear();
-    state = const AsyncData(false);
+    state = const AsyncData(null);
   }
+
+  void enterWard(String wardId) => state = AsyncData(AppSession.ward(wardId));
 }
 
 final wardsProvider = FutureProvider<List<Ward>>(
