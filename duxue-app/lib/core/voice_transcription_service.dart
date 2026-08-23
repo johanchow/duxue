@@ -34,7 +34,6 @@ class VoiceTranscriptionService {
   }
 
   Future<void> start({
-    required List<String> wardIds,
     required TranscriptHandler onPartial,
     required TranscriptHandler onFinal,
     required VoiceErrorHandler onError,
@@ -62,7 +61,7 @@ class VoiceTranscriptionService {
           onError(event['message'] as String? ?? '语音识别暂不可用');
       }
     }, onError: (_, __) => onError('语音连接已断开'));
-    socket.sink.add(jsonEncode({'type': 'start', 'ward_ids': wardIds}));
+    socket.sink.add(jsonEncode({'type': 'start'}));
     final stream = await _recorder.startStream(const RecordConfig(
       encoder: AudioEncoder.pcm16bits,
       sampleRate: 16000,

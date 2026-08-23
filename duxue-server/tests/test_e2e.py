@@ -17,6 +17,8 @@ os.environ["SECRET_KEY"] = "test-secret"
 
 from fastapi.testclient import TestClient  # noqa: E402
 from app.main import app  # noqa: E402
+from app.storage import storage  # noqa: E402
+from app.task_intake import TaskIntakeResult  # noqa: E402
 
 
 class EndToEndTest(unittest.TestCase):
@@ -138,12 +140,50 @@ class EndToEndTest(unittest.TestCase):
 
         with patch("app.main.DashscopeRealtimeAsr.connect", new=AsyncMock(return_value=FakeAsr())):
             with self.client.websocket_connect("/ws/asr/transcribe", headers={"Authorization": f"Bearer {token}"}) as socket:
-                socket.send_json({"type": "start", "ward_ids": [ward]})
+                socket.send_json({"type": "start"})
                 self.assertEqual(socket.receive_json()["type"], "ready")
                 socket.send_bytes(b"pcm")
                 socket.send_json({"type": "commit"})
                 self.assertEqual(socket.receive_json(), {"type": "partial", "text": "安排明天的数"})
                 self.assertEqual(socket.receive_json(), {"type": "final", "text": "安排明天的数学作业"})
+
+    def test_task_intake_requires_llm_clarification_then_confirms_only_owned_wards(self):
+        token = self.request("POST", "/auth/register", json={"name": "多孩家长", "email": "intake@example.com", "password": "password123"}).json()["access_token"]
+        first = self.request("POST", "/wards", token=token, json={"display_name": "小宇", "grade_stage": "primary"}).json()["id"]
+        second = self.request("POST", "/wards", token=token, json={"display_name": "小雨", "grade_stage": "middle"}).json()["id"]
+        ambiguous = TaskIntakeResult(
+            assistant_text="这项作业是给小宇还是小雨？", clarification_required=True,
+            questions=["请说明任务归属"], ready_to_confirm=False,
+        )
+        with patch("app.main.TaskIntakeService.respond", return_value=ambiguous):
+            response = self.request("POST", "/task-intake/respond", token=token, json={"content": "明天交数学作业"})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertFalse(response.json()["ready_to_confirm"])
+        self.assertEqual(response.json()["tasks"], [])
+
+        parsed = TaskIntakeResult(
+            assistant_text="已整理两项任务。",
+            tasks=[
+                {"ward_id": first, "title": "数学作业"},
+                {"ward_id": second, "title": "英语朗读", "details": "朗读课文"},
+            ], ready_to_confirm=True,
+        )
+        signed = self.request("POST", "/task-intake/upload-url", token=token, json={"extension": "jpg", "content_type": "image/jpeg"})
+        self.assertEqual(signed.status_code, 200, signed.text)
+        self.assertEqual(self.client.put(signed.json()["upload_url"], content=b"task-image").status_code, 204)
+        attachment = signed.json()["oss_key"]
+        with patch("app.main.TaskIntakeService.respond", return_value=parsed):
+            response = self.request("POST", "/task-intake/respond", token=token, json={"content": "数学给小宇，英语朗读给小雨", "attachment_keys": [attachment]})
+        self.assertTrue(response.json()["ready_to_confirm"])
+        confirmation = self.request("POST", "/task-intake/confirm", token=token, json={"tasks": response.json()["tasks"], "attachment_keys": [attachment]})
+        self.assertEqual(confirmation.status_code, 201, confirmation.text)
+        self.assertEqual({item["ward_id"] for item in confirmation.json()["assignments"]}, {first, second})
+        self.assertFalse(storage.exists(attachment))
+
+        outsider = self.request("POST", "/auth/register", json={"name": "外部家长", "email": "intake-other@example.com", "password": "password123"}).json()["access_token"]
+        foreign = self.request("POST", "/wards", token=outsider, json={"display_name": "外部孩子", "grade_stage": "high"}).json()["id"]
+        rejected = self.request("POST", "/task-intake/confirm", token=token, json={"tasks": [{"ward_id": foreign, "title": "不应写入"}]})
+        self.assertEqual(rejected.status_code, 404)
 
 
 if __name__ == "__main__":
