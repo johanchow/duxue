@@ -72,6 +72,13 @@ class Settings:
     batch_completion_window: str = os.getenv("VLM_BATCH_COMPLETION_WINDOW", "24h")
     batch_submit_hour: int = int(os.getenv("VLM_BATCH_SUBMIT_HOUR", "22"))
     batch_fallback_after_hours: int = int(os.getenv("VLM_BATCH_FALLBACK_AFTER_HOURS", "20"))
+    # Real-time ASR is optional at startup so existing non-voice deployments
+    # remain available until the provider workspace has been configured.
+    asr_api_key: str = os.getenv("ASR_API_KEY") or os.getenv("VLM_API_KEY") or os.getenv("DASHSCOPE_API_KEY", "")
+    asr_model: str = os.getenv("ASR_MODEL", "qwen3-asr-flash-realtime")
+    asr_workspace_id: str = os.getenv("ASR_WORKSPACE_ID", "")
+    asr_websocket_url: str = os.getenv("ASR_WEBSOCKET_URL", "")
+    asr_max_record_seconds: int = _integer("ASR_MAX_RECORD_SECONDS", "60")
     redis_url: str = os.getenv("REDIS_URL") or ""
     redis_host: str = os.getenv("REDIS_HOST", "").strip()
     redis_port: int = _integer("REDIS_PORT", "6379")

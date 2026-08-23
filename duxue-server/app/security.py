@@ -41,10 +41,10 @@ def _unb64(data: str) -> bytes:
     return base64.urlsafe_b64decode(data + "=" * (-len(data) % 4))
 
 
-def create_access_token(*, user_id: str, tenant_id: str, role: str) -> str:
+def create_access_token(*, user_id: str, role: str) -> str:
     header = _b64(json.dumps({"alg": "HS256", "typ": "JWT"}, separators=(",", ":")).encode())
     payload = _b64(json.dumps({
-        "sub": user_id, "tenant_id": tenant_id, "role": role,
+        "sub": user_id, "role": role,
         "exp": int(time.time()) + settings.access_token_minutes * 60,
     }, separators=(",", ":")).encode())
     signature = _b64(hmac.new(settings.secret_key.encode(), f"{header}.{payload}".encode(), hashlib.sha256).digest())

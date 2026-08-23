@@ -17,18 +17,9 @@ def now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-class Tenant(Base):
-    __tablename__ = "tenants"
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
-    name: Mapped[str] = mapped_column(String(100))
-    plan: Mapped[str] = mapped_column(String(30), default="self_hosted")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
-
-
 class User(Base):
     __tablename__ = "users"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
-    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), index=True)
     type: Mapped[str] = mapped_column(String(20), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
@@ -46,8 +37,8 @@ class Guardian(Base):
 class Ward(Base):
     __tablename__ = "user_wards"
     id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
-    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), index=True)
     display_name: Mapped[str] = mapped_column(String(100))
+    grade_stage: Mapped[str] = mapped_column(String(20), default="primary")
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     analysis_profile_id: Mapped[str | None] = mapped_column(ForeignKey("analysis_profiles.id"), nullable=True)
 
@@ -56,7 +47,6 @@ class GuardianWard(Base):
     __tablename__ = "guardian_ward_relations"
     __table_args__ = (UniqueConstraint("guardian_id", "ward_id"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
-    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), index=True)
     guardian_id: Mapped[str] = mapped_column(ForeignKey("user_guardians.id", ondelete="CASCADE"))
     ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id", ondelete="CASCADE"))
 
@@ -73,7 +63,6 @@ class RefreshToken(Base):
 class AnalysisProfile(Base):
     __tablename__ = "analysis_profiles"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
-    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), index=True)
     created_by: Mapped[str] = mapped_column(ForeignKey("user_guardians.id"))
     name: Mapped[str] = mapped_column(String(100))
     extra_observation_prompt: Mapped[str] = mapped_column(Text, default="")
@@ -83,7 +72,6 @@ class AnalysisProfile(Base):
 class BehaviorLabelConfig(Base):
     __tablename__ = "behavior_label_configs"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
-    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), index=True)
     profile_id: Mapped[str] = mapped_column(ForeignKey("analysis_profiles.id", ondelete="CASCADE"), index=True)
     label_name: Mapped[str] = mapped_column(String(100))
     field_prototypes: Mapped[dict] = mapped_column(JSON, default=dict)
@@ -94,7 +82,6 @@ class BehaviorLabelConfig(Base):
 class Device(Base):
     __tablename__ = "devices"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
-    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), index=True)
     ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id", ondelete="CASCADE"), index=True)
     device_type: Mapped[str] = mapped_column(String(30), default="android")
     device_token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
@@ -111,7 +98,6 @@ class Device(Base):
 class Frame(Base):
     __tablename__ = "frames"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
-    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), index=True)
     device_id: Mapped[str] = mapped_column(ForeignKey("devices.id", ondelete="CASCADE"), index=True)
     ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id", ondelete="CASCADE"), index=True)
     captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
@@ -127,7 +113,6 @@ class Frame(Base):
 class FramePrediction(Base):
     __tablename__ = "frame_predictions"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
-    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), index=True)
     frame_id: Mapped[str] = mapped_column(ForeignKey("frames.id", ondelete="CASCADE"), unique=True)
     behavior_label: Mapped[str] = mapped_column(String(100))
     confidence: Mapped[float] = mapped_column(Float)
@@ -139,7 +124,6 @@ class FramePrediction(Base):
 class AnalysisBatch(Base):
     __tablename__ = "analysis_batches"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
-    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), index=True)
     batch_date: Mapped[date] = mapped_column(Date)
     provider_batch_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[str] = mapped_column(String(30), default="submitted")
@@ -152,7 +136,6 @@ class AnalysisBatch(Base):
 class BehaviorSegment(Base):
     __tablename__ = "behavior_segments"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
-    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), index=True)
     ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id", ondelete="CASCADE"), index=True)
     report_date: Mapped[date] = mapped_column(Date, index=True)
     seg_start: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -164,9 +147,8 @@ class BehaviorSegment(Base):
 
 class Report(Base):
     __tablename__ = "reports"
-    __table_args__ = (UniqueConstraint("tenant_id", "ward_id", "report_date"),)
+    __table_args__ = (UniqueConstraint("ward_id", "report_date"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
-    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), index=True)
     ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id", ondelete="CASCADE"), index=True)
     report_date: Mapped[date] = mapped_column(Date, index=True)
     total_seconds: Mapped[int] = mapped_column(Integer, default=0)
@@ -188,7 +170,6 @@ class WardCredential(Base):
 class WardInvite(Base):
     __tablename__ = "ward_invites"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
-    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), index=True)
     ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id", ondelete="CASCADE"), index=True)
     code: Mapped[str] = mapped_column(String(8), unique=True, index=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -197,7 +178,6 @@ class WardInvite(Base):
 class Assignment(Base):
     __tablename__ = "assignments"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
-    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), index=True)
     ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id", ondelete="CASCADE"), index=True)
     title: Mapped[str] = mapped_column(String(300))
     details: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -208,9 +188,8 @@ class Assignment(Base):
 
 class DailyPlan(Base):
     __tablename__ = "daily_plans"
-    __table_args__ = (UniqueConstraint("tenant_id", "ward_id", "plan_date"),)
+    __table_args__ = (UniqueConstraint("ward_id", "plan_date"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
-    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), index=True)
     ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id", ondelete="CASCADE"), index=True)
     plan_date: Mapped[date] = mapped_column(Date, index=True)
     status: Mapped[str] = mapped_column(String(20), default="draft")
@@ -229,7 +208,6 @@ class PlanItem(Base):
 class StudySession(Base):
     __tablename__ = "study_sessions"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
-    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), index=True)
     ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id", ondelete="CASCADE"), index=True)
     plan_item_id: Mapped[str] = mapped_column(ForeignKey("plan_items.id"), index=True)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
@@ -248,9 +226,8 @@ class StudyMessage(Base):
 
 class SelfReview(Base):
     __tablename__ = "self_reviews"
-    __table_args__ = (UniqueConstraint("tenant_id", "ward_id", "review_date"),)
+    __table_args__ = (UniqueConstraint("ward_id", "review_date"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
-    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), index=True)
     ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id", ondelete="CASCADE"), index=True)
     review_date: Mapped[date] = mapped_column(Date, index=True)
     feeling: Mapped[str] = mapped_column(String(40))
@@ -261,7 +238,6 @@ class SelfReview(Base):
 class FocusKit(Base):
     __tablename__ = "focus_kits"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
-    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), index=True)
     ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id", ondelete="CASCADE"), index=True)
     review_date: Mapped[date] = mapped_column(Date, index=True)
     advice: Mapped[str] = mapped_column(Text)

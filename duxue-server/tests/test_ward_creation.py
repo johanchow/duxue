@@ -20,7 +20,7 @@ class _Db:
 class WardCreationTest(unittest.TestCase):
     def test_flushes_ward_before_adding_guardian_relation(self):
         db = _Db()
-        create_ward(WardCreate(display_name="小读"), Principal("guardian", "tenant", "admin"), db)
+        create_ward(WardCreate(display_name="小读", grade_stage="primary"), Principal("guardian", "admin"), db)
         relation_index = next(i for i, value in enumerate(db.added) if isinstance(value, GuardianWard))
         self.assertIsInstance(db.added[relation_index - 1], Ward)
         self.assertEqual(db.flushes, 2, "ward must be flushed before its FK relation is added")

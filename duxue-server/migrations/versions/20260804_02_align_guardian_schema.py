@@ -24,19 +24,22 @@ def upgrade() -> None:
         bind.execute(sa.text("UPDATE user_guardians SET role = 'admin' WHERE role = 'owner'"))
         bind.execute(sa.text("UPDATE user_guardians SET role = 'guardian' WHERE role IN ('teacher', 'parent')"))
         checks = {item["name"] for item in inspector.get_check_constraints("user_guardians")}
-        if "ck_guardian_role" not in checks:
-            op.create_check_constraint("ck_guardian_role", "user_guardians", "role IN ('admin', 'guardian')")
-        op.alter_column("user_guardians", "role", server_default="guardian")
+        with op.batch_alter_table("user_guardians", recreate="always") as batch:
+            if "ck_guardian_role" not in checks:
+                batch.create_check_constraint("ck_guardian_role", "role IN ('admin', 'guardian')")
+            batch.alter_column("role", server_default="guardian")
 
     if inspector.has_table("user_wards"):
         columns = {item["name"] for item in inspector.get_columns("user_wards")}
         if "birth_year" in columns:
-            op.drop_column("user_wards", "birth_year")
+            with op.batch_alter_table("user_wards", recreate="always") as batch:
+                batch.drop_column("birth_year")
 
     if inspector.has_table("guardian_ward_relations"):
         columns = {item["name"] for item in inspector.get_columns("guardian_ward_relations")}
         if "relation_type" in columns:
-            op.drop_column("guardian_ward_relations", "relation_type")
+            with op.batch_alter_table("guardian_ward_relations", recreate="always") as batch:
+                batch.drop_column("relation_type")
 
 
 def downgrade() -> None:

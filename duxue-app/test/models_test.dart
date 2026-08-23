@@ -1,7 +1,28 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:duxue_app/core/models.dart';
+import 'package:duxue_app/core/voice_transcription_service.dart';
 
 void main() {
+  test('voice transcription derives an authenticated server WebSocket URL', () {
+    expect(
+      VoiceTranscriptionService.websocketUri('https://duxuelai.xyz/api')
+          .toString(),
+      'wss://duxuelai.xyz/api/ws/asr/transcribe',
+    );
+  });
+
+  test('ward parses the required grade stage from the API contract', () {
+    final ward = Ward.fromJson({
+      'id': 'ward-1',
+      'display_name': '小读',
+      'grade_stage': 'middle',
+      'notes': null,
+      'analysis_profile_id': null,
+    });
+
+    expect(ward.gradeStage, 'middle');
+  });
+
   test('daily report parses API contract', () {
     final report = DailyReport.fromJson({
       'status': 'ready',

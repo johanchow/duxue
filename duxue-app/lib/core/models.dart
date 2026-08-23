@@ -2,16 +2,19 @@ class Ward {
   const Ward({
     required this.id,
     required this.displayName,
+    required this.gradeStage,
     this.notes,
     this.analysisProfileId,
   });
   final String id;
   final String displayName;
+  final String gradeStage;
   final String? notes;
   final String? analysisProfileId;
   factory Ward.fromJson(Map<String, dynamic> json) => Ward(
         id: json['id'] as String,
         displayName: json['display_name'] as String,
+        gradeStage: json['grade_stage'] as String? ?? 'primary',
         notes: json['notes'] as String?,
         analysisProfileId: json['analysis_profile_id'] as String?,
       );

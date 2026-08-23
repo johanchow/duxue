@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>读学 · Ward 端 UI 原型 v2</title>
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-light: #dbeafe;
+      --surface: #f8fafc;
+      --card: #ffffff;
+      --text: #0f172a;
+      --text-secondary: #64748b;
+      --border: #e2e8f0;
+      --success: #16a34a;
+      --success-bg: #f0fdf4;
+      --warning-bg: #fffbeb;
+      --accent: #7c3aed;
+      --accent-light: #ede9fe;
+      --radius: 16px;
+      --phone-w: 390px;
+      --phone-h: 844px;
+      --tab-h: 62px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      background: linear-gradient(135deg, #dbeafe 0%, #f8fafc 45%, #e0e7ff 100%);
+      min-height: 100vh;
+      color: var(--text);
+      padding: 24px 16px 40px;
+    }
+
+    .page-header { max-width: 640px; margin: 0 auto 20px; text-align: center; }
+    .page-header h1 { font-size: 1.35rem; font-weight: 700; margin-bottom: 6px; }
+    .page-header p { color: var(--text-secondary); font-size: 0.88rem; line-height: 1.55; }
+
+    .controls {
+      max-width: 960px; margin: 0 auto 24px;
+      display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
+    }
+
+    .tab-btn {
+      border: 1.5px solid var(--border); background: var(--card);
+      padding: 7px 14px; border-radius: 999px; font-size: 0.82rem; cursor: pointer;
+    }
+    .tab-btn.active { background: var(--primary); border-color: var(--primary); color: #fff; font-weight: 600; }
+
+    .layout { display: flex; justify-content: center; }
+    .phone-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+    .phone-label { font-size: 0.78rem; color: var(--text-secondary); font-weight: 600; }
+
+    .phone {
+      width: var(--phone-w); height: var(--phone-h);
+      background: var(--surface); border-radius: 40px;
+      box-shadow: 0 20px 60px rgba(15, 23, 42, 0.18), inset 0 0 0 10px #1e293b;
+      overflow: hidden; display: flex; flex-direction: column; position: relative;
+    }
+
+    .status-bar {
+      height: 44px; padding: 12px 24px 0;
+      display: flex; justify-content: space-between;
+      font-size: 0.75rem; font-weight: 600; flex-shrink: 0;
+    }
+
+    .screen { flex: 1; overflow-y: auto; padding: 0 16px 12px; scrollbar-width: none; }
+    .screen::-webkit-scrollbar { display: none; }
+
+    .view { display: none; }
+    .view.active { display: block; }
+
+    .greeting { padding: 4px 0 14px; }
+    .greeting h2 { font-size: 1.3rem; font-weight: 700; }
+    .greeting p { font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px; }
+
+    .section-head {
+      display: flex; justify-content: space-between; align-items: center;
+      margin: 4px 0 8px;
+    }
+    .section-head h3 {
+      font-size: 0.72rem; font-weight: 600; color: var(--text-secondary);
+      letter-spacing: 0.06em; text-transform: uppercase;
+    }
+    .section-head .link {
+      font-size: 0.78rem; color: var(--primary); font-weight: 600; border: none; background: none; cursor: pointer;
+    }
+
+    .seg-control {
+      display: flex; background: #f1f5f9; border-radius: 10px; padding: 3px; margin-bottom: 12px;
+    }
+    .seg-btn {
+      flex: 1; border: none; background: transparent; padding: 8px 0;
+      font-size: 0.82rem; font-weight: 500; color: var(--text-secondary);
+      border-radius: 8px; cursor: pointer; font-family: inherit;
+    }
+    .seg-btn.active {
+      background: var(--card); color: var(--text); font-weight: 600;
+      box-shadow: 0 1px 3px rgba(15,23,42,0.08);
+    }
+
+    .home-panel { display: none; }
+    .home-panel.active { display: block; }
+
+    .card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); overflow: hidden; margin-bottom: 10px;
+    }
+
+    .timeline { padding: 4px 16px 12px; }
+    .tl-row {
+      display: flex; gap: 10px; padding: 12px 0;
+      border-left: 2px solid var(--border); margin-left: 8px; padding-left: 16px; position: relative;
+    }
+    .tl-row::before {
+      content: ''; width: 10px; height: 10px; border-radius: 50%;
+      background: var(--primary); border: 2px solid var(--card);
+      box-shadow: 0 0 0 2px var(--primary-light);
+      position: absolute; left: -6px; top: 16px;
+    }
+    .tl-row.done::before { background: #94a3b8; box-shadow: none; }
+    .tl-row.done h4 { color: var(--text-secondary); text-decoration: line-through; }
+    .tl-row.current::before { box-shadow: 0 0 0 4px var(--primary-light); }
+    .tl-row.current h4 { color: var(--primary); }
+    .tl-row .time { font-size: 0.72rem; color: var(--text-secondary); width: 38px; flex-shrink: 0; padding-top: 2px; }
+    .tl-row h4 { font-size: 0.9rem; font-weight: 600; }
+    .tl-row p { font-size: 0.72rem; color: var(--text-secondary); margin-top: 2px; }
+
+    .hero-action {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 16px; margin: 12px 0;
+      box-shadow: 0 2px 8px rgba(15,23,42,0.04);
+    }
+    .hero-action .tag {
+      font-size: 0.68rem; font-weight: 600; color: var(--primary);
+      letter-spacing: 0.04em; margin-bottom: 6px;
+    }
+    .hero-action h3 { font-size: 1.05rem; font-weight: 700; margin-bottom: 4px; }
+    .hero-action p { font-size: 0.8rem; color: var(--text-secondary); line-height: 1.45; margin-bottom: 14px; }
+
+    .btn-row { display: flex; gap: 8px; }
+    .btn {
+      flex: 1; border: none; border-radius: 12px; padding: 12px;
+      font-size: 0.88rem; font-weight: 600; cursor: pointer; font-family: inherit;
+    }
+    .btn-primary { background: var(--primary); color: #fff; box-shadow: 0 4px 12px rgba(37,99,235,0.28); }
+    .btn-outline { background: var(--card); color: var(--primary); border: 1.5px solid var(--primary-light); }
+
+    .observe-pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 0.72rem; color: #1e40af; background: #eff6ff;
+      border: 1px solid #bfdbfe; border-radius: 999px; padding: 4px 10px; margin-bottom: 10px;
+    }
+    button.observe-pill { font-family: inherit; cursor: pointer; }
+    .observe-pill .dot {
+      width: 6px; height: 6px; border-radius: 50%; background: var(--success);
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.35} }
+
+    .list-row {
+      display: flex; align-items: center; gap: 12px; padding: 14px 16px;
+    }
+    .list-row + .list-row { border-top: 1px solid var(--border); }
+    .list-body { flex: 1; }
+    .list-body h4 { font-size: 0.9rem; font-weight: 600; }
+    .list-body p { font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px; }
+
+    .badge {
+      font-size: 0.68rem; font-weight: 600; padding: 3px 8px; border-radius: 999px; flex-shrink: 0;
+    }
+    .badge.pending { background: var(--warning-bg); color: #92400e; }
+    .badge.done { background: var(--success-bg); color: #166534; }
+
+    .add-task-btn {
+      width: 100%; margin-top: 8px; padding: 12px;
+      border: 1.5px dashed var(--border); background: transparent;
+      border-radius: 12px; color: var(--primary); font-weight: 600;
+      font-size: 0.85rem; cursor: pointer; font-family: inherit;
+    }
+
+    /* ── 计划完成 · 口述总结 ── */
+    .done-banner {
+      background: var(--success-bg); border: 1px solid #bbf7d0;
+      border-radius: var(--radius); padding: 14px 16px; margin-bottom: 14px;
+      display: flex; align-items: center; gap: 12px;
+    }
+    .done-banner .check {
+      width: 40px; height: 40px; border-radius: 50%; background: #dcfce7;
+      display: grid; place-items: center; font-size: 1.2rem; flex-shrink: 0;
+    }
+    .done-banner h3 { font-size: 0.95rem; font-weight: 700; color: #166534; }
+    .done-banner p { font-size: 0.78rem; color: #15803d; margin-top: 2px; }
+
+    .voice-card {
+      background: linear-gradient(165deg, #5b21b6 0%, var(--primary) 100%);
+      border-radius: 20px; padding: 22px 18px; color: #fff;
+      text-align: center; margin-bottom: 14px;
+      box-shadow: 0 8px 24px rgba(91, 33, 182, 0.25);
+    }
+    .voice-card h3 { font-size: 1.1rem; font-weight: 700; margin-bottom: 6px; }
+    .voice-card > p { font-size: 0.82rem; opacity: 0.9; line-height: 1.45; margin-bottom: 20px; }
+
+    .mic-btn {
+      width: 72px; height: 72px; border-radius: 50%; border: none;
+      background: rgba(255,255,255,0.95); color: var(--primary);
+      font-size: 1.8rem; cursor: pointer; margin: 0 auto 12px;
+      display: grid; place-items: center;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    }
+    .mic-hint { font-size: 0.75rem; opacity: 0.85; }
+
+    .voice-transcript {
+      background: rgba(255,255,255,0.15); border-radius: 12px;
+      padding: 12px 14px; margin-top: 16px; text-align: left;
+      font-size: 0.8rem; line-height: 1.5; display: none;
+    }
+    .voice-card.recording .voice-transcript { display: block; }
+    .voice-card.recording .mic-btn { background: #fecaca; color: #dc2626; animation: pulse 1s infinite; }
+
+    .plan-done-list .tl-row::before { background: var(--success); box-shadow: none; }
+
+    /* ── 成长 ── */
+    .section-label {
+      font-size: 0.72rem; font-weight: 600; color: var(--text-secondary);
+      letter-spacing: 0.06em; margin: 14px 0 8px; text-transform: uppercase;
+    }
+
+    .feedback-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 14px 16px; margin-bottom: 10px;
+    }
+    .feedback-card .date { font-size: 0.72rem; color: var(--text-secondary); margin-bottom: 6px; }
+    .feedback-card h4 { font-size: 0.92rem; font-weight: 600; margin-bottom: 6px; }
+    .feedback-card p { font-size: 0.78rem; color: var(--text-secondary); line-height: 1.45; }
+
+    .dual-mini {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px;
+    }
+    .dual-mini div {
+      background: #f8fafc; border-radius: 8px; padding: 8px; font-size: 0.72rem;
+    }
+    .dual-mini strong { display: block; font-size: 0.68rem; color: var(--text-secondary); margin-bottom: 4px; }
+
+    .insight-card {
+      background: var(--accent-light); border: 1px solid #ddd6fe;
+      border-radius: 14px; padding: 14px; margin-bottom: 12px;
+    }
+    .insight-card h4 { font-size: 0.88rem; font-weight: 700; color: #5b21b6; margin-bottom: 4px; }
+    .insight-card p { font-size: 0.78rem; color: #6d28d9; line-height: 1.45; }
+    .review-submit { width: 100%; margin-top: 14px; padding: 11px; border: none; border-radius: 10px; background: #fff; color: var(--primary); font: 700 0.84rem inherit; cursor: pointer; }
+    .today-waiting { text-align: center; padding: 38px 18px; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); }
+    .today-waiting .icon { font-size: 2rem; margin-bottom: 10px; }
+    .today-waiting h3 { font-size: 1rem; margin-bottom: 6px; }
+    .today-waiting p { color: var(--text-secondary); font-size: .8rem; line-height: 1.5; }
+    .dual-timeline { border-left: 2px solid var(--primary-light); margin: 12px 0 2px 7px; padding-left: 14px; }
+    .dual-point { position: relative; padding: 0 0 13px; font-size: .76rem; line-height: 1.45; }
+    .dual-point::before { content: ''; position: absolute; width: 8px; height: 8px; border-radius: 50%; background: var(--primary); left: -19px; top: 4px; }
+    .dual-point strong { display: block; font-size: .72rem; color: var(--text-secondary); }
+    .adopt-action { margin-top: 10px; border: 1px solid #c4b5fd; background: #fff; color: #6d28d9; padding: 8px 10px; border-radius: 8px; font: 600 .75rem inherit; cursor: pointer; }
+    .overlay { display: none; position: absolute; inset: 0; z-index: 5; background: rgba(15,23,42,.45); align-items: flex-end; }
+    .overlay.open { display: flex; }
+    .sheet { width: 100%; background: var(--card); border-radius: 20px 20px 0 0; padding: 14px 20px 28px; }
+    .sheet-handle { width: 36px; height: 4px; border-radius: 2px; background: var(--border); margin: 0 auto 15px; }
+    .sheet h3 { font-size: 1.05rem; margin-bottom: 5px; }
+    .sheet p { font-size: .8rem; line-height: 1.45; color: var(--text-secondary); }
+    .observe-detail { padding: 12px 0; margin: 12px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); font-size: .82rem; line-height: 1.7; }
+    .sheet-actions { display: flex; gap: 8px; }
+    .sheet-actions button { flex: 1; border-radius: 10px; padding: 12px 8px; font: 600 .82rem inherit; cursor: pointer; }
+    .sheet-secondary { border: 1px solid var(--border); background: var(--card); color: var(--text); }
+    .sheet-danger { border: none; background: #fee2e2; color: #b91c1c; }
+
+    /* ── AI 伙伴 ── */
+    .chat-area { display: flex; flex-direction: column; gap: 10px; padding-bottom: 8px; }
+    .bubble { max-width: 85%; padding: 10px 14px; border-radius: 16px; font-size: 0.85rem; line-height: 1.45; }
+    .bubble.ai { background: var(--card); border: 1px solid var(--border); align-self: flex-start; border-bottom-left-radius: 4px; }
+    .bubble.user { background: var(--primary); color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
+    .chat-input-wrap {
+      display: flex; gap: 8px; margin-top: 12px;
+    }
+    .chat-input-wrap input {
+      flex: 1; border: 1px solid var(--border); border-radius: 12px;
+      padding: 12px; font-size: 0.88rem; font-family: inherit;
+    }
+    .chat-input-wrap button {
+      width: 44px; height: 44px; border: none; border-radius: 12px;
+      background: var(--primary); color: #fff; font-size: 1rem; cursor: pointer;
+    }
+
+    /* ── Bottom nav ── */
+    .bottom-nav {
+      height: var(--tab-h); border-top: 1px solid var(--border);
+      background: var(--card); display: flex; flex-shrink: 0; padding-bottom: 8px;
+    }
+    .nav-item {
+      flex: 1; border: none; background: transparent;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 3px; cursor: pointer; color: var(--text-secondary); font-family: inherit; padding-top: 6px;
+    }
+    .nav-item .icon { font-size: 1.2rem; }
+    .nav-item .lbl { font-size: 0.65rem; font-weight: 500; }
+    .nav-item.active { color: var(--primary); }
+    .nav-item.active .lbl { font-weight: 700; }
+  </style>
+</head>
+<body>
+
+  <div class="page-header">
+    <h1>Ward 端 · 首页与 Tab 原型</h1>
+    <p>循环体现在交互流程里，不在界面展示。首页聚焦今日计划与任务；计划完成后出现「口述个人总结」。Tab：首页 · AI 伙伴 · 成长。</p>
+  </div>
+
+  <div class="controls">
+    <button class="tab-btn active" data-preview="home-active">首页 · 执行中</button>
+    <button class="tab-btn" data-preview="home-done">首页 · 计划已完成</button>
+    <button class="tab-btn" data-preview="ai">AI 伙伴</button>
+    <button class="tab-btn" data-preview="growth">成长</button>
+  </div>
+
+  <div class="layout">
+    <div class="phone-wrap">
+      <span class="phone-label">Ward · 3 Tab · 390 × 844</span>
+      <div class="phone">
+        <div class="status-bar"><span>20:18</span><span>5G ▮▮▮</span></div>
+
+        <div class="screen">
+
+          <!-- ═══ 首页 · 执行中 ═══ -->
+          <div class="view active" id="view-home-active">
+            <div class="greeting">
+              <h2>晚上好，小宇</h2>
+              <p>今日计划 · 3 项 · 已完成 1 项</p>
+            </div>
+
+            <button class="observe-pill" id="openObserveSheet" type="button"><span class="dot"></span><span id="observeStatus">学习观察中 · 32 分钟</span> · 管理</button>
+
+            <div class="seg-control" id="homeSeg">
+              <button class="seg-btn active" data-home="plan">今日计划</button>
+              <button class="seg-btn" data-home="tasks">任务</button>
+            </div>
+
+            <div class="home-panel active" data-home="plan">
+              <div class="card">
+                <div class="timeline">
+                  <div class="tl-row done">
+                    <span class="time">19:00</span>
+                    <div>
+                      <h4>数学练习册 P12-15</h4>
+                      <p>计划 40 分钟 · 实际 25 分钟</p>
+                    </div>
+                  </div>
+                  <div class="tl-row current">
+                    <span class="time">19:35</span>
+                    <div>
+                      <h4>英语单词默写</h4>
+                      <p>计划 20 分钟 · 进行中</p>
+                    </div>
+                  </div>
+                  <div class="tl-row">
+                    <span class="time">20:00</span>
+                    <div>
+                      <h4>阅读《昆虫记》20 页</h4>
+                      <p>计划 30 分钟 · 待开始</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="hero-action">
+                <div class="tag">当前 · 第 2 / 3 项</div>
+                <h3>英语单词默写</h3>
+                <p>这是你确认的计划，按自己的节奏来就好。</p>
+                <div class="btn-row">
+                  <button class="btn btn-primary">继续学习</button>
+                  <button class="btn btn-outline">调整计划</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="home-panel" data-home="tasks">
+              <div class="card">
+                <div class="list-row">
+                  <div class="list-body">
+                    <h4>数学练习册 P12-15</h4>
+                    <p>妈妈传来 · 已排入计划</p>
+                  </div>
+                  <span class="badge done">已排入</span>
+                </div>
+                <div class="list-row">
+                  <div class="list-body">
+                    <h4>英语单词默写</h4>
+                    <p>你自己加的 · 进行中</p>
+                  </div>
+                  <span class="badge done">已排入</span>
+                </div>
+                <div class="list-row">
+                  <div class="list-body">
+                    <h4>阅读《昆虫记》</h4>
+                    <p>候选 · 尚未排入今晚</p>
+                  </div>
+                  <span class="badge pending">候选</span>
+                </div>
+              </div>
+              <button class="add-task-btn" type="button">+ 添加任务</button>
+            </div>
+          </div>
+
+          <!-- ═══ 首页 · 计划已完成 ═══ -->
+          <div class="view" id="view-home-done">
+            <div class="greeting">
+              <h2>今晚计划完成了</h2>
+              <p>3 项任务 · 有效学习 58 分钟</p>
+            </div>
+
+            <div class="done-banner">
+              <div class="check">✓</div>
+              <div>
+                <h3>今日计划已全部完成</h3>
+                <p>19:00–20:28 · 数学、英语、阅读</p>
+              </div>
+            </div>
+
+            <div class="card plan-done-list" style="margin-bottom:14px">
+              <div class="timeline">
+                <div class="tl-row done">
+                  <span class="time">19:00</span>
+                  <div><h4>数学练习册</h4><p>25 分钟</p></div>
+                </div>
+                <div class="tl-row done">
+                  <span class="time">19:35</span>
+                  <div><h4>英语单词默写</h4><p>17 分钟</p></div>
+                </div>
+                <div class="tl-row done">
+                  <span class="time">20:05</span>
+                  <div><h4>阅读《昆虫记》</h4><p>16 分钟</p></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="voice-card" id="voiceCard">
+              <h3>先说说你自己的感受</h3>
+              <p>今晚哪里最顺？哪里卡住了？你觉得自己什么时候容易走神？</p>
+              <button class="mic-btn" id="micBtn" type="button" aria-label="按住说话">🎙</button>
+              <div class="mic-hint">点击开始口述 · 大约 1 分钟</div>
+              <div class="voice-transcript" id="voiceTranscript">
+                「今晚数学还行，英语有点走神，阅读那本书挺有意思的……」
+              </div>
+              <button class="review-submit" id="submitReflection" type="button">提交我的总结，再看记录</button>
+            </div>
+
+            <p style="font-size:0.72rem;color:var(--text-secondary);text-align:center;line-height:1.45">
+              提交前不会显示学习观察记录；先说自己的感受，再一起对照。
+            </p>
+          </div>
+
+          <!-- ═══ AI 伙伴 ═══ -->
+          <div class="view" id="view-ai">
+            <div class="greeting">
+              <h2>AI 伙伴</h2>
+              <p>学习卡壳时随时问，我会引导你自己想明白</p>
+            </div>
+            <div class="chat-area">
+              <div class="bubble user">这道分数题为什么要通分？</div>
+              <div class="bubble ai">好问题。两个蛋糕一个切 3 块、一个切 4 块，要比较大小，你觉得需要先做什么？</div>
+              <div class="bubble user">切成一样大小的块？</div>
+              <div class="bubble ai">对。你试着画两个圆，分别分成 3 份和 4 份看看？</div>
+            </div>
+            <div class="chat-input-wrap">
+              <input type="text" placeholder="输入或按住说话…" />
+              <button type="button">↑</button>
+            </div>
+          </div>
+
+          <!-- ═══ 成长 ═══ -->
+          <div class="view" id="view-growth">
+            <div class="greeting">
+              <h2>成长</h2>
+              <p>你的总结 + AI 记录，帮你看清自己的变化</p>
+            </div>
+            <div id="todayGrowthPending" class="today-waiting">
+              <div class="icon">📝</div><h3>今天的反馈等待生成</h3>
+              <p>完成今天的自我总结后，这里会出现你的感受和观察记录的对照。</p>
+            </div>
+            <div id="todayGrowthContent" style="display:none">
+              <div class="section-label">今天的对照</div>
+              <div class="feedback-card">
+                <div class="date">8 月 22 日 · 先自评，后对照</div>
+                <h4>你说「英语有点走神」</h4>
+                <div class="dual-timeline">
+                  <div class="dual-point"><strong>你的感受 · 英语开始后</strong>“整体还行，中间有点走神。”</div>
+                  <div class="dual-point"><strong>观察记录 · 19:42–19:50</strong>这段时间可能在短暂休息；之后又继续完成了单词默写。</div>
+                  <div class="dual-point"><strong>一起发现</strong>连续约 15 分钟后需要缓一缓，可能是你的正常学习节奏。</div>
+                </div>
+              </div>
+              <div class="insight-card">
+                <h4>💡 试试这个小办法</h4>
+                <p>下次每学习 15 分钟，主动休息 2 分钟。你想把它放进明天的计划吗？</p>
+                <button class="adopt-action" id="adoptTip" type="button">加入明天计划</button>
+              </div>
+
+            <div class="section-label">最近趋势</div>
+            <div class="card">
+              <div class="list-row">
+                <div class="list-body">
+                  <h4>本周有效学习</h4>
+                  <p>日均 42 分钟 · 口述总结 4 次</p>
+                </div>
+                <span style="color:#cbd5e1">›</span>
+              </div>
+              <div class="list-row">
+                <div class="list-body">
+                  <h4>历史总结与反馈</h4>
+                  <p>查看过去 7 天的口述与 AI 对比</p>
+                </div>
+                <span style="color:#cbd5e1">›</span>
+              </div>
+            </div>
+            </div>
+            <div class="section-label">过去的成长</div>
+            <div class="card">
+              <div class="list-row"><div class="list-body"><h4>昨天 · 找到适合自己的节奏</h4><p>你发现每 15 分钟短暂休息后，继续做英语更轻松</p></div><span style="color:#cbd5e1">›</span></div>
+              <div class="list-row"><div class="list-body"><h4>本周有效学习</h4><p>日均 42 分钟 · 已完成 4 次自我总结</p></div><span style="color:#cbd5e1">›</span></div>
+            </div>
+          </div>
+
+        </div>
+
+        <nav class="bottom-nav">
+          <button class="nav-item active" data-tab="home" type="button">
+            <span class="icon">🏠</span>
+            <span class="lbl">首页</span>
+          </button>
+          <button class="nav-item" data-tab="ai" type="button">
+            <span class="icon">💬</span>
+            <span class="lbl">AI 伙伴</span>
+          </button>
+          <button class="nav-item" data-tab="growth" type="button">
+            <span class="icon">🌱</span>
+            <span class="lbl">成长</span>
+          </button>
+        </nav>
+        <div class="overlay" id="observeSheet">
+          <div class="sheet">
+            <div class="sheet-handle"></div>
+            <h3>学习观察</h3>
+            <p>现在只记录学习过程，不会给出实时专注判断。</p>
+            <div class="observe-detail"><strong id="observeSheetState">正在记录</strong><br>关联任务：英语单词默写<br>已记录：32 分钟</div>
+            <div class="sheet-actions"><button class="sheet-secondary" id="pauseObserve" type="button">暂停记录</button><button class="sheet-danger" id="endObserve" type="button">结束记录</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const views = {
+      'home-active': document.getElementById('view-home-active'),
+      'home-done': document.getElementById('view-home-done'),
+      ai: document.getElementById('view-ai'),
+      growth: document.getElementById('view-growth'),
+    };
+
+    const previewBtns = document.querySelectorAll('.controls .tab-btn');
+    const navItems = document.querySelectorAll('.nav-item');
+    let currentHome = 'home-active';
+
+    function showView(key) {
+      if (key.startsWith('home-')) currentHome = key;
+      Object.entries(views).forEach(([k, el]) => el.classList.toggle('active', k === key));
+      navItems.forEach(item => {
+        const tab = item.dataset.tab;
+        item.classList.toggle('active', tab === 'home' ? key.startsWith('home-') : tab === key);
+      });
+      previewBtns.forEach(btn => btn.classList.toggle('active', btn.dataset.preview === key));
+    }
+
+    previewBtns.forEach(btn => btn.addEventListener('click', () => showView(btn.dataset.preview)));
+
+    navItems.forEach(item => {
+      item.addEventListener('click', () => {
+        showView(item.dataset.tab === 'home' ? currentHome : item.dataset.tab);
+      });
+    });
+
+    document.querySelectorAll('#homeSeg .seg-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const key = btn.dataset.home;
+        document.querySelectorAll('#homeSeg .seg-btn').forEach(b => b.classList.toggle('active', b === btn));
+        document.querySelectorAll('.home-panel').forEach(p => p.classList.toggle('active', p.dataset.home === key));
+      });
+    });
+
+    document.getElementById('micBtn').addEventListener('click', () => {
+      const card = document.getElementById('voiceCard');
+      card.classList.toggle('recording');
+      document.querySelector('.mic-hint').textContent = card.classList.contains('recording')
+        ? '正在听… 说完再点一次结束'
+        : '点击开始口述 · 大约 1 分钟';
+    });
+
+    document.getElementById('submitReflection').addEventListener('click', () => {
+      document.getElementById('todayGrowthPending').style.display = 'none';
+      document.getElementById('todayGrowthContent').style.display = 'block';
+      showView('growth');
+    });
+
+    document.getElementById('openObserveSheet').addEventListener('click', () => {
+      document.getElementById('observeSheet').classList.add('open');
+    });
+    document.getElementById('pauseObserve').addEventListener('click', () => {
+      document.getElementById('observeStatus').textContent = '学习观察已暂停';
+      document.getElementById('observeSheetState').textContent = '记录已暂停，可以随时继续';
+      document.getElementById('observeSheet').classList.remove('open');
+    });
+    document.getElementById('endObserve').addEventListener('click', () => {
+      document.getElementById('observeStatus').textContent = '学习观察已结束';
+      document.getElementById('observeSheetState').textContent = '本次记录已结束';
+      document.getElementById('observeSheet').classList.remove('open');
+    });
+    document.getElementById('observeSheet').addEventListener('click', e => {
+      if (e.target.id === 'observeSheet') e.currentTarget.classList.remove('open');
+    });
+    document.getElementById('adoptTip').addEventListener('click', e => {
+      e.currentTarget.textContent = '已加入明天计划';
+      e.currentTarget.disabled = true;
+    });
+
+    showView('home-active');
+  </script>
+</body>
+</html>

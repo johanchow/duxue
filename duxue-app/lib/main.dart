@@ -7,6 +7,7 @@ import 'features/ward_pages.dart';
 import 'features/profile_pages.dart';
 import 'features/day_story_pages.dart';
 import 'providers.dart';
+import 'shared/app_ui.dart';
 
 void main() => runApp(const ProviderScope(child: DuxueApp()));
 
@@ -65,11 +66,23 @@ class DuxueApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) => MaterialApp.router(
         title: '读学',
         theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff2563eb)),
+          colorScheme: ColorScheme.fromSeed(seedColor: brandBlue),
+          scaffoldBackgroundColor: appSurface,
           useMaterial3: true,
-          inputDecorationTheme: const InputDecorationTheme(
-            border: OutlineInputBorder(),
-          ),
+          appBarTheme: const AppBarTheme(
+              backgroundColor: appSurface, elevation: 0, centerTitle: false),
+          cardTheme: CardThemeData(
+              color: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: const BorderSide(color: Color(0xffe2e8f0)))),
+          inputDecorationTheme: InputDecorationTheme(
+              filled: true,
+              fillColor: Colors.white,
+              border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: Color(0xffe2e8f0)))),
         ),
         routerConfig: ref.watch(routerProvider),
       );

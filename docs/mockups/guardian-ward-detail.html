@@ -1,0 +1,1338 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>读学 · Guardian Ward 详情页原型</title>
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-dark: #1d4ed8;
+      --primary-light: #dbeafe;
+      --surface: #f8fafc;
+      --card: #ffffff;
+      --text: #0f172a;
+      --text-secondary: #64748b;
+      --border: #e2e8f0;
+      --success: #16a34a;
+      --warning: #d97706;
+      --warning-bg: #fffbeb;
+      --shadow: 0 1px 3px rgba(15, 23, 42, 0.08), 0 4px 16px rgba(15, 23, 42, 0.06);
+      --radius: 16px;
+      --phone-w: 390px;
+      --phone-h: 844px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      background: linear-gradient(135deg, #e0e7ff 0%, #f1f5f9 50%, #e2e8f0 100%);
+      min-height: 100vh;
+      color: var(--text);
+      padding: 24px 16px 40px;
+    }
+
+    .page-header {
+      max-width: 960px;
+      margin: 0 auto 24px;
+      text-align: center;
+    }
+
+    .page-header h1 {
+      font-size: 1.35rem;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .page-header p {
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+      line-height: 1.5;
+    }
+
+    .controls {
+      max-width: 960px;
+      margin: 0 auto 28px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .controls label {
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      margin-right: 4px;
+    }
+
+    .tab-btn {
+      border: 1.5px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+      padding: 8px 16px;
+      border-radius: 999px;
+      font-size: 0.875rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .tab-btn:hover { border-color: var(--primary); color: var(--primary); }
+
+    .tab-btn.active {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #fff;
+      font-weight: 600;
+    }
+
+    .layout {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 32px;
+      justify-content: center;
+      align-items: flex-start;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .phone-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .phone-label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      letter-spacing: 0.02em;
+    }
+
+    .phone {
+      width: var(--phone-w);
+      height: var(--phone-h);
+      background: var(--surface);
+      border-radius: 40px;
+      box-shadow: 0 20px 60px rgba(15, 23, 42, 0.18), inset 0 0 0 10px #1e293b;
+      overflow: hidden;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .status-bar {
+      height: 44px;
+      padding: 12px 24px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.75rem;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+
+    .app-bar {
+      height: 56px;
+      padding: 0 8px 0 4px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+
+    .app-bar .back {
+      width: 40px;
+      height: 40px;
+      border: none;
+      background: transparent;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    .app-bar .back.hidden { visibility: hidden; pointer-events: none; }
+
+    .app-bar h2 {
+      flex: 1;
+      font-size: 1.125rem;
+      font-weight: 600;
+    }
+
+    .app-bar .settings {
+      width: 40px;
+      height: 40px;
+      border: none;
+      background: transparent;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      color: var(--text-secondary);
+      cursor: pointer;
+    }
+
+    .app-bar .settings.visible { color: var(--text); }
+
+    .screen {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0 16px 24px;
+      scrollbar-width: none;
+    }
+
+    .screen::-webkit-scrollbar { display: none; }
+
+    .state { display: none; }
+    .state.active { display: block; }
+
+    /* ── State A: no device ── */
+    .hero-card {
+      background: linear-gradient(145deg, var(--primary) 0%, #3b82f6 100%);
+      border-radius: var(--radius);
+      padding: 28px 22px;
+      color: #fff;
+      margin-bottom: 20px;
+      box-shadow: var(--shadow);
+    }
+
+    .hero-icon {
+      width: 56px;
+      height: 56px;
+      background: rgba(255,255,255,0.2);
+      border-radius: 16px;
+      display: grid;
+      place-items: center;
+      font-size: 1.6rem;
+      margin-bottom: 16px;
+    }
+
+    .hero-card h3 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+      line-height: 1.35;
+    }
+
+    .hero-card p {
+      font-size: 0.9rem;
+      line-height: 1.6;
+      opacity: 0.92;
+    }
+
+    .section-title {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin: 20px 0 10px;
+    }
+
+    .benefit-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 24px;
+    }
+
+    .benefit-item {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px 16px;
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+
+    .benefit-item .icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: var(--primary-light);
+      color: var(--primary);
+      display: grid;
+      place-items: center;
+      font-size: 1rem;
+      flex-shrink: 0;
+    }
+
+    .benefit-item h4 {
+      font-size: 0.9rem;
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+
+    .benefit-item p {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      line-height: 1.45;
+    }
+
+    .cta-primary {
+      width: 100%;
+      border: none;
+      background: var(--primary);
+      color: #fff;
+      font-size: 1rem;
+      font-weight: 600;
+      padding: 16px 20px;
+      border-radius: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+      transition: background 0.2s;
+    }
+
+    .cta-primary:hover { background: var(--primary-dark); }
+
+    .cta-hint {
+      text-align: center;
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      margin-top: 10px;
+      line-height: 1.4;
+    }
+
+    /* ── State B: device linked ── */
+    .status-banner {
+      border-radius: 12px;
+      padding: 10px 14px;
+      font-size: 0.8rem;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .status-banner.online {
+      background: #f0fdf4;
+      color: #166534;
+      border: 1px solid #bbf7d0;
+    }
+
+    .status-banner.offline {
+      background: var(--warning-bg);
+      color: #92400e;
+      border: 1px solid #fde68a;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .online .status-dot { background: var(--success); }
+    .offline .status-dot { background: var(--warning); }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 12px;
+      overflow: hidden;
+      box-shadow: 0 1px 2px rgba(15,23,42,0.04);
+    }
+
+    .card-header {
+      padding: 14px 16px 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .card-header h3 {
+      font-size: 1rem;
+      font-weight: 600;
+    }
+
+    .add-task-btn {
+      width: 36px;
+      height: 36px;
+      border: none;
+      background: var(--primary-light);
+      color: var(--primary);
+      border-radius: 10px;
+      cursor: pointer;
+      flex-shrink: 0;
+      display: grid;
+      place-items: center;
+      font-size: 1.35rem;
+      font-weight: 300;
+      line-height: 1;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    .add-task-btn:hover {
+      background: var(--primary);
+      color: #fff;
+    }
+
+    /* segmented: 今日任务 ↔ 今日计划 */
+    .card-toolbar {
+      padding: 0 16px 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .seg-control {
+      flex: 1;
+      display: flex;
+      background: #f1f5f9;
+      border-radius: 10px;
+      padding: 3px;
+    }
+
+    .seg-btn {
+      flex: 1;
+      border: none;
+      background: transparent;
+      padding: 7px 0;
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--text-secondary);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .seg-btn.active {
+      background: var(--card);
+      color: var(--text);
+      font-weight: 600;
+      box-shadow: 0 1px 3px rgba(15,23,42,0.1);
+    }
+
+    .panel { display: none; }
+    .panel.active { display: block; }
+
+    /* schedule timeline */
+    .plan-status {
+      margin: 0 16px 12px;
+      padding: 10px 12px;
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: 10px;
+      font-size: 0.78rem;
+      color: #166534;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .plan-status.pending {
+      background: #fffbeb;
+      border-color: #fde68a;
+      color: #92400e;
+    }
+
+    .timeline {
+      padding: 4px 16px 14px;
+    }
+
+    .tl-item {
+      display: flex;
+      gap: 12px;
+      position: relative;
+    }
+
+    .tl-item + .tl-item { margin-top: 0; }
+
+    .tl-rail {
+      width: 44px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .tl-time {
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      padding-top: 2px;
+    }
+
+    .tl-line {
+      width: 2px;
+      flex: 1;
+      min-height: 12px;
+      background: var(--border);
+      margin: 4px 0;
+    }
+
+    .tl-item:last-child .tl-line { display: none; }
+
+    .tl-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      border: 2px solid var(--primary);
+      background: var(--card);
+      flex-shrink: 0;
+    }
+
+    .tl-dot.done { background: var(--primary); }
+    .tl-dot.current {
+      background: var(--primary);
+      box-shadow: 0 0 0 4px var(--primary-light);
+    }
+    .tl-dot.break {
+      border-color: #94a3b8;
+      background: #f1f5f9;
+    }
+
+    .tl-body {
+      flex: 1;
+      padding-bottom: 16px;
+      min-width: 0;
+    }
+
+    .tl-body h4 {
+      font-size: 0.88rem;
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+
+    .tl-body p {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+    }
+
+    .tl-body.current h4 { color: var(--primary); }
+
+    .tl-body.done h4 {
+      color: var(--text-secondary);
+      text-decoration: line-through;
+    }
+
+    .task-item {
+      padding: 12px 16px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .task-check {
+      width: 22px;
+      height: 22px;
+      border-radius: 6px;
+      border: 2px solid var(--border);
+      flex-shrink: 0;
+      display: grid;
+      place-items: center;
+      font-size: 0.7rem;
+      color: transparent;
+    }
+
+    .task-check.done {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #fff;
+    }
+
+    .task-body { flex: 1; min-width: 0; }
+
+    .task-body .title {
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+
+    .task-body .title.done {
+      color: var(--text-secondary);
+      text-decoration: line-through;
+    }
+
+    .task-body .meta {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      margin-top: 2px;
+    }
+
+    .task-tag {
+      font-size: 0.7rem;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: #f1f5f9;
+      color: var(--text-secondary);
+      flex-shrink: 0;
+    }
+
+    .task-tag.guardian {
+      background: #fef3c7;
+      color: #92400e;
+    }
+
+    .nav-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 16px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .nav-row:hover { background: #f8fafc; }
+
+    .nav-row + .nav-row { border-top: 1px solid var(--border); }
+
+    .nav-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      font-size: 1.2rem;
+      flex-shrink: 0;
+    }
+
+    .nav-icon.report { background: #ede9fe; }
+    .nav-icon.trend { background: #dcfce7; }
+
+    .nav-text { flex: 1; }
+
+    .nav-text h4 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+
+    .nav-text p {
+      font-size: 0.78rem;
+      color: var(--text-secondary);
+    }
+
+    .nav-chevron {
+      color: #cbd5e1;
+      font-size: 1.1rem;
+    }
+
+    .mini-stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .stat-box {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+    }
+
+    .stat-box .val {
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: var(--primary);
+    }
+
+    .stat-box .lbl {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      margin-top: 2px;
+    }
+
+    /* ── Settings full page ── */
+    .view-screen { display: none; }
+    .view-screen.active { display: block; }
+
+    .screen.view-screen.active,
+    #detailScreen.active {
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    .settings-hero {
+      text-align: center;
+      padding: 8px 0 20px;
+    }
+
+    .settings-hero .avatar {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      background: var(--primary-light);
+      color: var(--primary);
+      font-size: 1.5rem;
+      font-weight: 700;
+      display: grid;
+      place-items: center;
+      margin: 0 auto 10px;
+    }
+
+    .settings-hero h3 {
+      font-size: 1.05rem;
+      font-weight: 600;
+    }
+
+    .settings-hero p {
+      font-size: 0.78rem;
+      color: var(--text-secondary);
+      margin-top: 2px;
+    }
+
+    .settings-group-label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0 4px 8px;
+    }
+
+    .settings-group {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      margin-bottom: 20px;
+    }
+
+    .settings-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 16px;
+      cursor: pointer;
+      transition: background 0.15s;
+      border: none;
+      background: var(--card);
+      width: 100%;
+      text-align: left;
+      font: inherit;
+      color: inherit;
+    }
+
+    .settings-row:hover { background: #f8fafc; }
+    .settings-row + .settings-row { border-top: 1px solid var(--border); }
+
+    .settings-row.static {
+      cursor: default;
+    }
+
+    .settings-row.static:hover { background: var(--card); }
+
+    .settings-row .s-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      font-size: 1rem;
+      flex-shrink: 0;
+    }
+
+    .s-icon.device { background: #dbeafe; }
+    .s-icon.analysis { background: #ede9fe; }
+    .s-icon.profile { background: #fce7f3; }
+    .s-icon.danger { background: #fee2e2; }
+
+    .settings-row .s-body { flex: 1; min-width: 0; }
+
+    .settings-row .s-body h4 {
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+
+    .settings-row .s-body p {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      margin-top: 2px;
+      line-height: 1.4;
+    }
+
+    .settings-row .s-value {
+      font-size: 0.78rem;
+      color: var(--text-secondary);
+      flex-shrink: 0;
+      max-width: 42%;
+      text-align: right;
+      line-height: 1.35;
+    }
+
+    .settings-row.danger .s-body h4 { color: #dc2626; }
+
+    .settings-footnote {
+      font-size: 0.72rem;
+      color: var(--text-secondary);
+      line-height: 1.5;
+      padding: 0 4px 8px;
+    }
+
+    .settings-id-hint {
+      font-size: 0.72rem;
+      color: var(--text-secondary);
+      padding: 0 16px 4px;
+      margin-top: -12px;
+      margin-bottom: 20px;
+    }
+
+    .settings-delete-wrap {
+      margin-top: 8px;
+      margin-bottom: 16px;
+    }
+
+    .settings-sub-hint {
+      font-size: 0.78rem;
+      color: var(--text-secondary);
+      line-height: 1.45;
+      padding: 0 4px 14px;
+    }
+
+    /* ── Guardian bottom tabs (设备关联后) ── */
+    .guardian-tab-view { display: none; }
+    .guardian-tab-view.active { display: block; }
+
+    .bottom-nav {
+      height: 62px;
+      border-top: 1px solid var(--border);
+      background: var(--card);
+      display: none;
+      flex-shrink: 0;
+      padding-bottom: 8px;
+    }
+    .bottom-nav.visible { display: flex; }
+
+    .nav-item {
+      flex: 1;
+      border: none;
+      background: transparent;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      cursor: pointer;
+      color: var(--text-secondary);
+      font-family: inherit;
+      padding-top: 6px;
+    }
+    .nav-item .icon { font-size: 1.15rem; }
+    .nav-item .lbl { font-size: 0.62rem; font-weight: 500; }
+    .nav-item.active { color: var(--primary); }
+    .nav-item.active .lbl { font-weight: 700; }
+
+    .report-hero {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+    .report-hero h3 { font-size: 1rem; font-weight: 700; margin-bottom: 6px; }
+    .report-hero p { font-size: 0.8rem; color: var(--text-secondary); line-height: 1.45; }
+    .report-stat-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .report-stat {
+      background: #f8fafc;
+      border-radius: 10px;
+      padding: 10px;
+      text-align: center;
+    }
+    .report-stat .v { font-size: 1.1rem; font-weight: 700; color: var(--primary); }
+    .report-stat .l { font-size: 0.65rem; color: var(--text-secondary); margin-top: 2px; }
+
+    .report-dim { opacity: 0.55; pointer-events: none; }
+
+  </style>
+</head>
+<body>
+
+  <div class="page-header">
+    <h1>Guardian · Ward 详情页原型</h1>
+    <p>未关联设备：单页引导绑定。关联后：底部 Tab「今日 · 报告 · 设置」，与 Ward 端交互对称。</p>
+  </div>
+
+  <div class="controls">
+    <label>预览状态：</label>
+    <button class="tab-btn active" data-state="no-device">a · 未关联设备</button>
+    <button class="tab-btn" data-state="linked">b · 已关联（在线）</button>
+    <button class="tab-btn" data-state="offline">c · 已关联（离线）</button>
+  </div>
+
+  <div class="layout">
+    <div class="phone-wrap">
+      <span class="phone-label">iPhone 14 视口 · 390 × 844</span>
+      <div class="phone" id="phone">
+        <div class="status-bar">
+          <span>20:32</span>
+          <span>5G ▮▮▮</span>
+        </div>
+
+        <div class="app-bar">
+          <button class="back hidden" id="backBtn" aria-label="返回" type="button">‹</button>
+          <h2 id="appBarTitle">小宇</h2>
+          <span style="width:40px"></span>
+        </div>
+
+        <!-- 详情主屏 -->
+        <div class="screen view-screen active" id="detailScreen">
+
+          <!-- ── State A ── -->
+          <div class="state active" id="state-no-device">
+            <div class="hero-card">
+              <div class="hero-icon">📷</div>
+              <h3>先绑定一台学习观察设备</h3>
+              <p>用家里闲置的 Android 手机做「读学Eye」，安静记录书桌学习过程，次日生成客观报告。</p>
+            </div>
+
+            <div class="section-title">为什么需要</div>
+            <div class="benefit-list">
+              <div class="benefit-item">
+                <div class="icon">🎯</div>
+                <div>
+                  <h4>客观记录，不靠猜</h4>
+                  <p>系统记录专注与休息节奏，帮助孩子对照自评，慢慢建立自我觉察。</p>
+                </div>
+              </div>
+              <div class="benefit-item">
+                <div class="icon">🤝</div>
+                <div>
+                  <h4>不是实时监控</h4>
+                  <p>没有直播画面、没有实时告警。次日看报告，减少「被偷窥」的紧张感。</p>
+                </div>
+              </div>
+              <div class="benefit-item">
+                <div class="icon">📊</div>
+                <div>
+                  <h4>报告自动生成</h4>
+                  <p>设备绑定并正常采集后，今日日报与学习趋势会自动出现，无需额外配置。</p>
+                </div>
+              </div>
+            </div>
+
+            <button class="cta-primary" type="button">
+              <span>＋</span> 添加读学Eye 设备
+            </button>
+            <p class="cta-hint">扫码绑定 · 邀请码 10 分钟内有效<br>建议侧后方 45° 俯拍书桌</p>
+          </div>
+
+          <!-- ── 设备已关联：底部 Tab ── -->
+          <div class="state" id="state-ready">
+            <div class="guardian-tab-view active" data-gtab="today">
+              <div class="status-banner online" id="deviceBanner">
+                <span class="status-dot"></span>
+                <span id="deviceBannerText">读学Eye 在线 · 正在安静记录学习过程</span>
+              </div>
+
+              <div class="mini-stats">
+                <div class="stat-box">
+                  <div class="val" id="statTaskVal">2/3</div>
+                  <div class="lbl">任务已完成</div>
+                </div>
+                <div class="stat-box">
+                  <div class="val" id="statPlanVal">进行中</div>
+                  <div class="lbl">孩子确认的计划</div>
+                </div>
+              </div>
+
+              <div class="card" data-workspace="main">
+                <div class="card-toolbar">
+                  <div class="seg-control">
+                    <button class="seg-btn active" data-panel="tasks" type="button">今日任务</button>
+                    <button class="seg-btn" data-panel="schedule" type="button">今日计划</button>
+                  </div>
+                  <button class="add-task-btn workspace-action" type="button" aria-label="增加任务" title="增加任务">+</button>
+                </div>
+
+                <div class="panel active" data-panel="tasks" id="todayTasksPanel">
+                  <div class="task-item">
+                    <div class="task-check done">✓</div>
+                    <div class="task-body">
+                      <div class="title done">数学练习册 P12-15</div>
+                      <div class="meta">已加入计划 · 已完成 25 分钟</div>
+                    </div>
+                    <span class="task-tag guardian">外部</span>
+                  </div>
+                  <div class="task-item">
+                    <div class="task-check done">✓</div>
+                    <div class="task-body">
+                      <div class="title done">英语单词默写</div>
+                      <div class="meta">已加入计划 · 已完成 17 分钟</div>
+                    </div>
+                    <span class="task-tag">自主</span>
+                  </div>
+                  <div class="task-item" id="pendingTaskRow">
+                    <div class="task-check"></div>
+                    <div class="task-body">
+                      <div class="title">阅读《昆虫记》20 页</div>
+                      <div class="meta">任务池 · 尚未排入今日计划</div>
+                    </div>
+                    <span class="task-tag">自主</span>
+                  </div>
+                </div>
+
+                <div class="panel" data-panel="schedule" id="todaySchedulePanel">
+                  <div class="plan-status" id="planStatusBar">✓ 孩子已于 18:40 确认今日计划</div>
+                  <div class="timeline" id="planTimeline">
+                    <div class="tl-item">
+                      <div class="tl-rail"><span class="tl-time">19:00</span><div class="tl-line"></div></div>
+                      <div class="tl-dot done"></div>
+                      <div class="tl-body done"><h4>数学练习册 P12-15</h4><p>计划 40 分钟 · 实际 25 分钟 · 已完成</p></div>
+                    </div>
+                    <div class="tl-item">
+                      <div class="tl-rail"><span class="tl-time">19:35</span><div class="tl-line"></div></div>
+                      <div class="tl-dot break"></div>
+                      <div class="tl-body"><h4>休息</h4><p>计划 10 分钟</p></div>
+                    </div>
+                    <div class="tl-item">
+                      <div class="tl-rail"><span class="tl-time">19:45</span><div class="tl-line"></div></div>
+                      <div class="tl-dot done"></div>
+                      <div class="tl-body done"><h4>英语单词默写</h4><p>计划 20 分钟 · 实际 17 分钟 · 已完成</p></div>
+                    </div>
+                    <div class="tl-item">
+                      <div class="tl-rail"><span class="tl-time">20:10</span></div>
+                      <div class="tl-dot current"></div>
+                      <div class="tl-body current"><h4>阅读《昆虫记》20 页</h4><p>计划 30 分钟 · 进行中</p></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="card" style="margin-top:10px">
+                <div class="list-row" style="padding:14px 16px;display:flex;align-items:center;gap:12px">
+                  <div class="list-icon" style="width:40px;height:40px;border-radius:12px;background:#ede9fe;display:grid;place-items:center">🎙</div>
+                  <div class="list-body" style="flex:1">
+                    <h4 style="font-size:0.9rem;font-weight:600">等待孩子完成今日自我总结</h4>
+                    <p style="font-size:0.75rem;color:var(--text-secondary);margin-top:2px">完成后会生成今日的事实报告；不影响查看过往报告</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="guardian-tab-view" data-gtab="report">
+              <div class="report-hero" id="reportHero">
+                <h3>今日报告等待生成</h3>
+                <p>等孩子完成自我总结后，会生成今天的学习节奏与沟通建议。</p>
+              </div>
+              <div class="section-title">过往报告</div>
+              <div class="card"><div class="nav-row"><div class="nav-icon report">✓</div><div class="nav-text"><h4>8 月 21 日 · 数学与英语</h4><p>完成 3 项任务；进入状态后更稳定。查看当日沟通建议</p></div><span class="nav-chevron">›</span></div></div>
+              <div class="section-title">过去 7 天</div>
+              <div class="card"><div class="nav-row"><div class="nav-icon trend">📈</div><div class="nav-text"><h4>学习节奏变化</h4><p>近 7 天的自评、观察记录与成长建议</p></div><span class="nav-chevron">›</span></div></div>
+              <div class="section-title">上次记录</div>
+              <div>
+                <div class="report-stat-row">
+                  <div class="report-stat"><div class="v">42m</div><div class="l">有效学习</div></div>
+                  <div class="report-stat"><div class="v">68%</div><div class="l">专注占比</div></div>
+                  <div class="report-stat"><div class="v">3</div><div class="l">短暂休息</div></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="guardian-tab-view" data-gtab="settings">
+              <div class="settings-group-label">档案</div>
+              <div class="settings-group">
+                <button class="settings-row" id="openNameBtn" type="button">
+                  <div class="s-icon profile">✏️</div>
+                  <div class="s-body"><h4>显示名称</h4><p>在 App 中展示的名字</p></div>
+                  <span class="s-value">小宇</span>
+                  <span class="nav-chevron">›</span>
+                </button>
+              </div>
+              <p class="settings-id-hint">档案 ID · ward_8f3a2b1c</p>
+
+              <div class="settings-group-label">设备</div>
+              <div class="settings-group">
+                <button class="settings-row" id="openDeviceBtn" type="button">
+                  <div class="s-icon device">📷</div>
+                  <div class="s-body">
+                    <h4>读学Eye 设备</h4>
+                    <p id="settingsDeviceDesc">已绑定 1 台 · 在线 · 2 分钟前心跳</p>
+                  </div>
+                  <span class="nav-chevron">›</span>
+                </button>
+              </div>
+
+              <div class="settings-group-label">分析配置</div>
+              <div class="settings-group">
+                <button class="settings-row" id="openAnalysisBtn" type="button">
+                  <div class="s-icon analysis">🧠</div>
+                  <div class="s-body">
+                    <h4>分析配置</h4>
+                    <p>系统默认 · 12 个行为标签</p>
+                  </div>
+                  <span class="nav-chevron">›</span>
+                </button>
+              </div>
+
+              <div class="settings-delete-wrap">
+                <div class="settings-group">
+                  <button class="settings-row danger" type="button">
+                    <div class="s-icon danger">🗑</div>
+                    <div class="s-body"><h4>删除档案</h4><p>永久删除该被监护者及关联数据</p></div>
+                    <span class="nav-chevron">›</span>
+                  </button>
+                </div>
+              </div>
+              <p class="settings-footnote">分析配置有系统默认值，不修改也能正常工作。</p>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- 三级设置子页 -->
+        <div class="screen view-screen" id="nameSettingsScreen">
+          <p class="settings-sub-hint">修改后在 App 各处显示的新名字。</p>
+          <div class="settings-group">
+            <div class="settings-row static" style="padding: 12px 16px">
+              <input type="text" value="小宇" style="width:100%;border:1px solid var(--border);border-radius:10px;padding:12px 14px;font-size:1rem;font-family:inherit" />
+            </div>
+          </div>
+          <button class="cta-primary" type="button" style="margin-top:8px">保存名称</button>
+        </div>
+
+        <!-- 三级：设备管理 -->
+        <div class="screen view-screen" id="deviceSettingsScreen">
+          <div class="settings-group">
+            <div class="settings-row static">
+              <div class="s-icon device">📷</div>
+              <div class="s-body">
+                <h4>当前设备</h4>
+                <p id="deviceDetailDesc">读学Eye · 在线 · 最后心跳 2 分钟前</p>
+              </div>
+            </div>
+          </div>
+          <div class="settings-group">
+            <button class="settings-row" type="button">
+              <div class="s-icon device">🔄</div>
+              <div class="s-body">
+                <h4>更换绑定设备</h4>
+                <p>生成邀请码，用新手机扫码替换</p>
+              </div>
+              <span class="nav-chevron">›</span>
+            </button>
+            <button class="settings-row" type="button">
+              <div class="s-icon device">➕</div>
+              <div class="s-body">
+                <h4>添加设备</h4>
+                <p>绑定备用读学Eye</p>
+              </div>
+              <span class="nav-chevron">›</span>
+            </button>
+            <button class="settings-row danger" type="button">
+              <div class="s-icon danger">🔗</div>
+              <div class="s-body">
+                <h4>解绑当前设备</h4>
+                <p>停止采集，历史报告仍保留</p>
+              </div>
+              <span class="nav-chevron">›</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 三级：分析配置详情 -->
+        <div class="screen view-screen" id="analysisSettingsScreen">
+          <p class="settings-sub-hint">不修改也能正常工作；以下为进阶定制项。</p>
+          <div class="settings-group">
+            <button class="settings-row" type="button">
+              <div class="s-icon analysis">📋</div>
+              <div class="s-body">
+                <h4>分析方案</h4>
+                <p>选择或切换整套观察规则</p>
+              </div>
+              <span class="s-value">系统默认</span>
+              <span class="nav-chevron">›</span>
+            </button>
+            <button class="settings-row" type="button">
+              <div class="s-icon analysis">🏷</div>
+              <div class="s-body">
+                <h4>行为标签</h4>
+                <p>新增、编辑专注/休息等分类</p>
+              </div>
+              <span class="s-value">12 个</span>
+              <span class="nav-chevron">›</span>
+            </button>
+            <button class="settings-row" type="button">
+              <div class="s-icon analysis">💬</div>
+              <div class="s-body">
+                <h4>观察提示词</h4>
+                <p>定制 AI 分析时的观察侧重点</p>
+              </div>
+              <span class="nav-chevron">›</span>
+            </button>
+          </div>
+        </div>
+
+        <nav class="bottom-nav" id="guardianBottomNav">
+          <button class="nav-item active" data-gtab="today" type="button">
+            <span class="icon">📋</span>
+            <span class="lbl">今日</span>
+          </button>
+          <button class="nav-item" data-gtab="report" type="button">
+            <span class="icon">📊</span>
+            <span class="lbl">报告</span>
+          </button>
+          <button class="nav-item" data-gtab="settings" type="button">
+            <span class="icon">⚙️</span>
+            <span class="lbl">设置</span>
+          </button>
+        </nav>
+
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const tabs = document.querySelectorAll('.controls .tab-btn');
+    const states = {
+      'no-device': document.getElementById('state-no-device'),
+      'linked': document.getElementById('state-ready'),
+      'offline': document.getElementById('state-ready'),
+    };
+    const backBtn = document.getElementById('backBtn');
+    const appBarTitle = document.getElementById('appBarTitle');
+    const detailScreen = document.getElementById('detailScreen');
+    const bottomNav = document.getElementById('guardianBottomNav');
+    const nameSettingsScreen = document.getElementById('nameSettingsScreen');
+    const deviceSettingsScreen = document.getElementById('deviceSettingsScreen');
+    const analysisSettingsScreen = document.getElementById('analysisSettingsScreen');
+    const settingsDeviceDesc = document.getElementById('settingsDeviceDesc');
+    const deviceDetailDesc = document.getElementById('deviceDetailDesc');
+
+    const subScreens = { name: nameSettingsScreen, device: deviceSettingsScreen, analysis: analysisSettingsScreen };
+    const subTitles = { name: '显示名称', device: '读学Eye 设备', analysis: '分析配置' };
+
+    let currentStateKey = 'no-device';
+    let currentGTab = 'today';
+    let navStack = ['detail'];
+
+    function switchGuardianTab(gtab) {
+      currentGTab = gtab;
+      document.querySelectorAll('.guardian-tab-view').forEach(v => {
+        v.classList.toggle('active', v.dataset.gtab === gtab);
+      });
+      document.querySelectorAll('#guardianBottomNav .nav-item').forEach(item => {
+        item.classList.toggle('active', item.dataset.gtab === gtab);
+      });
+    }
+
+    function hideAllScreens() {
+      detailScreen.classList.remove('active');
+      Object.values(subScreens).forEach(el => el.classList.remove('active'));
+    }
+
+    function renderNav() {
+      const top = navStack[navStack.length - 1];
+      hideAllScreens();
+
+      if (top === 'detail') {
+        detailScreen.classList.add('active');
+        appBarTitle.textContent = '小宇';
+        backBtn.classList.add('hidden');
+        const ready = currentStateKey !== 'no-device';
+        bottomNav.classList.toggle('visible', ready);
+        if (ready) switchGuardianTab(currentGTab);
+      } else {
+        subScreens[top].classList.add('active');
+        appBarTitle.textContent = subTitles[top];
+        backBtn.classList.remove('hidden');
+        bottomNav.classList.remove('visible');
+      }
+    }
+
+    function pushNav(screen) {
+      navStack.push(screen);
+      renderNav();
+    }
+
+    function popNav() {
+      if (navStack.length > 1) {
+        navStack.pop();
+        renderNav();
+      }
+    }
+
+    function applyReadyState(mode) {
+      const banner = document.getElementById('deviceBanner');
+      const bannerText = document.getElementById('deviceBannerText');
+      const statTask = document.getElementById('statTaskVal');
+      const statPlan = document.getElementById('statPlanVal');
+      const reportHero = document.getElementById('reportHero');
+      const planStatus = document.getElementById('planStatusBar');
+      const pendingTask = document.getElementById('pendingTaskRow');
+
+      if (mode === 'offline') {
+        banner.className = 'status-banner offline';
+        bannerText.innerHTML = '设备离线 · 报告可能不完整 <span style="margin-left:auto;font-weight:600;cursor:pointer">排查</span>';
+        statTask.textContent = '1/2';
+        statPlan.textContent = '待确认';
+        settingsDeviceDesc.textContent = '已绑定 1 台 · 离线 · 最后心跳 35 分钟前';
+        deviceDetailDesc.textContent = '读学Eye · 离线 · 最后心跳 35 分钟前';
+        reportHero.classList.add('report-dim');
+        planStatus.className = 'plan-status pending';
+        planStatus.textContent = '⏳ 孩子尚未确认今日计划';
+        if (pendingTask) pendingTask.style.display = 'none';
+      } else {
+        banner.className = 'status-banner online';
+        bannerText.textContent = '读学Eye 在线 · 正在安静记录学习过程';
+        statTask.textContent = '2/3';
+        statPlan.textContent = '进行中';
+        settingsDeviceDesc.textContent = '已绑定 1 台 · 在线 · 2 分钟前心跳';
+        deviceDetailDesc.textContent = '读学Eye · 在线 · 最后心跳 2 分钟前';
+        reportHero.classList.remove('report-dim');
+        planStatus.className = 'plan-status';
+        planStatus.textContent = '✓ 孩子已于 18:40 确认今日计划';
+        if (pendingTask) pendingTask.style.display = '';
+      }
+    }
+
+    function switchState(key) {
+      currentStateKey = key;
+      tabs.forEach(t => t.classList.toggle('active', t.dataset.state === key));
+      document.getElementById('state-no-device').classList.toggle('active', key === 'no-device');
+      document.getElementById('state-ready').classList.toggle('active', key !== 'no-device');
+      navStack = ['detail'];
+      currentGTab = 'today';
+      if (key !== 'no-device') applyReadyState(key);
+      renderNav();
+    }
+
+    tabs.forEach(btn => btn.addEventListener('click', () => switchState(btn.dataset.state)));
+
+    document.querySelectorAll('#guardianBottomNav .nav-item').forEach(item => {
+      item.addEventListener('click', () => {
+        navStack = ['detail'];
+        switchGuardianTab(item.dataset.gtab);
+        renderNav();
+      });
+    });
+
+    backBtn.addEventListener('click', popNav);
+    document.getElementById('openNameBtn').addEventListener('click', () => pushNav('name'));
+    document.getElementById('openDeviceBtn').addEventListener('click', () => pushNav('device'));
+    document.getElementById('openAnalysisBtn').addEventListener('click', () => pushNav('analysis'));
+
+    document.querySelectorAll('.card[data-workspace]').forEach(card => {
+      const segBtns = card.querySelectorAll('.seg-btn');
+      const panels = card.querySelectorAll('.panel');
+      const actionBtn = card.querySelector('.workspace-action');
+      segBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          const key = btn.dataset.panel;
+          segBtns.forEach(b => b.classList.toggle('active', b === btn));
+          panels.forEach(p => p.classList.toggle('active', p.dataset.panel === key));
+          if (actionBtn) actionBtn.style.visibility = key === 'tasks' ? 'visible' : 'hidden';
+        });
+      });
+    });
+
+    switchState('no-device');
+  </script>
+</body>
+</html>
