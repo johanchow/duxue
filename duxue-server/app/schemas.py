@@ -148,6 +148,10 @@ class MessageCreate(BaseModel):
 class SessionFinish(BaseModel):
     active_seconds: int = Field(ge=0)
 
+
+class SessionPause(BaseModel):
+    active_seconds: int = Field(ge=0)
+
 class SelfReviewCreate(BaseModel):
     feeling: str = Field(min_length=1, max_length=40)
     reflection: str | None = Field(default=None, max_length=2000)

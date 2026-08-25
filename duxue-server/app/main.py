@@ -23,7 +23,7 @@ from .schemas import (
     AnalyzeDayRequest, DeviceBind, FrameCreate, LabelCreate, LoginRequest, ProfileCreate,
     ProfilePatch, RefreshRequest, RegisterRequest, TokenPair, UploadUrlRequest, WardCreate,
     WardOut, WardPatch, WardBindRequest, AssignmentCreate, PlanDraft,
-    MessageCreate, SessionFinish, SelfReviewCreate, TaskIntakeCleanup, TaskIntakeConfirm,
+    MessageCreate, SessionFinish, SessionPause, SelfReviewCreate, TaskIntakeCleanup, TaskIntakeConfirm,
     TaskIntakeRequest,
 )
 from .security import create_access_token, hash_secret, random_token, token_hash, verify_secret
@@ -86,7 +86,7 @@ async def transcribe_voice(websocket: WebSocket) -> None:
     forward_task = None
     try:
         try:
-            principal = guardian_principal_for_token(_bearer(websocket.headers.get("authorization")), db)
+            principal = current_guardian_or_ward(websocket.headers.get("authorization"), db)
         except HTTPException:
             await websocket.close(code=1008)
             return
@@ -162,6 +162,12 @@ def ward_bind(body: WardBindRequest, db: Session = Depends(get_db)):
     invite.consumed_at = now(); db.commit()
     return {"ward_id": invite.ward_id, "access_token": create_access_token(user_id=invite.ward_id, role="ward", ward_session_version=credential.session_version), "token_type": "bearer"}
 
+@app.get("/ward/profile")
+def ward_profile(principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
+    ward = db.get(Ward, principal.user_id)
+    guardians = db.query(Guardian).join(GuardianWard, GuardianWard.guardian_id == Guardian.id).filter(GuardianWard.ward_id == principal.user_id).order_by(Guardian.name).all()
+    return {"id": ward.id, "display_name": ward.display_name, "guardians": [{"id": guardian.id, "name": guardian.name} for guardian in guardians]}
+
 def _task_intake_wards(db: Session, guardian_id: str) -> list[dict]:
     rows = db.query(Ward).join(GuardianWard, GuardianWard.ward_id == Ward.id).filter(
         GuardianWard.guardian_id == guardian_id,
@@ -233,7 +239,9 @@ def create_assignment(ward_id: str, body: AssignmentCreate, principal: Principal
 def assignments(ward_id: str, principal: Principal = Depends(current_guardian_or_ward), db: Session = Depends(get_db)):
     if principal.role == "ward": _ward_owned(principal, ward_id)
     else: owned_ward(db, principal.user_id, ward_id)
-    return [{"id": x.id, "title": x.title, "details": x.details, "due_date": x.due_date, "status": x.status} for x in db.query(Assignment).filter_by(ward_id=ward_id, status="open").all()]
+    rows = db.query(Assignment).filter_by(ward_id=ward_id).filter(Assignment.status != "completed").all()
+    return [{"id": x.id, "title": x.title, "details": x.details, "due_date": x.due_date, "status": x.status,
+             "session": _open_session(db, assignment_id=x.id)} for x in rows]
 
 @app.put("/wards/{ward_id}/plans/{plan_date}")
 def save_plan(ward_id: str, plan_date: date, body: PlanDraft, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
@@ -258,13 +266,53 @@ def get_plan(ward_id: str, plan_date: date, principal: Principal = Depends(curre
     else: owned_ward(db, principal.user_id, ward_id)
     plan = db.query(DailyPlan).filter_by(ward_id=ward_id, plan_date=plan_date).one_or_none()
     if plan is None: raise HTTPException(404, "plan not found")
-    return {"id": plan.id, "status": plan.status, "items": [{"id": x.id, "title": x.title, "planned_minutes": x.planned_minutes, "status": x.status} for x in db.query(PlanItem).filter_by(plan_id=plan.id).order_by(PlanItem.position)]}
+    items = db.query(PlanItem).filter_by(plan_id=plan.id).order_by(PlanItem.position)
+    return {"id": plan.id, "status": plan.status, "items": [{"id": x.id, "assignment_id": x.assignment_id, "title": x.title, "planned_minutes": x.planned_minutes, "status": x.status,
+             "session": _open_session(db, plan_item_id=x.id)} for x in items]}
+
+
+def _open_session(db: Session, *, plan_item_id: str | None = None, assignment_id: str | None = None) -> dict | None:
+    query = db.query(StudySession).filter(StudySession.status.in_(("active", "paused")))
+    query = query.filter_by(plan_item_id=plan_item_id) if plan_item_id else query.filter_by(assignment_id=assignment_id)
+    row = query.order_by(StudySession.started_at.desc()).first()
+    return None if row is None else {"id": row.id, "status": row.status, "active_seconds": row.active_seconds}
 
 @app.post("/plan-items/{item_id}/sessions", status_code=201)
 def start_session(item_id: str, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
     item = db.get(PlanItem, item_id); plan = db.get(DailyPlan, item.plan_id) if item else None
     if plan is None or plan.ward_id != principal.user_id: raise HTTPException(404, "plan item not found")
-    row = StudySession(ward_id=principal.user_id, plan_item_id=item.id); item.status="active"; db.add(row); db.commit(); return {"id": row.id, "status": row.status}
+    active = _open_session(db, plan_item_id=item.id)
+    if active: return active
+    row = StudySession(ward_id=principal.user_id, plan_item_id=item.id); item.status="active"; db.add(row); db.commit(); return {"id": row.id, "status": row.status, "active_seconds": 0}
+
+
+@app.post("/assignments/{assignment_id}/sessions", status_code=201)
+def start_assignment_session(assignment_id: str, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
+    assignment = db.get(Assignment, assignment_id)
+    if assignment is None or assignment.ward_id != principal.user_id or assignment.status == "completed": raise HTTPException(404, "assignment not found")
+    active = _open_session(db, assignment_id=assignment.id)
+    if active: return active
+    row = StudySession(ward_id=principal.user_id, assignment_id=assignment.id); assignment.status="active"; db.add(row); db.commit(); return {"id": row.id, "status": row.status, "active_seconds": 0}
+
+
+@app.post("/sessions/{session_id}/resume")
+def resume_session(session_id: str, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
+    session = db.get(StudySession, session_id)
+    if session is None or session.ward_id != principal.user_id or session.status != "paused": raise HTTPException(404, "paused session not found")
+    session.status="active"
+    if session.plan_item_id: db.get(PlanItem, session.plan_item_id).status="active"
+    if session.assignment_id: db.get(Assignment, session.assignment_id).status="active"
+    db.commit(); return {"id": session.id, "status": session.status, "active_seconds": session.active_seconds}
+
+
+@app.post("/sessions/{session_id}/pause")
+def pause_session(session_id: str, body: SessionPause, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
+    session = db.get(StudySession, session_id)
+    if session is None or session.ward_id != principal.user_id or session.status != "active": raise HTTPException(404, "active session not found")
+    session.status="paused"; session.active_seconds=body.active_seconds
+    if session.plan_item_id: db.get(PlanItem, session.plan_item_id).status="paused"
+    if session.assignment_id: db.get(Assignment, session.assignment_id).status="paused"
+    db.commit(); return {"id": session.id, "status": session.status, "active_seconds": session.active_seconds}
 
 @app.post("/sessions/{session_id}/messages")
 def tutor(session_id: str, body: MessageCreate, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
@@ -279,7 +327,11 @@ def tutor(session_id: str, body: MessageCreate, principal: Principal = Depends(c
 def finish_session(session_id: str, body: SessionFinish, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
     session = db.get(StudySession, session_id)
     if session is None or session.ward_id != principal.user_id: raise HTTPException(404, "session not found")
-    session.status="completed"; session.ended_at=now(); session.active_seconds=body.active_seconds; db.get(PlanItem, session.plan_item_id).status="completed"; db.commit(); return {"status": "completed"}
+    if session.status not in ("active", "paused"): raise HTTPException(409, "session is already completed")
+    session.status="completed"; session.ended_at=now(); session.active_seconds=body.active_seconds
+    if session.plan_item_id: db.get(PlanItem, session.plan_item_id).status="completed"
+    if session.assignment_id: db.get(Assignment, session.assignment_id).status="completed"
+    db.commit(); return {"status": "completed"}
 
 @app.post("/wards/{ward_id}/reviews/{review_date}")
 def submit_review(ward_id: str, review_date: date, body: SelfReviewCreate, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):

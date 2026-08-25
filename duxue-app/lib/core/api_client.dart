@@ -263,6 +263,9 @@ class ApiClient {
     return data['ward_id'] as String;
   }
 
+  Future<Map<String, dynamic>> wardProfile() async =>
+      Map<String, dynamic>.from((await dio.get('/ward/profile')).data as Map);
+
   Future<List<dynamic>> assignments(String wardId) async =>
       (await dio.get('/wards/$wardId/assignments')).data as List<dynamic>;
   Future<Map<String, dynamic>> savePlan(String wardId, DateTime day,
@@ -279,6 +282,18 @@ class ApiClient {
   Future<Map<String, dynamic>> startSession(String itemId) async =>
       Map<String, dynamic>.from(
           (await dio.post('/plan-items/$itemId/sessions')).data);
+  Future<Map<String, dynamic>> startAssignmentSession(
+          String assignmentId) async =>
+      Map<String, dynamic>.from(
+          (await dio.post('/assignments/$assignmentId/sessions')).data);
+  Future<Map<String, dynamic>> resumeSession(String sessionId) async =>
+      Map<String, dynamic>.from(
+          (await dio.post('/sessions/$sessionId/resume')).data);
+  Future<Map<String, dynamic>> pauseSession(
+          String sessionId, int seconds) async =>
+      Map<String, dynamic>.from((await dio.post('/sessions/$sessionId/pause',
+              data: {'active_seconds': seconds}))
+          .data);
   Future<String> ask(String sessionId, String content) async => (await dio
           .post('/sessions/$sessionId/messages', data: {'content': content}))
       .data['content'] as String;
