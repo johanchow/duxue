@@ -209,7 +209,12 @@ class StudySession(Base):
     __tablename__ = "study_sessions"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id", ondelete="CASCADE"), index=True)
-    plan_item_id: Mapped[str] = mapped_column(ForeignKey("plan_items.id"), index=True)
+    # A session belongs either to a confirmed plan item or an assignment that
+    # has not yet entered a plan.  Keeping the source explicit lets Ward start
+    # a task from either part of the v3 home page without silently changing
+    # their plan.
+    plan_item_id: Mapped[str | None] = mapped_column(ForeignKey("plan_items.id"), index=True, nullable=True)
+    assignment_id: Mapped[str | None] = mapped_column(ForeignKey("assignments.id"), index=True, nullable=True)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     active_seconds: Mapped[int] = mapped_column(Integer, default=0)
