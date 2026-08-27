@@ -19,6 +19,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 from app.main import app  # noqa: E402
 from app.storage import storage  # noqa: E402
 from app.task_intake import TaskIntakeResult  # noqa: E402
+from app.plan_intake import PlanIntakeResult  # noqa: E402
 
 
 class EndToEndTest(unittest.TestCase):
@@ -236,6 +237,38 @@ class EndToEndTest(unittest.TestCase):
         foreign = self.request("POST", "/wards", token=outsider, json={"display_name": "外部孩子", "grade_stage": "high"}).json()["id"]
         rejected = self.request("POST", "/task-intake/confirm", token=token, json={"tasks": [{"ward_id": foreign, "title": "不应写入"}]})
         self.assertEqual(rejected.status_code, 404)
+
+    def test_ward_can_confirm_today_plan_draft_with_a_new_task_and_image(self):
+        guardian = self.request("POST", "/auth/register", json={"name": "计划家长", "email": "plan-intake@example.com", "password": "password123"}).json()["access_token"]
+        ward = self.request("POST", "/wards", token=guardian, json={"display_name": "小计划", "grade_stage": "middle"}).json()["id"]
+        invite = self.request("POST", f"/wards/{ward}/login-invite", token=guardian).json()
+        ward_token = self.request("POST", "/ward-auth/bind", json={"invite_code": invite["invite_code"]}).json()["access_token"]
+        day = datetime.now(timezone.utc).date().isoformat()
+        signed = self.request("POST", f"/wards/{ward}/plan-intake/upload-url", token=ward_token, json={"extension": "jpg", "content_type": "image/jpeg"})
+        self.assertEqual(signed.status_code, 200, signed.text)
+        self.assertEqual(self.client.put(signed.json()["upload_url"], content=b"plan-image").status_code, 204)
+        attachment = signed.json()["oss_key"]
+        parsed = PlanIntakeResult(
+            assistant_text="已整理今天的任务。",
+            items=[{"title": "整理数学错题", "planned_minutes": 20, "new_task": True}],
+            ready_to_confirm=True,
+        )
+        with patch("app.main.PlanIntakeService.respond", return_value=parsed):
+            response = self.request("POST", f"/wards/{ward}/plans/{day}/intake", token=ward_token, json={"content": "把照片里的错题今天整理完", "attachment_keys": [attachment]})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["items"][0]["title"], "整理数学错题")
+        confirmed = self.request("POST", f"/wards/{ward}/plans/{day}/intake/confirm", token=ward_token, json={"items": response.json()["items"], "attachment_keys": [attachment]})
+        self.assertEqual(confirmed.status_code, 201, confirmed.text)
+        self.assertFalse(storage.exists(attachment))
+        plan = self.request("GET", f"/wards/{ward}/plans/{day}", token=ward_token).json()
+        self.assertEqual(plan["status"], "confirmed")
+        self.assertEqual(plan["items"][0]["title"], "整理数学错题")
+        assignments = self.request("GET", f"/wards/{ward}/assignments", token=ward_token).json()
+        self.assertEqual(assignments[0]["title"], "整理数学错题")
+        other_guardian = self.request("POST", "/auth/register", json={"name": "其他计划家长", "email": "other-plan-intake@example.com", "password": "password123"}).json()["access_token"]
+        other_ward = self.request("POST", "/wards", token=other_guardian, json={"display_name": "其他学生", "grade_stage": "primary"}).json()["id"]
+        forbidden = self.request("POST", f"/wards/{other_ward}/plan-intake/upload-url", token=ward_token, json={"extension": "jpg", "content_type": "image/jpeg"})
+        self.assertEqual(forbidden.status_code, 403)
 
 
 if __name__ == "__main__":

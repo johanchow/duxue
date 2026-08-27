@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import '../providers.dart';
 import '../shared/app_ui.dart';
 import '../shared/voice_composer.dart';
@@ -138,6 +139,10 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
   String? session, answer;
   int tab = 0;
   final watch = Stopwatch();
+  final planAttachments = <String>[];
+  List<Map<String, dynamic>> planDraft = [];
+  String? planFeedback;
+  bool planSending = false;
   Timer? timer;
   int savedSeconds = 0;
   @override
@@ -149,6 +154,11 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
   @override
   void dispose() {
     timer?.cancel();
+    if (planAttachments.isNotEmpty) {
+      unawaited(ref
+          .read(apiProvider)
+          .cleanupPlanIntake(widget.wardId, planAttachments));
+    }
     super.dispose();
   }
 
@@ -201,7 +211,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
             '周${_weekday(DateTime.now())} · ${DateTime.now().month} 月 ${DateTime.now().day} 日',
             style: const TextStyle(fontSize: 12, color: Colors.blueGrey)),
         const SizedBox(height: 4),
-        Text('晚上好，开始按自己的节奏学习吧',
+        Text('开始按自己的节奏学习吧',
             style: Theme.of(context)
                 .textTheme
                 .headlineSmall
@@ -214,13 +224,13 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
             child: planned.isEmpty
                 ? const Padding(
                     padding: EdgeInsets.all(16),
-                    child: Text('今晚还没有确认计划。可以在下方告诉我怎么安排。'))
+                    child: Text('今天还没有确认计划。可以在下方告诉我怎么安排。'))
                 : Column(children: [
                     for (var i = 0; i < planned.length; i++)
                       _timelineTask(planned[i] as Map<String, dynamic>, i == 0),
                   ])),
         const SizedBox(height: 18),
-        _sectionHead('未进入今晚计划', '${pool.length} 项'),
+        _sectionHead('未进入今天计划', '${pool.length} 项'),
         AppCard(
             padding: EdgeInsets.zero,
             child: pool.isEmpty
@@ -233,7 +243,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
                   ])),
         const Padding(
             padding: EdgeInsets.only(top: 8, left: 2, right: 2),
-            child: Text('这些不会自动排进今晚。想加进来、延后或拆开，可以告诉 AI 伙伴。',
+            child: Text('这些不会自动排进今天。想加进来、延后或拆开，可以告诉 AI 伙伴。',
                 style: TextStyle(fontSize: 12, color: Colors.blueGrey))),
         if (planned.isNotEmpty) ...[
           const SizedBox(height: 18),
@@ -349,26 +359,39 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
   }
 
   Widget _chatEntry() => AppCard(
-      onTap: _showPlanConversation,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      child: Row(children: [
-        Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-                color: brandBlue, borderRadius: BorderRadius.circular(12)),
-            child: const Icon(Icons.auto_awesome, color: Colors.white)),
-        const SizedBox(width: 10),
-        const Expanded(
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('跟我说今晚怎么安排', style: TextStyle(fontWeight: FontWeight.w700)),
-          Text('加任务 · 改顺序 · 调时长 · 补遗漏',
-              style: TextStyle(fontSize: 12, color: Colors.blueGrey))
-        ])),
-        IconButton(
-            onPressed: _showPlanConversation,
-            icon: const Icon(Icons.mic_none, color: brandBlue)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        VoiceComposer(
+            baseUrl: apiBaseUrl,
+            tokens: ref.read(tokenStorageProvider),
+            holdToTalkText: '说今天怎么安排',
+            helperText: '加任务 · 改顺序 · 调时长 · 补遗漏',
+            enabled: !planSending,
+            onPickImage: _pickPlanImage,
+            onVoiceFinal: _submitPlanInput),
+        if (planAttachments.isNotEmpty)
+          Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text('已添加 ${planAttachments.length} 张图片，发送后我会一起整理。',
+                  style:
+                      const TextStyle(fontSize: 12, color: Colors.blueGrey))),
+        if (planFeedback != null)
+          Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(planFeedback!)),
+        if (planDraft.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          const Text('今天计划草稿', style: TextStyle(fontWeight: FontWeight.w700)),
+          for (final item in planDraft)
+            Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                    '• ${item['title']} · 约 ${item['planned_minutes']} 分钟')),
+          const SizedBox(height: 8),
+          FilledButton(
+              onPressed: planSending ? null : _confirmPlanIntake,
+              child: const Text('确认今天计划')),
+        ],
       ]));
 
   Widget _ai(BuildContext context) =>
@@ -493,23 +516,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
     if (approved != true || !mounted) return;
     await ref.read(authProvider.notifier).logout();
     if (mounted) context.go('/login');
-  }
-
-  Future<void> _plan() async {
-    final day = DateTime.now();
-    await ref.read(apiProvider).savePlan(
-        widget.wardId,
-        day,
-        tasks
-            .map((x) => {
-                  'assignment_id': x['id'],
-                  'title': x['title'],
-                  'planned_minutes': 30
-                })
-            .toList());
-    await ref.read(apiProvider).confirmPlan(widget.wardId, day);
-    plan = await ref.read(apiProvider).plan(widget.wardId, day);
-    if (mounted) setState(() {});
   }
 
   void _restoreActiveSession() {
@@ -681,47 +687,67 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
     }
   }
 
-  void _showPlanConversation() => showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      builder: (sheetContext) {
-        final input = TextEditingController();
-        return Padding(
-            padding: EdgeInsets.fromLTRB(
-                20, 16, 20, MediaQuery.viewInsetsOf(sheetContext).bottom + 20),
-            child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('今晚安排',
-                      style:
-                          TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 6),
-                  const Text('可以说怎么调整。我只出草稿，你确认后才会改计划。'),
-                  const SizedBox(height: 16),
-                  VoiceComposer(
-                      controller: input,
-                      baseUrl: apiBaseUrl,
-                      tokens: ref.read(tokenStorageProvider),
-                      hintText: '说说想加的任务或怎么改…',
-                      onSend: (text) async {
-                        // The transcript remains editable and only becomes a
-                        // plan after the Ward presses the explicit confirmation.
-                        showMessage(sheetContext, '已记录你的想法，请确认草稿后生效');
-                      }),
-                  const SizedBox(height: 12),
-                  const AppCard(child: Text('草稿建议（未生效）\n会把当前任务池按你的确认安排进今晚。')),
-                  const SizedBox(height: 12),
-                  FilledButton(
-                      onPressed: tasks.isEmpty
-                          ? null
-                          : () async {
-                              Navigator.pop(sheetContext);
-                              await _plan();
-                            },
-                      child: const Text('确认这个计划')),
-                ]));
+  Future<void> _pickPlanImage() async {
+    final image = await ImagePicker()
+        .pickImage(source: ImageSource.gallery, imageQuality: 85);
+    if (image == null || !mounted) return;
+    final extension = image.name.split('.').last.toLowerCase();
+    if (!const {'jpg', 'jpeg', 'png', 'webp'}.contains(extension)) {
+      showMessage(context, '暂只支持 JPG、PNG 或 WebP 图片');
+      return;
+    }
+    try {
+      final key = await ref.read(apiProvider).uploadPlanIntakeImage(
+          widget.wardId, await image.readAsBytes(), extension);
+      if (mounted) {
+        setState(() => planAttachments.add(key));
+        await _submitPlanInput('');
+      }
+    } catch (_) {
+      if (mounted) showMessage(context, '图片上传失败，请重试');
+    }
+  }
+
+  Future<void> _submitPlanInput(String text) async {
+    if (planSending) return;
+    setState(() => planSending = true);
+    try {
+      final result = await ref.read(apiProvider).respondToPlanIntake(
+          widget.wardId, DateTime.now(),
+          content: text,
+          draftItems: planDraft,
+          attachmentKeys: planAttachments);
+      if (!mounted) return;
+      setState(() {
+        planFeedback = result['assistant_text'] as String?;
+        planDraft = (result['items'] as List? ?? const [])
+            .map((item) => Map<String, dynamic>.from(item as Map))
+            .toList();
       });
+    } catch (_) {
+      if (mounted) showMessage(context, '暂时无法整理今天的计划，请重试');
+    } finally {
+      if (mounted) setState(() => planSending = false);
+    }
+  }
+
+  Future<void> _confirmPlanIntake() async {
+    if (planDraft.isEmpty || planSending) return;
+    setState(() => planSending = true);
+    try {
+      await ref.read(apiProvider).confirmPlanIntake(
+          widget.wardId, DateTime.now(), planDraft, planAttachments);
+      planAttachments.clear();
+      planDraft = [];
+      planFeedback = null;
+      await _load();
+      if (mounted) showMessage(context, '今天计划已确认');
+    } catch (_) {
+      if (mounted) showMessage(context, '确认计划失败，请稍后重试');
+    } finally {
+      if (mounted) setState(() => planSending = false);
+    }
+  }
 
   String _weekday(DateTime day) =>
       const ['一', '二', '三', '四', '五', '六', '日'][day.weekday - 1];

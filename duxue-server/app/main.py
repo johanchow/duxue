@@ -24,12 +24,13 @@ from .schemas import (
     ProfilePatch, RefreshRequest, RegisterRequest, TokenPair, UploadUrlRequest, WardCreate,
     WardOut, WardPatch, WardBindRequest, AssignmentCreate, PlanDraft,
     MessageCreate, SessionFinish, SessionPause, SelfReviewCreate, TaskIntakeCleanup, TaskIntakeConfirm,
-    TaskIntakeRequest,
+    TaskIntakeRequest, PlanIntakeCleanup, PlanIntakeConfirm, PlanIntakeRequest,
 )
 from .security import create_access_token, hash_secret, random_token, token_hash, verify_secret
 from .services import analyze_and_generate, corrected_time, make_invite_code, owned_ward, utc_bounds
 from .storage import LocalStorage, storage
 from .task_intake import TaskIntakeError, TaskIntakeService
+from .plan_intake import PlanIntakeService
 
 
 app = FastAPI(title="读学 Server", version="0.1.0")
@@ -181,6 +182,12 @@ def _task_intake_attachments(guardian_id: str, keys: list[str]) -> None:
         raise HTTPException(400, "invalid task intake attachment")
 
 
+def _plan_intake_attachments(ward_id: str, keys: list[str]) -> None:
+    prefix = f"ward/{ward_id}/plan-intake/"
+    if any(not key.startswith(prefix) or not storage.exists(key) for key in keys):
+        raise HTTPException(400, "invalid plan intake attachment")
+
+
 @app.post("/task-intake/upload-url")
 def task_intake_upload_url(body: UploadUrlRequest, request: Request, principal: Principal = Depends(current_guardian)):
     extension = body.extension.lower().lstrip(".")
@@ -226,6 +233,89 @@ def confirm_task_intake(body: TaskIntakeConfirm, principal: Principal = Depends(
 @app.post("/task-intake/cleanup", status_code=204)
 def cleanup_task_intake(body: TaskIntakeCleanup, principal: Principal = Depends(current_guardian)):
     _task_intake_attachments(principal.user_id, body.attachment_keys)
+    for key in body.attachment_keys:
+        storage.delete(key)
+
+
+@app.post("/wards/{ward_id}/plan-intake/upload-url")
+def plan_intake_upload_url(ward_id: str, body: UploadUrlRequest, request: Request, principal: Principal = Depends(current_ward)):
+    _ward_owned(principal, ward_id)
+    extension = body.extension.lower().lstrip(".")
+    if extension not in {"jpg", "jpeg", "png", "webp"}:
+        raise HTTPException(400, "unsupported image extension")
+    if not body.content_type.startswith("image/"):
+        raise HTTPException(400, "unsupported image content type")
+    key = f"ward/{ward_id}/plan-intake/{secrets.token_hex(16)}.{extension}"
+    base_url = str(request.base_url) if settings.storage_backend == "local" else settings.public_base_url
+    url, expires, headers = storage.upload_url(key, base_url, body.content_type)
+    return {"upload_url": url, "oss_key": key, "expires_at": datetime.fromtimestamp(expires, timezone.utc), "headers": headers}
+
+
+@app.post("/wards/{ward_id}/plans/{plan_date}/intake")
+def respond_to_plan_intake(ward_id: str, plan_date: date, body: PlanIntakeRequest, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
+    _ward_owned(principal, ward_id)
+    if plan_date != date.today():
+        raise HTTPException(400, "plan intake is only available for today")
+    _plan_intake_attachments(ward_id, body.attachment_keys)
+    ward = db.get(Ward, ward_id)
+    tasks = db.query(Assignment).filter_by(ward_id=ward_id).filter(Assignment.status != "completed").all()
+    try:
+        return PlanIntakeService().respond(
+            ward={"id": ward.id, "display_name": ward.display_name, "grade_stage": ward.grade_stage},
+            tasks=[{"id": task.id, "title": task.title, "details": task.details} for task in tasks],
+            request=body,
+        ).model_dump(mode="json")
+    except TaskIntakeError as error:
+        raise HTTPException(502, str(error)) from error
+
+
+@app.post("/wards/{ward_id}/plans/{plan_date}/intake/confirm", status_code=201)
+def confirm_plan_intake(ward_id: str, plan_date: date, body: PlanIntakeConfirm, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
+    _ward_owned(principal, ward_id)
+    if plan_date != date.today():
+        raise HTTPException(400, "plan intake is only available for today")
+    _plan_intake_attachments(ward_id, body.attachment_keys)
+    plan = db.query(DailyPlan).filter_by(ward_id=ward_id, plan_date=plan_date).one_or_none()
+    if plan is not None:
+        existing = db.query(PlanItem).filter_by(plan_id=plan.id).all()
+        if any(item.status != "pending" for item in existing):
+            raise HTTPException(409, "a started or completed plan cannot be changed")
+    try:
+        if any(item.new_task == (item.assignment_id is not None) for item in body.items):
+            raise HTTPException(400, "plan task source is invalid")
+        assignment_ids = {item.assignment_id for item in body.items if item.assignment_id}
+        owned = db.query(Assignment).filter(Assignment.id.in_(assignment_ids)).filter_by(ward_id=ward_id).all() if assignment_ids else []
+        if {row.id for row in owned} != assignment_ids:
+            raise HTTPException(400, "plan contains a task that does not belong to this ward")
+        if plan is None:
+            plan = DailyPlan(ward_id=ward_id, plan_date=plan_date)
+            db.add(plan)
+            db.flush()
+        else:
+            db.query(PlanItem).filter_by(plan_id=plan.id).delete()
+        for position, item in enumerate(body.items):
+            assignment_id = item.assignment_id
+            if item.new_task:
+                created = Assignment(ward_id=ward_id, title=item.title, details=item.details, source="ward")
+                db.add(created)
+                db.flush()
+                assignment_id = created.id
+            db.add(PlanItem(plan_id=plan.id, assignment_id=assignment_id, title=item.title, position=position, planned_minutes=item.planned_minutes))
+        plan.status = "confirmed"
+        plan.confirmed_at = now()
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    for key in body.attachment_keys:
+        storage.delete(key)
+    return {"id": plan.id, "status": plan.status}
+
+
+@app.post("/wards/{ward_id}/plan-intake/cleanup", status_code=204)
+def cleanup_plan_intake(ward_id: str, body: PlanIntakeCleanup, principal: Principal = Depends(current_ward)):
+    _ward_owned(principal, ward_id)
+    _plan_intake_attachments(ward_id, body.attachment_keys)
     for key in body.attachment_keys:
         storage.delete(key)
 

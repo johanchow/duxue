@@ -266,6 +266,51 @@ class ApiClient {
   Future<Map<String, dynamic>> wardProfile() async =>
       Map<String, dynamic>.from((await dio.get('/ward/profile')).data as Map);
 
+  Future<String> uploadPlanIntakeImage(
+      String wardId, Uint8List bytes, String extension) async {
+    final normalized = extension.toLowerCase();
+    final contentType = normalized == 'png'
+        ? 'image/png'
+        : normalized == 'webp'
+            ? 'image/webp'
+            : 'image/jpeg';
+    final signed = Map<String, dynamic>.from((await dio.post(
+      '/wards/$wardId/plan-intake/upload-url',
+      data: {'extension': normalized, 'content_type': contentType},
+    ))
+        .data);
+    await Dio().put(
+      signed['upload_url'] as String,
+      data: bytes,
+      options:
+          Options(headers: Map<String, dynamic>.from(signed['headers'] as Map)),
+    );
+    return signed['oss_key'] as String;
+  }
+
+  Future<Map<String, dynamic>> respondToPlanIntake(String wardId, DateTime day,
+          {required String content,
+          required List<Map<String, dynamic>> draftItems,
+          required List<String> attachmentKeys}) async =>
+      Map<String, dynamic>.from(
+          (await dio.post('/wards/$wardId/plans/${_day(day)}/intake', data: {
+        'content': content,
+        'draft_items': draftItems,
+        'attachment_keys': attachmentKeys,
+      }))
+              .data);
+
+  Future<void> confirmPlanIntake(String wardId, DateTime day,
+          List<Map<String, dynamic>> items, List<String> attachmentKeys) =>
+      dio.post('/wards/$wardId/plans/${_day(day)}/intake/confirm', data: {
+        'items': items,
+        'attachment_keys': attachmentKeys,
+      });
+
+  Future<void> cleanupPlanIntake(String wardId, List<String> attachmentKeys) =>
+      dio.post('/wards/$wardId/plan-intake/cleanup',
+          data: {'attachment_keys': attachmentKeys});
+
   Future<List<dynamic>> assignments(String wardId) async =>
       (await dio.get('/wards/$wardId/assignments')).data as List<dynamic>;
   Future<Map<String, dynamic>> savePlan(String wardId, DateTime day,
