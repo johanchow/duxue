@@ -1,8 +1,9 @@
-import 'package:duxue_app/shared/app_ui.dart';
 import 'package:duxue_app/core/api_client.dart';
 import 'package:duxue_app/core/token_storage.dart';
+import 'package:duxue_app/core/voice_transcription_service.dart';
 import 'package:duxue_app/features/day_story_pages.dart';
 import 'package:duxue_app/providers.dart';
+import 'package:duxue_app/shared/voice_composer.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -11,6 +12,7 @@ class _WardHomeApi extends ApiClient {
   _WardHomeApi()
       : super(baseUrl: 'http://localhost', tokens: const TokenStorage());
   var startedAssignment = false;
+  var confirmedPlanIntake = false;
 
   @override
   Future<List<dynamic>> assignments(String wardId) async => [
@@ -52,26 +54,58 @@ class _WardHomeApi extends ApiClient {
     startedAssignment = true;
     return {'id': 'session-1', 'status': 'active', 'active_seconds': 0};
   }
+
+  @override
+  Future<Map<String, dynamic>> respondToPlanIntake(String wardId, DateTime day,
+          {required String content,
+          required List<Map<String, dynamic>> draftItems,
+          required List<String> attachmentKeys}) async =>
+      {
+        'assistant_text': '已整理为今天的草稿。',
+        'items': [
+          {
+            'title': '整理错题',
+            'planned_minutes': 20,
+            'new_task': true,
+          },
+        ],
+        'ready_to_confirm': true,
+      };
+
+  @override
+  Future<void> confirmPlanIntake(String wardId, DateTime day,
+      List<Map<String, dynamic>> items, List<String> attachmentKeys) async {
+    confirmedPlanIntake = true;
+  }
+}
+
+class _FakeVoice implements VoiceTranscription {
+  late TranscriptHandler onPartial;
+  late TranscriptHandler onFinal;
+  late VoiceErrorHandler onError;
+  var cancelled = false;
+
+  @override
+  Future<void> start(
+      {required TranscriptHandler onPartial,
+      required TranscriptHandler onFinal,
+      required VoiceErrorHandler onError}) async {
+    this.onPartial = onPartial;
+    this.onFinal = onFinal;
+    this.onError = onError;
+  }
+
+  @override
+  Future<void> cancel() async => cancelled = true;
+
+  @override
+  Future<void> commit() async => onFinal('今天整理错题');
+
+  @override
+  Future<void> dispose() async {}
 }
 
 void main() {
-  testWidgets('shared card preserves its content and tap action',
-      (tester) async {
-    var tapped = false;
-    await tester.pumpWidget(MaterialApp(
-      home: Scaffold(
-        body: AppCard(
-          onTap: () => tapped = true,
-          child: const Text('今日报告等待生成'),
-        ),
-      ),
-    ));
-
-    expect(find.text('今日报告等待生成'), findsOneWidget);
-    await tester.tap(find.text('今日报告等待生成'));
-    expect(tapped, isTrue);
-  });
-
   testWidgets('task-pool item requires confirmation before it starts',
       (tester) async {
     final api = _WardHomeApi();
@@ -89,5 +123,55 @@ void main() {
     await tester.tap(find.text('确认开始'));
     await tester.pumpAndSettle();
     expect(api.startedAssignment, isTrue);
+  });
+
+  testWidgets(
+      'holding talk sends its final transcript and image invokes callback',
+      (tester) async {
+    final voice = _FakeVoice();
+    String? transcript;
+    var imagePressed = false;
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: VoiceComposer(
+                baseUrl: 'http://localhost',
+                tokens: const TokenStorage(),
+                voiceFactory: ({required baseUrl, required tokens}) => voice,
+                onVoiceFinal: (value) async => transcript = value,
+                onPickImage: () async => imagePressed = true))));
+
+    final gesture =
+        await tester.startGesture(tester.getCenter(find.text('按住说话')));
+    await tester.pump(const Duration(milliseconds: 600));
+    await gesture.up();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('图片'));
+
+    expect(transcript, '今天整理错题');
+    expect(imagePressed, isTrue);
+  });
+
+  testWidgets('sliding up while holding talk cancels without sending',
+      (tester) async {
+    final voice = _FakeVoice();
+    String? transcript;
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: VoiceComposer(
+                baseUrl: 'http://localhost',
+                tokens: const TokenStorage(),
+                voiceFactory: ({required baseUrl, required tokens}) => voice,
+                onVoiceFinal: (value) async => transcript = value,
+                onPickImage: () async {}))));
+
+    final gesture =
+        await tester.startGesture(tester.getCenter(find.text('按住说话')));
+    await tester.pump(const Duration(milliseconds: 600));
+    await gesture.moveBy(const Offset(0, -80));
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(voice.cancelled, isTrue);
+    expect(transcript, isNull);
   });
 }

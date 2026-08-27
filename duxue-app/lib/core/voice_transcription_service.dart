@@ -9,8 +9,23 @@ import 'token_storage.dart';
 
 typedef TranscriptHandler = void Function(String text);
 typedef VoiceErrorHandler = void Function(String message);
+typedef VoiceTranscriptionFactory = VoiceTranscription Function({
+  required String baseUrl,
+  required TokenStorage tokens,
+});
 
-class VoiceTranscriptionService {
+abstract interface class VoiceTranscription {
+  Future<void> start({
+    required TranscriptHandler onPartial,
+    required TranscriptHandler onFinal,
+    required VoiceErrorHandler onError,
+  });
+  Future<void> commit();
+  Future<void> cancel();
+  Future<void> dispose();
+}
+
+class VoiceTranscriptionService implements VoiceTranscription {
   VoiceTranscriptionService({
     required this.baseUrl,
     required this.tokens,
@@ -33,6 +48,7 @@ class VoiceTranscriptionService {
     return api.replace(scheme: scheme, path: '$basePath/ws/asr/transcribe');
   }
 
+  @override
   Future<void> start({
     required TranscriptHandler onPartial,
     required TranscriptHandler onFinal,
@@ -72,6 +88,7 @@ class VoiceTranscriptionService {
     });
   }
 
+  @override
   Future<void> commit() async {
     await _audioSubscription?.cancel();
     _audioSubscription = null;
@@ -79,6 +96,7 @@ class VoiceTranscriptionService {
     _socket?.sink.add(jsonEncode({'type': 'commit'}));
   }
 
+  @override
   Future<void> cancel() async {
     await _audioSubscription?.cancel();
     _audioSubscription = null;
@@ -87,6 +105,7 @@ class VoiceTranscriptionService {
     await _closeSocket();
   }
 
+  @override
   Future<void> dispose() async {
     await cancel();
     await _recorder.dispose();
