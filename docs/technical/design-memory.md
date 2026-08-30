@@ -77,13 +77,13 @@
 
 ## 四、事实层：业务主表与学习事件账本
 
-现有 `daily_plans`、`tasks`、`tutoring_sessions`、`self_evaluations`、`behavior_segments` 等表仍是各自领域的权威业务状态。新增的事件账本不替代它们，而是为 AI 上下文、异步理解和审计提供统一的不可变流水。
+现有 `daily_schedules`、`tasks`、`tutoring_sessions`、`self_reviews`、`behavior_segments` 等表仍是各自领域的权威业务状态。新增的事件账本不替代它们，而是为 AI 上下文、异步理解和审计提供统一的不可变流水。
 
 ### 4.1 事件写入时机
 
 | 业务动作 | 领域主表写入 | 同步追加的 Fact Event |
 |---|---|---|
-| Ward 确认计划 | `DailyPlan` / `PlanItem` | `plan_confirmed`、`task_scheduled` |
+| Ward 确认计划 | `DailySchedule` / `Task` | `plan_confirmed`、`task_scheduled` |
 | 开始、暂停、完成任务 | 任务/会话状态 | `task_started`、`task_paused`、`task_completed` |
 | Ward 提问与尝试 | `TutoringSession` / 消息记录 | `tutoring_question`、`ward_attempt`、`hint_given` |
 | Ward 提交自评 | `SelfEvaluation` | `self_evaluation_submitted` |
@@ -150,6 +150,48 @@ class DerivedSignal(BaseModel):
 - **会话结算**：任务完成、答疑结束、自评提交后，由 Celery 提炼本次卡点、行动采纳与复盘候选。
 - **定时演进**：每日任务重新计算基线、衰减旧主张、检查兴趣或有效策略是否满足晋升条件。
 - **运行时消费**：Context Builder 仅取与当前场景直接相关的 Active Signal；Candidate Signal 只可用于温和追问，不能作为确定结论呈现。
+
+### 5.2 Signal Taxonomy 与 `value` Schema（v1）
+
+`signal_type` 是受控、版本化的枚举；模型只能从中选择类型并提议 Candidate，不能发明新的画像维度。信号成立度由领域服务按独立会话数、证据可靠性、时间衰减、Ward 明确确认和反证计算；模型输出的置信度不能直接作为长期结论的分数。
+
+| `signal_type` | `scope` | `value` 必填字段 | 主要事实来源 | 可晋升为长期理解的条件 |
+|---|---|---|---|---|
+| `focus_endurance_baseline` | `long_term` | `baseline_minutes`、`sample_count`、`window_days`、`calculation_method` | 有效学习会话、行为片段 | 达到最小有效会话样本；每次聚合均可重算和覆盖 |
+| `estimation_bias` | `recent` / `long_term` | `direction`、`median_delta_minutes`、`sample_count`、`window_days` | 计划预估、实际完成时长 | 多个独立任务持续呈现同方向偏差 |
+| `knowledge_gap` | `task` / `recent` / `long_term` | `subject`、`skill_key`、`support_session_count`、`resolved_session_count` | Ward 求助、提示层级、任务结果 | 同一具体知识步骤跨多个独立任务重复出现；不得表述为学科能力标签 |
+| `effective_strategy` | `recent` / `long_term` | `strategy_key`、`applied_count`、`positive_outcome_count`、`comparison_window` | 锦囊采纳、后续任务结果、Ward 反馈 | 有重复采纳及正向结果，或 Ward 明确确认有效 |
+| `stable_interest` | `recent` / `long_term` | `topic_key`、`independent_session_count`、`active_expression_count`、`last_observed_at` | 主动提问、保存探索、完成探索任务 | 跨多个独立会话且包含 Ward 主动行为；单次提及只能是 Candidate |
+| `planning_preference` | `recent` / `long_term` | `preference_key`、`selection_count`、`completion_rate`、`window_days` | Ward 确认计划、任务排序、实际完成 | Ward 多次自主选择并在不同日期保持稳定 |
+| `reflection_accuracy_trend` | `recent` / `long_term` | `metric`、`direction`、`sample_count`、`window_days` | Ward 自评、锁闭后生成的客观聚合 | 由代码计算多个复盘的偏差趋势；不将偏差表述为诚实或品格问题 |
+
+所有 `value` 都应保留对应统计窗口和样本量；具体阈值由版本化 Policy 配置管理，不写死在 Prompt。`statement` 只能依据 `value` 和关联证据生成，采用中性、可行动且不贴标签的语言。
+
+状态机如下：
+
+```text
+Candidate --满足规则或 Ward 明确确认--> Active
+Candidate --达到有效期且证据不足--> Expired
+Active --出现反证或 Ward 否认--> Challenged
+Challenged --重新满足规则--> Active
+Active / Challenged --长期无支持或留存到期--> Expired
+```
+
+`long_term_profiles` 是 `scope=long_term AND status=active` 的聚合读模型：它按维度完整重算并覆盖旧快照，不追加、也不直接保存事件证据。物理字段、关联表及索引以 [`design-server.md`](design-server.md) 为唯一事实源。
+
+### 5.3 事件、记忆与会话的生命周期编排
+
+| 对象 | 创建/更新触发 | 写入者与幂等键 | 结束、归档与清理 |
+|---|---|---|---|
+| `learning_events` | 领域状态提交时同步写入 Outbox；Outbox 消费后落入事件账本 | 领域服务；`source_type + source_id + event_type + source_version` 唯一 | 不修改事实；按 `retention_policy` 由显式清理任务处理 |
+| Working Memory | `StudySession` 开始、恢复、答疑消息或未确认计划草稿 | Runtime；`ward_id + study_session_id` | 完成、放弃或超时后关闭；Redis TTL 仅是兜底，不替代状态结算 |
+| `episodic_memories` | 答疑关闭、任务完成、学习会话结算、自评提交和日终补偿 | Celery；`memory_type + aggregate_id + aggregate_version` 唯一 | 近 5 天热窗口后归档；关联事件仍按事实留存策略保存 |
+| `derived_signals` | 会话结算产生 Candidate；每日聚合更新分数、状态和有效期 | Signal Worker；`ward_id + signal_type + scope + dimension_key` 唯一 | 反证或 Ward 否认进入 Challenged；长期无支持或到期进入 Expired；保留审计和证据关系至留存期结束 |
+| `long_term_profiles` | 每日聚合，或 Active 长期 Signal 变化后排队重算 | Profile Worker；`ward_id` 唯一 UPSERT | 按维度完整覆盖；不追加历史事件，也不承担证据留存 |
+
+`StudySession` 记录一次 Task 的执行总体状态；多次暂停和恢复由 `study_session_intervals` 记录。开始创建 Session 与一个未关闭 Interval；暂停关闭 Interval 并累计时长；恢复创建新 Interval；完成或异常结算关闭当前 Interval。数据库约束保证每个 Session 最多一个 `ended_at IS NULL` 的 Interval。长时间暂停跨日时，日终任务以 `auto_settled` 或 `abandoned` 关闭会话，后续重新开始应创建新 Session。
+
+普通删除受外键 `RESTRICT/NO ACTION` 阻止。注销或被遗忘权由受控应用级工作流按依赖顺序执行：停止运行中会话与 Worker → 清理 Redis 工作记忆和对象存储 → 删除可删除的派生读模型/关系记录 → 按数据政策处理事件与业务事实；不得依赖数据库 Cascade。
 
 ## 六、与现有三层记忆模型的映射
 

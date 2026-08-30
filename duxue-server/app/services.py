@@ -109,7 +109,7 @@ def analyze_and_generate(
         prediction.confidence = confidence
         prediction.source = "api" if frame.id in supplied_results else "local"
         prediction.model_version = "qwen3-vl-flash" if frame.id in supplied_results else "local-deterministic-v1"
-        points.append(Point(frame.id, frame.captured_at, label, confidence))
+        points.append(Point(frame.id, frame.captured_at, label, confidence, frame.study_session_id))
 
     segments = build_segments(smooth(points), settings.capture_interval_seconds)
     db.query(BehaviorSegment).filter(
@@ -121,6 +121,7 @@ def analyze_and_generate(
     for item in segments:
         db.add(BehaviorSegment(
             ward_id=ward_id, report_date=report_date,
+            study_session_id=item["study_session_id"],
             seg_start=item["start"], seg_end=item["end"], behavior_label=item["label"],
             frame_count=item["frame_count"], confidence_avg=item["confidence_avg"],
         ))

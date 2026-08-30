@@ -20,6 +20,8 @@ from app.main import app  # noqa: E402
 from app.storage import storage  # noqa: E402
 from app.task_intake import TaskIntakeResult  # noqa: E402
 from app.plan_intake import PlanIntakeResult  # noqa: E402
+from app.database import SessionLocal  # noqa: E402
+from app.models import LearningEvent, StudySessionInterval, TutoringMessage, TutoringSession  # noqa: E402
 
 
 class EndToEndTest(unittest.TestCase):
@@ -124,6 +126,10 @@ class EndToEndTest(unittest.TestCase):
         self.assertEqual(guardian_plan.json()["status"], "confirmed")
         session = self.request("POST", f"/plan-items/{plan['items'][0]['id']}/sessions", token=ward_token).json()["id"]
         self.assertEqual(self.request("POST", f"/sessions/{session}/messages", token=ward_token, json={"content":"我不会这题"}).json()["mode"], "socratic")
+        with SessionLocal() as db:
+            tutoring = db.query(TutoringSession).filter_by(study_session_id=session).one()
+            self.assertEqual(db.query(TutoringMessage).filter_by(tutoring_session_id=tutoring.id).count(), 2)
+            self.assertEqual(db.query(LearningEvent).filter_by(source_type="tutoring_message").count(), 1)
         self.assertEqual(self.request("POST", f"/sessions/{session}/finish", token=ward_token, json={"active_seconds":1800}).status_code, 200)
         self.assertEqual(self.request("POST", f"/wards/{ward}/reviews/{day}", token=ward_token, json={"feeling":"顺利","timeline_json":[]}).status_code, 200)
         self.assertEqual(self.request("GET", f"/wards/{ward}/reviews/{day}/insight", token=ward_token).json()["status"], "ready")
@@ -150,6 +156,9 @@ class EndToEndTest(unittest.TestCase):
         self.assertEqual(next(item for item in assignments if item["id"] == second)["session"]["status"], "paused")
         self.assertEqual(self.request("POST", f"/sessions/{pool_session}/resume", token=ward_token).status_code, 200)
         self.assertEqual(self.request("POST", f"/sessions/{pool_session}/finish", token=ward_token, json={"active_seconds":20}).status_code, 200)
+        with SessionLocal() as db:
+            self.assertEqual(db.query(StudySessionInterval).filter_by(study_session_id=planned_session).count(), 2)
+            self.assertEqual(db.query(LearningEvent).filter_by(source_type="study_session", source_id=planned_session).count(), 4)
         self.assertNotIn(second, {item["id"] for item in self.request("GET", f"/wards/{ward}/assignments", token=ward_token).json()})
 
     def test_ward_profile_exposes_its_guardian_name(self):

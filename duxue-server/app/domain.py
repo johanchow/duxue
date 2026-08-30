@@ -35,6 +35,7 @@ class Point:
     at: datetime
     label: str
     confidence: float
+    study_session_id: str | None = None
 
 
 def smooth(points: list[Point], radius: int = 1) -> list[Point]:
@@ -48,7 +49,7 @@ def smooth(points: list[Point], radius: int = 1) -> list[Point]:
         # Preserve the center on a tie so edges do not create artificial changes.
         tied = [label for label, value in counts.items() if value == count]
         label = point.label if point.label in tied else winner
-        result.append(Point(point.frame_id, point.at, label, point.confidence))
+        result.append(Point(point.frame_id, point.at, label, point.confidence, point.study_session_id))
     return result
 
 
@@ -64,11 +65,17 @@ def build_segments(points: Iterable[Point], interval_seconds: int = 15) -> list[
             groups[-1].append(point)
         else:
             groups.append([point])
-    return [{
-        "start": group[0].at,
-        "end": group[-1].at + timedelta(seconds=interval_seconds),
-        "label": group[0].label,
-        "frame_count": len(group),
-        "confidence_avg": sum(item.confidence for item in group) / len(group),
-        "duration_seconds": len(group) * interval_seconds,
-    } for group in groups]
+    result: list[dict] = []
+    for group in groups:
+        session_ids = {item.study_session_id for item in group}
+        result.append({
+            "start": group[0].at,
+            "end": group[-1].at + timedelta(seconds=interval_seconds),
+            "label": group[0].label,
+            "frame_count": len(group),
+            "confidence_avg": sum(item.confidence for item in group) / len(group),
+            "duration_seconds": len(group) * interval_seconds,
+            # Associate only when every source frame belongs to the same session.
+            "study_session_id": session_ids.pop() if len(session_ids) == 1 else None,
+        })
+    return result
