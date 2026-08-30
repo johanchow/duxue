@@ -74,6 +74,7 @@ duxue/                          # 项目根目录
 | 文档 | 路径 | 内容摘要 |
 |------|------|---------|
 | 服务端详细设计 (No-Tenant) | [`docs/technical/design-server.md`](docs/technical/design-server.md) | 分层实现、无租户模型与直连绑定、数据库 ER 图、会话即时分析与伴学记忆引擎 |
+| 孩子理解、记忆与 AI 上下文技术设计 | [`docs/technical/design-memory.md`](docs/technical/design-memory.md) | 事实事件账本、Signal/Claim、三层记忆映射、ContextEnvelope、Skill/Policy 与写回边界 |
 | VLM 分析指南 | [`duxue-server/docs/qwen3vl-student-behavior-guide.md`](duxue-server/docs/qwen3vl-student-behavior-guide.md) | Qwen3-VL 行为分析 Prompt 设计与字段定义 |
 
 ### 读学Eye（duxue-cam）
