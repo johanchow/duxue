@@ -68,6 +68,7 @@ class FrameCreate(BaseModel):
     oss_key: str
     captured_at: datetime
     elapsed_realtime: int | None = None
+    study_session_id: str | None = None
 
 
 class UploadUrlRequest(BaseModel):

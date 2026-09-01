@@ -125,26 +125,31 @@ graph LR
 
 ```mermaid
 erDiagram
-    users ||--o{ guardian_ward_bindings : "监护人关系(as guardian)"
-    users ||--o{ guardian_ward_bindings : "学生关系(as ward)"
-    users ||--o{ guardian_invitations : "发起共管邀请"
-    users ||--o{ refresh_tokens : "持有"
-    users ||--o{ devices : "Ward拥有采集设备"
-    users ||--o{ tasks : "Ward任务清单"
-    users ||--o{ daily_schedules : "Ward每日计划"
-    users ||--o{ tutoring_sessions : "Ward伴学答疑"
-    users ||--o{ self_evaluations : "Ward主观自评"
-    users ||--o{ dual_track_reports : "Ward复盘报告"
-    users ||--o{ episodic_memories : "Ward事件记忆流水"
-    users ||--o| long_term_profiles : "Ward长期人物画像"
+    users ||--o| user_guardians : "Guardian 角色资料"
+    users ||--o| user_wards : "Ward 角色资料"
+    user_guardians ||--o{ guardian_ward_relations : "监护/共管关系"
+    user_wards ||--o{ guardian_ward_relations : "被监护关系"
+    user_guardians ||--o{ refresh_tokens : "持有"
+    user_wards ||--o| ward_credentials : "Ward 登录凭据版本"
+    user_wards ||--o{ ward_invites : "Ward 登录邀请码"
+    user_wards ||--o{ devices : "拥有采集设备"
+    user_wards ||--o{ tasks : "任务清单"
+    user_wards ||--o{ daily_schedules : "每日计划"
+    user_wards ||--o{ tutoring_sessions : "伴学答疑"
+    user_wards ||--o{ self_reviews : "主观自评"
+    user_wards ||--o{ reports : "日报"
+    user_wards ||--o{ episodic_memories : "事件记忆流水"
+    user_wards ||--o{ learning_events : "学习事实事件"
+    user_wards ||--o{ derived_signals : "可校正理解信号"
+    user_wards ||--o| long_term_profiles : "长期人物画像"
 
-    daily_schedules ||--o{ tasks : "包含具体任务"
-    daily_schedules ||--o{ behavior_segments : "每日行为时序片段"
-    daily_schedules ||--o| self_evaluations : "每日唯一盲评"
-    daily_schedules ||--o| dual_track_reports : "每日唯一报告"
+    daily_schedules ||--o{ tasks : "任务排期（schedule_id 可为空）"
 
-    tasks ||--o{ frames : "任务执行期间抓拍"
-    tasks ||--o{ tutoring_sessions : "任务卡点答疑"
+    tasks ||--o{ study_sessions : "一次或多次实际执行"
+    study_sessions ||--o{ study_session_intervals : "暂停/恢复执行区间"
+    study_sessions ||--o{ frames : "执行期间抓拍"
+    study_sessions ||--o{ behavior_segments : "会话级行为片段"
+    study_sessions ||--o{ tutoring_sessions : "会话内答疑"
 
     devices ||--o{ frames : "物理产生"
     frames ||--o| frame_predictions : "逐帧标签"
@@ -152,50 +157,59 @@ erDiagram
 
     tutoring_sessions ||--o{ tutoring_messages : "问答交互轮次"
 
-    self_evaluations ||--o| dual_track_reports : "关联主观事实"
-    dual_track_reports ||--o{ actionable_tips : "生成行动锦囊"
-    dual_track_reports ||--o{ guardian_dialogue_prompts : "生成沟通建议"
+    episodic_memories ||--o{ episodic_memory_events : "由事实事件支撑"
+    learning_events ||--o{ episodic_memory_events : "被近期记忆引用"
+    derived_signals ||--o{ derived_signal_events : "由事实事件支撑或反证"
+    learning_events ||--o{ derived_signal_events : "支持或挑战理解信号"
 
     users {
         uuid id PK
-        string phone UK "手机号(登录主凭证)"
-        string password_hash "哈希密码(bcrypt)"
-        string role "guardian(家长) | ward(学生)"
-        string display_name "真实姓名或昵称"
-        string avatar_url "头像地址"
-        jsonb preferences "个人偏好(通知设置、界面模式)"
-        timestamp created_at
-        timestamp updated_at
-    }
-
-    guardian_ward_bindings {
-        uuid id PK
-        uuid guardian_id FK "监护人 User ID"
-        uuid ward_id FK "学生 User ID"
-        string relation_type "parent(父母) | guardian(监护人) | tutor(老师)"
-        string permission_level "full(完全管理) | readonly(只读)"
+        string type "guardian | ward"
         timestamp created_at
     }
 
-    guardian_invitations {
+    user_guardians {
+        uuid id PK,FK "users.id"
+        string name
+        string email UK "登录邮箱"
+        string password_hash
+        string role "admin | guardian"
+    }
+
+    user_wards {
+        uuid id PK,FK "users.id"
+        string display_name
+        string grade_stage "primary | middle | high"
+        text notes
+        uuid analysis_profile_id FK
+    }
+
+    guardian_ward_relations {
         uuid id PK
-        uuid inviter_guardian_id FK "发起邀请的监护人"
-        jsonb ward_ids "共享的学生 ID 数组: [uuid1, uuid2]"
-        string permission_level "full(完全管理) | readonly(只读)"
-        string relation_type "parent | guardian | tutor"
-        string invite_code UK "6位随机短码或短Token(24h有效)"
-        string status "pending(待接受) | accepted(已接受) | expired(已过期) | revoked(已撤销)"
-        timestamp expires_at "过期时间点"
+        uuid guardian_id FK "user_guardians.id"
+        uuid ward_id FK "user_wards.id"
+    }
+
+    ward_credentials {
+        uuid ward_id PK,FK "user_wards.id"
+        int session_version "重新绑定时递增，使旧 Ward token 失效"
         timestamp created_at
+    }
+
+    ward_invites {
+        uuid id PK
+        uuid ward_id FK
+        string code UK "Ward 登录邀请码"
+        timestamp expires_at
+        timestamp consumed_at
     }
 
     refresh_tokens {
         uuid id PK
-        uuid user_id FK
+        uuid guardian_id FK "user_guardians.id"
         string token_hash UK
         timestamp expires_at
         bool revoked
-        timestamp created_at
     }
 
     devices {
@@ -215,17 +229,14 @@ erDiagram
     tasks {
         uuid id PK
         uuid ward_id FK
-        uuid schedule_id FK "所属每日计划(可为空)"
-        string title "任务名称(如: 完成数学圆锥曲线练习)"
-        string subject "math | english | physics | chinese | other"
-        int estimated_minutes "预计用时(分钟)"
-        int actual_minutes "实际用时(分钟)"
-        int priority "优先级: 1(高) ~ 3(低)"
-        string status "todo | in_progress | completed | abandoned"
-        string source "ward_created | guardian_assigned | system_recommended"
-        date scheduled_date "排期日期"
-        timestamp started_at
-        timestamp completed_at
+        uuid schedule_id FK "已确认归入的每日计划(可为空；为空时在任务池)"
+        string title "任务名称"
+        text details "任务补充说明"
+        date due_date "可选截止日期"
+        int position "已确认计划内的排序(可为空)"
+        int planned_minutes "计划用时(分钟；可为空)"
+        string source "guardian | ward"
+        string status "open | active | paused | completed"
         timestamp created_at
     }
 
@@ -233,18 +244,15 @@ erDiagram
         uuid id PK
         uuid ward_id FK
         date schedule_date UK "排期所属日期(单学生单日唯一)"
-        string status "draft | confirmed | in_progress | completed"
-        string schedule_theme "每日主线或口号"
+        string status "draft | confirmed"
         timestamp confirmed_at "Ward最终确认时间"
-        timestamp created_at
-        timestamp updated_at
     }
 
     frames {
         uuid id PK
         uuid device_id FK
         uuid ward_id FK
-        uuid task_id FK "关联的任务ID(执行期间挂载)"
+        uuid study_session_id FK "关联的实际学习会话"
         string oss_key "OSS存储相对路径"
         timestamp captured_at "抓拍时间戳"
         bigint monotonic_offset_ms "单调时钟偏移量(校正时间偏差)"
@@ -269,7 +277,7 @@ erDiagram
     behavior_segments {
         uuid id PK
         uuid ward_id FK
-        uuid schedule_id FK "关联的每日计划ID"
+        uuid study_session_id FK "关联的实际学习会话"
         timestamp seg_start "片段开始时间"
         timestamp seg_end "片段结束时间"
         string behavior_label "合并后的行为标签"
@@ -282,13 +290,39 @@ erDiagram
     tutoring_sessions {
         uuid id PK
         uuid ward_id FK
-        uuid task_id FK "关联的任务ID"
+        uuid study_session_id FK "关联的实际学习会话"
         string subject "学科分类"
         string question_type "concept | problem_solving | grammar | general"
         string question_summary "题目/疑问简要概述"
         string status "active | closed"
         timestamp created_at
         timestamp closed_at
+    }
+
+    study_sessions {
+        uuid id PK
+        uuid ward_id FK
+        uuid task_id FK "本次执行的唯一任务"
+        string status "active | paused | completed | abandoned"
+        timestamp started_at "首次开始时间"
+        timestamp ended_at "完成或放弃时间(可为空)"
+        int active_seconds "所有已关闭执行区间的累计时长"
+        int pause_count "暂停次数"
+        timestamp last_activity_at
+        string completion_reason "ward_finished | auto_settled | abandoned"
+        int version "乐观锁版本"
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    study_session_intervals {
+        uuid id PK
+        uuid study_session_id FK
+        timestamp started_at
+        timestamp ended_at "未关闭的当前执行区间为空"
+        string end_reason "paused | completed | abandoned"
+        int active_seconds "关闭时写入的本段有效时长"
+        timestamp created_at
     }
 
     tutoring_messages {
@@ -299,6 +333,7 @@ erDiagram
         jsonb media_urls "上传的题目局部抓拍/草稿图"
         int hint_level "提示等级: 0(用户), 1~4(引导阶梯)"
         jsonb interest_signal "抽取的兴趣点/好奇心元数据"
+        bool is_stuck_point "Ward 明确表达卡住的事实标识"
         bool safety_blocked "是否因直接索要答案被安全网关拦截"
         timestamp created_at
     }
@@ -351,6 +386,21 @@ erDiagram
         timestamp created_at
     }
 
+    learning_events {
+        uuid id PK
+        uuid ward_id FK
+        string event_type "plan_confirmed | task_completed | hint_given | self_evaluation_submitted | behavior_segment_generated | action_tip_adopted"
+        timestamp occurred_at "事实发生时间"
+        jsonb scope "day / schedule / task / tutoring_session 等关联范围"
+        string source "ward | guardian | system | cam"
+        float confidence "非确定性系统分析的置信度；确定性事实为空"
+        jsonb payload "按 event_type 版本化的事实内容"
+        jsonb evidence_refs "领域记录或受控对象引用"
+        string visibility "ward | guardian | system"
+        string retention_policy "适用的数据留存策略"
+        timestamp created_at
+    }
+
     episodic_memories {
         uuid id PK
         uuid ward_id FK
@@ -362,14 +412,56 @@ erDiagram
         timestamp created_at
     }
 
+    episodic_memory_events {
+        uuid id PK
+        uuid episodic_memory_id FK
+        uuid learning_event_id FK
+        string role "primary | supporting | counter"
+        timestamp created_at
+    }
+
+    derived_signals {
+        uuid id PK
+        uuid ward_id FK
+        string signal_type "受控枚举；语义与 value Schema 见 design-memory.md"
+        string subject "可为空；如 math | english"
+        string scope "task | recent | long_term"
+        jsonb value "按 signal_type 约束的结构化值"
+        string statement "面向运行时的简洁、非标签化解释"
+        float confidence "由代码聚合的成立度"
+        timestamp observed_from "首个有效证据时间"
+        timestamp last_evaluated_at
+        timestamp expires_at
+        string status "candidate | active | challenged | expired"
+        string policy_version "参与计算的规则版本"
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    derived_signal_events {
+        uuid id PK
+        uuid derived_signal_id FK
+        uuid learning_event_id FK
+        string role "support | counter | confirmation | rejection"
+        float weight "规则计算的证据权重"
+        jsonb evidence_snapshot "当次计算使用的关键事实快照"
+        timestamp created_at
+    }
+
     long_term_profiles {
         uuid id PK
         uuid ward_id FK UK "每个Ward唯一长期画像"
-        int focus_endurance_baseline_min "长期专注耐力基线(分钟)"
+        int focus_endurance_baseline_min "长期专注耐力基线(分钟；聚合读值)"
+        jsonb focus_endurance_baseline_meta "样本数、计算窗口、算法版本与最后有效样本时间"
         jsonb subject_difficulty_map "学科难点认知画像"
         jsonb mature_interest_radar "沉淀的稳定兴趣雷达"
-        jsonb habit_patterns "日常行为节律特征"
-        jsonb parental_interaction_pref "家庭互动偏好"
+        jsonb learning_strategy_profile "已验证有效的学习策略"
+        jsonb planning_preferences "Ward多次自主确认的计划偏好"
+        jsonb self_regulation_metrics "估时偏差、自评觉察等趋势"
+        jsonb habit_patterns "仅限日常学习节律特征"
+        jsonb parental_interaction_pref "仅限 Ward/Guardian 明确表达的沟通偏好"
+        int profile_version "聚合规则或结构版本"
+        timestamp calculated_at "最近一次完整聚合时间"
         timestamp updated_at
     }
 ```
@@ -377,21 +469,31 @@ erDiagram
 ### 3.2 关键索引与约束设计 (PostgreSQL DDL 核心规范)
 
 ```sql
--- 1. 监护人-学生关联唯一索引及共管邀请检索索引
-CREATE UNIQUE INDEX uq_guardian_ward ON guardian_ward_bindings(guardian_id, ward_id);
-CREATE INDEX idx_gwb_ward ON guardian_ward_bindings(ward_id);
-CREATE UNIQUE INDEX uq_invitation_code ON guardian_invitations(invite_code);
-CREATE INDEX idx_invitations_inviter ON guardian_invitations(inviter_guardian_id, status);
+-- 1. 当前 Guardian-Ward 绑定与 Ward 登录邀请码索引
+CREATE UNIQUE INDEX uq_guardian_ward_relations ON guardian_ward_relations(guardian_id, ward_id);
+CREATE INDEX idx_guardian_ward_relations_ward ON guardian_ward_relations(ward_id);
+CREATE UNIQUE INDEX uq_ward_invites_code ON ward_invites(code);
+CREATE INDEX idx_ward_invites_ward ON ward_invites(ward_id);
 
 -- 2. 帧数据与时序片段高效检索 (按任务与排期拉取/清理)
-CREATE INDEX idx_frames_task ON frames(task_id, captured_at ASC);
+CREATE INDEX idx_frames_session ON frames(study_session_id, captured_at ASC);
 CREATE INDEX idx_frames_ward_date ON frames(ward_id, captured_at DESC);
 CREATE INDEX idx_frames_purge ON frames(purge_after) WHERE training_candidate = FALSE;
-CREATE INDEX idx_segments_schedule ON behavior_segments(schedule_id, seg_start ASC);
+CREATE INDEX idx_sessions_task ON study_sessions(task_id, started_at DESC);
+CREATE INDEX idx_sessions_ward_status ON study_sessions(ward_id, status, started_at DESC);
+CREATE UNIQUE INDEX uq_open_session_interval ON study_session_intervals(study_session_id) WHERE ended_at IS NULL;
+CREATE INDEX idx_segments_session ON behavior_segments(study_session_id, seg_start ASC);
 
--- 3. 伴学消息与事件记忆检索
+-- 3. 伴学消息、事实事件与记忆检索
 CREATE INDEX idx_tutoring_msg_session ON tutoring_messages(tutoring_session_id, created_at ASC);
+CREATE INDEX idx_learning_events_ward_time ON learning_events(ward_id, occurred_at DESC);
+CREATE INDEX idx_learning_events_ward_type_time ON learning_events(ward_id, event_type, occurred_at DESC);
 CREATE INDEX idx_episodic_ward_date ON episodic_memories(ward_id, event_date DESC);
+CREATE UNIQUE INDEX uq_episodic_memory_event ON episodic_memory_events(episodic_memory_id, learning_event_id);
+CREATE INDEX idx_episodic_memory_events_event ON episodic_memory_events(learning_event_id);
+CREATE INDEX idx_signals_ward_scope_status ON derived_signals(ward_id, scope, status, last_evaluated_at DESC);
+CREATE UNIQUE INDEX uq_derived_signal_event ON derived_signal_events(derived_signal_id, learning_event_id);
+CREATE INDEX idx_derived_signal_events_event ON derived_signal_events(learning_event_id);
 CREATE INDEX idx_devices_heartbeat ON devices(status, last_heartbeat_at);
 ```
 
@@ -527,31 +629,29 @@ graph TD
 │ 2. 近期事件流水   │ PostgreSQL 16 (表存储)     │ 滚动近 5 天详细事实   │
 │    (Episodic)     │ 表: `episodic_memories`    │ 时间半衰期指数衰减    │
 ├───────────────────┼────────────────────────────┼───────────────────────┤
-│ 3. 长期人物画像   │ PostgreSQL 16 (JSONB 聚合) │ 跨周期稳定特征与基线  │
-│    (Long-Term)    │ 表: `long_term_profiles`   │ 每日夜间 Celery 汇总  │
+│ 3. 长期人物画像   │ PostgreSQL 16 (JSONB 聚合) │ Active 长期 Signal 的 │
+│    (Long-Term)    │ 表: `long_term_profiles`   │ 每日夜间 Celery 重算  │
+│                   │                             │ 读模型与稳定基线      │
 └───────────────────┴────────────────────────────┴───────────────────────┘
 ```
 
 ### 记忆衰减与动态演化算法
-近期事件权重随时间推移按半衰期公式 \( W(t) = W_0 \cdot e^{-\lambda \Delta t} \) 衰减（设定半衰期为 3 天，\(\lambda \approx 0.231\)）。当事件发生超过 5 天且无重现时，权重归零并归档，核心特征沉淀至 `long_term_profiles`。
+近期事件权重随时间推移按半衰期公式 \( W(t) = W_0 \cdot e^{-\lambda \Delta t} \) 衰减（设定半衰期为 3 天，\(\lambda \approx 0.231\)）。当事件发生超过 5 天且无重现时，近期记忆归档；每日任务基于事实事件和 `derived_signals` 重算信号状态，并将 `scope=long_term AND status=active` 的聚合结果覆盖写入 `long_term_profiles`。事实事件仍按其留存策略保存，不以近期记忆的 5 天热窗口作为长期结论的唯一依据。
 
 ---
 
 ## 七、API 接口规范（RESTful & SSE）
 
 ### 7.1 认证与关系管理 (IAM & Bindings)
-- `POST /api/v1/auth/register`：手机号密码注册（区分角色 `guardian` / `ward`）；
-- `POST /api/v1/auth/login`：手机号密码登录，签发 Access Token (15min) 与 Refresh Token (30天)；
-- `POST /api/v1/auth/refresh`：刷新 Access Token；
-- `POST /api/v1/wards`：创建新学生档案（请求体支持可选 `sync_guardian_ids: List[UUID]`，保存时一键为勾选的已有共管成员建立绑定，免重新扫码）；
-- `POST /api/v1/bindings/bind`：监护人单点扫码/输码绑定学生；
-- `GET /api/v1/bindings/wards`：监护人拉取名下绑定的所有学生列表（支持 1~100 人分页、分组与快速检索）；
-- `POST /api/v1/bindings/invitations`：主监护人发起共管邀请（指定 `ward_ids`，默认全选，设定 `permission_level` 与 `relation_type`，生成 6 位短码/短链 Token，默认 24h 有效）；
-- `GET /api/v1/bindings/invitations/{invite_code}`：查验邀请详情（返回发起人昵称、邀请共享的学生姓名列表与权限等级，供被邀请端扫码预览）；
-- `POST /api/v1/bindings/invitations/accept`：新监护人一键接受共管邀请（携带 `invite_code`，系统在 `guardian_ward_bindings` 中批量写入绑定记录）；
-- `GET /api/v1/bindings/co-guardians`：主监护人查询当前共管成员列表（包含各成员已管辖的学生列表与权限级别）；
-- `PUT /api/v1/bindings/co-guardians/{guardian_id}/wards`：主监护人动态调整指定共管成员的管辖学生范围及权限级别；
-- `DELETE /api/v1/bindings/co-guardians/{guardian_id}`：解除与某监护人的共管绑定关系。
+
+当前实现采用 `users` 作为身份根、`user_guardians` / `user_wards` 作为角色资料扩展，并以 `guardian_ward_relations` 表示 Guardian 与 Ward 的唯一绑定关系。当前没有跨 Guardian 共管邀请实体；`ward_invites` 仅用于 Ward 登录或换机绑定。
+
+- `POST /auth/register`：注册 Guardian，创建 `users` 与 `user_guardians`；
+- `POST /auth/login`、`POST /auth/refresh`：Guardian 登录和刷新令牌，令牌记录写入 `refresh_tokens`；
+- `GET /wards`、`POST /wards`：Guardian 查询或创建名下 Ward；创建时同时写入 `users`、`user_wards`、`guardian_ward_relations`；
+- `POST /wards/{ward_id}/login-invite`：创建一次性 `ward_invites` 登录码；
+- `POST /ward-auth/bind`：Ward 使用邀请码绑定，递增 `ward_credentials.session_version` 使旧 Ward token 失效；
+- `GET /ward/profile`：Ward 查询自己的资料与已绑定 Guardian。
 
 ### 7.2 采集设备接入 (Devices & Frames)
 - `POST /api/v1/devices/generate-code`：App 端生成 6 位 10 分钟一次性绑定邀请码；

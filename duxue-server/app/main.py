@@ -17,7 +17,7 @@ from .dependencies import Principal, _bearer, current_device, current_guardian, 
 from .models import (
     AnalysisProfile, BehaviorLabelConfig, BehaviorSegment, Device, Frame, FramePrediction,
     Guardian, GuardianWard, RefreshToken, Report, User, Ward, WardCredential, WardInvite,
-    Assignment, DailyPlan, PlanItem, StudySession, StudyMessage, SelfReview, FocusKit, now,
+    Task, DailySchedule, StudySession, StudySessionInterval, TutoringSession, TutoringMessage, SelfReview, FocusKit, now,
 )
 from .schemas import (
     AnalyzeDayRequest, DeviceBind, FrameCreate, LabelCreate, LoginRequest, ProfileCreate,
@@ -31,6 +31,7 @@ from .services import analyze_and_generate, corrected_time, make_invite_code, ow
 from .storage import LocalStorage, storage
 from .task_intake import TaskIntakeError, TaskIntakeService
 from .plan_intake import PlanIntakeService
+from .memory import record_learning_event
 
 
 app = FastAPI(title="读学 Server", version="0.1.0")
@@ -219,7 +220,7 @@ def confirm_task_intake(body: TaskIntakeConfirm, principal: Principal = Depends(
     try:
         for task in body.tasks:
             owned_ward(db, principal.user_id, task.ward_id)
-        rows = [Assignment(ward_id=task.ward_id, title=task.title, details=task.details, due_date=task.due_date) for task in body.tasks]
+        rows = [Task(ward_id=task.ward_id, title=task.title, details=task.details, due_date=task.due_date) for task in body.tasks]
         db.add_all(rows)
         db.commit()
     except Exception:
@@ -258,7 +259,7 @@ def respond_to_plan_intake(ward_id: str, plan_date: date, body: PlanIntakeReques
         raise HTTPException(400, "plan intake is only available for today")
     _plan_intake_attachments(ward_id, body.attachment_keys)
     ward = db.get(Ward, ward_id)
-    tasks = db.query(Assignment).filter_by(ward_id=ward_id).filter(Assignment.status != "completed").all()
+    tasks = db.query(Task).filter_by(ward_id=ward_id).filter(Task.status != "completed").all()
     try:
         return PlanIntakeService().respond(
             ward={"id": ward.id, "display_name": ward.display_name, "grade_stage": ward.grade_stage},
@@ -275,32 +276,33 @@ def confirm_plan_intake(ward_id: str, plan_date: date, body: PlanIntakeConfirm, 
     if plan_date != date.today():
         raise HTTPException(400, "plan intake is only available for today")
     _plan_intake_attachments(ward_id, body.attachment_keys)
-    plan = db.query(DailyPlan).filter_by(ward_id=ward_id, plan_date=plan_date).one_or_none()
+    plan = db.query(DailySchedule).filter_by(ward_id=ward_id, schedule_date=plan_date).one_or_none()
     if plan is not None:
-        existing = db.query(PlanItem).filter_by(plan_id=plan.id).all()
+        existing = db.query(Task).filter_by(schedule_id=plan.id).all()
         if any(item.status != "pending" for item in existing):
             raise HTTPException(409, "a started or completed plan cannot be changed")
     try:
         if any(item.new_task == (item.assignment_id is not None) for item in body.items):
             raise HTTPException(400, "plan task source is invalid")
         assignment_ids = {item.assignment_id for item in body.items if item.assignment_id}
-        owned = db.query(Assignment).filter(Assignment.id.in_(assignment_ids)).filter_by(ward_id=ward_id).all() if assignment_ids else []
+        owned = db.query(Task).filter(Task.id.in_(assignment_ids)).filter_by(ward_id=ward_id).all() if assignment_ids else []
         if {row.id for row in owned} != assignment_ids:
             raise HTTPException(400, "plan contains a task that does not belong to this ward")
         if plan is None:
-            plan = DailyPlan(ward_id=ward_id, plan_date=plan_date)
+            plan = DailySchedule(ward_id=ward_id, schedule_date=plan_date)
             db.add(plan)
             db.flush()
         else:
-            db.query(PlanItem).filter_by(plan_id=plan.id).delete()
+            db.query(Task).filter_by(schedule_id=plan.id).update({Task.schedule_id: None, Task.position: None, Task.planned_minutes: None})
         for position, item in enumerate(body.items):
             assignment_id = item.assignment_id
             if item.new_task:
-                created = Assignment(ward_id=ward_id, title=item.title, details=item.details, source="ward")
+                created = Task(ward_id=ward_id, title=item.title, details=item.details, source="ward")
                 db.add(created)
                 db.flush()
                 assignment_id = created.id
-            db.add(PlanItem(plan_id=plan.id, assignment_id=assignment_id, title=item.title, position=position, planned_minutes=item.planned_minutes))
+            task = db.get(Task, assignment_id)
+            task.schedule_id, task.position, task.planned_minutes = plan.id, position, item.planned_minutes
         plan.status = "confirmed"
         plan.confirmed_at = now()
         db.commit()
@@ -322,31 +324,36 @@ def cleanup_plan_intake(ward_id: str, body: PlanIntakeCleanup, principal: Princi
 
 @app.post("/wards/{ward_id}/assignments", status_code=201)
 def create_assignment(ward_id: str, body: AssignmentCreate, principal: Principal = Depends(current_guardian), db: Session = Depends(get_db)):
-    owned_ward(db, principal.user_id, ward_id); row = Assignment(ward_id=ward_id, **body.model_dump()); db.add(row); db.commit(); db.refresh(row)
+    owned_ward(db, principal.user_id, ward_id); row = Task(ward_id=ward_id, **body.model_dump()); db.add(row); db.commit(); db.refresh(row)
     return {"id": row.id, "title": row.title, "status": row.status, "source": row.source}
 
 @app.get("/wards/{ward_id}/assignments")
 def assignments(ward_id: str, principal: Principal = Depends(current_guardian_or_ward), db: Session = Depends(get_db)):
     if principal.role == "ward": _ward_owned(principal, ward_id)
     else: owned_ward(db, principal.user_id, ward_id)
-    rows = db.query(Assignment).filter_by(ward_id=ward_id).filter(Assignment.status != "completed").all()
+    rows = db.query(Task).filter_by(ward_id=ward_id).filter(Task.status != "completed").all()
     return [{"id": x.id, "title": x.title, "details": x.details, "due_date": x.due_date, "status": x.status,
-             "session": _open_session(db, assignment_id=x.id)} for x in rows]
+             "session": _open_session(db, task_id=x.id)} for x in rows]
 
 @app.put("/wards/{ward_id}/plans/{plan_date}")
 def save_plan(ward_id: str, plan_date: date, body: PlanDraft, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
     _ward_owned(principal, ward_id)
     if body.plan_date != plan_date: raise HTTPException(400, "date mismatch")
-    plan = db.query(DailyPlan).filter_by(ward_id=ward_id, plan_date=plan_date).one_or_none()
-    if plan is None: plan = DailyPlan(ward_id=ward_id, plan_date=plan_date); db.add(plan); db.flush()
+    plan = db.query(DailySchedule).filter_by(ward_id=ward_id, schedule_date=plan_date).one_or_none()
+    if plan is None: plan = DailySchedule(ward_id=ward_id, schedule_date=plan_date); db.add(plan); db.flush()
     if plan.status == "confirmed": raise HTTPException(409, "confirmed plan cannot be changed")
-    db.query(PlanItem).filter_by(plan_id=plan.id).delete()
-    for position, item in enumerate(body.items): db.add(PlanItem(plan_id=plan.id, assignment_id=item.get("assignment_id"), title=item.get("title", "学习任务"), position=position, planned_minutes=int(item.get("planned_minutes", 30))))
+    db.query(Task).filter_by(schedule_id=plan.id).update({Task.schedule_id: None, Task.position: None, Task.planned_minutes: None})
+    for position, item in enumerate(body.items):
+        task = db.get(Task, item.get("assignment_id")) if item.get("assignment_id") else None
+        if task is None:
+            task = Task(ward_id=ward_id, title=item.get("title", "学习任务"), source="ward")
+            db.add(task); db.flush()
+        task.schedule_id, task.position, task.planned_minutes = plan.id, position, int(item.get("planned_minutes", 30))
     db.commit(); return {"id": plan.id, "status": plan.status}
 
 @app.post("/wards/{ward_id}/plans/{plan_date}/confirm")
 def confirm_plan(ward_id: str, plan_date: date, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
-    _ward_owned(principal, ward_id); plan = db.query(DailyPlan).filter_by(ward_id=ward_id, plan_date=plan_date).one_or_none()
+    _ward_owned(principal, ward_id); plan = db.query(DailySchedule).filter_by(ward_id=ward_id, schedule_date=plan_date).one_or_none()
     if plan is None: raise HTTPException(404, "plan not found")
     plan.status = "confirmed"; plan.confirmed_at = now(); db.commit(); return {"id": plan.id, "status": plan.status}
 
@@ -354,44 +361,47 @@ def confirm_plan(ward_id: str, plan_date: date, principal: Principal = Depends(c
 def get_plan(ward_id: str, plan_date: date, principal: Principal = Depends(current_guardian_or_ward), db: Session = Depends(get_db)):
     if principal.role == "ward": _ward_owned(principal, ward_id)
     else: owned_ward(db, principal.user_id, ward_id)
-    plan = db.query(DailyPlan).filter_by(ward_id=ward_id, plan_date=plan_date).one_or_none()
+    plan = db.query(DailySchedule).filter_by(ward_id=ward_id, schedule_date=plan_date).one_or_none()
     if plan is None: raise HTTPException(404, "plan not found")
-    items = db.query(PlanItem).filter_by(plan_id=plan.id).order_by(PlanItem.position)
-    return {"id": plan.id, "status": plan.status, "items": [{"id": x.id, "assignment_id": x.assignment_id, "title": x.title, "planned_minutes": x.planned_minutes, "status": x.status,
-             "session": _open_session(db, plan_item_id=x.id)} for x in items]}
+    items = db.query(Task).filter_by(schedule_id=plan.id).order_by(Task.position)
+    return {"id": plan.id, "status": plan.status, "items": [{"id": x.id, "assignment_id": x.id, "title": x.title, "planned_minutes": x.planned_minutes, "status": x.status,
+             "session": _open_session(db, task_id=x.id)} for x in items]}
 
 
-def _open_session(db: Session, *, plan_item_id: str | None = None, assignment_id: str | None = None) -> dict | None:
-    query = db.query(StudySession).filter(StudySession.status.in_(("active", "paused")))
-    query = query.filter_by(plan_item_id=plan_item_id) if plan_item_id else query.filter_by(assignment_id=assignment_id)
+def _open_session(db: Session, *, task_id: str) -> dict | None:
+    query = db.query(StudySession).filter(StudySession.status.in_(("active", "paused"))).filter_by(task_id=task_id)
     row = query.order_by(StudySession.started_at.desc()).first()
     return None if row is None else {"id": row.id, "status": row.status, "active_seconds": row.active_seconds}
 
 @app.post("/plan-items/{item_id}/sessions", status_code=201)
 def start_session(item_id: str, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
-    item = db.get(PlanItem, item_id); plan = db.get(DailyPlan, item.plan_id) if item else None
-    if plan is None or plan.ward_id != principal.user_id: raise HTTPException(404, "plan item not found")
-    active = _open_session(db, plan_item_id=item.id)
+    item = db.get(Task, item_id); plan = db.get(DailySchedule, item.schedule_id) if item and item.schedule_id else None
+    if plan is None or plan.ward_id != principal.user_id: raise HTTPException(404, "plan task not found")
+    active = _open_session(db, task_id=item.id)
     if active: return active
-    row = StudySession(ward_id=principal.user_id, plan_item_id=item.id); item.status="active"; db.add(row); db.commit(); return {"id": row.id, "status": row.status, "active_seconds": 0}
+    row = StudySession(ward_id=principal.user_id, task_id=item.id); item.status="active"; db.add(row); db.flush(); db.add(StudySessionInterval(study_session_id=row.id))
+    record_learning_event(db, ward_id=row.ward_id, event_type="study_session.started", source_type="study_session", source_id=row.id, payload={"task_id": row.task_id})
+    db.commit(); return {"id": row.id, "status": row.status, "active_seconds": 0}
 
 
 @app.post("/assignments/{assignment_id}/sessions", status_code=201)
 def start_assignment_session(assignment_id: str, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
-    assignment = db.get(Assignment, assignment_id)
+    assignment = db.get(Task, assignment_id)
     if assignment is None or assignment.ward_id != principal.user_id or assignment.status == "completed": raise HTTPException(404, "assignment not found")
-    active = _open_session(db, assignment_id=assignment.id)
+    active = _open_session(db, task_id=assignment.id)
     if active: return active
-    row = StudySession(ward_id=principal.user_id, assignment_id=assignment.id); assignment.status="active"; db.add(row); db.commit(); return {"id": row.id, "status": row.status, "active_seconds": 0}
+    row = StudySession(ward_id=principal.user_id, task_id=assignment.id); assignment.status="active"; db.add(row); db.flush(); db.add(StudySessionInterval(study_session_id=row.id))
+    record_learning_event(db, ward_id=row.ward_id, event_type="study_session.started", source_type="study_session", source_id=row.id, payload={"task_id": row.task_id})
+    db.commit(); return {"id": row.id, "status": row.status, "active_seconds": 0}
 
 
 @app.post("/sessions/{session_id}/resume")
 def resume_session(session_id: str, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
     session = db.get(StudySession, session_id)
     if session is None or session.ward_id != principal.user_id or session.status != "paused": raise HTTPException(404, "paused session not found")
-    session.status="active"
-    if session.plan_item_id: db.get(PlanItem, session.plan_item_id).status="active"
-    if session.assignment_id: db.get(Assignment, session.assignment_id).status="active"
+    session.status="active"; session.version += 1; session.last_activity_at=now()
+    db.get(Task, session.task_id).status="active"; db.add(StudySessionInterval(study_session_id=session.id))
+    record_learning_event(db, ward_id=session.ward_id, event_type="study_session.resumed", source_type="study_session", source_id=session.id, source_version=session.version, payload={"task_id": session.task_id})
     db.commit(); return {"id": session.id, "status": session.status, "active_seconds": session.active_seconds}
 
 
@@ -399,28 +409,39 @@ def resume_session(session_id: str, principal: Principal = Depends(current_ward)
 def pause_session(session_id: str, body: SessionPause, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
     session = db.get(StudySession, session_id)
     if session is None or session.ward_id != principal.user_id or session.status != "active": raise HTTPException(404, "active session not found")
-    session.status="paused"; session.active_seconds=body.active_seconds
-    if session.plan_item_id: db.get(PlanItem, session.plan_item_id).status="paused"
-    if session.assignment_id: db.get(Assignment, session.assignment_id).status="paused"
+    interval = db.query(StudySessionInterval).filter_by(study_session_id=session.id, ended_at=None).one()
+    interval.ended_at=now(); interval.end_reason="paused"; interval.active_seconds=max(0, body.active_seconds-session.active_seconds)
+    session.status="paused"; session.active_seconds=body.active_seconds; session.pause_count += 1; session.version += 1; session.last_activity_at=interval.ended_at
+    db.get(Task, session.task_id).status="paused"
+    record_learning_event(db, ward_id=session.ward_id, event_type="study_session.paused", source_type="study_session", source_id=session.id, source_version=session.version, payload={"task_id": session.task_id, "active_seconds": session.active_seconds})
     db.commit(); return {"id": session.id, "status": session.status, "active_seconds": session.active_seconds}
 
 @app.post("/sessions/{session_id}/messages")
 def tutor(session_id: str, body: MessageCreate, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
     session = db.get(StudySession, session_id)
     if session is None or session.ward_id != principal.user_id: raise HTTPException(404, "session not found")
-    db.add(StudyMessage(session_id=session_id, role="ward", content=body.content, is_stuck_point=True))
+    tutoring_session = db.query(TutoringSession).filter_by(study_session_id=session_id).one_or_none()
+    if tutoring_session is None:
+        tutoring_session = TutoringSession(ward_id=session.ward_id, study_session_id=session_id, question_summary=body.content, model_name="fallback-socratic-v1")
+        db.add(tutoring_session); db.flush()
+    question = TutoringMessage(tutoring_session_id=tutoring_session.id, role="ward", content=body.content, is_stuck_point=True)
+    db.add(question); db.flush()
+    record_learning_event(db, ward_id=session.ward_id, event_type="tutoring.stuck_point_recorded", source_type="tutoring_message", source_id=question.id, payload={"study_session_id": session.id, "tutoring_session_id": tutoring_session.id})
     # Model routing remains injectable; this safe fallback keeps an unavailable provider from blocking study.
     answer = "先别急着找答案。你能说说题目已知什么、要解决什么吗？把第一步写出来，我们一起检查。"
-    db.add(StudyMessage(session_id=session_id, role="assistant", content=answer)); db.commit(); return {"role": "assistant", "content": answer, "mode": "socratic"}
+    db.add(TutoringMessage(tutoring_session_id=tutoring_session.id, role="assistant", content=answer, hint_level=1)); db.commit(); return {"role": "assistant", "content": answer, "mode": "socratic"}
 
 @app.post("/sessions/{session_id}/finish")
 def finish_session(session_id: str, body: SessionFinish, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
     session = db.get(StudySession, session_id)
     if session is None or session.ward_id != principal.user_id: raise HTTPException(404, "session not found")
     if session.status not in ("active", "paused"): raise HTTPException(409, "session is already completed")
-    session.status="completed"; session.ended_at=now(); session.active_seconds=body.active_seconds
-    if session.plan_item_id: db.get(PlanItem, session.plan_item_id).status="completed"
-    if session.assignment_id: db.get(Assignment, session.assignment_id).status="completed"
+    if session.status == "active":
+        interval = db.query(StudySessionInterval).filter_by(study_session_id=session.id, ended_at=None).one()
+        interval.ended_at=now(); interval.end_reason="completed"; interval.active_seconds=max(0, body.active_seconds-session.active_seconds)
+    session.status="completed"; session.ended_at=now(); session.active_seconds=body.active_seconds; session.completion_reason="ward_finished"; session.version += 1
+    db.get(Task, session.task_id).status="completed"
+    record_learning_event(db, ward_id=session.ward_id, event_type="study_session.completed", source_type="study_session", source_id=session.id, source_version=session.version, payload={"task_id": session.task_id, "active_seconds": session.active_seconds})
     db.commit(); return {"status": "completed"}
 
 @app.post("/wards/{ward_id}/reviews/{review_date}")
@@ -431,6 +452,8 @@ def submit_review(ward_id: str, review_date: date, body: SelfReviewCreate, princ
         for k,v in body.model_dump().items(): setattr(row,k,v)
     kit=db.query(FocusKit).filter_by(ward_id=ward_id,review_date=review_date).one_or_none()
     if kit is None: db.add(FocusKit(ward_id=ward_id, review_date=review_date, advice="遇到卡住时，先停两分钟写下已知条件，再继续下一步。"))
+    db.flush()
+    record_learning_event(db, ward_id=ward_id, event_type="self_review.submitted", source_type="self_review", source_id=row.id, payload={"review_date": review_date.isoformat(), "feeling": row.feeling})
     db.commit(); return {"status":"submitted"}
 
 @app.get("/wards/{ward_id}/reviews/{review_date}/insight")
@@ -447,7 +470,10 @@ def guardian_story(ward_id: str, story_date: date, principal: Principal = Depend
     if review is None: return {"status":"locked"}
     report=db.query(Report).filter_by(ward_id=ward_id,report_date=story_date).one_or_none()
     sessions=db.query(StudySession).filter_by(ward_id=ward_id).all()
-    stuck=sum(db.query(StudyMessage).filter_by(session_id=s.id,is_stuck_point=True).count() for s in sessions)
+    stuck=db.query(TutoringMessage).join(TutoringSession).filter(
+        TutoringSession.ward_id == ward_id,
+        TutoringMessage.is_stuck_point.is_(True),
+    ).count()
     return {"status":"ready","total_seconds":sum(s.active_seconds for s in sessions),"behavior":report.label_breakdown if report else {},"stuck_points":stuck,"communication_suggestions":["可以先肯定孩子今天愿意自己完成计划。", "试着问：哪一步最让你费劲？我想听你讲讲。"]}
 
 
@@ -658,12 +684,19 @@ def ingest_frame(body: FrameCreate, device: Device = Depends(current_device), db
     if existing:
         return {"id": existing.id, "captured_at": existing.captured_at, "duplicate": True}
     captured = corrected_time(body.captured_at, body.elapsed_realtime, device.bound_server_time, device.bound_elapsed_realtime)
+    if body.study_session_id:
+        session = db.get(StudySession, body.study_session_id)
+        if session is None or session.ward_id != device.ward_id:
+            raise HTTPException(404, "study session not found for device ward")
     frame = Frame(
         device_id=device.id, ward_id=device.ward_id,
         captured_at=captured, oss_key=body.oss_key,
+        study_session_id=body.study_session_id,
         purge_after=now() + timedelta(days=settings.frame_retention_days),
     )
     db.add(frame)
+    db.flush()
+    record_learning_event(db, ward_id=device.ward_id, event_type="camera_frame.captured", source_type="frame", source_id=frame.id, occurred_at=captured, source="device", scope={"study_session_id": body.study_session_id} if body.study_session_id else {}, payload={"device_id": device.id})
     db.commit()
     db.refresh(frame)
     return {"id": frame.id, "captured_at": frame.captured_at, "duplicate": False}
