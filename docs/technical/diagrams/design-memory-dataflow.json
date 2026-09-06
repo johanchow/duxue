@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "读学记忆系统：从事实到最小上下文",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "viewBox": [1080, 900]
+  },
+  "stages": [
+    { "label": "业务状态" },
+    { "label": "事实与投递" },
+    { "label": "异步派生" },
+    { "label": "三层记忆" },
+    { "label": "受控召回" }
+  ],
+  "nodes": [
+    { "id": "domain-service", "type": "backend", "label": "领域服务", "sublabel": "受控业务动作", "stage": 0, "row": 2, "width": 150, "tag": "模型不可直写" },
+    { "id": "business-state", "type": "database", "label": "领域主表", "sublabel": "权威业务状态", "stage": 0, "row": 4, "width": 150, "tag": "唯一事实源" },
+    { "id": "event-ledger", "type": "database", "label": "learning_events", "sublabel": "不可变事实账本", "stage": 1, "row": 1, "width": 160, "tag": "证据根" },
+    { "id": "outbox", "type": "messagebus", "label": "Outbox", "sublabel": "可靠异步投递", "stage": 1, "row": 3, "width": 150, "tag": "同事务 · 幂等" },
+    { "id": "memory-workers", "type": "backend", "label": "Memory Workers", "sublabel": "结算、提取、演进与衰减", "stage": 2, "row": 2, "width": 190, "tag": "Celery + Policy" },
+    { "id": "episodic-memory", "type": "database", "label": "Episodic Memory", "sublabel": "近 5 天情境摘要", "stage": 3, "row": 0, "width": 175, "tag": "关联事实证据" },
+    { "id": "semantic-memory", "type": "database", "label": "Semantic Memory", "sublabel": "Signals 与 Profile 投影", "stage": 3, "row": 3, "width": 185, "tag": "可校正 · 可重算" },
+    { "id": "memory-facade", "type": "security", "label": "MemoryFacade", "sublabel": "授权、筛选、预算与脱敏", "stage": 4, "row": 2, "width": 180, "tag": "最小 Context" }
+  ],
+  "flows": [
+    { "from": "domain-service", "to": "business-state", "label": "写业务状态", "classification": "领域事务", "variant": "emphasis", "route": "vertical-channel" },
+    { "from": "domain-service", "to": "event-ledger", "label": "追加事实", "classification": "同事务", "variant": "emphasis", "route": "auto", "labelDy": -38 },
+    { "from": "domain-service", "to": "outbox", "label": "投递任务", "classification": "同事务", "variant": "emphasis", "route": "auto", "labelDy": 38 },
+    { "from": "event-ledger", "to": "memory-workers", "label": "读取证据", "classification": "可重放", "variant": "default", "route": "auto", "labelAt": [415, 314] },
+    { "from": "outbox", "to": "memory-workers", "label": "触发消费", "classification": "可重试", "variant": "default", "route": "auto", "labelAt": [413, 542] },
+    { "from": "memory-workers", "to": "episodic-memory", "label": "结算摘要", "classification": "关联证据", "variant": "default", "route": "auto", "labelDy": -42 },
+    { "from": "memory-workers", "to": "semantic-memory", "label": "演进理解", "classification": "Policy 校验", "variant": "emphasis", "route": "auto", "labelAt": [639, 542] },
+    { "from": "episodic-memory", "to": "memory-facade", "label": "近期经历", "classification": "结构化筛选", "variant": "default", "route": "auto", "labelDy": -42 },
+    { "from": "semantic-memory", "to": "memory-facade", "label": "Active 理解", "classification": "按目标投影", "variant": "emphasis", "route": "auto", "labelAt": [854, 542] }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "事实优先", "items": ["领域主表是业务状态的唯一事实源", "事件账本为 AI 上下文和审计提供可追溯证据", "模型不能直接写入事实账本或长期画像"] },
+    { "dot": "violet", "title": "派生可校正", "items": ["情境记忆和 Signal 通过关联表追溯多个事实", "Signal 可被确认、反证、衰减和到期", "Profile 是 Active 长期 Signal 的重算读模型"] },
+    { "dot": "emerald", "title": "最小召回", "items": ["Working Memory 由运行时单独维护并在会话结束后结算", "MemoryFacade 统一执行授权、脱敏与条数/token 预算", "Agent 只取得服务当前目标的最小 Context"] }
+  ]
+}

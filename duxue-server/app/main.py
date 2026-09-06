@@ -24,7 +24,7 @@ from .schemas import (
     ProfilePatch, RefreshRequest, RegisterRequest, TokenPair, UploadUrlRequest, WardCreate,
     WardOut, WardPatch, WardBindRequest, AssignmentCreate, PlanDraft,
     MessageCreate, SessionFinish, SessionPause, SelfReviewCreate, TaskIntakeCleanup, TaskIntakeConfirm,
-    TaskIntakeRequest, PlanIntakeCleanup, PlanIntakeConfirm, PlanIntakeRequest,
+    TaskIntakeRequest, PlanIntakeCleanup, PlanIntakeConfirm, PlanIntakeRequest, CompanionTurnRequest,
 )
 from .security import create_access_token, hash_secret, random_token, token_hash, verify_secret
 from .services import analyze_and_generate, corrected_time, make_invite_code, owned_ward, utc_bounds
@@ -32,6 +32,7 @@ from .storage import LocalStorage, storage
 from .task_intake import TaskIntakeError, TaskIntakeService
 from .plan_intake import PlanIntakeService
 from .memory import record_learning_event
+from .ai_runtime.companion_coordinator import CompanionCoordinator
 
 
 app = FastAPI(title="读学 Server", version="0.1.0")
@@ -169,6 +170,32 @@ def ward_profile(principal: Principal = Depends(current_ward), db: Session = Dep
     ward = db.get(Ward, principal.user_id)
     guardians = db.query(Guardian).join(GuardianWard, GuardianWard.guardian_id == Guardian.id).filter(GuardianWard.ward_id == principal.user_id).order_by(Guardian.name).all()
     return {"id": ward.id, "display_name": ward.display_name, "guardians": [{"id": guardian.id, "name": guardian.name} for guardian in guardians]}
+
+
+@app.post("/companion/turn")
+def companion_turn(body: CompanionTurnRequest, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
+    """Create or continue exactly one controlled companion domain Run.
+
+    This foundation endpoint intentionally returns routing/context metadata only;
+    the selected domain workflow will own Ward-facing streaming output.
+    """
+    try:
+        result = CompanionCoordinator(db).handle(
+            ward_id=principal.user_id,
+            content=body.content,
+            thread_id=body.thread_id,
+            expected_thread_version=body.expected_thread_version,
+            route_hint=body.route_hint,
+            planning_items=body.planning_items,
+            planning_confirm=body.planning_confirm,
+        )
+        return result.model_dump()
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        raise
 
 def _task_intake_wards(db: Session, guardian_id: str) -> list[dict]:
     rows = db.query(Ward).join(GuardianWard, GuardianWard.ward_id == Ward.id).filter(

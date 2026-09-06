@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Memory & Understanding：本地 Context Map",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "viewBox": [1120, 720]
+  },
+  "components": [
+    { "id": "planning", "type": "backend", "label": "Planning Context", "sublabel": "计划与任务确认", "pos": [50, 80], "size": [180, 72], "tag": "上游 · Supporting" },
+    { "id": "study", "type": "backend", "label": "Study Context", "sublabel": "执行、答疑与会话", "pos": [50, 290], "size": [180, 72], "tag": "上游 · Core" },
+    { "id": "evaluation", "type": "backend", "label": "Evaluation Context", "sublabel": "自评、报告与行动", "pos": [50, 500], "size": [180, 72], "tag": "上游 · Supporting" },
+    { "id": "memory", "type": "database", "label": "Memory & Understanding", "sublabel": "证据、情境记忆与语义理解", "pos": [420, 290], "size": [230, 82], "tag": "本 Context · Core" },
+    { "id": "companion", "type": "security", "label": "Companion Orchestration", "sublabel": "按授权构造最小 Context", "pos": [840, 290], "size": [210, 82], "tag": "下游 · ACL 查询" }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Memory & Understanding Bounded Context", "wraps": ["memory"], "pad": 34 }
+  ],
+  "connections": [
+    { "from": "planning", "to": "memory", "label": "LearningFactRecorded.v1", "variant": "emphasis", "route": "auto" },
+    { "from": "study", "to": "memory", "label": "LearningFactRecorded.v1", "variant": "emphasis", "route": "auto", "labelAt": [190, 410] },
+    { "from": "evaluation", "to": "memory", "label": "LearningFactRecorded.v1", "variant": "emphasis", "route": "auto" },
+    { "from": "memory", "to": "companion", "label": "MemoryFacade / MemoryBundle", "variant": "default", "route": "auto" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Ownership", "items": ["上游 Context 拥有自身业务状态", "Memory 只持久化可追溯的学习证据与派生理解", "Companion 只能经 MemoryFacade 查询最小上下文"] },
+    { "dot": "violet", "title": "Integration", "items": ["跨 Context 使用版本化 LearningFactRecorded 事实契约", "Memory 消费必须幂等、可重试并保留来源", "MemoryBundle 是授权查询 DTO，不是共享聚合"] }
+  ]
+}

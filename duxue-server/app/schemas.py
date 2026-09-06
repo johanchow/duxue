@@ -179,6 +179,24 @@ class SessionFinish(BaseModel):
     active_seconds: int = Field(ge=0)
 
 
+class CompanionTurnRequest(BaseModel):
+    """One Ward input to the deterministic companion entrypoint."""
+    content: str = Field(min_length=1, max_length=4000)
+    thread_id: str | None = None
+    expected_thread_version: int | None = Field(default=None, ge=0)
+    route_hint: str | None = Field(default=None, pattern=r"^(planning|tutoring|reflection)$")
+    planning_items: list[dict[str, Any]] | None = Field(default=None, max_length=30)
+    planning_confirm: bool = False
+
+    @field_validator("content")
+    @classmethod
+    def strip_content(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("content must not be blank")
+        return value
+
+
 class SessionPause(BaseModel):
     active_seconds: int = Field(ge=0)
 

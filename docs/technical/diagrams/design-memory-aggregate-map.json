@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Memory & Understanding：Aggregate Map",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "viewBox": [1100, 720]
+  },
+  "components": [
+    { "id": "facts", "type": "database", "label": "Learning Evidence", "sublabel": "不可变 LearningEvent 证据实体", "pos": [55, 300], "size": [205, 74], "tag": "输入账本 · 非聚合" },
+    { "id": "episodic", "type": "backend", "label": "EpisodicMemory Aggregate", "sublabel": "近 5 天摘要 + Evidence Link", "pos": [370, 120], "size": [235, 78], "tag": "写 Aggregate" },
+    { "id": "signal", "type": "backend", "label": "DerivedSignal Aggregate", "sublabel": "候选、晋升、反证与到期", "pos": [370, 410], "size": [235, 78], "tag": "写 Aggregate" },
+    { "id": "profile", "type": "database", "label": "LongTermProfileView", "sublabel": "Active 长期 Signal 的重算投影", "pos": [760, 410], "size": [230, 78], "tag": "CQRS Projection" },
+    { "id": "bundle", "type": "security", "label": "MemoryBundle", "sublabel": "授权、预算与脱敏后的查询 DTO", "pos": [760, 120], "size": [230, 78], "tag": "Query Model" }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Memory & Understanding Bounded Context", "wraps": ["facts", "episodic", "signal", "profile", "bundle"], "pad": 36 }
+  ],
+  "connections": [
+    { "from": "facts", "to": "episodic", "label": "EvidenceLink（最终一致）", "variant": "default", "route": "auto" },
+    { "from": "facts", "to": "signal", "label": "SignalEvidence（最终一致）", "variant": "emphasis", "route": "auto" },
+    { "from": "signal", "to": "profile", "label": "SignalActivated / 重算", "variant": "emphasis", "route": "auto", "labelAt": [680, 560] },
+    { "from": "episodic", "to": "bundle", "label": "相关近期经历", "variant": "default", "route": "auto" },
+    { "from": "signal", "to": "bundle", "label": "Active Signal", "variant": "emphasis", "route": "auto" },
+    { "from": "profile", "to": "bundle", "label": "按维度投影", "variant": "default", "route": "auto" }
+  ],
+  "cards": [
+    { "dot": "emerald", "title": "Strong consistency", "items": ["EpisodicMemory 只维护自身摘要与证据关联", "DerivedSignal 只维护自身状态、值和证据关联", "跨 Aggregate 不共享对象，只使用事件或 ID"] },
+    { "dot": "amber", "title": "Read side", "items": ["LongTermProfileView 不是 Aggregate，不能直接写入", "MemoryBundle 是按用途临时装配的 Query DTO", "Working Memory 属于 Companion Runtime，不是此 Context 的写 Aggregate"] }
+  ]
+}

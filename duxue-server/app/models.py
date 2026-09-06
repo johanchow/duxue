@@ -200,7 +200,22 @@ class DailySchedule(Base):
     ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id"), index=True)
     schedule_date: Mapped[date] = mapped_column(Date, index=True)
     status: Mapped[str] = mapped_column(String(20), default="draft")
+    version: Mapped[int] = mapped_column(Integer, default=1)
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+class PlanDraft(Base):
+    __tablename__ = "plan_drafts"
+    __table_args__ = (UniqueConstraint("ward_id", "plan_date", name="uq_plan_draft_ward_date"),)
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
+    ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id"), index=True)
+    plan_date: Mapped[date] = mapped_column(Date, index=True)
+    base_schedule_version: Mapped[int] = mapped_column(Integer, default=0)
+    items: Mapped[list] = mapped_column(JSON, default=list)
+    pending_fields: Mapped[list] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(String(24), default="active", index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
 
 class StudySession(Base):
     __tablename__ = "study_sessions"
@@ -277,6 +292,69 @@ class FocusKit(Base):
     review_date: Mapped[date] = mapped_column(Date, index=True)
     advice: Mapped[str] = mapped_column(Text)
     saved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+# These tables are runtime audit and recovery metadata.  They deliberately do
+# not replace domain aggregates, learning events, or LangGraph's graph-state
+# checkpointer.
+class ConversationThread(Base):
+    __tablename__ = "conversation_threads"
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
+    ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id"), index=True)
+    # Kept as a validated reference instead of an FK to avoid a circular
+    # thread/run dependency; AgentRun.thread_id remains the authoritative FK.
+    focus_run_ref: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    version: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+
+class AgentRun(Base):
+    __tablename__ = "agent_runs"
+    __table_args__ = (UniqueConstraint("thread_id", "run_ref", name="uq_agent_run_thread_ref"),)
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
+    thread_id: Mapped[str] = mapped_column(ForeignKey("conversation_threads.id"), index=True)
+    ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id"), index=True)
+    agent_type: Mapped[str] = mapped_column(String(20), index=True)
+    # A domain aggregate reference (for example tutoring_session:<uuid>), not
+    # a copy of that aggregate or its chat history.
+    run_ref: Mapped[str] = mapped_column(String(100))
+    status: Mapped[str] = mapped_column(String(24), default="active", index=True)
+    context_refs: Mapped[list] = mapped_column(JSON, default=list)
+    graph_checkpoint_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    graph_version: Mapped[str] = mapped_column(String(40), default="v1")
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    last_active_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class AgentCheckpoint(Base):
+    __tablename__ = "agent_checkpoints"
+    __table_args__ = (UniqueConstraint("run_id", "checkpoint_ref", name="uq_agent_checkpoint_run_ref"),)
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
+    run_id: Mapped[str] = mapped_column(ForeignKey("agent_runs.id"), index=True)
+    checkpoint_ref: Mapped[str] = mapped_column(String(255))
+    graph_version: Mapped[str] = mapped_column(String(40))
+    state_digest: Mapped[str] = mapped_column(String(128))
+    settlement_version: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class AgentTrace(Base):
+    __tablename__ = "agent_traces"
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
+    thread_id: Mapped[str] = mapped_column(ForeignKey("conversation_threads.id"), index=True)
+    run_id: Mapped[str | None] = mapped_column(ForeignKey("agent_runs.id"), nullable=True, index=True)
+    route_target: Mapped[str] = mapped_column(String(20))
+    route_mode: Mapped[str] = mapped_column(String(20))
+    route_reason: Mapped[str] = mapped_column(String(120))
+    context_refs: Mapped[list] = mapped_column(JSON, default=list)
+    # Redacted ContextEnvelope metadata only; never chain-of-thought or raw chat.
+    context_snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
+    outcome: Mapped[dict] = mapped_column(JSON, default=dict)
+    policy_version: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    model_version: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
 class LearningEvent(Base):
