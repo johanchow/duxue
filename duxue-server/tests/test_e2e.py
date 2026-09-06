@@ -21,7 +21,14 @@ from app.storage import storage  # noqa: E402
 from app.task_intake import TaskIntakeResult  # noqa: E402
 from app.plan_intake import PlanIntakeResult  # noqa: E402
 from app.database import SessionLocal  # noqa: E402
-from app.models import LearningEvent, StudySessionInterval, TutoringMessage, TutoringSession  # noqa: E402
+from app.models import (
+    AgentRun,
+    AgentTrace,
+    LearningEvent,
+    StudySessionInterval,
+    TutoringMessage,
+    TutoringSession,
+)  # noqa: E402
 
 
 class EndToEndTest(unittest.TestCase):
@@ -43,28 +50,55 @@ class EndToEndTest(unittest.TestCase):
         return self.client.request(method, path, headers=headers, **kwargs)
 
     def test_complete_capture_to_report_flow_and_guardian_ward_isolation(self):
-        registration = self.request("POST", "/auth/register", json={
-            "name": "监护人", "email": "guardian@example.com", "password": "password123",
-        })
+        registration = self.request(
+            "POST",
+            "/auth/register",
+            json={
+                "name": "监护人",
+                "email": "guardian@example.com",
+                "password": "password123",
+            },
+        )
         self.assertEqual(registration.status_code, 201, registration.text)
         guardian_token = registration.json()["access_token"]
-        self.assertEqual(self.request("GET", "/admin/summary", token=guardian_token).status_code, 200)
+        self.assertEqual(
+            self.request("GET", "/admin/summary", token=guardian_token).status_code, 200
+        )
 
-        ward_response = self.request("POST", "/wards", token=guardian_token, json={"display_name": "小读", "grade_stage": "primary"})
+        ward_response = self.request(
+            "POST",
+            "/wards",
+            token=guardian_token,
+            json={"display_name": "小读", "grade_stage": "primary"},
+        )
         self.assertEqual(ward_response.status_code, 201, ward_response.text)
         self.assertEqual(ward_response.json()["grade_stage"], "primary")
         ward_id = ward_response.json()["id"]
-        invalid_grade = self.request("POST", "/wards", token=guardian_token, json={"display_name": "无效学段", "grade_stage": "college"})
+        invalid_grade = self.request(
+            "POST",
+            "/wards",
+            token=guardian_token,
+            json={"display_name": "无效学段", "grade_stage": "college"},
+        )
         self.assertEqual(invalid_grade.status_code, 422)
 
-        invite = self.request("POST", f"/wards/{ward_id}/devices/invite", token=guardian_token)
+        invite = self.request(
+            "POST", f"/wards/{ward_id}/devices/invite", token=guardian_token
+        )
         self.assertEqual(invite.status_code, 201, invite.text)
-        bound = self.request("POST", "/devices/bind", json={
-            "invite_code": invite.json()["invite_code"], "elapsed_realtime": 1_000,
-        })
+        bound = self.request(
+            "POST",
+            "/devices/bind",
+            json={
+                "invite_code": invite.json()["invite_code"],
+                "elapsed_realtime": 1_000,
+            },
+        )
         self.assertEqual(bound.status_code, 200, bound.text)
         device_token = bound.json()["device_token"]
-        heartbeat = self.request("POST", "/devices/heartbeat", device_token=device_token)
+        heartbeat = self.request(
+            "POST", "/devices/heartbeat", device_token=device_token
+        )
         self.assertEqual(heartbeat.json()["status"], "online")
 
         frame_ids = []
@@ -75,24 +109,46 @@ class EndToEndTest(unittest.TestCase):
             {"hand_action": "右手握笔书写", "seat_status": "在座"},
         ]
         for index in range(3):
-            signed = self.request("POST", "/frames/upload-url", device_token=device_token, json={"extension": "jpg"})
+            signed = self.request(
+                "POST",
+                "/frames/upload-url",
+                device_token=device_token,
+                json={"extension": "jpg"},
+            )
             self.assertEqual(signed.status_code, 200, signed.text)
-            upload = self.client.put(signed.json()["upload_url"], content=b"fake-jpeg-bytes")
+            upload = self.client.put(
+                signed.json()["upload_url"], content=b"fake-jpeg-bytes"
+            )
             self.assertEqual(upload.status_code, 204, upload.text)
-            ingested = self.request("POST", "/frames", device_token=device_token, json={
-                "oss_key": signed.json()["oss_key"],
-                "captured_at": (base + timedelta(seconds=index * 15)).isoformat(),
-                "elapsed_realtime": 1_000 + index * 15_000,
-            })
+            ingested = self.request(
+                "POST",
+                "/frames",
+                device_token=device_token,
+                json={
+                    "oss_key": signed.json()["oss_key"],
+                    "captured_at": (base + timedelta(seconds=index * 15)).isoformat(),
+                    "elapsed_realtime": 1_000 + index * 15_000,
+                },
+            )
             self.assertEqual(ingested.status_code, 201, ingested.text)
             frame_ids.append(ingested.json()["id"])
 
-        pending = self.request("GET", f"/reports/daily?ward_id={ward_id}&date={base.date()}", token=guardian_token)
+        pending = self.request(
+            "GET",
+            f"/reports/daily?ward_id={ward_id}&date={base.date()}",
+            token=guardian_token,
+        )
         self.assertEqual(pending.json()["status"], "processing")
-        analysis = self.request("POST", "/analysis/run", token=guardian_token, json={
-            "ward_id": ward_id, "report_date": str(base.date()),
-            "results": dict(zip(frame_ids, descriptions)),
-        })
+        analysis = self.request(
+            "POST",
+            "/analysis/run",
+            token=guardian_token,
+            json={
+                "ward_id": ward_id,
+                "report_date": str(base.date()),
+                "results": dict(zip(frame_ids, descriptions)),
+            },
+        )
         self.assertEqual(analysis.status_code, 200, analysis.text)
         report = analysis.json()
         self.assertEqual(report["status"], "ready")
@@ -100,125 +156,584 @@ class EndToEndTest(unittest.TestCase):
         # The isolated phone frame is removed by the three-frame majority smoother.
         self.assertEqual(report["label_breakdown"], {"学习": 45})
 
-        outsider = self.request("POST", "/auth/register", json={
-            "name": "其他家长", "email": "other@example.com", "password": "password123",
-        }).json()["access_token"]
+        outsider = self.request(
+            "POST",
+            "/auth/register",
+            json={
+                "name": "其他家长",
+                "email": "other@example.com",
+                "password": "password123",
+            },
+        ).json()["access_token"]
         forbidden_by_isolation = self.request(
-            "GET", f"/reports/daily?ward_id={ward_id}&date={base.date()}", token=outsider,
+            "GET",
+            f"/reports/daily?ward_id={ward_id}&date={base.date()}",
+            token=outsider,
         )
         self.assertEqual(forbidden_by_isolation.status_code, 404)
 
     def test_day_story_requires_ward_review_before_insights(self):
-        token = self.request("POST", "/auth/register", json={"name":"家长2","email":"story@example.com","password":"password123"}).json()["access_token"]
-        ward = self.request("POST", "/wards", token=token, json={"display_name":"小读2", "grade_stage":"middle"}).json()["id"]
-        assignment = self.request("POST", f"/wards/{ward}/assignments", token=token, json={"title":"数学作业"})
+        token = self.request(
+            "POST",
+            "/auth/register",
+            json={
+                "name": "家长2",
+                "email": "story@example.com",
+                "password": "password123",
+            },
+        ).json()["access_token"]
+        ward = self.request(
+            "POST",
+            "/wards",
+            token=token,
+            json={"display_name": "小读2", "grade_stage": "middle"},
+        ).json()["id"]
+        assignment = self.request(
+            "POST",
+            f"/wards/{ward}/assignments",
+            token=token,
+            json={"title": "数学作业"},
+        )
         self.assertEqual(assignment.status_code, 201)
         invite = self.request("POST", f"/wards/{ward}/login-invite", token=token).json()
-        ward_token = self.request("POST", "/ward-auth/bind", json={"invite_code":invite["invite_code"]}).json()["access_token"]
+        ward_token = self.request(
+            "POST", "/ward-auth/bind", json={"invite_code": invite["invite_code"]}
+        ).json()["access_token"]
         day = datetime.now(timezone.utc).date().isoformat()
-        self.assertEqual(self.request("GET", f"/wards/{ward}/guardian-story/{day}", token=token).json()["status"], "locked")
-        assignment_id = self.request("GET", f"/wards/{ward}/assignments", token=ward_token).json()[0]["id"]
-        self.assertEqual(self.request("PUT", f"/wards/{ward}/plans/{day}", token=ward_token, json={"plan_date":day,"items":[{"assignment_id":assignment_id,"title":"数学作业","planned_minutes":30}]}).status_code, 200)
-        self.assertEqual(self.request("POST", f"/wards/{ward}/plans/{day}/confirm", token=ward_token).status_code, 200)
-        plan = self.request("GET", f"/wards/{ward}/plans/{day}", token=ward_token).json()
+        self.assertEqual(
+            self.request(
+                "GET", f"/wards/{ward}/guardian-story/{day}", token=token
+            ).json()["status"],
+            "locked",
+        )
+        assignment_id = self.request(
+            "GET", f"/wards/{ward}/assignments", token=ward_token
+        ).json()[0]["id"]
+        self.assertEqual(
+            self.request(
+                "PUT",
+                f"/wards/{ward}/plans/{day}",
+                token=ward_token,
+                json={
+                    "plan_date": day,
+                    "items": [
+                        {
+                            "assignment_id": assignment_id,
+                            "title": "数学作业",
+                            "planned_minutes": 30,
+                        }
+                    ],
+                },
+            ).status_code,
+            200,
+        )
+        self.assertEqual(
+            self.request(
+                "POST", f"/wards/{ward}/plans/{day}/confirm", token=ward_token
+            ).status_code,
+            200,
+        )
+        plan = self.request(
+            "GET", f"/wards/{ward}/plans/{day}", token=ward_token
+        ).json()
         guardian_plan = self.request("GET", f"/wards/{ward}/plans/{day}", token=token)
         self.assertEqual(guardian_plan.status_code, 200, guardian_plan.text)
         self.assertEqual(guardian_plan.json()["status"], "confirmed")
-        session = self.request("POST", f"/plan-items/{plan['items'][0]['id']}/sessions", token=ward_token).json()["id"]
-        self.assertEqual(self.request("POST", f"/sessions/{session}/messages", token=ward_token, json={"content":"我不会这题"}).json()["mode"], "socratic")
+        session = self.request(
+            "POST", f"/plan-items/{plan['items'][0]['id']}/sessions", token=ward_token
+        ).json()["id"]
+        self.assertEqual(
+            self.request(
+                "POST",
+                f"/sessions/{session}/messages",
+                token=ward_token,
+                json={"content": "我不会这题"},
+            ).json()["mode"],
+            "socratic",
+        )
         with SessionLocal() as db:
-            tutoring = db.query(TutoringSession).filter_by(study_session_id=session).one()
-            self.assertEqual(db.query(TutoringMessage).filter_by(tutoring_session_id=tutoring.id).count(), 2)
-            self.assertEqual(db.query(LearningEvent).filter_by(source_type="tutoring_message").count(), 1)
-        self.assertEqual(self.request("POST", f"/sessions/{session}/finish", token=ward_token, json={"active_seconds":1800}).status_code, 200)
-        self.assertEqual(self.request("POST", f"/wards/{ward}/reviews/{day}", token=ward_token, json={"feeling":"顺利","timeline_json":[]}).status_code, 200)
-        self.assertEqual(self.request("GET", f"/wards/{ward}/reviews/{day}/insight", token=ward_token).json()["status"], "ready")
-        self.assertEqual(self.request("GET", f"/wards/{ward}/guardian-story/{day}", token=token).json()["status"], "ready")
+            tutoring = (
+                db.query(TutoringSession).filter_by(study_session_id=session).one()
+            )
+            self.assertEqual(
+                db.query(TutoringMessage)
+                .filter_by(tutoring_session_id=tutoring.id)
+                .count(),
+                2,
+            )
+            self.assertEqual(
+                db.query(LearningEvent)
+                .filter_by(source_type="tutoring_message")
+                .count(),
+                1,
+            )
+        self.assertEqual(
+            self.request(
+                "POST",
+                f"/sessions/{session}/finish",
+                token=ward_token,
+                json={"active_seconds": 1800},
+            ).status_code,
+            200,
+        )
+        self.assertEqual(
+            self.request(
+                "POST",
+                f"/wards/{ward}/reviews/{day}",
+                token=ward_token,
+                json={"feeling": "顺利", "timeline_json": []},
+            ).status_code,
+            200,
+        )
+        self.assertEqual(
+            self.request(
+                "GET", f"/wards/{ward}/reviews/{day}/insight", token=ward_token
+            ).json()["status"],
+            "ready",
+        )
+        self.assertEqual(
+            self.request(
+                "GET", f"/wards/{ward}/guardian-story/{day}", token=token
+            ).json()["status"],
+            "ready",
+        )
 
     def test_ward_can_pause_and_complete_planned_or_unplanned_tasks(self):
-        guardian = self.request("POST", "/auth/register", json={"name":"执行家长", "email":"execution@example.com", "password":"password123"}).json()["access_token"]
-        ward = self.request("POST", "/wards", token=guardian, json={"display_name":"小执行", "grade_stage":"middle"}).json()["id"]
-        first = self.request("POST", f"/wards/{ward}/assignments", token=guardian, json={"title":"计划内任务"}).json()["id"]
-        second = self.request("POST", f"/wards/{ward}/assignments", token=guardian, json={"title":"任务池任务"}).json()["id"]
-        invite = self.request("POST", f"/wards/{ward}/login-invite", token=guardian).json()
-        ward_token = self.request("POST", "/ward-auth/bind", json={"invite_code":invite["invite_code"]}).json()["access_token"]
+        guardian = self.request(
+            "POST",
+            "/auth/register",
+            json={
+                "name": "执行家长",
+                "email": "execution@example.com",
+                "password": "password123",
+            },
+        ).json()["access_token"]
+        ward = self.request(
+            "POST",
+            "/wards",
+            token=guardian,
+            json={"display_name": "小执行", "grade_stage": "middle"},
+        ).json()["id"]
+        first = self.request(
+            "POST",
+            f"/wards/{ward}/assignments",
+            token=guardian,
+            json={"title": "计划内任务"},
+        ).json()["id"]
+        second = self.request(
+            "POST",
+            f"/wards/{ward}/assignments",
+            token=guardian,
+            json={"title": "任务池任务"},
+        ).json()["id"]
+        invite = self.request(
+            "POST", f"/wards/{ward}/login-invite", token=guardian
+        ).json()
+        ward_token = self.request(
+            "POST", "/ward-auth/bind", json={"invite_code": invite["invite_code"]}
+        ).json()["access_token"]
         day = datetime.now(timezone.utc).date().isoformat()
-        self.assertEqual(self.request("PUT", f"/wards/{ward}/plans/{day}", token=ward_token, json={"plan_date":day,"items":[{"assignment_id":first,"title":"计划内任务","planned_minutes":30}]}).status_code, 200)
-        self.assertEqual(self.request("POST", f"/wards/{ward}/plans/{day}/confirm", token=ward_token).status_code, 200)
-        plan_item = self.request("GET", f"/wards/{ward}/plans/{day}", token=ward_token).json()["items"][0]
-        planned_session = self.request("POST", f"/plan-items/{plan_item['id']}/sessions", token=ward_token).json()["id"]
-        self.assertEqual(self.request("POST", f"/sessions/{planned_session}/pause", token=ward_token, json={"active_seconds":12}).json()["status"], "paused")
-        self.assertEqual(self.request("POST", f"/sessions/{planned_session}/resume", token=ward_token).json()["status"], "active")
-        self.assertEqual(self.request("POST", f"/sessions/{planned_session}/finish", token=ward_token, json={"active_seconds":30}).status_code, 200)
-        pool_session = self.request("POST", f"/assignments/{second}/sessions", token=ward_token).json()["id"]
-        self.assertEqual(self.request("POST", f"/sessions/{pool_session}/pause", token=ward_token, json={"active_seconds":9}).json()["status"], "paused")
-        assignments = self.request("GET", f"/wards/{ward}/assignments", token=ward_token).json()
-        self.assertEqual(next(item for item in assignments if item["id"] == second)["session"]["status"], "paused")
-        self.assertEqual(self.request("POST", f"/sessions/{pool_session}/resume", token=ward_token).status_code, 200)
-        self.assertEqual(self.request("POST", f"/sessions/{pool_session}/finish", token=ward_token, json={"active_seconds":20}).status_code, 200)
+        self.assertEqual(
+            self.request(
+                "PUT",
+                f"/wards/{ward}/plans/{day}",
+                token=ward_token,
+                json={
+                    "plan_date": day,
+                    "items": [
+                        {
+                            "assignment_id": first,
+                            "title": "计划内任务",
+                            "planned_minutes": 30,
+                        }
+                    ],
+                },
+            ).status_code,
+            200,
+        )
+        self.assertEqual(
+            self.request(
+                "POST", f"/wards/{ward}/plans/{day}/confirm", token=ward_token
+            ).status_code,
+            200,
+        )
+        plan_item = self.request(
+            "GET", f"/wards/{ward}/plans/{day}", token=ward_token
+        ).json()["items"][0]
+        planned_session = self.request(
+            "POST", f"/plan-items/{plan_item['id']}/sessions", token=ward_token
+        ).json()["id"]
+        self.assertEqual(
+            self.request(
+                "POST",
+                f"/sessions/{planned_session}/pause",
+                token=ward_token,
+                json={"active_seconds": 12},
+            ).json()["status"],
+            "paused",
+        )
+        self.assertEqual(
+            self.request(
+                "POST", f"/sessions/{planned_session}/resume", token=ward_token
+            ).json()["status"],
+            "active",
+        )
+        self.assertEqual(
+            self.request(
+                "POST",
+                f"/sessions/{planned_session}/finish",
+                token=ward_token,
+                json={"active_seconds": 30},
+            ).status_code,
+            200,
+        )
+        pool_session = self.request(
+            "POST", f"/assignments/{second}/sessions", token=ward_token
+        ).json()["id"]
+        self.assertEqual(
+            self.request(
+                "POST",
+                f"/sessions/{pool_session}/pause",
+                token=ward_token,
+                json={"active_seconds": 9},
+            ).json()["status"],
+            "paused",
+        )
+        assignments = self.request(
+            "GET", f"/wards/{ward}/assignments", token=ward_token
+        ).json()
+        self.assertEqual(
+            next(item for item in assignments if item["id"] == second)["session"][
+                "status"
+            ],
+            "paused",
+        )
+        self.assertEqual(
+            self.request(
+                "POST", f"/sessions/{pool_session}/resume", token=ward_token
+            ).status_code,
+            200,
+        )
+        self.assertEqual(
+            self.request(
+                "POST",
+                f"/sessions/{pool_session}/finish",
+                token=ward_token,
+                json={"active_seconds": 20},
+            ).status_code,
+            200,
+        )
         with SessionLocal() as db:
-            self.assertEqual(db.query(StudySessionInterval).filter_by(study_session_id=planned_session).count(), 2)
-            self.assertEqual(db.query(LearningEvent).filter_by(source_type="study_session", source_id=planned_session).count(), 4)
-        self.assertNotIn(second, {item["id"] for item in self.request("GET", f"/wards/{ward}/assignments", token=ward_token).json()})
+            self.assertEqual(
+                db.query(StudySessionInterval)
+                .filter_by(study_session_id=planned_session)
+                .count(),
+                2,
+            )
+            self.assertEqual(
+                db.query(LearningEvent)
+                .filter_by(source_type="study_session", source_id=planned_session)
+                .count(),
+                4,
+            )
+        self.assertNotIn(
+            second,
+            {
+                item["id"]
+                for item in self.request(
+                    "GET", f"/wards/{ward}/assignments", token=ward_token
+                ).json()
+            },
+        )
 
     def test_ward_profile_exposes_its_guardian_name(self):
-        guardian = self.request("POST", "/auth/register", json={"name":"林妈妈", "email":"profile@example.com", "password":"password123"}).json()["access_token"]
-        ward = self.request("POST", "/wards", token=guardian, json={"display_name":"小宇", "grade_stage":"primary"}).json()["id"]
-        invite = self.request("POST", f"/wards/{ward}/login-invite", token=guardian).json()
-        ward_token = self.request("POST", "/ward-auth/bind", json={"invite_code":invite["invite_code"]}).json()["access_token"]
+        guardian = self.request(
+            "POST",
+            "/auth/register",
+            json={
+                "name": "林妈妈",
+                "email": "profile@example.com",
+                "password": "password123",
+            },
+        ).json()["access_token"]
+        ward = self.request(
+            "POST",
+            "/wards",
+            token=guardian,
+            json={"display_name": "小宇", "grade_stage": "primary"},
+        ).json()["id"]
+        invite = self.request(
+            "POST", f"/wards/{ward}/login-invite", token=guardian
+        ).json()
+        ward_token = self.request(
+            "POST", "/ward-auth/bind", json={"invite_code": invite["invite_code"]}
+        ).json()["access_token"]
         profile = self.request("GET", "/ward/profile", token=ward_token)
         self.assertEqual(profile.status_code, 200, profile.text)
         self.assertEqual(profile.json()["display_name"], "小宇")
-        self.assertEqual([item["name"] for item in profile.json()["guardians"]], ["林妈妈"])
+        self.assertEqual(
+            [item["name"] for item in profile.json()["guardians"]], ["林妈妈"]
+        )
+
+    @patch("app.ai_runtime.companion_coordinator.PlanningWorkflowAdapter")
+    def test_companion_coordinator_routes_one_run_and_records_a_redacted_trace(
+        self, adapter_class
+    ):
+        adapter_class.return_value.invoke.return_value = {
+            "status": "waiting_for_ward",
+            "interaction": {"status": "needs_input"},
+        }
+        guardian = self.request(
+            "POST",
+            "/auth/register",
+            json={
+                "name": "陪伴家长",
+                "email": "companion@example.com",
+                "password": "password123",
+            },
+        ).json()["access_token"]
+        ward = self.request(
+            "POST",
+            "/wards",
+            token=guardian,
+            json={"display_name": "小伴", "grade_stage": "middle"},
+        ).json()["id"]
+        invite = self.request(
+            "POST", f"/wards/{ward}/login-invite", token=guardian
+        ).json()["invite_code"]
+        ward_token = self.request(
+            "POST", "/ward-auth/bind", json={"invite_code": invite}
+        ).json()["access_token"]
+
+        planning = self.request(
+            "POST",
+            "/companion/turn",
+            token=ward_token,
+            json={
+                "content": "帮我安排明天的复习",
+                "expected_thread_version": 0,
+            },
+        )
+        self.assertEqual(planning.status_code, 200, planning.text)
+        first = planning.json()
+        self.assertEqual(first["decision"]["target"], "planning")
+        self.assertEqual(first["run_status"], "waiting_for_ward")
+        self.assertEqual(first["interaction"]["status"], "needs_input")
+        self.assertNotIn("content", first["context"])
+
+        ambiguous = self.request(
+            "POST",
+            "/companion/turn",
+            token=ward_token,
+            json={
+                "thread_id": first["thread_id"],
+                "expected_thread_version": first["thread_version"],
+                "content": "这题不会，也帮我安排明天",
+            },
+        )
+        self.assertEqual(ambiguous.status_code, 200, ambiguous.text)
+        self.assertEqual(ambiguous.json()["decision"]["target"], "clarify")
+        self.assertIsNone(ambiguous.json()["run_id"])
+
+        continued = self.request(
+            "POST",
+            "/companion/turn",
+            token=ward_token,
+            json={
+                "thread_id": first["thread_id"],
+                "expected_thread_version": ambiguous.json()["thread_version"],
+                "content": "继续",
+            },
+        )
+        self.assertEqual(continued.status_code, 200, continued.text)
+        self.assertEqual(continued.json()["decision"]["mode"], "continue")
+        self.assertEqual(continued.json()["run_id"], first["run_id"])
+
+        handoff = self.request(
+            "POST",
+            "/companion/turn",
+            token=ward_token,
+            json={
+                "thread_id": first["thread_id"],
+                "expected_thread_version": continued.json()["thread_version"],
+                "content": "这题不会做",
+            },
+        )
+        self.assertEqual(handoff.status_code, 200, handoff.text)
+        self.assertEqual(handoff.json()["decision"]["mode"], "handoff")
+        self.assertEqual(handoff.json()["decision"]["target"], "tutoring")
+        self.assertNotEqual(handoff.json()["run_id"], first["run_id"])
+
+        stale = self.request(
+            "POST",
+            "/companion/turn",
+            token=ward_token,
+            json={
+                "thread_id": first["thread_id"],
+                "expected_thread_version": continued.json()["thread_version"],
+                "content": "继续",
+            },
+        )
+        self.assertEqual(stale.status_code, 409)
+        with SessionLocal() as db:
+            self.assertEqual(
+                db.query(AgentRun).filter_by(thread_id=first["thread_id"]).count(), 2
+            )
+            self.assertEqual(
+                db.query(AgentRun).filter_by(id=first["run_id"]).one().status, "paused"
+            )
+            trace = (
+                db.query(AgentTrace)
+                .filter_by(thread_id=first["thread_id"])
+                .order_by(AgentTrace.created_at)
+                .first()
+            )
+            self.assertNotIn("content", trace.context_snapshot)
 
     def test_guardian_voice_socket_streams_partial_and_final_text(self):
-        token = self.request("POST", "/auth/register", json={"name": "语音家长", "email": "voice@example.com", "password": "password123"}).json()["access_token"]
-        ward = self.request("POST", "/wards", token=token, json={"display_name": "小语", "grade_stage": "high"}).json()["id"]
+        token = self.request(
+            "POST",
+            "/auth/register",
+            json={
+                "name": "语音家长",
+                "email": "voice@example.com",
+                "password": "password123",
+            },
+        ).json()["access_token"]
+        ward = self.request(
+            "POST",
+            "/wards",
+            token=token,
+            json={"display_name": "小语", "grade_stage": "high"},
+        ).json()["id"]
 
         class FakeAsr:
-            async def send_audio(self, chunk): self.chunk = chunk
-            async def commit(self): self.committed = True
-            async def finish(self): pass
-            async def close(self): pass
+            async def send_audio(self, chunk):
+                self.chunk = chunk
+
+            async def commit(self):
+                self.committed = True
+
+            async def finish(self):
+                pass
+
+            async def close(self):
+                pass
+
             async def events(self):
                 yield {"type": "partial", "text": "安排明天的数"}
                 yield {"type": "final", "text": "安排明天的数学作业"}
 
-        with patch("app.main.DashscopeRealtimeAsr.connect", new=AsyncMock(return_value=FakeAsr())):
-            with self.client.websocket_connect("/ws/asr/transcribe", headers={"Authorization": f"Bearer {token}"}) as socket:
+        with patch(
+            "app.main.DashscopeRealtimeAsr.connect",
+            new=AsyncMock(return_value=FakeAsr()),
+        ):
+            with self.client.websocket_connect(
+                "/ws/asr/transcribe", headers={"Authorization": f"Bearer {token}"}
+            ) as socket:
                 socket.send_json({"type": "start"})
                 self.assertEqual(socket.receive_json()["type"], "ready")
                 socket.send_bytes(b"pcm")
                 socket.send_json({"type": "commit"})
-                self.assertEqual(socket.receive_json(), {"type": "partial", "text": "安排明天的数"})
-                self.assertEqual(socket.receive_json(), {"type": "final", "text": "安排明天的数学作业"})
+                self.assertEqual(
+                    socket.receive_json(), {"type": "partial", "text": "安排明天的数"}
+                )
+                self.assertEqual(
+                    socket.receive_json(),
+                    {"type": "final", "text": "安排明天的数学作业"},
+                )
 
     def test_ward_rebinding_uses_one_time_six_digit_code_and_revokes_old_session(self):
-        guardian = self.request("POST", "/auth/register", json={"name": "换机家长", "email": "rebind@example.com", "password": "password123"}).json()["access_token"]
-        ward = self.request("POST", "/wards", token=guardian, json={"display_name": "小换", "grade_stage": "primary"}).json()["id"]
-        first_code = self.request("POST", f"/wards/{ward}/login-invite", token=guardian).json()["invite_code"]
+        guardian = self.request(
+            "POST",
+            "/auth/register",
+            json={
+                "name": "换机家长",
+                "email": "rebind@example.com",
+                "password": "password123",
+            },
+        ).json()["access_token"]
+        ward = self.request(
+            "POST",
+            "/wards",
+            token=guardian,
+            json={"display_name": "小换", "grade_stage": "primary"},
+        ).json()["id"]
+        first_code = self.request(
+            "POST", f"/wards/{ward}/login-invite", token=guardian
+        ).json()["invite_code"]
         self.assertRegex(first_code, r"^\d{6}$")
-        old_token = self.request("POST", "/ward-auth/bind", json={"invite_code": first_code}).json()["access_token"]
-        self.assertEqual(self.request("POST", "/ward-auth/bind", json={"invite_code": first_code}).status_code, 400)
+        old_token = self.request(
+            "POST", "/ward-auth/bind", json={"invite_code": first_code}
+        ).json()["access_token"]
+        self.assertEqual(
+            self.request(
+                "POST", "/ward-auth/bind", json={"invite_code": first_code}
+            ).status_code,
+            400,
+        )
 
-        replacement_code = self.request("POST", f"/wards/{ward}/login-invite", token=guardian).json()["invite_code"]
+        replacement_code = self.request(
+            "POST", f"/wards/{ward}/login-invite", token=guardian
+        ).json()["invite_code"]
         self.assertRegex(replacement_code, r"^\d{6}$")
-        new_token = self.request("POST", "/ward-auth/bind", json={"invite_code": replacement_code})
+        new_token = self.request(
+            "POST", "/ward-auth/bind", json={"invite_code": replacement_code}
+        )
         self.assertEqual(new_token.status_code, 200, new_token.text)
 
-        self.assertEqual(self.request("GET", f"/wards/{ward}/assignments", token=old_token).status_code, 401)
-        self.assertEqual(self.request("GET", f"/wards/{ward}/assignments", token=new_token.json()["access_token"]).status_code, 200)
+        self.assertEqual(
+            self.request(
+                "GET", f"/wards/{ward}/assignments", token=old_token
+            ).status_code,
+            401,
+        )
+        self.assertEqual(
+            self.request(
+                "GET",
+                f"/wards/{ward}/assignments",
+                token=new_token.json()["access_token"],
+            ).status_code,
+            200,
+        )
 
-    def test_task_intake_requires_llm_clarification_then_confirms_only_owned_wards(self):
-        token = self.request("POST", "/auth/register", json={"name": "多孩家长", "email": "intake@example.com", "password": "password123"}).json()["access_token"]
-        first = self.request("POST", "/wards", token=token, json={"display_name": "小宇", "grade_stage": "primary"}).json()["id"]
-        second = self.request("POST", "/wards", token=token, json={"display_name": "小雨", "grade_stage": "middle"}).json()["id"]
+    def test_task_intake_requires_llm_clarification_then_confirms_only_owned_wards(
+        self,
+    ):
+        token = self.request(
+            "POST",
+            "/auth/register",
+            json={
+                "name": "多孩家长",
+                "email": "intake@example.com",
+                "password": "password123",
+            },
+        ).json()["access_token"]
+        first = self.request(
+            "POST",
+            "/wards",
+            token=token,
+            json={"display_name": "小宇", "grade_stage": "primary"},
+        ).json()["id"]
+        second = self.request(
+            "POST",
+            "/wards",
+            token=token,
+            json={"display_name": "小雨", "grade_stage": "middle"},
+        ).json()["id"]
         ambiguous = TaskIntakeResult(
-            assistant_text="这项作业是给小宇还是小雨？", clarification_required=True,
-            questions=["请说明任务归属"], ready_to_confirm=False,
+            assistant_text="这项作业是给小宇还是小雨？",
+            clarification_required=True,
+            questions=["请说明任务归属"],
+            ready_to_confirm=False,
         )
         with patch("app.main.TaskIntakeService.respond", return_value=ambiguous):
-            response = self.request("POST", "/task-intake/respond", token=token, json={"content": "明天交数学作业"})
+            response = self.request(
+                "POST",
+                "/task-intake/respond",
+                token=token,
+                json={"content": "明天交数学作业"},
+            )
         self.assertEqual(response.status_code, 200, response.text)
         self.assertFalse(response.json()["ready_to_confirm"])
         self.assertEqual(response.json()["tasks"], [])
@@ -228,34 +743,106 @@ class EndToEndTest(unittest.TestCase):
             tasks=[
                 {"ward_id": first, "title": "数学作业"},
                 {"ward_id": second, "title": "英语朗读", "details": "朗读课文"},
-            ], ready_to_confirm=True,
+            ],
+            ready_to_confirm=True,
         )
-        signed = self.request("POST", "/task-intake/upload-url", token=token, json={"extension": "jpg", "content_type": "image/jpeg"})
+        signed = self.request(
+            "POST",
+            "/task-intake/upload-url",
+            token=token,
+            json={"extension": "jpg", "content_type": "image/jpeg"},
+        )
         self.assertEqual(signed.status_code, 200, signed.text)
-        self.assertEqual(self.client.put(signed.json()["upload_url"], content=b"task-image").status_code, 204)
+        self.assertEqual(
+            self.client.put(
+                signed.json()["upload_url"], content=b"task-image"
+            ).status_code,
+            204,
+        )
         attachment = signed.json()["oss_key"]
         with patch("app.main.TaskIntakeService.respond", return_value=parsed):
-            response = self.request("POST", "/task-intake/respond", token=token, json={"content": "数学给小宇，英语朗读给小雨", "attachment_keys": [attachment]})
+            response = self.request(
+                "POST",
+                "/task-intake/respond",
+                token=token,
+                json={
+                    "content": "数学给小宇，英语朗读给小雨",
+                    "attachment_keys": [attachment],
+                },
+            )
         self.assertTrue(response.json()["ready_to_confirm"])
-        confirmation = self.request("POST", "/task-intake/confirm", token=token, json={"tasks": response.json()["tasks"], "attachment_keys": [attachment]})
+        confirmation = self.request(
+            "POST",
+            "/task-intake/confirm",
+            token=token,
+            json={"tasks": response.json()["tasks"], "attachment_keys": [attachment]},
+        )
         self.assertEqual(confirmation.status_code, 201, confirmation.text)
-        self.assertEqual({item["ward_id"] for item in confirmation.json()["assignments"]}, {first, second})
+        self.assertEqual(
+            {item["ward_id"] for item in confirmation.json()["assignments"]},
+            {first, second},
+        )
         self.assertFalse(storage.exists(attachment))
 
-        outsider = self.request("POST", "/auth/register", json={"name": "外部家长", "email": "intake-other@example.com", "password": "password123"}).json()["access_token"]
-        foreign = self.request("POST", "/wards", token=outsider, json={"display_name": "外部孩子", "grade_stage": "high"}).json()["id"]
-        rejected = self.request("POST", "/task-intake/confirm", token=token, json={"tasks": [{"ward_id": foreign, "title": "不应写入"}]})
+        outsider = self.request(
+            "POST",
+            "/auth/register",
+            json={
+                "name": "外部家长",
+                "email": "intake-other@example.com",
+                "password": "password123",
+            },
+        ).json()["access_token"]
+        foreign = self.request(
+            "POST",
+            "/wards",
+            token=outsider,
+            json={"display_name": "外部孩子", "grade_stage": "high"},
+        ).json()["id"]
+        rejected = self.request(
+            "POST",
+            "/task-intake/confirm",
+            token=token,
+            json={"tasks": [{"ward_id": foreign, "title": "不应写入"}]},
+        )
         self.assertEqual(rejected.status_code, 404)
 
     def test_ward_can_confirm_today_plan_draft_with_a_new_task_and_image(self):
-        guardian = self.request("POST", "/auth/register", json={"name": "计划家长", "email": "plan-intake@example.com", "password": "password123"}).json()["access_token"]
-        ward = self.request("POST", "/wards", token=guardian, json={"display_name": "小计划", "grade_stage": "middle"}).json()["id"]
-        invite = self.request("POST", f"/wards/{ward}/login-invite", token=guardian).json()
-        ward_token = self.request("POST", "/ward-auth/bind", json={"invite_code": invite["invite_code"]}).json()["access_token"]
+        guardian = self.request(
+            "POST",
+            "/auth/register",
+            json={
+                "name": "计划家长",
+                "email": "plan-intake@example.com",
+                "password": "password123",
+            },
+        ).json()["access_token"]
+        ward = self.request(
+            "POST",
+            "/wards",
+            token=guardian,
+            json={"display_name": "小计划", "grade_stage": "middle"},
+        ).json()["id"]
+        invite = self.request(
+            "POST", f"/wards/{ward}/login-invite", token=guardian
+        ).json()
+        ward_token = self.request(
+            "POST", "/ward-auth/bind", json={"invite_code": invite["invite_code"]}
+        ).json()["access_token"]
         day = datetime.now(timezone.utc).date().isoformat()
-        signed = self.request("POST", f"/wards/{ward}/plan-intake/upload-url", token=ward_token, json={"extension": "jpg", "content_type": "image/jpeg"})
+        signed = self.request(
+            "POST",
+            f"/wards/{ward}/plan-intake/upload-url",
+            token=ward_token,
+            json={"extension": "jpg", "content_type": "image/jpeg"},
+        )
         self.assertEqual(signed.status_code, 200, signed.text)
-        self.assertEqual(self.client.put(signed.json()["upload_url"], content=b"plan-image").status_code, 204)
+        self.assertEqual(
+            self.client.put(
+                signed.json()["upload_url"], content=b"plan-image"
+            ).status_code,
+            204,
+        )
         attachment = signed.json()["oss_key"]
         parsed = PlanIntakeResult(
             assistant_text="已整理今天的任务。",
@@ -263,20 +850,55 @@ class EndToEndTest(unittest.TestCase):
             ready_to_confirm=True,
         )
         with patch("app.main.PlanIntakeService.respond", return_value=parsed):
-            response = self.request("POST", f"/wards/{ward}/plans/{day}/intake", token=ward_token, json={"content": "把照片里的错题今天整理完", "attachment_keys": [attachment]})
+            response = self.request(
+                "POST",
+                f"/wards/{ward}/plans/{day}/intake",
+                token=ward_token,
+                json={
+                    "content": "把照片里的错题今天整理完",
+                    "attachment_keys": [attachment],
+                },
+            )
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()["items"][0]["title"], "整理数学错题")
-        confirmed = self.request("POST", f"/wards/{ward}/plans/{day}/intake/confirm", token=ward_token, json={"items": response.json()["items"], "attachment_keys": [attachment]})
+        confirmed = self.request(
+            "POST",
+            f"/wards/{ward}/plans/{day}/intake/confirm",
+            token=ward_token,
+            json={"items": response.json()["items"], "attachment_keys": [attachment]},
+        )
         self.assertEqual(confirmed.status_code, 201, confirmed.text)
         self.assertFalse(storage.exists(attachment))
-        plan = self.request("GET", f"/wards/{ward}/plans/{day}", token=ward_token).json()
+        plan = self.request(
+            "GET", f"/wards/{ward}/plans/{day}", token=ward_token
+        ).json()
         self.assertEqual(plan["status"], "confirmed")
         self.assertEqual(plan["items"][0]["title"], "整理数学错题")
-        assignments = self.request("GET", f"/wards/{ward}/assignments", token=ward_token).json()
+        assignments = self.request(
+            "GET", f"/wards/{ward}/assignments", token=ward_token
+        ).json()
         self.assertEqual(assignments[0]["title"], "整理数学错题")
-        other_guardian = self.request("POST", "/auth/register", json={"name": "其他计划家长", "email": "other-plan-intake@example.com", "password": "password123"}).json()["access_token"]
-        other_ward = self.request("POST", "/wards", token=other_guardian, json={"display_name": "其他学生", "grade_stage": "primary"}).json()["id"]
-        forbidden = self.request("POST", f"/wards/{other_ward}/plan-intake/upload-url", token=ward_token, json={"extension": "jpg", "content_type": "image/jpeg"})
+        other_guardian = self.request(
+            "POST",
+            "/auth/register",
+            json={
+                "name": "其他计划家长",
+                "email": "other-plan-intake@example.com",
+                "password": "password123",
+            },
+        ).json()["access_token"]
+        other_ward = self.request(
+            "POST",
+            "/wards",
+            token=other_guardian,
+            json={"display_name": "其他学生", "grade_stage": "primary"},
+        ).json()["id"]
+        forbidden = self.request(
+            "POST",
+            f"/wards/{other_ward}/plan-intake/upload-url",
+            token=ward_token,
+            json={"extension": "jpg", "content_type": "image/jpeg"},
+        )
         self.assertEqual(forbidden.status_code, 403)
 
 

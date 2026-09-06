@@ -1,0 +1,136 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "DerivedSignal Aggregate · 内部领域模型",
+    "locale": "zh-CN",
+    "output": "design-memory-signal-internal.html",
+    "quality_profile": "showcase",
+    "viewBox": [1050, 650],
+    "views": [
+      {
+        "id": "composition",
+        "label": "信号组成与状态约束",
+        "focus": ["signal", "evidence-link", "signal-value", "validity-window"],
+        "note": "根聚合以全部证据、状态与有效期决定能否成为长期理解。"
+      },
+      {
+        "id": "evidence-reference",
+        "label": "证据引用边界",
+        "focus": ["signal", "evidence-link", "learning-event"],
+        "note": "SignalEvidenceLink 以事件 ID 关联账本证据，保留支持与反证角色。"
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "signal",
+      "type": "backend",
+      "label": "DerivedSignal",
+      "sublabel": "Aggregate Root · id, ward_id, type, scope, dimension, status, confidence",
+      "tag": "propose · activate · challenge · expire",
+      "pos": [330, 180],
+      "size": [350, 96]
+    },
+    {
+      "id": "evidence-link",
+      "type": "database",
+      "label": "SignalEvidenceLink",
+      "sublabel": "Child Entity · learning_event_id, role, linked_at, note",
+      "tag": "support / counterevidence / confirmation",
+      "pos": [710, 187],
+      "size": [270, 82]
+    },
+    {
+      "id": "signal-value",
+      "type": "cloud",
+      "label": "SignalValue",
+      "sublabel": "Value Object · value, sample_size, window, calculation_method",
+      "tag": "validate controlled value",
+      "pos": [20, 187],
+      "size": [280, 82]
+    },
+    {
+      "id": "validity-window",
+      "type": "cloud",
+      "label": "ValidityWindow",
+      "sublabel": "Value Object · observed_from, expires_at",
+      "tag": "contains / is_expired",
+      "pos": [390, 400],
+      "size": [230, 82]
+    },
+    {
+      "id": "learning-event",
+      "type": "external",
+      "label": "LearningEvent",
+      "sublabel": "Evidence Ledger entity · separate ownership",
+      "tag": "referenced by ID only",
+      "pos": [735, 300],
+      "size": [220, 76]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "DerivedSignal Aggregate",
+      "wraps": ["signal", "evidence-link", "signal-value", "validity-window"],
+      "pad": 15
+    }
+  ],
+  "connections": [
+    {
+      "id": "signal-evidence-link",
+      "from": "signal",
+      "to": "evidence-link",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left",
+      "route": "straight"
+    },
+    {
+      "id": "signal-value-link",
+      "from": "signal",
+      "to": "signal-value",
+      "variant": "emphasis",
+      "fromSide": "left",
+      "toSide": "right",
+      "route": "straight"
+    },
+    {
+      "id": "signal-validity-link",
+      "from": "signal",
+      "to": "validity-window",
+      "variant": "default",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "straight"
+    },
+    {
+      "id": "evidence-event-reference",
+      "from": "evidence-link",
+      "to": "learning-event",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "straight"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "violet",
+      "title": "不变量归属",
+      "items": [
+        "DerivedSignal 保证每个结论有证据、Candidate 不是确定结论、只有 long_term + active 才可投影。",
+        "activate、challenge 与 expire 必须经根聚合及版本化 Policy 校验。"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "证据与可校正性",
+      "items": [
+        "EvidenceLink 区分支持、反证和 Ward 确认；它不拥有 LearningEvent。",
+        "SignalValue 保留样本数、窗口与计算方法，避免把单个表现归因为人格或能力标签。"
+      ]
+    }
+  ]
+}

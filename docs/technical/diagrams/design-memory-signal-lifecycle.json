@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "DerivedSignal 生命周期",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "viewBox": [1020, 680]
+  },
+  "lanes": [
+    { "id": "main", "label": "Signal 状态" },
+    { "id": "challenge", "label": "反证与复核" },
+    { "id": "terminal", "label": "终止" }
+  ],
+  "states": [
+    { "id": "candidate", "type": "start", "label": "Candidate", "sublabel": "有证据的候选理解", "lane": "main", "col": 0, "tag": "不可作为确定结论" },
+    { "id": "active", "type": "active", "label": "Active", "sublabel": "满足 Policy 或 Ward 确认", "lane": "main", "col": 2, "tag": "可按目标召回" },
+    { "id": "challenged", "type": "waiting", "label": "Challenged", "sublabel": "反证或 Ward 否认", "lane": "challenge", "col": 2, "tag": "等待重新评估" },
+    { "id": "expired", "type": "failure", "label": "Expired", "sublabel": "到期或长期无支持", "lane": "terminal", "col": 2, "tag": "终态" }
+  ],
+  "transitions": [
+    { "from": "candidate", "to": "active", "label": "满足晋升规则 / Ward 确认", "variant": "emphasis", "route": "auto" },
+    { "from": "candidate", "to": "expired", "label": "证据不足且到期", "variant": "security", "route": "bottom-channel" },
+    { "from": "active", "to": "challenged", "label": "反证或明确否认", "variant": "default", "route": "drop" },
+    { "from": "challenged", "to": "active", "label": "重新满足规则", "variant": "emphasis", "route": "top-channel" },
+    { "from": "active", "to": "expired", "label": "长期无支持 / 留存到期", "variant": "security", "route": "bottom-channel" },
+    { "from": "challenged", "to": "expired", "label": "复核期结束", "variant": "security", "route": "bottom-channel" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Promotion guard", "items": ["模型只能提出 Candidate", "晋升由 Policy、独立证据或 Ward 确认决定", "Candidate 只能支持温和追问"] },
+    { "dot": "rose", "title": "Correction and expiry", "items": ["反证保留为 SignalEvidence，不覆盖历史", "Challenged 不是终态，可被新证据恢复", "Expired Signal 不进入长期画像投影"] }
+  ]
+}

@@ -144,6 +144,164 @@ Shared Memory：[LearningEvent / EpisodicMemory / DerivedSignal / LongTermProfil
 
 Coordinator 为路由、澄清、Handoff 和 Agent Run 记录 Trace（线程 ID、路由版本、目标、规则/分类依据、上下文引用、Policy/模型版本和耗时）。这些是运行审计数据，不是 [LearningEvent](design-memory.md)；只有领域服务确认发生的 Ward 行为或业务状态才写入事实账本。
 
+### 3.2 Coordinator 与领域 Workflow 的调用边界
+
+Coordinator **不是 Agent**：它不使用模型生成面向 Ward 的内容、不选择教学策略、不调用领域工具，也不读取完整 Memory。它是 API 入口内的确定性控制层。计划协商、今日复盘和启发式答疑才是三种领域 Agent；其中前两者实现为有模型节点的受控 LangGraph Workflow，答疑实现为有限步 ReAct Workflow。LangGraph 是工作流运行时，不拥有领域事实或 Ward 长期记忆。
+
+当前单体内不使用消息队列或 Agent 间自然语言通信。Coordinator 通过 Python 的强类型接口调用 `WorkflowAdapter`，仅传递已经鉴权的 `RunInvocation`；Workflow 只能返回 `WorkflowOutcome`。未来拆分进程时，可将这对 Pydantic 契约原样作为内部 RPC/任务消息契约，但不得改变权限、生命周期或写入边界。
+
+```python
+class RunInvocation(BaseModel):
+    run_id: UUID
+    thread_id: UUID
+    ward_id: UUID
+    agent_type: Literal["planning", "tutoring", "reflection"]
+    turn: dict                         # 当前 Ward 输入或确认命令
+    context_refs: list[str]            # 仅 task/session/draft 等已授权引用
+    expected_thread_version: int
+    resume_from_checkpoint: bool = False
+
+class WorkflowOutcome(BaseModel):
+    run_status: Literal["active", "waiting_for_ward", "paused", "closed", "escalated"]
+    next_interaction: dict | None      # 追问、确认卡片或安全降级；非隐式推理
+    handoff_suggestion: Literal["planning", "tutoring", "reflection"] | None = None
+    context_refs: list[str] = []
+    trace_refs: list[str] = []
+```
+
+调用遵循以下不变量：
+
+1. Coordinator 在事务中读取并乐观锁定 `ConversationThread`，按固定优先级获得 `RouteDecision`，再创建或恢复**一个** `AgentRun`；`clarify` 与 `safety` 不启动 Workflow。
+2. `WorkflowAdapter.invoke(invocation)` 根据 `agent_type` 选择唯一的编译 Graph。Adapter 先用 `ContextBuilder` 装配最小 `ContextEnvelope`，再调用 Graph；Workflow 不回调 Coordinator，也不得启动其他 Workflow。
+3. Workflow 等待 Ward 确认时以 LangGraph `interrupt` 停止。PostgreSQL Checkpointer 保存图运行状态；Adapter 将 `waiting_for_ward`、可展示的 `next_interaction` 和 checkpoint 引用投影回 `AgentRun`，随后返回 `WorkflowOutcome`。
+4. 下一轮输入仍先到 Coordinator。只有被判定为同一 focus Run 的正常续接，Coordinator 才构造 `resume_from_checkpoint=True` 的 Invocation；Adapter 在内部将其转换为 LangGraph `Command(resume=...)`。Ward 的明确新意图仍按 Handoff 规则路由，不能直接恢复旧图。
+5. Workflow 的业务副作用必须经领域服务和幂等键执行。图节点在中断或重试后可能从头运行，禁止在节点中直接写业务表；`AgentRun`/Trace 与领域事实的最终状态由受控服务事务写入。
+
+`AgentRun` 是领域生命周期与授权关系的权威记录；LangGraph 的 PostgreSQL Checkpointer 只保存可恢复的图状态。`AgentCheckpoint` 仅保存 `run_id` 到 graph checkpoint/config、图版本、状态摘要哈希和结算版本的映射，不能成为第二份工作记忆或复制完整 Prompt。长期/情境 Memory 仍只通过 [MemoryFacade](design-memory.md#54-内部-memory-api) 读取。
+
+#### 3.2.1 主要类关系（实现 UML）
+
+下图描述计划中的代码依赖方向；实线表示调用/组合，虚线表示受限接口依赖。除 `WorkflowAdapter` 外，任何 Agent 或 Graph 节点都不得直接访问记忆表、领域表或另一 Agent。
+
+```mermaid
+classDiagram
+    class CompanionTurnEndpoint {
+        +post_turn(request, principal) CompanionTurnResponse
+    }
+    class CompanionCoordinator {
+        +handle(turn, principal) CoordinatorResult
+    }
+    class IntentRouter {
+        +decide(turn, thread, active_runs) RouteDecision
+    }
+    class AgentRunRepository {
+        +lock_thread(thread_id, version) ConversationThread
+        +start_or_resume(decision) AgentRun
+        +record_outcome(run, outcome)
+    }
+    class TraceRepository {
+        +record(snapshot, outcome) AgentTrace
+    }
+    class WorkflowAdapter {
+        <<interface>>
+        +invoke(invocation) WorkflowOutcome
+    }
+    class LangGraphWorkflowAdapter {
+        +invoke(invocation) WorkflowOutcome
+        -resume_or_invoke(graph, invocation)
+    }
+    class PlanningWorkflow
+    class ReflectionWorkflow
+    class TutoringWorkflow
+    class ContextBuilder {
+        +build(invocation, definition) ContextEnvelope
+    }
+    class MemoryFacade {
+        <<interface>>
+        +resolve_context(request) MemoryBundle
+    }
+    class PolicyRegistry {
+        +resolve(definition) PolicyBundle
+    }
+    class ModelGateway {
+        +complete(envelope) AgentResult
+    }
+    class ToolGateway {
+        +execute(allowed_requests) ToolResult[]
+    }
+    class OutputValidator {
+        +validate(result, envelope) ValidatedResult
+    }
+    class DomainService {
+        +apply_confirmed_change(command)
+        +record_fact(command)
+    }
+    class PostgresCheckpointer {
+        +save(graph_state)
+        +resume(config, command)
+    }
+
+    CompanionTurnEndpoint --> CompanionCoordinator
+    CompanionCoordinator --> IntentRouter
+    CompanionCoordinator --> AgentRunRepository
+    CompanionCoordinator --> WorkflowAdapter
+    CompanionCoordinator --> TraceRepository
+    WorkflowAdapter <|.. LangGraphWorkflowAdapter
+    LangGraphWorkflowAdapter --> PlanningWorkflow
+    LangGraphWorkflowAdapter --> ReflectionWorkflow
+    LangGraphWorkflowAdapter --> TutoringWorkflow
+    LangGraphWorkflowAdapter --> ContextBuilder
+    LangGraphWorkflowAdapter --> PostgresCheckpointer
+    ContextBuilder ..> MemoryFacade
+    ContextBuilder --> PolicyRegistry
+    PlanningWorkflow --> ModelGateway
+    ReflectionWorkflow --> ModelGateway
+    TutoringWorkflow --> ModelGateway
+    TutoringWorkflow --> ToolGateway
+    PlanningWorkflow --> OutputValidator
+    ReflectionWorkflow --> OutputValidator
+    TutoringWorkflow --> OutputValidator
+    PlanningWorkflow ..> DomainService
+    ReflectionWorkflow ..> DomainService
+    TutoringWorkflow ..> DomainService
+```
+
+#### 3.2.2 一次 turn 的时序与恢复
+
+```mermaid
+sequenceDiagram
+    participant App as Ward App
+    participant API as CompanionTurnEndpoint
+    participant C as CompanionCoordinator
+    participant R as AgentRunRepository
+    participant A as WorkflowAdapter
+    participant B as ContextBuilder / MemoryFacade
+    participant G as LangGraph Workflow
+    participant D as DomainService
+    participant T as TraceRepository
+
+    App->>API: POST /companion/turn
+    API->>C: authenticated turn
+    C->>R: lock thread + route + start/resume one run
+    C->>A: RunInvocation
+    A->>B: build minimum ContextEnvelope
+    B-->>A: authorized, budgeted MemoryBundle
+    A->>G: invoke or Command(resume)
+    alt requires Ward confirmation
+        G-->>A: interrupt(next_interaction)
+        A-->>C: waiting_for_ward WorkflowOutcome
+    else completed domain step
+        G->>D: validated, idempotent domain command
+        D-->>G: fact/result reference
+        G-->>A: WorkflowOutcome
+        A-->>C: outcome
+    end
+    C->>R: persist status/focus/checkpoint reference
+    C->>T: write route + context snapshot + outcome trace
+    C-->>API: CoordinatorResult
+    API-->>App: JSON now / SSE when domain output is enabled
+```
+
 ## 四、计划协商 Agent：状态图与局部循环
 
 计划协商以 Ward 当前请求为入口、以 Ward 确认的计划变更为出口。它先确认意图是否理解，再确认意图是否可执行，并检查与其他剩余任务和既有约束的兼容性。计划草稿是临时聚合，确认前不得写入 `DailySchedule` 或 `Task` 正式状态。

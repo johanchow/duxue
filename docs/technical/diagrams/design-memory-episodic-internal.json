@@ -1,0 +1,136 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "EpisodicMemory Aggregate · 内部领域模型",
+    "locale": "zh-CN",
+    "output": "design-memory-episodic-internal.html",
+    "quality_profile": "showcase",
+    "viewBox": [1050, 650],
+    "views": [
+      {
+        "id": "composition",
+        "label": "聚合组成与不变量",
+        "focus": ["memory", "evidence-link", "episode", "outcome"],
+        "note": "根聚合拥有证据链接与受控答疑情境；任何摘要至少有一条证据。"
+      },
+      {
+        "id": "references",
+        "label": "跨聚合只保留 ID",
+        "focus": ["memory", "evidence-link", "learning-event"],
+        "note": "LearningEvent 属于 Evidence Ledger，EpisodicMemory 只引用其 ID。"
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "memory",
+      "type": "backend",
+      "label": "EpisodicMemory",
+      "sublabel": "Aggregate Root · id, ward_id, type, ref, summary, event_date",
+      "tag": "settle · attach_evidence · archive",
+      "pos": [350, 180],
+      "size": [310, 92]
+    },
+    {
+      "id": "evidence-link",
+      "type": "database",
+      "label": "EpisodicMemoryEvidenceLink",
+      "sublabel": "Child Entity · learning_event_id, role, linked_at",
+      "tag": "deduplicate(event_id)",
+      "pos": [700, 185],
+      "size": [245, 82]
+    },
+    {
+      "id": "episode",
+      "type": "cloud",
+      "label": "TutoringEpisodePayload",
+      "sublabel": "Value Object · subject, skill_keys, attempts, support, next_step",
+      "tag": "validate",
+      "pos": [50, 185],
+      "size": [270, 82]
+    },
+    {
+      "id": "outcome",
+      "type": "cloud",
+      "label": "Outcome",
+      "sublabel": "Value Object · result, observed_at, confidence",
+      "tag": "valid construction",
+      "pos": [72.5, 400],
+      "size": [225, 82]
+    },
+    {
+      "id": "learning-event",
+      "type": "external",
+      "label": "LearningEvent",
+      "sublabel": "Evidence Ledger entity · separate ownership",
+      "tag": "referenced by ID only",
+      "pos": [720, 291],
+      "size": [205, 76]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "EpisodicMemory Aggregate",
+      "wraps": ["memory", "evidence-link", "episode", "outcome"],
+      "pad": 34
+    }
+  ],
+  "connections": [
+    {
+      "id": "memory-evidence-link",
+      "from": "memory",
+      "to": "evidence-link",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left",
+      "route": "straight"
+    },
+    {
+      "id": "memory-episode",
+      "from": "memory",
+      "to": "episode",
+      "variant": "emphasis",
+      "fromSide": "left",
+      "toSide": "right",
+      "route": "straight"
+    },
+    {
+      "id": "episode-outcome",
+      "from": "episode",
+      "to": "outcome",
+      "variant": "default",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "straight"
+    },
+    {
+      "id": "evidence-event-reference",
+      "from": "evidence-link",
+      "to": "learning-event",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "straight"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "不变量归属",
+      "items": [
+        "EpisodicMemory 保证至少一条证据、证据不重复，以及摘要不复制原始对话。",
+        "Child Entity 仅表达链接；不能绕过根聚合独立写入。"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "边界",
+      "items": [
+        "LearningEvent 不被包含进该 Aggregate；只使用 learning_event_id 引用。",
+        "Payload 与 Outcome 是无身份、不可变且受构造校验的 Value Object。"
+      ]
+    }
+  ]
+}

@@ -27,6 +27,9 @@ oss2>=2.19.0
 
 # ── AI 推理（百炼 Batch API，兼容 OpenAI 接口）
 openai>=1.57.0
+# 受控领域工作流；短期图状态使用 PostgreSQL checkpointer 持久化。
+langgraph>=1.0.0
+langgraph-checkpoint-postgres>=3.0.0
 
 # ── 数值计算
 numpy>=1.24.0
