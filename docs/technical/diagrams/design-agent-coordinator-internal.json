@@ -1,0 +1,136 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Companion Orchestration · ConversationThread Aggregate",
+    "locale": "zh-CN",
+    "output": "design-agent-coordinator-internal.html",
+    "quality_profile": "showcase",
+    "viewBox": [1050, 650],
+    "views": [
+      {
+        "id": "ownership",
+        "label": "编排状态的归属",
+        "focus": ["thread", "run-link", "checkpoint", "trace"],
+        "note": "ConversationThread 是入口连续性的写边界；Checkpoint 与 Trace 是恢复、审计基础设施。"
+      },
+      {
+        "id": "references",
+        "label": "领域状态只引用",
+        "focus": ["thread", "run-link", "domain-run"],
+        "note": "RunLink 仅保存受权 run_ref/context_refs，不复制计划、答疑或复盘领域状态。"
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "thread",
+      "type": "backend",
+      "label": "ConversationThread",
+      "sublabel": "Aggregate Root · id, ward_id, focus_run_ref, version",
+      "tag": "route · focus · handoff",
+      "pos": [375, 170],
+      "size": [330, 92]
+    },
+    {
+      "id": "run-link",
+      "type": "database",
+      "label": "AgentRunLink",
+      "sublabel": "Child Entity · run_id, type, status, run_ref, context_refs",
+      "tag": "start · resume · pause · close",
+      "pos": [390, 380],
+      "size": [300, 82]
+    },
+    {
+      "id": "checkpoint",
+      "type": "cloud",
+      "label": "AgentCheckpoint",
+      "sublabel": "Infrastructure record · graph ref, version, digest",
+      "tag": "recovery only",
+      "pos": [70, 380],
+      "size": [250, 82]
+    },
+    {
+      "id": "trace",
+      "type": "database",
+      "label": "AgentTrace",
+      "sublabel": "Audit record · route, refs, redacted snapshot, outcome",
+      "tag": "append-only audit",
+      "pos": [760, 380],
+      "size": [250, 82]
+    },
+    {
+      "id": "domain-run",
+      "type": "external",
+      "label": "Planning / Tutoring / Reflection Run",
+      "sublabel": "Foreign domain state · referenced by run_ref only",
+      "tag": "separate aggregate ownership",
+      "pos": [390, 520],
+      "size": [300, 76]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Companion Orchestration Aggregate",
+      "wraps": ["thread", "run-link"],
+      "pad": 30
+    }
+  ],
+  "connections": [
+    {
+      "id": "thread-run-link",
+      "from": "thread",
+      "to": "run-link",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "straight"
+    },
+    {
+      "id": "run-link-checkpoint",
+      "from": "run-link",
+      "to": "checkpoint",
+      "variant": "dashed",
+      "fromSide": "left",
+      "toSide": "right",
+      "route": "straight"
+    },
+    {
+      "id": "run-link-trace",
+      "from": "run-link",
+      "to": "trace",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "left",
+      "route": "straight"
+    },
+    {
+      "id": "run-link-domain-run",
+      "from": "run-link",
+      "to": "domain-run",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "straight"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "根聚合不变量",
+      "items": [
+        "每个 Thread 的版本单调递增；陈旧 expected_version 必须冲突失败。",
+        "每轮只有一个 AgentRunLink 可成为 focus / 回复权持有者。"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "不复制领域数据",
+      "items": [
+        "run_ref 与 context_refs 只是受权引用，目标领域按自身 ContextSpec 重建上下文。",
+        "Checkpoint 不保存完整 Prompt；Trace 不保存原始对话或模型隐式推理。"
+      ]
+    }
+  ]
+}

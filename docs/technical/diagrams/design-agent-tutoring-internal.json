@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "TutoringSession Aggregate · 内部领域模型",
+    "locale": "zh-CN",
+    "output": "design-agent-tutoring-internal.html",
+    "quality_profile": "showcase",
+    "viewBox": [1050, 650],
+    "views": [
+      {
+        "id": "ownership",
+        "label": "答疑会话的所有权",
+        "focus": ["session", "message", "study-session", "working-state"],
+        "note": "TutoringSession 拥有可审计消息；工作状态是可恢复 Runtime 状态，不是长期 Memory。"
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "session",
+      "type": "backend",
+      "label": "TutoringSession",
+      "sublabel": "Aggregate Root · id, ward_id, study_session_id, status, subject",
+      "tag": "start · apply_turn · pause · close",
+      "pos": [365, 160],
+      "size": [320, 92]
+    },
+    {
+      "id": "message",
+      "type": "database",
+      "label": "TutoringMessage",
+      "sublabel": "Child Entity · id, role, content ref, hint_level, safety flag",
+      "tag": "append validated message",
+      "pos": [375, 370],
+      "size": [300, 82]
+    },
+    {
+      "id": "study-session",
+      "type": "external",
+      "label": "StudySession",
+      "sublabel": "Foreign Aggregate · referenced by study_session_id",
+      "tag": "execution context only",
+      "pos": [60, 168],
+      "size": [250, 76]
+    },
+    {
+      "id": "working-state",
+      "type": "cloud",
+      "label": "TutorWorkingState",
+      "sublabel": "Runtime Value · goal, attempts, strategy, budget, summary",
+      "tag": "validated patch + checkpoint",
+      "pos": [750, 165],
+      "size": [270, 82]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "TutoringSession Aggregate",
+      "wraps": ["session", "message"],
+      "pad": 30
+    }
+  ],
+  "connections": [
+    {
+      "id": "session-message",
+      "from": "session",
+      "to": "message",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "straight"
+    },
+    {
+      "id": "session-study-session",
+      "from": "session",
+      "to": "study-session",
+      "variant": "dashed",
+      "fromSide": "left",
+      "toSide": "right",
+      "route": "straight"
+    },
+    {
+      "id": "session-working-state",
+      "from": "session",
+      "to": "working-state",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "left",
+      "route": "straight"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "根聚合不变量",
+      "items": [
+        "只能由拥有会话的 Ward 追加输入；关闭后不能继续应用教学动作。",
+        "每次实际提示、检索和安全拦截都必须可审计，且不得越过 Policy/预算。"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "运行状态不是记忆",
+      "items": [
+        "TutorWorkingState 可被后续输入推翻；Checkpoint 仅供恢复。",
+        "会话关闭后，领域事实才可经 Outbox 异步结算为 Episodic Memory。"
+      ]
+    }
+  ]
+}

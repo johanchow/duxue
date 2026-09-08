@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, Protocol
 
 from pydantic import BaseModel, Field
 
@@ -47,6 +47,42 @@ class ContextEnvelope(BaseModel):
             "has_profile": self.profile is not None,
             "truncated": self.truncated,
         }
+
+
+class ContextSpec(BaseModel):
+    """The minimum, versioned context a workflow is permitted to request."""
+
+    memory_types: set[Literal["episodic", "signal", "profile"]] = Field(
+        default_factory=lambda: {"episodic", "signal", "profile"}
+    )
+    item_budget: int = Field(default=12, ge=1, le=100)
+    token_budget: int = Field(default=900, ge=64, le=20_000)
+
+
+class RunInvocation(BaseModel):
+    """An authorized, single-workflow instruction emitted by the Coordinator."""
+
+    run_id: str
+    thread_id: str
+    ward_id: str
+    agent_type: AgentType
+    turn: dict
+    context_refs: list[str] = Field(default_factory=list)
+    resume_from_checkpoint: bool = False
+
+
+class WorkflowOutcome(BaseModel):
+    """Validated workflow result; it contains no ORM objects or raw prompts."""
+
+    run_status: RunStatus
+    next_interaction: dict | None = None
+    context_refs: list[str] = Field(default_factory=list)
+    checkpoint_ref: str | None = None
+    context_snapshot: dict | None = None
+
+
+class WorkflowDispatcher(Protocol):
+    def invoke(self, invocation: RunInvocation) -> WorkflowOutcome: ...
 
 
 class CoordinatorResult(BaseModel):

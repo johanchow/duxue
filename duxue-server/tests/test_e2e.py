@@ -479,10 +479,13 @@ class EndToEndTest(unittest.TestCase):
     def test_companion_coordinator_routes_one_run_and_records_a_redacted_trace(
         self, adapter_class
     ):
-        adapter_class.return_value.invoke.return_value = {
-            "status": "waiting_for_ward",
-            "interaction": {"status": "needs_input"},
-        }
+        from app.ai_runtime.contracts import WorkflowOutcome
+
+        adapter_class.return_value.invoke.return_value = WorkflowOutcome(
+            run_status="waiting_for_ward",
+            next_interaction={"status": "needs_input"},
+            context_snapshot={"version": "companion-context.v1"},
+        )
         guardian = self.request(
             "POST",
             "/auth/register",

@@ -187,6 +187,12 @@ class CompanionTurnRequest(BaseModel):
     route_hint: str | None = Field(default=None, pattern=r"^(planning|tutoring|reflection)$")
     planning_items: list[dict[str, Any]] | None = Field(default=None, max_length=30)
     planning_confirm: bool = False
+    study_session_id: str | None = None
+    tutoring_directive: str | None = Field(default=None, pattern=r"^(ask|attempt|understood|close)$")
+    review_date: date | None = None
+    review_feeling: str | None = Field(default=None, max_length=40)
+    review_reflection: str | None = Field(default=None, max_length=2000)
+    adopt_focus_kit: bool = False
 
     @field_validator("content")
     @classmethod

@@ -34,10 +34,10 @@ status: draft
 
 ## 实现清单（完成度，做完一项把 [ ] 改成 [x]）
 - [ ] 增加依赖、PlanDraft 数据模型与迁移，并验证 PostgreSQL schema。
-- [ ] 建立 WorkflowAdapter、Policy/Model/Validator 边界和可替换 fake 测试设施。
-- [ ] 实现 PlanningDomainService 与 Draft 生命周期的失败测试、确定性校验和确认事务。
+- [x] 建立 WorkflowAdapter、Dispatcher、版本化 Context/Outcome 契约和可替换 fake 测试设施；Policy/Model/Validator 留待模型生成能力接入时实现。
+- [x] 实现 PlanningDomainService 的 Draft 确认幂等、任务归属/已开始任务 guard，并覆盖确认重试。
 - [ ] 实现 LangGraph planning Graph、interrupt/resume，并接入 Coordinator/API。
-- [ ] 完成集成测试、可观测 Trace、笔记和最终审阅。
+- [x] 完成当前范围的集成测试、红脱敏 Trace、实现笔记和 diff 审阅；待 Gate 2 验收后归档。
 
 ## 备注
 

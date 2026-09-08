@@ -35,6 +35,7 @@ def record_learning_event(
     payload: dict | None = None,
     evidence_refs: list | None = None,
     visibility: str = "system",
+    publish_outbox: bool = True,
 ) -> LearningEvent:
     """Append a fact once and enqueue its derivation in the same transaction.
 
@@ -69,14 +70,32 @@ def record_learning_event(
     )
     db.add(event)
     db.flush()
-    db.add(
-        OutboxEvent(
-            aggregate_type="learning_event",
-            aggregate_id=event.id,
-            event_type="learning_event.recorded",
-            payload={"learning_event_id": event.id},
+    if publish_outbox:
+        db.add(
+            OutboxEvent(
+                aggregate_type="learning_event",
+                aggregate_id=event.id,
+                event_type="LearningFactRecorded.v1",
+                # Consumers receive a versioned, self-contained fact rather than
+                # inferring source semantics by re-reading another Context.
+                payload={
+                    "schema_version": "LearningFactRecorded.v1",
+                    "learning_event_id": event.id,
+                    "ward_id": event.ward_id,
+                    "event_type": event.event_type,
+                    "source_type": event.source_type,
+                    "source_id": event.source_id,
+                    "source_version": event.source_version,
+                    "occurred_at": event.occurred_at.isoformat(),
+                    "source": event.source,
+                    "confidence": event.confidence,
+                    "scope": event.scope,
+                    "payload": event.payload,
+                    "evidence_refs": event.evidence_refs,
+                    "visibility": event.visibility,
+                },
+            )
         )
-    )
     return event
 
 
@@ -114,6 +133,95 @@ class MemoryBundle(BaseModel):
 
 class MemoryAccessDenied(PermissionError):
     pass
+
+
+class LearningFactRecorded(BaseModel):
+    """Versioned integration envelope accepted by the Memory boundary."""
+
+    schema_version: Literal["LearningFactRecorded.v1"] = "LearningFactRecorded.v1"
+    ward_id: str
+    event_type: str
+    source_type: str
+    source_id: str
+    source_version: int = Field(default=1, ge=1)
+    occurred_at: datetime
+    source: Literal["ward", "guardian", "system", "cam"] = "system"
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    scope: dict = Field(default_factory=dict)
+    payload: dict = Field(default_factory=dict)
+    evidence_refs: list = Field(default_factory=list)
+    visibility: Literal["ward", "guardian", "system"] = "system"
+
+
+class SqlAlchemyMemoryCommandService:
+    """Application boundary for idempotently ingesting stable learning facts."""
+
+    def __init__(self, db: Session):
+        self.db = db
+
+    def ingest_learning_fact(self, fact: LearningFactRecorded) -> LearningEvent:
+        return record_learning_event(
+            self.db,
+            ward_id=fact.ward_id,
+            event_type=fact.event_type,
+            source_type=fact.source_type,
+            source_id=fact.source_id,
+            source_version=fact.source_version,
+            occurred_at=fact.occurred_at,
+            source=fact.source,
+            confidence=fact.confidence,
+            scope=fact.scope,
+            payload=fact.payload,
+            evidence_refs=fact.evidence_refs,
+            visibility=fact.visibility,
+            publish_outbox=False,
+        )
+
+    def settle_tutoring_episode(self, tutoring_session_id: str, version: int = 1) -> EpisodicMemory | None:
+        """Settle only closed-session facts; never copy tutoring messages."""
+        events = self.db.query(LearningEvent).filter(
+            LearningEvent.event_type.in_(["tutoring.stuck_point_recorded", "tutoring.session_closed"]),
+            LearningEvent.payload["tutoring_session_id"].as_string() == tutoring_session_id,
+        ).all()
+        if not events:
+            return None
+        ref = f"tutoring_session:{tutoring_session_id}"
+        memory = self.db.query(EpisodicMemory).filter_by(memory_type="tutoring_episode", aggregate_ref=ref, aggregate_version=version).one_or_none()
+        if memory is None:
+            occurred = max(event.occurred_at for event in events)
+            memory = EpisodicMemory(
+                ward_id=events[0].ward_id, event_type="tutoring_episode", memory_type="tutoring_episode",
+                aggregate_ref=ref, aggregate_version=version, event_date=occurred.date(),
+                summary="本次答疑已结算；可在下次学习时从已知条件开始。",
+                raw_cues={}, hot_until=occurred + timedelta(days=5), expires_at=occurred + timedelta(days=30),
+            )
+            self.db.add(memory); self.db.flush()
+        linked = {row.learning_event_id for row in self.db.query(EpisodicMemoryEvent).filter_by(episodic_memory_id=memory.id)}
+        for event in events:
+            if event.id not in linked:
+                self.db.add(EpisodicMemoryEvent(episodic_memory_id=memory.id, learning_event_id=event.id))
+        return memory
+
+    def challenge_signal(self, signal_id: str, ward_id: str, statement: str) -> DerivedSignal:
+        signal = self.db.get(DerivedSignal, signal_id)
+        if signal is None or signal.ward_id != ward_id:
+            raise MemoryAccessDenied("signal is not visible to this Ward")
+        fact = record_learning_event(self.db, ward_id=ward_id, event_type="signal.ward_challenged", source_type="derived_signal", source_id=signal.id, source_version=1, source="ward", payload={"statement": statement}, visibility="ward")
+        exists = self.db.query(DerivedSignalEvent).filter_by(derived_signal_id=signal.id, learning_event_id=fact.id, role="counterevidence").one_or_none()
+        if exists is None:
+            self.db.add(DerivedSignalEvent(derived_signal_id=signal.id, learning_event_id=fact.id, role="counterevidence"))
+        signal.status = "challenged"; signal.last_evaluated_at = now()
+        return signal
+
+    def rebuild_long_term_profile(self, ward_id: str) -> LongTermProfile:
+        signals = self.db.query(DerivedSignal).filter_by(ward_id=ward_id, scope="long_term", status="active").all()
+        profile = self.db.get(LongTermProfile, ward_id) or LongTermProfile(ward_id=ward_id)
+        if self.db.get(LongTermProfile, ward_id) is None: self.db.add(profile)
+        profile.planning_preferences = {s.dimension_key: s.value for s in signals if s.signal_type == "planning_preference"}
+        profile.learning_strategy_profile = {s.dimension_key: s.value for s in signals if s.signal_type == "effective_strategy"}
+        profile.mature_interest_radar = {s.dimension_key: s.value for s in signals if s.signal_type == "stable_interest"}
+        profile.profile_version += 1
+        return profile
 
 
 class SqlAlchemyMemoryFacade:

@@ -5,12 +5,11 @@ from time import perf_counter
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from ..memory import SqlAlchemyMemoryFacade
 from ..models import AgentRun, AgentTrace, ConversationThread, now, uid
-from .context_builder import ContextBuilder
-from .contracts import CoordinatorResult, RouteDecision
+from .contracts import CoordinatorResult, RouteDecision, RunInvocation
 from .intent_router import IntentRouter
 from .planning_adapter import PlanningWorkflowAdapter
+from .workflow_dispatcher import SqlAlchemyWorkflowDispatcher
 
 _ACTIVE_STATUSES = ("active", "waiting_for_ward", "paused")
 
@@ -18,10 +17,12 @@ _ACTIVE_STATUSES = ("active", "waiting_for_ward", "paused")
 class CompanionCoordinator:
     """Deterministic entrypoint; it never produces a domain-model response."""
 
-    def __init__(self, db: Session, router: IntentRouter | None = None):
+    def __init__(self, db: Session, router: IntentRouter | None = None, dispatcher=None):
         self.db = db
         self.router = router or IntentRouter()
-        self.context_builder = ContextBuilder(SqlAlchemyMemoryFacade(db))
+        self.dispatcher = dispatcher or SqlAlchemyWorkflowDispatcher(
+            db, planning_factory=PlanningWorkflowAdapter
+        )
 
     def _thread(
         self, *, ward_id: str, thread_id: str | None, expected_version: int | None
@@ -113,6 +114,9 @@ class CompanionCoordinator:
         route_hint: str | None,
         planning_items: list[dict] | None = None,
         planning_confirm: bool = False,
+        study_session_id: str | None = None,
+        tutoring_directive: str | None = None,
+        review_date=None, review_feeling: str | None = None, review_reflection: str | None = None, adopt_focus_kit: bool = False,
     ) -> CoordinatorResult:
         started = perf_counter()
         thread = self._thread(
@@ -143,21 +147,29 @@ class CompanionCoordinator:
                 thread=thread, decision=decision, focus_run=focus_run
             )
             decision.context_refs = list(run.context_refs)
-            envelope = self.context_builder.build(
-                run_id=run.id,
-                ward_id=ward_id,
-                actor_id=ward_id,
-                actor_role="ward",
-                agent_type=run.agent_type,
-                context_refs=decision.context_refs,
-            )
-            context = envelope.trace_snapshot()
-            if run.agent_type == "planning":
-                workflow = PlanningWorkflowAdapter(self.db).invoke(
-                    run=run, items=planning_items, confirm=planning_confirm
+            workflow = self.dispatcher.invoke(
+                RunInvocation(
+                    run_id=run.id,
+                    thread_id=thread.id,
+                    ward_id=ward_id,
+                    agent_type=run.agent_type,
+                    turn={
+                        "planning_items": planning_items,
+                        "planning_confirm": planning_confirm,
+                        "study_session_id": study_session_id,
+                        "tutoring_directive": tutoring_directive,
+                        "content": content,
+                        "review_date": review_date.isoformat() if review_date else None,
+                        "review_feeling": review_feeling, "review_reflection": review_reflection, "adopt_focus_kit": adopt_focus_kit,
+                    },
+                    context_refs=decision.context_refs,
+                    resume_from_checkpoint=decision.mode == "continue",
                 )
-                run.status = workflow["status"]
-                interaction = workflow["interaction"]
+            )
+            run.status = workflow.run_status
+            run.graph_checkpoint_ref = workflow.checkpoint_ref
+            context = workflow.context_snapshot
+            interaction = workflow.next_interaction
         self._trace(
             thread=thread,
             run=run,
