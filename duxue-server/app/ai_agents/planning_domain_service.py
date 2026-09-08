@@ -67,8 +67,18 @@ class PlanningDomainService:
 
     def confirm(self, ward_id: str, draft_id: str) -> DailySchedule:
         draft = self.db.get(PlanDraft, draft_id)
-        if draft is None or draft.ward_id != ward_id or draft.status != "active":
+        if draft is None or draft.ward_id != ward_id:
             raise HTTPException(404, "计划草稿不存在")
+        if draft.status == "confirmed":
+            schedule = (
+                self.db.query(DailySchedule)
+                .filter_by(ward_id=ward_id, schedule_date=draft.plan_date)
+                .one_or_none()
+            )
+            if schedule is not None:
+                return schedule
+        if draft.status != "active":
+            raise HTTPException(409, "计划草稿当前不可确认")
         if draft.pending_fields:
             raise HTTPException(409, "计划草稿仍有待确认信息")
         schedule = (
@@ -98,6 +108,10 @@ class PlanningDomainService:
                     source="ward",
                 )
             )
+            if task is not None and task.ward_id != ward_id:
+                raise HTTPException(403, "计划草稿引用了其他 Ward 的任务")
+            if task is not None and task.schedule_id is not None and task.status not in {"open", "pending"}:
+                raise HTTPException(409, "已开始的任务不能重新安排")
             if task.id is None:
                 self.db.add(task)
                 self.db.flush()

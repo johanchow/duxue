@@ -1,0 +1,77 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Companion Turn · Command–Event–Projection Flow",
+    "locale": "zh-CN",
+    "output": "design-agent-turn-flow.html",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "turn-path",
+        "label": "一轮受控编排",
+        "focus": ["ward", "endpoint", "coordinator", "workflow", "domain-service", "response"],
+        "note": "Coordinator 仅路由一个 Run；领域服务才可以确认业务变更。"
+      },
+      {
+        "id": "recovery-and-projection",
+        "label": "恢复与异步投影",
+        "focus": ["coordinator", "memory-facade", "checkpoint", "outbox", "projection"],
+        "note": "Memory 为授权查询；事件经 Outbox 异步投影，不把 AgentTrace 当领域事件。"
+      }
+    ]
+  },
+  "lanes": [
+    { "id": "ward", "label": "Ward / Interface" },
+    { "id": "orchestration", "label": "Companion Orchestration" },
+    { "id": "domain", "label": "Domain Contexts" },
+    { "id": "async", "label": "Recovery / Projection" }
+  ],
+  "phases": [
+    { "id": "intake", "label": "Command intake", "fromCol": 0, "toCol": 1 },
+    { "id": "run", "label": "One controlled Run", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "result", "label": "Confirm / project", "fromCol": 4, "toCol": 5, "variant": "dashed" }
+  ],
+  "mainPath": ["ward", "endpoint", "coordinator", "memory-facade", "workflow", "domain-service", "response"],
+  "nodes": [
+    { "id": "ward", "lane": "ward", "col": 0, "type": "external", "label": "Ward", "sublabel": "one companion turn", "width": 128 },
+    { "id": "endpoint", "lane": "ward", "col": 1, "type": "frontend", "label": "POST /companion/turn", "sublabel": "authenticated command", "width": 146 },
+    { "id": "response", "lane": "ward", "col": 5, "type": "frontend", "label": "Turn Response / SSE", "sublabel": "one run outcome", "width": 146 },
+    { "id": "coordinator", "lane": "orchestration", "col": 2, "type": "backend", "label": "CompanionCoordinator", "sublabel": "lock, route, start/resume", "tag": "one reply authority", "width": 150 },
+    { "id": "memory-facade", "lane": "orchestration", "col": 3, "type": "security", "label": "MemoryFacade", "sublabel": "authorized minimum context", "tag": "read only", "width": 146 },
+    { "id": "workflow", "lane": "orchestration", "col": 4, "type": "backend", "label": "WorkflowAdapter", "sublabel": "planning now; others later", "tag": "bounded invocation", "width": 150 },
+    { "id": "domain-service", "lane": "domain", "col": 4, "type": "backend", "label": "Domain Service", "sublabel": "validate local change", "tag": "confirmation boundary", "width": 150 },
+    { "id": "checkpoint", "lane": "async", "col": 3, "type": "database", "label": "Graph Checkpoint", "sublabel": "resume reference + digest", "width": 140 },
+    { "id": "outbox", "lane": "async", "col": 4, "type": "messagebus", "label": "Outbox Event", "sublabel": "published stable fact", "width": 140 },
+    { "id": "projection", "lane": "async", "col": 5, "type": "database", "label": "Memory Projection", "sublabel": "eventually consistent", "width": 150 }
+  ],
+  "edges": [
+    { "id": "ward-endpoint", "from": "ward", "to": "endpoint", "role": "main" },
+    { "id": "endpoint-coordinator", "from": "endpoint", "to": "coordinator", "label": "HandleCompanionTurn", "variant": "emphasis", "role": "main" },
+    { "id": "coordinator-memory", "from": "coordinator", "to": "memory-facade", "label": "build context", "role": "main" },
+    { "id": "memory-workflow", "from": "memory-facade", "to": "workflow", "label": "authorized bundle", "role": "main" },
+    { "id": "workflow-domain", "from": "workflow", "to": "domain-service", "label": "validated command", "variant": "emphasis", "role": "main" },
+    { "id": "domain-response", "from": "domain-service", "to": "response", "label": "outcome", "variant": "emphasis", "role": "main" },
+    { "id": "workflow-checkpoint", "from": "workflow", "to": "checkpoint", "label": "interrupt / resume", "variant": "dashed", "role": "async" },
+    { "id": "domain-outbox", "from": "domain-service", "to": "outbox", "label": "local transaction", "variant": "dashed", "role": "async" },
+    { "id": "outbox-projection", "from": "outbox", "to": "projection", "label": "consumer", "variant": "dashed", "role": "async" }
+  ],
+  "cards": [
+    {
+      "dot": "violet",
+      "title": "写入边界",
+      "items": [
+        "模型和 Coordinator 不直接写跨 Context 状态。",
+        "领域服务在本地事务中确认变更并发布稳定事实。"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "一致性",
+      "items": [
+        "Thread/Run 的路由与版本检查是强一致的。",
+        "Memory 与屏幕投影允许经 Outbox 最终一致；AgentTrace 仅审计。"
+      ]
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 # 读学系统 — Memory & Understanding Bounded Context
 
-> 状态：讨论稿 · 版本：v2.0
+> 状态：讨论稿 · 版本：v2.1
 > 适用范围：`duxue-server` 中 Ward 学习证据、情境记忆、可校正理解与长期画像投影。
 > 关联：[陪伴编排](design-agent.md) · [服务端物理 Schema](design-server.md) · [记忆 PRD](../product/prd-memory.md)
 
@@ -104,6 +104,89 @@
 | `RebuildLongTermProfile` | Projection Worker | 不修改 Signal Aggregate | 从 Active 长期 Signal 完整覆盖 Profile View |
 
 Application Service 负责授权、命令形状、事务、Repository 与 Outbox；领域规则只在 Aggregate 或 Domain Service 中执行。上游业务 Context 只发布 `LearningFactRecorded.v1`，不直接调用这些写 Use Case。
+
+### 3.1 状态变更触发矩阵
+
+这里的事件有两种严格不同的含义：`LearningFactRecorded.v1` 是**跨 Context
+Integration Event**；`EpisodicMemorySettled`、`SignalActivated` 等是本 Context
+Aggregate 产生的 **Domain Event**。前者由接收方的 Application Event Handler
+转译成本地命令；后者在本地事务提交后才可被投影、同 Context Worker 或 Outbox
+处理，不能绕过 Application 层直接改表。
+
+| 触发与来源 | Adapter / 入口 | Memory Application Command / Handler | Domain 调用与原子边界 | 本地领域事件 | 后续 Outbox / Projection | 一致性、幂等与失败 |
+|---|---|---|---|---|---|---|
+| Planning、Study、Evaluation 发布 `LearningFactRecorded.v1` | Consumer Adapter 验证 transport/schema 后投递 | `IngestLearningFact` 校验版本、来源四元组与 ACL | 仅幂等追加 `LearningEvent` Evidence Ledger；它不是 Aggregate mutation | 无；事实入账不是伪造的 Aggregate Event | 标记可被结算 Worker 处理 | 四元组唯一；未知 schema 死信/人工对账；重复投递无副作用 |
+| 会话关闭、关联事实到达或周期性结算窗口 | Scheduler / Outbox Worker | `SettleEpisodicMemory` 选择同一 `aggregate_ref` 的证据并开启本地事务 | `EpisodicSettlementPolicy.decide()` → load/create `EpisodicMemory` → `attach_evidence()` → `settle(payload)` | `EpisodicMemorySettled` | 同 Context 结算/信号 Worker；更新 `EpisodicMemoryView` | 以 `memory_type + aggregate_ref + aggregate_version` 幂等；失败重试并可由 Ledger 重放 |
+| 已结算的情境、或受控证据窗口达到候选阈值 | Local Domain-Event Dispatcher / Worker | `ProposeCandidateSignal` | `SignalEvolutionService` 计算资格 → load/create `DerivedSignal` → `propose()` / `attach_evidence()` | `SignalProposed` | 更新 Candidate View；**不**更新 Profile | Policy/version 和 Signal identity 幂等；候选失败不影响 Evidence Ledger |
+| Ward 明确纠正 / 否认 | 受权 API / UI Command Adapter | `ChallengeSignal` 先把 Ward 陈述记录为可追溯证据，再处理命令 | load Signal → `attach_evidence(ward_fact, counterevidence)` → `challenge(statement)` | `SignalChallenged` | Profile Worker 移除其 Active 长期投影 | Ward、visibility、Signal 归属必须校验；重复命令按 evidence role 去重 |
+| 每日衰减或新证据改变资格 | Scheduler / Worker | `EvolveSignals` | `SignalEvolutionService.evaluate()` → `activate(policy)` 或 `expire(now)` | `SignalActivated` / `SignalExpired` | 触发/排队 `RebuildLongTermProfile` | 每个 Signal 独立事务；可重复扫描；Policy 版本进入审计 |
+| Signal 状态变化或每日全量重建 | Projection Worker | `RebuildLongTermProfile` | 不加载或修改 Signal Aggregate；只读取 Active long-term Signal | 无 | 完整覆盖 `LongTermProfileView` | 最终一致；可从 Active Signal 全量重建，失败不回写 Signal |
+| 热窗口到期 | Scheduler / Worker | `ArchiveEpisodicMemory` | load `EpisodicMemory` → `archive(now)` | `EpisodicMemoryArchived` | 从热查询投影移除，按留存政策处理 | 幂等归档；删除仍必须走受控清理流程 |
+
+“事实 → 情境记忆”不是先写一个普通 Memory、再把它升级为 Episode 的隐含两级流程。
+`tutoring_episode` 从一开始就是 `EpisodicMemory.memory_type`：Application Service
+根据结算 Policy 将多条事实归并为该 Aggregate，并同步调用 `attach_evidence()` 与
+`settle()`。若未来引入“草稿摘要”生命周期，必须新增其 Aggregate/状态/命令，不能把
+它偷偷塞进 `settle()`。
+
+### 3.2 关键因果链时序图
+
+#### 3.2.1 跨 Context 事实入账与情境结算
+
+```mermaid
+sequenceDiagram
+    participant U as Upstream Context
+    participant O as Upstream Outbox
+    participant A as Memory Consumer Adapter
+    participant H as IngestLearningFact Handler
+    participant L as Evidence Ledger
+    participant W as Settlement Worker
+    participant P as EpisodicSettlementPolicy
+    participant M as EpisodicMemory Aggregate
+    participant MO as Memory Outbox / Projection
+
+    U->>O: commit stable LearningFactRecorded.v1
+    O-->>A: deliver integration event
+    A->>H: verified envelope + schema version
+    H->>H: deduplicate source four-tuple / ACL
+    H->>L: append LearningEvent in local transaction
+    H-->>A: consumption recorded
+    Note over L,W: Event is evidence only; no Aggregate event is invented here.
+    W->>L: select eligible related evidence
+    W->>P: decide(event IDs, aggregate_ref)
+    P-->>W: settlement decision + controlled payload
+    W->>M: load/create by identity
+    W->>M: attach_evidence(eventId, role)
+    W->>M: settle(payload)
+    M-->>W: EpisodicMemorySettled
+    W->>MO: atomically save Aggregate + local event/outbox
+    MO-->>W: update EpisodicMemoryView / queue local signal work
+```
+
+#### 3.2.2 Ward 纠正与长期画像收敛
+
+```mermaid
+sequenceDiagram
+    participant W as Ward UI
+    participant I as Command Adapter
+    participant H as ChallengeSignal Handler
+    participant L as Evidence Ledger
+    participant S as DerivedSignal Aggregate
+    participant O as Memory Outbox
+    participant P as Profile Projection Worker
+    participant V as LongTermProfileView
+
+    W->>I: ChallengeSignal(signalId, statement)
+    I->>H: authenticated typed command
+    H->>L: append ward correction fact
+    H->>S: load authorized Signal
+    H->>S: attach_evidence(wardFact, counterevidence)
+    H->>S: challenge(statement)
+    S-->>H: SignalChallenged
+    H->>O: atomically persist Signal + event/outbox
+    O-->>P: deliver local projection work
+    P->>V: rebuild from active long-term Signals
+```
 
 ## 四、CQRS Query Model
 

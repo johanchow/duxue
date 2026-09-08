@@ -23,8 +23,10 @@ which context owns each mutable business concept.
 - Layered Architecture Map source and path, or reason it is unnecessary:
 
 The Context Map documents business ownership and context integration. The Layered
-Architecture Map documents code/runtime dependency direction; do not combine the
-two into an unreadable all-in-one diagram.
+Architecture Map documents Interface → Application → Domain ports and
+Infrastructure adapter dependency direction; do not combine the two into an
+unreadable all-in-one diagram. It is required when persistence, asynchronous
+processing, external adapters, or runtime/layer dependencies are material.
 
 ## 2. Bounded Context: `<name>`
 
@@ -89,6 +91,23 @@ whose composition is fully clear from its Aggregate Card, and state why.
 
 ### Command side / application use cases
 
+#### State-change trigger matrix
+
+Complete one row for every material write flow. A cross-context event is received
+by an Infrastructure consumer adapter, then interpreted by the receiving
+context's Application Event Handler as a local command; it never calls the
+producer's Aggregate directly.
+
+| Trigger and source | Adapter / entrypoint | Receiving Application command or event handler | Aggregate / domain method | Local domain event | Outbox, projection, or next local action | Consistency, idempotency, failure/reconciliation |
+|---|---|---|---|---|---|---|
+| `<user command / scheduler / callback / EventName.v1>` | `<controller / worker / consumer adapter>` | `<CommandHandler / EventHandler>` | `<Root.method() / DomainService>` | `<LocalPastTenseEvent>` | `<outbox / view / none>` | `<local transaction / key / retry or compensation>` |
+
+- State whether the trigger is synchronous, locally deferred, or cross-context.
+- For a strong local invariant, show the synchronous Application-to-Domain call;
+  do not introduce an event solely as a stylistic relay.
+- For an asynchronous or cross-context write path, provide a Trigger →
+  Application → Domain → Event/Projection sequence-diagram source and path.
+
 #### `<CommandName>`
 
 ```python
@@ -100,6 +119,8 @@ class <CommandName>(BaseModel):
 ```
 
 - Actor and authorization rule:
+- Trigger and adapter/entrypoint:
+- For an inbound event: schema/version validation, idempotency key, and ACL mapping:
 - Preconditions:
 - Transaction boundary:
 - Aggregate loaded and method invoked:
@@ -142,10 +163,49 @@ GET  /<resource>/{id}            → <QueryName> / <ViewName>
 
 ### Infrastructure mapping
 
-- Repository adapter and persistence mapping:
-- Transactional Outbox / worker / projection consumer:
-- Idempotency constraint:
-- Trace, audit, metrics, and retention requirements:
+Complete every subsection that applies. If one is not applicable, state why rather
+than leaving it blank. This section maps the design to adapters and operations;
+it must not redefine domain invariants.
+
+#### Ports and adapters
+
+| Port owned by Domain/Application | Concrete adapter | Protocol / dependency | Configuration / secret boundary | Timeout, retry, rate limit / circuit breaker | Error mapping / fallback |
+|---|---|---|---|---|---|
+| `<RepositoryPort or GatewayPort>` | `<adapter>` | `<database / HTTP / SDK / queue>` | `<configuration owner>` | `<policy or N/A with reason>` | `<domain-safe behavior>` |
+
+Application and Domain code depend only on the port. The concrete adapter is
+assembled at the composition root. State an Anti-Corruption Layer translation
+when an upstream/external model differs from the local language.
+
+#### Persistence and transaction
+
+| Aggregate / projection | Repository / store | Tables, keys, indexes, and FK policy | Transaction owner and atomic writes | Schema migration / compatibility / rollback |
+|---|---|---|---|---|
+| `<AggregateRoot>` | `<RepositoryPort / adapter>` | `<physical mapping>` | `<Application Service>` | `<strategy>` |
+
+- One repository port per aggregate root; projections use query/projection stores,
+  never aggregate repositories for writes.
+- State the idempotency constraint and where it is enforced.
+- For a schema change, state migration order, compatibility window, backfill/rebuild
+  and rollback or why those are unnecessary.
+
+#### Async delivery and projections
+
+| Event / job | Outbox / producer owner | Consumer adapter → receiving Application Event Handler / projection | Idempotency key | Ordering and freshness | Retry, dead-letter, reconciliation, replay |
+|---|---|---|---|---|---|
+| `<EventName.v1>` | `<local transaction owner>` | `<consumer>` | `<key>` | `<assumption / lag>` | `<operational behavior>` |
+
+If no asynchronous delivery exists, state that the use case remains synchronous
+and why. An audit log, trace, or ordinary retry record is not automatically a
+domain or integration event.
+
+#### Security, data governance, and observability
+
+| Concern | Boundary / mechanism | Redaction, retention, or deletion | Evidence / metric / alert |
+|---|---|---|---|
+| Authorization | `<principal and scope check>` | `<sensitive data rule>` | `<audit / metric>` |
+| Secrets / external access | `<owner and injection mechanism>` | `<what must not be logged>` | `<failure signal>` |
+| Trace and operations | `<correlation / trace propagation>` | `<audit retention>` | `<logs, metrics, SLO/alert>` |
 
 ### Acceptance scenarios
 
@@ -160,9 +220,9 @@ And <domain event or read model outcome>
 
 Use this only when a business outcome spans contexts.
 
-| Step | Owning context | Command / event | Consistency | Failure / compensation |
-|---|---|---|---|---|
-| 1 | `<context>` | `<command/event>` | Local transaction | `<behavior>` |
+| Step | Owning context | Trigger / local command / published event | Receiving Application handler | Consistency | Failure / compensation |
+|---|---|---|---|---|---|
+| 1 | `<context>` | `<command/event>` | `<handler or N/A>` | Local transaction | `<behavior>` |
 
 Document the Process Manager / Saga only when it owns real multi-step workflow
 state. Do not use it as a generic event relay.

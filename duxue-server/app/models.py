@@ -393,23 +393,33 @@ class OutboxEvent(Base):
 
 class EpisodicMemory(Base):
     __tablename__ = "episodic_memories"
+    __table_args__ = (UniqueConstraint("memory_type", "aggregate_ref", "aggregate_version", name="uq_episodic_memory_aggregate"),)
     id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
     ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id"), index=True)
     event_type: Mapped[str] = mapped_column(String(80))
+    memory_type: Mapped[str] = mapped_column(String(80), default="legacy", index=True)
+    aggregate_ref: Mapped[str] = mapped_column(String(120), default="legacy")
+    aggregate_version: Mapped[int] = mapped_column(Integer, default=1)
     event_date: Mapped[date] = mapped_column(Date, index=True)
     summary: Mapped[str] = mapped_column(Text)
     raw_cues: Mapped[dict] = mapped_column(JSON, default=dict)
     decay_weight: Mapped[float] = mapped_column(Float, default=1.0)
+    hot_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    policy_version: Mapped[str] = mapped_column(String(40), default="v1")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
 class DerivedSignal(Base):
     __tablename__ = "derived_signals"
+    __table_args__ = (UniqueConstraint("ward_id", "signal_type", "scope", "dimension_key", name="uq_derived_signal_identity"),)
     id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
     ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id"), index=True)
     signal_type: Mapped[str] = mapped_column(String(80))
     subject: Mapped[str | None] = mapped_column(String(40), nullable=True)
     scope: Mapped[str] = mapped_column(String(20))
+    dimension_key: Mapped[str] = mapped_column(String(120), default="")
     value: Mapped[dict] = mapped_column(JSON, default=dict)
     statement: Mapped[str] = mapped_column(Text)
     confidence: Mapped[float] = mapped_column(Float)
@@ -434,7 +444,7 @@ class EpisodicMemoryEvent(Base):
 
 class DerivedSignalEvent(Base):
     __tablename__ = "derived_signal_events"
-    __table_args__ = (UniqueConstraint("derived_signal_id", "learning_event_id", name="uq_derived_signal_event"),)
+    __table_args__ = (UniqueConstraint("derived_signal_id", "learning_event_id", "role", name="uq_derived_signal_event_role"),)
     id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
     derived_signal_id: Mapped[str] = mapped_column(ForeignKey("derived_signals.id"))
     learning_event_id: Mapped[str] = mapped_column(ForeignKey("learning_events.id"))

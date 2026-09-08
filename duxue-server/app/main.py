@@ -188,6 +188,12 @@ def companion_turn(body: CompanionTurnRequest, principal: Principal = Depends(cu
             route_hint=body.route_hint,
             planning_items=body.planning_items,
             planning_confirm=body.planning_confirm,
+            study_session_id=body.study_session_id,
+            tutoring_directive=body.tutoring_directive,
+            review_date=body.review_date,
+            review_feeling=body.review_feeling,
+            review_reflection=body.review_reflection,
+            adopt_focus_kit=body.adopt_focus_kit,
         )
         return result.model_dump()
     except HTTPException:
@@ -282,7 +288,9 @@ def plan_intake_upload_url(ward_id: str, body: UploadUrlRequest, request: Reques
 @app.post("/wards/{ward_id}/plans/{plan_date}/intake")
 def respond_to_plan_intake(ward_id: str, plan_date: date, body: PlanIntakeRequest, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
     _ward_owned(principal, ward_id)
-    if plan_date != date.today():
+    # The API stores schedule dates against the server's UTC clock; using the
+    # host-local date here made the same UTC request fail around midnight.
+    if plan_date != now().date():
         raise HTTPException(400, "plan intake is only available for today")
     _plan_intake_attachments(ward_id, body.attachment_keys)
     ward = db.get(Ward, ward_id)
@@ -300,7 +308,7 @@ def respond_to_plan_intake(ward_id: str, plan_date: date, body: PlanIntakeReques
 @app.post("/wards/{ward_id}/plans/{plan_date}/intake/confirm", status_code=201)
 def confirm_plan_intake(ward_id: str, plan_date: date, body: PlanIntakeConfirm, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
     _ward_owned(principal, ward_id)
-    if plan_date != date.today():
+    if plan_date != now().date():
         raise HTTPException(400, "plan intake is only available for today")
     _plan_intake_attachments(ward_id, body.attachment_keys)
     plan = db.query(DailySchedule).filter_by(ward_id=ward_id, schedule_date=plan_date).one_or_none()
@@ -723,7 +731,7 @@ def ingest_frame(body: FrameCreate, device: Device = Depends(current_device), db
     )
     db.add(frame)
     db.flush()
-    record_learning_event(db, ward_id=device.ward_id, event_type="camera_frame.captured", source_type="frame", source_id=frame.id, occurred_at=captured, source="device", scope={"study_session_id": body.study_session_id} if body.study_session_id else {}, payload={"device_id": device.id})
+    record_learning_event(db, ward_id=device.ward_id, event_type="camera_frame.captured", source_type="frame", source_id=frame.id, occurred_at=captured, source="cam", scope={"study_session_id": body.study_session_id} if body.study_session_id else {}, payload={"device_id": device.id})
     db.commit()
     db.refresh(frame)
     return {"id": frame.id, "captured_at": frame.captured_at, "duplicate": False}

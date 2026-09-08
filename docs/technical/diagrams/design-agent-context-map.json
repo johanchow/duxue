@@ -1,0 +1,128 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Companion · DDD Context Map",
+    "locale": "zh-CN",
+    "output": "design-agent-context-map.html",
+    "quality_profile": "showcase",
+    "viewBox": [1050, 650],
+    "views": [
+      {
+        "id": "ownership",
+        "label": "业务所有权",
+        "focus": ["orchestration", "planning", "tutoring", "reflection", "memory"],
+        "note": "Companion Orchestration 只编排 Run；计划、答疑、复盘和 Memory 分别拥有自己的业务状态。"
+      },
+      {
+        "id": "integration",
+        "label": "集成边界",
+        "focus": ["orchestration", "memory", "planning", "tutoring", "reflection"],
+        "note": "跨 Context 通过受权查询、命令契约和稳定事实事件，而非直接改写他方 Aggregate。"
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "planning",
+      "type": "backend",
+      "label": "Planning & Scheduling Context",
+      "sublabel": "Core · PlanDraft, DailySchedule, Task",
+      "tag": "owns plan confirmation",
+      "pos": [50, 200],
+      "size": [260, 82]
+    },
+    {
+      "id": "orchestration",
+      "type": "backend",
+      "label": "Companion Orchestration Context",
+      "sublabel": "Supporting · Thread, Run, route, handoff",
+      "tag": "Process Manager",
+      "pos": [400, 200],
+      "size": [280, 82]
+    },
+    {
+      "id": "tutoring",
+      "type": "backend",
+      "label": "Tutoring & Study Context",
+      "sublabel": "Core · StudySession, TutoringSession",
+      "tag": "owns teaching session",
+      "pos": [770, 200],
+      "size": [240, 82]
+    },
+    {
+      "id": "reflection",
+      "type": "backend",
+      "label": "Evaluation & Reflection Context",
+      "sublabel": "Supporting · SelfReview, report version",
+      "tag": "owns review result",
+      "pos": [415, 420],
+      "size": [250, 82]
+    },
+    {
+      "id": "memory",
+      "type": "database",
+      "label": "Memory & Understanding Context",
+      "sublabel": "Supporting · Evidence, memories, signals, profile",
+      "tag": "authorized read boundary",
+      "pos": [735, 420],
+      "size": [275, 82]
+    }
+  ],
+  "connections": [
+    {
+      "id": "orchestration-planning",
+      "from": "orchestration",
+      "to": "planning",
+      "variant": "emphasis",
+      "fromSide": "left",
+      "toSide": "right",
+      "route": "straight"
+    },
+    {
+      "id": "orchestration-tutoring",
+      "from": "orchestration",
+      "to": "tutoring",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left",
+      "route": "straight"
+    },
+    {
+      "id": "orchestration-reflection",
+      "from": "orchestration",
+      "to": "reflection",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "straight"
+    },
+    {
+      "id": "reflection-memory",
+      "from": "reflection",
+      "to": "memory",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "left",
+      "route": "straight"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "violet",
+      "title": "不共享 Aggregate",
+      "items": [
+        "Orchestration 不拥有计划、答疑或复盘的领域状态，只维护入口连续性与受权引用。",
+        "每个业务 Context 在本地事务中维护自身不变量。"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "稳定集成",
+      "items": [
+        "Memory 提供授权、预算化的查询；上游 Context 发布版本化学习事实。",
+        "跨 Context 结果允许最终一致；Thread/Run 乐观锁保持入口强一致。"
+      ]
+    }
+  ]
+}

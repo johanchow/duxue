@@ -8,14 +8,23 @@ from sqlalchemy.orm import sessionmaker
 
 from app.ai_agents.planning_domain_service import PlanningDomainService
 from app.ai_agents.planning_workflow import build_planning_graph
+from app.ai_runtime.companion_coordinator import CompanionCoordinator
+from app.ai_runtime.contracts import WorkflowOutcome
 from app.database import Base
-from app.memory import MemoryAccessDenied, MemoryContextRequest, SqlAlchemyMemoryFacade
+from app.memory import (
+    LearningFactRecorded,
+    MemoryAccessDenied,
+    MemoryContextRequest,
+    SqlAlchemyMemoryCommandService,
+    SqlAlchemyMemoryFacade,
+)
 from app.models import (
     DerivedSignal,
     EpisodicMemory,
     EpisodicMemoryEvent,
     LearningEvent,
     LongTermProfile,
+    OutboxEvent,
     Task,
     User,
     Ward,
@@ -189,3 +198,62 @@ class MemoryFacadeTest(unittest.TestCase):
         self.assertIn("__interrupt__", paused)
         completed = graph.invoke(Command(resume={"action": "confirm"}), config)
         self.assertEqual(completed["outcome"]["status"], "confirmed")
+
+    def test_confirming_the_same_draft_twice_returns_the_existing_schedule(self):
+        task = Task(ward_id=self.ward_id, title="科学观察")
+        self.db.add(task)
+        self.db.commit()
+        service = PlanningDomainService(self.db)
+        draft = service.save_draft(
+            self.ward_id,
+            datetime.now(timezone.utc).date(),
+            [{"assignment_id": task.id, "new_task": False, "title": task.title, "planned_minutes": 15}],
+        )
+        first = service.confirm(self.ward_id, draft.id)
+        second = service.confirm(self.ward_id, draft.id)
+        self.assertEqual(first.id, second.id)
+        outbox = self.db.query(OutboxEvent).one()
+        self.assertEqual(outbox.event_type, "LearningFactRecorded.v1")
+        self.assertEqual(outbox.payload["schema_version"], "LearningFactRecorded.v1")
+
+    def test_memory_command_service_deduplicates_a_versioned_learning_fact(self):
+        fact = LearningFactRecorded(
+            ward_id=self.ward_id,
+            event_type="self_review.submitted",
+            source_type="self_review",
+            source_id=uid(),
+            occurred_at=datetime.now(timezone.utc),
+            source="ward",
+            visibility="ward",
+        )
+        service = SqlAlchemyMemoryCommandService(self.db)
+        first = service.ingest_learning_fact(fact)
+        second = service.ingest_learning_fact(fact)
+        self.db.commit()
+        self.assertEqual(first.id, second.id)
+        self.assertEqual(self.db.query(OutboxEvent).count(), 0)
+
+    def test_coordinator_passes_a_typed_single_run_invocation_to_dispatcher(self):
+        class FakeDispatcher:
+            def __init__(self):
+                self.invocation = None
+
+            def invoke(self, invocation):
+                self.invocation = invocation
+                return WorkflowOutcome(
+                    run_status="waiting_for_ward",
+                    next_interaction={"status": "needs_input"},
+                    context_snapshot={"version": "companion-context.v1"},
+                )
+
+        dispatcher = FakeDispatcher()
+        result = CompanionCoordinator(self.db, dispatcher=dispatcher).handle(
+            ward_id=self.ward_id,
+            content="帮我安排明天复习",
+            thread_id=None,
+            expected_thread_version=0,
+            route_hint=None,
+        )
+        self.assertEqual(dispatcher.invocation.run_id, result.run_id)
+        self.assertEqual(dispatcher.invocation.agent_type, "planning")
+        self.assertEqual(dispatcher.invocation.thread_id, result.thread_id)
