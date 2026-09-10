@@ -8,7 +8,21 @@
 
 本 Context 的责任是把其他业务 Context 已确认的学习事实，转换为可追溯、可校正、最小化召回的理解；它不拥有计划、任务、答疑会话或报告的业务状态，也不让模型直接写入事实、画像或 Policy。
 
-[打开本地 Context Map](diagrams/design-memory-context-map.html)（[图源](diagrams/design-memory-context-map.json)）。这是 Memory 的邻接 Context 图；全系统 Context Map 应由未来的系统级 DDD Overview 唯一维护。
+```mermaid
+flowchart LR
+    PL[Planning Context]
+    ST[Study Context]
+    EV[Evaluation Context]
+    MC[Memory & Understanding Context]
+    CO[Companion Orchestration]
+
+    PL -->|LearningFactRecorded.v1| MC
+    ST -->|LearningFactRecorded.v1| MC
+    EV -->|LearningFactRecorded.v1| MC
+    MC -->|authorized MemoryBundle| CO
+```
+
+这是 Memory 的邻接 Context 图；全系统 Context Map 应由未来的系统级 DDD Overview 唯一维护。上游拥有业务状态，Memory 只保存可追溯证据和派生理解，Companion 只能经 `MemoryFacade` 查询。
 
 | 术语 | Context 内定义 | 所有权 |
 |---|---|---|
@@ -23,7 +37,23 @@
 
 ## 二、领域模型与 Aggregate
 
-[打开 Aggregate Map](diagrams/design-memory-aggregate-map.html)（[图源](diagrams/design-memory-aggregate-map.json)）。既有 [数据流图](diagrams/design-memory-dataflow.html) 仍是本 Context 的 Command–Event–Projection Flow。
+```mermaid
+flowchart LR
+    LE[(LearningEvent<br/>Evidence Ledger)]
+    EM[EpisodicMemory Aggregate]
+    DS[DerivedSignal Aggregate]
+    LP[(LongTermProfileView)]
+    MB[MemoryBundle<br/>authorized query DTO]
+
+    LE -->|EvidenceLink| EM
+    LE -->|SignalEvidenceLink| DS
+    EM -->|recent episodes| MB
+    DS -->|Active Signals| MB
+    DS -->|active + long_term only| LP
+    LP -->|profile projection| MB
+```
+
+`LearningEvent` 是证据实体而非 Aggregate；`LongTermProfileView` 与 `MemoryBundle` 是可重算/临时装配的读模型，不能反向写入 Aggregate。
 
 ### 2.1 Learning Evidence：不可变证据实体
 
@@ -45,7 +75,52 @@
 
 #### 2.2.1 Internal UML 与 Entity Inventory
 
-[打开 EpisodicMemory 内部领域模型](diagrams/design-memory-episodic-internal.html)（[图源](diagrams/design-memory-episodic-internal.json)）。图中只包含本 Aggregate 的领域对象；`LearningEvent` 位于 Evidence Ledger，只通过 ID 引用。
+```mermaid
+classDiagram
+    class EpisodicMemory {
+        +memory_type
+        +aggregate_ref
+        +aggregate_version
+        +summary
+        +event_date
+        +settle(payload)
+        +attach_evidence(event_id, role)
+        +archive(now)
+    }
+    class EpisodicMemoryEvidenceLink {
+        +learning_event_id
+        +evidence_role
+        +linked_at
+    }
+    class TutoringEpisodePayload {
+        +subject
+        +skill_keys
+        +ward_attempts
+        +support_given
+        +next_step
+        +validate()
+    }
+    class Outcome {
+        +result
+        +observed_at
+        +confidence
+    }
+    class DecayWindow {
+        +hot_until
+        +expires_at
+        +policy_version
+    }
+    class LearningEvent {
+        <<Evidence Ledger entity>>
+    }
+    EpisodicMemory "1" *-- "1..*" EpisodicMemoryEvidenceLink
+    EpisodicMemory *-- TutoringEpisodePayload
+    TutoringEpisodePayload *-- Outcome
+    EpisodicMemory *-- DecayWindow
+    EpisodicMemoryEvidenceLink --> LearningEvent : ID reference only
+```
+
+图中只包含本 Aggregate 的领域对象；`LearningEvent` 位于 Evidence Ledger，只通过 ID 引用。
 
 | 对象 | 类型与 Identity | 关键领域属性 | 主要领域方法 | 不变量职责 |
 |---|---|---|---|---|
@@ -69,13 +144,85 @@
 | 领域事件 | `SignalProposed`、`SignalActivated`、`SignalChallenged`、`SignalExpired` |
 | Repository Port | `DerivedSignalRepository` |
 
-[打开 DerivedSignal 生命周期图](diagrams/design-memory-signal-lifecycle.html)（[图源](diagrams/design-memory-signal-lifecycle.json)）。晋升门槛由版本化 Policy 计算：独立会话数、证据可靠度、时间衰减、Ward 确认与反证。模型只能提出 Candidate。
+```mermaid
+stateDiagram-v2
+    [*] --> Candidate : controlled evidence arrives
+    Candidate --> Active : Policy threshold met<br/>or Ward confirmation
+    Candidate --> Expired : insufficient evidence + expiry
+    Active --> Challenged : counterevidence / Ward denial
+    Challenged --> Active : re-evaluation meets Policy
+    Active --> Expired : no support / retention expiry
+    Challenged --> Expired : review window ends
+    Expired --> [*]
+
+    note right of Candidate
+        Model may propose only.
+        Never projected as a conclusion.
+    end note
+    note right of Active
+        Only active + long_term
+        can enter Profile.
+    end note
+```
+
+晋升门槛由版本化 Policy 计算：独立会话数、证据可靠度、时间衰减、Ward 确认与反证。模型只能提出 Candidate。
 
 受控 `signal_type` 为：`focus_endurance_baseline`、`estimation_bias`、`knowledge_gap`、`effective_strategy`、`stable_interest`、`planning_preference` 与 `reflection_accuracy_trend`。每种 `value` 需保留样本数、窗口与计算方法；不得将具体卡点描述为能力或人格标签。
 
 #### 2.3.1 Internal UML 与 Entity Inventory
 
-[打开 DerivedSignal 内部领域模型](diagrams/design-memory-signal-internal.html)（[图源](diagrams/design-memory-signal-internal.json)）。`SignalEvidenceLink` 是可区分、可追溯的子实体；它不拥有也不复制 `LearningEvent`。
+```mermaid
+classDiagram
+    class DerivedSignal {
+        +ward_id
+        +signal_type
+        +scope
+        +dimension_key
+        +status
+        +confidence
+        +policy_version
+        +propose(evidence)
+        +activate(policy)
+        +challenge(statement)
+        +expire(now)
+    }
+    class SignalEvidenceLink {
+        +learning_event_id
+        +role
+        +linked_at
+        +note
+    }
+    class SignalValue {
+        +value
+        +sample_size
+        +window
+        +calculation_method
+    }
+    class SignalScope {
+        +time_horizon
+        +subject
+        +scenario
+    }
+    class Confidence {
+        +score
+        +basis
+    }
+    class ValidityWindow {
+        +observed_from
+        +expires_at
+    }
+    class LearningEvent {
+        <<Evidence Ledger entity>>
+    }
+    DerivedSignal "1" *-- "1..*" SignalEvidenceLink
+    DerivedSignal *-- SignalValue
+    DerivedSignal *-- SignalScope
+    DerivedSignal *-- Confidence
+    DerivedSignal *-- ValidityWindow
+    SignalEvidenceLink --> LearningEvent : ID reference only
+```
+
+`SignalEvidenceLink` 是可区分、可追溯的子实体；它不拥有也不复制 `LearningEvent`。
 
 | 对象 | 类型与 Identity | 关键领域属性 | 主要领域方法 | 不变量职责 |
 |---|---|---|---|---|
@@ -91,6 +238,37 @@
 ### 2.4 Domain Services
 
 `SignalEvolutionService` 只计算晋升、反证、衰减和到期资格；`EpisodicSettlementPolicy` 只决定哪些相关事实可结算为同一情境。两者不处理 HTTP、鉴权、事务、Worker 调度或 ORM。
+
+### 2.5 从事实到最小上下文的数据流
+
+```mermaid
+flowchart LR
+    DS[Upstream Domain Service]
+    BS[(Business Aggregate / main tables)]
+    LE[(learning_events<br/>immutable evidence ledger)]
+    OB[(outbox_events)]
+    CW[Memory Consumer / Workers]
+    EP[(Episodic Memory<br/>hot window)]
+    SG[(Derived Signals)]
+    PF[(Long-term Profile<br/>rebuildable view)]
+    MF[MemoryFacade<br/>ACL · redaction · budgets]
+    CE[ContextEnvelope]
+
+    DS -->|same transaction| BS
+    DS -->|same transaction: LearningFactRecorded.v1| LE
+    DS -->|same transaction| OB
+    OB -->|retryable delivery| CW
+    LE -->|replay / evidence lookup| CW
+    CW -->|settle with evidence links| EP
+    CW -->|propose / challenge / evolve| SG
+    SG -->|active + long_term only| PF
+    EP --> MF
+    SG --> MF
+    PF --> MF
+    MF -->|minimum authorized bundle| CE
+```
+
+业务主表仍是业务状态的唯一事实源；`learning_events` 只记录可追溯事实。Worker 的派生结果可重放、可校正，且不会反向改写上游 Aggregate。
 
 ## 三、Command Side / Application Use Cases
 

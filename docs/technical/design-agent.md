@@ -8,7 +8,32 @@
 
 本设计不把“Agent”当作拥有全部业务状态的领域模型。`CompanionCoordinator` 是应用层的 Process Manager：它按受控规则路由一轮输入、维护入口连续性，并把命令交给拥有业务不变量的 Context。模型、LangGraph、检索和 SSE 都是 Adapter / Runtime 能力。
 
-[打开 Context Map](diagrams/design-agent-context-map.html)（[图源](diagrams/design-agent-context-map.json)）。全系统级 Context Map 应由系统 DDD Overview 唯一维护；本图只展示 Companion 的邻接边界。
+```mermaid
+flowchart TB
+    UI[Ward App / ASR / structured UI]
+    CO[Companion Orchestration<br/>Thread · Run · Route · Handoff]
+    PL[Planning & Scheduling<br/>PlanDraft · DailySchedule · Task]
+    TU[Tutoring & Study<br/>StudySession · TutoringSession]
+    RE[Evaluation & Reflection<br/>SelfReview · Report · FocusKit]
+    ME[Memory & Understanding<br/>Evidence · Episode · Signal · Profile]
+    RT[AI Runtime / Policy<br/>Context · Validator · Model / Tool adapters]
+
+    UI --> CO
+    CO -->|authorized RunInvocation| PL
+    CO -->|authorized RunInvocation| TU
+    CO -->|authorized RunInvocation| RE
+    PL -->|LearningFactRecorded.v1| ME
+    TU -->|LearningFactRecorded.v1| ME
+    RE -->|LearningFactRecorded.v1| ME
+    PL -. minimal authorized query .-> ME
+    TU -. minimal authorized query .-> ME
+    RE -. minimal authorized query .-> ME
+    RT -. validated candidate only .-> PL
+    RT -. validated candidate only .-> TU
+    RT -. validated candidate only .-> RE
+```
+
+全系统级 Context Map 应由系统 DDD Overview 唯一维护；本图只展示 Companion 的邻接边界。实线表示命令或稳定事实，虚线表示受权只读或候选能力；各 Context 不共享 Aggregate。
 
 | Domain / Subdomain | 类型 | Bounded Context | 拥有的可变业务概念 | 与 Companion 的集成 |
 |---|---|---|---|---|
@@ -35,7 +60,63 @@
 
 `ConversationThread` 是入口连续性的强一致写边界。当前物理实现将 Run、Checkpoint、Trace 分表存储；领域上只有 Thread 负责校验版本和回复权，表结构不改变 Aggregate 的职责。
 
-[打开内部领域模型](diagrams/design-agent-coordinator-internal.html)（[图源](diagrams/design-agent-coordinator-internal.json)）。外部领域状态仅保留 `run_ref`，不得被复制进 Thread。
+```mermaid
+classDiagram
+    class ConversationThread {
+        +thread_id
+        +ward_id
+        +focus_run_ref
+        +version
+        +route(turn)
+        +start_or_resume(decision)
+        +handoff(to)
+        +record_outcome(outcome)
+        +advance_version()
+    }
+    class AgentRunLink {
+        +run_id
+        +agent_type
+        +status
+        +run_ref
+        +context_refs
+        +checkpoint_ref
+        +resume()
+        +pause()
+        +close()
+    }
+    class RouteDecision {
+        +target
+        +mode
+        +confidence
+        +reason
+        +context_refs
+    }
+    class ContextRef {
+        +context_type
+        +object_id
+        +visibility
+        +authorize(actor)
+    }
+    class AgentCheckpoint {
+        +checkpoint_ref
+        +graph_version
+        +state_digest
+        +settlement_version
+    }
+    class AgentTrace {
+        +trace_id
+        +route
+        +snapshot_metadata
+        +outcome
+    }
+    ConversationThread "1" *-- "0..*" AgentRunLink : owns lifecycle
+    ConversationThread ..> RouteDecision : evaluates
+    AgentRunLink --> "0..*" ContextRef : authorized refs
+    AgentRunLink --> "0..1" AgentCheckpoint : recovery reference
+    ConversationThread --> "0..*" AgentTrace : audit only
+```
+
+外部领域状态仅保留 `run_ref`，不得被复制进 Thread；Checkpoint 与 Trace 也不是工作记忆或 Learning Fact。
 
 | 项目 | 设计 |
 |---|---|
@@ -325,7 +406,25 @@ Handoff 只在 Ward 明确确认、或受验证 UI 语义已明确时执行：�
 
 ## 三、跨 Context 编排与 CQRS
 
-[打开 Command–Event–Projection Flow](diagrams/design-agent-turn-flow.html)（[图源](diagrams/design-agent-turn-flow.json)）。Thread/Run 更新在 Orchestration Context 内强一致；领域变更在目标 Context 本地事务中强一致；Learning Fact、Memory 与屏幕投影经 Outbox 最终一致。
+```mermaid
+flowchart LR
+    I[Ward input / UI command]
+    C[CompanionCoordinator<br/>lock Thread · route · one Run]
+    W[One target Workflow]
+    A[Target Aggregate / Application Service]
+    O[(Target Outbox)]
+    M[Memory Consumer<br/>IngestLearningFact]
+    E[(Evidence Ledger)]
+    P[Episode / Signal / Profile projections]
+    V[Ward-facing Query Views]
+
+    I --> C -->|RunInvocation| W -->|typed local command| A
+    C -. redacted trace .-> V
+    A -->|same local transaction| O
+    O -->|LearningFactRecorded.v1| M --> E --> P --> V
+```
+
+Thread/Run 更新在 Orchestration Context 内强一致；领域变更在目标 Context 本地事务中强一致；Learning Fact、Memory 与屏幕投影经 Outbox 最终一致。
 
 ### 3.1 Process Manager 边界
 
@@ -372,7 +471,48 @@ Handoff 只在 Ward 明确确认、或受验证 UI 语义已明确时执行：�
 
 答疑使用 `TutoringSession` 的领域生命周期与受限 ReAct。`TutorWorkingState` 是 Runtime 的可校正状态，不是 Aggregate，也不能被长期保存为 Ward 画像。
 
-[打开 TutoringSession 内部领域模型](diagrams/design-agent-tutoring-internal.html)（[图源](diagrams/design-agent-tutoring-internal.json)）。`StudySession` 只通过 ID 引用；`TutorWorkingState` 是有校验的 Runtime Value，不是子实体或长期记忆。
+```mermaid
+classDiagram
+    class TutoringSession {
+        +tutoring_session_id
+        +ward_id
+        +study_session_id
+        +status
+        +start()
+        +apply_turn()
+        +pause()
+        +close()
+        +escalate()
+    }
+    class TutoringMessage {
+        +message_id
+        +role
+        +content_ref
+        +hint_level
+        +safety_blocked
+    }
+    class TutorWorkingState {
+        +learning_goal
+        +ward_attempts
+        +candidate_stuck_points
+        +strategy
+        +budget
+        +apply_validated_patch()
+        +consume_budget()
+    }
+    class StudySession {
+        +study_session_id
+    }
+    class PolicyValidator {
+        +validate action / tool / patch
+    }
+    TutoringSession "1" *-- "0..*" TutoringMessage : appends
+    TutoringSession --> StudySession : references by ID
+    TutoringSession ..> TutorWorkingState : runtime only
+    TutorWorkingState ..> PolicyValidator : validated before apply
+```
+
+`StudySession` 只通过 ID 引用；`TutorWorkingState` 是有校验的 Runtime Value，不是子实体或长期记忆。
 
 | 对象 | 类型与 Identity | 关键领域属性 | 主要领域方法 | 不变量职责 |
 |---|---|---|---|---|
