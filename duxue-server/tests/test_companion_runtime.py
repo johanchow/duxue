@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.ai_agents.planning_domain_service import PlanningDomainService
 from app.ai_agents.planning_workflow import build_planning_graph
+from app.ai_agents.tutoring_workflow import TutoringWorkflow
 from app.ai_runtime.companion_coordinator import CompanionCoordinator
-from app.ai_runtime.contracts import WorkflowOutcome
+from app.ai_runtime.contracts import RunInvocation, WorkflowOutcome
 from app.database import Base
 from app.memory import (
     LearningFactRecorded,
@@ -20,12 +21,14 @@ from app.memory import (
 )
 from app.models import (
     DerivedSignal,
+    DerivedSignalEvent,
     EpisodicMemory,
     EpisodicMemoryEvent,
     LearningEvent,
     LongTermProfile,
     OutboxEvent,
     Task,
+    StudySession,
     User,
     Ward,
     uid,
@@ -232,6 +235,87 @@ class MemoryFacadeTest(unittest.TestCase):
         self.db.commit()
         self.assertEqual(first.id, second.id)
         self.assertEqual(self.db.query(OutboxEvent).count(), 0)
+
+    def test_closed_tutoring_facts_settle_once_with_all_evidence(self):
+        service = SqlAlchemyMemoryCommandService(self.db)
+        tutoring_session_id = uid()
+        for event_type in (
+            "tutoring.ward_attempt_recorded",
+            "tutoring.hint_given",
+            "tutoring.session_closed",
+        ):
+            service.ingest_learning_fact(LearningFactRecorded(
+                ward_id=self.ward_id, event_type=event_type,
+                source_type="test_tutoring", source_id=uid(),
+                occurred_at=datetime.now(timezone.utc), source="system",
+                payload={"tutoring_session_id": tutoring_session_id},
+            ))
+        first = service.settle_tutoring_episode(tutoring_session_id)
+        second = service.settle_tutoring_episode(tutoring_session_id)
+        self.db.commit()
+        self.assertEqual(first.id, second.id)
+        self.assertEqual(
+            self.db.query(EpisodicMemoryEvent).filter_by(episodic_memory_id=first.id).count(), 3
+        )
+
+    def test_tutoring_workflow_records_attempt_hint_and_closed_session_for_settlement(self):
+        task = Task(ward_id=self.ward_id, title="数学练习")
+        self.db.add(task); self.db.flush()
+        session = StudySession(ward_id=self.ward_id, task_id=task.id)
+        self.db.add(session); self.db.flush()
+        workflow = TutoringWorkflow(self.db)
+        first = workflow.invoke(RunInvocation(
+            run_id=uid(), thread_id=uid(), ward_id=self.ward_id, agent_type="tutoring",
+            turn={"study_session_id": session.id, "tutoring_directive": "attempt", "content": "直接告诉我答案"},
+        ))
+        self.assertTrue(first.next_interaction["safety_blocked"])
+        closed = workflow.invoke(RunInvocation(
+            run_id=uid(), thread_id=uid(), ward_id=self.ward_id, agent_type="tutoring",
+            turn={"study_session_id": session.id, "tutoring_directive": "close", "content": "结束"},
+        ))
+        self.assertEqual(closed.run_status, "closed")
+        tutor_ref = closed.context_refs[0].split(":", 1)[1]
+        memory = SqlAlchemyMemoryCommandService(self.db).settle_tutoring_episode(tutor_ref)
+        self.assertIsNotNone(memory)
+        self.assertEqual(
+            self.db.query(EpisodicMemoryEvent).filter_by(episodic_memory_id=memory.id).count(), 3
+        )
+
+    def test_candidate_signal_needs_evidence_before_activation_and_challenge_removes_it(self):
+        service = SqlAlchemyMemoryCommandService(self.db)
+        events = []
+        for _ in range(2):
+            events.append(service.ingest_learning_fact(LearningFactRecorded(
+                ward_id=self.ward_id, event_type="tutoring.hint_given",
+                source_type="test_evidence", source_id=uid(),
+                occurred_at=datetime.now(timezone.utc), source="system",
+            )))
+        signal = service.propose_candidate_signal(
+            ward_id=self.ward_id, signal_type="effective_strategy", scope="long_term",
+            dimension_key="draw_diagram", statement="画图在多个会话中有帮助",
+            value={"sample_size": 2, "window": "5d", "calculation_method": "v1"},
+            confidence=0.8, evidence_event_ids=[event.id for event in events],
+        )
+        self.assertEqual(signal.status, "candidate")
+        service.evolve_signals()
+        self.assertEqual(signal.status, "active")
+        service.rebuild_long_term_profile(self.ward_id)
+        self.assertIn("draw_diagram", self.db.get(LongTermProfile, self.ward_id).learning_strategy_profile)
+        service.challenge_signal(signal.id, self.ward_id, "这不是一直有效")
+        service.rebuild_long_term_profile(self.ward_id)
+        self.assertEqual(signal.status, "challenged")
+        self.assertNotIn("draw_diagram", self.db.get(LongTermProfile, self.ward_id).learning_strategy_profile)
+
+    def test_evolve_signals_expires_active_signal(self):
+        signal = DerivedSignal(
+            ward_id=self.ward_id, signal_type="planning_preference", scope="long_term",
+            dimension_key="morning", value={"sample_size": 2, "window": "5d", "calculation_method": "v1"},
+            statement="过期信号", confidence=0.9, observed_from=datetime.now(timezone.utc),
+            status="active", expires_at=datetime.now(timezone.utc) - timedelta(seconds=1),
+        )
+        self.db.add(signal); self.db.flush()
+        SqlAlchemyMemoryCommandService(self.db).evolve_signals()
+        self.assertEqual(signal.status, "expired")
 
     def test_coordinator_passes_a_typed_single_run_invocation_to_dispatcher(self):
         class FakeDispatcher:

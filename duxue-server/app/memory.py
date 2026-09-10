@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from .models import (
     DerivedSignal,
+    DerivedSignalEvent,
     EpisodicMemory,
     EpisodicMemoryEvent,
     GuardianWard,
@@ -180,10 +181,15 @@ class SqlAlchemyMemoryCommandService:
     def settle_tutoring_episode(self, tutoring_session_id: str, version: int = 1) -> EpisodicMemory | None:
         """Settle only closed-session facts; never copy tutoring messages."""
         events = self.db.query(LearningEvent).filter(
-            LearningEvent.event_type.in_(["tutoring.stuck_point_recorded", "tutoring.session_closed"]),
+            LearningEvent.event_type.in_([
+                "tutoring.ward_attempt_recorded",
+                "tutoring.understanding_confirmed",
+                "tutoring.hint_given",
+                "tutoring.session_closed",
+            ]),
             LearningEvent.payload["tutoring_session_id"].as_string() == tutoring_session_id,
         ).all()
-        if not events:
+        if not events or not any(event.event_type == "tutoring.session_closed" for event in events):
             return None
         ref = f"tutoring_session:{tutoring_session_id}"
         memory = self.db.query(EpisodicMemory).filter_by(memory_type="tutoring_episode", aggregate_ref=ref, aggregate_version=version).one_or_none()
@@ -202,6 +208,55 @@ class SqlAlchemyMemoryCommandService:
                 self.db.add(EpisodicMemoryEvent(episodic_memory_id=memory.id, learning_event_id=event.id))
         return memory
 
+    def propose_candidate_signal(
+        self,
+        *,
+        ward_id: str,
+        signal_type: str,
+        scope: str,
+        dimension_key: str,
+        value: dict,
+        statement: str,
+        confidence: float,
+        evidence_event_ids: list[str],
+        policy_version: str = "v1",
+    ) -> DerivedSignal:
+        """Create a reviewable candidate backed by ledger evidence only."""
+        allowed = {
+            "focus_endurance_baseline", "estimation_bias", "knowledge_gap",
+            "effective_strategy", "stable_interest", "planning_preference",
+            "reflection_accuracy_trend",
+        }
+        if signal_type not in allowed or scope not in {"recent", "long_term"}:
+            raise ValueError("unsupported signal type or scope")
+        if not dimension_key or not {"sample_size", "window", "calculation_method"} <= value.keys():
+            raise ValueError("signal value must include sample_size, window and calculation_method")
+        evidence = self.db.query(LearningEvent).filter(
+            LearningEvent.id.in_(evidence_event_ids), LearningEvent.ward_id == ward_id
+        ).all()
+        if not evidence or len({event.id for event in evidence}) != len(set(evidence_event_ids)):
+            raise ValueError("candidate signal requires authorized evidence")
+        signal = self.db.query(DerivedSignal).filter_by(
+            ward_id=ward_id, signal_type=signal_type, scope=scope, dimension_key=dimension_key
+        ).one_or_none()
+        if signal is None:
+            signal = DerivedSignal(
+                ward_id=ward_id, signal_type=signal_type, scope=scope,
+                dimension_key=dimension_key, value=value, statement=statement,
+                confidence=confidence, observed_from=min(event.occurred_at for event in evidence),
+                status="candidate", policy_version=policy_version,
+            )
+            self.db.add(signal)
+            self.db.flush()
+        for event in evidence:
+            if not self.db.query(DerivedSignalEvent).filter_by(
+                derived_signal_id=signal.id, learning_event_id=event.id, role="support"
+            ).one_or_none():
+                self.db.add(DerivedSignalEvent(
+                    derived_signal_id=signal.id, learning_event_id=event.id, role="support"
+                ))
+        return signal
+
     def challenge_signal(self, signal_id: str, ward_id: str, statement: str) -> DerivedSignal:
         signal = self.db.get(DerivedSignal, signal_id)
         if signal is None or signal.ward_id != ward_id:
@@ -213,8 +268,30 @@ class SqlAlchemyMemoryCommandService:
         signal.status = "challenged"; signal.last_evaluated_at = now()
         return signal
 
+    def evolve_signals(self, at: datetime | None = None) -> list[DerivedSignal]:
+        """Apply the versioned v1 threshold; only this worker may activate signals."""
+        at = at or now()
+        changed: list[DerivedSignal] = []
+        for signal in self.db.query(DerivedSignal).filter(
+            DerivedSignal.status.in_(["candidate", "active"])
+        ):
+            if signal.expires_at is not None and signal.expires_at <= at:
+                signal.status = "expired"; signal.last_evaluated_at = at; changed.append(signal)
+                continue
+            supports = self.db.query(DerivedSignalEvent).filter_by(
+                derived_signal_id=signal.id, role="support"
+            ).count()
+            if signal.status == "candidate" and signal.scope == "long_term" and signal.confidence >= 0.75 and supports >= 2:
+                signal.status = "active"; signal.last_evaluated_at = at; changed.append(signal)
+        return changed
+
     def rebuild_long_term_profile(self, ward_id: str) -> LongTermProfile:
-        signals = self.db.query(DerivedSignal).filter_by(ward_id=ward_id, scope="long_term", status="active").all()
+        signals = self.db.query(DerivedSignal).filter(
+            DerivedSignal.ward_id == ward_id,
+            DerivedSignal.scope == "long_term",
+            DerivedSignal.status == "active",
+            (DerivedSignal.expires_at.is_(None)) | (DerivedSignal.expires_at > now()),
+        ).all()
         profile = self.db.get(LongTermProfile, ward_id) or LongTermProfile(ward_id=ward_id)
         if self.db.get(LongTermProfile, ward_id) is None: self.db.add(profile)
         profile.planning_preferences = {s.dimension_key: s.value for s in signals if s.signal_type == "planning_preference"}
