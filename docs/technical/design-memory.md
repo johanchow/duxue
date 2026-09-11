@@ -307,7 +307,149 @@ Aggregate 产生的 **Domain Event**。前者由接收方的 Application Event H
 `settle()`。若未来引入“草稿摘要”生命周期，必须新增其 Aggregate/状态/命令，不能把
 它偷偷塞进 `settle()`。
 
+### 3.1.1 Memory Evolution 核心用例契约
+
+下列用例共同构成“证据升级为可校正理解”的闭环。它们不是一个跨数据库事务；每一步均有
+自己的事务、幂等键和失败恢复边界。
+
+| Use Case | 触发与授权 | 输入与本地事务 | 决策结果 / 幂等键 |
+|---|---|---|---|
+| `CloseTutoringSession` | Ward 明确结束，或受权 UI 发出 `close` 指令；由 Study Context 拥有 | 关闭 `TutoringSession`，同事务记录 `tutoring.session_closed` Fact 与 Outbox | 一次会话关闭只发布一个关闭 Fact；未关闭、暂停或失联不等同于关闭 |
+| `IngestLearningFact` | Memory Consumer 接到 `LearningFactRecorded.v1` | 校验 schema、ACL、来源四元组，追加 `LearningEvent` | `source_type + source_id + event_type + source_version`；重复投递无副作用 |
+| `SettleEpisodicMemory` | 收到关闭 Fact 或结算 Worker 扫描到可结算来源 | 按 `EpisodicSettlementPolicy` 加载/创建 Episode，并附加证据链接 | `memory_type + aggregate_ref + aggregate_version`；重试只补齐遗漏链接 |
+| `ProposeCandidateSignal` | Episode 已结算，或证据窗口满足候选资格 | `SignalEvolutionService` 检查可用证据，创建/补充 `DerivedSignal` | Signal identity；只能写 `candidate`，不改变 Profile |
+| `EvolveSignals` | 定时 Worker 或新证据触发 | 按版本化 Policy 激活、挑战或过期 Signal | 每个 Signal 独立事务；Policy 版本与评估时间进入审计 |
+| `RebuildLongTermProfile` | Signal 状态变化或定时全量任务 | 仅读取 `active + long_term` Signals，完整覆盖 Profile View | 可从 Signals 重建；不回写 Signal 或 Evidence Ledger |
+
+#### 3.1.2 Episode 与 Signal Policy
+
+`EpisodicSettlementPolicy` 的职责是**归并已发生的事实**，不是推测孩子状态。首个
+`tutoring_episode` 的结算必须同时满足：同一 Ward、同一 `tutoring_session_id`、存在
+`tutoring.session_closed` Fact，且至少有一条受控互动 Fact（Ward 尝试、实际提示、理解确认
+或已验证工具结果）。`paused`、无活动或客户端断连只可触发提醒/恢复策略，不能隐式结算
+为关闭。
+
+`SignalEvolutionPolicy` 的职责是**评估理解主张的证据资格**。它按 `signal_type` 配置
+最小独立 Episode 数、可靠度、观察窗口、反证规则与是否需要 Ward 确认。Policy 评估的
+“独立”至少要求不同的 `aggregate_ref`（通常是不同答疑会话）；同一会话中的多条消息只能
+丰富一个 Episode，不能凑晋升次数。
+
+| Signal 类型 | 可提出 Candidate 的最低条件 | `long_term` Active 的典型 guard |
+|---|---|---|
+| `knowledge_gap`、`estimation_bias` | 一个已结算 Episode 中存在受控、可定位的证据 | 多个独立 Episode 在窗口内一致，且无未处理反证 |
+| `effective_strategy` | 至少一个 Episode 显示策略被实际采用和观察到结果 | 至少两个独立 Episode 支持；结果可靠度达到该策略的阈值 |
+| `planning_preference`、`stable_interest` | Ward 陈述或多次可观察选择 | 跨日期/场景的一致证据；主观偏好默认要求 Ward 确认 |
+| `focus_endurance_baseline`、`reflection_accuracy_trend` | 足够的可比较样本与明确计算方法 | 样本数、时间窗口、置信区间满足 Policy；不能从单次表现推断 |
+
+`recent` 与 `long_term` 是不同的 Signal scope，也是 Signal identity 的一部分。Policy 应从
+已结算 Episode 为 `long_term` scope **另行提出** Candidate，而非将一个 `recent` Signal
+原地改名升级。只有 `status = active` 且 `scope = long_term` 的 Signal 可参与
+`LongTermProfileView` 重建。Ward 否认或新反证会立即把 Signal 转为 `challenged`；Profile
+随后最终一致地移除该投影。
+
+#### 3.1.3 异步投递与恢复契约
+
+| 异步步骤 | 生产者 → 接收方 | 幂等 / 顺序 | 失败、对账与重放 |
+|---|---|---|---|
+| 稳定 Fact 投递 | Planning / Study / Evaluation 本地事务 → `outbox_events` → Memory Consumer Adapter | 来源四元组；同一来源对象按 `source_version` 有序处理 | 投递失败保留待发送记录并退避重试；未知 schema 死信，人工对账后才可重放 |
+| Fact 入账 | Consumer Adapter → `IngestLearningFact` | Evidence Ledger 的来源四元组唯一约束 | 重复投递无副作用；可根据 Outbox 与 Ledger 对账并补投 |
+| Episode 结算 | 关闭 Fact / Scheduler → `SettleEpisodicMemory` | `memory_type + aggregate_ref + aggregate_version`，证据链接去重 | 从 Ledger 重放；不能靠重新读取原始聊天补造证据 |
+| Signal / Profile 投影 | 本地 Episode 或 Signal 事件 → Worker / Projection | Signal identity；Profile 是全量覆盖式读模型 | 单个 Signal 失败可独立重试；Profile 可从 Active long-term Signals 全量重建 |
+
 ### 3.2 关键因果链时序图
+
+#### 3.2.0 从 Ward 消息到 Episode、Signal 与 Profile
+
+```mermaid
+sequenceDiagram
+    participant W as Ward App / ASR
+    participant I as CompanionTurnEndpoint
+    participant C as CompanionCoordinator
+    participant T as Tutoring Workflow
+    participant V as PolicyValidator
+    participant A as Study Application Service
+    participant S as TutoringSession Aggregate
+    participant O as Study Outbox
+    participant CA as Memory Consumer Adapter
+    participant H as IngestLearningFact Handler
+    participant L as LearningEvent Ledger
+    participant SW as Settlement Worker
+    participant SP as EpisodicSettlementPolicy
+    participant E as EpisodicMemory Aggregate
+    participant EW as Signal Evolution Worker
+    participant DP as SignalEvolutionPolicy
+    participant D as DerivedSignal Aggregate
+    participant P as LongTermProfileView
+
+    W->>I: POST /companion/turn
+    I->>C: HandleCompanionTurn(ward, content, directive)
+    C->>T: RunInvocation(one authorized tutoring Run)
+    T->>A: StartOrResumeTutoring / ApplyTutorTurn
+    A->>S: load by study_session_id; verify Ward and status
+    alt session absent, belongs to another Ward, or already closed
+        S-->>A: reject command
+        A-->>T: safe WorkflowOutcome
+        T-->>C: no business mutation
+        C-->>I: response / clarification
+        I-->>W: no Fact, no Memory
+    else session is usable
+        T->>V: validate safety, action, tool budget, state patch
+        alt rejected or no verified learning occurrence
+            V-->>T: reject / safe fallback
+            T-->>C: safe WorkflowOutcome + Trace metadata
+            C-->>I: response
+            I-->>W: no Fact, no Memory
+        else verified attempt, actual hint, or explicit close
+            V-->>T: ValidatedTutorTurn
+            T->>A: typed local command
+            A->>S: apply_turn() or close()
+            S-->>A: local domain event / stable fact reference
+            A->>O: one local transaction: persist session + Fact + Outbox
+            A-->>T: WorkflowOutcome
+            T-->>C: validated outcome
+            C-->>I: Thread / Run response
+            I-->>W: display response
+
+            O-->>CA: LearningFactRecorded.v1 (retryable delivery)
+            CA->>H: verified envelope
+            H->>H: validate schema, ACL, source four-tuple
+            H->>L: idempotent append LearningEvent
+
+            opt Fact is tutoring.session_closed
+                SW->>L: select same Ward + tutoring_session_id facts
+                SW->>SP: decide eligibility and aggregate_ref
+                alt closed Fact plus at least one interaction Fact
+                    SP-->>SW: controlled TutoringEpisodePayload
+                    SW->>E: load/create; attach evidence; settle()
+                    E-->>EW: EpisodicMemorySettled
+                    EW->>DP: evaluate candidate eligibility across Episodes
+                    opt minimum independent evidence is met
+                        DP-->>EW: candidate proposal
+                        EW->>D: propose() / attach_evidence()
+                        D-->>EW: SignalProposed (candidate)
+                    end
+                    EW->>DP: evaluate activation / challenge / expiry
+                    opt scope is long_term and all guards are met
+                        DP-->>EW: activate
+                        EW->>D: activate(policy)
+                        D-->>EW: SignalActivated
+                        EW->>P: rebuild from active + long_term Signals
+                    end
+                else incomplete or ineligible evidence
+                    SP-->>SW: defer; await more valid evidence
+                end
+            end
+        end
+    end
+```
+
+关键边界：原始消息、模型候选、安全拒绝和 Trace 都不是 Memory。只有目标 Context 已验证、
+并随本地业务事务写出的 Fact 才能进入 Evidence Ledger；一个会话的 Facts 只会先结算为
+一个 Episode，跨 Episode 的证据才可支持 Signal。
+
+该图刻意把关闭表达为 `tutoring.session_closed` Fact，而不是 Worker 对所有开放会话的猜测。
+Outbox 投递、Fact 入账、Episode 结算、Signal 演进与 Profile 重建均是可重试的本地事务；
+重复消息或重复投递分别由来源四元组、Episode identity 和 Signal identity 处理。
 
 #### 3.2.1 跨 Context 事实入账与情境结算
 
