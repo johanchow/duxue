@@ -2,7 +2,7 @@
 
 > 状态：讨论稿 · 版本：v2.1
 > 适用范围：`duxue-server` 中 Ward 学习证据、情境记忆、可校正理解与长期画像投影。
-> 关联：[陪伴编排](design-agent.md) · [服务端物理 Schema](design-server.md) · [记忆 PRD](../product/prd-memory.md)
+> 关联：[DDD 系统级 Overview](ddd-overview.md) · [陪伴编排](design-agent.md) · [服务端物理 Schema](design-server.md) · [记忆 PRD](../product/prd-memory.md)
 
 ## 一、边界、上下游与统一语言
 
@@ -22,7 +22,7 @@ flowchart LR
     MC -->|authorized MemoryBundle| CO
 ```
 
-这是 Memory 的邻接 Context 图；全系统 Context Map 应由未来的系统级 DDD Overview 唯一维护。上游拥有业务状态，Memory 只保存可追溯证据和派生理解，Companion 只能经 `MemoryFacade` 查询。
+这是 Memory & Understanding Context 的邻接图；全系统 Domain Inventory、Context Map 与跨 Context 写入所有权由 [DDD 系统级 Overview](ddd-overview.md) 唯一维护。上游拥有业务状态，Memory 只保存可追溯证据和派生理解，Companion 只能经 `MemoryFacade` 查询。
 
 | 术语 | Context 内定义 | 所有权 |
 |---|---|---|

@@ -6,7 +6,7 @@
 
 ## 一、系统分层架构与目录结构
 
-采用现代清晰的分层架构（Interface -> Application -> Domain -> Infrastructure），严格解耦业务规则与底层实现：
+采用现代清晰的分层架构（Interface -> Application -> Domain -> Infrastructure），严格解耦业务规则与底层实现。全系统的 Domain Inventory、Bounded Context 所有权和跨 Context 契约由 [DDD 系统级 Overview](ddd-overview.md) 唯一维护；本文件不再把表或实体误作 Context。
 
 ```text
 duxue-server/
@@ -27,8 +27,8 @@ duxue-server/
 │   │   ├── queries/             # 读操作用例 (GetDualTrackReport, ListTasks)
 │   │   └── orchestrators/       # 复杂业务编排 (ScheduleAnalysisPipeline)
 │   │
-│   ├── domain/                  # 领域层 (Domain Layer)
-│   │   ├── entities/            # 实体与聚合根 (User, Device, DailySchedule, Task, TutoringSession...)
+│   ├── domain/                  # 领域层（按 Bounded Context 组织的目标模块）
+│   │   ├── <context>/           # 该 Context 的聚合、实体、值对象和领域服务
 │   │   ├── value_objects/       # 值对象 (StructuredFields, HintLevel, TimeRange)
 │   │   ├── services/            # 领域服务
 │   │   │   ├── classifier.py    # 行为特征加权匹配
@@ -47,7 +47,7 @@ duxue-server/
 │   │   ├── ai/                  # AI 服务客户端 (Qwen3-VL, LLM OpenAI 适配)
 │   │   └── security/            # JWT 编解码、密码 bcrypt 哈希、设备 Token 验签
 │   │
-│   └── workers/                 # 异步任务层 (Celery Workers & Beat)
+│   └── workers/                 # Infrastructure：Celery Workers & Beat，只触发应用层 Use Case
 │       ├── celery_app.py        # Celery 实例与队列配置
 │       ├── tasks/
 │       │   ├── schedule_tasks.py # 今日计划完成即时分析任务流水线
@@ -59,63 +59,11 @@ duxue-server/
 
 ---
 
-## 二、领域模型与限界上下文
+## 二、系统级领域边界
 
-```mermaid
-graph LR
-    subgraph IAM["🔐 身份与关系 (IAM & Binding)"]
-        U[User 用户]
-        GWB[GuardianWardBinding 绑定关系]
-        RT[RefreshToken 凭证]
-    end
+[DDD 系统级 Overview](ddd-overview.md) 是 Domain Inventory、Context Map、跨 Context 术语与写入所有权、稳定 Integration Event 契约的唯一来源。它将 Identity & Relationship、Device & Ingestion、Planning、Study、Behavior Analysis、Evaluation & Reflection、Memory & Understanding 与 Companion Orchestration 明确为不同边界。
 
-    subgraph DEV["📷 设备管理 (Device & Ingestion)"]
-        D[Device 采集设备]
-        F[Frame 图像元数据]
-    end
-
-    subgraph SCHED["📅 协商计划 (Schedule & Task)"]
-        T[Task 任务项]
-        DS[DailySchedule 每日计划]
-    end
-
-    subgraph COMP["💡 伴学答疑 (Companion & Tutoring)"]
-        TS[TutoringSession 答疑会话]
-        TM[TutoringMessage 启发交互]
-    end
-
-    subgraph ANA["🧠 行为分析 (Behavior Analysis)"]
-        SF[StructuredFields 物理特征]
-        FP[FramePrediction 单帧预测]
-        BS[BehaviorSegment 时序片段]
-    end
-
-    subgraph EVAL["📊 评估复盘 (Evaluation & Dual-Track)"]
-        SE[SelfEvaluation 盲评自评]
-        DTR[DualTrackReport 双轨对比报告]
-        AT[ActionableTip 专注锦囊]
-        DP[DialoguePrompt 亲子沟通建议]
-    end
-
-    subgraph MEM["🧬 孩子理解引擎 (Memory Engine)"]
-        WM[WorkingMemory 短期工作记忆]
-        EM[EpisodicMemory 5天事件流水]
-        LTP[LongTermProfile 长期画像]
-    end
-
-    IAM --> DEV
-    IAM --> SCHED
-    IAM --> EVAL
-    DEV --> F
-    F --> ANA
-    SCHED --> COMP
-    COMP --> MEM
-    ANA --> EVAL
-    EVAL --> MEM
-    MEM --> SCHED
-    MEM --> COMP
-    MEM --> EVAL
-```
+本文件只保留这些边界的物理实现映射：数据库可被模块化单体中的多个 Context 使用，但共享 PostgreSQL 不等于共享 Aggregate、Repository 或写入权。Context 内的 Aggregate、用例、不变量和读模型应由各自的 Context 设计文档维护；例如 [Memory & Understanding Context](design-memory.md)。
 
 ---
 
