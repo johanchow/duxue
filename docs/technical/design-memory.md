@@ -1,49 +1,53 @@
 # 读学系统 — Memory & Understanding Bounded Context
 
-> 状态：讨论稿 · 版本：v2.1
+> 状态：讨论稿 · 版本：v2.2
 > 适用范围：`duxue-server` 中 Ward 学习证据、情境记忆、可校正理解与长期画像投影。
 > 关联：[DDD 系统级 Overview](ddd-overview.md) · [陪伴编排](design-agent.md) · [服务端物理 Schema](design-server.md) · [记忆 PRD](../product/prd-memory.md)
 
 ## 一、边界、上下游与统一语言
 
-本 Context 的责任是把其他业务 Context 已确认的学习事实，转换为可追溯、可校正、最小化召回的理解；它不拥有计划、任务、答疑会话或报告的业务状态，也不让模型直接写入事实、画像或 Policy。
+本 Context 的责任是把其他业务 Context 已确认的学习事实，转换为可追溯、可校正、最小化召回的理解；它不拥有计划、任务、答疑会话、报告或运行时 Working Memory，也不让模型直接写入事实、画像或 Policy。
 
 ```mermaid
 flowchart LR
     PL[Planning Context]
     ST[Study Context]
-    EV[Evaluation Context]
+    BA[Behavior Analysis]
+    ER[Evaluation & Reflection]
     MC[Memory & Understanding Context]
     CO[Companion Orchestration]
 
     PL -->|LearningFactRecorded.v1| MC
     ST -->|LearningFactRecorded.v1| MC
-    EV -->|LearningFactRecorded.v1| MC
-    MC -->|authorized MemoryBundle| CO
+    BA -->|LearningFactRecorded.v1| MC
+    ER -->|LearningFactRecorded.v1| MC
+    MC -->|authorized MemoryBundle ACL| CO
+    MC -->|authorized MemoryBundle ACL| PL
+    MC -->|authorized MemoryBundle ACL| ER
 ```
 
-这是 Memory & Understanding Context 的邻接图；全系统 Domain Inventory、Context Map 与跨 Context 写入所有权由 [DDD 系统级 Overview](ddd-overview.md) 唯一维护。上游拥有业务状态，Memory 只保存可追溯证据和派生理解，Companion 只能经 `MemoryFacade` 查询。
+这是 Memory & Understanding Context 的邻接图；全系统 Domain Inventory、Context Map 与跨 Context 写入所有权由 [DDD 系统级 Overview](ddd-overview.md) 唯一维护。上游拥有业务状态，Memory 只保存可追溯证据和派生理解；Companion、Planning 与 Evaluation & Reflection 均只能经 `MemoryFacade` 的受权 Query 边界读取最小 `MemoryBundle`。
 
 | 术语 | Context 内定义 | 所有权 |
 |---|---|---|
 | Learning Fact | 已确认、不可变、可定位来源的学习发生事实 | 上游 Context 产生；Memory 持久化证据副本 |
-| Learning Event | `learning_events` 中的事实证据实体，不是 Event Sourcing | Memory Evidence Ledger |
+| Learning Evidence | 不可变、可定位、来源幂等的证据 Aggregate；物理记录名为 `learning_events` | Memory Evidence Ledger |
 | Episodic Memory | 近 5 天内可召回的具体经历摘要 | Memory |
 | Derived Signal | 有证据、置信度、状态与有效期的可校正理解 | Memory |
 | Long-Term Profile | Active 长期 Signal 的可重算读模型 | Memory Query Side |
 | Working Memory | 当前 Run 的可恢复运行状态 | Companion Runtime，不是本 Context 写 Aggregate |
 
-上游 Planning、Study 与 Evaluation Context 通过版本化 `LearningFactRecorded.v1` 发布稳定事实；Memory Consumer 以来源四元组 `source_type + source_id + event_type + source_version` 幂等落入 Evidence Ledger。下游 Companion 只能通过 `MemoryFacade` 查询受授权的 `MemoryBundle`。跨 Context 不共享 Aggregate，也不直接改写彼此业务表。
+Planning、Study、Behavior Analysis 与 Evaluation & Reflection 在各自 Use Case 的本地事务中发布版本化 `LearningFactRecorded.v1`。Memory Consumer Adapter 负责 transport/schema 校验、去重和投递，`IngestLearningFact` 再以来源四元组 `source_type + source_id + event_type + source_version` 幂等写入本地 Evidence Ledger。跨 Context 不共享 Aggregate，也不直接改写彼此业务表。
 
 ## 二、领域模型与 Aggregate
 
 ```mermaid
 flowchart LR
-    LE[(LearningEvent<br/>Evidence Ledger)]
+    LE[LearningEvidence<br/>Aggregate Root]
     EM[EpisodicMemory Aggregate]
     DS[DerivedSignal Aggregate]
     LP[(LongTermProfileView)]
-    MB[MemoryBundle<br/>authorized query DTO]
+    MB[MemoryBundle<br/>Query response DTO]
 
     LE -->|EvidenceLink| EM
     LE -->|SignalEvidenceLink| DS
@@ -53,18 +57,20 @@ flowchart LR
     LP -->|profile projection| MB
 ```
 
-`LearningEvent` 是证据实体而非 Aggregate；`LongTermProfileView` 与 `MemoryBundle` 是可重算/临时装配的读模型，不能反向写入 Aggregate。
+`LearningEvidence` 是 Evidence Ledger 的轻量 Aggregate Root；其物理 append-only 记录名为 `learning_events`。`LongTermProfileView` 是可重算 Projection；`MemoryBundle` 是 Query 根据授权和预算临时装配的 response DTO，不是 Projection，二者都不能反向写入 Aggregate。
 
-### 2.1 Learning Evidence：不可变证据实体
+### 2.1 LearningEvidence Aggregate：不可变证据账本
 
-`LearningEvent` 是 Evidence Ledger 的 append-only 实体，不是 Aggregate Root，也不取代上游业务主表。其稳定字段为 `ward_id`、`event_type`、`occurred_at`、`scope`、`source`、`confidence`、`payload`、`evidence_refs`、`visibility` 与 `retention_policy`。`source` 只能是 `ward`、`guardian`、`system` 或 `cam`；服务端 VLM/归并结果以 `system` 写入并带 `confidence`。
+`LearningEvidence` 是每条已确认事实的轻量 Aggregate Root，不取代上游业务主表。它在本 Context 内原子保证不可变、来源四元组唯一、Ward/visibility 合法及受控 evidence reference；唯一外部写入口是 `IngestLearningFact` 或本 Context 的 `RecordSignalChallengeEvidence`。其稳定字段为 `ward_id`、`source_type`、`source_id`、`source_version`、`event_type`、`occurred_at`、`scope`、`source`、`confidence`、`payload`、`evidence_refs`、`visibility` 与 `retention_policy`。`source` 只能是 `ward`、`guardian`、`system` 或 `cam`；服务端 VLM/归并结果以 `system` 写入并带 `confidence`。
+
+目标物理约束为 `UNIQUE(source_type, source_id, event_type, source_version)`，并保留 append-only `learning_events` 记录。当前 Schema 若尚未含来源四元组与唯一约束，必须由 [tutoring-reflection-memory-workflows spec](../../.agent/specs/tutoring-reflection-memory-workflows.md) 的迁移先行实现；在此之前不得把重复投递无副作用视为已落地保证。
 
 ### 2.2 EpisodicMemory Aggregate
 
 | 项目 | 设计 |
 |---|---|
-| Identity | `memory_type + aggregate_id + aggregate_version` |
-| 内部 Entity | `EpisodicMemoryEvidenceLink`，关联多个 `LearningEvent` |
+| Identity | `memory_type + aggregate_ref + aggregate_version` |
+| 内部 Entity | `EpisodicMemoryEvidenceLink`，关联多个 `LearningEvidence` |
 | Value Object | `TutoringEpisodePayload`、`Outcome`、`DecayWindow` |
 | 不变量 | 摘要必须关联至少一条证据；同一证据不得重复关联；原始对话不复制入摘要 |
 | 行为 | `settle()`、`attach_evidence()`、`archive()` |
@@ -110,21 +116,21 @@ classDiagram
         +expires_at
         +policy_version
     }
-    class LearningEvent {
-        <<Evidence Ledger entity>>
+    class LearningEvidence {
+        <<Aggregate Root; append-only>>
     }
     EpisodicMemory "1" *-- "1..*" EpisodicMemoryEvidenceLink
     EpisodicMemory *-- TutoringEpisodePayload
     TutoringEpisodePayload *-- Outcome
     EpisodicMemory *-- DecayWindow
-    EpisodicMemoryEvidenceLink --> LearningEvent : ID reference only
+    EpisodicMemoryEvidenceLink --> LearningEvidence : ID reference only
 ```
 
-图中只包含本 Aggregate 的领域对象；`LearningEvent` 位于 Evidence Ledger，只通过 ID 引用。
+图中只包含本 Aggregate 的领域对象；`LearningEvidence` 属于独立 Evidence Ledger Aggregate，只通过 ID 引用。
 
 | 对象 | 类型与 Identity | 关键领域属性 | 主要领域方法 | 不变量职责 |
 |---|---|---|---|---|
-| `EpisodicMemory` | Aggregate Root；`memory_type + aggregate_id + aggregate_version` | `ward_id`、`memory_type`、`aggregate_ref`、`summary`、`event_date`、`decay_window`、`archived_at` | `settle(payload)`、`attach_evidence(event_id, role)`、`archive(now)` | 原子保证至少一条证据、证据去重、受控摘要不复制原始对话，并决定何时归档 |
+| `EpisodicMemory` | Aggregate Root；`memory_type + aggregate_ref + aggregate_version` | `ward_id`、`memory_type`、`aggregate_ref`、`summary`、`event_date`、`decay_window`、`archived_at` | `settle(payload)`、`attach_evidence(event_id, role)`、`archive(now)` | 原子保证至少一条证据、证据去重、受控摘要不复制原始对话，并决定何时归档 |
 | `EpisodicMemoryEvidenceLink` | Child Entity；`episodic_memory_id + learning_event_id` | `learning_event_id`、`evidence_role`、`linked_at` | `matches(event_id)` | 无独立写入口；由 Root 判断重复并维护链接生命周期 |
 | `TutoringEpisodePayload` | Value Object；无 Identity | `subject`、`skill_keys`、`ward_attempts`、`support_given`、`next_step`、受控题目引用 | `validate()`、`with_outcome(outcome)` | 构造时保证字段受控、可解释且不含原始逐字对话 |
 | `Outcome` | Value Object；无 Identity | `result`、`observed_at`、`confidence` | `validate()` | 结果必须带可观察时间与置信度，不把推测伪装成事实 |
@@ -211,18 +217,18 @@ classDiagram
         +observed_from
         +expires_at
     }
-    class LearningEvent {
-        <<Evidence Ledger entity>>
+    class LearningEvidence {
+        <<Aggregate Root; append-only>>
     }
     DerivedSignal "1" *-- "1..*" SignalEvidenceLink
     DerivedSignal *-- SignalValue
     DerivedSignal *-- SignalScope
     DerivedSignal *-- Confidence
     DerivedSignal *-- ValidityWindow
-    SignalEvidenceLink --> LearningEvent : ID reference only
+    SignalEvidenceLink --> LearningEvidence : ID reference only
 ```
 
-`SignalEvidenceLink` 是可区分、可追溯的子实体；它不拥有也不复制 `LearningEvent`。
+`SignalEvidenceLink` 是可区分、可追溯的子实体；它不拥有也不复制 `LearningEvidence`。
 
 | 对象 | 类型与 Identity | 关键领域属性 | 主要领域方法 | 不变量职责 |
 |---|---|---|---|---|
@@ -243,21 +249,24 @@ classDiagram
 
 ```mermaid
 flowchart LR
-    DS[Upstream Domain Service]
-    BS[(Business Aggregate / main tables)]
-    LE[(learning_events<br/>immutable evidence ledger)]
-    OB[(outbox_events)]
-    CW[Memory Consumer / Workers]
+    UC[Upstream Use Case]
+    BS[Upstream Aggregate]
+    OB[Upstream Outbox]
+    CA[Memory Consumer Adapter]
+    ILF[IngestLearningFact Use Case]
+    LE[LearningEvidence Aggregate]
+    CW[Memory Workers]
     EP[(Episodic Memory<br/>hot window)]
     SG[(Derived Signals)]
     PF[(Long-term Profile<br/>rebuildable view)]
     MF[MemoryFacade<br/>ACL · redaction · budgets]
     CE[ContextEnvelope]
 
-    DS -->|same transaction| BS
-    DS -->|same transaction: LearningFactRecorded.v1| LE
-    DS -->|same transaction| OB
-    OB -->|retryable delivery| CW
+    UC -->|same transaction| BS
+    UC -->|same transaction: LearningFactRecorded.v1| OB
+    OB -->|retryable delivery| CA
+    CA -->|validated envelope| ILF
+    ILF -->|local transaction: append once| LE
     LE -->|replay / evidence lookup| CW
     CW -->|settle with evidence links| EP
     CW -->|propose / challenge / evolve| SG
@@ -268,13 +277,13 @@ flowchart LR
     MF -->|minimum authorized bundle| CE
 ```
 
-业务主表仍是业务状态的唯一事实源；`learning_events` 只记录可追溯事实。Worker 的派生结果可重放、可校正，且不会反向改写上游 Aggregate。
+上游业务主表仍是业务状态的唯一事实源；`learning_events` 是 Memory 本地的可追溯证据副本。上游绝不直接写入它；Worker 只触发 Memory Use Case，派生结果可重放、可校正，且不会反向改写上游 Aggregate。
 
 ## 三、Command Side / Application Use Cases
 
 | Command / Use Case | Actor 与前置条件 | 事务与 Aggregate | 结果与幂等 |
 |---|---|---|---|
-| `IngestLearningFact` | 已认证上游 Consumer；事件版本受支持 | 幂等写 `LearningEvent` Evidence Ledger | 重复来源四元组无副作用；失败进入重试/对账 |
+| `IngestLearningFact` | Memory Consumer Adapter 已校验的受支持事件 | 幂等创建 `LearningEvidence` Aggregate | 重复来源四元组无副作用；失败进入重试/对账 |
 | `SettleEpisodicMemory` | Outbox Worker；相关事实已到达 | 写一个 `EpisodicMemory` 与证据链接 | 发布 `EpisodicMemorySettled`；按聚合版本幂等 |
 | `ProposeCandidateSignal` | 受控 Worker；证据与类型受 Policy 校验 | 写一个 `DerivedSignal` | Candidate 不能直接改变 Profile |
 | `ChallengeSignal` | Ward 纠正服务；Ward 可见且有权限 | 调用 `signal.challenge()` | 追加反证链接并发布 `SignalChallenged` |
@@ -293,7 +302,7 @@ Aggregate 产生的 **Domain Event**。前者由接收方的 Application Event H
 
 | 触发与来源 | Adapter / 入口 | Memory Application Command / Handler | Domain 调用与原子边界 | 本地领域事件 | 后续 Outbox / Projection | 一致性、幂等与失败 |
 |---|---|---|---|---|---|---|
-| Planning、Study、Evaluation 发布 `LearningFactRecorded.v1` | Consumer Adapter 验证 transport/schema 后投递 | `IngestLearningFact` 校验版本、来源四元组与 ACL | 仅幂等追加 `LearningEvent` Evidence Ledger；它不是 Aggregate mutation | 无；事实入账不是伪造的 Aggregate Event | 标记可被结算 Worker 处理 | 四元组唯一；未知 schema 死信/人工对账；重复投递无副作用 |
+| Planning、Study、Behavior Analysis、Evaluation & Reflection 发布 `LearningFactRecorded.v1` | Consumer Adapter 验证 transport/schema 后投递 | `IngestLearningFact` 校验版本、来源四元组与 ACL | create `LearningEvidence`；原子保证 append-only 与来源去重 | `LearningEvidenceRecorded`（本地） | 标记可被结算 Worker 处理 | 四元组唯一；未知 schema 死信/人工对账；重复投递无副作用 |
 | 会话关闭、关联事实到达或周期性结算窗口 | Scheduler / Outbox Worker | `SettleEpisodicMemory` 选择同一 `aggregate_ref` 的证据并开启本地事务 | `EpisodicSettlementPolicy.decide()` → load/create `EpisodicMemory` → `attach_evidence()` → `settle(payload)` | `EpisodicMemorySettled` | 同 Context 结算/信号 Worker；更新 `EpisodicMemoryView` | 以 `memory_type + aggregate_ref + aggregate_version` 幂等；失败重试并可由 Ledger 重放 |
 | 已结算的情境、或受控证据窗口达到候选阈值 | Local Domain-Event Dispatcher / Worker | `ProposeCandidateSignal` | `SignalEvolutionService` 计算资格 → load/create `DerivedSignal` → `propose()` / `attach_evidence()` | `SignalProposed` | 更新 Candidate View；**不**更新 Profile | Policy/version 和 Signal identity 幂等；候选失败不影响 Evidence Ledger |
 | Ward 明确纠正 / 否认 | 受权 API / UI Command Adapter | `ChallengeSignal` 先把 Ward 陈述记录为可追溯证据，再处理命令 | load Signal → `attach_evidence(ward_fact, counterevidence)` → `challenge(statement)` | `SignalChallenged` | Profile Worker 移除其 Active 长期投影 | Ward、visibility、Signal 归属必须校验；重复命令按 evidence role 去重 |
@@ -315,7 +324,7 @@ Aggregate 产生的 **Domain Event**。前者由接收方的 Application Event H
 | Use Case | 触发与授权 | 输入与本地事务 | 决策结果 / 幂等键 |
 |---|---|---|---|
 | `CloseTutoringSession` | Ward 明确结束，或受权 UI 发出 `close` 指令；由 Study Context 拥有 | 关闭 `TutoringSession`，同事务记录 `tutoring.session_closed` Fact 与 Outbox | 一次会话关闭只发布一个关闭 Fact；未关闭、暂停或失联不等同于关闭 |
-| `IngestLearningFact` | Memory Consumer 接到 `LearningFactRecorded.v1` | 校验 schema、ACL、来源四元组，追加 `LearningEvent` | `source_type + source_id + event_type + source_version`；重复投递无副作用 |
+| `IngestLearningFact` | Memory Consumer 接到 `LearningFactRecorded.v1` | 校验 schema、ACL、来源四元组，创建 `LearningEvidence` | `source_type + source_id + event_type + source_version`；重复投递无副作用 |
 | `SettleEpisodicMemory` | 收到关闭 Fact 或结算 Worker 扫描到可结算来源 | 按 `EpisodicSettlementPolicy` 加载/创建 Episode，并附加证据链接 | `memory_type + aggregate_ref + aggregate_version`；重试只补齐遗漏链接 |
 | `ProposeCandidateSignal` | Episode 已结算，或证据窗口满足候选资格 | `SignalEvolutionService` 检查可用证据，创建/补充 `DerivedSignal` | Signal identity；只能写 `candidate`，不改变 Profile |
 | `EvolveSignals` | 定时 Worker 或新证据触发 | 按版本化 Policy 激活、挑战或过期 Signal | 每个 Signal 独立事务；Policy 版本与评估时间进入审计 |
@@ -372,7 +381,7 @@ sequenceDiagram
     participant O as Study Outbox
     participant CA as Memory Consumer Adapter
     participant H as IngestLearningFact Handler
-    participant L as LearningEvent Ledger
+    participant L as LearningEvidence Aggregate
     participant SW as Settlement Worker
     participant SP as EpisodicSettlementPolicy
     participant E as EpisodicMemory Aggregate
@@ -413,7 +422,7 @@ sequenceDiagram
             O-->>CA: LearningFactRecorded.v1 (retryable delivery)
             CA->>H: verified envelope
             H->>H: validate schema, ACL, source four-tuple
-            H->>L: idempotent append LearningEvent
+            H->>L: create once by source four-tuple
 
             opt Fact is tutoring.session_closed
                 SW->>L: select same Ward + tutoring_session_id facts
@@ -451,6 +460,19 @@ sequenceDiagram
 Outbox 投递、Fact 入账、Episode 结算、Signal 演进与 Profile 重建均是可重试的本地事务；
 重复消息或重复投递分别由来源四元组、Episode identity 和 Signal identity 处理。
 
+| Participant | Canonical type | Owned responsibility |
+|---|---|---|
+| Ward App / ASR | Actor | 发起受权学习交互 |
+| CompanionTurnEndpoint | Interface | 转换 HTTP/SSE 输入，不直接写领域状态 |
+| CompanionCoordinator | Process Manager | 路由一次受权 Run，不拥有 Study 或 Memory Aggregate |
+| Tutoring Workflow / Study Application Service | Use Case | 校验并在 Study 本地事务写入稳定 Fact 与 Outbox |
+| Study Outbox | Infrastructure | 可靠投递跨 Context `LearningFactRecorded.v1` |
+| Memory Consumer Adapter | Interface | 验证 transport/schema、去重投递 `IngestLearningFact` |
+| IngestLearningFact | Use Case | ACL、来源四元组幂等和本地事务 |
+| LearningEvidence / EpisodicMemory / DerivedSignal | Aggregate Root | 分别保证证据、情境、理解主张的不变量 |
+| Settlement / Signal Worker | Infrastructure | 只触发 Memory Use Case，不直接改 Aggregate |
+| LongTermProfileView | Projection | 从 Active long-term Signal 重建读模型 |
+
 #### 3.2.1 跨 Context 事实入账与情境结算
 
 ```mermaid
@@ -459,7 +481,7 @@ sequenceDiagram
     participant O as Upstream Outbox
     participant A as Memory Consumer Adapter
     participant H as IngestLearningFact Handler
-    participant L as Evidence Ledger
+    participant L as LearningEvidence Aggregate
     participant W as Settlement Worker
     participant P as EpisodicSettlementPolicy
     participant M as EpisodicMemory Aggregate
@@ -469,9 +491,9 @@ sequenceDiagram
     O-->>A: deliver integration event
     A->>H: verified envelope + schema version
     H->>H: deduplicate source four-tuple / ACL
-    H->>L: append LearningEvent in local transaction
+    H->>L: create once in local transaction
     H-->>A: consumption recorded
-    Note over L,W: Event is evidence only; no Aggregate event is invented here.
+    Note over L,W: Evidence is a local Aggregate; its recorded event may trigger local work only.
     W->>L: select eligible related evidence
     W->>P: decide(event IDs, aggregate_ref)
     P-->>W: settlement decision + controlled payload
@@ -483,6 +505,17 @@ sequenceDiagram
     MO-->>W: update EpisodicMemoryView / queue local signal work
 ```
 
+| Participant | Canonical type | Owned responsibility |
+|---|---|---|
+| Upstream Context | Actor | 已在自己的事务中发布稳定 Integration Event |
+| Upstream Outbox | Infrastructure | 重试投递，不共享事务给 Memory |
+| Memory Consumer Adapter | Interface | 传输验证与投递，不解释业务意图 |
+| IngestLearningFact | Use Case | 校验 ACL/版本/幂等并创建 LearningEvidence |
+| LearningEvidence / EpisodicMemory | Aggregate Root | 保证证据不可变性及 Episode 结算不变量 |
+| Settlement Worker | Infrastructure | 启动可重试的 `SettleEpisodicMemory` Use Case |
+| EpisodicSettlementPolicy | Domain Service | 决定证据是否可归并为受控 Episode |
+| Memory Outbox / Projection | Infrastructure / Projection | 提交后驱动本地投影或后续工作 |
+
 #### 3.2.2 Ward 纠正与长期画像收敛
 
 ```mermaid
@@ -490,7 +523,7 @@ sequenceDiagram
     participant W as Ward UI
     participant I as Command Adapter
     participant H as ChallengeSignal Handler
-    participant L as Evidence Ledger
+    participant L as LearningEvidence Aggregate
     participant S as DerivedSignal Aggregate
     participant O as Memory Outbox
     participant P as Profile Projection Worker
@@ -498,7 +531,7 @@ sequenceDiagram
 
     W->>I: ChallengeSignal(signalId, statement)
     I->>H: authenticated typed command
-    H->>L: append ward correction fact
+    H->>L: RecordSignalChallengeEvidence
     H->>S: load authorized Signal
     H->>S: attach_evidence(wardFact, counterevidence)
     H->>S: challenge(statement)
@@ -508,6 +541,15 @@ sequenceDiagram
     P->>V: rebuild from active long-term Signals
 ```
 
+| Participant | Canonical type | Owned responsibility |
+|---|---|---|
+| Ward UI | Actor | 提出对自身 Signal 的纠正 |
+| Command Adapter | Interface | 鉴权并转换为 `ChallengeSignal` 输入 |
+| ChallengeSignal Handler | Use Case | 在同一 Memory 本地事务记录纠正证据、加载 Signal 并调用领域行为 |
+| LearningEvidence / DerivedSignal | Aggregate Root | 保证纠正证据不可变，及 Signal 状态/反证不变量 |
+| Memory Outbox / Profile Worker | Infrastructure | 提交后触发可重试投影 |
+| LongTermProfileView | Projection | 仅由 Active long-term Signal 重建 |
+
 ## 四、CQRS Query Model
 
 | Query Model | 消费者 | 来源 | 新鲜度 |
@@ -515,9 +557,9 @@ sequenceDiagram
 | `EpisodicMemoryView` | 受权领域服务 | `EpisodicMemory` 投影 | Outbox 后最终一致，近 5 天热窗口 |
 | `ActiveSignalView` | ContextBuilder / 领域服务 | Active `DerivedSignal` | 状态变更后最终一致 |
 | `LongTermProfileView` | 报告与受权业务服务 | Active 长期 Signal 的重算投影 | 每日或状态变化后最终一致；不得用于强一致写决策 |
-| `MemoryBundle` | Companion | 按 use case 装配上述 View 与运行时 Working Memory | 单次查询快照，受 item/token 预算 |
+| `MemoryBundle`（response DTO） | Companion、Planning、Evaluation & Reflection | Query 按 use case 装配上述 View；不含 Working Memory | 单次查询快照，受 item/token 预算 |
 
-`MemoryFacade.resolve_context(request)` 是 Agent 的唯一聚合读入口：执行 Ward/角色/`visibility` 授权、结构化优先筛选、脱敏、证据投影与预算裁剪。它不返回完整原始对话、未经验证长期结论或其他 Context 的 Aggregate。
+`MemoryFacade.resolve_context(request)` 是唯一跨 Context 的受权 Query 边界：执行 Ward/角色/`visibility` 授权、结构化优先筛选、脱敏、证据投影与预算裁剪。它不暴露 Aggregate、完整原始对话、未经验证长期结论或 Working Memory；Working Memory 仍由 Companion Runtime 自己拥有。
 
 ## 五、接口与事件契约
 
@@ -525,7 +567,7 @@ sequenceDiagram
 
 ```python
 class MemoryCommandService(Protocol):
-    def ingest_learning_fact(self, event: LearningFactRecorded) -> LearningEvent: ...
+    def ingest_learning_fact(self, event: LearningFactRecorded) -> LearningEvidence: ...
     def settle_episodic_memory(self, event_ids: list[UUID], aggregate_ref: str) -> UUID: ...
     def challenge_signal(self, signal_id: UUID, ward_statement: str) -> UUID: ...
 
@@ -533,13 +575,53 @@ class MemoryQueryService(Protocol):
     def resolve_context(self, request: MemoryContextRequest) -> MemoryBundle: ...
 ```
 
-`LearningFactRecorded.v1` 必须包含来源对象、版本、发生时间、Ward、事实类型和受控 evidence reference。Consumer 记录 schema version、idempotency key、消费结果与重试；未知版本进入死信/人工对账，不猜测解析。`MemoryBundle` 的 Query 参数必须含 `actor_id`、`actor_role`、`use_case`、`visibility_scope`、`item_budget` 与 `token_budget`。
+### 5.1 `LearningFactRecorded.v1`：入站 Integration Event
+
+该 Published Language 的目录归属 [DDD Overview](ddd-overview.md)；Memory 是接收方。最小 envelope 为 `source_type`、`source_id`、`source_version`、`event_type`、`occurred_at`、`ward_id`、`visibility`、受控 `evidence_refs`、`payload_schema_version` 与 `payload`。Consumer Adapter 仅验证 transport/schema 并去重投递；`IngestLearningFact` 负责将上游语言经 ACL 转换为本地 `LearningEvidence`。
+
+未知版本、Ward 不匹配、不可见引用或无效 payload 返回可重试/不可重试分类：前者退避重试，后者进入死信并人工对账；不得猜测解析。来源四元组是消费幂等键，同一来源对象按 `source_version` 有序处理。
+
+### 5.2 `MemoryContextRequest → MemoryBundle`
+
+`MemoryContextRequest` 必须包含 `actor_id`、`actor_role`、`ward_id`、`use_case`、`visibility_scope`、`item_budget` 与 `token_budget`。授权失败返回 `Forbidden`，预算为零或没有可见证据时返回结构正确的空 Bundle，投影未赶上时返回明确 freshness 标记；不得因查询失败回退为原始聊天或 Aggregate。
+
+`MemoryBundle` 仅含经允许的 Episodic/Signal/Profile 摘要、来源可追溯 ID 与 freshness，不含 `LearningEvidence.payload` 原文、其他 Ward 数据、Working Memory 或 Aggregate 内部状态。`ChallengeSignal` 由受权 Ward 对自己的 Signal 发起；它在同一 Memory 本地事务中调用 `RecordSignalChallengeEvidence`，再调用 `DerivedSignal.challenge()`，重复键为 `signal_id + correction_evidence_id`。
 
 ## 六、基础设施、留存与删除
 
-物理表、索引与外键以 [design-server.md](design-server.md) 为唯一事实源：`learning_events`、`episodic_memories`、`episodic_memory_events`、`derived_signals`、`derived_signal_events`、`long_term_profiles` 与 `outbox_events`。所有新外键为 `NO ACTION`；普通删除被拒绝。
+### 6.1 Ports 与 Adapters
 
-Outbox Consumer 必须可重试、幂等、可从 Evidence Ledger 对账重放。注销/被遗忘权按受控应用流程：停止 Run/Worker → 清理 Redis 与对象存储 → 删除可删除投影和关联 → 按数据政策处理事实与业务记录；不得依赖数据库 Cascade。Working Memory 在 Redis 与 PostgreSQL Checkpoint 中恢复，关闭后才触发情境结算。
+| Port owner | Concrete adapter / dependency | 失败策略 |
+|---|---|---|
+| `LearningEvidenceRepository`、`EpisodicMemoryRepository`、`DerivedSignalRepository` | SQLAlchemy / PostgreSQL | 仅 Application 依赖 Port；事务失败回滚并由入口决定重试 |
+| `IntegrationEventConsumer` | Outbox consumer / queue transport | 校验 schema、来源四元组去重；可重试失败退避，不可解析事件死信 |
+| `LocalEventPublisher`、`ProjectionStore` | Transactional Outbox、投影存储 | 仅提交后分发；投影失败不回写 Aggregate，可重建 |
+| `MemoryFacade` Query Port | ACL、Projection/read-model store | 失败返回安全空 Bundle / 明确 freshness，不返回原始事实 |
+
+### 6.2 持久化与事务
+
+物理表、索引与外键仍以 [design-server.md](design-server.md) 为唯一事实源。目标映射为：`LearningEvidence → learning_events`、`EpisodicMemory → episodic_memories + episodic_memory_events`、`DerivedSignal → derived_signals + derived_signal_events`、`LongTermProfileView → long_term_profiles`、本地/跨 Context 投递 → `outbox_events`。所有新外键为 `NO ACTION`；普通删除被拒绝。
+
+每个 Aggregate 有独立 Repository Port。`IngestLearningFact` 原子写入 `LearningEvidence` 与消费结果；`SettleEpisodicMemory`、`ChallengeSignal`、`EvolveSignals` 各自拥有本地事务并原子保存 Aggregate 与本地 Domain Event/Outbox。`RebuildLongTermProfile` 只写 Projection。来源四元组、Episode identity、Signal identity 和证据链接唯一键均应由数据库约束兜底。
+
+`tutoring-reflection-memory-workflows` 是补齐 `source_*`、Episode identity/window、`dimension_key` 及 evidence-link role 唯一约束的迁移前置；迁移须先兼容读旧记录、回填/重建 Projection，再切换写入约束。迁移失败或回滚时保留 Evidence Ledger，允许从其重放 Episode、Signal 与 Profile。
+
+### 6.3 异步投递与 Projection
+
+| 事件 / Job | 生产者 | Consumer → 本地意图 | 幂等、顺序与恢复 |
+|---|---|---|---|
+| `LearningFactRecorded.v1` | 上游 Context Use Case + Outbox | Consumer Adapter → `IngestLearningFact` | 来源四元组；按来源版本有序；死信、对账、从上游 Outbox 补投 |
+| `LearningEvidenceRecorded`、`EpisodicMemorySettled` | Memory 本地事务 | Worker → `SettleEpisodicMemory` / `ProposeCandidateSignal` | 本地事件不跨 Context；按 Aggregate identity 去重，可从 Ledger 重放 |
+| `SignalActivated`、`SignalChallenged`、`SignalExpired` | Memory 本地事务 | Projection Worker → `RebuildLongTermProfile` | Profile 全量覆盖；最终一致，可从 Active long-term Signal 重建 |
+
+### 6.4 安全、数据治理与可观测性
+
+| Concern | Boundary / retention | Evidence |
+|---|---|---|
+| Authorization | `MemoryFacade` 与 `ChallengeSignal` 校验 actor、Ward、visibility；不跨 Ward 返回 Bundle | 授权拒绝审计、越权告警 |
+| Sensitive evidence | Bundle 脱敏、预算裁剪；不返回原始对话/模型 trace | redaction 测试、payload 访问审计 |
+| Retention / deletion | 停止 Run/Worker 后按政策删除 Projection/可删除关联；不依赖 Cascade；Working Memory 由 Companion Runtime 清理 | 删除作业审计、遗留记录对账 |
+| Operations | 透传 correlation ID；记录消费滞后、死信、投影 freshness、重放次数与幂等冲突 | 指标、日志、追踪与告警 |
 
 ## 七、验收场景
 
