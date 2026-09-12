@@ -1,6 +1,6 @@
 # 读学系统 — 全系统技术架构概览
 
-> 版本 v3.0 | 本文档为读学系统（Duxue）的**系统级技术架构主文档**，涵盖：系统拓扑与四端分工、领域划分与限界上下文、数据流与会话即时分析管线、Guardian-Ward 关系与权限模型、以及合规与性能基线。
+> 版本 v3.0 | 本文档为读学系统（Duxue）的**系统级技术架构概览**，涵盖系统拓扑与四端分工、主要数据流、合规与性能基线。Bounded Context 所有权由 [DDD 系统级 Overview](ddd-overview.md) 唯一维护；物理 Schema 与绑定表由 [Server 端详细技术设计](design-server.md) 唯一维护。
 
 ---
 
@@ -18,7 +18,7 @@
 │   · 稀疏抓拍 (15s/帧)    │       │   Ward (学生专属模式)  │ Guardian (家长专属模式)│       │
 │   · 预签名直传 OSS       │       │   · 协商计划/沉浸伴学  │ · 任务传递/查看洞察   │       │
 │   · 零本地 AI / 低功耗   │       │   · 4级启发答疑/即时盲评│ · 亲子沟通话术/设备健康│       │
-│   · 本地持久化断网队列   │       │   · 双轨对比与专注锦囊 │ · 1-20监护人↔1-100学生│       │
+│   · 本地持久化断网队列   │       │   · 双轨对比与专注锦囊 │ · 多对多绑定与设备健康 │       │
 │                         │       └────────────────────────┴───────────────────────┘       │
 └────────────┬────────────┴───────────────────────────┬────────────────────────────┘
              │                                       │
@@ -30,7 +30,7 @@
 │ 1. 接入与设备管理：FastAPI · OSS 预签名签发 · 设备秒级心跳巡检与掉线告警         │
 │ 2. 行为推理流水线：VLM 物理字段解析 ──▶ 分类层加权 ──▶ 时序平滑与片段归并         │
 │ 3. 伴学与安全引擎：多模态题目解析 · 4 级启发支架 Prompt 编排 · 100% 安全拦截网关 │
-│ 4. 孩子理解引擎：三层记忆架构 (短期工作 / 近5天事件 / 长期画像) · 时间半衰期衰减 │
+│ 4. 孩子理解引擎：运行时工作状态 / 近5天情境记忆 / 长期画像投影 · 时间半衰期衰减 │
 │ 5. 存储与异步计算：PostgreSQL 16 · Redis 7 · Celery 异步会话处理池 · 阿里云 OSS │
 └────────────────────────────┬─────────────────────────────────────────────────────┘
                              │
@@ -83,7 +83,7 @@ graph TB
 
     subgraph STORAGE["数据存储层 (Storage Layer)"]
         PG[("PostgreSQL 16<br/>业务数据 · 5天事件流水 · 长期画像")]
-        REDIS[("Redis 7<br/>工作记忆缓存 · 任务队列 · 会话状态")]
+        REDIS[("Redis 7<br/>任务队列 · 缓存 · 临时运行协调")]
         OSS[("阿里云 OSS<br/>抓拍帧直传 · 90天自动生命周期")]
     end
 
@@ -109,104 +109,30 @@ graph TB
 
 ---
 
-## 三、领域划分与限界上下文（Bounded Contexts）
+## 三、领域边界与详细设计
 
-系统领域模型紧密围绕学生自制力养成与家庭良性互动展开，摒弃冗余的机构抽象：
+为避免概览与领域文档分别维护 Context 图而漂移，领域所有权、跨 Context 集成与统一语言只在
+[DDD 系统级 Overview](ddd-overview.md) 中维护。特别是，Working Memory 属于 Companion
+Runtime，不是 Memory & Understanding 的持久化模型。
 
-```mermaid
-graph LR
-    subgraph IAM["🔐 身份与关系 (IAM & Binding)"]
-        U[User 用户]
-        GWB[GuardianWardBinding 绑定关系]
-    end
-
-    subgraph DEV["📷 设备管理 (Device)"]
-        D[Device 采集设备]
-        DT[DeviceToken 鉴权凭证]
-    end
-
-    subgraph CAP["🎞️ 帧采集 (Capture)"]
-        F[Frame 图像元数据]
-    end
-
-    subgraph TUTOR["💡 伴学答疑 (Companion & Tutoring)"]
-        TS[TutoringSession 答疑会话]
-        HH[HintHierarchy 提示阶梯 L1-L4]
-        IS[InterestSignal 临时好奇心信号]
-    end
-
-    subgraph ANA["🧠 行为分析 (Analysis)"]
-        SF[StructuredFields 物理结构化字段]
-        FP[FramePrediction 逐帧标签]
-        BS[BehaviorSegment 时序平滑片段]
-    end
-
-    subgraph MEM["🧬 孩子理解与记忆 (Memory & Understanding)"]
-        WM[WorkingMemory 短期工作记忆]
-        EM[EpisodicMemory 近5天事件流水]
-        LP[LongTermProfile 长期人物画像]
-    end
-
-    subgraph EVAL["📊 结果评估与复盘 (Evaluation & Reflection)"]
-        SE[SelfEvaluation 盲评自评]
-        CR[DualTrackReport 双轨对比报告]
-        AT[ActionableTip 专注锦囊]
-        DP[DialoguePrompt 亲子沟通话术]
-    end
-
-    IAM --> DEV
-    IAM --> EVAL
-    DEV --> CAP
-    CAP --> ANA
-    TUTOR --> MEM
-    ANA --> EVAL
-    MEM --> EVAL
-    MEM --> TUTOR
-    EVAL --> MEM
-```
-
-### 核心聚合与实体定义
-
-1. **身份与绑定（`IAM & Binding`）**：
-   - `User`：用户实体，区分 `guardian`（家长/监护人）与 `ward`（学生/被监护人）；
-   - `GuardianWardBinding`：M:N 关联表，支持 1~20 个 Guardian 管理 1~100 个 Ward，包含 `relation_type`（父母/老师）与 `permission_level`（完全管理/只读）；
-2. **设备管理（`Device`）**：
-   - `Device`：绑定到具体 Ward 的闲置 Android 手机，持有专属 `device_token` 与最近心跳时间戳，独立于人类登录账号；
-3. **采集与分析（`Capture & Analysis`）**：
-   - `Frame`：图像帧元数据（`oss_key`, `captured_at`, `task_id`）；
-   - `StructuredFields`：VLM 模型输出的物理客观描述（`body_pos`, `hand_action`, `desk_object`, `seat_status`）；
-   - `FramePrediction`：分类层加权计算的单帧标签（学习/走神/离开）；
-   - `BehaviorSegment`：经滑动窗口时序平滑与片段归并后的连续行为区间（如 19:10~19:35 专注解题 25 分钟）；
-4. **孩子理解与记忆（`Memory`，纯系统智能层）**：
-   - `WorkingMemory`：当前任务会话内的交互与实时卡点；
-   - `EpisodicMemory`：滚动近 5 天的任务流水、学科卡点与自评事实；
-   - `LongTermProfile`：长期专注耐力基线、成熟兴趣图谱与家庭沟通特征；
-5. **评估与复盘（`Evaluation`）**：
-   - `SelfEvaluation`：Ward 提交的主观盲评；
-   - `DualTrackReport`：主客观并列时间轴报告；
-   - `ActionableTip`：提炼的可执行专注锦囊（自动反哺计划引擎）；
-   - `DialoguePrompt`：面向 Guardian 的睡前正向亲子沟通启发话术。
+| 需要了解的内容 | 唯一详情文档 |
+|---|---|
+| Context Map、所有权和集成事件 | [DDD 系统级 Overview](ddd-overview.md) |
+| 陪伴入口、Thread/Run 与 Agent Runtime | [Companion Orchestration](domain-companion.md) |
+| 学习证据、Episode、Signal 与长期画像 | [Memory & Understanding](domain-memory.md) |
+| 计划、学习执行、复盘的领域规则 | [Planning](domain-planning.md) · [Study](domain-study.md) · [Evaluation](domain-evaluation.md) |
 
 ---
 
-## 四、核心业务关系与权限模型（Guardian 1-20 ↔ Ward 1-100）
+## 四、核心业务关系与权限模型
 
-系统彻底剥离 B2B 机构与多租户隔离体系（全库无 `tenant_id`），直接采用直观、轻量且可水平扩展的 **Guardian-Ward M:N 绑定关系**：
+系统不使用 Tenant。Guardian-Ward 是 M:N 关系，由 `guardian_ward_relations` 表承载；关联
+Guardian/Ward 的角色资料扩展，而非泛化 `users` 外键。物理字段、索引、无数据库 Cascade 的
+删除约束以及 Ward 登录邀请码均以 [Server 端详细技术设计](design-server.md#31-当前物理-er-图无-tenant直连-guardian-ward-关系) 为准。
 
-```sql
--- 核心关系表：监护人与学生绑定关系
-CREATE TABLE guardian_ward_bindings (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    guardian_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    ward_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    relation_type VARCHAR(32) NOT NULL DEFAULT 'parent',     -- parent(父母), guardian(监护人), tutor(家教老师)
-    permission_level VARCHAR(32) NOT NULL DEFAULT 'full',    -- full(排期/配置/复盘), readonly(仅看报告)
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(guardian_id, ward_id)
-);
-CREATE INDEX idx_gwb_guardian ON guardian_ward_bindings(guardian_id);
-CREATE INDEX idx_gwb_ward ON guardian_ward_bindings(ward_id);
-```
+本概览只约定授权语义：Ward 仅访问自身数据；Guardian 仅能访问存在绑定关系的 Ward 数据。
+关系类型、权限分级、人数上限或共管邀请均不是当前 Schema 已实现能力，若要引入必须先在
+Identity & Relationship Context 和物理 Schema 中新增设计，不能在此处预设字段。
 
 ### 极简 ACL 鉴权机制
 服务端通过统一的依赖注入拦截器收口数据权限，杜绝越权访问：

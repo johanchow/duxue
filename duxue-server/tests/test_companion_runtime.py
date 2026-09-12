@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -9,8 +10,10 @@ from sqlalchemy.orm import sessionmaker
 from app.ai_agents.planning_domain_service import PlanningDomainService
 from app.ai_agents.planning_workflow import build_planning_graph
 from app.ai_agents.tutoring_workflow import TutoringWorkflow
+from app.ai_agents.reflection_workflow import ReflectionWorkflow
 from app.ai_runtime.companion_coordinator import CompanionCoordinator
 from app.ai_runtime.contracts import RunInvocation, WorkflowOutcome
+from app.ai_runtime.model_gateway import ModelGatewayError
 from app.database import Base
 from app.memory import (
     LearningFactRecorded,
@@ -19,7 +22,10 @@ from app.memory import (
     SqlAlchemyMemoryCommandService,
     SqlAlchemyMemoryFacade,
 )
+from app.memory_worker import consume_pending_learning_facts
+from app.integration_events import publish_learning_fact
 from app.models import (
+    AgentCheckpoint,
     DerivedSignal,
     DerivedSignalEvent,
     EpisodicMemory,
@@ -37,6 +43,12 @@ from app.models import (
 
 class MemoryFacadeTest(unittest.TestCase):
     def setUp(self):
+        # Unit tests must never consume a configured production model key.
+        self.model_gateway = patch(
+            "app.ai_runtime.model_gateway.QwenAgentModelGateway.generate",
+            side_effect=ModelGatewayError("unit_test"),
+        )
+        self.model_gateway.start()
         engine = create_engine("sqlite://")
         Base.metadata.create_all(engine)
         self.db = sessionmaker(bind=engine, expire_on_commit=False)()
@@ -104,6 +116,7 @@ class MemoryFacadeTest(unittest.TestCase):
 
     def tearDown(self):
         self.db.close()
+        self.model_gateway.stop()
 
     def test_resolve_context_is_authorized_bounded_and_excludes_candidate_signals(self):
         bundle = SqlAlchemyMemoryFacade(self.db).resolve_context(
@@ -311,6 +324,25 @@ class MemoryFacadeTest(unittest.TestCase):
                 source_type="test_evidence", source_id=uid(),
                 occurred_at=datetime.now(timezone.utc), source="system",
             )))
+        # Long-term promotion is based on independent settled episodes, not
+        # merely two messages.  Link each supporting Fact to a distinct
+        # tutoring-session episode.
+        for index, event in enumerate(events):
+            episode = EpisodicMemory(
+                ward_id=self.ward_id,
+                event_type="tutoring_episode",
+                memory_type="tutoring_episode",
+                aggregate_ref=f"tutoring_session:{uid()}",
+                aggregate_version=1,
+                event_date=datetime.now(timezone.utc).date(),
+                summary="独立答疑经历",
+                raw_cues={},
+            )
+            self.db.add(episode)
+            self.db.flush()
+            self.db.add(EpisodicMemoryEvent(
+                episodic_memory_id=episode.id, learning_event_id=event.id,
+            ))
         signal = service.propose_candidate_signal(
             ward_id=self.ward_id, signal_type="effective_strategy", scope="long_term",
             dimension_key="draw_diagram", statement="画图在多个会话中有帮助",
@@ -348,6 +380,7 @@ class MemoryFacadeTest(unittest.TestCase):
                 return WorkflowOutcome(
                     run_status="waiting_for_ward",
                     next_interaction={"status": "needs_input"},
+                    checkpoint_ref="checkpoint:planning:1",
                     context_snapshot={"version": "companion-context.v1"},
                 )
 
@@ -362,3 +395,72 @@ class MemoryFacadeTest(unittest.TestCase):
         self.assertEqual(dispatcher.invocation.run_id, result.run_id)
         self.assertEqual(dispatcher.invocation.agent_type, "planning")
         self.assertEqual(dispatcher.invocation.thread_id, result.thread_id)
+        checkpoint = self.db.query(AgentCheckpoint).filter_by(run_id=result.run_id).one()
+        self.assertEqual(checkpoint.checkpoint_ref, "checkpoint:planning:1")
+        self.assertTrue(checkpoint.state_digest)
+
+    def test_companion_command_id_replays_the_original_result_without_second_run(self):
+        class FakeDispatcher:
+            calls = 0
+
+            def invoke(self, invocation):
+                self.calls += 1
+                return WorkflowOutcome(
+                    run_status="waiting_for_ward",
+                    outcome_type="waiting",
+                    next_interaction={"status": "needs_input"},
+                )
+
+        dispatcher = FakeDispatcher()
+        coordinator = CompanionCoordinator(self.db, dispatcher=dispatcher)
+        command_id = uid()
+        first = coordinator.handle(
+            ward_id=self.ward_id, content="帮我安排明天复习", thread_id=None,
+            expected_thread_version=0, route_hint=None, command_id=command_id,
+        )
+        replay = coordinator.handle(
+            ward_id=self.ward_id, content="帮我安排明天复习", thread_id=None,
+            expected_thread_version=0, route_hint=None, command_id=command_id,
+        )
+        self.assertEqual(first.model_dump(), replay.model_dump())
+        self.assertEqual(dispatcher.calls, 1)
+
+    def test_outbox_worker_ingests_and_settles_closed_tutoring_session(self):
+        tutoring_session_id = uid()
+        for event_type in (
+            "tutoring.ward_attempt_recorded",
+            "tutoring.hint_given",
+            "tutoring.session_closed",
+        ):
+            publish_learning_fact(
+                self.db,
+                ward_id=self.ward_id,
+                event_type=event_type,
+                source_type="tutoring_message",
+                source_id=uid(),
+                payload={"tutoring_session_id": tutoring_session_id},
+            )
+        self.db.commit()
+        self.assertEqual(consume_pending_learning_facts(self.db), 3)
+        memory = self.db.query(EpisodicMemory).filter_by(
+            memory_type="tutoring_episode",
+            aggregate_ref=f"tutoring_session:{tutoring_session_id}",
+        ).one()
+        self.assertEqual(
+            self.db.query(EpisodicMemoryEvent).filter_by(episodic_memory_id=memory.id).count(), 3
+        )
+        self.assertEqual(self.db.query(OutboxEvent).filter_by(status="published").count(), 3)
+
+    def test_reflection_revisions_publish_distinct_fact_versions(self):
+        workflow = ReflectionWorkflow(self.db)
+        review_day = datetime.now(timezone.utc).date().isoformat()
+        for feeling in ("stuck", "smooth"):
+            workflow.invoke(RunInvocation(
+                run_id=uid(), thread_id=uid(), ward_id=self.ward_id,
+                agent_type="reflection", turn={
+                    "review_date": review_day, "review_feeling": feeling,
+                    "review_reflection": "补充说明", "adopt_focus_kit": False,
+                },
+            ))
+        facts = [event.payload for event in self.db.query(OutboxEvent).filter_by(event_type="LearningFactRecorded.v1").all() if event.payload["event_type"] == "self_review.submitted"]
+        self.assertEqual([fact["source_version"] for fact in facts], [1, 2])

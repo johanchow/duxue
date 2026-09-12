@@ -430,9 +430,12 @@ Context Fact 通过目标 Outbox 最终一致进入 Memory。
 超时租约、死信和对账，不能凭 Checkpoint 猜测是否执行。删除/被遗忘权流程须清理 Thread、Run、
 Checkpoint、Trace 和目标会话消息，且不得从摘要/Trace 恢复已删除内容。
 
-当前已实现：Thread/Run/Checkpoint/Trace 持久化、规则路由、`MemoryFacade`、`/companion/turn`
-和 Planning 有限 Adapter。Tutoring、Reflection、通用 SSE、模型生成、完整 Policy 发布链和异步
-Run dispatch 仍是目标能力，不得伪装成已上线的 Ward-facing AI 回复。
+当前已实现：Thread/Run/Checkpoint/Trace 持久化、规则路由、`MemoryFacade`、`/companion/turn`、
+`command_id` 幂等、Run/turn/attempt/focus fence、取消命令与可重放 SSE 事件。Memory Fact 的异步
+投递由 Outbox Consumer/Celery Worker 处理。Planning、Tutoring、Reflection 通过类型化 Qwen
+Gateway 各允许每 Turn 一个候选调用，分别由 `PLANNING_MODEL_NAME`、`TUTORING_MODEL_NAME`、
+`INSIGHT_MODEL_NAME` 路由；只有 `AGENT_MODEL_ENABLED=true` 才会发送脱敏 `ContextEnvelope`。
+外部工具仍为零预算。候选必须通过 Policy/Validator；失败时确定性降级，且不得作为业务写入。
 
 ## 八、验收场景
 

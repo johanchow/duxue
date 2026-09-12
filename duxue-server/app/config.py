@@ -67,9 +67,12 @@ class Settings:
     # changes environment values; records retain the factual inputs, not a model
     # specific response schema.
     tutoring_model: str = os.getenv("TUTORING_MODEL_NAME") or os.getenv("VLM_MODEL_NAME") or "qwen3-vl-flash"
+    planning_model: str = os.getenv("PLANNING_MODEL_NAME") or os.getenv("VLM_MODEL_NAME") or "qwen3-vl-flash"
     insight_model: str = os.getenv("INSIGHT_MODEL_NAME") or os.getenv("VLM_MODEL_NAME") or "qwen3-vl-flash"
     guardian_story_model: str = os.getenv("GUARDIAN_STORY_MODEL_NAME") or os.getenv("VLM_MODEL_NAME") or "qwen3-vl-flash"
     task_intake_model: str = os.getenv("TASK_INTAKE_MODEL") or os.getenv("VLM_MODEL_NAME") or "qwen3-vl-flash"
+    agent_model_timeout_seconds: int = _integer("AGENT_MODEL_TIMEOUT_SECONDS", "20")
+    agent_model_enabled: bool = os.getenv("AGENT_MODEL_ENABLED", "").lower() in {"1", "true", "yes"}
     batch_completion_window: str = os.getenv("VLM_BATCH_COMPLETION_WINDOW", "24h")
     batch_submit_hour: int = int(os.getenv("VLM_BATCH_SUBMIT_HOUR", "22"))
     batch_fallback_after_hours: int = int(os.getenv("VLM_BATCH_FALLBACK_AFTER_HOURS", "20"))
@@ -80,6 +83,13 @@ class Settings:
     asr_workspace_id: str = os.getenv("ASR_WORKSPACE_ID", "")
     asr_websocket_url: str = os.getenv("ASR_WEBSOCKET_URL", "")
     asr_max_record_seconds: int = _integer("ASR_MAX_RECORD_SECONDS", "60")
+
+    def agent_model(self, agent_type: str) -> str:
+        return {
+            "planning": self.planning_model,
+            "tutoring": self.tutoring_model,
+            "reflection": self.insight_model,
+        }[agent_type]
     redis_url: str = os.getenv("REDIS_URL") or ""
     redis_host: str = os.getenv("REDIS_HOST", "").strip()
     redis_port: int = _integer("REDIS_PORT", "6379")

@@ -283,6 +283,7 @@ class SelfReview(Base):
     feeling: Mapped[str] = mapped_column(String(40))
     reflection: Mapped[str | None] = mapped_column(Text, nullable=True)
     timeline_json: Mapped[list] = mapped_column(JSON, default=list)
+    version: Mapped[int] = mapped_column(Integer, default=1)
     submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 class FocusKit(Base):
@@ -320,11 +321,46 @@ class AgentRun(Base):
     # a copy of that aggregate or its chat history.
     run_ref: Mapped[str] = mapped_column(String(100))
     status: Mapped[str] = mapped_column(String(24), default="active", index=True)
+    attempt: Mapped[int] = mapped_column(Integer, default=1)
+    current_turn_id: Mapped[str | None] = mapped_column(Uuid(as_uuid=False), nullable=True)
+    deadline_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    failure: Mapped[dict] = mapped_column(JSON, default=dict)
+    outcome: Mapped[dict] = mapped_column(JSON, default=dict)
+    policy_version: Mapped[str] = mapped_column(String(40), default="v1")
     context_refs: Mapped[list] = mapped_column(JSON, default=list)
     graph_checkpoint_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
     graph_version: Mapped[str] = mapped_column(String(40), default="v1")
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     last_active_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class CompanionCommand(Base):
+    """Idempotency fence for a Ward's companion command."""
+
+    __tablename__ = "companion_commands"
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True)
+    ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id"), index=True)
+    thread_id: Mapped[str | None] = mapped_column(ForeignKey("conversation_threads.id"), nullable=True)
+    payload_digest: Mapped[str] = mapped_column(String(64))
+    result: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AgentStreamEvent(Base):
+    """Replayable, redacted Ward-facing stream records for one Run attempt."""
+
+    __tablename__ = "agent_stream_events"
+    __table_args__ = (UniqueConstraint("run_id", "attempt", "sequence", name="uq_agent_stream_sequence"),)
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
+    run_id: Mapped[str] = mapped_column(ForeignKey("agent_runs.id"), index=True)
+    attempt: Mapped[int] = mapped_column(Integer)
+    sequence: Mapped[int] = mapped_column(Integer)
+    event_type: Mapped[str] = mapped_column(String(40))
+    payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    policy_version: Mapped[str] = mapped_column(String(40), default="v1")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
 class AgentCheckpoint(Base):
@@ -386,6 +422,7 @@ class OutboxEvent(Base):
     payload: Mapped[dict] = mapped_column(JSON, default=dict)
     status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
     attempts: Mapped[int] = mapped_column(Integer, default=0)
+    last_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
     available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

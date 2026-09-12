@@ -1,6 +1,7 @@
 """Add optimistic plan drafts for planning workflow."""
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import inspect
 
 revision = "20260905_12"
 down_revision = "20260905_11"
@@ -8,7 +9,12 @@ branch_labels = None
 depends_on = None
 
 def upgrade() -> None:
-    op.add_column("daily_schedules", sa.Column("version", sa.Integer(), nullable=False, server_default="1"))
+    inspector = inspect(op.get_bind())
+    columns = {item["name"] for item in inspector.get_columns("daily_schedules")}
+    if "version" not in columns:
+        op.add_column("daily_schedules", sa.Column("version", sa.Integer(), nullable=False, server_default="1"))
+    if "plan_drafts" in set(inspector.get_table_names()):
+        return
     op.create_table(
         "plan_drafts",
         sa.Column("id", sa.Uuid(as_uuid=False), primary_key=True),
@@ -28,8 +34,11 @@ def upgrade() -> None:
     op.create_index("ix_plan_drafts_status", "plan_drafts", ["status"])
 
 def downgrade() -> None:
+    if "plan_drafts" not in set(inspect(op.get_bind()).get_table_names()):
+        return
     op.drop_index("ix_plan_drafts_status", table_name="plan_drafts")
     op.drop_index("ix_plan_drafts_plan_date", table_name="plan_drafts")
     op.drop_index("ix_plan_drafts_ward_id", table_name="plan_drafts")
     op.drop_table("plan_drafts")
-    op.drop_column("daily_schedules", "version")
+    if "version" in {item["name"] for item in inspect(op.get_bind()).get_columns("daily_schedules")}:
+        op.drop_column("daily_schedules", "version")

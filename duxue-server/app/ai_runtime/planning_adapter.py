@@ -14,6 +14,9 @@ from ..memory import SqlAlchemyMemoryFacade
 from ..models import AgentRun
 from .context_builder import ContextBuilder
 from .contracts import RunInvocation, WorkflowOutcome
+from .policy import PolicyRegistry
+from .model_gateway import ModelGatewayError, QwenAgentModelGateway
+from ..config import settings
 
 
 @contextmanager
@@ -42,16 +45,28 @@ class PlanningWorkflowAdapter:
             actor_role="ward",
             agent_type="planning",
             context_refs=invocation.context_refs,
+            context_spec=PolicyRegistry().context_spec("planning"),
         )
         items = invocation.turn.get("planning_items")
         confirm = bool(invocation.turn.get("planning_confirm"))
+        model_guidance, model_fallback = None, False
+        if not confirm:
+            try:
+                candidate = QwenAgentModelGateway().generate(
+                    agent_type="planning", envelope=envelope.model_dump(),
+                    instruction="根据已有任务，给一条简短的计划审阅提示；不得创建任务或声称已确认计划。",
+                )
+                if PolicyRegistry().validate_candidate(candidate.model_dump(), allowed_tools=set()).accepted:
+                    model_guidance = candidate.content
+            except ModelGatewayError:
+                model_fallback = True
         if self.checkpointer is not None:
             return self._invoke(
-                self.checkpointer, run, items, confirm, envelope.trace_snapshot()
+                self.checkpointer, run, items, confirm, envelope.trace_snapshot(), model_guidance, model_fallback
             )
         with _postgres_checkpointer() as checkpointer:
             return self._invoke(
-                checkpointer, run, items, confirm, envelope.trace_snapshot()
+                checkpointer, run, items, confirm, envelope.trace_snapshot(), model_guidance, model_fallback
             )
 
     def _invoke(
@@ -61,6 +76,8 @@ class PlanningWorkflowAdapter:
         items: list[dict] | None,
         confirm: bool,
         context_snapshot: dict,
+        model_guidance: str | None,
+        model_fallback: bool,
     ) -> WorkflowOutcome:
         graph = build_planning_graph(PlanningDomainService(self.db)).compile(
             checkpointer=checkpointer
@@ -81,9 +98,13 @@ class PlanningWorkflowAdapter:
             )
         if "__interrupt__" in result:
             run.status, run.graph_checkpoint_ref = "waiting_for_ward", run.id
+            interaction = dict(result["__interrupt__"][0].value)
+            interaction.update({"model": settings.agent_model("planning"), "model_fallback": model_fallback})
+            if model_guidance:
+                interaction["model_guidance"] = model_guidance
             return WorkflowOutcome(
                 run_status=run.status,
-                next_interaction=result["__interrupt__"][0].value,
+                next_interaction=interaction,
                 checkpoint_ref=run.graph_checkpoint_ref,
                 context_snapshot=context_snapshot,
             )
@@ -91,6 +112,10 @@ class PlanningWorkflowAdapter:
         run.status = (
             "closed" if outcome.get("status") == "confirmed" else "waiting_for_ward"
         )
+        outcome["model"] = settings.agent_model("planning")
+        outcome["model_fallback"] = model_fallback
+        if model_guidance:
+            outcome["model_guidance"] = model_guidance
         return WorkflowOutcome(
             run_status=run.status,
             next_interaction=outcome,

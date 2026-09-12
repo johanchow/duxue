@@ -1,12 +1,16 @@
 from __future__ import annotations
 
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol
+from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
 AgentType = Literal["planning", "tutoring", "reflection"]
 RouteTarget = Literal["planning", "tutoring", "reflection", "clarify", "safety"]
-RunStatus = Literal["active", "waiting_for_ward", "paused", "closed", "escalated"]
+RunStatus = Literal[
+    "active", "waiting_for_ward", "paused", "closed", "escalated",
+    "failed", "timed_out", "cancelled",
+]
 
 
 class RouteDecision(BaseModel):
@@ -57,6 +61,11 @@ class ContextSpec(BaseModel):
     )
     item_budget: int = Field(default=12, ge=1, le=100)
     token_budget: int = Field(default=900, ge=64, le=20_000)
+    tool_allow_list: set[str] = Field(default_factory=set)
+    max_model_calls: int = Field(default=0, ge=0, le=20)
+    max_tool_calls: int = Field(default=0, ge=0, le=20)
+    checkpoint_version: str = "v1"
+    policy_version: str = "v1"
 
 
 class RunInvocation(BaseModel):
@@ -67,6 +76,9 @@ class RunInvocation(BaseModel):
     ward_id: str
     agent_type: AgentType
     turn: dict
+    turn_id: str = Field(default_factory=lambda: str(uuid4()))
+    command_id: str = Field(default_factory=lambda: str(uuid4()))
+    attempt: int = Field(default=1, ge=1)
     context_refs: list[str] = Field(default_factory=list)
     resume_from_checkpoint: bool = False
 
@@ -75,10 +87,16 @@ class WorkflowOutcome(BaseModel):
     """Validated workflow result; it contains no ORM objects or raw prompts."""
 
     run_status: RunStatus
+    outcome_type: Literal["response", "waiting", "completed", "failure", "cancelled", "escalation"] | None = None
+    response: dict[str, Any] | None = None
     next_interaction: dict | None = None
     context_refs: list[str] = Field(default_factory=list)
     checkpoint_ref: str | None = None
     context_snapshot: dict | None = None
+    failure: dict[str, Any] | None = None
+    resume_action: Literal["retry", "resume_from_checkpoint", "restart", "none"] = "none"
+    handoff_suggestion: AgentType | None = None
+    trace_id: str | None = None
 
 
 class WorkflowDispatcher(Protocol):
@@ -93,3 +111,4 @@ class CoordinatorResult(BaseModel):
     run_status: RunStatus | None = None
     context: dict | None = None
     interaction: dict | None = None
+    command_id: str | None = None

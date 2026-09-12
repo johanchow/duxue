@@ -63,7 +63,7 @@ flowchart LR
 
 `LearningEvidence` 是每条已确认事实的轻量 Aggregate Root，不取代上游业务主表。它在本 Context 内原子保证不可变、来源四元组唯一、Ward/visibility 合法及受控 evidence reference；唯一外部写入口是 `IngestLearningFact` 或本 Context 的 `RecordSignalChallengeEvidence`。其稳定字段为 `ward_id`、`source_type`、`source_id`、`source_version`、`event_type`、`occurred_at`、`scope`、`source`、`confidence`、`payload`、`evidence_refs`、`visibility` 与 `retention_policy`。`source` 只能是 `ward`、`guardian`、`system` 或 `cam`；服务端 VLM/归并结果以 `system` 写入并带 `confidence`。
 
-目标物理约束为 `UNIQUE(source_type, source_id, event_type, source_version)`，并保留 append-only `learning_events` 记录。当前 Schema 若尚未含来源四元组与唯一约束，必须由 [tutoring-reflection-memory-workflows spec](../../.agent/specs/tutoring-reflection-memory-workflows.md) 的迁移先行实现；在此之前不得把重复投递无副作用视为已落地保证。
+物理约束为 `UNIQUE(source_type, source_id, event_type, source_version)`，并保留 append-only `learning_events` 记录；其与 Episode/Signal identity 和证据角色约束由 [20260907_13_memory_aggregate_lifecycle.py](../../duxue-server/migrations/versions/20260907_13_memory_aggregate_lifecycle.py) 维护。重复投递的最终幂等保证在 Evidence Ledger 的该数据库唯一键，而非 Consumer 的内存状态。
 
 ### 2.2 EpisodicMemory Aggregate
 
@@ -604,7 +604,7 @@ class MemoryQueryService(Protocol):
 
 每个 Aggregate 有独立 Repository Port。`IngestLearningFact` 原子写入 `LearningEvidence` 与消费结果；`SettleEpisodicMemory`、`ChallengeSignal`、`EvolveSignals` 各自拥有本地事务并原子保存 Aggregate 与本地 Domain Event/Outbox。`RebuildLongTermProfile` 只写 Projection。来源四元组、Episode identity、Signal identity 和证据链接唯一键均应由数据库约束兜底。
 
-`tutoring-reflection-memory-workflows` 是补齐 `source_*`、Episode identity/window、`dimension_key` 及 evidence-link role 唯一约束的迁移前置；迁移须先兼容读旧记录、回填/重建 Projection，再切换写入约束。迁移失败或回滚时保留 Evidence Ledger，允许从其重放 Episode、Signal 与 Profile。
+`source_*`、Episode identity/window、`dimension_key`、证据角色唯一约束以及自评版本由服务端 Alembic 迁移维护；新库升级与既有库增量升级均须验证。迁移失败或回滚时保留 Evidence Ledger，允许从其重放 Episode、Signal 与 Profile。
 
 ### 6.3 异步投递与 Projection
 
