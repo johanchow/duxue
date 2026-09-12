@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from uuid import uuid4
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -182,6 +183,7 @@ class SessionFinish(BaseModel):
 class CompanionTurnRequest(BaseModel):
     """One Ward input to the deterministic companion entrypoint."""
     content: str = Field(min_length=1, max_length=4000)
+    command_id: str = Field(default_factory=lambda: str(uuid4()))
     thread_id: str | None = None
     expected_thread_version: int | None = Field(default=None, ge=0)
     route_hint: str | None = Field(default=None, pattern=r"^(planning|tutoring|reflection)$")
@@ -200,6 +202,23 @@ class CompanionTurnRequest(BaseModel):
         value = value.strip()
         if not value:
             raise ValueError("content must not be blank")
+        return value
+
+
+class AgentRunCancelRequest(BaseModel):
+    command_id: str = Field(default_factory=lambda: str(uuid4()))
+    expected_thread_version: int | None = Field(default=None, ge=0)
+
+
+class SignalChallengeRequest(BaseModel):
+    statement: str = Field(min_length=1, max_length=1000)
+
+    @field_validator("statement")
+    @classmethod
+    def strip_statement(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("statement must not be blank")
         return value
 
 

@@ -68,7 +68,7 @@ def _record_learning_evidence(
     return event
 
 
-MemoryType = Literal["working", "episodic", "signal", "profile"]
+MemoryType = Literal["episodic", "signal", "profile"]
 ActorRole = Literal["ward", "guardian", "system"]
 UseCase = Literal["planning", "tutoring", "reflection"]
 
@@ -91,12 +91,12 @@ class MemoryContextRequest(BaseModel):
 
 
 class MemoryBundle(BaseModel):
-    working_state: dict | None = None
     episodic_memories: list[dict] = Field(default_factory=list)
     active_signals: list[dict] = Field(default_factory=list)
     profile_projection: dict | None = None
     evidence_refs: list[dict] = Field(default_factory=list)
     retrieval_version: str = "memory-facade.v1"
+    freshness: Literal["current", "eventually_consistent", "empty"] = "current"
     truncated: bool = False
 
 
@@ -156,6 +156,7 @@ class SqlAlchemyMemoryCommandService:
             ]),
             LearningEvent.payload["tutoring_session_id"].as_string() == tutoring_session_id,
         ).all()
+        ward_ids = {event.ward_id for event in events}
         has_closed = any(event.event_type == "tutoring.session_closed" for event in events)
         has_interaction = any(
             event.event_type in {
@@ -165,7 +166,7 @@ class SqlAlchemyMemoryCommandService:
             }
             for event in events
         )
-        if not events or not has_closed or not has_interaction:
+        if not events or len(ward_ids) != 1 or not has_closed or not has_interaction:
             return None
         ref = f"tutoring_session:{tutoring_session_id}"
         memory = self.db.query(EpisodicMemory).filter_by(memory_type="tutoring_episode", aggregate_ref=ref, aggregate_version=version).one_or_none()
@@ -231,6 +232,10 @@ class SqlAlchemyMemoryCommandService:
                 self.db.add(DerivedSignalEvent(
                     derived_signal_id=signal.id, learning_event_id=event.id, role="support"
                 ))
+        # A challenged conclusion is never silently restored.  New evidence
+        # only makes it eligible for an explicit policy re-evaluation.
+        if signal.status == "challenged":
+            signal.last_evaluated_at = now()
         return signal
 
     def challenge_signal(self, signal_id: str, ward_id: str, statement: str) -> DerivedSignal:
@@ -249,15 +254,35 @@ class SqlAlchemyMemoryCommandService:
         at = at or now()
         changed: list[DerivedSignal] = []
         for signal in self.db.query(DerivedSignal).filter(
-            DerivedSignal.status.in_(["candidate", "active"])
+            DerivedSignal.status.in_(["candidate", "active", "challenged"])
         ):
             if signal.expires_at is not None and signal.expires_at <= at:
                 signal.status = "expired"; signal.last_evaluated_at = at; changed.append(signal)
                 continue
-            supports = self.db.query(DerivedSignalEvent).filter_by(
-                derived_signal_id=signal.id, role="support"
+            support_events = self.db.query(LearningEvent).join(
+                DerivedSignalEvent, DerivedSignalEvent.learning_event_id == LearningEvent.id,
+            ).filter(DerivedSignalEvent.derived_signal_id == signal.id, DerivedSignalEvent.role == "support").all()
+            # Long-term conclusions require independent settled episodes, not
+            # multiple messages in one tutoring session.
+            episode_refs = {
+                row.aggregate_ref
+                for row in self.db.query(EpisodicMemory).join(
+                    EpisodicMemoryEvent, EpisodicMemoryEvent.episodic_memory_id == EpisodicMemory.id,
+                ).filter(
+                    EpisodicMemoryEvent.learning_event_id.in_([event.id for event in support_events]),
+                    EpisodicMemory.memory_type == "tutoring_episode",
+                ).all()
+            }
+            counterevidence = self.db.query(DerivedSignalEvent).filter_by(
+                derived_signal_id=signal.id, role="counterevidence"
             ).count()
-            if signal.status == "candidate" and signal.scope == "long_term" and signal.confidence >= 0.75 and supports >= 2:
+            if (
+                signal.status in {"candidate", "challenged"}
+                and signal.scope == "long_term"
+                and signal.confidence >= 0.75
+                and len(episode_refs) >= 2
+                and len(support_events) > counterevidence
+            ):
                 signal.status = "active"; signal.last_evaluated_at = at; changed.append(signal)
         return changed
 
@@ -270,11 +295,33 @@ class SqlAlchemyMemoryCommandService:
         ).all()
         profile = self.db.get(LongTermProfile, ward_id) or LongTermProfile(ward_id=ward_id)
         if self.db.get(LongTermProfile, ward_id) is None: self.db.add(profile)
-        profile.planning_preferences = {s.dimension_key: s.value for s in signals if s.signal_type == "planning_preference"}
-        profile.learning_strategy_profile = {s.dimension_key: s.value for s in signals if s.signal_type == "effective_strategy"}
-        profile.mature_interest_radar = {s.dimension_key: s.value for s in signals if s.signal_type == "stable_interest"}
+        by_type: dict[str, dict] = {}
+        for signal in signals:
+            by_type.setdefault(signal.signal_type, {})[signal.dimension_key] = signal.value
+        profile.planning_preferences = by_type.get("planning_preference", {})
+        profile.learning_strategy_profile = by_type.get("effective_strategy", {})
+        profile.mature_interest_radar = by_type.get("stable_interest", {})
+        profile.subject_difficulty_map = by_type.get("knowledge_gap", {})
+        profile.self_regulation_metrics = {
+            **by_type.get("estimation_bias", {}),
+            **by_type.get("reflection_accuracy_trend", {}),
+        }
+        focus = by_type.get("focus_endurance_baseline", {})
+        profile.focus_endurance_baseline_meta = focus
+        values = [value.get("minutes") for value in focus.values() if isinstance(value, dict) and isinstance(value.get("minutes"), int)]
+        profile.focus_endurance_baseline_min = max(values) if values else None
         profile.profile_version += 1
         return profile
+
+    def archive_episodic_memories(self, at: datetime | None = None) -> int:
+        at = at or now()
+        rows = self.db.query(EpisodicMemory).filter(
+            EpisodicMemory.archived_at.is_(None),
+            (EpisodicMemory.hot_until.is_not(None)) & (EpisodicMemory.hot_until <= at),
+        ).all()
+        for row in rows:
+            row.archived_at = at
+        return len(rows)
 
 
 class SqlAlchemyMemoryFacade:
@@ -345,6 +392,9 @@ class SqlAlchemyMemoryFacade:
                 .filter(
                     EpisodicMemory.ward_id == request.ward_id,
                     EpisodicMemory.event_date >= cutoff,
+                    EpisodicMemory.archived_at.is_(None),
+                    (EpisodicMemory.hot_until.is_(None)) | (EpisodicMemory.hot_until > now()),
+                    (EpisodicMemory.expires_at.is_(None)) | (EpisodicMemory.expires_at > now()),
                 )
                 .order_by(
                     EpisodicMemory.event_date.desc(), EpisodicMemory.created_at.desc()
@@ -437,10 +487,16 @@ class SqlAlchemyMemoryFacade:
                 else:
                     truncated = True
 
+        freshness: Literal["current", "eventually_consistent", "empty"] = "current"
+        if not episodic and not signals and profile_projection is None:
+            freshness = "empty"
+        elif truncated:
+            freshness = "eventually_consistent"
         return MemoryBundle(
             episodic_memories=episodic,
             active_signals=signals,
             profile_projection=profile_projection,
             evidence_refs=evidence_refs,
             truncated=truncated,
+            freshness=freshness,
         )

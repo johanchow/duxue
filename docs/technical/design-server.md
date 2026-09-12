@@ -77,7 +77,11 @@ duxue-server/
 
 ## 三、数据库设计（ER 图与表结构）
 
-### 3.1 完整 ER 图（彻底移除 Tenant，确立直连关系）
+### 3.1 当前物理 ER 图（无 Tenant、直连 Guardian-Ward 关系）
+
+本节描述当前服务端的物理 Schema；字段、主键、唯一约束和表名以已发布的
+SQLAlchemy 模型与 Alembic 迁移为准。各 Context 的业务含义、不变量和生命周期不在本节
+重复，分别由对应的 `domain-*.md` 维护。
 
 ```mermaid
 erDiagram
@@ -98,6 +102,7 @@ erDiagram
     user_wards ||--o{ learning_events : "学习事实事件"
     user_wards ||--o{ derived_signals : "可校正理解信号"
     user_wards ||--o| long_term_profiles : "长期人物画像"
+    user_wards ||--o{ conversation_threads : "陪伴入口线程"
 
     daily_schedules ||--o{ tasks : "任务排期（schedule_id 可为空）"
 
@@ -112,6 +117,12 @@ erDiagram
     frames }o--o{ behavior_segments : "时序聚合成"
 
     tutoring_sessions ||--o{ tutoring_messages : "问答交互轮次"
+
+    conversation_threads ||--o{ agent_runs : "受权工作流运行"
+    conversation_threads ||--o{ companion_commands : "幂等命令记录"
+    agent_runs ||--o{ agent_checkpoints : "恢复引用"
+    agent_runs ||--o{ agent_traces : "脱敏审计"
+    agent_runs ||--o{ agent_stream_events : "可重放流事件"
 
     episodic_memories ||--o{ episodic_memory_events : "由事实事件支撑"
     learning_events ||--o{ episodic_memory_events : "被近期记忆引用"
@@ -144,6 +155,83 @@ erDiagram
         uuid id PK
         uuid guardian_id FK "user_guardians.id"
         uuid ward_id FK "user_wards.id"
+    }
+
+    conversation_threads {
+        uuid id PK
+        uuid ward_id FK
+        string focus_run_ref "当前拥有回复权的 Run 引用"
+        int version "乐观锁版本"
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    agent_runs {
+        uuid id PK
+        uuid thread_id FK
+        uuid ward_id FK
+        string agent_type "planning | tutoring | reflection"
+        string run_ref "与 thread_id 组成同一 Thread 内唯一键"
+        string status
+        int attempt
+        uuid current_turn_id
+        timestamp deadline_at
+        timestamp cancelled_at
+        jsonb failure "脱敏失败元数据"
+        jsonb outcome
+        string policy_version
+        jsonb context_refs
+        string graph_checkpoint_ref
+        string graph_version
+        timestamp started_at
+        timestamp last_active_at
+    }
+
+    agent_checkpoints {
+        uuid id PK
+        uuid run_id FK
+        string checkpoint_ref
+        string graph_version
+        string state_digest
+        int settlement_version
+        timestamp created_at
+    }
+
+    companion_commands {
+        uuid id PK "客户端 command_id"
+        uuid ward_id FK
+        uuid thread_id FK
+        string payload_digest
+        jsonb result "同 command_id 的稳定响应"
+        timestamp created_at
+        timestamp completed_at
+    }
+
+    agent_stream_events {
+        uuid id PK
+        uuid run_id FK
+        int attempt
+        int sequence
+        string event_type
+        jsonb payload "仅已校验的展示内容"
+        string policy_version
+        timestamp created_at
+    }
+
+    agent_traces {
+        uuid id PK
+        uuid thread_id FK
+        uuid run_id FK
+        string route_target
+        string route_mode
+        string route_reason
+        jsonb context_refs
+        jsonb context_snapshot "仅脱敏元数据"
+        jsonb outcome
+        string policy_version
+        string model_version
+        int duration_ms
+        timestamp created_at
     }
 
     ward_credentials {
@@ -303,6 +391,7 @@ erDiagram
         jsonb perceived_friction "自感卡点(如: 几何第二题计算复杂)"
         int self_focus_score "主观专注打分 (1~5)"
         text ward_note "学生自评心得"
+        int version "每次可观察修改递增"
         timestamp submitted_at
     }
 
@@ -345,8 +434,11 @@ erDiagram
     learning_events {
         uuid id PK
         uuid ward_id FK
-        string event_type "plan_confirmed | task_completed | hint_given | self_evaluation_submitted | behavior_segment_generated | action_tip_adopted"
+        string event_type "版本化学习事实类型"
         timestamp occurred_at "事实发生时间"
+        string source_type
+        uuid source_id
+        int source_version
         jsonb scope "day / schedule / task / tutoring_session 等关联范围"
         string source "ward | guardian | system | cam"
         float confidence "非确定性系统分析的置信度；确定性事实为空"
@@ -357,14 +449,35 @@ erDiagram
         timestamp created_at
     }
 
+    outbox_events {
+        uuid id PK
+        string aggregate_type
+        uuid aggregate_id
+        string event_type "LearningFactRecorded.v1 等版本化事件"
+        jsonb payload "自包含 Published Language 信封"
+        string status "pending | retry | published | dead"
+        int attempts
+        string last_error "脱敏、有限长度的投递错误"
+        timestamp available_at
+        timestamp published_at
+        timestamp created_at
+    }
+
     episodic_memories {
         uuid id PK
         uuid ward_id FK
-        string event_type "task_complete | tutoring_friction | self_eval | interest_spark"
+        string event_type "兼容展示/查询用途的事件类型"
+        string memory_type
+        string aggregate_ref
+        int aggregate_version
         date event_date "事件所属日期"
         text summary "事件语义摘要"
         jsonb raw_cues "结构化元数据"
         float decay_weight "当前有效权重 (1.0 随时间指数衰减)"
+        timestamp hot_until
+        timestamp expires_at
+        timestamp archived_at
+        string policy_version
         timestamp created_at
     }
 
@@ -381,7 +494,8 @@ erDiagram
         uuid ward_id FK
         string signal_type "受控枚举；语义与 value Schema 见 domain-memory.md"
         string subject "可为空；如 math | english"
-        string scope "task | recent | long_term"
+        string scope "recent | long_term"
+        string dimension_key "Signal identity 的受控维度"
         jsonb value "按 signal_type 约束的结构化值"
         string statement "面向运行时的简洁、非标签化解释"
         float confidence "由代码聚合的成立度"
@@ -405,8 +519,7 @@ erDiagram
     }
 
     long_term_profiles {
-        uuid id PK
-        uuid ward_id FK UK "每个Ward唯一长期画像"
+        uuid ward_id PK,FK "每个 Ward 唯一长期画像"
         int focus_endurance_baseline_min "长期专注耐力基线(分钟；聚合读值)"
         jsonb focus_endurance_baseline_meta "样本数、计算窗口、算法版本与最后有效样本时间"
         jsonb subject_difficulty_map "学科难点认知画像"
@@ -442,13 +555,19 @@ CREATE INDEX idx_segments_session ON behavior_segments(study_session_id, seg_sta
 
 -- 3. 伴学消息、事实事件与记忆检索
 CREATE INDEX idx_tutoring_msg_session ON tutoring_messages(tutoring_session_id, created_at ASC);
+CREATE INDEX idx_companion_commands_ward ON companion_commands(ward_id);
+CREATE INDEX idx_agent_stream_events_run ON agent_stream_events(run_id);
+CREATE UNIQUE INDEX uq_agent_stream_sequence ON agent_stream_events(run_id, attempt, sequence);
 CREATE INDEX idx_learning_events_ward_time ON learning_events(ward_id, occurred_at DESC);
 CREATE INDEX idx_learning_events_ward_type_time ON learning_events(ward_id, event_type, occurred_at DESC);
+CREATE UNIQUE INDEX uq_learning_event_source ON learning_events(source_type, source_id, event_type, source_version);
 CREATE INDEX idx_episodic_ward_date ON episodic_memories(ward_id, event_date DESC);
+CREATE UNIQUE INDEX uq_episodic_memory_aggregate ON episodic_memories(memory_type, aggregate_ref, aggregate_version);
 CREATE UNIQUE INDEX uq_episodic_memory_event ON episodic_memory_events(episodic_memory_id, learning_event_id);
 CREATE INDEX idx_episodic_memory_events_event ON episodic_memory_events(learning_event_id);
 CREATE INDEX idx_signals_ward_scope_status ON derived_signals(ward_id, scope, status, last_evaluated_at DESC);
-CREATE UNIQUE INDEX uq_derived_signal_event ON derived_signal_events(derived_signal_id, learning_event_id);
+CREATE UNIQUE INDEX uq_derived_signal_identity ON derived_signals(ward_id, signal_type, scope, dimension_key);
+CREATE UNIQUE INDEX uq_derived_signal_event_role ON derived_signal_events(derived_signal_id, learning_event_id, role);
 CREATE INDEX idx_derived_signal_events_event ON derived_signal_events(learning_event_id);
 CREATE INDEX idx_devices_heartbeat ON devices(status, last_heartbeat_at);
 ```

@@ -6,6 +6,7 @@ import secrets
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -17,14 +18,17 @@ from .dependencies import Principal, _bearer, current_device, current_guardian, 
 from .models import (
     AnalysisProfile, BehaviorLabelConfig, BehaviorSegment, Device, Frame, FramePrediction,
     Guardian, GuardianWard, RefreshToken, Report, User, Ward, WardCredential, WardInvite,
-    Task, DailySchedule, StudySession, StudySessionInterval, TutoringSession, TutoringMessage, SelfReview, FocusKit, now,
+    Task, DailySchedule, PlanDraft, StudySession, StudySessionInterval, TutoringSession, TutoringMessage, SelfReview, FocusKit,
+    AgentRun, AgentStreamEvent, AgentCheckpoint, AgentTrace, CompanionCommand, ConversationThread,
+    LearningEvent, EpisodicMemory, EpisodicMemoryEvent, DerivedSignal, DerivedSignalEvent, LongTermProfile, OutboxEvent,
+    WardCredential, WardInvite, now,
 )
 from .schemas import (
     AnalyzeDayRequest, DeviceBind, FrameCreate, LabelCreate, LoginRequest, ProfileCreate,
     ProfilePatch, RefreshRequest, RegisterRequest, TokenPair, UploadUrlRequest, WardCreate,
     WardOut, WardPatch, WardBindRequest, AssignmentCreate, PlanDraft,
     MessageCreate, SessionFinish, SessionPause, SelfReviewCreate, TaskIntakeCleanup, TaskIntakeConfirm,
-    TaskIntakeRequest, PlanIntakeCleanup, PlanIntakeConfirm, PlanIntakeRequest, CompanionTurnRequest,
+    TaskIntakeRequest, PlanIntakeCleanup, PlanIntakeConfirm, PlanIntakeRequest, CompanionTurnRequest, AgentRunCancelRequest, SignalChallengeRequest,
 )
 from .security import create_access_token, hash_secret, random_token, token_hash, verify_secret
 from .services import analyze_and_generate, corrected_time, make_invite_code, owned_ward, utc_bounds
@@ -33,6 +37,7 @@ from .task_intake import TaskIntakeError, TaskIntakeService
 from .plan_intake import PlanIntakeService
 from .integration_events import publish_learning_fact
 from .ai_runtime.companion_coordinator import CompanionCoordinator
+from .memory import MemoryAccessDenied, SqlAlchemyMemoryCommandService
 
 
 app = FastAPI(title="读学 Server", version="0.1.0")
@@ -186,6 +191,7 @@ def companion_turn(body: CompanionTurnRequest, principal: Principal = Depends(cu
             thread_id=body.thread_id,
             expected_thread_version=body.expected_thread_version,
             route_hint=body.route_hint,
+            command_id=body.command_id,
             planning_items=body.planning_items,
             planning_confirm=body.planning_confirm,
             study_session_id=body.study_session_id,
@@ -202,6 +208,84 @@ def companion_turn(body: CompanionTurnRequest, principal: Principal = Depends(cu
     except Exception:
         db.rollback()
         raise
+
+
+@app.post("/companion/runs/{run_id}/cancel")
+def cancel_companion_run(
+    run_id: str,
+    body: AgentRunCancelRequest,
+    principal: Principal = Depends(current_ward),
+    db: Session = Depends(get_db),
+):
+    try:
+        return CompanionCoordinator(db).cancel(
+            ward_id=principal.user_id,
+            run_id=run_id,
+            command_id=body.command_id,
+            expected_thread_version=body.expected_thread_version,
+        ).model_dump()
+    except HTTPException:
+        db.rollback()
+        raise
+
+
+@app.get("/companion/runs/{run_id}/events")
+def replay_companion_events(
+    run_id: str,
+    after_sequence: int = Query(default=0, ge=0),
+    attempt: int | None = Query(default=None, ge=1),
+    principal: Principal = Depends(current_ward),
+    db: Session = Depends(get_db),
+):
+    """Replay redacted events for the current or requested Run attempt.
+
+    The client treats this as SSE replay, not a write model.  A stale attempt
+    is rejected so an old handoff cannot be appended to the current UI.
+    """
+    run = db.get(AgentRun, run_id)
+    if run is None or run.ward_id != principal.user_id:
+        raise HTTPException(404, "agent run not found")
+    selected_attempt = attempt or run.attempt
+    if selected_attempt != run.attempt:
+        raise HTTPException(409, "requested attempt is no longer current")
+    events = db.query(AgentStreamEvent).filter(
+        AgentStreamEvent.run_id == run_id,
+        AgentStreamEvent.attempt == selected_attempt,
+        AgentStreamEvent.sequence > after_sequence,
+    ).order_by(AgentStreamEvent.sequence).all()
+
+    def stream():
+        for event in events:
+            payload = {
+                "thread_id": run.thread_id,
+                "run_id": run.id,
+                "attempt": selected_attempt,
+                "sequence": event.sequence,
+                "policy_version": event.policy_version,
+                "payload": event.payload,
+            }
+            yield f"id: {event.sequence}\nevent: {event.event_type}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(stream(), media_type="text/event-stream")
+
+
+@app.post("/memory/signals/{signal_id}/challenge")
+def challenge_memory_signal(
+    signal_id: str,
+    body: SignalChallengeRequest,
+    principal: Principal = Depends(current_ward),
+    db: Session = Depends(get_db),
+):
+    """Allow a Ward to correct a derived conclusion with counterevidence."""
+    try:
+        service = SqlAlchemyMemoryCommandService(db)
+        signal = service.challenge_signal(signal_id, principal.user_id, body.statement)
+        service.rebuild_long_term_profile(principal.user_id)
+        db.commit()
+        return {"id": signal.id, "status": signal.status}
+    except MemoryAccessDenied:
+        db.rollback()
+        raise HTTPException(404, "signal not found")
 
 def _task_intake_wards(db: Session, guardian_id: str) -> list[dict]:
     rows = db.query(Ward).join(GuardianWard, GuardianWard.ward_id == Ward.id).filter(
@@ -592,6 +676,38 @@ def patch_ward(ward_id: str, body: WardPatch, principal: Principal = Depends(cur
 @app.delete("/wards/{ward_id}/data", status_code=204)
 def delete_ward_data(ward_id: str, principal: Principal = Depends(current_guardian), db: Session = Depends(get_db)):
     owned_ward(db, principal.user_id, ward_id)
+    # Stop derived/runtime state first.  The database deliberately uses NO
+    # ACTION FKs, so erasure is explicit and cannot accidentally leave a
+    # replayable summary or trace behind.
+    thread_ids = [row[0] for row in db.query(ConversationThread.id).filter_by(ward_id=ward_id).all()]
+    run_ids = [row[0] for row in db.query(AgentRun.id).filter(AgentRun.ward_id == ward_id).all()]
+    if run_ids:
+        db.query(AgentStreamEvent).filter(AgentStreamEvent.run_id.in_(run_ids)).delete(synchronize_session=False)
+        db.query(AgentCheckpoint).filter(AgentCheckpoint.run_id.in_(run_ids)).delete(synchronize_session=False)
+        db.query(AgentTrace).filter(AgentTrace.run_id.in_(run_ids)).delete(synchronize_session=False)
+    if thread_ids:
+        db.query(AgentTrace).filter(AgentTrace.thread_id.in_(thread_ids)).delete(synchronize_session=False)
+        db.query(CompanionCommand).filter(CompanionCommand.thread_id.in_(thread_ids)).delete(synchronize_session=False)
+    db.query(AgentRun).filter(AgentRun.ward_id == ward_id).delete(synchronize_session=False)
+    db.query(CompanionCommand).filter(CompanionCommand.ward_id == ward_id).delete(synchronize_session=False)
+    db.query(ConversationThread).filter(ConversationThread.ward_id == ward_id).delete(synchronize_session=False)
+
+    memory_ids = [row[0] for row in db.query(EpisodicMemory.id).filter_by(ward_id=ward_id).all()]
+    signal_ids = [row[0] for row in db.query(DerivedSignal.id).filter_by(ward_id=ward_id).all()]
+    if memory_ids:
+        db.query(EpisodicMemoryEvent).filter(EpisodicMemoryEvent.episodic_memory_id.in_(memory_ids)).delete(synchronize_session=False)
+    if signal_ids:
+        db.query(DerivedSignalEvent).filter(DerivedSignalEvent.derived_signal_id.in_(signal_ids)).delete(synchronize_session=False)
+    db.query(EpisodicMemory).filter(EpisodicMemory.ward_id == ward_id).delete(synchronize_session=False)
+    db.query(DerivedSignal).filter(DerivedSignal.ward_id == ward_id).delete(synchronize_session=False)
+    db.query(LongTermProfile).filter(LongTermProfile.ward_id == ward_id).delete(synchronize_session=False)
+    db.query(LearningEvent).filter(LearningEvent.ward_id == ward_id).delete(synchronize_session=False)
+    # Outbox has no Ward FK by design.  Its self-contained envelope is the
+    # authoritative routing field for erasure before a worker can replay it.
+    for event in db.query(OutboxEvent).filter(OutboxEvent.event_type == "LearningFactRecorded.v1").all():
+        if (event.payload or {}).get("ward_id") == ward_id:
+            db.delete(event)
+
     frames = db.query(Frame).filter(Frame.ward_id == ward_id).all()
     for frame in frames:
         storage.delete(frame.oss_key)
@@ -600,7 +716,23 @@ def delete_ward_data(ward_id: str, principal: Principal = Depends(current_guardi
         db.query(FramePrediction).filter(FramePrediction.frame_id.in_(frame_ids)).delete(synchronize_session=False)
     db.query(BehaviorSegment).filter(BehaviorSegment.ward_id == ward_id).delete(synchronize_session=False)
     db.query(Report).filter(Report.ward_id == ward_id).delete(synchronize_session=False)
+    tutor_ids = [row[0] for row in db.query(TutoringSession.id).filter_by(ward_id=ward_id).all()]
+    if tutor_ids:
+        db.query(TutoringMessage).filter(TutoringMessage.tutoring_session_id.in_(tutor_ids)).delete(synchronize_session=False)
+    db.query(TutoringSession).filter(TutoringSession.ward_id == ward_id).delete(synchronize_session=False)
     db.query(Frame).filter(Frame.ward_id == ward_id).delete(synchronize_session=False)
+    session_ids = [row[0] for row in db.query(StudySession.id).filter_by(ward_id=ward_id).all()]
+    if session_ids:
+        db.query(StudySessionInterval).filter(StudySessionInterval.study_session_id.in_(session_ids)).delete(synchronize_session=False)
+    db.query(StudySession).filter(StudySession.ward_id == ward_id).delete(synchronize_session=False)
+    db.query(FocusKit).filter(FocusKit.ward_id == ward_id).delete(synchronize_session=False)
+    db.query(SelfReview).filter(SelfReview.ward_id == ward_id).delete(synchronize_session=False)
+    db.query(PlanDraft).filter(PlanDraft.ward_id == ward_id).delete(synchronize_session=False)
+    db.query(Task).filter(Task.ward_id == ward_id).delete(synchronize_session=False)
+    db.query(DailySchedule).filter(DailySchedule.ward_id == ward_id).delete(synchronize_session=False)
+    db.query(WardInvite).filter(WardInvite.ward_id == ward_id).delete(synchronize_session=False)
+    db.query(WardCredential).filter(WardCredential.ward_id == ward_id).delete(synchronize_session=False)
+    db.query(Device).filter(Device.ward_id == ward_id).delete(synchronize_session=False)
     db.commit()
     return Response(status_code=204)
 
