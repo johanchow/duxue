@@ -7,6 +7,7 @@ from ..ai_runtime.contracts import RunInvocation, WorkflowOutcome
 from ..ai_runtime.context_builder import ContextBuilder
 from ..ai_runtime.policy import PolicyRegistry
 from ..ai_runtime.model_gateway import ModelGatewayError, QwenAgentModelGateway
+from ..observability import record_llm_fallback
 from ..config import settings
 from ..integration_events import publish_learning_fact
 from ..memory import SqlAlchemyMemoryFacade
@@ -63,8 +64,9 @@ class TutoringWorkflow:
                 policy_result = policy.validate_candidate(candidate.model_dump(), allowed_tools=set())
                 if policy_result.accepted:
                     answer = candidate.content
-            except ModelGatewayError:
+            except ModelGatewayError as error:
                 model_fallback = True
+                record_llm_fallback(operation="agent_text", reason=str(error))
         hint = TutoringMessage(tutoring_session_id=tutor.id, role="assistant", content=answer, hint_level=level, safety_blocked=blocked)
         self.db.add(hint); self.db.flush()
         publish_learning_fact(self.db, ward_id=session.ward_id, event_type="tutoring.hint_given", source_type="tutoring_message", source_id=hint.id, source="system", payload={"tutoring_session_id": tutor.id, "study_session_id": session.id, "hint_level": level, "safety_blocked": blocked})

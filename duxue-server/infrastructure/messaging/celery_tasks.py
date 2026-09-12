@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import date, timedelta, timezone
+from functools import wraps
+import os
+from time import perf_counter
 
 from celery import Celery
 from celery.schedules import crontab
@@ -12,6 +15,25 @@ from app.database import SessionLocal
 from app.memory import LearningFactRecorded, SqlAlchemyMemoryCommandService
 from app.models import AnalysisBatch, AnalysisProfile, Device, Frame, OutboxEvent, Report, Ward, now
 from app.services import analyze_and_generate, utc_bounds
+from app.observability import configure_observability, record_batch, record_celery_task
+
+
+configure_observability(component=os.getenv("OTEL_SERVICE_COMPONENT", "worker"))
+
+
+def _observed_task(func):
+    @wraps(func)
+    def wrapped(*args, **kwargs):
+        started = perf_counter()
+        result = "success"
+        try:
+            return func(*args, **kwargs)
+        except Exception:
+            result = "error"
+            raise
+        finally:
+            record_celery_task(task=func.__name__, result=result, duration_ms=round((perf_counter() - started) * 1000))
+    return wrapped
 
 
 celery_app = Celery("duxue", broker=settings.redis_url, backend=settings.redis_url)
@@ -32,6 +54,7 @@ def _prompt_map(db, ward_ids: set[str]) -> dict[str, str]:
 
 
 @celery_app.task(name="duxue.submit_daily_batches")
+@_observed_task
 def submit_daily_batches(day: str | None = None) -> int:
     target = date.fromisoformat(day) if day else date.today()
     start, end = utc_bounds(target)
@@ -46,6 +69,7 @@ def submit_daily_batches(day: str | None = None) -> int:
         for frames in (pending,):
             client = DashscopeInference()
             provider_id = client.submit(frames, _prompt_map(db, {frame.ward_id for frame in frames}))
+            record_batch(submitted=True)
             batch = AnalysisBatch(batch_date=target, provider_batch_id=provider_id, status="submitted", frame_count=len(frames))
             db.add(batch); db.flush()
             for frame in frames: frame.batch_id = batch.id
@@ -59,6 +83,7 @@ def submit_daily_batches(day: str | None = None) -> int:
 
 
 @celery_app.task(name="duxue.poll_batches")
+@_observed_task
 def poll_batches() -> int:
     db = SessionLocal(); completed = 0
     try:
@@ -72,7 +97,7 @@ def poll_batches() -> int:
                 prompts = _prompt_map(db, {frame.ward_id for frame in frames})
                 for frame in frames:
                     if frame.id not in results: results[frame.id] = client.realtime(frame, prompts.get(frame.ward_id, ""))
-                status = "completed"; batch.fallback_used = True
+                status = "completed"; batch.fallback_used = True; record_batch(fallback=True)
             if status == "completed":
                 by_ward: dict[str, dict] = defaultdict(dict)
                 for frame in frames:
@@ -88,6 +113,7 @@ def poll_batches() -> int:
 
 
 @celery_app.task(name="duxue.mark_offline_devices")
+@_observed_task
 def mark_offline_devices() -> int:
     db = SessionLocal()
     try:
@@ -98,6 +124,7 @@ def mark_offline_devices() -> int:
 
 
 @celery_app.task(name="duxue.purge_expired_frames")
+@_observed_task
 def purge_expired_frames() -> int:
     from app.storage import storage
     db = SessionLocal()
@@ -112,6 +139,7 @@ def purge_expired_frames() -> int:
 
 
 @celery_app.task(name="duxue.consume_memory_facts")
+@_observed_task
 def consume_memory_facts(limit: int = 100) -> int:
     """Consume versioned facts without letting Memory republish their source event."""
     db = SessionLocal(); consumed = 0
@@ -142,6 +170,7 @@ def consume_memory_facts(limit: int = 100) -> int:
 
 
 @celery_app.task(name="duxue.evolve_memory_signals")
+@_observed_task
 def evolve_memory_signals() -> int:
     """Apply signal lifecycle transitions, then rebuild affected profile views."""
     db = SessionLocal()

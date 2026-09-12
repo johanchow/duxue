@@ -6,6 +6,7 @@ from ..ai_runtime.contracts import RunInvocation, WorkflowOutcome
 from ..ai_runtime.context_builder import ContextBuilder
 from ..ai_runtime.policy import PolicyRegistry
 from ..ai_runtime.model_gateway import ModelGatewayError, QwenAgentModelGateway
+from ..observability import record_llm_fallback
 from ..config import settings
 from ..integration_events import publish_learning_fact
 from ..memory import SqlAlchemyMemoryFacade
@@ -52,6 +53,7 @@ class ReflectionWorkflow:
             )
             if PolicyRegistry().validate_candidate(candidate.model_dump(), allowed_tools=set()).accepted:
                 advice = candidate.content
-        except ModelGatewayError:
+        except ModelGatewayError as error:
             model_fallback = True
+            record_llm_fallback(operation="agent_text", reason=str(error))
         return WorkflowOutcome(run_status="closed", outcome_type="completed", context_refs=[f"self_review:{review.id}"], next_interaction={"status": "ready", "objective_evidence_status": "available" if report else "pending", "advice": advice, "model": settings.agent_model("reflection"), "model_fallback": model_fallback}, context_snapshot=envelope.trace_snapshot())

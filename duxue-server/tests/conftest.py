@@ -3,6 +3,11 @@ from __future__ import annotations
 import os
 from unittest.mock import patch
 import pytest
+
+# The developer's .env may point to Grafana Cloud. Tests must never create
+# exporter threads or make an external telemetry request.
+os.environ.setdefault("OTEL_SDK_DISABLED", "true")
+
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker

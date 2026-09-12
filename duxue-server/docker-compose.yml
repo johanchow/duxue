@@ -11,6 +11,8 @@ services:
     build: .
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     env_file: ${ENV_FILE:-.env}
+    environment:
+      OTEL_SERVICE_COMPONENT: api
     ports: ["8000:8000"]
     restart: unless-stopped
     healthcheck:
@@ -24,6 +26,8 @@ services:
     build: .
     command: celery -A infrastructure.messaging.celery_tasks worker -l info
     env_file: ${ENV_FILE:-.env}
+    environment:
+      OTEL_SERVICE_COMPONENT: worker
     restart: unless-stopped
 
   beat:
@@ -31,4 +35,6 @@ services:
     build: .
     command: celery -A infrastructure.messaging.celery_tasks beat -l info
     env_file: ${ENV_FILE:-.env}
+    environment:
+      OTEL_SERVICE_COMPONENT: beat
     restart: unless-stopped
