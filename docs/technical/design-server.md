@@ -775,3 +775,83 @@ FUNCTION verifyWardAccess(wardId, currentUser, db):
    - **启发式答疑流式首字（TTFT）**：P90 < 1.2s；
    - **会话结束即时分析全流程**：P90 < 20s，P99 < 30s；
    - **单台 2C4G 云主机承载能力**：在抓拍直传 OSS 架构下，轻松支撑 2,000+ 台摄像设备并发心跳与上传。
+
+---
+
+## 十、测试策略与目录约定
+
+测试以 Context 的不变量、用例事务边界和 Published Language 为中心，而不是以 ORM 文件或 HTTP
+路由数量为中心。各 Context 的业务规则和 Gherkin 验收场景仍以对应的 `domain-*.md` 为唯一事实源；
+本节只定义服务端统一的测试边界、目录和执行约定。
+
+### 10.1 核心划分原则
+
+| 测试层 | 验证对象 | 依赖约束 | 典型内容 |
+|---|---|---|---|
+| `unit` | Aggregate、Value Object、领域服务、纯规则/状态机 | 不启动 HTTP、数据库、Redis、队列或真实模型 | 行为分类与时序平滑、Run 生命周期、信号演进、版本/容量 guard |
+| `application` | 单个 Use Case 和 Port 编排 | 使用 fake repository、clock、模型/队列 adapter；不依赖真实基础设施 | 确认计划、应用答疑 Turn、Fact 入账、生成复盘、处理 Companion Turn |
+| `integration` | SQLAlchemy repository、PostgreSQL 约束、Outbox、Worker、Alembic | 使用真实 PostgreSQL 与迁移；外部模型/OSS 使用受控 adapter | 唯一/部分索引、乐观锁、事务原子性、投递幂等、重放与升级 |
+| `contract` | HTTP/SSE DTO、Integration Event、模型候选和 Workflow Outcome Schema | 可使用 TestClient 与 fake adapter；不校验模型文案质量 | `LearningFactRecorded.v1`、SSE sequence、请求/响应兼容、候选校验 |
+| `e2e` | 少量跨 Context 的用户业务闭环 | 完整应用与真实数据库；模型、OSS、推送均使用稳定测试替身 | 抓拍至报告、计划至学习、答疑至记忆、Guardian/Ward ACL |
+
+单元测试只验证业务行为，不因实现方式（SQLAlchemy、FastAPI、Celery 或 LangGraph）改变而重写。
+应用层测试验证一次命令的授权、幂等、调用顺序和可观察结果，但不重复验证数据库自身能力。
+数据库唯一约束、部分索引、事务隔离和迁移必须由 PostgreSQL 集成测试覆盖；SQLite 可用于快速测试，
+但不得作为该类测试的替代品。端到端测试只保留高价值纵切，不断言内部表结构或私有调用顺序。
+
+所有模型输出均视为不可信候选：测试应验证 `OutputValidator` 对候选的接受、降级或拒绝，
+不得依赖真实模型生成的具体措辞。测试中的时间、UUID 和随机数必须可控；跨进程投递必须可重放。
+
+### 10.2 目录结构
+
+```text
+duxue-server/tests/
+├── unit/
+│   ├── behavior/              # 分类器、平滑与片段归并
+│   ├── companion/             # Thread / Run 状态机、路由、fencing
+│   ├── planning/              # 草稿、排程约束
+│   ├── study/                 # 学习/答疑 Aggregate 与 Policy
+│   ├── evaluation/            # 自评、报告版本
+│   ├── memory/                # Episode、Signal、Profile 投影规则
+│   └── identity/              # 纯 ACL / Token 规则
+├── application/
+│   ├── companion/
+│   ├── planning/
+│   ├── study/
+│   ├── evaluation/
+│   └── memory/
+├── integration/
+│   ├── db/                    # Repository、约束、并发与查询
+│   ├── outbox/                # 投递、去重、死信与重放
+│   ├── workers/               # Celery task 到 Application Use Case
+│   └── migrations/            # 空库升级与既有库增量升级
+├── contract/
+│   ├── api/                   # REST DTO、状态码与 ACL 边界
+│   ├── events/                # LearningFactRecorded 等 Published Language
+│   └── ai/                    # Candidate / Outcome / ContextSpec Schema
+├── e2e/                       # 独立、短小的关键纵切
+└── support/
+    ├── factories.py           # Guardian、Ward、Task、Fact 等构造器
+    ├── fakes.py               # ModelGateway、Dispatcher、OSS、Clock 等替身
+    └── assertions.py          # 领域专用断言
+```
+
+现有扁平测试可渐进迁移：`test_classifier_rules.py` 和 `test_domain.py` 优先归入 `unit/behavior/`；
+`test_companion_runtime.py` 按 unit、application 和 integration/outbox 拆分；大型
+`test_e2e.py` 按一条业务闭环一个文件拆分。统一以 `pytest` 运行，已有 `unittest.TestCase`
+可在迁移期间继续被收集。
+
+### 10.3 各 Context 的重点覆盖
+
+| Context | 必须覆盖的不变量与失败路径 | 重点集成/契约覆盖 |
+|---|---|---|
+| Companion Orchestration | Thread version、唯一 focus、Run 生命周期、Handoff、迟到 Outcome fencing、传输断开不等于取消 | `command_id` 重放、SSE sequence 唯一、Checkpoint 兼容与恢复 |
+| Planning & Scheduling | 未确认不得写正式日程、任务归属、容量/时间冲突、基准版本冲突、确认幂等 | `draft_id + confirmation_id`、日程/任务/Outbox 原子提交 |
+| Study & Tutoring | 关闭后不得追加、直接索答/代写降级、不合规 patch 拒绝、提示/工具预算、Fact 产生条件 | 工具 ACL/超时降级、关闭 Fact 的可靠投递 |
+| Evaluation & Reflection | 盲评不泄露客观结论、Evidence Snapshot 锁定、报告只追加版本、行动采纳才产生 Fact | 迟到证据生成 supplement、报告/证据版本兼容 |
+| Memory & Understanding | Fact 来源四元组去重、Episode 必须“关闭 + 有效互动”、独立 Episode 才能晋升、反证立即 challenge、Profile 只投影 active long-term Signal | 数据库 identity 约束、顺序/重放/死信、Profile 全量重建 |
+| Behavior Analysis | 物理字段分类优先级、滑窗边界/同票、空输入、碎片吸收、异常时间间隔 | YAML 规则加载、帧/片段持久化与查询 |
+| Identity & Device | Ward 只能访问自身数据、Guardian 只能访问已绑定 Ward、陌生 Guardian 必须拒绝、邀请码与 Token 失效 | JWT、绑定关系、帧归属、心跳及预签名元数据契约 |
+
+每项强一致不变量至少具有：一条成功路径、一条拒绝路径，以及一条重复命令、并发冲突或迟到事件路径。
+领域文档新增或修改 Gherkin 验收场景时，必须同步增加对应测试；该测试是该场景实现完成的退出条件。
