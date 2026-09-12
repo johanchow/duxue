@@ -9,7 +9,8 @@ from celery.schedules import crontab
 from app.ai import DashscopeInference
 from app.config import settings
 from app.database import SessionLocal
-from app.models import AnalysisBatch, AnalysisProfile, Device, Frame, Report, Ward, now
+from app.memory import LearningFactRecorded, SqlAlchemyMemoryCommandService
+from app.models import AnalysisBatch, AnalysisProfile, Device, Frame, OutboxEvent, Report, Ward, now
 from app.services import analyze_and_generate, utc_bounds
 
 
@@ -20,6 +21,8 @@ celery_app.conf.beat_schedule = {
     "poll-batches": {"task": "duxue.poll_batches", "schedule": crontab(minute="*/10")},
     "offline-devices": {"task": "duxue.mark_offline_devices", "schedule": crontab(minute="*")},
     "purge-expired-frames": {"task": "duxue.purge_expired_frames", "schedule": crontab(hour=3, minute=20)},
+    "consume-memory-facts": {"task": "duxue.consume_memory_facts", "schedule": crontab(minute="*/2")},
+    "evolve-memory-signals": {"task": "duxue.evolve_memory_signals", "schedule": crontab(hour=4, minute=10)},
 }
 
 
@@ -105,6 +108,50 @@ def purge_expired_frames() -> int:
             # Keep structured fields for future classifier recomputation; remove only sensitive image reference.
             frame.oss_key = None
         db.commit(); return len(frames)
+    finally: db.close()
+
+
+@celery_app.task(name="duxue.consume_memory_facts")
+def consume_memory_facts(limit: int = 100) -> int:
+    """Consume versioned facts without letting Memory republish their source event."""
+    db = SessionLocal(); consumed = 0
+    try:
+        rows = (db.query(OutboxEvent).filter(
+            OutboxEvent.event_type == "LearningFactRecorded.v1",
+            OutboxEvent.status == "pending", OutboxEvent.available_at <= now(),
+        ).order_by(OutboxEvent.created_at).limit(limit).all())
+        service = SqlAlchemyMemoryCommandService(db)
+        for row in rows:
+            try:
+                fact = LearningFactRecorded.model_validate(row.payload)
+                service.ingest_learning_fact(fact)
+                if fact.event_type == "tutoring.session_closed":
+                    service.settle_tutoring_episode(fact.source_id, version=fact.source_version)
+                row.status = "published"; row.published_at = now(); row.attempts += 1
+                db.commit(); consumed += 1
+            except Exception:
+                db.rollback()
+                retry = db.get(OutboxEvent, row.id)
+                retry.attempts += 1
+                retry.available_at = now() + timedelta(minutes=min(60, 2 ** min(retry.attempts, 6)))
+                if retry.attempts >= 8:
+                    retry.status = "failed"
+                db.commit()
+        return consumed
+    finally: db.close()
+
+
+@celery_app.task(name="duxue.evolve_memory_signals")
+def evolve_memory_signals() -> int:
+    """Apply signal lifecycle transitions, then rebuild affected profile views."""
+    db = SessionLocal()
+    try:
+        service = SqlAlchemyMemoryCommandService(db)
+        changed = service.evolve_signals()
+        for ward_id in {signal.ward_id for signal in changed}:
+            service.rebuild_long_term_profile(ward_id)
+        db.commit()
+        return len(changed)
     finally: db.close()
 
 

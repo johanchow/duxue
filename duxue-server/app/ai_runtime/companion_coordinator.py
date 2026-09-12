@@ -168,6 +168,8 @@ class CompanionCoordinator:
             )
             run.status = workflow.run_status
             run.graph_checkpoint_ref = workflow.checkpoint_ref
+            run.context_refs = workflow.context_refs
+            decision.context_refs = list(workflow.context_refs)
             context = workflow.context_snapshot
             interaction = workflow.next_interaction
         self._trace(

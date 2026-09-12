@@ -5,7 +5,7 @@ from datetime import date
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from ..memory import record_learning_event
+from ..integration_events import publish_learning_fact
 from ..models import DailySchedule, PlanDraft, Task, now
 
 MAX_DAILY_MINUTES = 480
@@ -127,7 +127,7 @@ class PlanningDomainService:
         )
         draft.status = "confirmed"
         self.db.flush()
-        record_learning_event(
+        publish_learning_fact(
             self.db,
             ward_id=ward_id,
             event_type="planning.confirmed",
