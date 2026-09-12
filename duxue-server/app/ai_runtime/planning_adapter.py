@@ -16,6 +16,7 @@ from .context_builder import ContextBuilder
 from .contracts import RunInvocation, WorkflowOutcome
 from .policy import PolicyRegistry
 from .model_gateway import ModelGatewayError, QwenAgentModelGateway
+from ..observability import record_llm_fallback
 from ..config import settings
 
 
@@ -58,8 +59,9 @@ class PlanningWorkflowAdapter:
                 )
                 if PolicyRegistry().validate_candidate(candidate.model_dump(), allowed_tools=set()).accepted:
                     model_guidance = candidate.content
-            except ModelGatewayError:
+            except ModelGatewayError as error:
                 model_fallback = True
+                record_llm_fallback(operation="agent_text", reason=str(error))
         if self.checkpointer is not None:
             return self._invoke(
                 self.checkpointer, run, items, confirm, envelope.trace_snapshot(), model_guidance, model_fallback

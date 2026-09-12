@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import secrets
 from datetime import date, datetime, timedelta, timezone
 
@@ -38,6 +39,7 @@ from .plan_intake import PlanIntakeService
 from .integration_events import publish_learning_fact
 from .ai_runtime.companion_coordinator import CompanionCoordinator
 from .memory import MemoryAccessDenied, SqlAlchemyMemoryCommandService
+from .observability import configure_observability, record_frame
 
 
 app = FastAPI(title="读学 Server", version="0.1.0")
@@ -46,6 +48,7 @@ app.add_middleware(
     allow_origins=list(settings.cors_allow_origins),
     allow_methods=["*"], allow_headers=["*"],
 )
+configure_observability(component=os.getenv("OTEL_SERVICE_COMPONENT", "api"), app=app, engine=engine)
 
 
 @app.on_event("startup")
@@ -849,6 +852,7 @@ def ingest_frame(body: FrameCreate, device: Device = Depends(current_device), db
         raise HTTPException(400, "uploaded object not found or does not belong to device")
     existing = db.query(Frame).filter(Frame.oss_key == body.oss_key).one_or_none()
     if existing:
+        record_frame(result="duplicate")
         return {"id": existing.id, "captured_at": existing.captured_at, "duplicate": True}
     captured = corrected_time(body.captured_at, body.elapsed_realtime, device.bound_server_time, device.bound_elapsed_realtime)
     if body.study_session_id:
@@ -866,6 +870,7 @@ def ingest_frame(body: FrameCreate, device: Device = Depends(current_device), db
     publish_learning_fact(db, ward_id=device.ward_id, event_type="camera_frame.captured", source_type="frame", source_id=frame.id, occurred_at=captured, source="cam", scope={"study_session_id": body.study_session_id} if body.study_session_id else {}, payload={"device_id": device.id})
     db.commit()
     db.refresh(frame)
+    record_frame(result="accepted")
     return {"id": frame.id, "captured_at": frame.captured_at, "duplicate": False}
 
 

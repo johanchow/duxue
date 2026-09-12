@@ -4,6 +4,8 @@
 >
 > 全系统架构见：[docs/technical/ARCHITECTURE.md](./technical/ARCHITECTURE.md)
 
+> 实施状态（2026-09-12）：服务端已接入标准 OTLP traces / metrics、FastAPI / SQLAlchemy / Celery / Redis / HTTPX 自动插桩，以及 Agent、LLM/VLM、采集与 Celery 的手工业务遥测。部署、dashboard 与告警模板见 [`ops/observability/`](../ops/observability/)。Flutter 与 Android 的 trace context 接入仍待单独实施。
+
 ---
 
 ## 一、背景与目标
@@ -251,6 +253,14 @@ Server 端 OTEL SDK 完整支持通过环境变量配置，无需改动代码：
 | `OTEL_LOG_LEVEL` | `info` | SDK 自身日志级别 |
 
 在 `.env` 文件中统一维护，通过 `python-dotenv` 或 Docker Compose `env_file` 加载。
+
+服务端不再需要用 `opentelemetry-instrument` 包裹启动命令：应用 bootstrap 会在检测到 `OTEL_EXPORTER_OTLP_ENDPOINT` 后初始化 exporter。测试或离线环境设置 `OTEL_SDK_DISABLED=true`；未配置 endpoint 时不会创建 exporter。`api`、`worker`、`beat` 通过 `OTEL_SERVICE_COMPONENT` 作为资源属性区分。
+
+### 7.1.1 Agent 数据边界
+
+Agent span / OTLP log event 只包含运行关联 ID、模型、结果、时延、token 用量（供应商返回时）以及输入/输出的长度和 SHA-256 摘要；容器 stdout 也输出携带 trace/span ID 的 JSON 日志。不得将原始儿童输入、模型原文、完整 ContextEnvelope、图像 data URL、Authorization 或 API Key 写入 Grafana。
+
+应急模型问题排查使用独立的 `AGENT_DEBUG_AUDIT_*` 文件 sink：它默认关闭，启用时也只写经过常见邮箱和中国大陆手机号替换、最多 160 字的摘要。该路径必须是加密挂载、访问受控且有短留存清理的目录，不能指向 stdout、普通应用日志或 Loki。
 
 ### 7.2 duxue-cam（Android Build Config）
 

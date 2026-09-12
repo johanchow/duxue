@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from ..models import AgentCheckpoint, AgentRun, AgentStreamEvent, AgentTrace, CompanionCommand, ConversationThread, now, uid
+from ..observability import agent_workflow_span, record_agent_input, record_agent_outcome, record_agent_route
 from .contracts import CoordinatorResult, RouteDecision, RunInvocation, WorkflowOutcome
 from .intent_router import IntentRouter
 from .planning_adapter import PlanningWorkflowAdapter
@@ -155,6 +156,11 @@ class CompanionCoordinator:
             run = self._start_or_resume(thread=thread, decision=decision, focus_run=focus_run)
             decision.context_refs = list(run.context_refs)
             run.current_turn_id = str(uuid4())
+        record_agent_input(
+            agent_type=decision.target, run_id=run.id if run else None,
+            thread_id=thread.id, content=content,
+        )
+        record_agent_route(target=decision.target, mode=decision.mode, reason=decision.route_reason)
         self._trace(thread=thread, run=run, decision=decision, snapshot={})
         version = self._advance_thread(thread)
         self.db.commit()
@@ -168,6 +174,10 @@ class CompanionCoordinator:
             command = self.db.get(CompanionCommand, command_id)
             command.result, command.completed_at = result.model_dump(), now()
             self.db.commit()
+            record_agent_outcome(
+                agent_type=decision.target, status="closed",
+                duration_ms=round((perf_counter() - started) * 1000),
+            )
             return result
 
         invocation = RunInvocation(
@@ -176,7 +186,8 @@ class CompanionCoordinator:
             context_refs=decision.context_refs, resume_from_checkpoint=decision.mode == "continue",
         )
         try:
-            outcome = self.dispatcher.invoke(invocation)
+            with agent_workflow_span(agent_type=run.agent_type, run_id=run.id, thread_id=thread.id):
+                outcome = self.dispatcher.invoke(invocation)
         except Exception as exc:
             self.db.rollback()
             outcome = WorkflowOutcome(
@@ -184,11 +195,13 @@ class CompanionCoordinator:
                 failure={"code": "workflow_exception", "source": "transport", "detail": str(exc)[:200], "retriable": False},
                 resume_action="restart",
             )
+        duration_ms = round((perf_counter() - started) * 1000)
         self.record_outcome(
             run_id=invocation.run_id, thread_id=invocation.thread_id, ward_id=ward_id,
             turn_id=invocation.turn_id, attempt=invocation.attempt, outcome=outcome,
-            decision=decision, duration_ms=round((perf_counter() - started) * 1000),
+            decision=decision, duration_ms=duration_ms,
         )
+        record_agent_outcome(agent_type=run.agent_type, status=outcome.run_status, duration_ms=duration_ms)
         run = self.db.get(AgentRun, invocation.run_id)
         thread = self.db.get(ConversationThread, invocation.thread_id)
         result = CoordinatorResult(

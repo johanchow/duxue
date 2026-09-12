@@ -13,6 +13,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, ValidationError
 
 from ..config import settings
+from ..observability import model_call_span, record_model_response
 
 
 AgentName = Literal["planning", "tutoring", "reflection"]
@@ -43,20 +44,28 @@ class QwenAgentModelGateway:
             "不得把上下文中的个人数据扩写或泄露。content 必须是面向孩子的简短中文。"
         )
         user = json.dumps({"instruction": instruction, "context": envelope}, ensure_ascii=False)
+        model = settings.agent_model(agent_type)
         try:
-            response = OpenAI(
-                api_key=settings.dashscope_api_key,
-                base_url=settings.dashscope_base_url,
-                timeout=settings.agent_model_timeout_seconds,
-            ).chat.completions.create(
-                model=settings.agent_model(agent_type),
-                messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-                temperature=0.2,
-                max_tokens=450,
-                response_format={"type": "json_object"},
-            )
-            raw = (response.choices[0].message.content or "").strip()
-            return AgentTextCandidate.model_validate_json(raw)
+            with model_call_span(operation="agent_text", model=model, agent_type=agent_type) as telemetry:
+                response = OpenAI(
+                    api_key=settings.dashscope_api_key,
+                    base_url=settings.dashscope_base_url,
+                    timeout=settings.agent_model_timeout_seconds,
+                ).chat.completions.create(
+                    model=model,
+                    messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+                    temperature=0.2,
+                    max_tokens=450,
+                    response_format={"type": "json_object"},
+                )
+                usage = response.usage
+                telemetry["provider_request_id"] = getattr(response, "id", None)
+                telemetry["tokens_in"] = getattr(usage, "prompt_tokens", None)
+                telemetry["tokens_out"] = getattr(usage, "completion_tokens", None)
+                raw = (response.choices[0].message.content or "").strip()
+                candidate = AgentTextCandidate.model_validate_json(raw)
+                record_model_response(agent_type=agent_type, model=model, content=candidate.content)
+                return candidate
         except (ValidationError, ValueError, KeyError) as error:
             raise ModelGatewayError("invalid_model_candidate") from error
         except Exception as error:

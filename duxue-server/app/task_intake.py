@@ -9,6 +9,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field, ValidationError
 
 from .config import settings
+from .observability import model_call_span
 from .schemas import TaskCandidate, TaskIntakeRequest
 from .storage import storage
 
@@ -60,13 +61,18 @@ class TaskIntakeService:
             client = OpenAI(api_key=settings.dashscope_api_key, base_url=settings.dashscope_base_url)
             content: list[dict] = [{"type": "text", "text": _prompt(wards, request) + "\n\n本轮监护人消息：\n" + request.content}]
             content.extend({"type": "image_url", "image_url": {"url": _data_url(key)}} for key in request.attachment_keys)
-            response = client.chat.completions.create(
-                model=settings.task_intake_model,
-                messages=[{"role": "user", "content": content}],
-                response_format={"type": "json_object"},
-                temperature=0,
-                max_tokens=1600,
-            )
+            with model_call_span(operation="task_intake", model=settings.task_intake_model) as telemetry:
+                response = client.chat.completions.create(
+                    model=settings.task_intake_model,
+                    messages=[{"role": "user", "content": content}],
+                    response_format={"type": "json_object"},
+                    temperature=0,
+                    max_tokens=1600,
+                )
+                usage = response.usage
+                telemetry["provider_request_id"] = getattr(response, "id", None)
+                telemetry["tokens_in"] = getattr(usage, "prompt_tokens", None)
+                telemetry["tokens_out"] = getattr(usage, "completion_tokens", None)
             raw = response.choices[0].message.content or "{}"
             result = TaskIntakeResult.model_validate_json(raw)
         except (ValidationError, ValueError, json.JSONDecodeError) as error:

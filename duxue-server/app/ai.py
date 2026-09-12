@@ -8,6 +8,7 @@ from pathlib import Path
 from .config import settings
 from .models import Frame
 from .storage import storage
+from .observability import model_call_span, record_vlm_frames
 
 
 STRUCTURED_PROMPT = """这张图片来自学生侧后方约45度且略高于头顶的摄像头。请仅依据可见的手部、桌面、头部朝向和身体姿态，用合法 JSON 描述行为，不要输出其他文字，也不要依赖正脸、眼睛或表情。输出字段必须是 hand_action、desk_objects、head_orientation、body_pos、seat_status、motion_state、desc_summary。"""
@@ -45,17 +46,22 @@ class DashscopeInference:
             for frame in frames:
                 handle.write(json.dumps(_request(frame, prompts.get(frame.ward_id, "")), ensure_ascii=False) + "\n")
         try:
-            uploaded = self.client.files.create(file=path, purpose="batch")
-            batch = self.client.batches.create(input_file_id=uploaded.id, endpoint="/v1/chat/completions", completion_window=settings.batch_completion_window, metadata={"ds_name": f"duxue-{frames[0].captured_at.date()}"})
-            return batch.id
+            with model_call_span(operation="vlm_batch_submit", model=settings.vlm_model) as telemetry:
+                uploaded = self.client.files.create(file=path, purpose="batch")
+                batch = self.client.batches.create(input_file_id=uploaded.id, endpoint="/v1/chat/completions", completion_window=settings.batch_completion_window, metadata={"ds_name": f"duxue-{frames[0].captured_at.date()}"})
+                telemetry["provider_request_id"] = getattr(batch, "id", None)
+                record_vlm_frames(count=len(frames), mode="batch")
+                return batch.id
         finally:
             path.unlink(missing_ok=True)
 
     def retrieve(self, batch_id: str) -> tuple[str, dict[str, dict]]:
-        batch = self.client.batches.retrieve(batch_id)
-        if batch.status != "completed":
-            return batch.status, {}
-        content = self.client.files.content(batch.output_file_id).text
+        with model_call_span(operation="vlm_batch_poll", model=settings.vlm_model) as telemetry:
+            batch = self.client.batches.retrieve(batch_id)
+            telemetry["provider_request_id"] = getattr(batch, "id", None)
+            if batch.status != "completed":
+                return batch.status, {}
+            content = self.client.files.content(batch.output_file_id).text
         results: dict[str, dict] = {}
         for line in content.splitlines():
             row = json.loads(line)
@@ -68,6 +74,12 @@ class DashscopeInference:
 
     def realtime(self, frame: Frame, extra_prompt: str = "") -> dict:
         body = _request(frame, extra_prompt)["body"]
-        response = self.client.chat.completions.create(**body)
-        content = response.choices[0].message.content.strip().removeprefix("```json").removesuffix("```").strip()
-        return json.loads(content)
+        with model_call_span(operation="vlm_realtime", model=settings.vlm_model) as telemetry:
+            response = self.client.chat.completions.create(**body)
+            usage = response.usage
+            telemetry["provider_request_id"] = getattr(response, "id", None)
+            telemetry["tokens_in"] = getattr(usage, "prompt_tokens", None)
+            telemetry["tokens_out"] = getattr(usage, "completion_tokens", None)
+            content = response.choices[0].message.content.strip().removeprefix("```json").removesuffix("```").strip()
+            record_vlm_frames(count=1, mode="realtime")
+            return json.loads(content)

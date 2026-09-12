@@ -1,0 +1,65 @@
+{
+  "uid": "duxue-server-health",
+  "title": "Duxue Server Health",
+  "tags": ["duxue", "otel"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "LLM request rate by result",
+      "type": "timeseries",
+      "targets": [{"refId": "A", "expr": "sum by (llm_result) (rate(duxue_llm_requests_total[$__rate_interval]))"}]
+    },
+    {
+      "id": 2,
+      "title": "LLM P95 latency",
+      "type": "timeseries",
+      "targets": [{"refId": "A", "expr": "histogram_quantile(0.95, sum by (le, llm_operation) (rate(duxue_llm_duration_milliseconds_bucket[$__rate_interval])))"}]
+    },
+    {
+      "id": 3,
+      "title": "Agent route decisions",
+      "type": "timeseries",
+      "targets": [{"refId": "A", "expr": "sum by (agent_target, agent_mode) (rate(duxue_agent_routes_total[$__rate_interval]))"}]
+    },
+    {
+      "id": 4,
+      "title": "Agent P95 workflow latency",
+      "type": "timeseries",
+      "targets": [{"refId": "A", "expr": "histogram_quantile(0.95, sum by (le, agent_type, agent_status) (rate(duxue_agent_run_duration_milliseconds_bucket[$__rate_interval])))"}]
+    },
+    {
+      "id": 5,
+      "title": "Batch fallback ratio",
+      "type": "stat",
+      "targets": [{"refId": "A", "expr": "sum(increase(duxue_batch_fallbacks_total[24h])) / clamp_min(sum(increase(duxue_batch_total[24h])), 1)"}]
+    },
+    {
+      "id": 6,
+      "title": "Captured frames by result",
+      "type": "timeseries",
+      "targets": [{"refId": "A", "expr": "sum by (capture_result) (rate(duxue_capture_frames_total[$__rate_interval]))"}]
+    },
+    {
+      "id": 7,
+      "title": "Celery task failures",
+      "type": "timeseries",
+      "targets": [{"refId": "A", "expr": "sum by (celery_task) (rate(duxue_celery_tasks_total{celery_result=\"error\"}[$__rate_interval]))"}]
+    },
+    {
+      "id": 8,
+      "title": "Online camera devices",
+      "type": "stat",
+      "targets": [{"refId": "A", "expr": "sum(duxue_device_online)"}]
+    },
+    {
+      "id": 9,
+      "title": "Celery default queue depth",
+      "type": "timeseries",
+      "targets": [{"refId": "A", "expr": "sum by (celery_queue) (duxue_celery_queue_depth)"}]
+    }
+  ]
+}
