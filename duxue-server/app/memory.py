@@ -310,7 +310,7 @@ class SqlAlchemyMemoryCommandService:
         profile.focus_endurance_baseline_meta = focus
         values = [value.get("minutes") for value in focus.values() if isinstance(value, dict) and isinstance(value.get("minutes"), int)]
         profile.focus_endurance_baseline_min = max(values) if values else None
-        profile.profile_version += 1
+        profile.profile_version = (profile.profile_version or 0) + 1
         return profile
 
     def archive_episodic_memories(self, at: datetime | None = None) -> int:
