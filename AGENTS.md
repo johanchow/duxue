@@ -74,8 +74,11 @@ duxue/                          # 项目根目录
 | 文档 | 路径 | 内容摘要 |
 |------|------|---------|
 | 服务端详细设计 (No-Tenant) | [`docs/technical/design-server.md`](docs/technical/design-server.md) | 分层实现、无租户模型与直连绑定、数据库 ER 图、会话即时分析与伴学记忆引擎 |
-| 孩子理解与记忆技术设计 | [`docs/technical/design-memory.md`](docs/technical/design-memory.md) | 事实事件账本、Signal/Claim、三层记忆与表映射、更新/衰减、答疑情境记忆与数据删除边界 |
-| 陪伴 Agent 技术设计 | [`docs/technical/design-agent.md`](docs/technical/design-agent.md) | 统一入口路由、计划协商 Graph、启发式答疑 ReAct、今日复盘、AI Runtime 与受控写回 |
+| 陪伴编排 Domain 设计 | [`docs/technical/domain-companion.md`](docs/technical/domain-companion.md) | 统一入口路由、Thread/Run、Handoff、通用 Runtime 与受控写回协议 |
+| 计划与排程 Domain 设计 | [`docs/technical/domain-planning.md`](docs/technical/domain-planning.md) | 已知任务池、计划草稿、Ward 确认与固定协商 Graph |
+| 学习与答疑 Domain 设计 | [`docs/technical/domain-study.md`](docs/technical/domain-study.md) | 学习执行、受限 ReAct、Working State、教学事实与会话结算 |
+| 评估与复盘 Domain 设计 | [`docs/technical/domain-evaluation.md`](docs/technical/domain-evaluation.md) | 即时自评、证据版本化复盘、报告与行动采纳 |
+| 孩子理解与记忆 Domain 设计 | [`docs/technical/domain-memory.md`](docs/technical/domain-memory.md) | 事实事件账本、Signal/Claim、三层记忆与表映射、更新/衰减、答疑情境记忆与数据删除边界 |
 | VLM 分析指南 | [`duxue-server/docs/qwen3vl-student-behavior-guide.md`](duxue-server/docs/qwen3vl-student-behavior-guide.md) | Qwen3-VL 行为分析 Prompt 设计与字段定义 |
 
 ### 读学Eye（duxue-cam）

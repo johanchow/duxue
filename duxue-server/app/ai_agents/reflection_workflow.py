@@ -3,7 +3,7 @@ from datetime import date
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from ..ai_runtime.contracts import RunInvocation, WorkflowOutcome
-from ..memory import record_learning_event
+from ..integration_events import publish_learning_fact
 from ..models import FocusKit, Report, SelfReview, now
 
 class ReflectionWorkflow:
@@ -22,7 +22,7 @@ class ReflectionWorkflow:
         elif turn.get("review_feeling"):
             review.feeling, review.reflection = turn["review_feeling"], turn.get("review_reflection")
         if turn.get("review_feeling"):
-            record_learning_event(self.db, ward_id=invocation.ward_id, event_type="self_review.submitted", source_type="self_review", source_id=review.id, source_version=1, source="ward", payload={"review_date": day.isoformat(), "feeling": review.feeling})
+            publish_learning_fact(self.db, ward_id=invocation.ward_id, event_type="self_review.submitted", source_type="self_review", source_id=review.id, source_version=1, source="ward", payload={"review_date": day.isoformat(), "feeling": review.feeling})
         kit = self.db.query(FocusKit).filter_by(ward_id=invocation.ward_id, review_date=day).one_or_none()
         if turn.get("adopt_focus_kit"):
             if kit is None:
@@ -30,6 +30,6 @@ class ReflectionWorkflow:
                 self.db.add(kit)
                 self.db.flush()
             kit.saved_at = now()
-            record_learning_event(self.db, ward_id=invocation.ward_id, event_type="focus_kit.adopted", source_type="focus_kit", source_id=kit.id, source="ward", payload={"review_date": day.isoformat()})
+            publish_learning_fact(self.db, ward_id=invocation.ward_id, event_type="focus_kit.adopted", source_type="focus_kit", source_id=kit.id, source="ward", payload={"review_date": day.isoformat()})
         report = self.db.query(Report).filter_by(ward_id=invocation.ward_id, report_date=day).one_or_none()
         return WorkflowOutcome(run_status="closed", context_refs=[f"self_review:{review.id}"], next_interaction={"status": "ready", "objective_evidence_status": "available" if report else "pending"})

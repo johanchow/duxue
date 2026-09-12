@@ -2,7 +2,7 @@
 
 > 状态：讨论稿 · 版本：v1.0
 > 目的：维护全系统的 Domain Inventory、Bounded Context Map、跨 Context 所有权和协作契约。
-> 关联：[Server 系统与物理设计](design-server.md) · [Memory & Understanding Context](design-memory.md) · [Companion 编排](design-agent.md)
+> 关联：[Server 系统与物理设计](design-server.md) · [Memory & Understanding Context](domain-memory.md) · [Companion 编排](domain-companion.md)
 
 ## 一、阅读边界与单一事实源
 
@@ -14,7 +14,7 @@
 | Domain Inventory、Context Map、跨 Context 所有权和稳定契约 | 本文 | 唯一维护 |
 | Context 内的统一语言、Aggregate、用例、不变量、CQRS 和局部事件流 | 对应 Context 设计文档 | 链接，不复制 |
 | 物理表、索引、外键、迁移与运行时组件 | [design-server.md](design-server.md) | 链接，不将其视为 Context 模型 |
-| Agent 编排、Run 连续性与 Workflow 边界 | [design-agent.md](design-agent.md) | 链接 |
+| Agent 编排、Run 连续性与 Workflow 边界 | [domain-companion.md](domain-companion.md) | 链接 |
 
 `Domain / Subdomain` 是业务问题空间的能力划分；`Bounded Context` 是某套统一语言、
 模型和可变业务状态有效的边界。一个 Domain 可以由一个或多个 Context 实现；Context
@@ -31,13 +31,14 @@
 | 5 | 行为观察与分析 | Supporting | Behavior Analysis | 分析任务、FramePrediction、BehaviorSegment | 从采集事实生成受控观察结果；不判定 Ward 主观感受或长期能力 | 上游：Device & Ingestion、Study；下游：Evaluation、Memory | `FrameRecorded.v1`；`BehaviorSegmentGenerated.v1`、`LearningFactRecorded.v1` |
 | 6 | 评估与复盘 | Core | Evaluation & Reflection | SelfEvaluation、DualTrackReport、ActionableTip、DialoguePrompt | 对照主客观结果并形成复盘建议；不回写计划或孩子画像 | 上游：Study、Behavior Analysis、Identity；下游：Memory、Planning | `StudySessionCompleted.v1`、`BehaviorSegmentGenerated.v1`；`LearningFactRecorded.v1` |
 | 7 | 孩子理解 | Core | Memory & Understanding | Learning Evidence、EpisodicMemory、DerivedSignal、LongTermProfileView | 将已确认事实演进为可校正理解；不拥有计划、会话、报告或运行时状态 | 上游：Planning、Study、Evaluation、Behavior Analysis；下游：Companion、Planning、Evaluation | `LearningFactRecorded.v1`；受权 `MemoryBundle` 查询 ACL |
-| 8 | 陪伴编排 | Supporting | Companion Orchestration | ConversationThread、AgentRunLink、运行编排状态 | 路由一次受权 Run 并保持会话连续性；不拥有 Planning、Study、Evaluation 或 Memory 的业务 Aggregate | 上游：Identity；下游：Planning、Study、Evaluation、Memory | ACL；本地 Use Case；受权查询 |
+| 8 | 陪伴编排 | Supporting | Companion Orchestration | ConversationThread、AgentRunLink、运行编排状态 | 拥有入口连续性状态；其核心用例由 Application-layer Process Manager 路由一次受权 Run 并保持会话连续性。它不是核心学习业务领域，不拥有 Planning、Study、Evaluation 或 Memory 的业务 Aggregate 或领域决策 | 上游：Identity；下游：Planning、Study、Evaluation、Memory | ACL；本地 Use Case；受权查询 |
 
 ### 统一语言与所有权原则
 
 - 每个可变业务概念只由其 owning Context 写入；其他 Context 只能持有 ID、消费稳定事件，或通过受权 Query 读取投影。
 - `LearningFactRecorded.v1` 是跨 Context 的 Published Language；它不是任何 Context 的 Domain Event，也不是直接方法调用。
 - `Working Memory` 是 Companion Runtime 的可恢复运行状态，不属于 Memory & Understanding 的写 Aggregate。
+- `Companion Orchestration` 是拥有 Thread/Run 连续性状态的 Supporting Bounded Context；`CompanionCoordinator` 是在该 Context 内实现其核心用例的 Application-layer Process Manager。二者不可互换，也不能将 Coordinator 误作拥有学习业务规则的领域 Aggregate 或独立 Agent。
 - 模型、VLM、Workflow 和 Worker 是 Interface / Application / Infrastructure 中的实现角色，不因名称成为 Domain 或 Context。
 
 ## 三、DDD Context Map
@@ -86,7 +87,7 @@ flowchart LR
 2. 消费方的 Consumer Adapter 只负责传输收取、版本验证、去重与重试；接收 Context 的 Use Case 将事件转换为本地业务意图，再改变自己的 Aggregate 或 Projection。
 3. 不允许跨 Context 直接调用 Aggregate、Repository、ORM 或写入对方表；强一致只在单个 Context 的本地事务中要求。
 4. 跨 Context 反应默认最终一致。每份事件契约必须指定版本、生产者、消费者、幂等键、顺序假设、重试、死信/对账和重放方式。
-5. `Companion Orchestration` 是 Application 层 Process Manager 的所有者；它只路由受权 Run，不替业务 Context 作领域决策或跨 Context 写入。
+5. `Companion Orchestration` 以 Thread/Run 连续性状态为自己的限界边界；其 `CompanionCoordinator` 是 Application 层 Process Manager，只路由受权 Run，不替业务 Context 作领域决策或跨 Context 写入。
 
 ## 四、稳定 Integration Event 契约目录
 
@@ -132,6 +133,9 @@ flowchart TB
 
 | Context | 详情文档 | 当前设计状态 |
 |---|---|---|
-| Memory & Understanding | [design-memory.md](design-memory.md) | 已有 Aggregate、触发矩阵和局部因果链；物理 Schema 对齐另行处理 |
-| Companion Orchestration | [design-agent.md](design-agent.md) | 维护 Run/Coordinator 与目标 Workflow 边界 |
+| Planning & Scheduling | [domain-planning.md](domain-planning.md) | Ward 计划草稿、确认日程与固定协商 Graph |
+| Study & Tutoring | [domain-study.md](domain-study.md) | 学习执行、受限 ReAct、过程事实与会话结算 |
+| Evaluation & Reflection | [domain-evaluation.md](domain-evaluation.md) | 自评、证据版本化复盘与行动采纳 |
+| Memory & Understanding | [domain-memory.md](domain-memory.md) | 已有 Aggregate、触发矩阵和局部因果链；物理 Schema 对齐另行处理 |
+| Companion Orchestration | [domain-companion.md](domain-companion.md) | Supporting Context：维护 Thread/Run 连续性状态；Coordinator 是其 Application-layer Process Manager，并定义目标 Workflow 边界 |
 | 其他 Context | [design-server.md](design-server.md) 及其后续独立 Context 设计 | 本文已确定所有权；新增复杂写模型前须补各自详情设计 |

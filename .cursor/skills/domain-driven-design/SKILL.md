@@ -44,7 +44,7 @@ often called a command, but `Command` is not a separate concept type.
 | Type family | Canonical type | Decision rule |
 |---|---|---|
 | External | Actor | A person, external system, or upstream context initiates work. |
-| Interface | Interface | Receives HTTP, RPC, SSE, messages, or scheduled triggers and translates them into application calls. |
+| Interface | Interface | Receives HTTP, RPC, SSE, or messages and translates them into application calls. |
 | Application | Use Case | Handles a user, system, or integration-event intent; authorizes, coordinates a local transaction, and may change business state. |
 | Application | Query | Reads information without changing business state. |
 | Application | Process Manager | Preserves a business process across requests, events, or time without owning another context's business aggregate. |
@@ -55,7 +55,7 @@ often called a command, but `Command` is not a separate concept type.
 | Domain | Domain Event | A business fact that occurred inside the current bounded context. |
 | Cross-context | Integration Event | A stable fact contract published for another bounded context. |
 | Query side | Read Model / Projection | Rebuildable query data; never the authority for write-side mutation. |
-| Infrastructure | Infrastructure | Persistence, repository adapters, Outbox, workers, schedulers, storage, caches, gateways, and observability implementations. |
+| Infrastructure | Infrastructure | Persistence, repository adapters, Outbox, workers, schedulers/timers, storage, caches, gateways, and observability implementations. A scheduler or timer is the entry adapter for a scheduled trigger, never an Interface participant. |
 
 Names such as workflow, handler, controller, worker, scheduler, outbox, and
 repository describe implementation roles. Map them to the canonical type that
@@ -238,7 +238,7 @@ CQRS does not require Event Sourcing. Use an immutable fact ledger or event stor
 only when the domain needs replay/audit semantics; do not label ordinary audit
 records as Event Sourcing.
 
-## 4. Strengthen allowed type relationships
+### 4. Constrain allowed type relationships
 
 Use the following dependency and invocation constraints to keep type boundaries
 visible in designs and code. A listed call is allowed only when it remains inside
@@ -266,7 +266,7 @@ publishing Use Case → Integration Event / Outbox → consumer Interface
 An Integration Event is not a direct method call, and an Outbox, trace, cache,
 or worker record is not a Domain Event merely because it is durable.
 
-## 5. Specify infrastructure explicitly
+### 5. Specify infrastructure explicitly
 
 For every bounded context with persistence, asynchronous processing, or an
 external dependency, produce an **Infrastructure Design Card**. It is an
@@ -293,7 +293,7 @@ calls inside aggregates or domain services. Existing code may have transitional
 direct dependencies; document them as current implementation and state the target
 port boundary instead of disguising them as domain behavior.
 
-## 6. Integrate bounded contexts explicitly
+### 6. Integrate bounded contexts explicitly
 
 Within a bounded context, domain events express facts meaningful to that domain.
 Across contexts, translate only stable facts into published/integration events.
@@ -359,8 +359,8 @@ issue.
   state.
 - A domain event is not a log line, model trace, or transport retry record.
 - Do not use an event as vague control flow. Name its owner, classify it as local
-  Domain Event or cross-context Integration Event, and show the receiving
-  receiving Use Case and resulting local domain behavior. A transport consumer may not
+  Domain Event or cross-context Integration Event, and show the receiving Use
+  Case and resulting local domain behavior. A transport consumer may not
   mutate an Aggregate by setting ORM fields directly.
 - Never expose ORM models, aggregate internals, or raw event payloads as public
   API contracts.

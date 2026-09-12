@@ -2,7 +2,7 @@
 
 > 状态：讨论稿 · 版本：v2.2
 > 适用范围：`duxue-server` 中 Ward 学习证据、情境记忆、可校正理解与长期画像投影。
-> 关联：[DDD 系统级 Overview](ddd-overview.md) · [陪伴编排](design-agent.md) · [服务端物理 Schema](design-server.md) · [记忆 PRD](../product/prd-memory.md)
+> 关联：[DDD 系统级 Overview](ddd-overview.md) · [陪伴编排](domain-companion.md) · [Planning Context](domain-planning.md) · [Study Context](domain-study.md) · [Evaluation Context](domain-evaluation.md) · [服务端物理 Schema](design-server.md) · [记忆 PRD](../product/prd-memory.md)
 
 ## 一、边界、上下游与统一语言
 

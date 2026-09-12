@@ -16,12 +16,11 @@ from .models import (
     GuardianWard,
     LearningEvent,
     LongTermProfile,
-    OutboxEvent,
     now,
 )
 
 
-def record_learning_event(
+def _record_learning_evidence(
     db: Session,
     *,
     ward_id: str,
@@ -36,13 +35,8 @@ def record_learning_event(
     payload: dict | None = None,
     evidence_refs: list | None = None,
     visibility: str = "system",
-    publish_outbox: bool = True,
 ) -> LearningEvent:
-    """Append a fact once and enqueue its derivation in the same transaction.
-
-    The source identity/version unique key makes retries harmless.  Consumers may
-    build episodic memory, signals and profiles independently from the outbox.
-    """
+    """Memory's private, idempotent Evidence Ledger write operation."""
     existing = (
         db.query(LearningEvent)
         .filter_by(
@@ -71,32 +65,6 @@ def record_learning_event(
     )
     db.add(event)
     db.flush()
-    if publish_outbox:
-        db.add(
-            OutboxEvent(
-                aggregate_type="learning_event",
-                aggregate_id=event.id,
-                event_type="LearningFactRecorded.v1",
-                # Consumers receive a versioned, self-contained fact rather than
-                # inferring source semantics by re-reading another Context.
-                payload={
-                    "schema_version": "LearningFactRecorded.v1",
-                    "learning_event_id": event.id,
-                    "ward_id": event.ward_id,
-                    "event_type": event.event_type,
-                    "source_type": event.source_type,
-                    "source_id": event.source_id,
-                    "source_version": event.source_version,
-                    "occurred_at": event.occurred_at.isoformat(),
-                    "source": event.source,
-                    "confidence": event.confidence,
-                    "scope": event.scope,
-                    "payload": event.payload,
-                    "evidence_refs": event.evidence_refs,
-                    "visibility": event.visibility,
-                },
-            )
-        )
     return event
 
 
@@ -161,7 +129,7 @@ class SqlAlchemyMemoryCommandService:
         self.db = db
 
     def ingest_learning_fact(self, fact: LearningFactRecorded) -> LearningEvent:
-        return record_learning_event(
+        return _record_learning_evidence(
             self.db,
             ward_id=fact.ward_id,
             event_type=fact.event_type,
@@ -175,7 +143,6 @@ class SqlAlchemyMemoryCommandService:
             payload=fact.payload,
             evidence_refs=fact.evidence_refs,
             visibility=fact.visibility,
-            publish_outbox=False,
         )
 
     def settle_tutoring_episode(self, tutoring_session_id: str, version: int = 1) -> EpisodicMemory | None:
@@ -189,7 +156,16 @@ class SqlAlchemyMemoryCommandService:
             ]),
             LearningEvent.payload["tutoring_session_id"].as_string() == tutoring_session_id,
         ).all()
-        if not events or not any(event.event_type == "tutoring.session_closed" for event in events):
+        has_closed = any(event.event_type == "tutoring.session_closed" for event in events)
+        has_interaction = any(
+            event.event_type in {
+                "tutoring.ward_attempt_recorded",
+                "tutoring.understanding_confirmed",
+                "tutoring.hint_given",
+            }
+            for event in events
+        )
+        if not events or not has_closed or not has_interaction:
             return None
         ref = f"tutoring_session:{tutoring_session_id}"
         memory = self.db.query(EpisodicMemory).filter_by(memory_type="tutoring_episode", aggregate_ref=ref, aggregate_version=version).one_or_none()
@@ -261,7 +237,7 @@ class SqlAlchemyMemoryCommandService:
         signal = self.db.get(DerivedSignal, signal_id)
         if signal is None or signal.ward_id != ward_id:
             raise MemoryAccessDenied("signal is not visible to this Ward")
-        fact = record_learning_event(self.db, ward_id=ward_id, event_type="signal.ward_challenged", source_type="derived_signal", source_id=signal.id, source_version=1, source="ward", payload={"statement": statement}, visibility="ward")
+        fact = _record_learning_evidence(self.db, ward_id=ward_id, event_type="signal.ward_challenged", source_type="derived_signal", source_id=signal.id, source_version=1, source="ward", payload={"statement": statement}, visibility="ward")
         exists = self.db.query(DerivedSignalEvent).filter_by(derived_signal_id=signal.id, learning_event_id=fact.id, role="counterevidence").one_or_none()
         if exists is None:
             self.db.add(DerivedSignalEvent(derived_signal_id=signal.id, learning_event_id=fact.id, role="counterevidence"))

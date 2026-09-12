@@ -24,7 +24,7 @@ from app.database import SessionLocal  # noqa: E402
 from app.models import (
     AgentRun,
     AgentTrace,
-    LearningEvent,
+    OutboxEvent,
     StudySessionInterval,
     TutoringMessage,
     TutoringSession,
@@ -262,8 +262,15 @@ class EndToEndTest(unittest.TestCase):
                 2,
             )
             self.assertEqual(
-                db.query(LearningEvent)
-                .filter_by(source_type="tutoring_message")
+                db.query(OutboxEvent)
+                .filter_by(
+                    aggregate_type="tutoring_message",
+                    aggregate_id=db.query(TutoringMessage)
+                    .filter_by(tutoring_session_id=tutoring.id, role="ward")
+                    .one()
+                    .id,
+                    event_type="LearningFactRecorded.v1",
+                )
                 .count(),
                 1,
             )
@@ -431,8 +438,12 @@ class EndToEndTest(unittest.TestCase):
                 2,
             )
             self.assertEqual(
-                db.query(LearningEvent)
-                .filter_by(source_type="study_session", source_id=planned_session)
+                db.query(OutboxEvent)
+                .filter_by(
+                    aggregate_type="study_session",
+                    aggregate_id=planned_session,
+                    event_type="LearningFactRecorded.v1",
+                )
                 .count(),
                 4,
             )

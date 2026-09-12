@@ -31,7 +31,7 @@ from .services import analyze_and_generate, corrected_time, make_invite_code, ow
 from .storage import LocalStorage, storage
 from .task_intake import TaskIntakeError, TaskIntakeService
 from .plan_intake import PlanIntakeService
-from .memory import record_learning_event
+from .integration_events import publish_learning_fact
 from .ai_runtime.companion_coordinator import CompanionCoordinator
 
 
@@ -415,7 +415,7 @@ def start_session(item_id: str, principal: Principal = Depends(current_ward), db
     active = _open_session(db, task_id=item.id)
     if active: return active
     row = StudySession(ward_id=principal.user_id, task_id=item.id); item.status="active"; db.add(row); db.flush(); db.add(StudySessionInterval(study_session_id=row.id))
-    record_learning_event(db, ward_id=row.ward_id, event_type="study_session.started", source_type="study_session", source_id=row.id, payload={"task_id": row.task_id})
+    publish_learning_fact(db, ward_id=row.ward_id, event_type="study_session.started", source_type="study_session", source_id=row.id, payload={"task_id": row.task_id})
     db.commit(); return {"id": row.id, "status": row.status, "active_seconds": 0}
 
 
@@ -426,7 +426,7 @@ def start_assignment_session(assignment_id: str, principal: Principal = Depends(
     active = _open_session(db, task_id=assignment.id)
     if active: return active
     row = StudySession(ward_id=principal.user_id, task_id=assignment.id); assignment.status="active"; db.add(row); db.flush(); db.add(StudySessionInterval(study_session_id=row.id))
-    record_learning_event(db, ward_id=row.ward_id, event_type="study_session.started", source_type="study_session", source_id=row.id, payload={"task_id": row.task_id})
+    publish_learning_fact(db, ward_id=row.ward_id, event_type="study_session.started", source_type="study_session", source_id=row.id, payload={"task_id": row.task_id})
     db.commit(); return {"id": row.id, "status": row.status, "active_seconds": 0}
 
 
@@ -436,7 +436,7 @@ def resume_session(session_id: str, principal: Principal = Depends(current_ward)
     if session is None or session.ward_id != principal.user_id or session.status != "paused": raise HTTPException(404, "paused session not found")
     session.status="active"; session.version += 1; session.last_activity_at=now()
     db.get(Task, session.task_id).status="active"; db.add(StudySessionInterval(study_session_id=session.id))
-    record_learning_event(db, ward_id=session.ward_id, event_type="study_session.resumed", source_type="study_session", source_id=session.id, source_version=session.version, payload={"task_id": session.task_id})
+    publish_learning_fact(db, ward_id=session.ward_id, event_type="study_session.resumed", source_type="study_session", source_id=session.id, source_version=session.version, payload={"task_id": session.task_id})
     db.commit(); return {"id": session.id, "status": session.status, "active_seconds": session.active_seconds}
 
 
@@ -448,7 +448,7 @@ def pause_session(session_id: str, body: SessionPause, principal: Principal = De
     interval.ended_at=now(); interval.end_reason="paused"; interval.active_seconds=max(0, body.active_seconds-session.active_seconds)
     session.status="paused"; session.active_seconds=body.active_seconds; session.pause_count += 1; session.version += 1; session.last_activity_at=interval.ended_at
     db.get(Task, session.task_id).status="paused"
-    record_learning_event(db, ward_id=session.ward_id, event_type="study_session.paused", source_type="study_session", source_id=session.id, source_version=session.version, payload={"task_id": session.task_id, "active_seconds": session.active_seconds})
+    publish_learning_fact(db, ward_id=session.ward_id, event_type="study_session.paused", source_type="study_session", source_id=session.id, source_version=session.version, payload={"task_id": session.task_id, "active_seconds": session.active_seconds})
     db.commit(); return {"id": session.id, "status": session.status, "active_seconds": session.active_seconds}
 
 @app.post("/sessions/{session_id}/messages")
@@ -461,7 +461,7 @@ def tutor(session_id: str, body: MessageCreate, principal: Principal = Depends(c
         db.add(tutoring_session); db.flush()
     question = TutoringMessage(tutoring_session_id=tutoring_session.id, role="ward", content=body.content, is_stuck_point=True)
     db.add(question); db.flush()
-    record_learning_event(db, ward_id=session.ward_id, event_type="tutoring.stuck_point_recorded", source_type="tutoring_message", source_id=question.id, payload={"study_session_id": session.id, "tutoring_session_id": tutoring_session.id})
+    publish_learning_fact(db, ward_id=session.ward_id, event_type="tutoring.stuck_point_recorded", source_type="tutoring_message", source_id=question.id, payload={"study_session_id": session.id, "tutoring_session_id": tutoring_session.id})
     # Model routing remains injectable; this safe fallback keeps an unavailable provider from blocking study.
     answer = "先别急着找答案。你能说说题目已知什么、要解决什么吗？把第一步写出来，我们一起检查。"
     db.add(TutoringMessage(tutoring_session_id=tutoring_session.id, role="assistant", content=answer, hint_level=1)); db.commit(); return {"role": "assistant", "content": answer, "mode": "socratic"}
@@ -476,7 +476,7 @@ def finish_session(session_id: str, body: SessionFinish, principal: Principal = 
         interval.ended_at=now(); interval.end_reason="completed"; interval.active_seconds=max(0, body.active_seconds-session.active_seconds)
     session.status="completed"; session.ended_at=now(); session.active_seconds=body.active_seconds; session.completion_reason="ward_finished"; session.version += 1
     db.get(Task, session.task_id).status="completed"
-    record_learning_event(db, ward_id=session.ward_id, event_type="study_session.completed", source_type="study_session", source_id=session.id, source_version=session.version, payload={"task_id": session.task_id, "active_seconds": session.active_seconds})
+    publish_learning_fact(db, ward_id=session.ward_id, event_type="study_session.completed", source_type="study_session", source_id=session.id, source_version=session.version, payload={"task_id": session.task_id, "active_seconds": session.active_seconds})
     db.commit(); return {"status": "completed"}
 
 @app.post("/wards/{ward_id}/reviews/{review_date}")
@@ -488,7 +488,7 @@ def submit_review(ward_id: str, review_date: date, body: SelfReviewCreate, princ
     kit=db.query(FocusKit).filter_by(ward_id=ward_id,review_date=review_date).one_or_none()
     if kit is None: db.add(FocusKit(ward_id=ward_id, review_date=review_date, advice="遇到卡住时，先停两分钟写下已知条件，再继续下一步。"))
     db.flush()
-    record_learning_event(db, ward_id=ward_id, event_type="self_review.submitted", source_type="self_review", source_id=row.id, payload={"review_date": review_date.isoformat(), "feeling": row.feeling})
+    publish_learning_fact(db, ward_id=ward_id, event_type="self_review.submitted", source_type="self_review", source_id=row.id, payload={"review_date": review_date.isoformat(), "feeling": row.feeling})
     db.commit(); return {"status":"submitted"}
 
 @app.get("/wards/{ward_id}/reviews/{review_date}/insight")
@@ -731,7 +731,7 @@ def ingest_frame(body: FrameCreate, device: Device = Depends(current_device), db
     )
     db.add(frame)
     db.flush()
-    record_learning_event(db, ward_id=device.ward_id, event_type="camera_frame.captured", source_type="frame", source_id=frame.id, occurred_at=captured, source="cam", scope={"study_session_id": body.study_session_id} if body.study_session_id else {}, payload={"device_id": device.id})
+    publish_learning_fact(db, ward_id=device.ward_id, event_type="camera_frame.captured", source_type="frame", source_id=frame.id, occurred_at=captured, source="cam", scope={"study_session_id": body.study_session_id} if body.study_session_id else {}, payload={"device_id": device.id})
     db.commit()
     db.refresh(frame)
     return {"id": frame.id, "captured_at": frame.captured_at, "duplicate": False}

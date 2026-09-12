@@ -263,6 +263,7 @@ class MemoryFacadeTest(unittest.TestCase):
         self.db.add(task); self.db.flush()
         session = StudySession(ward_id=self.ward_id, task_id=task.id)
         self.db.add(session); self.db.flush()
+        ledger_count = self.db.query(LearningEvent).count()
         workflow = TutoringWorkflow(self.db)
         first = workflow.invoke(RunInvocation(
             run_id=uid(), thread_id=uid(), ward_id=self.ward_id, agent_type="tutoring",
@@ -275,11 +276,31 @@ class MemoryFacadeTest(unittest.TestCase):
         ))
         self.assertEqual(closed.run_status, "closed")
         tutor_ref = closed.context_refs[0].split(":", 1)[1]
-        memory = SqlAlchemyMemoryCommandService(self.db).settle_tutoring_episode(tutor_ref)
+        # The Study use case owns only its transactional Outbox.  The Memory
+        # ledger is populated only once the integration events are consumed.
+        self.assertEqual(self.db.query(LearningEvent).count(), ledger_count)
+        service = SqlAlchemyMemoryCommandService(self.db)
+        for outbox in self.db.query(OutboxEvent).order_by(OutboxEvent.created_at):
+            service.ingest_learning_fact(LearningFactRecorded.model_validate(outbox.payload))
+        memory = service.settle_tutoring_episode(tutor_ref)
         self.assertIsNotNone(memory)
         self.assertEqual(
             self.db.query(EpisodicMemoryEvent).filter_by(episodic_memory_id=memory.id).count(), 3
         )
+
+    def test_closed_tutoring_session_without_interaction_does_not_settle(self):
+        service = SqlAlchemyMemoryCommandService(self.db)
+        tutoring_session_id = uid()
+        service.ingest_learning_fact(LearningFactRecorded(
+            ward_id=self.ward_id,
+            event_type="tutoring.session_closed",
+            source_type="test_tutoring",
+            source_id=tutoring_session_id,
+            occurred_at=datetime.now(timezone.utc),
+            source="system",
+            payload={"tutoring_session_id": tutoring_session_id},
+        ))
+        self.assertIsNone(service.settle_tutoring_episode(tutoring_session_id))
 
     def test_candidate_signal_needs_evidence_before_activation_and_challenge_removes_it(self):
         service = SqlAlchemyMemoryCommandService(self.db)

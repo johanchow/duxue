@@ -63,7 +63,15 @@ duxue-server/
 
 [DDD 系统级 Overview](ddd-overview.md) 是 Domain Inventory、Context Map、跨 Context 术语与写入所有权、稳定 Integration Event 契约的唯一来源。它将 Identity & Relationship、Device & Ingestion、Planning、Study、Behavior Analysis、Evaluation & Reflection、Memory & Understanding 与 Companion Orchestration 明确为不同边界。
 
-本文件只保留这些边界的物理实现映射：数据库可被模块化单体中的多个 Context 使用，但共享 PostgreSQL 不等于共享 Aggregate、Repository 或写入权。Context 内的 Aggregate、用例、不变量和读模型应由各自的 Context 设计文档维护；例如 [Memory & Understanding Context](design-memory.md)。
+本文件只保留这些边界的物理实现映射：数据库可被模块化单体中的多个 Context 使用，但共享 PostgreSQL 不等于共享 Aggregate、Repository 或写入权。Context 内的 Aggregate、用例、不变量和读模型应由各自的 Context 设计文档维护。
+
+| Context | 业务与 Workflow 的唯一设计 | 本文负责的物理映射 |
+|---|---|---|
+| Companion Orchestration | [domain-companion.md](domain-companion.md) | Thread/Run、Checkpoint/Trace、入口 API/SSE |
+| Planning & Scheduling | [domain-planning.md](domain-planning.md) | Task、PlanDraft、DailySchedule、确认事务 |
+| Study & Tutoring | [domain-study.md](domain-study.md) | Study/Tutoring Session、消息、运行时存储 |
+| Evaluation & Reflection | [domain-evaluation.md](domain-evaluation.md) | SelfReview、报告、投影与 Worker |
+| Memory & Understanding | [domain-memory.md](domain-memory.md) | Evidence、Memory、Signal、Profile 与清理 |
 
 ---
 
@@ -371,7 +379,7 @@ erDiagram
     derived_signals {
         uuid id PK
         uuid ward_id FK
-        string signal_type "受控枚举；语义与 value Schema 见 design-memory.md"
+        string signal_type "受控枚举；语义与 value Schema 见 domain-memory.md"
         string subject "可为空；如 math | english"
         string scope "task | recent | long_term"
         jsonb value "按 signal_type 约束的结构化值"
@@ -561,34 +569,7 @@ graph TD
 
 ---
 
-## 六、孩子理解引擎与三层记忆实现（Memory Engine）
-
-记忆引擎完全作为**纯系统智能底座**运作，不向学生提供独立记忆 UI，直接为计划生成、答疑支架与复盘归因提供上下文。
-
-```text
-┌────────────────────────────────────────────────────────────────────────┐
-│                        三层记忆模型架构与存储                          │
-├───────────────────┬────────────────────────────┬───────────────────────┤
-│ 记忆层级          │ 存储介质                   │ 覆盖范围与生命周期    │
-├───────────────────┼────────────────────────────┼───────────────────────┤
-│ 1. 短期工作记忆   │ Redis 7 (Hash / String)    │ 单次任务会话内实时交互 │
-│    (Working)      │ Key: `mem:work:{ward_id}`  │ 会话关闭即归档 (TTL 2h)│
-├───────────────────┼────────────────────────────┼───────────────────────┤
-│ 2. 近期事件流水   │ PostgreSQL 16 (表存储)     │ 滚动近 5 天详细事实   │
-│    (Episodic)     │ 表: `episodic_memories`    │ 时间半衰期指数衰减    │
-├───────────────────┼────────────────────────────┼───────────────────────┤
-│ 3. 长期人物画像   │ PostgreSQL 16 (JSONB 聚合) │ Active 长期 Signal 的 │
-│    (Long-Term)    │ 表: `long_term_profiles`   │ 每日夜间 Celery 重算  │
-│                   │                             │ 读模型与稳定基线      │
-└───────────────────┴────────────────────────────┴───────────────────────┘
-```
-
-### 记忆衰减与动态演化算法
-近期事件权重随时间推移按半衰期公式 \( W(t) = W_0 \cdot e^{-\lambda \Delta t} \) 衰减（设定半衰期为 3 天，\(\lambda \approx 0.231\)）。当事件发生超过 5 天且无重现时，近期记忆归档；每日任务基于事实事件和 `derived_signals` 重算信号状态，并将 `scope=long_term AND status=active` 的聚合结果覆盖写入 `long_term_profiles`。事实事件仍按其留存策略保存，不以近期记忆的 5 天热窗口作为长期结论的唯一依据。
-
----
-
-## 七、API 接口规范（RESTful & SSE）
+## 六、API 接口规范（RESTful & SSE）
 
 ### 7.1 认证与关系管理 (IAM & Bindings)
 
@@ -620,7 +601,7 @@ graph TD
 
 ---
 
-## 八、权限与安全控制（Unified ACL）
+## 七、权限与安全控制（Unified ACL）
 
 服务端摒弃所有多租户与 RLS 基础设施，在 API 依赖项层面统一实行严密收口的权限拦截：
 
@@ -642,7 +623,7 @@ FUNCTION verifyWardAccess(wardId, currentUser, db):
 
 ---
 
-## 九、任务队列与定时调度（Celery Pipeline）
+## 八、任务队列与定时调度（Celery Pipeline）
 
 ```text
 ┌────────────────────────────────────────────────────────────────────────┐
@@ -664,7 +645,7 @@ FUNCTION verifyWardAccess(wardId, currentUser, db):
 
 ---
 
-## 十、合规、性能与运维基线
+## 九、合规、性能与运维基线
 
 1. **未成年人隐私与存储留存**：
    - 阿里云 OSS 抓拍帧配置生命周期，**90 天到期自动物理销毁**（训练候选集 `training_candidate=true` 豁免）；
