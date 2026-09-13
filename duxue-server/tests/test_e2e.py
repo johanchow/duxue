@@ -657,6 +657,17 @@ class EndToEndTest(unittest.TestCase):
                     {"type": "final", "text": "安排明天的数学作业"},
                 )
 
+    def test_voice_socket_reports_an_actionable_error_before_closing_when_unauthorized(self):
+        with self.client.websocket_connect("/ws/asr/transcribe") as socket:
+            self.assertEqual(
+                socket.receive_json(),
+                {
+                    "type": "error",
+                    "code": "unauthorized",
+                    "message": "登录已过期，请重新登录",
+                },
+            )
+
     def test_ward_rebinding_uses_one_time_six_digit_code_and_revokes_old_session(self):
         guardian = self.request(
             "POST",

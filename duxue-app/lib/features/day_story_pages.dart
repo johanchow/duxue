@@ -136,13 +136,17 @@ class WardDayPage extends ConsumerStatefulWidget {
 class _WardDayPageState extends ConsumerState<WardDayPage> {
   List<dynamic> tasks = [];
   Map<String, dynamic>? plan, insight, profile;
-  String? session, answer;
+  String? session;
   int tab = 0;
   final watch = Stopwatch();
   final planAttachments = <String>[];
   List<Map<String, dynamic>> planDraft = [];
   String? planFeedback;
   bool planSending = false;
+  bool planListOpen = false;
+  bool planChatOpen = false;
+  String? chatSubject;
+  final removedPoolTaskIds = <String>{};
   Timer? timer;
   int savedSeconds = 0;
   @override
@@ -168,8 +172,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
       body: SafeArea(
           child: switch (tab) {
         0 => _home(context),
-        1 => _ai(context),
-        2 => _growth(context),
+        1 => _growth(context),
         _ => _profile(context)
       }),
       bottomNavigationBar: NavigationBar(
@@ -180,10 +183,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
                 icon: Icon(Icons.home_outlined),
                 selectedIcon: Icon(Icons.home),
                 label: '首页'),
-            NavigationDestination(
-                icon: Icon(Icons.chat_bubble_outline),
-                selectedIcon: Icon(Icons.chat_bubble),
-                label: 'AI 伙伴'),
             NavigationDestination(
                 icon: Icon(Icons.eco_outlined),
                 selectedIcon: Icon(Icons.eco),
@@ -203,47 +202,28 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
         .whereType<String>()
         .toSet();
     final pool = tasks
-        .where((item) => !plannedAssignmentIds.contains(item['id']))
+        .where((item) =>
+            !plannedAssignmentIds.contains(item['id']) &&
+            !removedPoolTaskIds.contains(item['id']))
         .toList();
     return Stack(children: [
       ListView(padding: const EdgeInsets.fromLTRB(16, 14, 16, 156), children: [
-        Text(
-            '周${_weekday(DateTime.now())} · ${DateTime.now().month} 月 ${DateTime.now().day} 日',
-            style: const TextStyle(fontSize: 12, color: Colors.blueGrey)),
-        const SizedBox(height: 4),
-        Text('开始按自己的节奏学习吧',
-            style: Theme.of(context)
-                .textTheme
-                .headlineSmall
-                ?.copyWith(fontWeight: FontWeight.w700)),
-        const SizedBox(height: 20),
-        _sectionHead(
-            '今日计划', plan?['status'] == 'confirmed' ? '已确认 · 你说了算' : '还没确认'),
-        AppCard(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-            child: planned.isEmpty
-                ? const Padding(
-                    padding: EdgeInsets.all(16),
-                    child: Text('今天还没有确认计划。可以在下方告诉我怎么安排。'))
-                : Column(children: [
-                    for (var i = 0; i < planned.length; i++)
-                      _timelineTask(planned[i] as Map<String, dynamic>, i == 0),
-                  ])),
-        const SizedBox(height: 18),
-        _sectionHead('未进入今天计划', '${pool.length} 项'),
-        AppCard(
-            padding: EdgeInsets.zero,
-            child: pool.isEmpty
-                ? const Padding(
-                    padding: EdgeInsets.all(18),
-                    child: Center(child: Text('任务池已经空了。')))
-                : Column(children: [
-                    for (final item in pool)
-                      _poolTask(item as Map<String, dynamic>)
-                  ])),
+        _homeGreeting(context),
+        _contextHeader(plan?['status'] == 'confirmed' ? '已确认 · 今日计划' : '今日计划',
+            action: planned.isEmpty ? null : _openPlanList, actionLabel: '全部'),
+        if (planned.isEmpty)
+          const _HomeEmptyCard(message: '今天还没有确认计划。可以在下方说说你想怎么安排。')
+        else
+          _planRail(planned),
+        const SizedBox(height: 14),
+        _contextHeader('待你决定', meta: '${pool.length} 项 · 左滑删除'),
+        if (pool.isEmpty)
+          const _HomeEmptyCard(message: '今天没有待定项了。想加任务，走下方统一入口。')
+        else
+          ...pool.map((item) => _poolTask(item as Map<String, dynamic>)),
         const Padding(
             padding: EdgeInsets.only(top: 8, left: 2, right: 2),
-            child: Text('这些不会自动排进今天。想加进来、延后或拆开，可以告诉 AI 伙伴。',
+            child: Text('这些不会自动排进今天。左滑可移除；想调整安排，直接告诉读学。',
                 style: TextStyle(fontSize: 12, color: Colors.blueGrey))),
         if (planned.isNotEmpty) ...[
           const SizedBox(height: 18),
@@ -252,166 +232,266 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
         ],
       ]),
       Positioned(left: 16, right: 16, bottom: 12, child: _chatEntry()),
+      if (planListOpen) _planListOverlay(planned),
+      if (planChatOpen) _planChatOverlay(),
     ]);
   }
 
-  Widget _sectionHead(String title, String meta) => Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-        Text(title.toUpperCase(),
-            style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: Colors.blueGrey,
-                letterSpacing: 1)),
-        Text(meta,
-            style: const TextStyle(fontSize: 12, color: Colors.blueGrey)),
+  Widget _homeGreeting(BuildContext context) => Padding(
+      padding: const EdgeInsets.only(bottom: 18),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(
+              '周${_weekday(DateTime.now())} · ${DateTime.now().month} 月 ${DateTime.now().day} 日',
+              style: const TextStyle(fontSize: 12, color: Colors.blueGrey)),
+          const SizedBox(height: 4),
+          Text('晚上好，${profile?['display_name'] ?? '同学'}',
+              style: Theme.of(context)
+                  .textTheme
+                  .headlineSmall
+                  ?.copyWith(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 5),
+          const Text('你先说，我来帮你记录和检查安排。',
+              style: TextStyle(fontSize: 13, color: Colors.blueGrey)),
+        ])),
       ]));
 
-  Widget _timelineTask(Map<String, dynamic> item, bool first) {
-    final status = item['status'] as String? ?? 'pending';
-    final sessionData = item['session'] as Map<String, dynamic>?;
-    final label = status == 'active'
-        ? '进行中'
-        : status == 'paused'
-            ? '已暂停'
-            : status == 'completed'
-                ? '已完成'
-                : first
-                    ? '当前'
-                    : '待开始';
-    return InkWell(
-        onTap: () => _taskTapped(item, true),
-        child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              SizedBox(
-                  width: 48,
-                  child: Text(first ? '19:00' : '稍后',
-                      style: const TextStyle(
-                          fontSize: 12, color: Colors.blueGrey))),
-              Container(
-                  width: 10,
-                  height: 10,
-                  margin: const EdgeInsets.only(top: 4, right: 12),
-                  decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color:
-                          status == 'completed' ? Colors.blueGrey : brandBlue)),
-              Expanded(
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                    Text(item['title'] as String,
-                        style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            decoration: status == 'completed'
-                                ? TextDecoration.lineThrough
-                                : null)),
-                    Text('约 ${item['planned_minutes'] ?? 30} 分钟',
-                        style: const TextStyle(
-                            fontSize: 12, color: Colors.blueGrey)),
-                    const SizedBox(height: 5),
-                    StatusPill(
-                        text: label,
-                        color: status == 'completed'
-                            ? Colors.blueGrey
-                            : status == 'paused'
-                                ? Colors.orange
-                                : brandBlue),
-                    if (sessionData != null) const SizedBox(height: 1),
-                  ])),
-            ])));
-  }
+  Widget _contextHeader(String title,
+          {String? meta, VoidCallback? action, String? actionLabel}) =>
+      Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Row(children: [
+            const Icon(Icons.circle, size: 7, color: Color(0xff0f766e)),
+            const SizedBox(width: 8),
+            Text(title.toUpperCase(),
+                style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.blueGrey,
+                    letterSpacing: 1)),
+            const Spacer(),
+            if (meta != null)
+              Text(meta,
+                  style: const TextStyle(fontSize: 12, color: Colors.blueGrey)),
+            if (action != null)
+              TextButton(onPressed: action, child: Text(actionLabel ?? '查看')),
+          ]));
+
+  Widget _planRail(List<dynamic> planned) => SizedBox(
+      height: 116,
+      child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: planned.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 8),
+          itemBuilder: (_, index) {
+            final item = planned[index] as Map<String, dynamic>;
+            return SizedBox(
+                width: 150,
+                child: Card(
+                    color: index == 0 ? const Color(0xfff0fdfa) : Colors.white,
+                    child: InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: () => _openPlanChat(item['title'] as String),
+                        child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(index == 0 ? '现在' : '稍后',
+                                      style: const TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.blueGrey)),
+                                  const SizedBox(height: 4),
+                                  Text(item['title'] as String,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.w700)),
+                                  const Spacer(),
+                                  Text('约 ${item['planned_minutes'] ?? 30} 分钟',
+                                      style: const TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.blueGrey)),
+                                ])))));
+          }));
 
   Widget _poolTask(Map<String, dynamic> item) {
     final status = item['status'] as String? ?? 'open';
-    return InkWell(
-        onTap: () => _taskTapped(item, false),
-        child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-            child: Row(children: [
-              const Icon(Icons.check_box_outline_blank,
-                  color: Color(0xff94a3b8)),
-              const SizedBox(width: 12),
-              Expanded(
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                    Text(item['title'] as String,
-                        style: const TextStyle(fontWeight: FontWeight.w700)),
-                    Text(item['details'] as String? ?? '任务池 · 尚未安排',
-                        style: const TextStyle(
-                            fontSize: 12, color: Colors.blueGrey)),
-                  ])),
-              StatusPill(
-                  text: status == 'active'
-                      ? '进行中'
-                      : status == 'paused'
-                          ? '已暂停'
-                          : '未安排',
-                  color: status == 'open'
-                      ? Colors.deepPurple
-                      : status == 'paused'
-                          ? Colors.orange
-                          : brandBlue),
-            ])));
+    return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Dismissible(
+            key: ValueKey('pool-${item['id']}'),
+            direction: DismissDirection.endToStart,
+            background: Container(
+                alignment: Alignment.centerRight,
+                padding: const EdgeInsets.only(right: 22),
+                decoration: BoxDecoration(
+                    color: Colors.red.shade700,
+                    borderRadius: BorderRadius.circular(16)),
+                child: const Icon(Icons.delete_outline, color: Colors.white)),
+            onDismissed: (_) {
+              setState(() => removedPoolTaskIds.add(item['id'] as String));
+              showMessage(context, '「${item['title']}」已从任务池移除');
+            },
+            child: AppCard(
+                padding: EdgeInsets.zero,
+                onTap: () => _taskTapped(item, false),
+                child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 13),
+                    child: Row(children: [
+                      const Icon(Icons.check_box_outline_blank,
+                          color: Color(0xff94a3b8)),
+                      const SizedBox(width: 12),
+                      Expanded(
+                          child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                            Text(item['title'] as String,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w700)),
+                            Text(item['details'] as String? ?? '任务池 · 尚未安排',
+                                style: const TextStyle(
+                                    fontSize: 12, color: Colors.blueGrey)),
+                          ])),
+                      StatusPill(
+                          text: status == 'active'
+                              ? '进行中'
+                              : status == 'paused'
+                                  ? '已暂停'
+                                  : '未安排',
+                          color: status == 'open'
+                              ? Colors.deepPurple
+                              : status == 'paused'
+                                  ? Colors.orange
+                                  : brandBlue),
+                    ])))));
   }
 
   Widget _chatEntry() => AppCard(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        VoiceComposer(
+      child: VoiceComposer(
           baseUrl: apiBaseUrl,
           tokens: ref.read(tokenStorageProvider),
           telemetry: ref.read(telemetryProvider),
-            holdToTalkText: '说今天怎么安排',
-            helperText: '加任务 · 改顺序 · 调时长 · 补遗漏',
-            enabled: !planSending,
-            onPickImage: _pickPlanImage,
-            onVoiceFinal: _submitPlanInput),
-        if (planAttachments.isNotEmpty)
-          Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text('已添加 ${planAttachments.length} 张图片，发送后我会一起整理。',
-                  style:
-                      const TextStyle(fontSize: 12, color: Colors.blueGrey))),
-        if (planFeedback != null)
-          Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(planFeedback!)),
-        if (planDraft.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          const Text('今天计划草稿', style: TextStyle(fontWeight: FontWeight.w700)),
-          for (final item in planDraft)
-            Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text(
-                    '• ${item['title']} · 约 ${item['planned_minutes']} 分钟')),
-          const SizedBox(height: 8),
-          FilledButton(
-              onPressed: planSending ? null : _confirmPlanIntake,
-              child: const Text('确认今天计划')),
+          holdToTalkText: '说出你的任何想法、问题、安排',
+          helperText: '按住说话',
+          enabled: !planSending,
+          onPickImage: _pickPlanImage,
+          onVoiceFinal: _onVoicePlanInput));
+
+  Widget _planListOverlay(List<dynamic> planned) => _HomeOverlay(
+      title: '今日计划',
+      subtitle: '已确认 · 共 ${planned.length} 项 · 你说了算',
+      onClose: () => setState(() => planListOpen = false),
+      child: planned.isEmpty
+          ? const Text('还没有确认计划。')
+          : ListView.separated(
+              shrinkWrap: true,
+              itemCount: planned.length,
+              separatorBuilder: (_, __) => const Divider(),
+              itemBuilder: (_, index) {
+                final item = planned[index] as Map<String, dynamic>;
+                return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: CircleAvatar(
+                        radius: 14,
+                        backgroundColor: const Color(0xffe6f4f1),
+                        child: Text('${index + 1}',
+                            style: const TextStyle(fontSize: 12))),
+                    title: Text(item['title'] as String),
+                    subtitle: Text('约 ${item['planned_minutes'] ?? 30} 分钟'),
+                    onTap: () => setState(() {
+                          planListOpen = false;
+                          chatSubject = item['title'] as String;
+                          planChatOpen = true;
+                        }));
+              }));
+
+  Widget _planChatOverlay() => _HomeOverlay(
+      title: '读学',
+      subtitle: '你先说；我记录并检查冲突，确认后才生效。',
+      onClose: () => setState(() => planChatOpen = false),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+                color: const Color(0xfff0fdfa),
+                borderRadius: BorderRadius.circular(12)),
+            child: Text(_chatContext(),
+                style:
+                    const TextStyle(fontSize: 12, color: Color(0xff0f766e)))),
+        const SizedBox(height: 14),
+        const _ChatBubble(
+            label: '读学', text: '我不会替你排今天。你说想怎么安排，我帮你记下来，并检查有没有冲突。'),
+        if (planFeedback != null) ...[
+          const SizedBox(height: 10),
+          _ChatBubble(label: '读学', text: planFeedback!),
         ],
+        if (planAttachments.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Text('已添加 ${planAttachments.length} 张图片，读学会一起整理。',
+              style: const TextStyle(fontSize: 12, color: Colors.blueGrey)),
+        ],
+        if (planSending) ...[
+          const SizedBox(height: 14),
+          const Center(child: CircularProgressIndicator()),
+        ],
+        if (planDraft.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          AppCard(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                const Text('已记录（待你确认）',
+                    style: TextStyle(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 8),
+                for (final item in planDraft)
+                  Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Text(
+                          '• ${item['title']} · 约 ${item['planned_minutes']} 分钟')),
+                const SizedBox(height: 8),
+                Row(children: [
+                  Expanded(
+                      child: OutlinedButton(
+                          onPressed: () =>
+                              showMessage(context, '草稿还在，按住下方再说想改哪一段。'),
+                          child: const Text('我再改一句'))),
+                  const SizedBox(width: 8),
+                  Expanded(
+                      child: FilledButton(
+                          onPressed: planSending ? null : _confirmPlanIntake,
+                          child: const Text('确认这个计划'))),
+                ])
+              ]))
+        ]
       ]));
 
-  Widget _ai(BuildContext context) =>
-      ListView(padding: const EdgeInsets.all(16), children: [
-        const Text('学习卡壳时随时问，我会一步步陪你想明白。',
-            style: TextStyle(color: Colors.blueGrey)),
-        const SizedBox(height: 14),
-        if (session == null)
-          const AppCard(
-              child: Padding(
-                  padding: EdgeInsets.all(20),
-                  child: Text('先从首页开始一个计划任务，再来和 AI 伙伴一起解决问题。')))
-        else
-          _Companion(
-              seconds: _elapsedSeconds,
-              answer: answer,
-              onAsk: _ask,
-              onFinish: _finish)
-      ]);
+  void _openPlanList() => setState(() {
+        planChatOpen = false;
+        planListOpen = true;
+      });
+
+  void _openPlanChat([String? subject]) => setState(() {
+        planListOpen = false;
+        chatSubject = subject;
+        planChatOpen = true;
+      });
+
+  String _chatContext() {
+    if (chatSubject != null) return '语境：关于「${chatSubject!}」——按住下方再说。';
+    final count = (plan?['items'] as List? ?? const []).length;
+    return '已知：今天已确认 $count 项计划；另有 ${tasks.length - removedPoolTaskIds.length} 项待你决定。';
+  }
+
+  Future<void> _onVoicePlanInput(String text) async {
+    _openPlanChat();
+    await _submitPlanInput(text);
+  }
 
   Widget _growth(BuildContext context) =>
       ListView(padding: const EdgeInsets.all(16), children: [
@@ -546,11 +626,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
   }
 
   int get _elapsedSeconds => savedSeconds + watch.elapsed.inSeconds;
-
-  Future<void> _ask(String text) async {
-    answer = await ref.read(apiProvider).ask(session!, text);
-    if (mounted) setState(() {});
-  }
 
   Future<void> _finish() async {
     watch.stop();
@@ -689,6 +764,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
   }
 
   Future<void> _pickPlanImage() async {
+    _openPlanChat();
     final image = await ImagePicker()
         .pickImage(source: ImageSource.gallery, imageQuality: 85);
     if (image == null || !mounted) return;
@@ -754,33 +830,100 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
       const ['一', '二', '三', '四', '五', '六', '日'][day.weekday - 1];
 }
 
-class _Companion extends StatefulWidget {
-  const _Companion(
-      {required this.seconds,
-      required this.answer,
-      required this.onAsk,
-      required this.onFinish});
-  final int seconds;
-  final String? answer;
-  final Future<void> Function(String) onAsk;
-  final VoidCallback onFinish;
+class _HomeEmptyCard extends StatelessWidget {
+  const _HomeEmptyCard({required this.message});
+  final String message;
+
   @override
-  State<_Companion> createState() => _CompanionState();
+  Widget build(BuildContext context) => Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: const Color(0xffe2e8f0)),
+          borderRadius: BorderRadius.circular(16)),
+      child: Text(message, style: const TextStyle(color: Colors.blueGrey)));
 }
 
-class _CompanionState extends State<_Companion> {
-  final input = TextEditingController();
+class _HomeOverlay extends StatelessWidget {
+  const _HomeOverlay({
+    required this.title,
+    required this.subtitle,
+    required this.onClose,
+    required this.child,
+  });
+  final String title;
+  final String subtitle;
+  final VoidCallback onClose;
+  final Widget child;
+
   @override
-  Widget build(BuildContext context) => Card(
-      child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(children: [
-            Text('专注 ${widget.seconds ~/ 60} 分钟'),
-            TextField(
-                controller: input,
-                decoration: const InputDecoration(labelText: '卡住了？问问 AI 伙伴'),
-                onSubmitted: widget.onAsk),
-            if (widget.answer != null) Text(widget.answer!),
-            TextButton(onPressed: widget.onFinish, child: const Text('完成任务'))
-          ])));
+  Widget build(BuildContext context) => Positioned.fill(
+      child: ColoredBox(
+          color: const Color(0x660c1222),
+          child: SafeArea(
+              child: Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 10, 10, 82),
+                  child: Material(
+                      borderRadius: BorderRadius.circular(24),
+                      clipBehavior: Clip.antiAlias,
+                      child: Column(children: [
+                        Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 16, 8, 12),
+                            child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const CircleAvatar(
+                                      backgroundColor: Color(0xff0f766e),
+                                      foregroundColor: Colors.white,
+                                      child: Icon(Icons.auto_awesome)),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                      child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                        Text(title,
+                                            style: const TextStyle(
+                                                fontWeight: FontWeight.w700,
+                                                fontSize: 16)),
+                                        Text(subtitle,
+                                            style: const TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.blueGrey)),
+                                      ])),
+                                  IconButton(
+                                      onPressed: onClose,
+                                      tooltip: '关闭',
+                                      icon: const Icon(Icons.close)),
+                                ])),
+                        const Divider(height: 1),
+                        Expanded(
+                            child: SingleChildScrollView(
+                                padding: const EdgeInsets.all(16),
+                                child: child)),
+                      ]))))));
+}
+
+class _ChatBubble extends StatelessWidget {
+  const _ChatBubble({required this.label, required this.text});
+  final String label;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+          color: const Color(0xfff8fafc),
+          border: Border.all(color: const Color(0xffe2e8f0)),
+          borderRadius: BorderRadius.circular(16)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(label,
+            style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: Colors.blueGrey)),
+        const SizedBox(height: 4),
+        Text(text),
+      ]));
 }

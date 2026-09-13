@@ -58,7 +58,9 @@ class VoiceTranscriptionService implements VoiceTranscription {
     required TranscriptHandler onFinal,
     required VoiceErrorHandler onError,
   }) async {
-    final span = telemetry.startSpan('app.asr.session');
+    const route = '/ws/asr/transcribe';
+    final span =
+        telemetry.startSpan('app.asr.session', attributes: {'route': route});
     final token = await tokens.access;
     if (token == null) throw StateError('登录已过期，请重新登录');
     if (!await _recorder.hasPermission()) {
@@ -76,6 +78,11 @@ class VoiceTranscriptionService implements VoiceTranscription {
       await socket.ready;
     } catch (_) {
       span.finish(attributes: {'result': 'error', 'error_kind': 'connect'});
+      telemetry.recordMetric('app.asr.session', 1, attributes: {
+        'result': 'error',
+        'error_kind': 'connect',
+        'route': route
+      });
       rethrow;
     }
     _socketSubscription = socket.stream.listen((raw) {
@@ -85,14 +92,27 @@ class VoiceTranscriptionService implements VoiceTranscription {
           onPartial(event['text'] as String? ?? '');
         case 'final':
           span.finish(attributes: {'result': 'success'});
+          telemetry.recordMetric('app.asr.session', 1,
+              attributes: {'result': 'success', 'route': route});
           onFinal(event['text'] as String? ?? '');
           unawaited(_closeSocket());
         case 'error':
-          span.finish(attributes: {'result': 'error', 'error_kind': 'server'});
+          final errorKind = event['code'] == 'unauthorized' ? 'auth' : 'server';
+          span.finish(attributes: {'result': 'error', 'error_kind': errorKind});
+          telemetry.recordMetric('app.asr.session', 1, attributes: {
+            'result': 'error',
+            'error_kind': errorKind,
+            'route': route
+          });
           onError(event['message'] as String? ?? '语音识别暂不可用');
       }
     }, onError: (_, __) {
       span.finish(attributes: {'result': 'error', 'error_kind': 'socket'});
+      telemetry.recordMetric('app.asr.session', 1, attributes: {
+        'result': 'error',
+        'error_kind': 'socket',
+        'route': route
+      });
       onError('语音连接已断开');
     });
     socket.sink.add(jsonEncode({'type': 'start'}));

@@ -126,6 +126,41 @@ void main() {
     expect(api.startedAssignment, isTrue);
   });
 
+  testWidgets('V3 home opens the complete plan timeline and task context',
+      (tester) async {
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiProvider.overrideWithValue(_WardHomeApi())],
+      child: const MaterialApp(home: WardDayPage(wardId: 'ward-1')),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('已确认 · 今日计划'), findsOneWidget);
+    expect(find.text('AI 伙伴'), findsNothing);
+    expect(find.byTooltip('打开读学对话'), findsNothing);
+    await tester.tap(find.text('全部'));
+    await tester.pumpAndSettle();
+    expect(find.text('今日计划'), findsOneWidget);
+    expect(find.text('已确认 · 共 1 项 · 你说了算'), findsOneWidget);
+
+    await tester.tap(find.text('数学练习册').last);
+    await tester.pumpAndSettle();
+    expect(find.text('语境：关于「数学练习册」——按住下方再说。'), findsOneWidget);
+  });
+
+  testWidgets('V3 home removes a task-pool item locally when swiped',
+      (tester) async {
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiProvider.overrideWithValue(_WardHomeApi())],
+      child: const MaterialApp(home: WardDayPage(wardId: 'ward-1')),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.drag(find.text('观察蚂蚁路线'), const Offset(-500, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('观察蚂蚁路线'), findsNothing);
+    expect(find.text('今天没有待定项了。想加任务，走下方统一入口。'), findsOneWidget);
+  });
+
   testWidgets(
       'holding talk sends its final transcript and image invokes callback',
       (tester) async {
@@ -138,9 +173,14 @@ void main() {
                 baseUrl: 'http://localhost',
                 tokens: const TokenStorage(),
                 telemetry: AppTelemetry(
-                    config: const TelemetryConfig(enabled: false, relayUrl: '', sampleRate: 0),
+                    config: const TelemetryConfig(
+                        enabled: false, relayUrl: '', sampleRate: 0),
                     accessToken: () async => null),
-                voiceFactory: ({required baseUrl, required tokens, required telemetry}) => voice,
+                voiceFactory: (
+                        {required baseUrl,
+                        required tokens,
+                        required telemetry}) =>
+                    voice,
                 onVoiceFinal: (value) async => transcript = value,
                 onPickImage: () async => imagePressed = true))));
 
@@ -165,9 +205,14 @@ void main() {
                 baseUrl: 'http://localhost',
                 tokens: const TokenStorage(),
                 telemetry: AppTelemetry(
-                    config: const TelemetryConfig(enabled: false, relayUrl: '', sampleRate: 0),
+                    config: const TelemetryConfig(
+                        enabled: false, relayUrl: '', sampleRate: 0),
                     accessToken: () async => null),
-                voiceFactory: ({required baseUrl, required tokens, required telemetry}) => voice,
+                voiceFactory: (
+                        {required baseUrl,
+                        required tokens,
+                        required telemetry}) =>
+                    voice,
                 onVoiceFinal: (value) async => transcript = value,
                 onPickImage: () async {}))));
 

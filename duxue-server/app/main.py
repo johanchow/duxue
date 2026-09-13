@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import secrets
 from datetime import date, datetime, timedelta, timezone
@@ -39,12 +40,13 @@ from .plan_intake import PlanIntakeService
 from .integration_events import publish_learning_fact
 from .ai_runtime.companion_coordinator import CompanionCoordinator
 from .memory import MemoryAccessDenied, SqlAlchemyMemoryCommandService
-from .observability import configure_observability, record_frame
+from .observability import configure_observability, record_asr_session, record_frame
 from .client_telemetry import allow_batch, relay as relay_client_telemetry
 from opentelemetry import trace
 
 
 app = FastAPI(title="读学 Server", version="0.1.0")
+_asr_logger = logging.getLogger("duxue.asr")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=list(settings.cors_allow_origins),
@@ -112,12 +114,32 @@ async def transcribe_voice(websocket: WebSocket) -> None:
     provider = None
     forward_task = None
     try:
+        # Accept first so an authentication failure is a structured, actionable
+        # protocol event rather than an opaque client-side handshake exception.
+        await websocket.accept()
+        authorization = websocket.headers.get("authorization")
         try:
-            principal = current_guardian_or_ward(websocket.headers.get("authorization"), db)
-        except HTTPException:
+            principal = current_guardian_or_ward(authorization, db)
+        except HTTPException as error:
+            auth_scheme = "missing"
+            if authorization:
+                auth_scheme = authorization.split(" ", 1)[0].lower()
+            attrs = {
+                "asr.stage": "auth",
+                "asr.has_authorization": bool(authorization),
+                "asr.auth_scheme": auth_scheme,
+                "asr.reason": str(error.detail),
+            }
+            _asr_logger.warning("asr.ws.auth_rejected", extra={"telemetry": attrs})
+            record_asr_session(result="rejected", stage="auth")
+            await websocket.send_json({
+                "type": "error",
+                "code": "unauthorized",
+                "message": "登录已过期，请重新登录",
+            })
             await websocket.close(code=1008)
             return
-        await websocket.accept()
+        _asr_logger.info("asr.ws.accepted", extra={"telemetry": {"principal.role": principal.role}})
         start = await websocket.receive_json()
         if start.get("type") != "start":
             await websocket.send_json({"type": "error", "message": "start is required"})
@@ -139,19 +161,30 @@ async def transcribe_voice(websocket: WebSocket) -> None:
             if message.get("text"):
                 command = json.loads(message["text"])
                 if command.get("type") == "cancel":
+                    record_asr_session(result="cancelled", stage="recording", role=principal.role)
                     return
                 if command.get("type") == "commit":
                     await provider.commit()
-                    await forward_task
+                    outcome = await forward_task
+                    record_asr_session(
+                        result="success" if outcome == "final" else "error",
+                        stage="completed" if outcome == "final" else "provider",
+                        role=principal.role,
+                    )
                     return
                 await websocket.send_json({"type": "error", "message": "unsupported ASR command"})
                 return
     except (WebSocketDisconnect, asyncio.CancelledError):
+        record_asr_session(result="cancelled", stage="transport")
         return
     except AsrConfigurationError as error:
-        await websocket.send_json({"type": "error", "message": str(error)})
+        _asr_logger.warning("asr.ws.configuration_error", extra={"telemetry": {"asr.stage": "provider", "asr.reason": str(error)}})
+        record_asr_session(result="error", stage="configuration")
+        await websocket.send_json({"type": "error", "code": "configuration", "message": str(error)})
     except Exception:
-        await websocket.send_json({"type": "error", "message": "voice transcription is temporarily unavailable"})
+        _asr_logger.exception("asr.ws.failed", extra={"telemetry": {"asr.stage": "provider"}})
+        record_asr_session(result="error", stage="provider")
+        await websocket.send_json({"type": "error", "code": "unavailable", "message": "voice transcription is temporarily unavailable"})
     finally:
         if forward_task and not forward_task.done():
             forward_task.cancel()
