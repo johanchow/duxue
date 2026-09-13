@@ -16,12 +16,12 @@ os.environ["LOCAL_UPLOAD_DIR"] = str(Path(_tmp.name) / "uploads")
 os.environ["SECRET_KEY"] = "test-secret"
 
 from fastapi.testclient import TestClient  # noqa: E402
-from app.main import app  # noqa: E402
-from app.storage import storage  # noqa: E402
-from app.task_intake import TaskIntakeResult  # noqa: E402
-from app.plan_intake import PlanIntakeResult  # noqa: E402
-from app.database import SessionLocal  # noqa: E402
-from app.models import (
+from app.bootstrap.app import app  # noqa: E402
+from app.infrastructure.storage.object_storage import storage  # noqa: E402
+from app.application.commands.task_intake import TaskIntakeResult  # noqa: E402
+from app.application.commands.plan_intake import PlanIntakeResult  # noqa: E402
+from app.infrastructure.persistence.database import SessionLocal  # noqa: E402
+from app.infrastructure.persistence.models import (
     AgentRun,
     AgentTrace,
     OutboxEvent,
@@ -486,11 +486,11 @@ class EndToEndTest(unittest.TestCase):
             [item["name"] for item in profile.json()["guardians"]], ["林妈妈"]
         )
 
-    @patch("app.ai_runtime.companion_coordinator.PlanningWorkflowAdapter")
+    @patch("app.application.process_managers.companion_coordinator.PlanningWorkflowAdapter")
     def test_companion_coordinator_routes_one_run_and_records_a_redacted_trace(
         self, adapter_class
     ):
-        from app.ai_runtime.contracts import WorkflowOutcome
+        from app.application.ports.companion import WorkflowOutcome
 
         adapter_class.return_value.invoke.return_value = WorkflowOutcome(
             run_status="waiting_for_ward",
@@ -639,7 +639,7 @@ class EndToEndTest(unittest.TestCase):
                 yield {"type": "final", "text": "安排明天的数学作业"}
 
         with patch(
-            "app.main.DashscopeRealtimeAsr.connect",
+            "app.api.v1.routes.DashscopeRealtimeAsr.connect",
             new=AsyncMock(return_value=FakeAsr()),
         ):
             with self.client.websocket_connect(
@@ -768,7 +768,7 @@ class EndToEndTest(unittest.TestCase):
             questions=["请说明任务归属"],
             ready_to_confirm=False,
         )
-        with patch("app.main.TaskIntakeService.respond", return_value=ambiguous):
+        with patch("app.api.v1.routes.TaskIntakeService.respond", return_value=ambiguous):
             response = self.request(
                 "POST",
                 "/task-intake/respond",
@@ -801,7 +801,7 @@ class EndToEndTest(unittest.TestCase):
             204,
         )
         attachment = signed.json()["oss_key"]
-        with patch("app.main.TaskIntakeService.respond", return_value=parsed):
+        with patch("app.api.v1.routes.TaskIntakeService.respond", return_value=parsed):
             response = self.request(
                 "POST",
                 "/task-intake/respond",
@@ -890,7 +890,7 @@ class EndToEndTest(unittest.TestCase):
             items=[{"title": "整理数学错题", "planned_minutes": 20, "new_task": True}],
             ready_to_confirm=True,
         )
-        with patch("app.main.PlanIntakeService.respond", return_value=parsed):
+        with patch("app.api.v1.routes.PlanIntakeService.respond", return_value=parsed):
             response = self.request(
                 "POST",
                 f"/wards/{ward}/plans/{day}/intake",

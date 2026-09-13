@@ -3,11 +3,11 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 import pytest
 
-from app.memory import (
+from app.application.commands.memory import (
     LearningFactRecorded,
     SqlAlchemyMemoryCommandService,
 )
-from app.models import (
+from app.infrastructure.persistence.models import (
     DerivedSignal,
     EpisodicMemory,
     EpisodicMemoryEvent,

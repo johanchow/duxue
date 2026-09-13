@@ -3,9 +3,9 @@ from __future__ import annotations
 import pytest
 from fastapi import HTTPException
 
-from app.ai_runtime.companion_coordinator import CompanionCoordinator
-from app.ai_runtime.contracts import CoordinatorResult, RouteDecision, WorkflowOutcome
-from app.models import AgentCheckpoint, AgentRun, AgentStreamEvent, AgentTrace, ConversationThread, uid
+from app.application.process_managers.companion_coordinator import CompanionCoordinator
+from app.application.ports.companion import CoordinatorResult, RouteDecision, WorkflowOutcome
+from app.infrastructure.persistence.models import AgentCheckpoint, AgentRun, AgentStreamEvent, AgentTrace, ConversationThread, uid
 from tests.support.factories import create_ward
 from tests.support.fakes import FakeWorkflowDispatcher
 

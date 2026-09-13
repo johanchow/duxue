@@ -4,8 +4,8 @@ from datetime import date
 import pytest
 from fastapi import HTTPException
 
-from app.ai_agents.planning_domain_service import PlanningDomainService
-from app.models import DailySchedule, OutboxEvent, PlanDraft, Task
+from app.application.workflows.planning_domain_service import PlanningDomainService
+from app.infrastructure.persistence.models import DailySchedule, OutboxEvent, PlanDraft, Task
 from tests.support.factories import create_ward, create_task
 
 

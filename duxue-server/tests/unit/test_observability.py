@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from app.observability import configure_observability, record_agent_input, record_model_response
+from app.infrastructure.observability.telemetry import configure_observability, record_agent_input, record_model_response
 
 
 def test_telemetry_is_disabled_without_an_otlp_endpoint(monkeypatch):

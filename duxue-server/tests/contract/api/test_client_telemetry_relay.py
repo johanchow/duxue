@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.security import create_access_token
+from app.infrastructure.security.tokens import create_access_token
 from tests.support.factories import create_ward
 
 
@@ -22,7 +22,7 @@ def test_mobile_telemetry_relay_requires_existing_short_lived_login(client):
 def test_mobile_telemetry_relay_accepts_ward_context_without_exporting_identity(client, db, monkeypatch):
     ward = create_ward(db)
     db.commit()
-    monkeypatch.setattr("app.main.relay_client_telemetry", lambda events: len(events))
+    monkeypatch.setattr("app.api.v1.routes.relay_client_telemetry", lambda events: len(events))
     token = create_access_token(user_id=ward.id, role="ward", ward_session_version=1)
 
     response = client.post(

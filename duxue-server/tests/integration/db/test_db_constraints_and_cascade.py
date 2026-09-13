@@ -4,7 +4,7 @@ from datetime import date
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from app.models import GuardianWard, Task
+from app.infrastructure.persistence.models import GuardianWard, Task
 from tests.support.factories import (
     create_guardian,
     create_ward,

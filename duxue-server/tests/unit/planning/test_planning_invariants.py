@@ -4,7 +4,7 @@ from datetime import date
 import pytest
 from fastapi import HTTPException
 
-from app.ai_agents.planning_domain_service import PlanningDomainService, MAX_DAILY_MINUTES
+from app.application.workflows.planning_domain_service import PlanningDomainService, MAX_DAILY_MINUTES
 from tests.support.factories import create_guardian, create_ward, create_task, create_daily_schedule
 
 

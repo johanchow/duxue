@@ -3,9 +3,9 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import pytest
 
-from app.integration_events import publish_learning_fact
-from app.memory_worker import consume_pending_learning_facts
-from app.models import EpisodicMemory, EpisodicMemoryEvent, LearningEvent, OutboxEvent, uid
+from app.infrastructure.messaging.outbox import publish_learning_fact
+from app.application.commands.memory_worker import consume_pending_learning_facts
+from app.infrastructure.persistence.models import EpisodicMemory, EpisodicMemoryEvent, LearningEvent, OutboxEvent, uid
 from tests.support.factories import create_ward
 
 

@@ -19,7 +19,7 @@ class ConfigTest(unittest.TestCase):
             "REDIS_PASSWORD": "p@ss:/ word",
         }
         result = subprocess.run(
-            [sys.executable, "-c", "from app.config import settings; print(settings.redis_url)"],
+            [sys.executable, "-c", "from app.bootstrap.settings import settings; print(settings.redis_url)"],
             cwd=os.path.dirname(os.path.dirname(__file__)), env=environment,
             text=True, capture_output=True, check=True,
         )
@@ -36,7 +36,7 @@ class ConfigTest(unittest.TestCase):
         }
         environment.pop("DATABASE_URL", None)
         result = subprocess.run(
-            [sys.executable, "-c", "from app.config import settings"],
+            [sys.executable, "-c", "from app.bootstrap.settings import settings"],
             cwd=os.path.dirname(os.path.dirname(__file__)), env=environment,
             text=True, capture_output=True,
         )

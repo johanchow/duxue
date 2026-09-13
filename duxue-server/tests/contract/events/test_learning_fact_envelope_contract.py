@@ -4,8 +4,8 @@ from datetime import datetime, timezone
 import pytest
 from pydantic import ValidationError
 
-from app.memory import LearningFactRecorded
-from app.models import uid
+from app.application.commands.memory import LearningFactRecorded
+from app.infrastructure.persistence.models import uid
 
 
 def test_learning_fact_recorded_envelope_schema_valid():

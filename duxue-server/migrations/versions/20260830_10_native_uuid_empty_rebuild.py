@@ -3,8 +3,8 @@
 from alembic import op
 from sqlalchemy import inspect
 
-from app.database import Base
-from app import models  # noqa: F401 - registers target metadata
+from app.infrastructure.persistence.database import Base
+import app.infrastructure.persistence.models  # noqa: F401 - registers target metadata
 
 
 revision = "20260830_10"

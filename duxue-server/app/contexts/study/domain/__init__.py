@@ -1,0 +1,1 @@
+"""Study domain model namespace."""

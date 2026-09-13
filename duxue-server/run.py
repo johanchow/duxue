@@ -1,3 +1,3 @@
-from app.main import app
+from app.bootstrap.app import app
 
 __all__ = ["app"]
