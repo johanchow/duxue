@@ -231,9 +231,10 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
               onPressed: _review, child: const Text('完成今日计划，先说说自己的感受')),
         ],
       ]),
-      Positioned(left: 16, right: 16, bottom: 12, child: _chatEntry()),
       if (planListOpen) _planListOverlay(planned),
       if (planChatOpen) _planChatOverlay(),
+      if (!planListOpen)
+        Positioned(left: 16, right: 16, bottom: 12, child: _chatEntry()),
     ]);
   }
 
@@ -379,6 +380,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
           holdToTalkText: '说出你的任何想法、问题、安排',
           helperText: '按住说话',
           enabled: !planSending,
+          onTap: _openPlanChat,
           onPickImage: _pickPlanImage,
           onVoiceFinal: _onVoicePlanInput));
 

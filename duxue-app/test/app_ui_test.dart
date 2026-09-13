@@ -137,6 +137,13 @@ void main() {
     expect(find.text('已确认 · 今日计划'), findsOneWidget);
     expect(find.text('AI 伙伴'), findsNothing);
     expect(find.byTooltip('打开读学对话'), findsNothing);
+    await tester.tap(find.text('说出你的任何想法、问题、安排'));
+    await tester.pumpAndSettle();
+    expect(find.text('你先说；我记录并检查冲突，确认后才生效。'), findsOneWidget);
+    expect(find.text('说出你的任何想法、问题、安排'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('关闭'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('全部'));
     await tester.pumpAndSettle();
     expect(find.text('今日计划'), findsOneWidget);
@@ -193,6 +200,26 @@ void main() {
 
     expect(transcript, '今天整理错题');
     expect(imagePressed, isTrue);
+  });
+
+  testWidgets('a light composer tap invokes only the host callback',
+      (tester) async {
+    var tapped = false;
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: VoiceComposer(
+                baseUrl: 'http://localhost',
+                tokens: const TokenStorage(),
+                telemetry: AppTelemetry(
+                    config: const TelemetryConfig(
+                        enabled: false, relayUrl: '', sampleRate: 0),
+                    accessToken: () async => null),
+                onTap: () => tapped = true,
+                onVoiceFinal: (_) async {},
+                onPickImage: () async {}))));
+
+    await tester.tap(find.text('按住说话'));
+    expect(tapped, isTrue);
   });
 
   testWidgets('sliding up while holding talk cancels without sending',

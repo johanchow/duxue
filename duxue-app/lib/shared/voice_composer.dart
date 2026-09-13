@@ -17,6 +17,7 @@ class VoiceComposer extends StatefulWidget {
     super.key,
     this.holdToTalkText = '按住说话',
     this.helperText,
+    this.onTap,
     this.enabled = true,
     this.voiceFactory = VoiceTranscriptionService.new,
   });
@@ -28,6 +29,9 @@ class VoiceComposer extends StatefulWidget {
   final Future<void> Function() onPickImage;
   final String holdToTalkText;
   final String? helperText;
+
+  /// Optional host-owned action for a light tap; recording remains long-press only.
+  final VoidCallback? onTap;
   final bool enabled;
   final VoiceTranscriptionFactory voiceFactory;
 
@@ -46,8 +50,10 @@ class _VoiceComposerState extends State<VoiceComposer> {
   @override
   void initState() {
     super.initState();
-    _voice =
-        widget.voiceFactory(baseUrl: widget.baseUrl, tokens: widget.tokens, telemetry: widget.telemetry);
+    _voice = widget.voiceFactory(
+        baseUrl: widget.baseUrl,
+        tokens: widget.tokens,
+        telemetry: widget.telemetry);
   }
 
   @override
@@ -180,7 +186,9 @@ class _VoiceComposerState extends State<VoiceComposer> {
             child: Semantics(
                 button: true,
                 label: widget.holdToTalkText,
+                onTap: widget.onTap,
                 child: GestureDetector(
+                    onTap: widget.onTap,
                     onLongPressStart: (_) => _start(),
                     onLongPressMoveUpdate: (details) {
                       final cancel = details.offsetFromOrigin.dy < -56;
