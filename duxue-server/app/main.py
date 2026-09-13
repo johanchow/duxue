@@ -19,11 +19,11 @@ from .database import Base, SessionLocal, engine, get_db
 from .dependencies import Principal, _bearer, current_device, current_guardian, current_guardian_or_ward, current_ward, guardian_principal_for_token
 from .models import (
     AnalysisProfile, BehaviorLabelConfig, BehaviorSegment, Device, Frame, FramePrediction,
-    Guardian, GuardianWard, RefreshToken, Report, User, Ward, WardCredential, WardInvite,
+    Guardian, GuardianWard, RefreshToken, WardRefreshToken, Report, User, Ward, WardCredential, WardInvite,
     Task, DailySchedule, PlanDraft, StudySession, StudySessionInterval, TutoringSession, TutoringMessage, SelfReview, FocusKit,
     AgentRun, AgentStreamEvent, AgentCheckpoint, AgentTrace, CompanionCommand, ConversationThread,
     LearningEvent, EpisodicMemory, EpisodicMemoryEvent, DerivedSignal, DerivedSignalEvent, LongTermProfile, OutboxEvent,
-    WardCredential, WardInvite, now,
+    now,
 )
 from .schemas import (
     AnalyzeDayRequest, DeviceBind, FrameCreate, LabelCreate, LoginRequest, ProfileCreate,
@@ -70,6 +70,26 @@ def _tokens(db: Session, guardian: Guardian) -> TokenPair:
     db.commit()
     return TokenPair(
         access_token=create_access_token(user_id=guardian.id, role=guardian.role),
+        refresh_token=refresh,
+    )
+
+
+def _ward_tokens(db: Session, credential: WardCredential) -> TokenPair:
+    """Issue a Ward token pair tied to the currently active device session."""
+    refresh = random_token()
+    db.add(WardRefreshToken(
+        ward_id=credential.ward_id,
+        session_version=credential.session_version,
+        token_hash=token_hash(refresh),
+        expires_at=now() + timedelta(days=settings.refresh_token_days),
+    ))
+    db.commit()
+    return TokenPair(
+        access_token=create_access_token(
+            user_id=credential.ward_id,
+            role="ward",
+            ward_session_version=credential.session_version,
+        ),
         refresh_token=refresh,
     )
 
@@ -217,10 +237,16 @@ def ward_bind(body: WardBindRequest, db: Session = Depends(get_db)):
     credential = db.get(WardCredential, invite.ward_id)
     if credential is None:
         credential = WardCredential(ward_id=invite.ward_id); db.add(credential)
+        db.flush()
     else:
         credential.session_version += 1
-    invite.consumed_at = now(); db.commit()
-    return {"ward_id": invite.ward_id, "access_token": create_access_token(user_id=invite.ward_id, role="ward", ward_session_version=credential.session_version), "token_type": "bearer"}
+    db.query(WardRefreshToken).filter(
+        WardRefreshToken.ward_id == invite.ward_id,
+        WardRefreshToken.revoked.is_(False),
+    ).update({WardRefreshToken.revoked: True}, synchronize_session=False)
+    invite.consumed_at = now()
+    token_pair = _ward_tokens(db, credential)
+    return {"ward_id": invite.ward_id, **token_pair.model_dump()}
 
 @app.get("/ward/profile")
 def ward_profile(principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
@@ -682,6 +708,26 @@ def refresh(body: RefreshRequest, db: Session = Depends(get_db)) -> TokenPair:
     return _tokens(db, guardian)
 
 
+@app.post("/ward-auth/refresh", response_model=TokenPair)
+def refresh_ward(body: RefreshRequest, db: Session = Depends(get_db)) -> TokenPair:
+    row = db.query(WardRefreshToken).filter(
+        WardRefreshToken.token_hash == token_hash(body.refresh_token),
+    ).one_or_none()
+    expires = row.expires_at.replace(tzinfo=timezone.utc) if row and row.expires_at.tzinfo is None else (row.expires_at if row else None)
+    credential = db.get(WardCredential, row.ward_id) if row else None
+    if (
+        row is None
+        or row.revoked
+        or expires < now()
+        or credential is None
+        or row.session_version != credential.session_version
+    ):
+        raise HTTPException(401, "invalid or expired refresh token")
+    row.revoked = True
+    db.commit()
+    return _ward_tokens(db, credential)
+
+
 @app.get("/wards", response_model=list[WardOut])
 def list_wards(principal: Principal = Depends(current_guardian), db: Session = Depends(get_db)):
     return db.query(Ward).join(GuardianWard, GuardianWard.ward_id == Ward.id).filter(
@@ -783,6 +829,7 @@ def delete_ward_data(ward_id: str, principal: Principal = Depends(current_guardi
     db.query(Task).filter(Task.ward_id == ward_id).delete(synchronize_session=False)
     db.query(DailySchedule).filter(DailySchedule.ward_id == ward_id).delete(synchronize_session=False)
     db.query(WardInvite).filter(WardInvite.ward_id == ward_id).delete(synchronize_session=False)
+    db.query(WardRefreshToken).filter(WardRefreshToken.ward_id == ward_id).delete(synchronize_session=False)
     db.query(WardCredential).filter(WardCredential.ward_id == ward_id).delete(synchronize_session=False)
     db.query(Device).filter(Device.ward_id == ward_id).delete(synchronize_session=False)
     db.commit()

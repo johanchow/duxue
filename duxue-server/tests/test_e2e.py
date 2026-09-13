@@ -688,9 +688,17 @@ class EndToEndTest(unittest.TestCase):
             "POST", f"/wards/{ward}/login-invite", token=guardian
         ).json()["invite_code"]
         self.assertRegex(first_code, r"^\d{6}$")
-        old_token = self.request(
+        first_session = self.request(
             "POST", "/ward-auth/bind", json={"invite_code": first_code}
-        ).json()["access_token"]
+        ).json()
+        old_token = first_session["access_token"]
+        self.assertIn("refresh_token", first_session)
+        refreshed_session = self.request(
+            "POST",
+            "/ward-auth/refresh",
+            json={"refresh_token": first_session["refresh_token"]},
+        )
+        self.assertEqual(refreshed_session.status_code, 200, refreshed_session.text)
         self.assertEqual(
             self.request(
                 "POST", "/ward-auth/bind", json={"invite_code": first_code}
@@ -710,6 +718,14 @@ class EndToEndTest(unittest.TestCase):
         self.assertEqual(
             self.request(
                 "GET", f"/wards/{ward}/assignments", token=old_token
+            ).status_code,
+            401,
+        )
+        self.assertEqual(
+            self.request(
+                "POST",
+                "/ward-auth/refresh",
+                json={"refresh_token": refreshed_session.json()["refresh_token"]},
             ).status_code,
             401,
         )

@@ -381,6 +381,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
           helperText: '按住说话',
           enabled: !planSending,
           onTap: _openPlanChat,
+          onBeforeRecording: () => ref.read(apiProvider).ensureValidAccess(),
           onPickImage: _pickPlanImage,
           onVoiceFinal: _onVoicePlanInput));
 

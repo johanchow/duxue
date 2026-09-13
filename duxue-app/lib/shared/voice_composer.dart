@@ -18,6 +18,7 @@ class VoiceComposer extends StatefulWidget {
     this.holdToTalkText = '按住说话',
     this.helperText,
     this.onTap,
+    this.onBeforeRecording,
     this.enabled = true,
     this.voiceFactory = VoiceTranscriptionService.new,
   });
@@ -32,6 +33,9 @@ class VoiceComposer extends StatefulWidget {
 
   /// Optional host-owned action for a light tap; recording remains long-press only.
   final VoidCallback? onTap;
+
+  /// Optional host-owned preflight, e.g. refresh an expiring session.
+  final Future<void> Function()? onBeforeRecording;
   final bool enabled;
   final VoiceTranscriptionFactory voiceFactory;
 
@@ -130,6 +134,7 @@ class _VoiceComposerState extends State<VoiceComposer> {
   Future<void> _start() async {
     if (_recording || !widget.enabled) return;
     try {
+      await widget.onBeforeRecording?.call();
       await _voice.start(
           onPartial: (text) => _updateFeedback(transcript: text),
           onFinal: (text) async {

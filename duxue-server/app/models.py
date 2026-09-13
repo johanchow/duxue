@@ -60,6 +60,16 @@ class RefreshToken(Base):
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
+class WardRefreshToken(Base):
+    __tablename__ = "ward_refresh_tokens"
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
+    ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id"), index=True)
+    session_version: Mapped[int] = mapped_column(Integer)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
 class AnalysisProfile(Base):
     __tablename__ = "analysis_profiles"
     id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
