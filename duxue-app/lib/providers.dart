@@ -12,17 +12,20 @@ const apiBaseUrl = String.fromEnvironment(
   defaultValue: 'http://10.0.2.2:8000',
 );
 final tokenStorageProvider = Provider((_) => const TokenStorage());
+final sessionInvalidationProvider = StateProvider<int>((_) => 0);
 final telemetryProvider = Provider((ref) => AppTelemetry(
       config: TelemetryConfig.fromEnvironment(apiBaseUrl),
       accessToken: () => ref.read(tokenStorageProvider).access,
     ));
 final apiProvider = Provider(
-  (ref) =>
-      ApiClient(
-        baseUrl: apiBaseUrl,
-        tokens: ref.watch(tokenStorageProvider),
-        telemetry: ref.watch(telemetryProvider),
-      ),
+  (ref) => ApiClient(
+    baseUrl: apiBaseUrl,
+    tokens: ref.watch(tokenStorageProvider),
+    telemetry: ref.watch(telemetryProvider),
+    onSessionExpired: () async {
+      ref.read(sessionInvalidationProvider.notifier).state++;
+    },
+  ),
 );
 
 class AppSession {
@@ -40,11 +43,19 @@ final authProvider = AsyncNotifierProvider<AuthController, AppSession?>(
 class AuthController extends AsyncNotifier<AppSession?> {
   @override
   Future<AppSession?> build() async {
-    if (await ref.read(tokenStorageProvider).access == null) return null;
-    final wardId = await ref.read(tokenStorageProvider).wardId;
-    return wardId == null
-        ? const AppSession.guardian()
-        : AppSession.ward(wardId);
+    ref.watch(sessionInvalidationProvider);
+    final tokens = ref.read(tokenStorageProvider);
+    if (await tokens.access == null) return null;
+    try {
+      await ref.read(apiProvider).restoreSession();
+      final wardId = await tokens.wardId;
+      return wardId == null
+          ? const AppSession.guardian()
+          : AppSession.ward(wardId);
+    } catch (_) {
+      await tokens.clear();
+      return null;
+    }
   }
 
   Future<void> login(String email, String password) async {

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'models.dart';
@@ -6,11 +7,17 @@ import 'token_storage.dart';
 import 'telemetry.dart';
 
 class ApiClient {
-  ApiClient({required String baseUrl, required this.tokens, AppTelemetry? telemetry})
-      : telemetry = telemetry ?? AppTelemetry(
-          config: const TelemetryConfig(enabled: false, relayUrl: '', sampleRate: 0),
-          accessToken: () async => null,
-        ) {
+  ApiClient({
+    required String baseUrl,
+    required this.tokens,
+    AppTelemetry? telemetry,
+    this.onSessionExpired,
+  }) : telemetry = telemetry ??
+            AppTelemetry(
+              config: const TelemetryConfig(
+                  enabled: false, relayUrl: '', sampleRate: 0),
+              accessToken: () async => null,
+            ) {
     dio = Dio(_options(baseUrl));
     dio.interceptors.add(
       InterceptorsWrapper(
@@ -43,6 +50,7 @@ class ApiClient {
   late final Dio dio;
   final TokenStorage tokens;
   final AppTelemetry telemetry;
+  final Future<void> Function()? onSessionExpired;
   Completer<String>? _refreshing;
 
   static BaseOptions _options(String baseUrl) => BaseOptions(
@@ -67,20 +75,73 @@ class ApiClient {
       });
     }
     if (error.response?.statusCode != 401 ||
-        error.requestOptions.path.contains('/auth/refresh') ||
-        error.requestOptions.extra['retried'] == true ||
-        await tokens.wardId != null) {
+        _isRefreshEndpoint(error.requestOptions.path) ||
+        error.requestOptions.extra['retried'] == true) {
       return handler.next(error);
     }
+    late final String token;
     try {
-      final token = await _refreshOnce();
-      final request = error.requestOptions;
-      request.headers['Authorization'] = 'Bearer $token';
-      request.extra['retried'] = true;
-      handler.resolve(await dio.fetch(request));
+      token = await _refreshOnce();
     } catch (_) {
-      await tokens.clear();
+      // Only an invalid/expired refresh credential ends the local session.
+      // A later retry can still be rejected for role or resource permission.
+      await _expireSession();
       handler.next(error);
+      return;
+    }
+    final request = error.requestOptions;
+    request.headers['Authorization'] = 'Bearer $token';
+    request.extra['retried'] = true;
+    try {
+      handler.resolve(await dio.fetch(request));
+    } catch (retryError) {
+      // The refresh worked. Keep the renewed credentials even if this
+      // particular resource remains forbidden to the current role.
+      handler.next(retryError is DioException ? retryError : error);
+    }
+  }
+
+  static bool _isRefreshEndpoint(String path) =>
+      path == '/auth/refresh' || path == '/ward-auth/refresh';
+
+  Future<void> _expireSession() async {
+    await tokens.clear();
+    await onSessionExpired?.call();
+  }
+
+  /// Refresh unconditionally at app restoration, so a revoked Ward device
+  /// session is detected before role-specific requests begin.
+  Future<void> restoreSession() => _refreshOnce();
+
+  /// WebSocket upgrades do not traverse Dio's 401 interceptor. Refresh just
+  /// before recording when the locally held access JWT is nearly expired.
+  Future<void> ensureValidAccess() async {
+    final access = await tokens.access;
+    if (access == null) throw StateError('登录已过期，请重新绑定');
+    if (!_expiresWithin(access, const Duration(minutes: 1))) return;
+    try {
+      await _refreshOnce();
+    } catch (_) {
+      await _expireSession();
+      rethrow;
+    }
+  }
+
+  static bool _expiresWithin(String jwt, Duration duration) {
+    try {
+      final parts = jwt.split('.');
+      if (parts.length != 3) return true;
+      final payload = jsonDecode(utf8.decode(base64Url.decode(
+        base64Url.normalize(parts[1]),
+      ))) as Map<String, dynamic>;
+      final exp = payload['exp'];
+      if (exp is! num) return true;
+      return DateTime.now().toUtc().add(duration).isAfter(
+            DateTime.fromMillisecondsSinceEpoch(exp.toInt() * 1000,
+                isUtc: true),
+          );
+    } catch (_) {
+      return true;
     }
   }
 
@@ -90,17 +151,26 @@ class ApiClient {
     try {
       final refresh = await tokens.refresh;
       if (refresh == null) throw StateError('No refresh token');
+      final isWard = await tokens.wardId != null;
       final response = await Dio(_options(dio.options.baseUrl)).post(
-        '/auth/refresh',
+        isWard ? '/ward-auth/refresh' : '/auth/refresh',
         data: {'refresh_token': refresh},
       );
       final access = response.data['access_token'] as String;
-      await tokens.save(access, response.data['refresh_token']);
-      telemetry.recordMetric('app.auth.refresh', 1, attributes: {'result': 'success'});
+      final nextRefresh = response.data['refresh_token'] as String;
+      final wardId = await tokens.wardId;
+      if (wardId == null) {
+        await tokens.save(access, nextRefresh);
+      } else {
+        await tokens.saveWard(access, nextRefresh, wardId);
+      }
+      telemetry.recordMetric('app.auth.refresh', 1,
+          attributes: {'result': 'success'});
       _refreshing!.complete(access);
       return access;
     } catch (error, stack) {
-      telemetry.recordMetric('app.auth.refresh', 1, attributes: {'result': 'error'});
+      telemetry
+          .recordMetric('app.auth.refresh', 1, attributes: {'result': 'error'});
       _refreshing!.completeError(error, stack);
       rethrow;
     } finally {
@@ -167,14 +237,17 @@ class ApiClient {
             .data,
       );
       telemetry.recordEvent('app.report.load', attributes: {
-        'result': 'success', 'report_status': report.status,
+        'result': 'success',
+        'report_status': report.status,
       });
       return report;
     } catch (_) {
       telemetry.recordEvent('app.report.load', attributes: {'result': 'error'});
       rethrow;
     } finally {
-      telemetry.recordMetric('app.screen.load', timer.elapsedMilliseconds.toDouble(), attributes: {'screen': 'report'});
+      telemetry.recordMetric(
+          'app.screen.load', timer.elapsedMilliseconds.toDouble(),
+          attributes: {'screen': 'report'});
     }
   }
 
@@ -305,10 +378,15 @@ class ApiClient {
   Future<String> bindWard(String code) async {
     try {
       final data = Map<String, dynamic>.from(
-          (await dio.post('/ward-auth/bind', data: {'invite_code': code})).data);
+          (await dio.post('/ward-auth/bind', data: {'invite_code': code}))
+              .data);
       await tokens.saveWard(
-          data['access_token'] as String, data['ward_id'] as String);
-      telemetry.recordEvent('app.device.bind', attributes: {'result': 'success'});
+        data['access_token'] as String,
+        data['refresh_token'] as String,
+        data['ward_id'] as String,
+      );
+      telemetry
+          .recordEvent('app.device.bind', attributes: {'result': 'success'});
       return data['ward_id'] as String;
     } catch (_) {
       telemetry.recordEvent('app.device.bind', attributes: {'result': 'error'});

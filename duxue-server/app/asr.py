@@ -79,9 +79,9 @@ class DashscopeRealtimeAsr:
                 yield {"type": "error", "message": payload.get("error", {}).get("message", "ASR provider error")}
 
 
-async def forward_asr_events(session: DashscopeRealtimeAsr, send) -> None:
+async def forward_asr_events(session: DashscopeRealtimeAsr, send) -> str:
     """Forward provider events without retaining raw audio or transcripts."""
     async for event in session.events():
         await send(event)
         if event["type"] in {"final", "error"}:
-            return
+            return event["type"]

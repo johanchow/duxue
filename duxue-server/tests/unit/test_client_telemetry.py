@@ -24,6 +24,17 @@ def test_client_telemetry_preserves_only_allowlisted_low_cardinality_attributes(
     assert attrs == {"app.result": "success", "app.route": "/wards/:id/report"}
 
 
+def test_client_telemetry_accepts_anonymized_asr_outcome():
+    assert _attributes(event(
+        name="app.asr.session",
+        attributes={"result": "error", "error_kind": "auth", "route": "/ws/asr/transcribe"},
+    )) == {
+        "app.result": "error",
+        "app.error_kind": "auth",
+        "app.route": "/ws/asr/transcribe",
+    }
+
+
 @pytest.mark.parametrize("attributes", [
     {"content": "child private text"},
     {"ward_id": "ward-secret"},

@@ -11,12 +11,14 @@ class TokenStorage {
     await _storage.delete(key: 'ward_id');
     if (refresh != null) {
       await _storage.write(key: 'refresh_token', value: refresh);
+    } else {
+      await _storage.delete(key: 'refresh_token');
     }
   }
 
-  Future<void> saveWard(String access, String wardId) async {
+  Future<void> saveWard(String access, String refresh, String wardId) async {
     await _storage.write(key: 'access_token', value: access);
-    await _storage.delete(key: 'refresh_token');
+    await _storage.write(key: 'refresh_token', value: refresh);
     await _storage.write(key: 'ward_id', value: wardId);
   }
 

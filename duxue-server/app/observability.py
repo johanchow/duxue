@@ -206,6 +206,7 @@ _batch_total = _meter().create_counter("duxue.batch.total", unit="1")
 _frames = _meter().create_counter("duxue.capture.frames", unit="1")
 _celery_tasks = _meter().create_counter("duxue.celery.tasks", unit="1")
 _celery_duration = _meter().create_histogram("duxue.celery.task.duration", unit="ms")
+_asr_sessions = _meter().create_counter("duxue.asr.sessions", unit="1")
 
 
 def _summary(value: str | None) -> dict[str, Any]:
@@ -316,6 +317,13 @@ def record_celery_task(*, task: str, result: str, duration_ms: int) -> None:
     attrs = {"celery.task": task, "celery.result": result}
     _celery_tasks.add(1, attributes=attrs)
     _celery_duration.record(duration_ms, attributes=attrs)
+
+
+def record_asr_session(*, result: str, stage: str, role: str | None = None) -> None:
+    """Record only low-cardinality ASR lifecycle data, never audio or tokens."""
+    attrs = _attrs(**{"asr.result": result, "asr.stage": stage, "principal.role": role})
+    _asr_sessions.add(1, attributes=attrs)
+    _span_event("asr.session.completed", attrs)
 
 
 def _write_debug_audit(kind: str, metadata: dict[str, Any], value: str) -> None:
