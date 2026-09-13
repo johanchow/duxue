@@ -13,6 +13,7 @@ duxue-server/
 ├── app/                         # 唯一生产 Python 包
 │   ├── bootstrap/               # FastAPI 入口与环境配置
 │   ├── api/                     # Interface：HTTP/SSE/WebSocket、DTO、依赖、路由装配
+│   │   └── v1/                  # system、identity、device_ingestion、planning、study、evaluation、memory、companion、behavior routers
 │   ├── application/             # Commands、Queries、Workflows、跨 Context Process Managers、Ports
 │   ├── contexts/                # 按 Bounded Context 隔离的 Domain 命名空间
 │   │   ├── identity/domain/
@@ -25,7 +26,7 @@ duxue-server/
 │   │   └── companion/domain/
 │   ├── infrastructure/          # Persistence、Messaging、AI、Storage、Security、Observability adapter
 │   └── workers/                 # Celery worker / beat 入口；只调用 Application 编排
-├── migrations/                  # Alembic（prepend_sys_path=src）
+├── migrations/                  # Alembic（prepend_sys_path=.）
 └── tests/
 │
 └── config/                      # 环境配置与分类器原型规则 (categories.yaml)

@@ -639,7 +639,7 @@ class EndToEndTest(unittest.TestCase):
                 yield {"type": "final", "text": "安排明天的数学作业"}
 
         with patch(
-            "app.api.v1.routes.DashscopeRealtimeAsr.connect",
+            "app.api.v1.system.DashscopeRealtimeAsr.connect",
             new=AsyncMock(return_value=FakeAsr()),
         ):
             with self.client.websocket_connect(
@@ -768,7 +768,7 @@ class EndToEndTest(unittest.TestCase):
             questions=["请说明任务归属"],
             ready_to_confirm=False,
         )
-        with patch("app.api.v1.routes.TaskIntakeService.respond", return_value=ambiguous):
+        with patch("app.api.v1.planning.TaskIntakeService.respond", return_value=ambiguous):
             response = self.request(
                 "POST",
                 "/task-intake/respond",
@@ -801,7 +801,7 @@ class EndToEndTest(unittest.TestCase):
             204,
         )
         attachment = signed.json()["oss_key"]
-        with patch("app.api.v1.routes.TaskIntakeService.respond", return_value=parsed):
+        with patch("app.api.v1.planning.TaskIntakeService.respond", return_value=parsed):
             response = self.request(
                 "POST",
                 "/task-intake/respond",
@@ -890,7 +890,7 @@ class EndToEndTest(unittest.TestCase):
             items=[{"title": "整理数学错题", "planned_minutes": 20, "new_task": True}],
             ready_to_confirm=True,
         )
-        with patch("app.api.v1.routes.PlanIntakeService.respond", return_value=parsed):
+        with patch("app.api.v1.planning.PlanIntakeService.respond", return_value=parsed):
             response = self.request(
                 "POST",
                 f"/wards/{ward}/plans/{day}/intake",

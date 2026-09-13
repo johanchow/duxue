@@ -4,7 +4,7 @@ from __future__ import annotations
 import unittest
 
 from app.api.deps import Principal
-from app.api.v1.routes import create_ward
+from app.api.v1.identity import create_ward
 from app.infrastructure.persistence.models import GuardianWard, Ward
 from app.api.schemas import WardCreate
 
