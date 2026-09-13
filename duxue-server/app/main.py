@@ -29,7 +29,7 @@ from .schemas import (
     ProfilePatch, RefreshRequest, RegisterRequest, TokenPair, UploadUrlRequest, WardCreate,
     WardOut, WardPatch, WardBindRequest, AssignmentCreate, PlanDraft,
     MessageCreate, SessionFinish, SessionPause, SelfReviewCreate, TaskIntakeCleanup, TaskIntakeConfirm,
-    TaskIntakeRequest, PlanIntakeCleanup, PlanIntakeConfirm, PlanIntakeRequest, CompanionTurnRequest, AgentRunCancelRequest, SignalChallengeRequest,
+    TaskIntakeRequest, PlanIntakeCleanup, PlanIntakeConfirm, PlanIntakeRequest, CompanionTurnRequest, AgentRunCancelRequest, SignalChallengeRequest, ClientTelemetryBatch,
 )
 from .security import create_access_token, hash_secret, random_token, token_hash, verify_secret
 from .services import analyze_and_generate, corrected_time, make_invite_code, owned_ward, utc_bounds
@@ -40,6 +40,8 @@ from .integration_events import publish_learning_fact
 from .ai_runtime.companion_coordinator import CompanionCoordinator
 from .memory import MemoryAccessDenied, SqlAlchemyMemoryCommandService
 from .observability import configure_observability, record_frame
+from .client_telemetry import allow_batch, relay as relay_client_telemetry
+from opentelemetry import trace
 
 
 app = FastAPI(title="读学 Server", version="0.1.0")
@@ -82,6 +84,20 @@ def _report(report: Report) -> dict:
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+@app.post("/telemetry/client-events", status_code=202)
+def relay_mobile_telemetry(
+    body: ClientTelemetryBatch,
+    principal: Principal = Depends(current_guardian_or_ward),
+):
+    trace.get_current_span().set_attribute("duxue.component", "telemetry-relay")
+    if not allow_batch(principal.user_id, len(body.events)):
+        raise HTTPException(429, "telemetry rate limit exceeded")
+    try:
+        return {"accepted": relay_client_telemetry(body.events)}
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error
 
 
 def _ward_owned(principal: Principal, ward_id: str) -> None:

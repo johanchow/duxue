@@ -60,6 +60,24 @@
       "title": "Celery default queue depth",
       "type": "timeseries",
       "targets": [{"refId": "A", "expr": "sum by (celery_queue) (duxue_celery_queue_depth)"}]
+    },
+    {
+      "id": 10,
+      "title": "App HTTP request rate by result",
+      "type": "timeseries",
+      "targets": [{"refId": "A", "expr": "sum by (app_result, app_status_class) (rate(app_http_total{service_name=\"duxue-app\"}[$__rate_interval]))"}]
+    },
+    {
+      "id": 11,
+      "title": "App screen-load P95",
+      "type": "timeseries",
+      "targets": [{"refId": "A", "expr": "histogram_quantile(0.95, sum by (le, app_screen) (rate(app_screen_load_milliseconds_bucket{service_name=\"duxue-app\"}[$__rate_interval])))"}]
+    },
+    {
+      "id": 12,
+      "title": "App report and device-bind outcomes",
+      "type": "timeseries",
+      "targets": [{"refId": "A", "expr": "sum by (app_result, app_report_status) (rate(app_report_load_total{service_name=\"duxue-app\"}[$__rate_interval]))"}]
     }
   ]
 }

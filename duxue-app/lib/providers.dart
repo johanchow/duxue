@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/api_client.dart';
 import 'core/models.dart';
 import 'core/token_storage.dart';
+import 'core/telemetry.dart';
 
 /// Compile with `--dart-define=API_BASE_URL=https://api.example.com`.
 /// This is intentionally a build-time value: mobile clients cannot read the
@@ -11,9 +12,17 @@ const apiBaseUrl = String.fromEnvironment(
   defaultValue: 'http://10.0.2.2:8000',
 );
 final tokenStorageProvider = Provider((_) => const TokenStorage());
+final telemetryProvider = Provider((ref) => AppTelemetry(
+      config: TelemetryConfig.fromEnvironment(apiBaseUrl),
+      accessToken: () => ref.read(tokenStorageProvider).access,
+    ));
 final apiProvider = Provider(
   (ref) =>
-      ApiClient(baseUrl: apiBaseUrl, tokens: ref.watch(tokenStorageProvider)),
+      ApiClient(
+        baseUrl: apiBaseUrl,
+        tokens: ref.watch(tokenStorageProvider),
+        telemetry: ref.watch(telemetryProvider),
+      ),
 );
 
 class AppSession {

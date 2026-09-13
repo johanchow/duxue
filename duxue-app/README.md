@@ -7,6 +7,23 @@ flutter pub get
 flutter run --dart-define=API_BASE_URL=http://192.168.1.2:8000
 ```
 
+## 本地调试与遥测
+
+复制 `config/dart-defines.local.example.json` 为
+`config/dart-defines.local.json`，按当前运行目标修改 `API_BASE_URL` 后运行：
+
+```bash
+flutter run --dart-define-from-file=config/dart-defines.local.json
+```
+
+该文件只保存公开地址、遥测开关和采样率；不允许填入 Grafana token、OTLP
+Authorization 或任何用户资料。App telemetry 通过登录后的 Bearer token 发给
+Server relay，再由 Server 使用其私有 OTLP 凭据导出。若只想做普通本地调试，继续
+使用上面的单个 `API_BASE_URL` 命令即可，遥测默认关闭。
+
+`127.0.0.1` 适用于桌面、iOS 模拟器；Android 模拟器改为 `10.0.2.2`，真机改为
+开发机局域网 IP。
+
 `APP_BASE_URL` 属于服务端运行环境，安装后的 App 无法读取它。构建发行包时，将同一个公开地址作为 Dart define 注入：
 
 ```bash

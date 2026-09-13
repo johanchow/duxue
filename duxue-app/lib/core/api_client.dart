@@ -3,16 +3,38 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'models.dart';
 import 'token_storage.dart';
+import 'telemetry.dart';
 
 class ApiClient {
-  ApiClient({required String baseUrl, required this.tokens}) {
+  ApiClient({required String baseUrl, required this.tokens, AppTelemetry? telemetry})
+      : telemetry = telemetry ?? AppTelemetry(
+          config: const TelemetryConfig(enabled: false, relayUrl: '', sampleRate: 0),
+          accessToken: () async => null,
+        ) {
     dio = Dio(_options(baseUrl));
     dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) async {
           final token = await tokens.access;
           if (token != null) options.headers['Authorization'] = 'Bearer $token';
+          final span = this.telemetry.startSpan('app.http', attributes: {
+            'route': AppTelemetry.routeTemplate(options.path),
+            'method': options.method,
+          });
+          options.extra['telemetry_span'] = span;
+          final traceparent = span.traceparent;
+          if (traceparent != null) options.headers['traceparent'] = traceparent;
           handler.next(options);
+        },
+        onResponse: (response, handler) {
+          final span = response.requestOptions.extra['telemetry_span'];
+          if (span is TelemetrySpan) {
+            span.finish(attributes: {
+              'result': 'success',
+              'status_class': '${(response.statusCode ?? 0) ~/ 100}xx',
+            });
+          }
+          handler.next(response);
         },
         onError: _handleError,
       ),
@@ -20,6 +42,7 @@ class ApiClient {
   }
   late final Dio dio;
   final TokenStorage tokens;
+  final AppTelemetry telemetry;
   Completer<String>? _refreshing;
 
   static BaseOptions _options(String baseUrl) => BaseOptions(
@@ -33,6 +56,16 @@ class ApiClient {
     DioException error,
     ErrorInterceptorHandler handler,
   ) async {
+    final span = error.requestOptions.extra['telemetry_span'];
+    if (span is TelemetrySpan) {
+      span.finish(attributes: {
+        'result': 'error',
+        'status_class': error.response == null
+            ? 'network'
+            : '${error.response!.statusCode! ~/ 100}xx',
+        'error_kind': error.type.name,
+      });
+    }
     if (error.response?.statusCode != 401 ||
         error.requestOptions.path.contains('/auth/refresh') ||
         error.requestOptions.extra['retried'] == true ||
@@ -63,9 +96,11 @@ class ApiClient {
       );
       final access = response.data['access_token'] as String;
       await tokens.save(access, response.data['refresh_token']);
+      telemetry.recordMetric('app.auth.refresh', 1, attributes: {'result': 'success'});
       _refreshing!.complete(access);
       return access;
     } catch (error, stack) {
+      telemetry.recordMetric('app.auth.refresh', 1, attributes: {'result': 'error'});
       _refreshing!.completeError(error, stack);
       rethrow;
     } finally {
@@ -121,14 +156,26 @@ class ApiClient {
           .map((item) => Device.fromJson(item))
           .toList();
   Future<DailyReport> report(String wardId, DateTime date) async {
-    final day = date.toIso8601String().substring(0, 10);
-    return DailyReport.fromJson(
-      (await dio.get(
-        '/reports/daily',
-        queryParameters: {'ward_id': wardId, 'date': day},
-      ))
-          .data,
-    );
+    final timer = Stopwatch()..start();
+    try {
+      final day = date.toIso8601String().substring(0, 10);
+      final report = DailyReport.fromJson(
+        (await dio.get(
+          '/reports/daily',
+          queryParameters: {'ward_id': wardId, 'date': day},
+        ))
+            .data,
+      );
+      telemetry.recordEvent('app.report.load', attributes: {
+        'result': 'success', 'report_status': report.status,
+      });
+      return report;
+    } catch (_) {
+      telemetry.recordEvent('app.report.load', attributes: {'result': 'error'});
+      rethrow;
+    } finally {
+      telemetry.recordMetric('app.screen.load', timer.elapsedMilliseconds.toDouble(), attributes: {'screen': 'report'});
+    }
   }
 
   Future<WeeklyTrend> weeklyTrend(String wardId, DateTime endDate) async =>
@@ -256,11 +303,17 @@ class ApiClient {
       Map<String, dynamic>.from(
           (await dio.post('/wards/$wardId/login-invite')).data);
   Future<String> bindWard(String code) async {
-    final data = Map<String, dynamic>.from(
-        (await dio.post('/ward-auth/bind', data: {'invite_code': code})).data);
-    await tokens.saveWard(
-        data['access_token'] as String, data['ward_id'] as String);
-    return data['ward_id'] as String;
+    try {
+      final data = Map<String, dynamic>.from(
+          (await dio.post('/ward-auth/bind', data: {'invite_code': code})).data);
+      await tokens.saveWard(
+          data['access_token'] as String, data['ward_id'] as String);
+      telemetry.recordEvent('app.device.bind', attributes: {'result': 'success'});
+      return data['ward_id'] as String;
+    } catch (_) {
+      telemetry.recordEvent('app.device.bind', attributes: {'result': 'error'});
+      rethrow;
+    }
   }
 
   Future<Map<String, dynamic>> wardProfile() async =>

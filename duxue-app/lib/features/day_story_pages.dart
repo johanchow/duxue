@@ -362,8 +362,9 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         VoiceComposer(
-            baseUrl: apiBaseUrl,
-            tokens: ref.read(tokenStorageProvider),
+          baseUrl: apiBaseUrl,
+          tokens: ref.read(tokenStorageProvider),
+          telemetry: ref.read(telemetryProvider),
             holdToTalkText: '说今天怎么安排',
             helperText: '加任务 · 改顺序 · 调时长 · 补遗漏',
             enabled: !planSending,

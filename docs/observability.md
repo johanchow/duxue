@@ -6,6 +6,8 @@
 
 > 实施状态（2026-09-12）：服务端已接入标准 OTLP traces / metrics、FastAPI / SQLAlchemy / Celery / Redis / HTTPX 自动插桩，以及 Agent、LLM/VLM、采集与 Celery 的手工业务遥测。部署、dashboard 与告警模板见 [`ops/observability/`](../ops/observability/)。Flutter 与 Android 的 trace context 接入仍待单独实施。
 
+> 实施状态（2026-09-13）：Flutter App 已经通过已认证的 Server relay 上报安全的体验 telemetry；`service.name=duxue-app` 与 `service.name=duxue-server` 在 Grafana 中保持独立，且可由 W3C `trace_id` 串联。Android Cam 仍待接入。
+
 ---
 
 ## 一、背景与目标
@@ -281,12 +283,29 @@ Flutter 通过 `--dart-define` 在构建时注入配置，运行时通过 `Strin
 
 | dart-define Key | debug 值 | release 值 | 说明 |
 |----------------|---------|-----------|------|
-| `OTEL_SERVICE_NAME` | `duxue-app-debug` | `duxue-app` | 区分环境 |
-| `OTEL_ENDPOINT` | `http://localhost:4318` | Grafana Cloud URL | OTLP HTTP 地址 |
-| `OTEL_AUTH_HEADER` | 空 | `Basic <base64>` | 生产环境鉴权 |
-| `OTEL_SAMPLE_RATE` | `1.0` | `0.2` | debug 全量采样 |
+| `API_BASE_URL` | 本机 Server URL | App 的公开 API URL | API 与 relay 的基础地址 |
+| `APP_TELEMETRY_ENABLED` | `true` | `true` | 未设置时为 `false`，完全 no-op |
+| `APP_TELEMETRY_RELAY_URL` | 本机 relay URL | 生产 relay URL | 默认为空时即使开关开启也不发送，防止误投递 |
+| `OTEL_TRACE_SAMPLE_RATE` | `1.0` | `0.2` | App trace 的采样率；Metric / Event 不采样 |
 
-在 CI/CD 中，通过 `flutter build --dart-define=OTEL_ENDPOINT=xxx --dart-define=OTEL_AUTH_HEADER=yyy` 注入，不在代码仓库中存储敏感值。
+本地调试可以复制 `duxue-app/config/dart-defines.local.example.json` 为被 Git
+忽略的 `dart-defines.local.json`，再使用：
+
+```bash
+flutter run --dart-define-from-file=config/dart-defines.local.json
+```
+
+当前实现不使用 `OTEL_AUTH_HEADER`：Grafana Cloud 的长期 token 绝不可出现在 APK / IPA。App 只接受上述非敏感 dart-define，并使用现有短期 Bearer 登录态调用 Server relay。生产构建由 CI/CD 逐项注入这些公开配置：
+
+```bash
+flutter build apk \
+  --dart-define=API_BASE_URL=https://duxuelai.xyz/api \
+  --dart-define=APP_TELEMETRY_ENABLED=true \
+  --dart-define=APP_TELEMETRY_RELAY_URL=https://duxuelai.xyz/api/telemetry/client-events \
+  --dart-define=OTEL_TRACE_SAMPLE_RATE=0.2
+```
+
+relay 对每个认证主体限流 120 条/分钟、只接受严格的 name / attribute 白名单，并用独立 OTLP Resource 转发。因此转发数据的 `service.name=duxue-app`、`service.component=mobile-client`、`telemetry.relay=duxue-server`；relay 本身的 FastAPI span 是 `service.name=duxue-server`，带 `duxue.component=telemetry-relay`。
 
 ### 7.4 `service.name` 命名规范
 
