@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -7,6 +9,7 @@ import 'features/ward_pages.dart';
 import 'features/profile_pages.dart';
 import 'features/day_story_pages.dart';
 import 'providers.dart';
+import 'core/telemetry.dart';
 import 'shared/app_ui.dart';
 
 void main() => runApp(const ProviderScope(child: DuxueApp()));
@@ -24,9 +27,11 @@ String? appRedirect(AppSession? session, String location) {
 
 final routerProvider = Provider<GoRouter>((ref) {
   final session = ref.watch(authProvider).valueOrNull;
+  final telemetry = ref.watch(telemetryProvider);
   return GoRouter(
     initialLocation: '/login',
     redirect: (_, state) => appRedirect(session, state.matchedLocation),
+    observers: [TelemetryRouteObserver(telemetry)],
     routes: [
       GoRoute(path: '/login', builder: (_, __) => const LoginPage()),
       GoRoute(path: '/ward-bind', builder: (_, __) => const WardBindPage()),
@@ -74,7 +79,18 @@ final routerProvider = Provider<GoRouter>((ref) {
 class DuxueApp extends ConsumerWidget {
   const DuxueApp({super.key});
   @override
-  Widget build(BuildContext context, WidgetRef ref) => MaterialApp.router(
+  Widget build(BuildContext context, WidgetRef ref) {
+    final telemetry = ref.watch(telemetryProvider);
+    telemetry.recordEvent('app.startup', attributes: {'platform': 'flutter'});
+    FlutterError.onError = (details) {
+      telemetry.recordEvent('app.unhandled_error', attributes: {'error_kind': 'flutter'});
+      FlutterError.presentError(details);
+    };
+    PlatformDispatcher.instance.onError = (error, stack) {
+      telemetry.recordEvent('app.unhandled_error', attributes: {'error_kind': 'platform'});
+      return false;
+    };
+    return MaterialApp.router(
         title: '读学',
         theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(seedColor: brandBlue),
@@ -97,4 +113,5 @@ class DuxueApp extends ConsumerWidget {
         ),
         routerConfig: ref.watch(routerProvider),
       );
+  }
 }

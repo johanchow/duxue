@@ -1,6 +1,7 @@
 import 'package:duxue_app/core/api_client.dart';
 import 'package:duxue_app/core/token_storage.dart';
 import 'package:duxue_app/core/voice_transcription_service.dart';
+import 'package:duxue_app/core/telemetry.dart';
 import 'package:duxue_app/features/day_story_pages.dart';
 import 'package:duxue_app/providers.dart';
 import 'package:duxue_app/shared/voice_composer.dart';
@@ -136,7 +137,10 @@ void main() {
             body: VoiceComposer(
                 baseUrl: 'http://localhost',
                 tokens: const TokenStorage(),
-                voiceFactory: ({required baseUrl, required tokens}) => voice,
+                telemetry: AppTelemetry(
+                    config: const TelemetryConfig(enabled: false, relayUrl: '', sampleRate: 0),
+                    accessToken: () async => null),
+                voiceFactory: ({required baseUrl, required tokens, required telemetry}) => voice,
                 onVoiceFinal: (value) async => transcript = value,
                 onPickImage: () async => imagePressed = true))));
 
@@ -160,7 +164,10 @@ void main() {
             body: VoiceComposer(
                 baseUrl: 'http://localhost',
                 tokens: const TokenStorage(),
-                voiceFactory: ({required baseUrl, required tokens}) => voice,
+                telemetry: AppTelemetry(
+                    config: const TelemetryConfig(enabled: false, relayUrl: '', sampleRate: 0),
+                    accessToken: () async => null),
+                voiceFactory: ({required baseUrl, required tokens, required telemetry}) => voice,
                 onVoiceFinal: (value) async => transcript = value,
                 onPickImage: () async {}))));
 

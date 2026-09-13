@@ -195,6 +195,7 @@ class _WardListPageState extends ConsumerState<WardListPage> {
     final voice = VoiceTranscriptionService(
       baseUrl: apiBaseUrl,
       tokens: ref.read(tokenStorageProvider),
+      telemetry: ref.read(telemetryProvider),
     );
     Timer? recordingLimit;
     var recording = false;

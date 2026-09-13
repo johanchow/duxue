@@ -53,3 +53,27 @@ groups:
         for: 15m
         noDataState: NoData
         execErrState: Error
+      - uid: duxue-app-network-errors
+        title: App client network error rate is high
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: {from: 300, to: 0}
+            datasourceUid: prometheus
+            model:
+              expr: sum(rate(app_http_total{service_name="duxue-app",app_result="error",app_status_class="network"}[5m])) / clamp_min(sum(rate(app_http_total{service_name="duxue-app"}[5m])), 1)
+              refId: A
+          - refId: C
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: __expr__
+            model:
+              expression: A
+              type: threshold
+              conditions:
+                - evaluator: {type: gt, params: [0.1]}
+                  operator: {type: and}
+                  reducer: {type: last, params: []}
+                  type: query
+        for: 15m
+        noDataState: NoData
+        execErrState: Error

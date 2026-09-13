@@ -6,12 +6,14 @@ import 'package:record/record.dart';
 import 'package:web_socket_channel/io.dart';
 
 import 'token_storage.dart';
+import 'telemetry.dart';
 
 typedef TranscriptHandler = void Function(String text);
 typedef VoiceErrorHandler = void Function(String message);
 typedef VoiceTranscriptionFactory = VoiceTranscription Function({
   required String baseUrl,
   required TokenStorage tokens,
+  required AppTelemetry telemetry,
 });
 
 abstract interface class VoiceTranscription {
@@ -29,11 +31,13 @@ class VoiceTranscriptionService implements VoiceTranscription {
   VoiceTranscriptionService({
     required this.baseUrl,
     required this.tokens,
+    required this.telemetry,
     AudioRecorder? recorder,
   }) : _recorder = recorder ?? AudioRecorder();
 
   final String baseUrl;
   final TokenStorage tokens;
+  final AppTelemetry telemetry;
   final AudioRecorder _recorder;
   IOWebSocketChannel? _socket;
   StreamSubscription<Uint8List>? _audioSubscription;
@@ -54,6 +58,7 @@ class VoiceTranscriptionService implements VoiceTranscription {
     required TranscriptHandler onFinal,
     required VoiceErrorHandler onError,
   }) async {
+    final span = telemetry.startSpan('app.asr.session');
     final token = await tokens.access;
     if (token == null) throw StateError('登录已过期，请重新登录');
     if (!await _recorder.hasPermission()) {
@@ -61,22 +66,35 @@ class VoiceTranscriptionService implements VoiceTranscription {
     }
     final socket = IOWebSocketChannel.connect(
       websocketUri(baseUrl),
-      headers: {'Authorization': 'Bearer $token'},
+      headers: {
+        'Authorization': 'Bearer $token',
+        if (span.traceparent != null) 'traceparent': span.traceparent!,
+      },
     );
     _socket = socket;
-    await socket.ready;
+    try {
+      await socket.ready;
+    } catch (_) {
+      span.finish(attributes: {'result': 'error', 'error_kind': 'connect'});
+      rethrow;
+    }
     _socketSubscription = socket.stream.listen((raw) {
       final event = jsonDecode(raw as String) as Map<String, dynamic>;
       switch (event['type']) {
         case 'partial':
           onPartial(event['text'] as String? ?? '');
         case 'final':
+          span.finish(attributes: {'result': 'success'});
           onFinal(event['text'] as String? ?? '');
           unawaited(_closeSocket());
         case 'error':
+          span.finish(attributes: {'result': 'error', 'error_kind': 'server'});
           onError(event['message'] as String? ?? '语音识别暂不可用');
       }
-    }, onError: (_, __) => onError('语音连接已断开'));
+    }, onError: (_, __) {
+      span.finish(attributes: {'result': 'error', 'error_kind': 'socket'});
+      onError('语音连接已断开');
+    });
     socket.sink.add(jsonEncode({'type': 'start'}));
     final stream = await _recorder.startStream(const RecordConfig(
       encoder: AudioEncoder.pcm16bits,

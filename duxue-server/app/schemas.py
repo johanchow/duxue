@@ -222,6 +222,25 @@ class SignalChallengeRequest(BaseModel):
         return value
 
 
+TelemetryPrimitive = str | int | float | bool
+
+
+class ClientTelemetryEvent(BaseModel):
+    """A privacy-filtered mobile telemetry record, never business content."""
+
+    signal: str = Field(pattern=r"^(span|metric|event|log)$")
+    name: str = Field(pattern=r"^app\.[a-z0-9_.-]{1,80}$")
+    duration_ms: int | None = Field(default=None, ge=0, le=120_000)
+    value: float | None = Field(default=None, ge=0, le=1_000_000)
+    attributes: dict[str, TelemetryPrimitive] = Field(default_factory=dict, max_length=12)
+    trace_id: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$")
+    span_id: str | None = Field(default=None, pattern=r"^[0-9a-f]{16}$")
+
+
+class ClientTelemetryBatch(BaseModel):
+    events: list[ClientTelemetryEvent] = Field(min_length=1, max_length=20)
+
+
 class SessionPause(BaseModel):
     active_seconds: int = Field(ge=0)
 

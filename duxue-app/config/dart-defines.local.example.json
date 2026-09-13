@@ -1,0 +1,6 @@
+{
+  "API_BASE_URL": "http://127.0.0.1:8000",
+  "APP_TELEMETRY_ENABLED": "true",
+  "APP_TELEMETRY_RELAY_URL": "http://127.0.0.1:8000/telemetry/client-events",
+  "OTEL_TRACE_SAMPLE_RATE": "1.0"
+}

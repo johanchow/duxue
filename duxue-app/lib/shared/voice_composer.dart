@@ -4,12 +4,14 @@ import 'package:flutter/material.dart';
 
 import '../core/token_storage.dart';
 import '../core/voice_transcription_service.dart';
+import '../core/telemetry.dart';
 
 /// A business-agnostic WeChat-style hold-to-talk control with an image action.
 class VoiceComposer extends StatefulWidget {
   const VoiceComposer({
     required this.baseUrl,
     required this.tokens,
+    required this.telemetry,
     required this.onVoiceFinal,
     required this.onPickImage,
     super.key,
@@ -21,6 +23,7 @@ class VoiceComposer extends StatefulWidget {
 
   final String baseUrl;
   final TokenStorage tokens;
+  final AppTelemetry telemetry;
   final Future<void> Function(String transcript) onVoiceFinal;
   final Future<void> Function() onPickImage;
   final String holdToTalkText;
@@ -44,7 +47,7 @@ class _VoiceComposerState extends State<VoiceComposer> {
   void initState() {
     super.initState();
     _voice =
-        widget.voiceFactory(baseUrl: widget.baseUrl, tokens: widget.tokens);
+        widget.voiceFactory(baseUrl: widget.baseUrl, tokens: widget.tokens, telemetry: widget.telemetry);
   }
 
   @override
