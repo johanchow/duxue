@@ -154,7 +154,14 @@ def delete_ward_data(ward_id: str, principal: Principal = Depends(current_guardi
         db.query(AgentCheckpoint).filter(AgentCheckpoint.run_id.in_(run_ids)).delete(synchronize_session=False)
         db.query(AgentTrace).filter(AgentTrace.run_id.in_(run_ids)).delete(synchronize_session=False)
     if thread_ids:
+        attachment_rows = db.query(CompanionMessage.attachment_refs).filter(
+            CompanionMessage.thread_id.in_(thread_ids)
+        ).all()
+        for (refs,) in attachment_rows:
+            for key in refs or []:
+                storage.delete(key)
         db.query(AgentTrace).filter(AgentTrace.thread_id.in_(thread_ids)).delete(synchronize_session=False)
+        db.query(CompanionMessage).filter(CompanionMessage.thread_id.in_(thread_ids)).delete(synchronize_session=False)
         db.query(CompanionCommand).filter(CompanionCommand.thread_id.in_(thread_ids)).delete(synchronize_session=False)
     db.query(AgentRun).filter(AgentRun.ward_id == ward_id).delete(synchronize_session=False)
     db.query(CompanionCommand).filter(CompanionCommand.ward_id == ward_id).delete(synchronize_session=False)
@@ -204,5 +211,3 @@ def delete_ward_data(ward_id: str, principal: Principal = Depends(current_guardi
     db.query(Device).filter(Device.ward_id == ward_id).delete(synchronize_session=False)
     db.commit()
     return Response(status_code=204)
-
-

@@ -8,8 +8,23 @@ from pydantic import BaseModel, Field, ValidationError
 
 from app.bootstrap.settings import settings
 from app.infrastructure.observability.telemetry import model_call_span
-from app.api.schemas import PlanIntakeItem, PlanIntakeRequest
 from .task_intake import TaskIntakeError, _data_url
+
+
+class PlanIntakeItem(BaseModel):
+    assignment_id: str | None = None
+    title: str = Field(min_length=1, max_length=300)
+    details: str | None = Field(default=None, max_length=4000)
+    planned_minutes: int = Field(default=30, ge=1, le=480)
+    new_task: bool = False
+
+
+class PlanIntakeInput(BaseModel):
+    """Internal Planning workflow input; it is deliberately independent of HTTP."""
+
+    content: str = Field(default="", max_length=4000)
+    draft_items: list[PlanIntakeItem] = Field(default_factory=list, max_length=30)
+    attachment_keys: list[str] = Field(default_factory=list, max_length=8)
 
 
 class PlanIntakeResult(BaseModel):
@@ -18,7 +33,7 @@ class PlanIntakeResult(BaseModel):
     ready_to_confirm: bool = False
 
 
-def _prompt(ward: dict, tasks: list[dict], request: PlanIntakeRequest) -> str:
+def _prompt(ward: dict, tasks: list[dict], request: PlanIntakeInput) -> str:
     return f"""你是读学的当天计划整理助手。今天是 {date.today().isoformat()}。
 你只能为当前学生生成今天的草稿，绝不能安排其他人或其他日期。
 当前学生：{json.dumps(ward, ensure_ascii=False)}
@@ -33,7 +48,7 @@ def _prompt(ward: dict, tasks: list[dict], request: PlanIntakeRequest) -> str:
 
 
 class PlanIntakeService:
-    def respond(self, *, ward: dict, tasks: list[dict], request: PlanIntakeRequest) -> PlanIntakeResult:
+    def respond(self, *, ward: dict, tasks: list[dict], request: PlanIntakeInput) -> PlanIntakeResult:
         if not request.content and not request.attachment_keys:
             raise TaskIntakeError("请先输入文字、说话或添加图片")
         try:

@@ -141,34 +141,6 @@ class TaskIntakeCleanup(BaseModel):
     attachment_keys: list[str] = Field(default_factory=list, max_length=4)
 
 
-class PlanIntakeItem(BaseModel):
-    assignment_id: str | None = None
-    title: str = Field(min_length=1, max_length=300)
-    details: str | None = Field(default=None, max_length=4000)
-    planned_minutes: int = Field(default=30, ge=1, le=480)
-    new_task: bool = False
-
-
-class PlanIntakeRequest(BaseModel):
-    content: str = Field(default="", max_length=4000)
-    draft_items: list[PlanIntakeItem] = Field(default_factory=list, max_length=30)
-    attachment_keys: list[str] = Field(default_factory=list, max_length=4)
-
-    @field_validator("content")
-    @classmethod
-    def strip_content(cls, value: str) -> str:
-        return value.strip()
-
-
-class PlanIntakeConfirm(BaseModel):
-    items: list[PlanIntakeItem] = Field(min_length=1, max_length=30)
-    attachment_keys: list[str] = Field(default_factory=list, max_length=4)
-
-
-class PlanIntakeCleanup(BaseModel):
-    attachment_keys: list[str] = Field(default_factory=list, max_length=4)
-
-
 class PlanDraft(BaseModel):
     plan_date: date
     items: list[dict[str, Any]] = Field(min_length=1)
@@ -195,6 +167,7 @@ class CompanionTurnRequest(BaseModel):
     review_feeling: str | None = Field(default=None, max_length=40)
     review_reflection: str | None = Field(default=None, max_length=2000)
     adopt_focus_kit: bool = False
+    attachment_keys: list[str] = Field(default_factory=list, max_length=8)
 
     @field_validator("content")
     @classmethod

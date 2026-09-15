@@ -11,7 +11,8 @@ from app.application.workflows.planning_domain_service import PlanningDomainServ
 from app.application.workflows.planning_workflow import build_planning_graph
 from app.bootstrap.settings import settings
 from app.application.commands.memory import SqlAlchemyMemoryFacade
-from app.infrastructure.persistence.models import AgentRun
+from app.infrastructure.persistence.models import AgentRun, Task, Ward
+from app.application.commands.plan_intake import PlanIntakeInput, PlanIntakeService
 from app.application.queries.context_builder import ContextBuilder
 from app.application.ports.companion import RunInvocation, WorkflowOutcome
 from app.contexts.companion.domain.policy import PolicyRegistry
@@ -50,6 +51,17 @@ class PlanningWorkflowAdapter:
         )
         items = invocation.turn.get("planning_items")
         confirm = bool(invocation.turn.get("planning_confirm"))
+        assistant_text = None
+        if not confirm and items is None:
+            ward = self.db.get(Ward, run.ward_id)
+            tasks = self.db.query(Task).filter_by(ward_id=run.ward_id).filter(Task.status != "completed").all()
+            extracted = PlanIntakeService().respond(
+                ward={"id": ward.id, "display_name": ward.display_name, "grade_stage": ward.grade_stage},
+                tasks=[{"id": task.id, "title": task.title, "details": task.details} for task in tasks],
+                request=PlanIntakeInput(content=invocation.turn["content"], draft_items=[], attachment_keys=invocation.turn.get("attachment_keys", [])),
+            )
+            items = [item.model_dump(mode="json") for item in extracted.items]
+            assistant_text = extracted.assistant_text
         model_guidance, model_fallback = None, False
         if not confirm:
             try:
@@ -64,11 +76,11 @@ class PlanningWorkflowAdapter:
                 record_llm_fallback(operation="agent_text", reason=str(error))
         if self.checkpointer is not None:
             return self._invoke(
-                self.checkpointer, run, items, confirm, envelope.trace_snapshot(), model_guidance, model_fallback
+                self.checkpointer, run, items, confirm, envelope.trace_snapshot(), model_guidance or assistant_text, model_fallback
             )
         with _postgres_checkpointer() as checkpointer:
             return self._invoke(
-                checkpointer, run, items, confirm, envelope.trace_snapshot(), model_guidance, model_fallback
+                checkpointer, run, items, confirm, envelope.trace_snapshot(), model_guidance or assistant_text, model_fallback
             )
 
     def _invoke(

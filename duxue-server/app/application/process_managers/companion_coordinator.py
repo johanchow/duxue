@@ -8,7 +8,7 @@ from uuid import uuid4
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.infrastructure.persistence.models import AgentCheckpoint, AgentRun, AgentStreamEvent, AgentTrace, CompanionCommand, ConversationThread, now, uid
+from app.infrastructure.persistence.models import AgentCheckpoint, AgentRun, AgentStreamEvent, AgentTrace, CompanionCommand, CompanionMessage, ConversationThread, now, uid
 from app.infrastructure.observability.telemetry import agent_workflow_span, record_agent_input, record_agent_outcome, record_agent_route
 from app.application.ports.companion import CoordinatorResult, RouteDecision, RunInvocation, WorkflowOutcome
 from app.contexts.companion.domain.intent_router import IntentRouter
@@ -120,6 +120,32 @@ class CompanionCoordinator:
             policy_version=run.policy_version,
         ))
 
+    def _write_transcript(self, *, thread: ConversationThread, command_id: str, author_type: str,
+                          content: str, thread_version: int, run: AgentRun | None = None,
+                          turn_id: str | None = None, attempt: int | None = None,
+                          attachment_refs: list[str] | None = None,
+                          interaction_ref: dict | None = None) -> None:
+        self.db.add(CompanionMessage(
+            ward_id=thread.ward_id, thread_id=thread.id, command_id=command_id,
+            run_id=run.id if run else None, turn_id=turn_id, attempt=attempt,
+            thread_version=thread_version, author_type=author_type, content=content,
+            attachment_refs=attachment_refs or [],
+            interaction_ref=interaction_ref,
+        ))
+
+    @staticmethod
+    def _visible_outcome_content(outcome: WorkflowOutcome) -> str | None:
+        payload = outcome.response or outcome.next_interaction or {}
+        for key in ("content", "assistant_text", "model_guidance", "message"):
+            value = payload.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        if payload.get("status") == "needs_input":
+            return "我还需要一点信息，才能继续帮你安排。"
+        if payload.get("status") == "confirmed":
+            return "计划已经确认好了。"
+        return None
+
     def handle(
         self, *, ward_id: str, content: str, thread_id: str | None,
         expected_thread_version: int | None, route_hint: str | None,
@@ -127,7 +153,7 @@ class CompanionCoordinator:
         planning_confirm: bool = False, study_session_id: str | None = None,
         tutoring_directive: str | None = None, review_date=None,
         review_feeling: str | None = None, review_reflection: str | None = None,
-        adopt_focus_kit: bool = False,
+        adopt_focus_kit: bool = False, attachment_keys: list[str] | None = None,
     ) -> CoordinatorResult:
         started = perf_counter()
         command_id = command_id or str(uuid4())
@@ -137,6 +163,7 @@ class CompanionCoordinator:
             "content": content, "review_date": review_date.isoformat() if review_date else None,
             "review_feeling": review_feeling, "review_reflection": review_reflection,
             "adopt_focus_kit": adopt_focus_kit,
+            "attachment_keys": attachment_keys or [],
         }
         digest = self._digest({"thread_id": thread_id, "expected_version": expected_thread_version, "route_hint": route_hint, "turn": turn})
         cached = self._restore_idempotent(command_id, ward_id, digest)
@@ -163,6 +190,12 @@ class CompanionCoordinator:
         record_agent_route(target=decision.target, mode=decision.mode, reason=decision.route_reason)
         self._trace(thread=thread, run=run, decision=decision, snapshot={})
         version = self._advance_thread(thread)
+        self._write_transcript(
+            thread=thread, command_id=command_id, author_type="ward", content=content,
+            thread_version=version, run=run, turn_id=run.current_turn_id if run else None,
+            attempt=run.attempt if run else None,
+            attachment_refs=attachment_keys,
+        )
         self.db.commit()
         # The conditional SQL update deliberately bypasses the identity map;
         # reload before the outcome transaction so its fence sees the new
@@ -199,7 +232,7 @@ class CompanionCoordinator:
         self.record_outcome(
             run_id=invocation.run_id, thread_id=invocation.thread_id, ward_id=ward_id,
             turn_id=invocation.turn_id, attempt=invocation.attempt, outcome=outcome,
-            decision=decision, duration_ms=duration_ms,
+            decision=decision, duration_ms=duration_ms, command_id=command_id,
         )
         record_agent_outcome(agent_type=run.agent_type, status=outcome.run_status, duration_ms=duration_ms)
         run = self.db.get(AgentRun, invocation.run_id)
@@ -214,7 +247,9 @@ class CompanionCoordinator:
         self.db.commit()
         return result
 
-    def record_outcome(self, *, run_id: str, thread_id: str, ward_id: str, turn_id: str, attempt: int, outcome: WorkflowOutcome, decision: RouteDecision, duration_ms: int) -> bool:
+    def record_outcome(self, *, run_id: str, thread_id: str, ward_id: str, turn_id: str, attempt: int,
+                       outcome: WorkflowOutcome, decision: RouteDecision, duration_ms: int,
+                       command_id: str | None = None) -> bool:
         run = self.db.get(AgentRun, run_id)
         thread = self.db.get(ConversationThread, thread_id)
         if run is None or thread is None or run.ward_id != ward_id or run.thread_id != thread.id:
@@ -266,7 +301,14 @@ class CompanionCoordinator:
             thread=thread, run=run, decision=decision, snapshot=outcome.context_snapshot or {},
             outcome={"run_status": outcome.run_status, "failure": outcome.failure or {}}, duration_ms=duration_ms,
         )
-        self._advance_thread(thread)
+        version = self._advance_thread(thread)
+        visible_content = self._visible_outcome_content(outcome)
+        if visible_content is not None and command_id is not None:
+            self._write_transcript(
+                thread=thread, command_id=command_id, author_type="companion",
+                content=visible_content, thread_version=version, run=run, turn_id=turn_id,
+                attempt=attempt,
+            )
         self.db.commit()
         self.db.expire_all()
         return True

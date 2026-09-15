@@ -20,7 +20,7 @@ from app.infrastructure.persistence.models import (
     AnalysisProfile, BehaviorLabelConfig, BehaviorSegment, Device, Frame, FramePrediction,
     Guardian, GuardianWard, RefreshToken, WardRefreshToken, Report, User, Ward, WardCredential, WardInvite,
     Task, DailySchedule, PlanDraft, StudySession, StudySessionInterval, TutoringSession, TutoringMessage, SelfReview, FocusKit,
-    AgentRun, AgentStreamEvent, AgentCheckpoint, AgentTrace, CompanionCommand, ConversationThread,
+    AgentRun, AgentStreamEvent, AgentCheckpoint, AgentTrace, CompanionCommand, CompanionMessage, ConversationThread,
     LearningEvent, EpisodicMemory, EpisodicMemoryEvent, DerivedSignal, DerivedSignalEvent, LongTermProfile, OutboxEvent,
     now,
 )
@@ -29,13 +29,12 @@ from app.api.schemas import (
     ProfilePatch, RefreshRequest, RegisterRequest, TokenPair, UploadUrlRequest, WardCreate,
     WardOut, WardPatch, WardBindRequest, AssignmentCreate, PlanDraft,
     MessageCreate, SessionFinish, SessionPause, SelfReviewCreate, TaskIntakeCleanup, TaskIntakeConfirm,
-    TaskIntakeRequest, PlanIntakeCleanup, PlanIntakeConfirm, PlanIntakeRequest, CompanionTurnRequest, AgentRunCancelRequest, SignalChallengeRequest, ClientTelemetryBatch,
+    TaskIntakeRequest, CompanionTurnRequest, AgentRunCancelRequest, SignalChallengeRequest, ClientTelemetryBatch,
 )
 from app.infrastructure.security.tokens import create_access_token, hash_secret, random_token, token_hash, verify_secret
 from app.application.commands.legacy_services import analyze_and_generate, corrected_time, make_invite_code, owned_ward, utc_bounds
 from app.infrastructure.storage.object_storage import LocalStorage, storage
 from app.application.commands.task_intake import TaskIntakeError, TaskIntakeService
-from app.application.commands.plan_intake import PlanIntakeService
 from app.infrastructure.messaging.outbox import publish_learning_fact
 from app.application.process_managers.companion_coordinator import CompanionCoordinator
 from app.application.commands.memory import MemoryAccessDenied, SqlAlchemyMemoryCommandService

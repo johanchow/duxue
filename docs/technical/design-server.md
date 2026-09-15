@@ -95,6 +95,7 @@ erDiagram
 
     conversation_threads ||--o{ agent_runs : "受权工作流运行"
     conversation_threads ||--o{ companion_commands : "幂等命令记录"
+    conversation_threads ||--o{ companion_messages : "Ward 可见对话投影"
     agent_runs ||--o{ agent_checkpoints : "恢复引用"
     agent_runs ||--o{ agent_traces : "脱敏审计"
     agent_runs ||--o{ agent_stream_events : "可重放流事件"
@@ -180,6 +181,22 @@ erDiagram
         jsonb result "同 command_id 的稳定响应"
         timestamp created_at
         timestamp completed_at
+    }
+
+    companion_messages {
+        uuid id PK
+        uuid ward_id FK "查询授权边界"
+        uuid thread_id FK
+        uuid run_id FK "可为空；仅关联产生该消息的 Run"
+        uuid command_id FK "产生 Ward 输入或 companion 回复的幂等来源"
+        uuid turn_id "Run 内 Turn 标识，可为空"
+        int attempt "Run attempt，可为空"
+        int thread_version "同一 Thread 内稳定排序游标"
+        string author_type "ward | companion"
+        text content "最终、已校验的可展示文本"
+        jsonb attachment_refs "仅受权 OSS 引用；默认空数组"
+        jsonb interaction_ref "目标 Context 对象 ID + version；不复制可变业务状态"
+        timestamp created_at
     }
 
     agent_stream_events {
@@ -531,6 +548,10 @@ CREATE INDEX idx_segments_session ON behavior_segments(study_session_id, seg_sta
 -- 3. 伴学消息、事实事件与记忆检索
 CREATE INDEX idx_tutoring_msg_session ON tutoring_messages(tutoring_session_id, created_at ASC);
 CREATE INDEX idx_companion_commands_ward ON companion_commands(ward_id);
+CREATE UNIQUE INDEX uq_companion_messages_thread_version ON companion_messages(thread_id, thread_version);
+CREATE UNIQUE INDEX uq_companion_messages_ward_command_author ON companion_messages(ward_id, command_id, author_type);
+CREATE INDEX idx_companion_messages_ward_thread_version ON companion_messages(ward_id, thread_id, thread_version DESC);
+CREATE UNIQUE INDEX uq_companion_messages_run_turn_attempt_author ON companion_messages(run_id, turn_id, attempt, author_type) WHERE run_id IS NOT NULL;
 CREATE INDEX idx_agent_stream_events_run ON agent_stream_events(run_id);
 CREATE UNIQUE INDEX uq_agent_stream_sequence ON agent_stream_events(run_id, attempt, sequence);
 CREATE INDEX idx_learning_events_ward_time ON learning_events(ward_id, occurred_at DESC);
@@ -546,6 +567,17 @@ CREATE UNIQUE INDEX uq_derived_signal_event_role ON derived_signal_events(derive
 CREATE INDEX idx_derived_signal_events_event ON derived_signal_events(learning_event_id);
 CREATE INDEX idx_devices_heartbeat ON devices(status, last_heartbeat_at);
 ```
+
+`companion_messages` 是 Application 维护的 transcript journal store，而非任何 Aggregate 的表；
+`CompanionTranscriptView` 仅查询该 journal，不将它用作 Aggregate 写入来源。
+每个已接受的 Ward 最终输入写一行，每个通过展示/安全校验且仍通过 Run fence 的 companion 最终回复写一行；
+不按自然语言内容合并历史。唯一约束只折叠传输重试：相同 `command_id` 的同一作者不重复写入，
+相同 `run_id + turn_id + attempt` 的同一作者不重复写入。SSE delta 仅在客户端临时合并，最终回复才写入。
+
+`thread_version` 是排序和游标，不是新的领域状态：它复用同一 Unit of Work 中 `ConversationThread` 已递增
+的版本，因此允许取消等无消息写入留下序号空洞。`interaction_ref` 仅保存目标 Context 的对象标识与版本；
+例如计划草稿以当前 `PlanDraftView` 刷新，不将可变草稿快照复制进每条历史消息。Ward 数据删除时，
+必须在删除 Thread 前清理其 messages 和 `attachment_refs` 所引用的对象；具体保留期限由产品数据策略定义。
 
 ---
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime, timezone
 
-from sqlalchemy import Uuid, JSON, Boolean, CheckConstraint, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Uuid, JSON, Boolean, CheckConstraint, Date, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.infrastructure.persistence.database import Base
@@ -356,6 +356,32 @@ class CompanionCommand(Base):
     result: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class CompanionMessage(Base):
+    """Immutable, Ward-visible transcript journal; never an aggregate."""
+
+    __tablename__ = "companion_messages"
+    __table_args__ = (
+        UniqueConstraint("thread_id", "thread_version", name="uq_companion_messages_thread_version"),
+        UniqueConstraint("ward_id", "command_id", "author_type", name="uq_companion_messages_ward_command_author"),
+        UniqueConstraint("run_id", "turn_id", "attempt", "author_type", name="uq_companion_messages_run_turn_attempt_author"),
+        CheckConstraint("author_type IN ('ward', 'companion')", name="ck_companion_message_author"),
+        Index("idx_companion_messages_ward_thread_version", "ward_id", "thread_id", "thread_version"),
+    )
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
+    ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id"))
+    thread_id: Mapped[str] = mapped_column(ForeignKey("conversation_threads.id"))
+    run_id: Mapped[str | None] = mapped_column(ForeignKey("agent_runs.id"), nullable=True)
+    command_id: Mapped[str] = mapped_column(ForeignKey("companion_commands.id"))
+    turn_id: Mapped[str | None] = mapped_column(Uuid(as_uuid=False), nullable=True)
+    attempt: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    thread_version: Mapped[int] = mapped_column(Integer)
+    author_type: Mapped[str] = mapped_column(String(16))
+    content: Mapped[str] = mapped_column(Text)
+    attachment_refs: Mapped[list] = mapped_column(JSON, default=list)
+    interaction_ref: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
 class AgentStreamEvent(Base):

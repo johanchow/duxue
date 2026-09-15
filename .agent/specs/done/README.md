@@ -6,3 +6,5 @@
 | [implement-app-observability.md](implement-app-observability.md) | 2026-09-13 |
 | [ddd-server-structure.md](ddd-server-structure.md) | 2026-09-14 |
 | [split-api-context-routers.md](split-api-context-routers.md) | 2026-09-14 |
+| [companion-message-transcript.md](companion-message-transcript.md) | 2026-09-15 |
+| [implement-companion-messages.md](implement-companion-messages.md) | 2026-09-15 |
