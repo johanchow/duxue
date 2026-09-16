@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from app.bootstrap.settings import settings
 from app.infrastructure.observability.telemetry import model_call_span
+
 from .task_intake import TaskIntakeError, _data_url
 
 
@@ -15,7 +16,7 @@ class PlanIntakeItem(BaseModel):
     assignment_id: str | None = None
     title: str = Field(min_length=1, max_length=300)
     details: str | None = Field(default=None, max_length=4000)
-    planned_minutes: int = Field(default=30, ge=1, le=480)
+    planned_minutes: int | None = Field(default=None, ge=1, le=480)
     new_task: bool = False
 
 
@@ -30,6 +31,8 @@ class PlanIntakeInput(BaseModel):
 class PlanIntakeResult(BaseModel):
     assistant_text: str = Field(min_length=1, max_length=4000)
     items: list[PlanIntakeItem] = Field(default_factory=list, max_length=30)
+    clarification_required: bool = False
+    questions: list[str] = Field(default_factory=list, max_length=5)
     ready_to_confirm: bool = False
 
 
@@ -43,8 +46,23 @@ def _prompt(ward: dict, tasks: list[dict], request: PlanIntakeInput) -> str:
 硬规则：
 1. 根据本轮学生输入或图片，保留、增加、删除或调整今天的草稿任务；不要编造作业内容、页码或截止日。
 2. 引用任务池已有任务时必须使用其 assignment_id 且 new_task=false；学生新提出的任务使用 new_task=true 且 assignment_id=null。
-3. 每项必须有 title 和 planned_minutes（1 到 480）。只有草稿至少有一项且信息足够明确时 ready_to_confirm=true。
-4. 只输出 JSON object：assistant_text、items、ready_to_confirm。"""
+3. 每项必须有 title。planned_minutes 只有学生明确说出预计时长时才能填写（1 到 480）；绝不猜测或默认任何时长。缺少预计时长时保持 planned_minutes=null，clarification_required=true、ready_to_confirm=false，并在 questions 中只追问预计时长。
+4. 只有草稿至少有一项、每项都有明确预计时长且信息足够明确时 ready_to_confirm=true。
+5. 只输出 JSON object：assistant_text、items、clarification_required、questions、ready_to_confirm。"""
+
+
+def require_missing_duration_clarification(result: PlanIntakeResult) -> PlanIntakeResult:
+    """Turn an omitted duration into an explicit Ward-facing clarification."""
+    titles = [item.title for item in result.items if item.planned_minutes is None]
+    if not titles:
+        return result
+    task_names = "、".join(f"“{title}”" for title in titles)
+    question = f"{task_names} 预计需要多长时间？"
+    result.assistant_text = f"还需要补充预计时长：{question}"
+    result.clarification_required = True
+    result.questions = [question]
+    result.ready_to_confirm = False
+    return result
 
 
 class PlanIntakeService:
@@ -79,6 +97,7 @@ class PlanIntakeService:
             raise TaskIntakeError("计划草稿包含无效任务，请重新说明")
         if any(item.new_task == (item.assignment_id is not None) for item in result.items):
             raise TaskIntakeError("计划草稿中的任务来源不正确，请重新说明")
-        if not result.items:
+        require_missing_duration_clarification(result)
+        if result.clarification_required or not result.items:
             result.ready_to_confirm = False
         return result

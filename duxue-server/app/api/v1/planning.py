@@ -87,11 +87,13 @@ def save_plan(ward_id: str, plan_date: date, body: PlanDraft, principal: Princip
     if plan.status == "confirmed": raise HTTPException(409, "confirmed plan cannot be changed")
     db.query(Task).filter_by(schedule_id=plan.id).update({Task.schedule_id: None, Task.position: None, Task.planned_minutes: None})
     for position, item in enumerate(body.items):
+        if item.get("planned_minutes") is None:
+            raise HTTPException(400, "请补充任务预计时长")
         task = db.get(Task, item.get("assignment_id")) if item.get("assignment_id") else None
         if task is None:
             task = Task(ward_id=ward_id, title=item.get("title", "学习任务"), source="ward")
             db.add(task); db.flush()
-        task.schedule_id, task.position, task.planned_minutes = plan.id, position, int(item.get("planned_minutes", 30))
+        task.schedule_id, task.position, task.planned_minutes = plan.id, position, int(item["planned_minutes"])
     db.commit(); return {"id": plan.id, "status": plan.status}
 
 @router.post("/wards/{ward_id}/plans/{plan_date}/confirm")

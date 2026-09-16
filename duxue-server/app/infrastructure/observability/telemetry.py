@@ -250,6 +250,26 @@ def record_agent_outcome(*, agent_type: str, status: str, duration_ms: int, fall
     _span_event("agent.workflow.completed", {**attrs, "agent.duration_ms": duration_ms, "agent.fallback": fallback})
 
 
+def record_planning_stage(*, stage: str, duration_ms: int | None = None, **extra: Any) -> None:
+    """Low-cardinality planning lifecycle breadcrumbs for locating post-LLM hangs."""
+    attrs = _attrs(**{"agent.type": "planning", "planning.stage": stage, "planning.duration_ms": duration_ms, **extra})
+    _span_event(f"planning.stage.{stage}", attrs)
+    _audit_logger.info("planning.stage", extra={"telemetry": attrs})
+
+
+@contextmanager
+def planning_stage_span(stage: str, **extra: Any) -> Iterator[None]:
+    started = perf_counter()
+    with trace.get_tracer("duxue.agent").start_as_current_span(
+        f"planning.{stage}",
+        attributes=_attrs(**{"agent.type": "planning", "planning.stage": stage, **extra}),
+    ):
+        try:
+            yield
+        finally:
+            record_planning_stage(stage=stage, duration_ms=round((perf_counter() - started) * 1000), **extra)
+
+
 @contextmanager
 def agent_workflow_span(*, agent_type: str, run_id: str, thread_id: str) -> Iterator[None]:
     with trace.get_tracer("duxue.agent").start_as_current_span(
@@ -287,10 +307,19 @@ def model_call_span(*, operation: str, model: str, agent_type: str | None = None
             span.set_attribute("llm.duration_ms", duration_ms)
 
 
-def record_model_response(*, agent_type: str, model: str, content: str) -> None:
+def record_model_response(*, agent_type: str, model: str, content: str, operation: str | None = None) -> None:
     summary = _summary(content)
-    _span_event("llm.response.validated", {"agent.type": agent_type, "llm.model": model, "output.length": summary["length"]})
-    _write_debug_audit("output", {"agent.type": agent_type, "llm.model": model, "output": summary}, content)
+    attrs = _attrs(**{
+        "agent.type": agent_type,
+        "llm.model": model,
+        "llm.operation": operation,
+        "output.length": summary["length"],
+        "output.sha256": summary["sha256"],
+    })
+    _span_event("llm.response.validated", attrs)
+    # Default Loki/audit logs stay content-free; excerpts only go to the gated debug sink.
+    _audit_logger.info("llm.response.validated", extra={"telemetry": attrs})
+    _write_debug_audit("output", {"agent.type": agent_type, "llm.model": model, "llm.operation": operation, "output": summary}, content)
 
 
 def record_llm_fallback(*, operation: str, reason: str) -> None:

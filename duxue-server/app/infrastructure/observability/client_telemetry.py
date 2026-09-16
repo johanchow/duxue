@@ -19,7 +19,7 @@ from app.api.schemas import ClientTelemetryEvent
 
 _ALLOWED_NAMES = {
     "app.http", "app.auth.refresh", "app.report.load", "app.device.bind",
-    "app.companion.turn", "app.infrastructure.ai.asr.session", "app.screen.load", "app.startup",
+    "app.companion.turn", "app.asr.session", "app.screen.load", "app.startup",
     "app.unhandled_error", "app.route.view",
 }
 _ALLOWED_ATTRIBUTES = {

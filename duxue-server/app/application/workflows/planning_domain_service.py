@@ -22,8 +22,9 @@ class PlanningDomainService:
         items: list[dict],
         pending_fields: list[str] | None = None,
     ) -> PlanDraft:
+        pending = set(pending_fields or [])
         if (
-            sum(int(item.get("planned_minutes", 0)) for item in items)
+            sum(int(item["planned_minutes"]) for item in items if item.get("planned_minutes") is not None)
             > MAX_DAILY_MINUTES
         ):
             raise HTTPException(400, "计划总时长超过当天上限")
@@ -34,10 +35,14 @@ class PlanningDomainService:
             existing, new = item.get("assignment_id"), bool(item.get("new_task"))
             if new == bool(existing) or (existing and existing not in known):
                 raise HTTPException(400, "计划草稿包含无效任务来源")
-            if (
-                not str(item.get("title", "")).strip()
-                or not 1 <= int(item.get("planned_minutes", 0)) <= MAX_DAILY_MINUTES
-            ):
+            minutes = item.get("planned_minutes")
+            if not str(item.get("title", "")).strip():
+                raise HTTPException(400, "计划草稿任务不完整")
+            if minutes is None:
+                if "planned_minutes" not in pending:
+                    raise HTTPException(400, "请补充任务预计时长")
+                continue
+            if not 1 <= int(minutes) <= MAX_DAILY_MINUTES:
                 raise HTTPException(400, "计划草稿任务不完整")
         schedule = (
             self.db.query(DailySchedule)
@@ -58,7 +63,7 @@ class PlanningDomainService:
             self.db.add(draft)
         draft.items, draft.pending_fields, draft.status = (
             items,
-            pending_fields or [],
+            sorted(pending),
             "active",
         )
         draft.version = (draft.version or 0) + 1

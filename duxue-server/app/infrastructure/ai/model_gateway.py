@@ -64,7 +64,9 @@ class QwenAgentModelGateway:
                 telemetry["tokens_out"] = getattr(usage, "completion_tokens", None)
                 raw = (response.choices[0].message.content or "").strip()
                 candidate = AgentTextCandidate.model_validate_json(raw)
-                record_model_response(agent_type=agent_type, model=model, content=candidate.content)
+                record_model_response(
+                    agent_type=agent_type, model=model, content=candidate.content, operation="agent_text",
+                )
                 return candidate
         except (ValidationError, ValueError, KeyError) as error:
             raise ModelGatewayError("invalid_model_candidate") from error

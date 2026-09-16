@@ -25,8 +25,9 @@ def test_client_telemetry_preserves_only_allowlisted_low_cardinality_attributes(
 
 
 def test_client_telemetry_accepts_anonymized_asr_outcome():
+    # Must match Flutter AppTelemetry / VoiceTranscriptionService name.
     assert _attributes(event(
-        name="app.infrastructure.ai.asr.session",
+        name="app.asr.session",
         attributes={"result": "error", "error_kind": "auth", "route": "/ws/asr/transcribe"},
     )) == {
         "app.result": "error",
