@@ -13,16 +13,16 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.database import Base, get_db
-from app.main import app
-from app.ai_runtime.model_gateway import ModelGatewayError
+from app.infrastructure.persistence.database import Base, get_db
+from app.bootstrap.app import app
+from app.infrastructure.ai.model_gateway import ModelGatewayError
 
 
 @pytest.fixture(autouse=True)
 def guard_external_ai_gateway():
     """Ensure no test inadvertently makes real external LLM/VLM calls."""
     with patch(
-        "app.ai_runtime.model_gateway.QwenAgentModelGateway.generate",
+        "app.infrastructure.ai.model_gateway.QwenAgentModelGateway.generate",
         side_effect=ModelGatewayError("external_network_disabled_in_tests"),
     ):
         yield

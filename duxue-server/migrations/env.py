@@ -3,9 +3,9 @@ from __future__ import annotations
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from app.config import settings
-from app.database import Base
-import app.models  # noqa: F401 - register every table on Base.metadata
+from app.bootstrap.settings import settings
+from app.infrastructure.persistence.database import Base
+import app.infrastructure.persistence.models  # noqa: F401 - register every table on Base.metadata
 
 
 config = context.config

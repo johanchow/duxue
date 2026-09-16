@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 from sqlalchemy.orm import Session
 
-from app.models import AgentRun, AgentTrace, DerivedSignal, EpisodicMemory, LearningEvent, OutboxEvent
+from app.infrastructure.persistence.models import AgentRun, AgentTrace, DerivedSignal, EpisodicMemory, LearningEvent, OutboxEvent
 
 
 def assert_fact_recorded(

@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 from datetime import date
+
 import pytest
 from fastapi import HTTPException
 
-from app.ai_agents.planning_domain_service import PlanningDomainService, MAX_DAILY_MINUTES
-from tests.support.factories import create_guardian, create_ward, create_task, create_daily_schedule
+from app.application.commands.plan_intake import (
+    PlanIntakeItem,
+    PlanIntakeResult,
+    require_missing_duration_clarification,
+)
+from app.application.workflows.planning_domain_service import PlanningDomainService
+from tests.support.factories import create_daily_schedule, create_task, create_ward
 
 
 def test_cannot_exceed_max_daily_minutes(db):
@@ -71,6 +77,36 @@ def test_task_duration_and_title_validation(db):
             [{"new_task": True, "title": "有效标题", "planned_minutes": 0}],
         )
     assert exc2.value.status_code == 400
+
+
+def test_missing_task_duration_stays_pending_instead_of_defaulting_to_30_minutes(db):
+    """计划解析缺少预计时长时，必须追问而不是臆定 30 分钟。"""
+    ward = create_ward(db)
+    item = PlanIntakeItem(title="整理错题", new_task=True)
+
+    assert item.planned_minutes is None
+
+    draft = PlanningDomainService(db).save_draft(
+        ward.id,
+        date(2026, 9, 12),
+        [item.model_dump(mode="json")],
+        pending_fields=["planned_minutes"],
+    )
+    assert draft.pending_fields == ["planned_minutes"]
+    assert draft.items[0]["planned_minutes"] is None
+
+
+def test_missing_task_duration_generates_a_direct_clarification_question():
+    result = require_missing_duration_clarification(PlanIntakeResult(
+        assistant_text="已整理任务。",
+        items=[PlanIntakeItem(title="整理错题", new_task=True)],
+        ready_to_confirm=True,
+    ))
+
+    assert result.ready_to_confirm is False
+    assert result.clarification_required is True
+    assert result.questions == ["“整理错题” 预计需要多长时间？"]
+    assert result.assistant_text == "还需要补充预计时长：“整理错题” 预计需要多长时间？"
 
 
 def test_cannot_confirm_draft_with_pending_fields(db):

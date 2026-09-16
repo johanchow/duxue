@@ -3,11 +3,11 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from app.ai_runtime.contracts import (
+from app.application.ports.companion import (
     RunInvocation,
     WorkflowOutcome,
 )
-from app.ai_runtime.model_gateway import AgentTextCandidate, ModelGatewayError
+from app.infrastructure.ai.model_gateway import AgentTextCandidate, ModelGatewayError
 
 
 class FakeModelGateway:

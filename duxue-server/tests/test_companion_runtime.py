@@ -7,24 +7,24 @@ from unittest.mock import patch
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.ai_agents.planning_domain_service import PlanningDomainService
-from app.ai_agents.planning_workflow import build_planning_graph
-from app.ai_agents.tutoring_workflow import TutoringWorkflow
-from app.ai_agents.reflection_workflow import ReflectionWorkflow
-from app.ai_runtime.companion_coordinator import CompanionCoordinator
-from app.ai_runtime.contracts import RunInvocation, WorkflowOutcome
-from app.ai_runtime.model_gateway import ModelGatewayError
-from app.database import Base
-from app.memory import (
+from app.application.workflows.planning_domain_service import PlanningDomainService
+from app.application.workflows.planning_workflow import build_planning_graph
+from app.application.workflows.tutoring_workflow import TutoringWorkflow
+from app.application.workflows.reflection_workflow import ReflectionWorkflow
+from app.application.process_managers.companion_coordinator import CompanionCoordinator
+from app.application.ports.companion import RunInvocation, WorkflowOutcome
+from app.infrastructure.ai.model_gateway import ModelGatewayError
+from app.infrastructure.persistence.database import Base
+from app.application.commands.memory import (
     LearningFactRecorded,
     MemoryAccessDenied,
     MemoryContextRequest,
     SqlAlchemyMemoryCommandService,
     SqlAlchemyMemoryFacade,
 )
-from app.memory_worker import consume_pending_learning_facts
-from app.integration_events import publish_learning_fact
-from app.models import (
+from app.application.commands.memory_worker import consume_pending_learning_facts
+from app.infrastructure.messaging.outbox import publish_learning_fact
+from app.infrastructure.persistence.models import (
     AgentCheckpoint,
     DerivedSignal,
     DerivedSignalEvent,
@@ -45,7 +45,7 @@ class MemoryFacadeTest(unittest.TestCase):
     def setUp(self):
         # Unit tests must never consume a configured production model key.
         self.model_gateway = patch(
-            "app.ai_runtime.model_gateway.QwenAgentModelGateway.generate",
+            "app.infrastructure.ai.model_gateway.QwenAgentModelGateway.generate",
             side_effect=ModelGatewayError("unit_test"),
         )
         self.model_gateway.start()

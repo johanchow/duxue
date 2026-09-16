@@ -4,13 +4,13 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from app.domain import Point, RuleClassifier, build_segments, smooth
-from app.services import classify_for_ward
+from app.contexts.behavior_analysis.domain.logic import Point, RuleClassifier, build_segments, smooth
+from app.application.commands.legacy_services import classify_for_ward
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from app.database import Base
-from app.models import AnalysisProfile, BehaviorLabelConfig, Guardian, User, Ward
-from app.security import hash_secret
+from app.infrastructure.persistence.database import Base
+from app.infrastructure.persistence.models import AnalysisProfile, BehaviorLabelConfig, Guardian, User, Ward
+from app.infrastructure.security.tokens import hash_secret
 
 
 class DomainTest(unittest.TestCase):

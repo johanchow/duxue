@@ -3,9 +3,9 @@ from __future__ import annotations
 from datetime import date
 import pytest
 
-from app.ai_agents.reflection_workflow import ReflectionWorkflow
-from app.ai_runtime.contracts import RunInvocation
-from app.models import OutboxEvent, Report, SelfReview, uid
+from app.application.workflows.reflection_workflow import ReflectionWorkflow
+from app.application.ports.companion import RunInvocation
+from app.infrastructure.persistence.models import OutboxEvent, Report, SelfReview, uid
 from tests.support.factories import create_ward
 
 

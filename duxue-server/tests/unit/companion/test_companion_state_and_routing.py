@@ -3,8 +3,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 import pytest
 
-from app.ai_runtime.intent_router import IntentRouter
-from app.ai_runtime.policy import PolicyRegistry
+from app.contexts.companion.domain.intent_router import IntentRouter
+from app.contexts.companion.domain.policy import PolicyRegistry
 
 
 @pytest.fixture

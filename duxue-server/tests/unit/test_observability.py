@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from app.observability import configure_observability, record_agent_input, record_model_response
+from app.infrastructure.observability.telemetry import configure_observability, record_agent_input, record_model_response
 
 
 def test_telemetry_is_disabled_without_an_otlp_endpoint(monkeypatch):
@@ -31,11 +31,26 @@ def test_explicit_debug_audit_redacts_common_identifiers_and_truncates(tmp_path,
     monkeypatch.setenv("AGENT_DEBUG_AUDIT_PATH", str(path))
     raw = "联系电话 13800138000，邮箱 kid@example.com，" + "x" * 200
 
-    record_model_response(agent_type="tutoring", model="test-model", content=raw)
+    record_model_response(agent_type="tutoring", model="test-model", content=raw, operation="agent_text")
 
     row = json.loads(path.read_text(encoding="utf-8"))
     assert row["metadata"]["output"]["length"] == len(raw)
     assert row["metadata"]["output"]["sha256"]
+    assert row["metadata"]["llm.operation"] == "agent_text"
     assert "13800138000" not in row["redacted_excerpt"]
     assert "kid@example.com" not in row["redacted_excerpt"]
     assert len(row["redacted_excerpt"]) <= 160
+
+
+def test_planning_stage_span_emits_duration_breadcrumb(caplog):
+    from app.infrastructure.observability.telemetry import planning_stage_span
+
+    with caplog.at_level("INFO", logger="duxue.agent.audit"):
+        with planning_stage_span("graph_invoke", run_id="run-1"):
+            pass
+
+    assert any(record.getMessage() == "planning.stage" for record in caplog.records)
+    telemetry = next(getattr(record, "telemetry", {}) for record in caplog.records if record.getMessage() == "planning.stage")
+    assert telemetry["planning.stage"] == "graph_invoke"
+    assert telemetry["planning.duration_ms"] is not None
+    assert telemetry["run_id"] == "run-1"

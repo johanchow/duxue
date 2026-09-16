@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from app.ai_runtime.contracts import (
+from app.application.ports.companion import (
     ContextEnvelope,
     ContextSpec,
     CoordinatorResult,
@@ -11,8 +11,8 @@ from app.ai_runtime.contracts import (
     RunInvocation,
     WorkflowOutcome,
 )
-from app.ai_runtime.model_gateway import AgentTextCandidate
-from app.models import uid
+from app.infrastructure.ai.model_gateway import AgentTextCandidate
+from app.infrastructure.persistence.models import uid
 
 
 def test_context_spec_contract_defaults():

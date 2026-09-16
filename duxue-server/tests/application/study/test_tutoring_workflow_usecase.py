@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from app.ai_agents.tutoring_workflow import TutoringWorkflow
-from app.ai_runtime.contracts import RunInvocation
-from app.models import OutboxEvent, TutoringMessage, TutoringSession, uid
+from app.application.workflows.tutoring_workflow import TutoringWorkflow
+from app.application.ports.companion import RunInvocation
+from app.infrastructure.persistence.models import OutboxEvent, TutoringMessage, TutoringSession, uid
 from tests.support.factories import create_ward, create_task, create_study_session
 
 

@@ -13,7 +13,6 @@ class _WardHomeApi extends ApiClient {
   _WardHomeApi()
       : super(baseUrl: 'http://localhost', tokens: const TokenStorage());
   var startedAssignment = false;
-  var confirmedPlanIntake = false;
 
   @override
   Future<List<dynamic>> assignments(String wardId) async => [
@@ -57,27 +56,26 @@ class _WardHomeApi extends ApiClient {
   }
 
   @override
-  Future<Map<String, dynamic>> respondToPlanIntake(String wardId, DateTime day,
-          {required String content,
-          required List<Map<String, dynamic>> draftItems,
-          required List<String> attachmentKeys}) async =>
+  Future<Map<String, dynamic>> companionTurn({
+    required String content,
+    required String? threadId,
+    required int? expectedThreadVersion,
+    bool planningConfirm = false,
+    List<String> attachmentKeys = const [],
+  }) async =>
       {
-        'assistant_text': '已整理为今天的草稿。',
-        'items': [
-          {
-            'title': '整理错题',
-            'planned_minutes': 20,
-            'new_task': true,
-          },
-        ],
-        'ready_to_confirm': true,
+        'thread_id': threadId ?? 'thread-1',
+        'thread_version': (expectedThreadVersion ?? 0) + 2,
+        'interaction': {
+          'model_guidance': '已整理为今天的草稿。',
+          'items': [
+            {'title': '整理错题', 'planned_minutes': 20, 'new_task': true},
+          ],
+        },
       };
 
   @override
-  Future<void> confirmPlanIntake(String wardId, DateTime day,
-      List<Map<String, dynamic>> items, List<String> attachmentKeys) async {
-    confirmedPlanIntake = true;
-  }
+  Future<List<dynamic>> companionMessages(String threadId) async => const [];
 }
 
 class _FakeVoice implements VoiceTranscription {

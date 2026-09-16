@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.security import create_access_token
+from app.infrastructure.security.tokens import create_access_token
 from tests.support.factories import create_guardian, create_ward
 
 

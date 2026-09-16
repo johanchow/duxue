@@ -4,7 +4,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from sqlalchemy.orm import Session
 
-from app.models import (
+from app.infrastructure.persistence.models import (
     DailySchedule,
     Device,
     Frame,
@@ -22,8 +22,8 @@ from app.models import (
     now,
     uid,
 )
-from app.memory import LearningFactRecorded
-from app.security import hash_secret, token_hash
+from app.application.commands.memory import LearningFactRecorded
+from app.infrastructure.security.tokens import hash_secret, token_hash
 
 
 def create_guardian(

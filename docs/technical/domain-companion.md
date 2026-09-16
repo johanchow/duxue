@@ -7,7 +7,8 @@
 ## 一、边界、所有权与统一语言
 
 `Companion Orchestration` 是拥有入口连续性状态的 **Supporting Bounded Context**：它拥有
-`ConversationThread`、`AgentRunLink` 和受控 Handoff 状态。它不是核心学习业务领域，也不是
+`ConversationThread`、`AgentRunLink` 和受控 Handoff 状态。Ward 可见 transcript 是 Application
+维护的不可变 journal，而非领域状态。它不是核心学习业务领域，也不是
 无状态的 Application utility。
 
 `CompanionCoordinator` 是这个 Context 内的 **Application-layer Process Manager**。它路由
@@ -21,7 +22,7 @@ Aggregate、领域规则和跨 Context 写权限。
 | Study/Tutoring 的模型、受限 ReAct 与结算 | [domain-study.md](domain-study.md) | 仅定义 `RunInvocation` / `WorkflowOutcome` 调用契约 |
 | Evaluation/Reflection 的模型、证据工作流与报告版本 | [domain-evaluation.md](domain-evaluation.md) | 仅定义 `RunInvocation` / `WorkflowOutcome` 调用契约 |
 | Evidence、Episode、Signal、Profile、Memory Bundle | [domain-memory.md](domain-memory.md) | 仅定义 ACL Query 与事实投递边界 |
-| Thread/Run、Coordinator、Runtime 执行协议 | 本文 | 唯一维护 |
+| Thread/Run、Ward-facing transcript journal、Coordinator、Runtime 执行协议 | 本文 | 唯一维护 |
 | 表、索引、迁移与部署 | [design-server.md](design-server.md) | 仅逻辑映射 |
 
 ```mermaid
@@ -49,8 +50,9 @@ flowchart LR
 | 术语 | 本 Context 中的含义 | 明确不是 |
 |---|---|---|
 | **Turn** | 一次 `send message` 或结构化 UI 动作的单次请求处理 | 整段会话，也不是模型多步调用的总称 |
-| **Thread** | 同一 Ward 的入口消息顺序、focus Run 与并发边界 | 长期记忆或完整聊天副本 |
+| **Thread** | 同一 Ward 的入口顺序、focus Run 与并发边界 | 长期记忆或内嵌的完整消息集合 |
 | **Run** | Thread 内一次指向单一目标 Context、可恢复的工作流引用 | 目标业务 Aggregate 的复制 |
+| **CompanionMessage** | 由已接受 Turn/已验证 Outcome 同步写入、供 Ward 查询的不可变 transcript journal record | `ConversationThread` 的 Child Entity、Domain Event、Memory、Trace 或 Checkpoint |
 | **Handoff** | Ward 明确意图或受验证 UI 语义触发的 Context 切换 | 完整对话/Prompt/Working Memory 的传递 |
 | **Working Memory** | 当前 Run 的确定性状态、已验证交互/工具事实和受预算摘要 | Memory Context 的写 Aggregate |
 | **Fact** | 目标 Context 已确认、可追溯的业务发生 | 模型候选、Trace 或原始聊天 |
@@ -86,26 +88,30 @@ flowchart TB
     T3 --> R2
 ```
 
-同一 Run 可按 `ContextSpec` 读取受限的近期消息窗口、确定性业务状态和已验证摘要，解决
-“这一步”“刚才那题”的指代；完整聊天不得跨 Context Handoff，也不得进入 Memory 或 Trace。
+同一 Run 可按 `ContextSpec` 读取受限的、同 Run 的近期消息窗口、确定性业务状态和已验证摘要，解决
+“这一步”“刚才那题”的指代。完整 transcript 不得跨 Context Handoff，也不得进入 Memory、Trace 或
+Checkpoint。
 
 ## 二、Companion 的领域模型
 
 ### 2.1 Aggregate Map
 
 `ConversationThread` 是当前唯一写 Aggregate；`AgentRunLink` 是 Child Entity。一个根可原子
-保护 focus、唯一回复权与 Handoff，因此不另设 Run Aggregate。Checkpoint/Trace 是不参与这些
-不变量的 Infrastructure records。
+保护 focus、唯一回复权与 Handoff，因此不另设 Run Aggregate。Ward-facing transcript 是 Application
+journal，不参与这些不变量，也不被加载进 Thread。Checkpoint/Trace 同样是不参与这些不变量的
+Infrastructure records。
 
 ```mermaid
 flowchart LR
     T[ConversationThread<br/>Aggregate Root]
     R[AgentRunLink<br/>Child Entity]
+    M[(CompanionMessage<br/>Application journal)]
     X[Target Context Aggregate]
     C[(AgentCheckpoint<br/>Infrastructure)]
     A[(AgentTrace<br/>Infrastructure)]
     T -->|owns lifecycle| R
     R -->|run_ref: ID only| X
+    M -. thread/run/turn references .-> T
     R -. checkpoint reference .-> C
     T -. audit reference .-> A
 ```
@@ -115,7 +121,7 @@ flowchart LR
 | 项目 | ConversationThread 设计 |
 |---|---|
 | Identity | `thread_id`，归属 `ward_id` |
-| Child Entity | `AgentRunLink` |
+| Child Entity | `AgentRunLink`；Ward-facing transcript 是 Application journal，不属于 Aggregate |
 | Value Object | `RouteDecision`、`ContextRef`、`ThreadVersion`、`RunInvocation` |
 | 强一致不变量 | Ward 归属；`expected_thread_version` 匹配；focus 指向本 Thread 未关闭 Run；一次 Turn 只启动/恢复一个 Run；同一时刻仅 focus Run 有回复权；Handoff 不携带未授权状态 |
 | 领域行为 | `route()`、`start_or_resume()`、`handoff()`、`record_outcome()`、`advance_version()` |
@@ -173,8 +179,10 @@ Run deadline 或声明的执行预算耗尽，保留兼容 Checkpoint 后等待 
 
 ## 三、Coordinator Process Manager
 
-Coordinator 可读取自己的 Thread、调用授权 Query 和目标 Workflow Application contract；不能
-直接写目标 Context 的 Repository/ORM，不能创建多 Context 全局事务。
+Coordinator 是 Application-layer Process Manager：它可通过本 Context 的 Aggregate Repository 和
+`CompanionTranscriptStore` **Port** 保存已被领域行为接受的 Thread/Run，以及其 Ward-facing journal record，
+并编排同一 Context 的短 Unit of Work；它不得直接使用 ORM/SQL，也不能直接写目标 Context 的
+Repository/ORM 或创建多 Context 全局事务。
 
 路由优先级固定为：安全与权限 → 服务端验证的 `route_hint` → focus Run 正常续接 → 明确单一
 意图 → 有限分类/澄清。多个未指定优先级的业务意图必须澄清。未来分类模型只能提出受限
@@ -184,10 +192,10 @@ Coordinator 可读取自己的 Thread、调用授权 Query 和目标 Workflow Ap
 
 | 触发 | Interface | Use Case / Process Manager | 本地行为 | 后续 | 一致性、幂等与失败 |
 |---|---|---|---|---|---|
-| Ward 文本、ASR 或 UI 动作 | `POST /companion/turn` | `HandleCompanionTurn` | load Thread → `route()` → start/resume Link → version++ | `RunRouted`、最小 Trace、`RunInvocation` | optimistic lock；`command_id` 重试返原结果；澄清/安全不建 Run |
+| Ward 文本、ASR 或 UI 动作 | `POST /companion/turn` | `HandleCompanionTurn` | load Thread → `route()` → start/resume Link → version++ → append accepted Ward journal record | `RunRouted`、最小 Trace、`RunInvocation` | optimistic lock；`command_id` 重试返原结果；澄清/安全不建 Run，但可产生已校验的 Ward-facing 回复 |
 | focus Run 续接 | 同上 | `ResumeAgentRun` | 校验状态和 checkpoint/policy → `resume()` | 新 attempt 的 Invocation | `run_id + turn_id` 唯一；不兼容返回重新审阅 |
 | 明确新目标或受验证 UI | 同上 | `HandoffRun` | 原 Link pause/close，创建/恢复目标 Link，更新 focus | `RunHandedOff` | 同一 Thread 事务；没有明确意图则澄清 |
-| Workflow 返回结果 | completion adapter | `RecordWorkflowOutcome` | fence `run_id + attempt + focus` → `record_outcome()` | Trace / 可恢复引用 | 重复无副作用；迟到 Outcome 不夺回回复权 |
+| Workflow 返回结果 | completion adapter | `RecordWorkflowOutcome` | fence `run_id + attempt + focus` → `record_outcome()` → append validated companion journal record | Trace / 可恢复引用 | 重复无副作用；迟到 Outcome 不夺回回复权或写可见消息 |
 | 安全或模型/工具拒绝 | Router / Validator | `HandleCompanionTurn` / `RecordWorkflowOutcome` | 不建 Run 或 `escalate()` | 安全 Outcome/Trace | 不产生 Learning Fact；安全降级/升级 |
 | 模型、工具或输出校验失败 | Target Workflow / Runtime adapter | `RecordWorkflowOutcome` | 当前 attempt 内按 Policy 有界重试；耗尽后 `failed` | 脱敏 failure Outcome / Trace | `retriable` 才允许 Ward 显式重试；不写 Fact 或业务状态 |
 | Run deadline 或执行预算耗尽 | Runtime budget guard | `RecordWorkflowOutcome` | `timed_out` 并保留兼容 checkpoint 引用 | 恢复/重新开始交互 | 不在同一 attempt 延长预算；恢复会创建新 attempt |
@@ -200,7 +208,9 @@ Coordinator 可读取自己的 Thread、调用授权 Query 和目标 Workflow Ap
 
 - Actor/授权：认证 Ward；`thread_id` 必须属于 Ward。
 - 输入：`command_id`、`thread_id?`、`expected_thread_version?`、`TextTurn | StructuredWardCommand`。
-- 事务：短事务加载/创建 Thread、校验版本和命令幂等、路由并仅创建/恢复一个 Link 与最小 Trace。
+- 事务：短事务加载/创建 Thread、校验版本和命令幂等、路由并仅创建/恢复一个 Link 与最小 Trace；
+  仅在 `ConversationThread` 已接受该 Turn 后，通过 `CompanionTranscriptStore` 追加 Ward-facing journal record。
+  Thread/Run/命令幂等记录/journal record 必须作为同一 Unit of Work 提交。
 - 后续：提交后才交付不可变 `RunInvocation(run_id, turn_id, attempt, context_refs)`；模型调用绝不占用 Thread 事务。
 - 失败：陈旧版本 `409`；未知/多意图返回 `clarify`；失败不留下半创建第二个 Run。
 
@@ -221,9 +231,16 @@ Coordinator 可读取自己的 Thread、调用授权 Query 和目标 Workflow Ap
 #### `RecordWorkflowOutcome`
 
 - 输入：经 schema 校验的 Outcome，含 `run_id`、`turn_id`、`attempt`、`run_status`、`outcome_type`、`trace_id`；失败时必须带 `failure.code`、`failure.retriable` 与 `resume_action`。
-- 事务：fence 校验后更新状态/checkpoint 引用，追加红删 Trace。
+- 事务：fence 校验后更新状态/checkpoint 引用，追加红删 Trace；仅当 Outcome 通过展示与安全校验，且
+  `run_id + turn_id + attempt + focus` 仍匹配时，追加 companion 的最终 transcript journal record。Run Outcome、
+  Trace 与该 journal record 必须作为同一 Unit of Work 提交。
 - 业务副作用：只由目标 Context 的 Use Case 写入；Coordinator 不直接改计划、答疑、复盘或 Memory。
 - 失败：重复无副作用；迟到结果不展示为当前回复；`failed`、`timed_out` 与 `cancelled` 不能伪造成功或发布 Fact。当前 attempt 内的技术重试由 Runtime 执行，不创建新的 Thread 状态；Ward 选择 retry/resume 后才创建新 attempt。
+
+Application 只编排已接受结果的持久化，不自行判断消息是否有效：`ConversationThread` 的版本、focus、
+Run 生命周期与 fence，以及 Workflow 的展示/安全 Validator 是消息可见性的前置业务规则。Aggregate
+Repository 与 journal store 负责读写抽象，Infrastructure Adapter 才执行 SQLAlchemy/PostgreSQL 操作；
+任何 Entity/record 均不直接执行数据库 I/O。
 
 #### `CancelAgentRun`
 
@@ -322,62 +339,34 @@ Workflow 必须声明版本化 `ContextSpec`：Memory 范围、近期会话窗�
 | Query Model | 消费者 | 来源 | 新鲜度与限制 |
 |---|---|---|---|
 | `CompanionThreadView` | Ward 入口 | Thread + Run Link | Thread 提交后强一致；仅当前 Ward 的 focus/状态/下一步 |
+| `CompanionTranscriptView` | Ward 对话 UI | `CompanionTranscriptStore` 中的 `CompanionMessage` journal | 同一 Unit of Work 后强一致；仅当前 Ward；按 Thread 版本游标分页；可按 `run_id` 分段展示，但不把完整历史作为跨 Context Query 或 Handoff 载荷 |
 | `WorkflowInteractionView` | Ward 目标界面 | 已校验 Outcome / 目标投影 | 依目标 Workflow；完整对话不是跨 Context Query Model |
 | `MemoryBundle` | ContextBuilder | Memory Query ACL | 单次授权快照；预算/freshness 标记；不能用于写决策 |
 
-```python
-class CompanionTurn(BaseModel):
-    command_id: UUID
-    thread_id: UUID | None
-    expected_thread_version: int | None
-    input: TextTurn | StructuredWardCommand
-    route_hint: Literal["planning", "tutoring", "reflection"] | None
+### 5.1 Ward-facing transcript journal
 
-class RunInvocation(BaseModel):
-    run_id: UUID
-    thread_id: UUID
-    ward_id: UUID
-    turn_id: UUID
-    attempt: int
-    agent_type: Literal["planning", "tutoring", "reflection"]
-    input: TextTurn | StructuredWardCommand
-    context_refs: list[ContextRef]
-    resume_from_checkpoint: bool
+`CompanionMessage` 是 Application 维护的 append-only transcript journal，不是写模型。它只记录一条已接受的 Ward
+表达或一条已验证的 companion 最终回复；可见作者仅为 `ward | companion`。System prompt、模型推理、
+内部路由、Trace、Checkpoint、未校验候选及原始工具输出不可投影。可变的目标业务状态（例如计划草稿）
+不复制到历史消息中，只以目标 Context 的对象引用和版本供 UI 刷新其当前视图。
 
-class WorkflowFailure(BaseModel):
-    code: str
-    source: Literal["model", "tool", "validator", "budget", "transport"]
-    detail: str | None  # redacted; never raw prompt/tool output
-    retriable: bool
+| Contract | 请求/结果语义 | 授权、幂等与兼容 |
+|---|---|---|
+| `CompanionTurn` | Ward 提交 `command_id`、Thread/version、文本或受验证 UI 动作与 route hint；结果关联 Thread、Run、Turn、当前版本和已校验交互 | `route_hint` 仅来自服务端验证 UI；相同 `command_id` 返回同一结果 |
+| `GetCompanionTranscript` | 按 Thread 和 `before_thread_version` 游标返回 Ward-facing messages、下一游标及当前 Thread 版本 | 仅 Thread 所属 Ward；不得一次读取无限历史；只读，不改 Aggregate |
+| `WorkflowOutcome` | 返回已校验的展示回复、下一步交互、Run 状态、恢复动作和脱敏失败信息 | 仅当前 `run_id + turn_id + attempt + focus` 可追加 companion journal record；旧 Outcome 只审计不展示 |
 
-class WorkflowOutcome(BaseModel):
-    run_id: UUID
-    turn_id: UUID
-    attempt: int
-    run_status: Literal[
-        "active", "waiting_for_ward", "paused", "closed", "escalated",
-        "failed", "timed_out", "cancelled"
-    ]
-    outcome_type: Literal["response", "waiting", "completed", "failure", "cancelled", "escalation"]
-    response: WardResponse | None
-    next_interaction: StructuredWardCommand | None
-    checkpoint_ref: str | None
-    failure: WorkflowFailure | None
-    resume_action: Literal["retry", "resume_from_checkpoint", "restart", "none"]
-    handoff_suggestion: Literal["planning", "tutoring", "reflection"] | None
-    context_refs: list[ContextRef]
-    trace_id: UUID
-```
-
-`route_hint` 只能来自服务端验证 UI。`response` 必须通过展示/安全校验，不含模型隐式推理。当前
-实现仍用较宽松的 `content`、`turn: dict` 和元数据响应；上述为目标契约，迁移必须保持兼容或显式版本化。
+目标读取接口为 `GET /companion/threads/{thread_id}/messages?before_thread_version=&limit=`；客户端以
+`command_id` 将乐观 Ward 气泡与服务端投影合并，重试同一命令不得产生重复气泡。当前实现仍用较宽松的
+`content`、`turn: dict` 和元数据响应；上述为目标契约，迁移必须保持兼容或显式版本化。
 `WorkflowFailure` 至少含稳定 `code`、面向 Trace 的脱敏 `detail`、`retriable` 与失败来源
 （`model`、`tool`、`validator`、`budget`、`transport`）；`failure` 只在 `outcome_type=failure`
 时必填，`resume_action` 必须与 Run 状态机允许的转换一致。
 
 SSE（目标能力）必须绑定 `thread_id`、`run_id`、`turn_id`、`attempt`、Policy 版本与单调
 `sequence`。客户端只展示当前 focus Run/attempt 的事件；重连按最后确认 sequence 恢复。流式文本
-不是写模型，最终 Outcome 只保存必要摘要/引用与结算状态。传输断开只终止本次 SSE delivery，
+不是写模型，也不为每个 delta 写 transcript journal：客户端可暂时显示增量，只有最终且通过 fence/
+展示校验的 Outcome 才写入一条 companion journal record。传输断开只终止本次 SSE delivery，
 不得取消 Run；客户端用最后确认的 sequence 请求同一 focus/attempt 的事件。若 sequence 已过期、
 attempt 已变化或 Run 不再是 focus，服务端返回当前 `CompanionThreadView` / `WorkflowOutcome`，
 客户端不得拼接旧流。Ward 取消必须走受权、幂等的取消命令。
@@ -413,6 +402,7 @@ sequenceDiagram
 | Port owner | Adapter / dependency | 责任与失败边界 |
 |---|---|---|
 | `ConversationThreadRepository` | SQLAlchemy / PostgreSQL | 原子 Thread/Link；版本冲突 `409`；不读目标 Aggregate |
+| `CompanionTranscriptStore` | SQLAlchemy / PostgreSQL | 写入已接受的 Ward/validated companion journal record，按 Ward/Thread/version 游标读取；以 `command_id` 及 Run/Turn/attempt 来源去重；它是 Application journal store，不是 Aggregate Repository |
 | `WorkflowDispatcher` | registered Workflow adapters | 仅调用一个 allow-listed target；未知类型安全拒绝 |
 | `ContextBuilder` / `MemoryQueryPort` | `MemoryFacade` | ACL、visibility、预算、freshness；失败安全降级，不能回退原始聊天 |
 | `ModelGateway` / `ToolGateway` | LLM、检索等 adapters | 超时、限流、预算耗尽、未注册工具均为受控失败，不决定领域状态 |
@@ -421,14 +411,16 @@ sequenceDiagram
 | `TraceWriter` | redacted audit store | 不保存 CoT、完整 Prompt、完整工具原文 |
 
 当前 ORM/迁移的逻辑映射为：Thread/Run → `conversation_threads` / `agent_runs`；
-Checkpoint/Trace → `agent_checkpoints` / `agent_traces`。这些 runtime 表的完整物理约束、
-索引和留存规则应由 [design-server.md](design-server.md) 作为唯一物理事实源补齐和维护。
+Checkpoint/Trace → `agent_checkpoints` / `agent_traces`；Application transcript journal →
+`companion_messages`。其表、外键、唯一约束、索引、媒体清理和留存策略只在
+[design-server.md](design-server.md) 维护，本文不复制物理设计。
 Coordinator 事务必须短小，不能包住模型/工具调用；目标 Context 写入是其自己的事务，跨
 Context Fact 通过目标 Outbox 最终一致进入 Memory。
 
 若未来改为异步 Run dispatch，须先定义 `dispatching` Run、dispatch Outbox、消费幂等键、
 超时租约、死信和对账，不能凭 Checkpoint 猜测是否执行。删除/被遗忘权流程须清理 Thread、Run、
-Checkpoint、Trace 和目标会话消息，且不得从摘要/Trace 恢复已删除内容。
+`CompanionMessage`、Checkpoint、Trace 和目标会话消息及其媒体引用，且不得从摘要/Trace 恢复
+已删除内容。
 
 当前已实现：Thread/Run/Checkpoint/Trace 持久化、规则路由、`MemoryFacade`、`/companion/turn`、
 `command_id` 幂等、Run/turn/attempt/focus fence、取消命令与可重放 SSE 事件。Memory Fact 的异步
@@ -436,6 +428,8 @@ Checkpoint、Trace 和目标会话消息，且不得从摘要/Trace 恢复已删
 Gateway 各允许每 Turn 一个候选调用，分别由 `PLANNING_MODEL_NAME`、`TUTORING_MODEL_NAME`、
 `INSIGHT_MODEL_NAME` 路由；只有 `AGENT_MODEL_ENABLED=true` 才会发送脱敏 `ContextEnvelope`。
 外部工具仍为零预算。候选必须通过 Policy/Validator；失败时确定性降级，且不得作为业务写入。
+`CompanionMessage` journal 由 Coordinator 在短事务中追加，`CompanionTranscriptView` 通过 Ward 专属
+分页 API 读取；Ward 首页只经 `/companion/turn` 写入统一入口。
 
 ## 八、验收场景
 

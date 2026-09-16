@@ -4,15 +4,15 @@ import time
 import pytest
 from fastapi import HTTPException
 
-from app.dependencies import current_ward
-from app.models import WardCredential
-from app.security import (
+from app.api.deps import current_ward
+from app.infrastructure.persistence.models import WardCredential
+from app.infrastructure.security.tokens import (
     create_access_token,
     decode_access_token,
     hash_secret,
     verify_secret,
 )
-from app.services import make_invite_code
+from app.application.commands.legacy_services import make_invite_code
 from tests.support.factories import create_ward
 
 

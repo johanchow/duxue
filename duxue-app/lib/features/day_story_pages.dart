@@ -141,7 +141,11 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
   final watch = Stopwatch();
   final planAttachments = <String>[];
   List<Map<String, dynamic>> planDraft = [];
+  final planMessages = <Map<String, String>>[];
+  String? companionThreadId;
+  int? companionThreadVersion;
   String? planFeedback;
+  String? failedPlanText;
   bool planSending = false;
   bool planListOpen = false;
   bool planChatOpen = false;
@@ -153,16 +157,12 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
   void initState() {
     super.initState();
     _load();
+    _restoreCompanionThread();
   }
 
   @override
   void dispose() {
     timer?.cancel();
-    if (planAttachments.isNotEmpty) {
-      unawaited(ref
-          .read(apiProvider)
-          .cleanupPlanIntake(widget.wardId, planAttachments));
-    }
     super.dispose();
   }
 
@@ -429,10 +429,10 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
                     const TextStyle(fontSize: 12, color: Color(0xff0f766e)))),
         const SizedBox(height: 14),
         const _ChatBubble(
-            label: '读学', text: '我不会替你排今天。你说想怎么安排，我帮你记下来，并检查有没有冲突。'),
-        if (planFeedback != null) ...[
+            label: '读学 AI', text: '我不会替你排今天。你说想怎么安排，我帮你记下来，并检查有没有冲突。'),
+        for (final message in planMessages) ...[
           const SizedBox(height: 10),
-          _ChatBubble(label: '读学', text: planFeedback!),
+          _ChatBubble(label: message['label']!, text: message['content']!),
         ],
         if (planAttachments.isNotEmpty) ...[
           const SizedBox(height: 10),
@@ -442,6 +442,19 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
         if (planSending) ...[
           const SizedBox(height: 14),
           const Center(child: CircularProgressIndicator()),
+        ],
+        if (failedPlanText != null) ...[
+          const SizedBox(height: 10),
+          Row(children: [
+            const Expanded(
+                child: Text('这条消息暂未送达。',
+                    style: TextStyle(fontSize: 12, color: Colors.redAccent))),
+            TextButton(
+                onPressed: planSending
+                    ? null
+                    : () => _submitPlanInput(failedPlanText!),
+                child: const Text('重试')),
+          ]),
         ],
         if (planDraft.isNotEmpty) ...[
           const SizedBox(height: 14),
@@ -467,7 +480,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
                   const SizedBox(width: 8),
                   Expanded(
                       child: FilledButton(
-                          onPressed: planSending ? null : _confirmPlanIntake,
+                          onPressed: planSending ? null : _confirmPlanDraft,
                           child: const Text('确认这个计划'))),
                 ])
               ]))
@@ -493,6 +506,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
 
   Future<void> _onVoicePlanInput(String text) async {
     _openPlanChat();
+    setState(() => planMessages.add({'label': '我', 'content': text}));
     await _submitPlanInput(text);
   }
 
@@ -777,11 +791,12 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
       return;
     }
     try {
-      final key = await ref.read(apiProvider).uploadPlanIntakeImage(
-          widget.wardId, await image.readAsBytes(), extension);
+      final key = await ref
+          .read(apiProvider)
+          .uploadCompanionAttachment(await image.readAsBytes(), extension);
       if (mounted) {
         setState(() => planAttachments.add(key));
-        await _submitPlanInput('');
+        await _submitPlanInput('请根据这张图片帮我安排今天的学习。');
       }
     } catch (_) {
       if (mounted) showMessage(context, '图片上传失败，请重试');
@@ -792,40 +807,100 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
     if (planSending) return;
     setState(() => planSending = true);
     try {
-      final result = await ref.read(apiProvider).respondToPlanIntake(
-          widget.wardId, DateTime.now(),
+      final result = await ref.read(apiProvider).companionTurn(
           content: text,
-          draftItems: planDraft,
+          threadId: companionThreadId,
+          expectedThreadVersion: companionThreadVersion,
           attachmentKeys: planAttachments);
       if (!mounted) return;
+      final interaction =
+          Map<String, dynamic>.from(result['interaction'] as Map? ?? const {});
+      companionThreadId = result['thread_id'] as String?;
+      companionThreadVersion = result['thread_version'] as int?;
+      if (companionThreadId != null && companionThreadVersion != null) {
+        await ref
+            .read(tokenStorageProvider)
+            .saveCompanionThread(companionThreadId!, companionThreadVersion!);
+      }
       setState(() {
-        planFeedback = result['assistant_text'] as String?;
-        planDraft = (result['items'] as List? ?? const [])
+        failedPlanText = null;
+        planFeedback = interaction['model_guidance'] as String?;
+        planDraft = (interaction['items'] as List? ?? const [])
             .map((item) => Map<String, dynamic>.from(item as Map))
             .toList();
       });
+      await _refreshTranscript();
     } catch (_) {
-      if (mounted) showMessage(context, '暂时无法整理今天的计划，请重试');
+      if (mounted) {
+        setState(() => failedPlanText = text);
+        showMessage(context, '暂时无法整理今天的计划，请重试');
+      }
     } finally {
       if (mounted) setState(() => planSending = false);
     }
   }
 
-  Future<void> _confirmPlanIntake() async {
+  Future<void> _confirmPlanDraft() async {
     if (planDraft.isEmpty || planSending) return;
     setState(() => planSending = true);
     try {
-      await ref.read(apiProvider).confirmPlanIntake(
-          widget.wardId, DateTime.now(), planDraft, planAttachments);
+      final result = await ref.read(apiProvider).companionTurn(
+          content: '确认这个计划',
+          threadId: companionThreadId,
+          expectedThreadVersion: companionThreadVersion,
+          planningConfirm: true);
+      companionThreadVersion = result['thread_version'] as int?;
+      if (companionThreadId != null && companionThreadVersion != null) {
+        await ref
+            .read(tokenStorageProvider)
+            .saveCompanionThread(companionThreadId!, companionThreadVersion!);
+      }
       planAttachments.clear();
       planDraft = [];
       planFeedback = null;
       await _load();
+      await _refreshTranscript();
       if (mounted) showMessage(context, '今天计划已确认');
     } catch (_) {
       if (mounted) showMessage(context, '确认计划失败，请稍后重试');
     } finally {
       if (mounted) setState(() => planSending = false);
+    }
+  }
+
+  Future<void> _refreshTranscript() async {
+    if (companionThreadId == null) return;
+    final messages =
+        await ref.read(apiProvider).companionMessages(companionThreadId!);
+    if (!mounted) return;
+    setState(() {
+      planMessages
+        ..clear()
+        ..addAll(messages.map((message) {
+          final item = Map<String, dynamic>.from(message as Map);
+          return {
+            'label': item['author_type'] == 'ward' ? '我' : '读学 AI',
+            'content': item['content'] as String,
+          };
+        }));
+    });
+  }
+
+  Future<void> _restoreCompanionThread() async {
+    final tokens = ref.read(tokenStorageProvider);
+    final threadId = await tokens.companionThreadId;
+    final version = await tokens.companionThreadVersion;
+    if (threadId == null || version == null || !mounted) return;
+    companionThreadId = threadId;
+    companionThreadVersion = version;
+    try {
+      await _refreshTranscript();
+    } catch (_) {
+      // A deleted/expired Thread is non-fatal; the next Ward turn starts fresh.
+      if (mounted) {
+        companionThreadId = null;
+        companionThreadVersion = null;
+      }
     }
   }
 
@@ -914,19 +989,30 @@ class _ChatBubble extends StatelessWidget {
   final String text;
 
   @override
-  Widget build(BuildContext context) => Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-          color: const Color(0xfff8fafc),
-          border: Border.all(color: const Color(0xffe2e8f0)),
-          borderRadius: BorderRadius.circular(16)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(label,
-            style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                color: Colors.blueGrey)),
-        const SizedBox(height: 4),
-        Text(text),
-      ]));
+  Widget build(BuildContext context) {
+    final isWard = label == '我';
+    return Align(
+        alignment: isWard ? Alignment.centerRight : Alignment.centerLeft,
+        child: Container(
+            constraints: const BoxConstraints(maxWidth: 300),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+                color:
+                    isWard ? const Color(0xffdbeafe) : const Color(0xfff8fafc),
+                border: Border.all(
+                    color: isWard
+                        ? const Color(0xff93c5fd)
+                        : const Color(0xffe2e8f0)),
+                borderRadius: BorderRadius.circular(16)),
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(label,
+                  style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.blueGrey)),
+              const SizedBox(height: 4),
+              Text(text),
+            ])));
+  }
 }

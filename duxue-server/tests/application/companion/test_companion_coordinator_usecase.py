@@ -3,9 +3,9 @@ from __future__ import annotations
 import pytest
 from fastapi import HTTPException
 
-from app.ai_runtime.companion_coordinator import CompanionCoordinator
-from app.ai_runtime.contracts import CoordinatorResult, RouteDecision, WorkflowOutcome
-from app.models import AgentCheckpoint, AgentRun, AgentStreamEvent, AgentTrace, ConversationThread, uid
+from app.application.process_managers.companion_coordinator import CompanionCoordinator
+from app.application.ports.companion import CoordinatorResult, RouteDecision, WorkflowOutcome
+from app.infrastructure.persistence.models import AgentCheckpoint, AgentRun, AgentStreamEvent, AgentTrace, CompanionMessage, ConversationThread, uid
 from tests.support.factories import create_ward
 from tests.support.fakes import FakeWorkflowDispatcher
 
@@ -53,6 +53,11 @@ def test_coordinator_handles_turn_and_records_trace_and_stream_event(db):
     checkpoint = db.query(AgentCheckpoint).filter_by(run_id=result.run_id).first()
     assert checkpoint is not None
     assert checkpoint.checkpoint_ref == "chk:test:1"
+
+    messages = db.query(CompanionMessage).filter_by(thread_id=result.thread_id).order_by(CompanionMessage.thread_version).all()
+    assert [(message.author_type, message.content) for message in messages] == [
+        ("ward", "帮我安排复习计划"), ("companion", "这是第一步指引"),
+    ]
 
 
 def test_coordinator_fences_late_outcome_and_records_discard_trace(db):
@@ -125,6 +130,7 @@ def test_coordinator_command_id_idempotency_and_digest_conflict(db):
         command_id=command_id,
     )
     assert len(dispatcher.invocations) == 1
+    assert db.query(CompanionMessage).filter_by(thread_id=res1.thread_id).count() == 2
 
     # 相同 command_id + 相同参数，重放返回相同结果，不再调用 dispatcher
     res2 = coordinator.handle(
@@ -137,6 +143,7 @@ def test_coordinator_command_id_idempotency_and_digest_conflict(db):
     )
     assert res1.model_dump() == res2.model_dump()
     assert len(dispatcher.invocations) == 1
+    assert db.query(CompanionMessage).filter_by(thread_id=res1.thread_id).count() == 2
 
     # 相同 command_id 但参数不同，抛出 409
     with pytest.raises(HTTPException) as exc:

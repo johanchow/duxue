@@ -10,49 +10,24 @@
 
 ```text
 duxue-server/
-├── app/
-│   ├── api/                     # 接口层 (Interface Layer)
-│   │   ├── deps.py              # 统一鉴权与依赖注入 (verify_ward_access 等)
-│   │   ├── v1/
-│   │   │   ├── auth.py          # 用户注册、登录、Token 刷新
-│   │   │   ├── bindings.py      # 家长-学生绑定与权限管理
-│   │   │   ├── devices.py       # 采集设备接入、预签名 URL 签发、心跳
-│   │   │   ├── schedules.py     # 协商式计划、任务清单
-│   │   │   ├── companion.py     # 沉浸伴学、启发式答疑 (SSE 流式)
-│   │   │   ├── evaluations.py   # 即时盲评、双轨对比报告、锦囊沉淀
-│   │   │   └── admin.py         # 内部运营：Badcase 标注、分类配置热更
-│   │
-│   ├── application/             # 应用层 (Application Layer)
-│   │   ├── commands/            # 写操作用例 (CreateSchedule, SubmitEvaluation)
-│   │   ├── queries/             # 读操作用例 (GetDualTrackReport, ListTasks)
-│   │   └── orchestrators/       # 复杂业务编排 (ScheduleAnalysisPipeline)
-│   │
-│   ├── domain/                  # 领域层（按 Bounded Context 组织的目标模块）
-│   │   ├── <context>/           # 该 Context 的聚合、实体、值对象和领域服务
-│   │   ├── value_objects/       # 值对象 (StructuredFields, HintLevel, TimeRange)
-│   │   ├── services/            # 领域服务
-│   │   │   ├── classifier.py    # 行为特征加权匹配
-│   │   │   ├── timeline.py      # 时序滑动平滑与片段归并
-│   │   │   ├── tutoring.py      # 4级启发支架与作弊拦截
-│   │   │   └── memory_engine.py # 记忆抽取、衰减与长期画像演进
-│   │   └── repositories/        # 仓储接口抽象
-│   │
-│   ├── infrastructure/          # 基础设施层 (Infrastructure Layer)
-│   │   ├── db/
-│   │   │   ├── base.py          # SQLAlchemy 异步引擎与 Base 类
-│   │   │   ├── models/          # 数据库 ORM 映射表定义 (无 tenant_id)
-│   │   │   └── repositories/    # 仓储具体实现
-│   │   ├── cache/               # Redis 缓存与工作记忆操作
-│   │   ├── storage/             # 阿里云 OSS 预签名生成与生命周期客户端
-│   │   ├── ai/                  # AI 服务客户端 (Qwen3-VL, LLM OpenAI 适配)
-│   │   └── security/            # JWT 编解码、密码 bcrypt 哈希、设备 Token 验签
-│   │
-│   └── workers/                 # Infrastructure：Celery Workers & Beat，只触发应用层 Use Case
-│       ├── celery_app.py        # Celery 实例与队列配置
-│       ├── tasks/
-│       │   ├── schedule_tasks.py # 今日计划完成即时分析任务流水线
-│       │   ├── memory_tasks.py  # 每日记忆衰减与长期画像固化
-│       │   └── health_tasks.py  # 60s 心跳超时巡检、90天留存清理
+├── app/                         # 唯一生产 Python 包
+│   ├── bootstrap/               # FastAPI 入口与环境配置
+│   ├── api/                     # Interface：HTTP/SSE/WebSocket、DTO、依赖、路由装配
+│   │   └── v1/                  # system、identity、device_ingestion、planning、study、evaluation、memory、companion、behavior routers
+│   ├── application/             # Commands、Queries、Workflows、跨 Context Process Managers、Ports
+│   ├── contexts/                # 按 Bounded Context 隔离的 Domain 命名空间
+│   │   ├── identity/domain/
+│   │   ├── device_ingestion/domain/
+│   │   ├── planning/domain/
+│   │   ├── study/domain/
+│   │   ├── behavior_analysis/domain/
+│   │   ├── evaluation/domain/
+│   │   ├── memory/domain/
+│   │   └── companion/domain/
+│   ├── infrastructure/          # Persistence、Messaging、AI、Storage、Security、Observability adapter
+│   └── workers/                 # Celery worker / beat 入口；只调用 Application 编排
+├── migrations/                  # Alembic（prepend_sys_path=.）
+└── tests/
 │
 └── config/                      # 环境配置与分类器原型规则 (categories.yaml)
 ```
@@ -120,6 +95,7 @@ erDiagram
 
     conversation_threads ||--o{ agent_runs : "受权工作流运行"
     conversation_threads ||--o{ companion_commands : "幂等命令记录"
+    conversation_threads ||--o{ companion_messages : "Ward 可见对话投影"
     agent_runs ||--o{ agent_checkpoints : "恢复引用"
     agent_runs ||--o{ agent_traces : "脱敏审计"
     agent_runs ||--o{ agent_stream_events : "可重放流事件"
@@ -205,6 +181,22 @@ erDiagram
         jsonb result "同 command_id 的稳定响应"
         timestamp created_at
         timestamp completed_at
+    }
+
+    companion_messages {
+        uuid id PK
+        uuid ward_id FK "查询授权边界"
+        uuid thread_id FK
+        uuid run_id FK "可为空；仅关联产生该消息的 Run"
+        uuid command_id FK "产生 Ward 输入或 companion 回复的幂等来源"
+        uuid turn_id "Run 内 Turn 标识，可为空"
+        int attempt "Run attempt，可为空"
+        int thread_version "同一 Thread 内稳定排序游标"
+        string author_type "ward | companion"
+        text content "最终、已校验的可展示文本"
+        jsonb attachment_refs "仅受权 OSS 引用；默认空数组"
+        jsonb interaction_ref "目标 Context 对象 ID + version；不复制可变业务状态"
+        timestamp created_at
     }
 
     agent_stream_events {
@@ -556,6 +548,10 @@ CREATE INDEX idx_segments_session ON behavior_segments(study_session_id, seg_sta
 -- 3. 伴学消息、事实事件与记忆检索
 CREATE INDEX idx_tutoring_msg_session ON tutoring_messages(tutoring_session_id, created_at ASC);
 CREATE INDEX idx_companion_commands_ward ON companion_commands(ward_id);
+CREATE UNIQUE INDEX uq_companion_messages_thread_version ON companion_messages(thread_id, thread_version);
+CREATE UNIQUE INDEX uq_companion_messages_ward_command_author ON companion_messages(ward_id, command_id, author_type);
+CREATE INDEX idx_companion_messages_ward_thread_version ON companion_messages(ward_id, thread_id, thread_version DESC);
+CREATE UNIQUE INDEX uq_companion_messages_run_turn_attempt_author ON companion_messages(run_id, turn_id, attempt, author_type) WHERE run_id IS NOT NULL;
 CREATE INDEX idx_agent_stream_events_run ON agent_stream_events(run_id);
 CREATE UNIQUE INDEX uq_agent_stream_sequence ON agent_stream_events(run_id, attempt, sequence);
 CREATE INDEX idx_learning_events_ward_time ON learning_events(ward_id, occurred_at DESC);
@@ -571,6 +567,17 @@ CREATE UNIQUE INDEX uq_derived_signal_event_role ON derived_signal_events(derive
 CREATE INDEX idx_derived_signal_events_event ON derived_signal_events(learning_event_id);
 CREATE INDEX idx_devices_heartbeat ON devices(status, last_heartbeat_at);
 ```
+
+`companion_messages` 是 Application 维护的 transcript journal store，而非任何 Aggregate 的表；
+`CompanionTranscriptView` 仅查询该 journal，不将它用作 Aggregate 写入来源。
+每个已接受的 Ward 最终输入写一行，每个通过展示/安全校验且仍通过 Run fence 的 companion 最终回复写一行；
+不按自然语言内容合并历史。唯一约束只折叠传输重试：相同 `command_id` 的同一作者不重复写入，
+相同 `run_id + turn_id + attempt` 的同一作者不重复写入。SSE delta 仅在客户端临时合并，最终回复才写入。
+
+`thread_version` 是排序和游标，不是新的领域状态：它复用同一 Unit of Work 中 `ConversationThread` 已递增
+的版本，因此允许取消等无消息写入留下序号空洞。`interaction_ref` 仅保存目标 Context 的对象标识与版本；
+例如计划草稿以当前 `PlanDraftView` 刷新，不将可变草稿快照复制进每条历史消息。Ward 数据删除时，
+必须在删除 Thread 前清理其 messages 和 `attachment_refs` 所引用的对象；具体保留期限由产品数据策略定义。
 
 ---
 

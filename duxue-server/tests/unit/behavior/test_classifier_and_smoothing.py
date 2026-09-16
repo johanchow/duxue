@@ -4,8 +4,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import pytest
 
-from app.domain import Point, RuleClassifier, build_segments, smooth
-from app.services import corrected_time
+from app.contexts.behavior_analysis.domain.logic import Point, RuleClassifier, build_segments, smooth
+from app.application.commands.legacy_services import corrected_time
 
 
 @pytest.fixture
