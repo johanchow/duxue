@@ -20,6 +20,10 @@ truth; this document defines the agent runtime's interaction with it.
 Cover the need for an agent, control model, state persistence, tool exposure,
 approval model, and whether multi-agent decomposition is justified.
 
+For stateful workflows/hybrids, add the sections required by
+[workflow runtime](workflow-runtime.md). For loops/hybrids, add the sections
+required by [agent-loop runtime](agent-loop-runtime.md).
+
 ## 3. Components and authority
 
 | Component | Responsibility | May decide | May read | May write/call | Must not do |
@@ -39,8 +43,9 @@ component boundary.
 | Node or transition | Controller | Input | Output | State change | Exit / failure condition |
 |---|---|---|---|---|---|
 
-State explicit bounds: maximum turns, tool calls, retries, elapsed time, token
-or cost budget, and delegation depth where relevant.
+State explicit bounds that apply to the chosen control model. See
+[agent-loop runtime](agent-loop-runtime.md) for loop budgets and
+[workflow runtime](workflow-runtime.md) for resume and recovery requirements.
 
 ## 5. Contracts
 
@@ -48,6 +53,12 @@ For each model call, tool, handoff, event, and public entry point, document a
 versioned input/output schema, validation owner, error semantics, and backward
 compatibility policy. Prefer structured outputs for data that drives a decision
 or a side effect.
+
+For model-proposed changes, include the candidate schema, authorized resolution
+set, unique-match rule, ambiguity/no-match behavior, and the explicit condition
+under which a new object may be created. For material actions, document the
+issued capability and its actor, target/version, expiry, idempotency, and—when
+resumable—run/checkpoint/state bindings.
 
 ## 6. State, context, memory, and audit data
 
@@ -61,6 +72,9 @@ or a side effect.
 
 Describe context assembly, provenance, freshness, compaction, memory promotion,
 correction, expiry, deletion, and user/tenant isolation as relevant.
+
+For stateful execution, add the `ExecutionScope` and checkpoint rows required
+by [workflow runtime](workflow-runtime.md).
 
 ## 7. Tools and side effects
 
@@ -91,12 +105,22 @@ Define deadlines, retries/backoff, idempotency, deduplication, concurrency and
 version-conflict handling, checkpoint/resume, partial failure, degradation when
 model or tools are unavailable, and any compensation/reconciliation process.
 
+Define a closed outcome taxonomy at least covering success, needs-input,
+rejection/conflict, and execution failure. For each outcome state transport
+semantics, safe user-facing content, retryability, and the caller's recovery
+action. Do not use a successful transport response with an empty or
+contradictory payload to represent failure. Add workflow-specific recovery
+semantics only when [workflow runtime](workflow-runtime.md) applies.
+
 ## 11. Observability and evaluation
 
 Specify trace correlation, logged decisions and tool calls, redaction, metrics,
 alerts, and dashboards. Define offline scenarios and production metrics that
 measure task success, policy violations, tool correctness, recovery, latency,
 and cost. Include regression gates for prompts, models, tools, and policies.
+
+Include invalid model structure and other general edge scenarios. Add lifecycle
+or loop-specific scenarios only through the applicable mode reference.
 
 ## 12. Delivery plan
 

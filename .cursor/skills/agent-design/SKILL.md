@@ -26,9 +26,38 @@ architecture, domain rules, authorization, or reliability engineering.
 - Make state ownership explicit. Do not use one mutable prompt, transcript, or
   scratchpad as a substitute for business data, durable runtime state, long-term
   memory, and audit evidence.
+- Treat model outputs that identify or mutate business objects as untrusted
+  semantic candidates. Resolve them only within an authorized candidate set;
+  apply a mutation only after a unique, deterministic resolution. Ambiguity or
+  a failed resolution must not silently become object creation or a different
+  mutation.
+- Give every externally visible result an honest outcome. Do not represent a
+  rejected, failed, or incomplete operation as a successful response with an
+  empty or contradictory payload. Define a machine-readable outcome, safe user
+  message, and recovery action for each material failure.
 - Design for interruption and failure before adding autonomy. Every material
   side effect needs an owner, authorization path, timeout, idempotency/retry
   behavior, and an observable outcome.
+
+## Mode-aware requirements
+
+Apply the shared safeguards to every mode. Then load only the reference that
+matches the selected control model:
+
+- **Any model-assisted mode:** use structured proposals for decisions that can
+  affect facts or side effects; keep semantic interpretation with the model and
+  deterministic validation, authorization, uniqueness, and persistence in
+  code. Regexes and keywords may validate known formats, but must not be the
+  primary interpreter of open-ended user intent.
+- **Material approval or action:** issue a server-controlled capability bound
+  to actor, operation, target/version, expiry, and idempotency. For resumable
+  workflows, apply the additional bindings in the workflow reference.
+
+Use [the decision framework](references/decision-framework.md) to select a
+mode. For a stateful workflow or hybrid, read
+[workflow runtime](references/workflow-runtime.md). For a bounded loop or
+hybrid, read [agent-loop runtime](references/agent-loop-runtime.md). This avoids
+imposing checkpoint or loop machinery on a stateless structured call.
 
 ## Workflow
 
@@ -40,8 +69,8 @@ architecture, domain rules, authorization, or reliability engineering.
 3. Choose the control model using [the decision framework](references/decision-framework.md):
    fixed workflow, bounded agent loop, or a hybrid. Record rejected alternatives.
 4. Specify the control flow and every material node. Include inputs, outputs,
-   authority, allowed calls, durable state transitions, exit conditions, and
-   normal and failure paths.
+   authority, allowed calls, durable state transitions, exit conditions, normal
+   and failure paths, and the client or caller recovery action.
 5. Define data boundaries: business facts, runtime/checkpoint state, working
    context, durable memory, and trace/audit data. Assign one authoritative owner
    and allowed writers for each.
