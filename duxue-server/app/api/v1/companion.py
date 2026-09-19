@@ -1,6 +1,22 @@
 from .common import *
+from app.infrastructure.persistence.models import PlanDraft
+from app.application.workflows.planning_domain_service import PlanningDomainService
+from app.infrastructure.observability.telemetry import record_companion_rejection
 
 router = APIRouter(tags=["companion"])
+
+
+def _rejection_code(error: HTTPException) -> str:
+    detail = str(error.detail)
+    if "thread has changed" in detail or "version 0" in detail:
+        return "thread_version_conflict"
+    if "交互已过期" in detail or "交互已失效" in detail or "不允许这个动作" in detail:
+        return "interaction_expired"
+    if "cannot be resumed" in detail:
+        return "focus_run_not_resumable"
+    if "command_id" in detail or "command is already" in detail:
+        return "command_id_conflict"
+    return "companion_request_rejected"
 
 
 def _companion_attachments(ward_id: str, keys: list[str]) -> None:
@@ -76,14 +92,30 @@ def companion_turn(body: CompanionTurnRequest, principal: Principal = Depends(cu
             review_reflection=body.review_reflection,
             adopt_focus_kit=body.adopt_focus_kit,
             attachment_keys=body.attachment_keys,
+            structured_command=body.structured_command.model_dump() if body.structured_command else None,
         )
         return result.model_dump()
-    except HTTPException:
+    except HTTPException as error:
+        if error.status_code == 409:
+            record_companion_rejection(
+                code=_rejection_code(error), status_code=error.status_code,
+                has_thread=body.thread_id is not None,
+                has_structured_command=body.structured_command is not None,
+            )
         db.rollback()
         raise
     except Exception:
         db.rollback()
         raise
+
+
+@router.get("/companion/planning/drafts/{draft_id}")
+def companion_plan_draft(draft_id: str, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
+    """Target Context query used by a plan_confirm_list interaction."""
+    draft = db.get(PlanDraft, draft_id)
+    if draft is None or draft.ward_id != principal.user_id:
+        raise HTTPException(404, "计划草稿不存在")
+    return PlanningDomainService(db).plan_draft_view(principal.user_id, draft_id)
 
 
 @router.post("/companion/runs/{run_id}/cancel")

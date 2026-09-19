@@ -1,7 +1,7 @@
 # 读学系统 — Companion Orchestration Context & Agent Runtime Design
 
-> 状态：讨论稿 · 版本：v3.0<br>
-> 范围：统一陪伴入口、Thread/Run 连续性、Coordinator Process Manager 与目标 Workflow 的受控运行契约。<br>
+> 状态：讨论稿 · 版本：v3.1<br>
+> 范围：统一陪伴入口、Thread/Run 连续性、Coordinator Process Manager、目标 Workflow 的受控运行契约，以及 Ward 可见的 Companion Interaction Protocol。<br>
 > 关联：[DDD Overview](ddd-overview.md) · [Memory Context](domain-memory.md) · [Planning Context](domain-planning.md) · [Study Context](domain-study.md) · [Evaluation Context](domain-evaluation.md) · [Server 物理设计](design-server.md)
 
 ## 一、边界、所有权与统一语言
@@ -340,7 +340,7 @@ Workflow 必须声明版本化 `ContextSpec`：Memory 范围、近期会话窗�
 |---|---|---|---|
 | `CompanionThreadView` | Ward 入口 | Thread + Run Link | Thread 提交后强一致；仅当前 Ward 的 focus/状态/下一步 |
 | `CompanionTranscriptView` | Ward 对话 UI | `CompanionTranscriptStore` 中的 `CompanionMessage` journal | 同一 Unit of Work 后强一致；仅当前 Ward；按 Thread 版本游标分页；可按 `run_id` 分段展示，但不把完整历史作为跨 Context Query 或 Handoff 载荷 |
-| `WorkflowInteractionView` | Ward 目标界面 | 已校验 Outcome / 目标投影 | 依目标 Workflow；完整对话不是跨 Context Query Model |
+| `WorkflowInteractionView` | Ward 当前屏 | 已校验 Outcome + 目标 Query 投影 | 见 [§5.2 Companion Interaction Protocol](#52-companion-interaction-protocol)；完整对话不是跨 Context Query Model |
 | `MemoryBundle` | ContextBuilder | Memory Query ACL | 单次授权快照；预算/freshness 标记；不能用于写决策 |
 
 ### 5.1 Ward-facing transcript journal
@@ -370,6 +370,137 @@ SSE（目标能力）必须绑定 `thread_id`、`run_id`、`turn_id`、`attempt`
 不得取消 Run；客户端用最后确认的 sequence 请求同一 focus/attempt 的事件。若 sequence 已过期、
 attempt 已变化或 Run 不再是 focus，服务端返回当前 `CompanionThreadView` / `WorkflowOutcome`，
 客户端不得拼接旧流。Ward 取消必须走受权、幂等的取消命令。
+
+### 5.2 Companion Interaction Protocol
+
+本协议是读学自有的 **Interface / Application 契约**，版本 `companion-interaction.v1`。
+它不是 Domain Aggregate，也不是 AG-UI / Generative UI：模型不得发明 `kind`、按钮或写入命令。
+各业务 Context 仍拥有自己的 Query 投影；本协议只规定「这一轮给 Ward 看什么、允许点什么」。
+
+当前实现仍返回宽松 `interaction: dict`。新客户端必须按本信封解析；未知 `kind` 降级为 `text`，
+不得执行未知 `action`。迁移期间旧字段（如 `planning_confirm`、`items`）可并行，但不得再扩展。
+
+#### 5.2.1 三层分工
+
+```text
+Ward 输入     CompanionTurn = TextTurn | StructuredWardCommand + media_refs
+历史气泡     CompanionMessage = text + media_refs + object_ref?     （journal，不可变）
+当前屏       WorkflowInteractionView = kind + parts + actions + object_ref
+业务真相     PlanDraftView / TutoringInteractionView / DualTrackReport …  （目标 Context Query）
+```
+
+| 层 | 拥有者 | 放什么 | 不放什么 |
+|---|---|---|---|
+| `CompanionTurn` | Interface | 文本、附件引用、已校验动作、`command_id`、Thread 版本 | 模型自由 JSON、未授权媒体 |
+| `CompanionMessage` | Application journal | 最终可见文字与媒体引用 | 计划草稿快照、CoT、tool 原文 |
+| `WorkflowInteractionView` | Application Outcome | `kind`、展示 parts、允许动作、对象引用 | 另一个 Context 的 Aggregate 内部 |
+| 目标 Query | Planning / Study / Evaluation | 确认列表、提示卡、盲评卡等业务字段 | 聊天历史 |
+
+App 按 `kind` 选择组件；业务数字一律用 `object_ref` 再拉一次目标 Query，避免气泡里的过期草稿。
+
+#### 5.2.2 关闭的 `kind` 清单
+
+`kind` 只能由目标 Workflow + OutputValidator 产出。新增 `kind` 必须改本协议并同步 App allow-list。
+
+| kind | 产品用途 | 主要 parts | 允许动作（子集） | 业务投影 |
+|---|---|---|---|---|
+| `text` | 普通说明、追问、安全降级文案 | `text` | 无，或仅继续输入 | 无 |
+| `text_media` | 图文提示（当前仅图片；视频未开放） | `text` + `media_ref` | 无 | 无 |
+| `clarify` | 缺时长等单一必要问题 | `text` | `reply` | 无或当前草稿引用 |
+| `plan_confirm_list` | 全部未完成任务：耗时、开始、结束 | `text` + `object_ref` | `confirm`（仅 `confirm_enabled`）、`edit`、`discard` | [PlanDraftView](domain-planning.md) |
+| `tutoring_hint` | 启发式提示卡 + 阶梯 | `text`（Markdown/LaTeX） | `understood`、`more_hint`、`close` | TutoringInteractionView |
+| `self_review` | 盲评自评卡 | `object_ref` | `submit_review` | Evaluation 盲评投影 |
+| `achievement` | 任务收官轻量成就 | `text` | `close` | StudySession 结算 |
+| `failure` | 可恢复失败 | `text` | `retry` / `restart`（仅 Outcome 允许时） | 无 |
+
+没有 `generative_ui`、`custom_widget`、`tool_call_card`。视频、语音播报作为 `media_ref.kind` 扩展，不新开交互协议。
+
+#### 5.2.3 信封与动作契约
+
+```python
+class ObjectRef(BaseModel):
+    context: Literal["planning", "study", "evaluation"]
+    object_type: str          # plan_draft | tutoring_session | self_review | ...
+    object_id: str
+    object_version: int
+    query: str                # GetPlanDraft / GetTutoringInteraction / ...
+
+class MediaRef(BaseModel):
+    kind: Literal["image"]    # 本期仅 image；audio/video 需另开评审
+    oss_key: str
+    content_type: str
+
+class InteractionPart(BaseModel):
+    type: Literal["text", "media_ref", "object_ref"]
+    text: str | None = None           # type=text；tutoring 允许 markdown+latex
+    media: MediaRef | None = None
+    object_ref: ObjectRef | None = None
+
+class AllowedAction(BaseModel):
+    name: Literal[
+        "confirm", "edit", "discard", "reply",
+        "understood", "more_hint", "close",
+        "submit_review", "retry", "restart",
+    ]
+    label: str
+    command: Literal[
+        "confirm_plan", "patch_plan", "discard_plan",
+        "clarify_reply", "tutor_understood", "tutor_more_hint", "tutor_close",
+        "submit_self_review", "retry_run", "restart_run",
+    ]
+    enabled: bool
+    payload_schema: str | None = None
+
+class WorkflowInteractionView(BaseModel):
+    protocol: Literal["companion-interaction.v1"]
+    kind: Literal[
+        "text", "text_media", "clarify", "plan_confirm_list",
+        "tutoring_hint", "self_review", "achievement", "failure",
+    ]
+    run_id: str
+    turn_id: str
+    attempt: int
+    parts: list[InteractionPart]
+    actions: list[AllowedAction] = []
+    object_ref: ObjectRef | None = None
+
+class StructuredWardCommand(BaseModel):
+    command_id: str
+    thread_id: str
+    expected_thread_version: int
+    command: str              # 必须落在上一轮 actions[].command 且 enabled
+    payload: dict = {}        # 仅符合 payload_schema
+```
+
+`POST /companion/turn` 仍是唯一写入口。自然语言 Turn 的 `content` 继续存在；结构化动作必须走
+`StructuredWardCommand`，不再新增平行布尔字段（停止扩展 `planning_confirm` 这类一次性开关）。
+
+确认类动作（`confirm_plan`、`submit_self_review`）由目标 Use Case 再校验不变量；信封里的
+`enabled=false` 只是 UI 门闩，不是业务授权。
+
+#### 5.2.4 流式事件（目标能力，非写模型）
+
+SSE 只传输展示增量，事件名固定。客户端可拼 `TEXT_DELTA`；只有最终 `INTERACTION_READY` 才刷新当前屏，
+只有 fence 通过的 Outcome 才写入一条 `CompanionMessage`。
+
+| event | 含义 |
+|---|---|
+| `TEXT_DELTA` | 当前 Turn 的可见文字增量；不落库 |
+| `INTERACTION_READY` | 完整 `WorkflowInteractionView` |
+| `RUN_FINISHED` | `run_status` + `outcome_type` |
+| `FAILURE` | `WorkflowFailure`；动作为 `retry`/`restart`/`none` |
+
+禁止 `TOOL_CALL`、`STATE_PATCH`、`CUSTOM_COMPONENT` 一类通用 Agent 事件进入 Ward App。
+
+#### 5.2.5 校验与失败
+
+| 规则 | 行为 |
+|---|---|
+| 未知 `kind` / 未知 `command` | 拒绝执行；展示 `text` 降级或 `failure` |
+| `confirm` 但目标 `confirm_enabled=false` | `409`，返回最新 `PlanDraftView` |
+| `media_ref` 不属于当前 Ward 前缀或不存在 | `400`，不展示 |
+| 模型候选含未登记 `kind` 或动作 | OutputValidator 丢弃，确定性降级 |
+| 旧客户端只认识 `interaction.items` | 服务端可同时填兼容字段一个版本窗口，之后删除 |
 
 ## 六、跨 Context 事实边界
 
@@ -463,6 +594,16 @@ Given Tutoring Run 的模型调用连续达到 Policy 允许的最大重试次�
 When Runtime 提交 failure Outcome
 Then Thread 只接受带 `failure.code`、`retriable` 和 `resume_action` 的 `failed` Outcome
 And 不写 Learning Fact 或业务状态，Ward 只能按 Outcome 显式重试或重新开始
+
+Given Planning Workflow 返回 plan_confirm_list
+When App 渲染当前屏
+Then 只出现协议允许的 confirm/edit/discard 动作
+And 确认列表数据来自 GetPlanDraft，而不是气泡里的过期 items
+
+Given 模型候选带有未登记 kind 或自定义 widget
+When OutputValidator 校验
+Then 丢弃该候选并降级为 text 或 failure
+And 不执行任何 StructuredWardCommand
 
 Given 一个 active Run 的 SSE 连接意外断开
 When Ward 在同一 focus Run 和 attempt 上携带最后确认 sequence 重连

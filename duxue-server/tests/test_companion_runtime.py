@@ -9,6 +9,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.application.workflows.planning_domain_service import PlanningDomainService
 from app.application.workflows.planning_workflow import build_planning_graph
+from app.application.workflows.planning_adapter import PlanningWorkflowAdapter, planning_today
 from app.application.workflows.tutoring_workflow import TutoringWorkflow
 from app.application.workflows.reflection_workflow import ReflectionWorkflow
 from app.application.process_managers.companion_coordinator import CompanionCoordinator
@@ -26,6 +27,8 @@ from app.application.commands.memory_worker import consume_pending_learning_fact
 from app.infrastructure.messaging.outbox import publish_learning_fact
 from app.infrastructure.persistence.models import (
     AgentCheckpoint,
+    AgentRun,
+    ConversationThread,
     DerivedSignal,
     DerivedSignalEvent,
     EpisodicMemory,
@@ -33,12 +36,17 @@ from app.infrastructure.persistence.models import (
     LearningEvent,
     LongTermProfile,
     OutboxEvent,
+    PlanDraft,
     Task,
     StudySession,
     User,
     Ward,
     uid,
 )
+
+
+def test_planning_today_uses_ward_local_calendar_day_at_utc_rollover():
+    assert planning_today(datetime(2026, 9, 18, 16, 12, tzinfo=timezone.utc)).isoformat() == "2026-09-19"
 
 
 class MemoryFacadeTest(unittest.TestCase):
@@ -175,6 +183,7 @@ class MemoryFacadeTest(unittest.TestCase):
                     "new_task": False,
                     "title": task.title,
                     "planned_minutes": 30,
+                    "start_at": "2026-09-16T19:00:00",
                 }
             ],
         )
@@ -192,7 +201,17 @@ class MemoryFacadeTest(unittest.TestCase):
         task = Task(ward_id=self.ward_id, title="英语朗读")
         self.db.add(task)
         self.db.commit()
-        graph = build_planning_graph(PlanningDomainService(self.db)).compile(
+        service = PlanningDomainService(self.db)
+        save_draft = service.save_draft
+        save_calls = 0
+
+        def counted_save(*args, **kwargs):
+            nonlocal save_calls
+            save_calls += 1
+            return save_draft(*args, **kwargs)
+
+        service.save_draft = counted_save
+        graph = build_planning_graph(service).compile(
             checkpointer=InMemorySaver()
         )
         config = {"configurable": {"thread_id": "planning-test"}}
@@ -206,14 +225,113 @@ class MemoryFacadeTest(unittest.TestCase):
                         "new_task": False,
                         "title": task.title,
                         "planned_minutes": 20,
+                        "start_at": "2026-09-16T19:00:00",
                     }
                 ],
             },
             config,
         )
         self.assertIn("__interrupt__", paused)
-        completed = graph.invoke(Command(resume={"action": "confirm"}), config)
+        draft = self.db.get(PlanDraft, paused["__interrupt__"][0].value["draft_id"])
+        completed = graph.invoke(Command(resume={"action": "confirm", "expected_draft_version": draft.version}), config)
         self.assertEqual(completed["outcome"]["status"], "confirmed")
+        self.assertEqual(save_calls, 1)
+
+    def test_confirm_resumes_even_if_coordinator_marked_the_run_active(self):
+        """confirm_plan must not fall through to a new empty planning graph."""
+        from langgraph.checkpoint.memory import InMemorySaver
+
+        task = Task(ward_id=self.ward_id, title="数学", planned_minutes=20)
+        thread = ConversationThread(ward_id=self.ward_id)
+        self.db.add_all([task, thread])
+        self.db.flush()
+        run = AgentRun(thread_id=thread.id, ward_id=self.ward_id, agent_type="planning",
+                       run_ref=f"agent_run:{uid()}", current_turn_id=uid())
+        self.db.add(run)
+        self.db.commit()
+        adapter = PlanningWorkflowAdapter(self.db, checkpointer=InMemorySaver())
+        first = adapter.invoke(invocation=RunInvocation(
+            run_id=run.id, thread_id=thread.id, ward_id=self.ward_id, agent_type="planning",
+            turn={"planning_items": [{"assignment_id": task.id, "new_task": False,
+                                        "title": task.title, "planned_minutes": 20,
+                                        "start_at": "2026-09-17T19:00:00"}]},
+            turn_id=run.current_turn_id, attempt=1,
+        ))
+        draft = self.db.query(PlanDraft).filter_by(ward_id=self.ward_id).one()
+        self.assertEqual(first.run_status, "waiting_for_ward")
+
+        # This is exactly the state after Coordinator._start_or_resume().
+        run.status, run.current_turn_id = "active", uid()
+        confirmed = adapter.invoke(invocation=RunInvocation(
+            run_id=run.id, thread_id=thread.id, ward_id=self.ward_id, agent_type="planning",
+            turn={"structured_command": {"command": "confirm_plan", "payload": {
+                "draft_id": draft.id, "expected_draft_version": draft.version,
+            }}}, turn_id=run.current_turn_id, attempt=1,
+        ))
+        self.assertEqual(confirmed.run_status, "closed")
+        self.assertEqual(confirmed.next_interaction["status"], "confirmed")
+
+    def test_structured_clarification_reenters_review_before_issuing_confirm(self):
+        """A slot form must never sign confirm_plan without a graph interrupt."""
+        from langgraph.checkpoint.memory import InMemorySaver
+
+        task = Task(ward_id=self.ward_id, title="英语听力", planned_minutes=None)
+        thread = ConversationThread(ward_id=self.ward_id)
+        self.db.add_all([task, thread])
+        self.db.flush()
+        run = AgentRun(thread_id=thread.id, ward_id=self.ward_id, agent_type="planning",
+                       run_ref=f"agent_run:{uid()}", current_turn_id=uid())
+        self.db.add(run)
+        self.db.flush()
+        draft = PlanningDomainService(self.db).save_draft(
+            self.ward_id, planning_today(), [{
+                "assignment_id": task.id, "new_task": False, "title": task.title,
+                "planned_minutes": None, "start_at": "2026-09-18T19:30:00",
+            }], pending_fields=["planned_minutes"],
+        )
+        slot_id = draft.working_state["active_clarification_batch"]["slots"][0]["slot_id"]
+        self.db.commit()
+        adapter = PlanningWorkflowAdapter(self.db, checkpointer=InMemorySaver())
+
+        reviewed = adapter.invoke(invocation=RunInvocation(
+            run_id=run.id, thread_id=thread.id, ward_id=self.ward_id, agent_type="planning",
+            turn={"structured_command": {"command": "clarify_reply", "payload": {
+                "answers": [{"slot_id": slot_id, "value": "30分钟"}],
+            }}}, turn_id=run.current_turn_id, attempt=1,
+        ))
+        refreshed = self.db.get(PlanDraft, draft.id)
+        self.assertEqual(reviewed.next_interaction["kind"], "plan_confirm_list")
+        self.assertIsNotNone(reviewed.checkpoint_ref)
+
+        run.status, run.current_turn_id = "active", uid()
+        confirmed = adapter.invoke(invocation=RunInvocation(
+            run_id=run.id, thread_id=thread.id, ward_id=self.ward_id, agent_type="planning",
+            turn={"structured_command": {"command": "confirm_plan", "payload": {
+                "draft_id": refreshed.id, "expected_draft_version": refreshed.version,
+            }}}, turn_id=run.current_turn_id, attempt=1,
+        ))
+        self.assertEqual(confirmed.run_status, "closed")
+
+    def test_clarification_outcome_can_never_issue_confirm_plan(self):
+        task = Task(ward_id=self.ward_id, title="数学", planned_minutes=20)
+        thread = ConversationThread(ward_id=self.ward_id)
+        self.db.add_all([task, thread])
+        self.db.flush()
+        run = AgentRun(thread_id=thread.id, ward_id=self.ward_id, agent_type="planning",
+                       run_ref=f"agent_run:{uid()}", current_turn_id=uid())
+        self.db.add(run)
+        draft = PlanningDomainService(self.db).save_draft(
+            self.ward_id, datetime.now(timezone.utc).date(), [{
+                "assignment_id": task.id, "new_task": False, "title": task.title,
+                "planned_minutes": 20, "start_at": "2026-09-18T19:00:00",
+            }],
+        )
+        outcome = PlanningWorkflowAdapter(self.db)._clarification_outcome(
+            run=run, draft=draft, resolved_count=0, context_snapshot={},
+        )
+        assert outcome.next_interaction["kind"] == "clarify"
+        assert all(action["command"] != "confirm_plan"
+                   for action in outcome.next_interaction["actions"])
 
     def test_confirming_the_same_draft_twice_returns_the_existing_schedule(self):
         task = Task(ward_id=self.ward_id, title="科学观察")
@@ -223,7 +341,8 @@ class MemoryFacadeTest(unittest.TestCase):
         draft = service.save_draft(
             self.ward_id,
             datetime.now(timezone.utc).date(),
-            [{"assignment_id": task.id, "new_task": False, "title": task.title, "planned_minutes": 15}],
+            [{"assignment_id": task.id, "new_task": False, "title": task.title, "planned_minutes": 15,
+              "start_at": "2026-09-16T19:00:00"}],
         )
         first = service.confirm(self.ward_id, draft.id)
         second = service.confirm(self.ward_id, draft.id)

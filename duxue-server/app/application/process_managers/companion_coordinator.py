@@ -8,7 +8,7 @@ from uuid import uuid4
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.infrastructure.persistence.models import AgentCheckpoint, AgentRun, AgentStreamEvent, AgentTrace, CompanionCommand, CompanionMessage, ConversationThread, now, uid
+from app.infrastructure.persistence.models import AgentCheckpoint, AgentRun, AgentStreamEvent, AgentTrace, CompanionCommand, CompanionMessage, ConversationThread, PlanDraft, now, uid
 from app.infrastructure.observability.telemetry import agent_workflow_span, record_agent_input, record_agent_outcome, record_agent_route
 from app.application.ports.companion import CoordinatorResult, RouteDecision, RunInvocation, WorkflowOutcome
 from app.contexts.companion.domain.intent_router import IntentRouter
@@ -154,6 +154,7 @@ class CompanionCoordinator:
         tutoring_directive: str | None = None, review_date=None,
         review_feeling: str | None = None, review_reflection: str | None = None,
         adopt_focus_kit: bool = False, attachment_keys: list[str] | None = None,
+        structured_command: dict | None = None,
     ) -> CoordinatorResult:
         started = perf_counter()
         command_id = command_id or str(uuid4())
@@ -164,6 +165,7 @@ class CompanionCoordinator:
             "review_feeling": review_feeling, "review_reflection": review_reflection,
             "adopt_focus_kit": adopt_focus_kit,
             "attachment_keys": attachment_keys or [],
+            "structured_command": structured_command,
         }
         digest = self._digest({"thread_id": thread_id, "expected_version": expected_thread_version, "route_hint": route_hint, "turn": turn})
         cached = self._restore_idempotent(command_id, ward_id, digest)
@@ -178,6 +180,29 @@ class CompanionCoordinator:
         decision = self.router.decide(content=content, route_hint=route_hint, focus_run=focus_run)
         if decision.mode == "start" and focus_run is not None and decision.target not in {"clarify", "safety"}:
             decision.mode = "continue" if focus_run.agent_type == decision.target else "handoff"
+        if structured_command:
+            # A form reply is often intentionally content-less.  Its signed
+            # interaction, rather than lexical routing, selects Planning.
+            if focus_run is not None and focus_run.agent_type == "planning":
+                decision.target, decision.mode = "planning", "continue"
+            if decision.target != "planning" or structured_command.get("command") not in {"confirm_plan", "clarify_reply"}:
+                raise HTTPException(409, "当前交互不允许这个动作")
+            if focus_run is None or focus_run.agent_type != "planning":
+                raise HTTPException(409, "计划交互已失效，请重新审阅")
+            payload = structured_command.get("payload") or {}
+            draft = self.db.get(PlanDraft, payload.get("draft_id"))
+            expected = payload.get("expected_draft_version")
+            command_name = structured_command["command"]
+            if command_name == "confirm_plan":
+                interaction_id = f"plan:{focus_run.id}:{focus_run.attempt}:{payload.get('draft_id')}:{expected}"
+                version_valid = draft is not None and draft.version == expected
+            else:
+                interaction_id = f"clarify:{focus_run.id}:{focus_run.attempt}:{payload.get('draft_id')}:{draft.version if draft else None}"
+                version_valid = draft is not None
+            if (draft is None or draft.ward_id != ward_id or draft.status != "active"
+                    or not version_valid or structured_command.get("interaction_id") != interaction_id
+                    or (focus_run.outcome or {}).get("interaction_id") != interaction_id):
+                raise HTTPException(409, "计划交互已过期，请重新审阅")
         run = None
         if decision.target not in {"clarify", "safety"}:
             run = self._start_or_resume(thread=thread, decision=decision, focus_run=focus_run)
@@ -221,10 +246,28 @@ class CompanionCoordinator:
         try:
             with agent_workflow_span(agent_type=run.agent_type, run_id=run.id, thread_id=thread.id):
                 outcome = self.dispatcher.invoke(invocation)
+        except HTTPException:
+            # Domain conflicts (notably a stale draft/schedule version) are
+            # meaningful client outcomes.  Do not turn them into a fake 200
+            # workflow failure: the API/App recovery path must receive 409.
+            self.db.rollback()
+            raise
         except Exception as exc:
             self.db.rollback()
+            failure_text = (
+                "计划整理暂不可用，请稍后重试。"
+                if run.agent_type == "planning"
+                else "暂时无法处理这条消息，请稍后重试。"
+            )
             outcome = WorkflowOutcome(
                 run_status="failed", outcome_type="failure",
+                response={
+                    "protocol": "companion-interaction.v1",
+                    "kind": "error",
+                    "content": failure_text,
+                    "parts": [{"type": "text", "text": failure_text}],
+                    "actions": [],
+                },
                 failure={"code": "workflow_exception", "source": "transport", "detail": str(exc)[:200], "retriable": False},
                 resume_action="restart",
             )
@@ -271,7 +314,16 @@ class CompanionCoordinator:
         run.graph_checkpoint_ref = outcome.checkpoint_ref
         run.context_refs = outcome.context_refs
         run.failure = outcome.failure or {}
-        run.outcome = {"type": outcome.outcome_type, "resume_action": outcome.resume_action}
+        interaction = outcome.response or outcome.next_interaction or {}
+        run.outcome = {
+            "type": outcome.outcome_type,
+            "resume_action": outcome.resume_action,
+            # The issued action is persisted with its run outcome.  A later
+            # StructuredWardCommand must match it; clients cannot manufacture
+            # a command only from a draft id and thread version.
+            "interaction_id": next((action.get("id") for action in interaction.get("actions", [])
+                                    if action.get("enabled")), None),
+        }
         if outcome.run_status == "cancelled":
             run.cancelled_at = now()
         if outcome.checkpoint_ref:

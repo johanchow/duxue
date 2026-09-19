@@ -579,6 +579,10 @@ CREATE INDEX idx_devices_heartbeat ON devices(status, last_heartbeat_at);
 例如计划草稿以当前 `PlanDraftView` 刷新，不将可变草稿快照复制进每条历史消息。Ward 数据删除时，
 必须在删除 Thread 前清理其 messages 和 `attachment_refs` 所引用的对象；具体保留期限由产品数据策略定义。
 
+`agent_runs.outcome` 还保存当前已签发、可执行 interaction 的最小 `interaction_id`。结构化命令必须同时
+匹配该 ID、Run/attempt、Thread version 和目标对象版本；它不是可由客户端根据草稿 ID 自行推导的授权。
+计划确认卡本身只保存 `PlanDraft` 的对象引用，任务列表始终经 Planning Query 刷新。
+
 ---
 
 ## 四、核心业务流程与时延架构
