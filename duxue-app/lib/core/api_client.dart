@@ -401,7 +401,7 @@ class ApiClient {
     required String content,
     required String? threadId,
     required int? expectedThreadVersion,
-    bool planningConfirm = false,
+    Map<String, dynamic>? structuredCommand,
     List<String> attachmentKeys = const [],
   }) async =>
       Map<String, dynamic>.from((await dio.post('/companion/turn', data: {
@@ -409,15 +409,21 @@ class ApiClient {
         'thread_id': threadId,
         'expected_thread_version': expectedThreadVersion,
         'route_hint': 'planning',
-        'planning_confirm': planningConfirm,
+        if (structuredCommand != null) 'structured_command': structuredCommand,
         'attachment_keys': attachmentKeys,
       }))
           .data);
 
-  Future<List<dynamic>> companionMessages(String threadId) async =>
-      List<dynamic>.from(
-          (await dio.get('/companion/threads/$threadId/messages'))
-              .data['messages'] as List);
+  Future<Map<String, dynamic>> companionPlanDraft(String draftId) async =>
+      Map<String, dynamic>.from(
+          (await dio.get('/companion/planning/drafts/$draftId')).data as Map);
+
+  /// Keeps the server's thread version together with its transcript.  The
+  /// version is the concurrency token for the next companion turn, so callers
+  /// must not discard it while refreshing the visible messages.
+  Future<Map<String, dynamic>> companionMessages(String threadId) async =>
+      Map<String, dynamic>.from(
+          (await dio.get('/companion/threads/$threadId/messages')).data as Map);
 
   Future<String> uploadCompanionAttachment(
       Uint8List bytes, String extension) async {

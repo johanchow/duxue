@@ -23,8 +23,8 @@ def test_save_draft_and_confirm_workflow_lifecycle(db):
         ward_id=ward.id,
         plan_date=plan_date,
         items=[
-            {"new_task": False, "assignment_id": existing_task.id, "title": existing_task.title, "planned_minutes": 45},
-            {"new_task": True, "title": "新增英语听力", "planned_minutes": 25},
+                {"new_task": False, "assignment_id": existing_task.id, "title": existing_task.title, "planned_minutes": 45, "start_at": "2026-09-12T19:00:00"},
+                {"new_task": True, "title": "新增英语听力", "planned_minutes": 25, "start_at": "2026-09-12T20:00:00"},
         ],
     )
     db.commit()
@@ -70,7 +70,7 @@ def test_confirm_draft_is_idempotent(db):
     draft = service.save_draft(
         ward.id,
         date(2026, 9, 12),
-        [{"new_task": True, "title": "科学小实验", "planned_minutes": 30}],
+            [{"new_task": True, "title": "科学小实验", "planned_minutes": 30, "start_at": "2026-09-12T19:00:00"}],
     )
     db.commit()
 

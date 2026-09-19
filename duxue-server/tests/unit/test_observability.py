@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import json
 
-from app.infrastructure.observability.telemetry import configure_observability, record_agent_input, record_model_response
+from app.infrastructure.observability.telemetry import (
+    configure_observability,
+    record_agent_input,
+    record_companion_rejection,
+    record_model_response,
+)
 
 
 def test_telemetry_is_disabled_without_an_otlp_endpoint(monkeypatch):
@@ -54,3 +59,22 @@ def test_planning_stage_span_emits_duration_breadcrumb(caplog):
     assert telemetry["planning.stage"] == "graph_invoke"
     assert telemetry["planning.duration_ms"] is not None
     assert telemetry["run_id"] == "run-1"
+
+
+def test_companion_rejection_is_structured_and_does_not_contain_request_content(caplog):
+    with caplog.at_level("WARNING", logger="duxue.agent.audit"):
+        record_companion_rejection(
+            code="interaction_expired",
+            status_code=409,
+            has_thread=True,
+            has_structured_command=True,
+        )
+
+    record = next(item for item in caplog.records if item.getMessage() == "companion.turn.rejected")
+    telemetry = getattr(record, "telemetry", {})
+    assert telemetry == {
+        "companion.rejection_code": "interaction_expired",
+        "http.status_code": 409,
+        "companion.has_thread": True,
+        "companion.has_structured_command": True,
+    }

@@ -145,6 +145,10 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
   String? companionThreadId;
   int? companionThreadVersion;
   String? planFeedback;
+  String? planInteractionKind;
+  Map<String, dynamic>? planConfirmAction;
+  String? planDraftId;
+  int? planDraftVersion;
   String? failedPlanText;
   bool planSending = false;
   bool planListOpen = false;
@@ -216,7 +220,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
         else
           _planRail(planned),
         const SizedBox(height: 14),
-        _contextHeader('待你决定', meta: '${pool.length} 项 · 左滑删除'),
+        _contextHeader('未排期任务', meta: '${pool.length} 项 · 左滑删除'),
         if (pool.isEmpty)
           const _HomeEmptyCard(message: '今天没有待定项了。想加任务，走下方统一入口。')
         else
@@ -456,7 +460,9 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
                 child: const Text('重试')),
           ]),
         ],
-        if (planDraft.isNotEmpty) ...[
+        if (planInteractionKind == 'plan_confirm_list' &&
+            planConfirmAction != null &&
+            planDraft.isNotEmpty) ...[
           const SizedBox(height: 14),
           AppCard(
               child: Column(
@@ -468,8 +474,9 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
                 for (final item in planDraft)
                   Padding(
                       padding: const EdgeInsets.only(bottom: 4),
-                      child: Text(
-                          '• ${item['title']} · 约 ${item['planned_minutes']} 分钟')),
+                      child: Text('• ${item['title']} · '
+                          '${_draftSlotLabel(item)} · '
+                          '约 ${item['planned_minutes']} 分钟')),
                 const SizedBox(height: 8),
                 Row(children: [
                   Expanded(
@@ -480,7 +487,9 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
                   const SizedBox(width: 8),
                   Expanded(
                       child: FilledButton(
-                          onPressed: planSending ? null : _confirmPlanDraft,
+                          onPressed: planSending || planConfirmAction == null
+                              ? null
+                              : _confirmPlanDraft,
                           child: const Text('确认这个计划'))),
                 ])
               ]))
@@ -502,6 +511,15 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
     if (chatSubject != null) return '语境：关于「${chatSubject!}」——按住下方再说。';
     final count = (plan?['items'] as List? ?? const []).length;
     return '已知：今天已确认 $count 项计划；另有 ${tasks.length - removedPoolTaskIds.length} 项待你决定。';
+  }
+
+  String _draftSlotLabel(Map<String, dynamic> item) {
+    final start = DateTime.tryParse(item['start_at'] as String? ?? '');
+    final end = DateTime.tryParse(item['end_at'] as String? ?? '');
+    String clock(DateTime value) =>
+        '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
+    if (start == null) return '未排时间';
+    return end == null ? '${clock(start)} 开始' : '${clock(start)}–${clock(end)}';
   }
 
   Future<void> _onVoicePlanInput(String text) async {
@@ -822,13 +840,47 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
             .read(tokenStorageProvider)
             .saveCompanionThread(companionThreadId!, companionThreadVersion!);
       }
+      final objectRef = Map<String, dynamic>.from(
+          interaction['object_ref'] as Map? ?? const {});
+      final actions = (interaction['actions'] as List? ?? const [])
+          .map((action) => Map<String, dynamic>.from(action as Map));
+      Map<String, dynamic>? draft;
+      if (objectRef['context'] == 'planning' &&
+          objectRef['object_id'] is String) {
+        draft = await ref
+            .read(apiProvider)
+            .companionPlanDraft(objectRef['object_id'] as String);
+      }
       setState(() {
         failedPlanText = null;
-        planFeedback = interaction['model_guidance'] as String?;
-        planDraft = (interaction['items'] as List? ?? const [])
-            .map((item) => Map<String, dynamic>.from(item as Map))
-            .toList();
+        planFeedback = ((interaction['parts'] as List? ?? const []).isNotEmpty)
+            ? Map<String, dynamic>.from(
+                (interaction['parts'] as List).first as Map)['text'] as String?
+            : null;
+        planConfirmAction = null;
+        for (final action in actions) {
+          if (action['command'] == 'confirm_plan' &&
+              action['enabled'] == true) {
+            planConfirmAction = action;
+            break;
+          }
+        }
+        planInteractionKind = interaction['kind'] as String?;
+        final canReview = planInteractionKind == 'plan_confirm_list' &&
+            planConfirmAction != null;
+        planDraft = canReview
+            ? (draft?['items'] as List? ?? const [])
+                .map((item) => Map<String, dynamic>.from(item as Map))
+                .toList()
+            : [];
+        planDraftId = canReview ? (draft?['draft_id'] as String?) : null;
+        planDraftVersion =
+            canReview ? (draft?['object_version'] as int?) : null;
       });
+      // RegisterTask happens inside the Planning workflow.  Reload the home
+      // projections immediately so an unscheduled task is visible in its
+      // actual task-pool home, not only in this transient chat card.
+      await _load();
       await _refreshTranscript();
     } catch (_) {
       if (mounted) {
@@ -841,14 +893,34 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
   }
 
   Future<void> _confirmPlanDraft() async {
-    if (planDraft.isEmpty || planSending) return;
+    if (planDraft.isEmpty ||
+        planSending ||
+        planConfirmAction == null ||
+        planDraftId == null ||
+        planDraftVersion == null) {
+      return;
+    }
     setState(() => planSending = true);
     try {
       final result = await ref.read(apiProvider).companionTurn(
           content: '确认这个计划',
           threadId: companionThreadId,
           expectedThreadVersion: companionThreadVersion,
-          planningConfirm: true);
+          structuredCommand: {
+            'interaction_id': planConfirmAction!['id'],
+            'command': 'confirm_plan',
+            'payload': {
+              'draft_id': planDraftId,
+              'expected_draft_version': planDraftVersion,
+            },
+          });
+      final interaction =
+          Map<String, dynamic>.from(result['interaction'] as Map? ?? const {});
+      final confirmed = result['run_status'] == 'closed' &&
+          interaction['status'] == 'confirmed';
+      if (!confirmed) {
+        throw StateError('服务端尚未确认计划');
+      }
       companionThreadVersion = result['thread_version'] as int?;
       if (companionThreadId != null && companionThreadVersion != null) {
         await ref
@@ -858,9 +930,39 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
       planAttachments.clear();
       planDraft = [];
       planFeedback = null;
+      planInteractionKind = null;
+      planConfirmAction = null;
+      planDraftId = null;
+      planDraftVersion = null;
       await _load();
       await _refreshTranscript();
       if (mounted) showMessage(context, '今天计划已确认');
+    } on DioException catch (error) {
+      if (error.response?.statusCode == 409) {
+        final body = error.response?.data;
+        final detail = body is Map ? body['detail'] as String? : null;
+        if (mounted) {
+          setState(() {
+            planDraft = [];
+            planConfirmAction = null;
+            planDraftId = null;
+            planDraftVersion = null;
+            planInteractionKind = null;
+          });
+        }
+        // The rejected action is no longer usable. Refresh projections and
+        // the thread version best-effort; neither failure should suppress the
+        // recovery message or leave the stale card on screen.
+        try {
+          await _load();
+          await _refreshTranscript();
+        } catch (_) {}
+        if (mounted) {
+          showMessage(context, detail ?? '计划已变化，已刷新，请重新说明或确认。');
+        }
+      } else if (mounted) {
+        showMessage(context, '确认计划失败，请稍后重试');
+      }
     } catch (_) {
       if (mounted) showMessage(context, '确认计划失败，请稍后重试');
     } finally {
@@ -870,10 +972,13 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
 
   Future<void> _refreshTranscript() async {
     if (companionThreadId == null) return;
-    final messages =
+    final transcript =
         await ref.read(apiProvider).companionMessages(companionThreadId!);
+    final version = transcript['thread_version'] as int?;
+    final messages = transcript['messages'] as List? ?? const [];
     if (!mounted) return;
     setState(() {
+      companionThreadVersion = version;
       planMessages
         ..clear()
         ..addAll(messages.map((message) {
@@ -884,6 +989,11 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
           };
         }));
     });
+    if (version != null && companionThreadId != null) {
+      await ref
+          .read(tokenStorageProvider)
+          .saveCompanionThread(companionThreadId!, version);
+    }
   }
 
   Future<void> _restoreCompanionThread() async {

@@ -222,6 +222,9 @@ class PlanDraft(Base):
     base_schedule_version: Mapped[int] = mapped_column(Integer, default=0)
     items: Mapped[list] = mapped_column(JSON, default=list)
     pending_fields: Mapped[list] = mapped_column(JSON, default=list)
+    # Durable, machine-readable dialogue state.  A short reply such as
+    # “30 分钟” can therefore be resolved against its issued task slot.
+    working_state: Mapped[dict] = mapped_column(JSON, default=dict)
     status: Mapped[str] = mapped_column(String(24), default="active", index=True)
     version: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

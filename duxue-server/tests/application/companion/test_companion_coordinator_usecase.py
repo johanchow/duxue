@@ -5,9 +5,11 @@ from fastapi import HTTPException
 
 from app.application.process_managers.companion_coordinator import CompanionCoordinator
 from app.application.ports.companion import CoordinatorResult, RouteDecision, WorkflowOutcome
+from app.application.workflows.planning_domain_service import PlanningDomainService
 from app.infrastructure.persistence.models import AgentCheckpoint, AgentRun, AgentStreamEvent, AgentTrace, CompanionMessage, ConversationThread, uid
-from tests.support.factories import create_ward
+from tests.support.factories import create_task, create_ward
 from tests.support.fakes import FakeWorkflowDispatcher
+from datetime import date
 
 
 def test_coordinator_handles_turn_and_records_trace_and_stream_event(db):
@@ -58,6 +60,57 @@ def test_coordinator_handles_turn_and_records_trace_and_stream_event(db):
     assert [(message.author_type, message.content) for message in messages] == [
         ("ward", "帮我安排复习计划"), ("companion", "这是第一步指引"),
     ]
+
+
+def test_coordinator_exposes_a_controlled_failure_reply_when_workflow_raises(db):
+    ward = create_ward(db)
+    db.commit()
+
+    class FailingDispatcher:
+        def invoke(self, invocation):
+            raise RuntimeError("provider unavailable")
+
+    result = CompanionCoordinator(db, dispatcher=FailingDispatcher()).handle(
+        ward_id=ward.id,
+        content="帮我安排数学",
+        thread_id=None,
+        expected_thread_version=0,
+        route_hint="planning",
+    )
+
+    assert result.run_status == "failed"
+    assert result.interaction == {
+        "protocol": "companion-interaction.v1",
+        "kind": "error",
+        "content": "计划整理暂不可用，请稍后重试。",
+        "parts": [{"type": "text", "text": "计划整理暂不可用，请稍后重试。"}],
+        "actions": [],
+    }
+    messages = db.query(CompanionMessage).filter_by(thread_id=result.thread_id).all()
+    assert any(
+        message.author_type == "companion" and message.content == "计划整理暂不可用，请稍后重试。"
+        for message in messages
+    )
+
+
+def test_coordinator_preserves_workflow_conflicts_for_the_api_to_return(db):
+    ward = create_ward(db)
+    db.commit()
+
+    class ConflictDispatcher:
+        def invoke(self, invocation):
+            raise HTTPException(409, "计划已变化，请重新审阅")
+
+    with pytest.raises(HTTPException) as exc:
+        CompanionCoordinator(db, dispatcher=ConflictDispatcher()).handle(
+            ward_id=ward.id,
+            content="确认这个计划",
+            thread_id=None,
+            expected_thread_version=0,
+            route_hint="planning",
+        )
+    assert exc.value.status_code == 409
+    assert exc.value.detail == "计划已变化，请重新审阅"
 
 
 def test_coordinator_fences_late_outcome_and_records_discard_trace(db):
@@ -185,3 +238,39 @@ def test_coordinator_thread_version_optimistic_locking(db):
         )
     assert exc.value.status_code == 409
     assert "conversation thread has changed" in exc.value.detail
+
+
+def test_structured_plan_command_requires_the_server_issued_action(db):
+    ward = create_ward(db)
+    task = create_task(db, ward=ward, title="数学", planned_minutes=20)
+    draft = PlanningDomainService(db).save_draft(
+        ward.id, date(2026, 9, 16),
+        [{"assignment_id": task.id, "new_task": False, "title": task.title,
+          "planned_minutes": 20, "start_at": "2026-09-16T19:00:00"}],
+    )
+    db.commit()
+
+    class IssuingDispatcher:
+        def invoke(self, invocation):
+            action_id = f"plan:{invocation.run_id}:{invocation.attempt}:{draft.id}:{draft.version}"
+            return WorkflowOutcome(run_status="waiting_for_ward", outcome_type="waiting", response={
+                "content": "请确认", "actions": [{"id": action_id, "enabled": True}],
+            })
+
+    coordinator = CompanionCoordinator(db, dispatcher=IssuingDispatcher())
+    first = coordinator.handle(ward_id=ward.id, content="安排数学", thread_id=None,
+                               expected_thread_version=0, route_hint="planning")
+    action_id = f"plan:{first.run_id}:1:{draft.id}:{draft.version}"
+
+    with pytest.raises(HTTPException) as exc:
+        coordinator.handle(ward_id=ward.id, content="确认这个计划", thread_id=first.thread_id,
+                           expected_thread_version=first.thread_version, route_hint="planning",
+                           structured_command={"interaction_id": "forged", "command": "confirm_plan",
+                                               "payload": {"draft_id": draft.id, "expected_draft_version": draft.version}})
+    assert exc.value.status_code == 409
+
+    accepted = coordinator.handle(ward_id=ward.id, content="确认这个计划", thread_id=first.thread_id,
+                                  expected_thread_version=first.thread_version, route_hint="planning",
+                                  structured_command={"interaction_id": action_id, "command": "confirm_plan",
+                                                      "payload": {"draft_id": draft.id, "expected_draft_version": draft.version}})
+    assert accepted.run_status == "waiting_for_ward"

@@ -4,7 +4,7 @@ from datetime import date, datetime
 from uuid import uuid4
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class ORMModel(BaseModel):
@@ -154,7 +154,7 @@ class SessionFinish(BaseModel):
 
 class CompanionTurnRequest(BaseModel):
     """One Ward input to the deterministic companion entrypoint."""
-    content: str = Field(min_length=1, max_length=4000)
+    content: str = Field(default="", max_length=4000)
     command_id: str = Field(default_factory=lambda: str(uuid4()))
     thread_id: str | None = None
     expected_thread_version: int | None = Field(default=None, ge=0)
@@ -168,14 +168,34 @@ class CompanionTurnRequest(BaseModel):
     review_reflection: str | None = Field(default=None, max_length=2000)
     adopt_focus_kit: bool = False
     attachment_keys: list[str] = Field(default_factory=list, max_length=8)
+    structured_command: "StructuredWardCommand | None" = None
 
     @field_validator("content")
     @classmethod
     def strip_content(cls, value: str) -> str:
-        value = value.strip()
-        if not value:
-            raise ValueError("content must not be blank")
-        return value
+        return value.strip()
+
+
+class StructuredWardCommand(BaseModel):
+    """A server-issued, allow-listed action; never an arbitrary tool call."""
+
+    interaction_id: str = Field(min_length=1, max_length=200)
+    command: str = Field(pattern=r"^(confirm_plan|clarify_reply)$")
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def confirm_plan_payload(self):
+        if self.command == "confirm_plan":
+            if not isinstance(self.payload.get("draft_id"), str) or not isinstance(self.payload.get("expected_draft_version"), int):
+                raise ValueError("confirm_plan requires draft_id and expected_draft_version")
+        if self.command == "clarify_reply":
+            answers = self.payload.get("answers")
+            if not isinstance(self.payload.get("draft_id"), str) or not isinstance(answers, list) or not answers:
+                raise ValueError("clarify_reply requires draft_id and answers")
+            if any(not isinstance(answer, dict) or not isinstance(answer.get("slot_id"), str)
+                   or not isinstance(answer.get("value"), str) for answer in answers):
+                raise ValueError("clarify_reply answers require slot_id and value")
+        return self
 
 
 class AgentRunCancelRequest(BaseModel):

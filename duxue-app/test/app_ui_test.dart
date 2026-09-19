@@ -60,22 +60,54 @@ class _WardHomeApi extends ApiClient {
     required String content,
     required String? threadId,
     required int? expectedThreadVersion,
-    bool planningConfirm = false,
+    Map<String, dynamic>? structuredCommand,
     List<String> attachmentKeys = const [],
-  }) async =>
-      {
+  }) async {
+    if (structuredCommand != null) {
+      return {
         'thread_id': threadId ?? 'thread-1',
         'thread_version': (expectedThreadVersion ?? 0) + 2,
-        'interaction': {
-          'model_guidance': '已整理为今天的草稿。',
-          'items': [
-            {'title': '整理错题', 'planned_minutes': 20, 'new_task': true},
-          ],
+        'run_status': 'closed',
+        'interaction': {'status': 'confirmed'},
+      };
+    }
+    return {
+      'thread_id': threadId ?? 'thread-1',
+      'thread_version': (expectedThreadVersion ?? 0) + 2,
+      'interaction': {
+        'protocol': 'companion-interaction.v1',
+        'kind': 'plan_confirm_list',
+        'parts': [
+          {'type': 'text', 'text': '已整理为今天的草稿。'},
+        ],
+        'object_ref': {
+          'context': 'planning',
+          'object_id': 'draft-1',
         },
+        'actions': [
+          {
+            'id': 'plan:run:1:draft-1:2',
+            'command': 'confirm_plan',
+            'enabled': true
+          },
+        ],
+      },
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>> companionPlanDraft(String draftId) async => {
+        'draft_id': draftId,
+        'object_version': 2,
+        'items': [
+          {'title': '整理错题', 'planned_minutes': 20},
+        ],
+        'confirm_enabled': true,
       };
 
   @override
-  Future<List<dynamic>> companionMessages(String threadId) async => const [];
+  Future<Map<String, dynamic>> companionMessages(String threadId) async =>
+      const {'thread_version': 1, 'messages': []};
 }
 
 class _FakeVoice implements VoiceTranscription {

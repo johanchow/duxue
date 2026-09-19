@@ -1,0 +1,3 @@
+[submodule ".cursor/skills/domain-driven-design"]
+	path = .cursor/skills/domain-driven-design
+	url = git@github.com:johanchow/domain-driven-design-skill.git

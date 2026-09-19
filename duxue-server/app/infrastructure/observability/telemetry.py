@@ -250,6 +250,19 @@ def record_agent_outcome(*, agent_type: str, status: str, duration_ms: int, fall
     _span_event("agent.workflow.completed", {**attrs, "agent.duration_ms": duration_ms, "agent.fallback": fallback})
 
 
+def record_companion_rejection(*, code: str, status_code: int, has_thread: bool,
+                               has_structured_command: bool) -> None:
+    """Audit a pre-workflow rejection without recording Ward text or IDs."""
+    attrs = {
+        "companion.rejection_code": code,
+        "http.status_code": status_code,
+        "companion.has_thread": has_thread,
+        "companion.has_structured_command": has_structured_command,
+    }
+    _span_event("companion.turn.rejected", attrs)
+    _audit_logger.warning("companion.turn.rejected", extra={"telemetry": attrs})
+
+
 def record_planning_stage(*, stage: str, duration_ms: int | None = None, **extra: Any) -> None:
     """Low-cardinality planning lifecycle breadcrumbs for locating post-LLM hangs."""
     attrs = _attrs(**{"agent.type": "planning", "planning.stage": stage, "planning.duration_ms": duration_ms, **extra})
