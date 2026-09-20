@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import datetime
+from typing import Literal
+from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, Field, ValidationError
 
@@ -18,7 +20,7 @@ class PlanIntakeItem(BaseModel):
     # planning_items adapter.
     task_reference: str | None = Field(default=None, max_length=300)
     assignment_id: str | None = None
-    title: str = Field(min_length=1, max_length=300)
+    title: str | None = Field(default=None, min_length=1, max_length=300)
     details: str | None = Field(default=None, max_length=4000)
     planned_minutes: int | None = Field(default=None, ge=1, le=480)
     start_at: str | None = None
@@ -27,6 +29,17 @@ class PlanIntakeItem(BaseModel):
     after_assignment_id: str | None = None  # legacy direct adapter only
     before_assignment_id: str | None = None  # legacy direct adapter only
     new_task: bool = False
+
+
+class PlanningOperation(BaseModel):
+    kind: Literal["create", "update", "schedule", "defer"]
+    references: list[str] = Field(default_factory=list, max_length=30)
+    title: str | None = Field(default=None, max_length=300)
+    planned_minutes: int | None = Field(default=None, ge=1, le=480)
+    start_at: str | None = None
+    after_task_reference: str | None = None
+    before_task_reference: str | None = None
+    reason: str | None = Field(default=None, max_length=1000)
 
 
 class PlanIntakeInput(BaseModel):
@@ -45,6 +58,7 @@ class PlanIntakeResult(BaseModel):
     questions: list[str] = Field(default_factory=list, max_length=5)
     ready_to_confirm: bool = False
     slot_updates: list[dict] = Field(default_factory=list, max_length=30)
+    operations: list[PlanningOperation] = Field(default_factory=list, max_length=30)
 
 
 def _prompt(ward: dict, tasks: list[dict], request: PlanIntakeInput) -> str:
@@ -54,7 +68,7 @@ def _prompt(ward: dict, tasks: list[dict], request: PlanIntakeInput) -> str:
         for identity_field in ("assignment_id", "after_assignment_id", "before_assignment_id"):
             projected.pop(identity_field, None)
         draft_items.append(projected)
-    return f"""你是读学的当天计划整理助手。今天是 {date.today().isoformat()}。
+    return f"""你是读学的当天计划整理助手。今天是 {datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()}。
 你只能为当前学生生成今天的草稿，绝不能安排其他人或其他日期。
 当前学生：{json.dumps(ward, ensure_ascii=False)}
 当前未完成任务池：{json.dumps(tasks, ensure_ascii=False)}
@@ -64,15 +78,19 @@ def _prompt(ward: dict, tasks: list[dict], request: PlanIntakeInput) -> str:
 硬规则：
 1. 根据本轮学生输入或图片，保留、增加、删除或调整今天的草稿任务；不要编造作业内容、页码或截止日。
 2. 绝不输出 assignment_id、after_assignment_id、before_assignment_id，也不要决定 new_task。引用任务池已有任务时，必须从当前任务池复制该任务的完整标题到 task_reference 与 title；即使本轮只是修改开始时间，也绝不能把已有任务改写成新任务。只有任务池中没有对应任务时才填写新 title 且 task_reference=null。服务端会负责绑定真实 Task ID。
-3. 你负责理解自然语言：区分钟表时间（如“十九点三十分”）与持续时长（如“预计三十分钟”）。可同时输出 slot_updates 和 items 中的排程 patch。slot_updates 只能使用当前待补槽位中的 slot_id，形如 {{slot_id, value:"30分钟"}}；钟表时间绝不能填入 planned_minutes。每项必须有 title。planned_minutes 只有学生明确说出预计时长时才能填写（1 到 480）；绝不猜测或默认任何时长。学生明确给出开始时间时才填写 ISO 8601 start_at；绝不猜测开始时间。表达“在数学之后/英语之前”时填写 after_task_reference/before_task_reference（任务名称）。
+3. 你负责理解自然语言：区分钟表时间（如“十九点三十分”）与持续时长（如“预计三十分钟”）。可同时输出 slot_updates 和 items 中的排程 patch。slot_updates 只能使用当前待补槽位中的 slot_id，形如 {{slot_id, value:"30分钟"}}；钟表时间绝不能填入 planned_minutes。新任务缺名字时 title=null 并追问，不编造名字。planned_minutes 只有学生明确说出预计时长时才能填写（1 到 480）；绝不猜测或默认任何时长。学生明确给出开始时间时才填写 ISO 8601 start_at；绝不猜测开始时间。表达“在数学之后/英语之前”时填写 after_task_reference/before_task_reference（任务名称）。
 4. 一个开始时间必须属于一个明确任务。任务池有多个候选而学生只说“18点开始”时，不得给多个 item 填同一个 start_at；保持时间为空并追问先做哪一项。
 5. 只有草稿至少有一项、每项都有明确预计时长和可确定时间槽且信息足够明确时 ready_to_confirm=true。
-6. 只输出 JSON object：assistant_text、items、slot_updates、clarification_required、questions、ready_to_confirm。"""
+6. 优先输出 operations，每项 kind=create/update/schedule/defer；references 是本轮明确目标的名称数组，title 是新增或修改后的名字，planned_minutes 是明示的新耗时，start_at / after_task_reference / before_task_reference 是安排字段，reason 是明确暂不安排原因。同轮可以有多个操作；明确修改多个任务时放在同一个 references 数组，不把歧义的一个名称广播给多项。update 不匹配时必须澄清，绝不能自动变为 create。仅登记任务不追问开始时间；schedule 缺起点时需要澄清。未说出的字段省略。标题与任务池同名时不要自行判断，由服务端标题冲突槽位要求 Ward 选择。
+7. slot_updates 回答缺名字、耗时、开始时间、目标选择或标题冲突。目标选择的 value 是所选候选的完整名称数组，不是 ID；标题冲突槽位的 value 使用 {{action:"use_existing", title:"已有任务完整标题"}}、{{action:"create_new"}}、{{action:"accept_duplicate"}} 或 {{action:"cancel"}}，不得编造 ID。只有当前槽位的 slot_id 可以回传。明确暂不安排某待补问题时输出 {{slot_id, skip:true, reason:"用户原因"}}。回答问题与独立操作可以同轮并存，但不重复输出同一修改。恢复待执行修改由服务端完成。
+8. 只输出 JSON object：assistant_text、operations、items（旧格式兼容，无需与 operations 重复）、slot_updates、clarification_required、questions、ready_to_confirm。"""
 
 
 def require_missing_duration_clarification(result: PlanIntakeResult) -> PlanIntakeResult:
     """Turn an omitted duration into an explicit Ward-facing clarification."""
-    titles = [item.title for item in result.items if item.planned_minutes is None]
+    if result.operations or result.slot_updates:
+        return result
+    titles = [item.title for item in result.items if item.planned_minutes is None and item.title and not item.task_reference]
     if not titles:
         return result
     task_names = "、".join(f"“{title}”" for title in titles)
@@ -114,6 +132,6 @@ class PlanIntakeService:
         if any(item.assignment_id or item.after_assignment_id or item.before_assignment_id for item in result.items):
             raise TaskIntakeError("计划草稿不能由模型指定任务 ID，请重新说明")
         require_missing_duration_clarification(result)
-        if result.clarification_required or not result.items:
+        if result.clarification_required or not (result.items or result.operations):
             result.ready_to_confirm = False
         return result

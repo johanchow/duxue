@@ -2,8 +2,24 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime, timezone
+from typing import ClassVar
 
-from sqlalchemy import Uuid, JSON, Boolean, CheckConstraint, Date, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    CheckConstraint,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    Uuid,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.infrastructure.persistence.database import Base
@@ -194,6 +210,8 @@ class Task(Base):
     id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
     ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id"), index=True)
     schedule_id: Mapped[str | None] = mapped_column(ForeignKey("daily_schedules.id"), nullable=True, index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    __mapper_args__: ClassVar[dict] = {"version_id_col": version}
     title: Mapped[str] = mapped_column(String(300))
     details: Mapped[str | None] = mapped_column(Text, nullable=True)
     due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
@@ -211,11 +229,15 @@ class DailySchedule(Base):
     schedule_date: Mapped[date] = mapped_column(Date, index=True)
     status: Mapped[str] = mapped_column(String(20), default="draft")
     version: Mapped[int] = mapped_column(Integer, default=1)
+    items: Mapped[list] = mapped_column(JSON, default=list)
+    history: Mapped[list] = mapped_column(JSON, default=list)
+    __mapper_args__: ClassVar[dict] = {"version_id_col": version, "version_id_generator": False}
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 class PlanDraft(Base):
     __tablename__ = "plan_drafts"
-    __table_args__ = (UniqueConstraint("ward_id", "plan_date", name="uq_plan_draft_ward_date"),)
+    __table_args__ = (Index("uq_active_plan_draft_ward_date", "ward_id", "plan_date", unique=True,
+                           postgresql_where=text("status = 'active'"), sqlite_where=text("status = 'active'")),)
     id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
     ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id"), index=True)
     plan_date: Mapped[date] = mapped_column(Date, index=True)
@@ -227,6 +249,7 @@ class PlanDraft(Base):
     working_state: Mapped[dict] = mapped_column(JSON, default=dict)
     status: Mapped[str] = mapped_column(String(24), default="active", index=True)
     version: Mapped[int] = mapped_column(Integer, default=1)
+    __mapper_args__: ClassVar[dict] = {"version_id_col": version, "version_id_generator": False}
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
 

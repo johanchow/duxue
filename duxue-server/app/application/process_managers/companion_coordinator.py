@@ -7,14 +7,37 @@ from uuid import uuid4
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.exc import StaleDataError
 
-from app.infrastructure.persistence.models import AgentCheckpoint, AgentRun, AgentStreamEvent, AgentTrace, CompanionCommand, CompanionMessage, ConversationThread, PlanDraft, now, uid
-from app.infrastructure.observability.telemetry import agent_workflow_span, record_agent_input, record_agent_outcome, record_agent_route
-from app.application.ports.companion import CoordinatorResult, RouteDecision, RunInvocation, WorkflowOutcome
-from app.contexts.companion.domain.intent_router import IntentRouter
+from app.application.ports.companion import (
+    CoordinatorResult,
+    RouteDecision,
+    RunInvocation,
+    WorkflowOutcome,
+)
 from app.application.workflows.planning_adapter import PlanningWorkflowAdapter
-from app.infrastructure.persistence.workflow_dispatcher import SqlAlchemyWorkflowDispatcher
-
+from app.contexts.companion.domain.intent_router import IntentRouter
+from app.infrastructure.observability.telemetry import (
+    agent_workflow_span,
+    record_agent_input,
+    record_agent_outcome,
+    record_agent_route,
+)
+from app.infrastructure.persistence.models import (
+    AgentCheckpoint,
+    AgentRun,
+    AgentStreamEvent,
+    AgentTrace,
+    CompanionCommand,
+    CompanionMessage,
+    ConversationThread,
+    PlanDraft,
+    now,
+    uid,
+)
+from app.infrastructure.persistence.workflow_dispatcher import (
+    SqlAlchemyWorkflowDispatcher,
+)
 
 _ACTIVE_STATUSES = ("active", "waiting_for_ward", "paused")
 _RESUMABLE_STATUSES = ("waiting_for_ward", "paused", "failed", "timed_out")
@@ -246,6 +269,9 @@ class CompanionCoordinator:
         try:
             with agent_workflow_span(agent_type=run.agent_type, run_id=run.id, thread_id=thread.id):
                 outcome = self.dispatcher.invoke(invocation)
+        except StaleDataError as exc:
+            self.db.rollback()
+            raise HTTPException(409, "计划或任务已变化，请重新审阅") from exc
         except HTTPException:
             # Domain conflicts (notably a stale draft/schedule version) are
             # meaningful client outcomes.  Do not turn them into a fake 200
