@@ -1,6 +1,6 @@
 # 读学系统 — Planning & Scheduling Domain Design
 
-> 状态：讨论稿 · 版本：v1.8
+> 状态：讨论稿 · 版本：v1.10
 > 范围：已知任务池、Ward 安排意图、计划草稿、确认后的正式日程，以及计划协商 Workflow。  
 > 关联：[系统 Context Map](ddd-overview.md) · [Companion 编排](domain-companion.md) · [Memory Context](domain-memory.md) · [Server 物理设计](design-server.md) · [计划 PRD](../product/prd-schedule.md)
 
@@ -12,65 +12,47 @@
 
 ## 二、应用用例与 Workflow Definition
 
-计划协商是固定 Graph，不是 ReAct。模型只在“提取 Ward 意图”“必要追问”“解释草稿调整”节点参与；任务归属、容量、时间冲突、基准版本和确认写入均为确定性服务。
+计划协商是固定 Graph + 局部受控 Agent Loop，不是全自由 ReAct。固定 Graph 负责业务阶段、等待点、版本恢复和确认提交；`PlanningAgentLoop` 只在本轮自然语言处理阶段使用一组窄工具完成任务提取、引用解析、重复名澄清、任务创建/修改和草稿 patch。任务归属、容量、时间冲突、基准版本和确认写入仍为确定性服务，模型不能创建真实 ID、不能判定无冲突、不能确认正式计划。
 
-Workflow 及其阶段属于 **Application（应用层）编排**；`IntentCapture`、`Clarify`、`Confirming` 等只是阶段标签，不是独立 DDD 构件。`RegisterTask`、`CaptureArrangementIntent`、`PatchPlanDraft`、`ConfirmPlanDraft` 是 **Application Use Case（应用用例）**。例如 `Confirming` 阶段执行 `ConfirmPlanDraft`，后者调用 Domain 层的 `PlanDraft.confirm()` 等领域行为。阶段、用例与领域方法不要求一一对应，名称也不要求对应同名实现类；时序图生命线已标注角色。
+Workflow 及其阶段属于 **Application（应用层）编排**；`LoadPlanningContext`、`PlanningAgentLoop`、`OperationResultReview`、`Clarify`、`DraftReview`、`Confirming` 等只是阶段标签，不是独立 DDD 构件。`RegisterTask`、`UpdateTask`、`PatchPlanDraft`、`ConfirmPlanDraft` 是 **Application Use Case（应用用例）**。例如 `Confirming` 阶段执行 `ConfirmPlanDraft`，后者调用 Domain 层的 `PlanDraft.confirm()` 等领域行为。阶段、用例与领域方法不要求一一对应，名称也不要求对应同名实现类；时序图生命线已标注角色。
 
-以下是当前业务流程。`UpdateTask`、日程修订与批量选择契约已由 Planning 应用服务实现；图中的框是处理步骤或等待点，具体 DDD 角色在调用处标明。一次输入可以包含多个操作，不按一句话强制选择单一分支。
+以下是目标业务流程。顶层 Workflow 只画应用阶段和等待点；阶段内部判断、工具调用、版本复核和事务写入不作为顶层节点出现。`PlanningAgentLoop` 可以在一次输入中处理多个独立操作，不按一句话强制选择单一分支；每个写入动作都必须通过工具返回结构化 observation 后才能继续。
 
 ```mermaid
 flowchart TD
-    A[TaskPoolReview：展示当前任务池] --> I[IntentCapture：理解本轮操作及澄清答案]
-    I --> O{逐项处理本轮操作}
-    O -->|新增| N{名字与耗时完整?}
-    N -->|否| NC[保存 Candidate 与缺字段问题]
-    N -->|是| NT[RegisterTask / Use Case：登记 Task]
-    O -->|修改内容或安排| R[TaskReferenceResolver / Domain Service：逐引用解析目标]
-    R --> B{目标集合及字段归属明确?}
-    B -->|否| BC[保存待执行修改与目标选择问题]
-    B -->|是| K{修改内容}
-    K -->|名字或耗时| UT[UpdateTask / Use Case]
-    K -->|开始时间或顺序| PD[PatchPlanDraft / Use Case]
-    O -->|补充答案或本次暂不安排| AN[应用用例校验并更新对应槽位和安排范围]
-    NC --> M[汇总各操作结果与未解决问题]
-    NT --> M
-    BC --> M
-    UT --> M
-    PD --> M
-    AN --> M
-    M --> S[SchedulingService：推导时间并检查草稿]
-    S --> G{评估全部确认门禁}
-    G -->|缺名字 / 耗时 / 目标 / 必要时间锚点| C[Clarify：展示已保存变化与待补问题，等待输入]
-    C -->|补充或新的安排表达| I
-    G -->|时间冲突| X[DraftReview：展示冲突项与原因，等待修改]
-    X -->|修改或明确本次不安排| I
-    G -->|无待补项但无可入计划任务| A
-    G -->|可确认| D[DraftReview：展示当前版本，等待修改或确认]
-    D -->|继续修改| I
-    D -->|明确确认动作| F[Confirming：恢复预检后调用 ConfirmPlanDraft]
-    F --> V{版本与业务约束复核}
-    V -->|过期 / 版本变化| ST[409：刷新权威状态，撤销旧确认动作]
-    ST --> S
-    V -->|缺项或时间冲突| RE[保留草稿并返回原因，不提交日程]
-    RE --> S
-    V -->|通过| TX[原子提交日程、相关 Task、草稿与 Outbox]
-    TX --> OK[Confirmed：返回已提交版本，本次 Run 结束]
-    OK -.->|之后请求修订或发现新约束冲突| REV[CreateScheduleRevision / Use Case：新 Run 与修订草稿]
-    REV --> I
+    A[LoadPlanningContext] --> B[PlanningAgentLoop]
+    B -->|task_pool_changed_only / partial_success / rejected / tool_error / loop_limit_exceeded| C[OperationResultReview]
+    B -->|needs_clarification| D[Clarify]
+    B -->|draft_changed| E[DraftEvaluation]
+    B -->|no_op| A
+    C -->|继续输入或刷新| A
+    D -->|补充答案或新的安排表达| B
+    E -->|needs_clarification| D
+    E -->|empty / no_schedulable_task| C
+    E -->|has_conflict / reviewable| F[DraftReview]
+    F -->|继续修改| B
+    F -->|明确确认| G[Confirming]
+    G -->|stale / business_conflict| E
+    G -->|confirmed| H[Confirmed]
+    H -.->|后续修订请求| R[RevisionEntry]
+    R --> A
 ```
 
-图中的“汇总”表示本轮操作处理后的统一结果，不表示无条件并行执行。一个操作同时改内容与安排时，先处理内容，再按新耗时处理安排并统一校验；已排期目标先走修订入口，内容变更暂存草稿，不走直接 UpdateTask。所有返回路径都应展示本轮已保存、尚待补充和被拒绝的操作，不能只回复最后一个澄清问题。模型失败或存储失败走下方失败规则，不自动进入 Confirmed。
+`PlanningAgentLoop` 内部是受控工具循环，不是固定流水线。模型只能基于工具 observation 选择下一步工具；每轮最终必须以 `finish_loop(status, operation_report)` 退出。
 
-| 阶段 / 操作 | 输入与应用调用 | 推进、等待与失败规则 |
-|---|---|---|
-| TaskPoolReview | 查询任务池；Ward 可新增或选择已有任务 | 没有任务时邀请提供名字和耗时；任务登记不要求开始时间或额外确认 |
-| IntentCapture | 模型提取无 ID 的新候选、内容修改、安排修改和 slot_updates；用例校验后分派 | 每条非结构化输入都结合当前草稿与 active Batch 处理；旧问题不能抢占本轮其他操作 |
-| 新增任务 | 完整时调用 `RegisterTask`；不完整时经 PlanDraft 保存 `TaskCandidate` | 按实际缺失字段建立 `title` / `planned_minutes` Slot，可同时追问；不创建不完整 Task |
-| 修改任务内容 | 唯一绑定后调用 `UpdateTask`，由 `Task.update_details()` 保护合法性 | 名字非空、耗时为有效正值；缺目标或更新值无效则保留原内容并澄清。时间安排修改仍走 `PatchPlanDraft` |
-| Clarify | 按目标与字段处理答案，或调用 `PlanDraft.defer_target()` 明确本次不安排 | 单目标歧义用单选，明确多目标选择用多选；答案通过校验后恢复原待执行操作，再重新评估整个草稿 |
-| DraftReview | `compose_timeline()` + `validate_schedule()`；展示全部未完成任务和未完成候选 | 缺必要锚点则追问开始时间；可确定推导的相对时间不重复追问。有冲突时展示双方、区间及原因，修改后重新审阅 |
-| Confirming | 恢复预检、`ConfirmPlanDraft` 重验当前审阅版本与相关 Task / 日程版本 | 门禁统一以 §四为准；过期返回 409，业务冲突返回结构化原因；均不写正式日程、不自动重试确认 |
-| Confirmed / 后续修订 | 返回提交版本；后续由 `CreateScheduleRevision` 发起新的协商 | 不恢复已结束 Run 来改写已确认草稿；修订成功前保留原正式版本 |
+```mermaid
+flowchart TD
+    A[输入文本 + Context] --> B[模型选择下一工具]
+    B --> C[调用只读/解析/写入/澄清/校验工具]
+    C --> D[获得结构化 observation]
+    D --> E{是否满足退出条件?}
+    E -->|否| B
+    E -->|是| F[finish_loop(status, operation_report)]
+```
+
+`PlanningAgentLoop` 的输出不是自然语言结论，而是 `finish_loop(status, operation_report)`。`status` 只能是 `draft_changed`、`task_pool_changed_only`、`needs_clarification`、`partial_success`、`no_op`、`rejected`、`tool_error` 或 `loop_limit_exceeded`。一个操作同时改内容与安排时，先处理内容，再按新耗时处理安排并统一校验；已排期目标先走修订入口，内容变更暂存草稿，不走直接 UpdateTask。所有返回路径都应展示本轮已保存、尚待补充和被拒绝的操作，不能只回复最后一个澄清问题。模型失败或存储失败走下方失败规则，不自动进入 Confirmed。
+
+节点职责、AI 驱动边界、退出条件和工具授权以 §四的 Workflow 节点表为准。这里不再维护第二张阶段表，避免 Workflow 阶段、Agent 工具和领域操作三套名词重复漂移。
 
 #### 本轮操作、目标澄清与任务内容修改
 
@@ -143,80 +125,7 @@ flowchart LR
 
 时间冲突采用统一的半开区间 `[start_at, end_at)`：`end_at` 必须由 `start_at + planned_minutes` 确定性计算，前一任务在 19:30 结束、后一任务在 19:30 开始属于相邻而不冲突；只有 `start_a < end_b` 且 `start_b < end_a` 时才产生 `time_overlap`。排程校验先检查草稿内项目，再把修订项目与当前正式日程中未被替换的项目合并检查；确认事务会在锁定 Ward、草稿、日程和相关 Task 后再次执行同一校验。任一重叠、缺少完整时间槽、超过当日容量或版本过期，都只能返回结构化原因并保留草稿，不能自动平移或提交部分日程。
 
-```mermaid
-classDiagram
-    class PlanDraft {
-        draft_id
-        version
-        apply_patch()
-        resolve_clarification()
-        confirm()
-    }
-    class DraftItem {
-        task_id
-        change_arrangement()
-    }
-    class TaskCandidate {
-        candidate_id
-        supplement()
-        bind_registered_task()
-    }
-    class ClarificationBatch {
-        batch_id
-        issued_draft_version
-        resolve_slot()
-        expire()
-    }
-    class ClarificationSlot {
-        slot_id
-        field
-        target
-        status
-        resolve()
-        skip()
-    }
-    class TaskScheduleIntent {
-        target_task_id
-        anchor
-        start_at
-        reference_task_id
-        source
-    }
-    class ArrangementIntent {
-        accepted_intents
-    }
-    class DraftConstraint {
-        content
-        source
-        strength
-    }
-    class DailySchedule {
-        schedule_id
-        version
-        apply_confirmed_draft()
-    }
-    class ScheduledItem {
-        task_id
-        reschedule()
-    }
-    class TimeSlot {
-        start_at
-        end_at
-        overlaps()
-    }
-    PlanDraft "1" *-- "0..*" DraftItem
-    PlanDraft "1" *-- "0..*" TaskCandidate
-    PlanDraft "1" *-- "0..1" ClarificationBatch : active
-    PlanDraft "1" *-- "0..1" ArrangementIntent
-    PlanDraft "1" *-- "0..*" DraftConstraint
-    ClarificationBatch "1" *-- "1..*" ClarificationSlot
-    DraftItem "1" *-- "0..1" TaskScheduleIntent
-    DraftItem "1" *-- "0..1" TimeSlot
-    DailySchedule "1" *-- "0..*" ScheduledItem
-    ScheduledItem "1" *-- "1" TimeSlot
-```
-
-图中组合关系表示所有权；跨子对象的不变量由根保护。Slot 的目标只保存 Task/Candidate ID，正式日程项不持有 DraftItem 对象。两处 `TimeSlot` 是各自按值保存的对象，不是共享可变实体。
+聚合所有权以上表为准：Slot 的目标只保存 Task/Candidate ID，正式日程项不持有 DraftItem 对象；两处 `TimeSlot` 是各自按值保存的对象，不是共享可变实体。
 
 Application Use Case 负责授权、通过 Port 加载输入、调用服务和聚合行为、校验并发版本、保存与事务。上述服务不使用 ORM Session、HTTP、模型 SDK、Outbox 或 Checkpoint，也不决定 Graph 跳转。`TimeSlot` 的有效构造、`PlanDraft` 的版本/编辑资格、`DailySchedule` 的整体合法性仍由各自领域对象保护。
 
@@ -236,26 +145,7 @@ Application Use Case 负责授权、通过 Port 加载输入、调用服务和�
 
 #### 2.1.1 任务引用解析与 Patch 分支
 
-“已有任务的排程 patch”不是由“改、调整、修改”等字面关键词触发，而是由本轮意图是否同时包含**任务引用**与**可写的安排字段**决定。模型只能产出不含 ID 的候选，例如 `TaskReferenceCandidate(surface="英语", role="schedule_target")` 与 `patch={start_at: ...}`；`TaskReferenceResolver` 在当前 Ward 的可编辑 Task/草稿范围内完成唯一绑定，之后才允许写入。
-
-```mermaid
-flowchart TD
-    A[Ward 消息] --> B[提取 TaskReferenceCandidate + 安排字段]
-    B --> C{有可写安排字段?}
-    C -->|否| D[按普通任务表达处理]
-    C -->|是| E[TaskReferenceResolver]
-    E --> F{受控上下文已绑定 task_id?}
-    F -->|是| P[PatchPlanDraft: target_task_id]
-    F -->|否| G{名称规范化后唯一匹配?}
-    G -->|是| P
-    G -->|否| H{候选数为 0?}
-    H -->|明确新增且 title+duration 完整| N[RegisterTask: 新候选]
-    H -->|新增缺字段或修改未匹配| I[Clarify: 补字段或重新选择目标]
-    H -->|否| J[Clarify: target_task_id 单选]
-    P --> K[compose_timeline + validate_schedule]
-```
-
-模型负责从自然语言抽取 `TaskReferenceCandidate`、`slot_updates` 与 `schedule_patches`；`TaskReferenceResolver` 不再扫描原句判断“几分”是时长还是钟表时间，只对模型给出的无 ID 引用做绑定。其绑定优先级固定如下；每一步必须只产生一个合法 Task，才可进入下一写入动作：
+“已有任务的排程 patch”不是由“改、调整、修改”等字面关键词触发，而是由本轮意图是否同时包含**任务引用**与**可写的安排字段**决定。`PlanningAgentLoop` 可以用模型理解自然语言，但只能把无 ID 引用交给 `TaskReferenceResolver`；解析成功后才允许调用 `PatchPlanDraft`。绑定优先级固定如下，每一步必须只产生一个合法 Task，才可进入下一写入动作：
 
 1. 已校验的 UI/Structured command 明示 `task_id`；
 2. 当前 `ClarificationSlot.target.task_id`；
@@ -278,32 +168,7 @@ flowchart TD
 
 完整信息可在一轮内更新多个 Task，不产生 Clarification：例如“英语试卷和数学作业分别 30 分钟和 50 分钟”会生成两个任务候选/更新。只有仍缺字段时才创建一个含多个待补 Slot 的 Batch。
 
-`ConfirmPlanDraft` 是把**已有 Task** 写入正式日程的本地强一致 Use Case；它必须先通过 `validate_schedule()`，再以 `draft_id + confirmation_id` 去重，原子保存 `DailySchedule`、对已有 Task 做 `mark_scheduled()`、领域事件及 Outbox。它不创建 Task。Ward 点击确认不是入计划的充分条件。
-
-| Trigger and source | Interface / entrypoint | Use Case / Process Manager | Aggregate / domain method | Local domain event | Outbox / projection / next | Consistency, idempotency, failure |
-|---|---|---|---|---|---|---|
-| Ward 说明新任务且已有 title 与时长 | `POST /companion/turn` | Coordinator → `RegisterTask`（可由 `CaptureArrangementIntent` 同事务协调） | `Task.register(title, planned_minutes)` | `TaskRegistered` | 同事务更新 `TaskPoolView` | **无 Ward 确认**；无开始时间也可创建；缺时长则不创建；纠错靠删除 |
-| Ward 修改未排期任务名字/耗时 | `POST /companion/turn` 或已校验 edit | `UpdateTask` | `Task.update_details()`；更新当前草稿并重验时间槽 | 当前不要求新增本地事件 | 同事务 TaskPoolView / PlanDraftView；使旧审阅动作失效 | `command_id + operation_id`；同一批量操作原子提交；校验 Task/草稿版本；失败不部分修改 |
-| Ward 请求修改未开始的正式计划 | 已校验修订请求 | `CreateScheduleRevision` | 创建引用原 schedule/version 的新 PlanDraft | 无确认事件 | 新 Run 与修订草稿视图 | 请求幂等；原日程不变；已开始执行或基准变化时拒绝；确认仍走 ConfirmPlanDraft |
-| Ward 说明安排（顺序/开始时间） | `POST /companion/turn` | Coordinator → `CaptureArrangementIntent` → `TaskReferenceResolver` | 唯一已有引用则 `PlanDraft.apply_patch()`；否则 `request_clarification()` | 无确认事件 | 同事务 `PlanDraftView`；缺 `start_at` 或目标 Task 歧义则任务留在池中、计划不可确认 | `command_id` 幂等；不得为入计划默认开始时间、复制时间给多个 Task，或将唯一已有引用创建成新 Task |
-| 已有 Task 且开始时间足够后生成时间轴 | Planning Workflow / DraftReview | `CaptureArrangementIntent` 后续调用 Domain Service | `compose_timeline()` + `validate_schedule()` | 无 | 有冲突则禁用确认按钮；无冲突仍为 editable 草稿 | 同步、强一致；不写 `DailySchedule`，不新建 Task |
-| Ward 局部改时间/顺序 | 文本、语音或已校验 `edit` | `TaskReferenceResolver` → `PatchPlanDraft` | `apply_patch(task_id, schedule_patch)` 后再次 `validate_schedule()` | 无 | 同事务 `PlanDraftView` | 解析依据是任务引用 + 安排字段，不依赖“改”等关键词；非唯一引用进入单选澄清；无 Outbox |
-| Ward 确认入计划 | 未完成任务列表上的「确认这个计划」→ 已校验 `confirm` | Coordinator → Planning Graph `Command(resume)` → `ConfirmPlanDraft` | 复核**已审阅** `draft_id + draft_version`，仅对有 start/end 且无冲突的已有 Task `mark_scheduled()` | `PlanDraftConfirmed`、`ScheduleUpdated` | `ScheduleView` | resume 路径不得重新 Capture/Save Draft；列表必须含全部未完成任务；无有效时间槽则不能确认空计划；未填开始时间的项确认后仍留在任务池 |
-
-`PatchPlanDraft` 是同 Context 同步写，无 Outbox。下面 UML 时序图把三件事拆开：**创建任务**只要 title+时长；**已有任务 patch** 必须先唯一绑定 Task ID；**进入计划**要 startTime 且无冲突。确认不再创建 Task。
-
-```mermaid
-flowchart LR
-    A[Ward 说明] --> B{title 且 duration?}
-    B -->|否| C[不创建 Task]
-    B -->|是| D[RegisterTask 写入任务池]
-    D --> E{startTime 且无冲突?}
-    E -->|否| F[Task 留在池中 未入计划]
-    E -->|是| G[可审阅草稿]
-    G --> H{Ward 确认且复核仍通过?}
-    H -->|否| F
-    H -->|是| I[已有 Task mark_scheduled]
-```
+`ConfirmPlanDraft` 是把**已有 Task** 写入正式日程的本地强一致 Use Case；它必须先通过 `validate_schedule()`，再以 `draft_id + confirmation_id` 去重，原子保存 `DailySchedule`、对已有 Task 做 `mark_scheduled()`、领域事件及 Outbox。它不创建 Task。Ward 点击确认不是入计划的充分条件。下面三张 UML 只保留对象分工：创建任务、进入草稿计划、已有任务局部 Patch。
 
 ### 2.2 UML 时序图：创建任务（只要 title + duration）
 
@@ -314,7 +179,7 @@ flowchart LR
 | Ward App | Actor | 说出任务名与预计时长 |
 | CompanionTurnEndpoint | Interface | 鉴权与 DTO |
 | CompanionCoordinator | Process Manager | 路由 Planning Run |
-| CaptureArrangementIntent | Use Case | 判断能否登记任务 |
+| PlanningAgentLoop | Application Node | 理解本轮输入并调用登记工具 |
 | RegisterTask | Use Case | 创建 Task |
 | Task | Aggregate Root | 拥有 title 与 duration |
 | TaskPoolView | Read Model / Projection | 任务池强一致展示 |
@@ -325,14 +190,14 @@ sequenceDiagram
     actor W as Ward App
     participant I as CompanionTurnEndpoint<br/>Interface
     participant C as CompanionCoordinator<br/>Process Manager
-    participant U as CaptureArrangementIntent<br/>Use Case
+    participant U as PlanningAgentLoop<br/>Application Node
     participant RT as RegisterTask<br/>Use Case
     participant T as Task<br/>Aggregate Root
     participant TP as TaskPoolView<br/>Read Model
 
     W->>I: 说明“数学四十分钟”
     I->>C: HandleCompanionTurn
-    C->>U: CaptureArrangementIntent
+    C->>U: run(input, context)
     alt 缺 title 或 duration
         U-->>W: 按实际缺项追问名字和/或耗时
         Note over T: 不调用 RegisterTask
@@ -349,7 +214,7 @@ sequenceDiagram
     end
 ```
 
-### 2.3 UML 时序图：进入计划（要 startTime，且任务之间无冲突）
+### 2.3 UML 时序图：进入计划（要 start_at，且任务之间无冲突）
 
 前置条件：`Task` 已经在任务池。此图不再创建 Task，只决定能不能排进计划。
 
@@ -357,7 +222,7 @@ sequenceDiagram
 |---|---|---|
 | Ward App | Actor | 给出开始时间或调整时间轴 |
 | CompanionTurnEndpoint | Interface | 鉴权与 DTO |
-| CaptureArrangementIntent | Use Case | 把已有 Task ID 与开始时间交给排程 |
+| PlanningAgentLoop | Application Node | 解析安排意图并协调引用解析、草稿 patch 与校验 |
 | TaskReferenceResolver | Domain Service | 在用例已加载的候选中唯一绑定目标 |
 | SchedulingService | Domain Service | `compose_timeline` 与 `validate_schedule` |
 | Task | Aggregate Root | 已存在的任务，仅作本图前置状态 |
@@ -369,7 +234,7 @@ sequenceDiagram
     autonumber
     actor W as Ward App
     participant I as CompanionTurnEndpoint<br/>Interface
-    participant U as CaptureArrangementIntent<br/>Use Case
+    participant U as PlanningAgentLoop<br/>Application Node
     participant B as TaskReferenceResolver<br/>Domain Service
     participant S as SchedulingService<br/>Domain Service
     participant T as Task<br/>Aggregate Root
@@ -377,7 +242,7 @@ sequenceDiagram
     participant R as PlanDraftView<br/>Read Model
 
     W->>I: 说明“七点开始做数学”或“七点先数学再英语”
-    I->>U: CaptureArrangementIntent
+    I->>U: run(input, context)
     Note over T: Task 已在池中，本图不 register
     U->>B: resolve(reference, candidates, binding_context)
     alt 多项候选且只说“七点开始”
@@ -386,14 +251,14 @@ sequenceDiagram
         U->>R: confirm_enabled=false
         Note over T,P: Task 仍在任务池，未进入计划
         I-->>W: 七点先开始数学还是英语？
-    else 缺 startTime
+    else 缺 start_at
         U->>P: create ClarificationBatch(start_at slots)
         U->>R: confirm_enabled=false
         I-->>W: 请补充开始时间
     else 意图已唯一绑定
         U->>P: capture_intent(target_task_id, at/after/before)
         U->>S: compose_timeline(bound intents, duration)
-        S-->>U: 每项 startTime / endTime
+        S-->>U: 每项 start_at / end_at
         U->>S: validate_schedule(各项时间是否互相冲突)
         alt 互相重叠或与硬约束冲突
             S-->>U: 显式冲突
@@ -418,7 +283,7 @@ sequenceDiagram
 |---|---|---|
 | Ward App | Actor | 表达局部安排 |
 | CompanionTurnEndpoint | Interface | 接收输入并交给应用用例 |
-| CaptureArrangementIntent | Use Case | 通过 Port 加载受权候选，协调解析与后续操作 |
+| PlanningAgentLoop | Application Node | 通过工具加载受权候选，协调解析与后续操作 |
 | TaskReferenceResolver | Domain Service | 对传入候选执行唯一绑定规则，不自行查询数据库 |
 | PatchPlanDraft | Use Case | 协调局部修改、排程校验和保存 |
 | PlanDraft | Aggregate Root | 修改草稿或记录待澄清问题 |
@@ -430,7 +295,7 @@ sequenceDiagram
     autonumber
     actor W as Ward App
     participant I as CompanionTurnEndpoint<br/>Interface
-    participant U as CaptureArrangementIntent<br/>Use Case
+    participant U as PlanningAgentLoop<br/>Application Node
     participant R as TaskReferenceResolver<br/>Domain Service
     participant P as PatchPlanDraft<br/>Use Case
     participant D as PlanDraft<br/>Aggregate Root
@@ -438,7 +303,7 @@ sequenceDiagram
     participant V as PlanDraftView<br/>Read Model
 
     W->>I: “英语听力从七点开始”
-    I->>U: CaptureArrangementIntent(text)
+    I->>U: run(text, context)
     Note over U: 经模型获得无 ID 候选；通过 Port 加载受权 Task 输入
     U->>R: resolve(reference, candidates, binding_context)
     alt UI / ClarificationSlot 已绑定，或名称唯一匹配
@@ -460,7 +325,7 @@ sequenceDiagram
     end
 ```
 
-### 2.5 UML 时序图：用全部未完成任务列表确认入计划
+### 2.5 确认列表与正式提交
 
 确认屏不是只展示“即将排入”的那几项，而是 **全部未完成 Task**：每项都给出耗时、开始时间、结束时间。开始/结束为空表示本次不入计划。Ward 看完整张表后点「确认这个计划」；只有时间槽完整且无冲突的项才真正 `mark_scheduled()`。
 
@@ -474,77 +339,7 @@ sequenceDiagram
 | `will_enter_plan` | 由 `validate_schedule()` 计算 | 有开始/结束且与其它已填时间项无冲突 |
 | `unscheduled_reason` | Ward 对必做未排项的说明 | 必做任务未排且无原因时 `confirm_enabled=false` |
 
-```mermaid
-sequenceDiagram
-    autonumber
-    actor W as Ward App
-    participant UI as 未完成任务确认列表<br/>Interface
-    participant I as CompanionTurnEndpoint<br/>Interface
-    participant Q as GetPlanDraft<br/>Query
-    participant C as CompanionCoordinator<br/>Process Manager
-    participant G as Planning Graph<br/>Application orchestration
-    participant U as ConfirmPlanDraft<br/>Use Case
-    participant S as SchedulingService<br/>Domain Service
-    participant P as PlanDraft<br/>Aggregate Root
-    participant D as DailySchedule<br/>Aggregate Root
-    participant T as Task<br/>Aggregate Root
-    participant V as ScheduleView<br/>Read Model
-    participant O as Planning Outbox<br/>Infrastructure
-
-    Q-->>UI: 全部未完成 Task：耗时、开始、结束
-    UI-->>W: 逐项展示 duration / startTime / endTime
-    alt confirm_enabled=false（完整门禁见 §四）
-        UI-->>W: 不显示确认按钮
-        Note over T: 全部仍在任务池
-    else confirm_enabled=true 且确认动作有效
-        W->>UI: 点击「确认这个计划」
-        UI->>I: StructuredWardCommand(confirm_plan, draft_id, draft_version)
-        I->>C: HandleCompanionTurn
-        C->>C: 校验签发 action、Thread/Run/attempt/draft version
-        C->>G: Command(resume=confirm)
-        Note over G,P: 只读取已审阅 draft；禁止 CaptureIntent / save_draft
-        G->>U: ConfirmPlanDraft(draft_id, expected_draft_version)
-        U->>S: 按列表再次 validate_schedule()
-        alt 列表与服务端不一致或冲突又出现
-            S-->>U: 不可入计划
-            U->>P: 拒绝 confirm()
-            Note over T,D: 不写 DailySchedule
-            G-->>C: waiting / latest PlanDraftView
-            C-->>I: 非 confirmed 结果
-            I-->>W: 回到确认列表，不报成功
-        else 复核通过
-            U->>P: confirm()
-            U->>D: apply_confirmed_draft()
-            U->>T: 修订时应用已审阅内容；对入计划 Task mark_scheduled()
-            Note over T: 无 startTime 的 Task 仍留在任务池
-            U->>V: 更新 ScheduleView
-            U->>O: LearningFactRecorded.v1 与 PlanConfirmed.v1
-            G-->>C: closed + confirmed + schedule_id
-            C-->>I: confirmed Outcome
-            I-->>W: 有时间槽的项已进入正式计划
-        end
-    end
-```
-
-| Participant | Canonical type | Owned responsibility |
-|---|---|---|
-| 未完成任务确认列表 | Interface | 展示全部未完成任务的耗时与时间槽，收集明确确认 |
-| GetPlanDraft | Query | 投影确认列表；不是写模型 |
-| ConfirmPlanDraft | Use Case | 再校验后只安排有有效时间槽的已有 Task |
-| Task | Aggregate Root | 确认时更新已有 Task 排期；修订同时应用已审阅内容，不创建 |
-
-```mermaid
-flowchart LR
-    Q[全部未完成任务列表] --> W[Ward 确认]
-    W --> U[ConfirmPlanDraft]
-    U --> S[validate_schedule]
-    S -->|冲突或空计划| DR[回到列表]
-    S -->|通过| A[ConfirmPlanDraft 协调原子保存]
-    A --> D[DailySchedule]
-    A --> T[已有 Task 内容及排期]
-```
-
-一致性点：Ward 看到的正式计划以本事务提交后的 `ScheduleView` 为准。Memory / Study 最终一致；投递失败由 Outbox 重试。重复确认返回同一 `DailySchedule`。
+确认动作必须是绑定当前 `draft_id + expected_draft_version + interaction_id` 的结构化命令。`ConfirmPlanDraft` 只读取已审阅草稿并再次执行 `validate_schedule()`；通过后原子更新 `DailySchedule`、入计划 Task、修订内容和 Outbox。Ward 看到的正式计划以本事务提交后的 `ScheduleView` 为准；重复确认以 `confirmation_id` 返回同一 `DailySchedule`。
 
 ## 三、Query、接口与基础设施映射
 
@@ -573,160 +368,46 @@ flowchart LR
 | 最近本 Run 的表达摘要 | 受控消息窗口 | 解决“放到后面”等指代 |
 | 估时偏差/计划偏好 | `MemoryFacade` 的最小 Bundle | 仅作软建议，数据不足时不推断 |
 
-允许模型调用的能力仅为 `extract_arrangement_intent`、`ask_required_clarification`、`explain_draft_adjustment`。`extract_arrangement_intent` 每次处理非结构化文本，输出无 ID 的任务引用、`slot_updates`、安排字段与新任务候选；时间点、时长、顺序和本轮是否同时补多个字段均由模型语义判断。由 Workflow 通过应用用例协调的确定性能力为 schema/range 校验、任务池查询、`TaskReferenceResolver`、名称规范化/唯一性校验、`compose_timeline`、`validate_schedule`、草稿 patch 校验、确认事务；它们不解释自然语言。模型不得生成任务 ID、不得发出正式写入命令。
+`PlanningAgentLoop` 是有工具边界的应用层循环。模型可以决定下一步调用哪个工具，但工具参数必须是结构化数据；所有真实 ID、版本、重复名结果和草稿状态都必须来自工具 observation。Loop 内任何写工具成功后，必须在退出前触发 `validate_draft_plan()` 或由 Graph 在 `DraftEvaluation` 自动重验；不能只凭模型回复宣布 start_at 已生效。
+
+每个 Workflow 节点只暴露最小工具集。下表是节点级完整授权、AI 驱动边界和满足条件；未列出的工具不可在该节点调用，正式计划确认不属于 Agent Tool。
+
+| Workflow 节点 | AI-driven | Loop / 等待类型 | 满足 / 退出条件 | 允许的全部工具 | 规则与禁止事项 |
+|---|---|---|---|---|---|
+| `LoadPlanningContext` | 否 | 单步确定性节点 | 成功加载任务池、未排期 Task、当前草稿、正式日程和 active ClarificationBatch；失败则返回可重试技术错误 | `get_task_pool()`、`get_unscheduled_tasks()`、`get_active_draft()`、`get_daily_schedule()`、`get_pending_clarifications()` | 只读；负责建立本轮权威上下文，不调用模型，不写 Task 或 Draft |
+| `PlanningAgentLoop` | 是，唯一 AI-driven 节点 | 受控工具循环，建议 `max_tool_calls=8-12` | 必须调用 `finish_loop(status, summary)`；`status` 只能是 `draft_changed`、`task_pool_changed_only`、`needs_clarification`、`partial_success`、`no_op`、`rejected`、`tool_error`、`loop_limit_exceeded` | `get_task_pool()`、`get_unscheduled_tasks()`、`get_active_draft()`、`get_daily_schedule()`、`get_pending_clarifications()`、`get_task_detail(task_id)`、`resolve_task_reference(surface, role, candidate_scope?)`、`resolve_task_references_batch(references[])`、`check_title_conflict(title)`、`create_task_candidate(title?, planned_minutes?, arrangement?)`、`register_task(title, planned_minutes)`、`update_task_details(task_id, title?, planned_minutes?, expected_task_version?)`、`patch_draft_start_at(task_id, start_at, source)`、`patch_draft_order(task_id, anchor, reference_task_id)`、`remove_task_from_draft(task_id)`、`defer_task(task_id, reason)`、`create_clarification_slot(type, candidates, pending_operation)`、`resolve_clarification_slot(slot_id, value)`、`cancel_pending_operation(operation_id)`、`validate_draft_plan()`、`preview_timeline()`、`get_operation_summary()`、`finish_loop(status, summary)` | 模型只决定工具调用顺序和结构化参数。不能生成 Task ID、不能绕过 `title_conflict`、不能判定无冲突、不能调用 `confirm_plan_draft()` |
+| `OperationResultReview` | 否 | 展示节点 | 本轮结果已渲染：已保存、未排期、已入草稿、待澄清、被拒绝和失败操作均可见；用户继续输入后回 `LoadPlanningContext` | `get_operation_summary()`、`get_task_pool()`、`get_unscheduled_tasks()`、`get_active_draft()`、`preview_timeline()`、`render_operation_result()` | 只读展示本轮结果；不能继续补写任务或草稿 |
+| `Clarify` | 否 | 用户等待点，不是 Agent Loop | 用户提交结构化 Slot 答案、取消待执行操作，或输入自然语言补充；解决受控 Slot 后必须回到 `PlanningAgentLoop` | `get_pending_clarifications()`、`resolve_clarification_slot(slot_id, value)`、`cancel_pending_operation(operation_id)`、`get_operation_summary()` | 只处理已签发 Slot 或取消待执行操作；自然语言答案可同时包含新意图，因此不能在本节点直接完成全部业务 |
+| `DraftEvaluation` | 否 | 单步确定性校验节点 | `validate_draft_plan()` 输出 `needs_clarification`、`empty/no_schedulable_task`、`has_conflict` 或 `reviewable` | `get_active_draft()`、`preview_timeline()`、`validate_draft_plan()`、`compose_timeline()`、`validate_schedule()` | 不调用模型；不做用户可见话术；只判断事实状态和下一跳 |
+| `DraftReview` | 否 | 用户等待点，不是 Agent Loop | 用户继续修改则回 `PlanningAgentLoop`；用户触发当前版本绑定的结构化确认动作才进入 `Confirming` | `get_active_draft()`、`preview_timeline()`、`validate_draft_plan()`、`render_review_card()`、`get_pending_clarifications()` | 只读渲染确认列表和冲突；自然语言“行吧”等不能替代带版本的确认动作 |
+| `Confirming` | 否 | 单步事务节点 | `confirm_plan_draft()` 返回 `confirmed`、`stale`、`business_conflict` 或 `unknown_timeout`；未知提交结果用 `confirmation_id` 查询或幂等重试 | `confirm_plan_draft(draft_id, expected_draft_version, confirmation_id, expected_schedule_version, expected_task_versions)`、`get_active_draft()` | 不调用模型；不重新生成草稿；事务内重验版本、Task、日程和冲突。成功才进入 `Confirmed` |
+| `Confirmed` | 否 | 终止展示节点 | 正式计划结果已返回；后续修改必须新建修订草稿 | `get_confirmed_schedule(schedule_id)`、`get_operation_summary()` | 只读返回提交结果；不恢复已关闭草稿 |
+| 后续修订入口 | 否 | 单步确定性入口 | 正式计划尚未开始且 `expected_schedule_version` 匹配时，创建新草稿和新 Run 后回到 `LoadPlanningContext` / `PlanningAgentLoop` | `create_schedule_revision(schedule_id, expected_schedule_version)`、`get_confirmed_schedule(schedule_id)` | 已开始执行或版本变化时拒绝；原正式计划在修订确认前不变 |
+
+由 Workflow 通过应用用例协调的确定性能力为 schema/range 校验、任务池查询、`TaskReferenceResolver`、名称规范化/唯一性校验、`compose_timeline`、`validate_schedule`、草稿 patch 校验、确认事务；它们不解释自然语言。模型不得生成任务 ID、不得绕过重复名澄清、不得发出正式日程确认写入命令。
 
 ## 五、写回、交互与失败
 
 `ConfirmPlanDraft` 仅在 `validate_schedule()` 通过后，才在本地事务中写 `DailySchedule`、对**已有** `Task` 做 `mark_scheduled()`，以及 `LearningFactRecorded.v1` 与 `PlanConfirmed.v1` Outbox。它不创建 Task。草稿保存、冲突解释、审阅、取消，以及缺开始时间或仍有冲突的确认请求，都不产生已确认学习事实，也不通知 Study。
 
-前端交互信封见 [Companion Interaction Protocol](domain-companion.md#52-companion-interaction-protocol)。新 Task 登记后，App 必须刷新“未排期任务”；若 Ward 要将其排入本次计划但时间意图尚未唯一绑定，返回 `clarify + object_ref(GetPlanningTaskPool)`。仅登记任务时返回已添加结果和任务池，不强制生成开始时间 Slot。`named_text` 始终由模型结合 Batch 语境解析；`structured_form` 的每项必须回传 `slot_id`，可直接确定性写入。计划确认的 `kind` 为 `plan_confirm_list`：`object_ref` 指向 `GetPlanDraft`，列表含全部未完成任务的耗时、开始、结束；`confirm_plan` 仅在 `confirm_enabled=true` 且 Graph 正停在对应 review interrupt 时 `enabled`。确认命令必须带 `draft_id + expected_draft_version + interaction_id`；它恢复已审阅草稿，不能重新生成草稿。确认后只有 `will_enter_plan=true` 的项进入 `DailySchedule`。创建任务没有确认动作。当前 App 的 `planning_confirm` 与「标题+分钟」卡片是兼容过渡，不得继续扩展。
+前端交互信封见 [Companion Interaction Protocol](domain-companion.md#52-companion-interaction-protocol)。新 Task 登记后，App 必须刷新“未排期任务”；若 Ward 要将其排入本次计划但时间意图尚未唯一绑定，返回 `clarify + object_ref(GetPlanningTaskPool)`。仅登记任务时返回已添加结果和任务池，不强制生成开始时间 Slot。`named_text` 始终由模型结合 Batch 语境解析；`structured_form` 的每项必须回传 `slot_id`，可直接确定性写入。计划确认的 `kind` 为 `plan_confirm_list`：`object_ref` 指向 `GetPlanDraft`，列表含全部未完成任务的耗时、开始、结束；`confirm_plan` 仅在 `confirm_enabled=true` 且 Graph 正停在对应 review interrupt 时 `enabled`。确认命令必须带 `draft_id + expected_draft_version + interaction_id`；它恢复已审阅草稿，不能重新生成草稿。确认后只有 `will_enter_plan=true` 的项进入 `DailySchedule`。创建任务没有确认动作。
 
 模型解析失败返回可编辑的原输入与 `clarify`；约束不可满足返回多个受限草稿或缺口说明；确认的重复请求以 `draft_id + confirmation_id` 幂等返回同一正式日程。
 
 ## 六、验收场景
 
-```gherkin
-Given Ward 已表达“先数学四十分钟，再英语”
-When CaptureArrangementIntent 处理本轮意图
-Then 数学因具备 title 与时长被 RegisterTask 写入任务池
-And 英语因缺少时长不创建 Task
-And 因缺少开始时间，已有任务未入计划，confirm_enabled=false
-
-Given 任务池已有数学和英语，均具备 title 与时长
-And Ward 已表达“七点开始，先数学四十分钟，再英语二十分钟”
-And 七点到七点四十与固定网课冲突
-When compose_timeline 与 validate_schedule 执行
-Then 两个 Task 仍在任务池
-And 草稿标出冲突原因，confirm_enabled=false
-And 不写 DailySchedule
-
-Given 任务池有数学、英语、阅读三件未完成任务
-And 数学、英语已有 startTime/endTime 且无冲突
-And 阅读没有开始时间
-When 打开确认列表
-Then 三件全部展示，各含耗时、开始、结束
-And 阅读的开始/结束为空
-And 阅读未被要求本次安排，没有 pending Slot；若为必做任务已说明暂不安排原因
-When Ward 点击「确认这个计划」且复核通过
-Then 仅数学、英语被 mark_scheduled
-And 阅读仍留在任务池
-
-Given Ward 点击确认但开始时间已被清空或冲突重新出现
-When ConfirmPlanDraft 调用 validate_schedule
-Then 返回结构化错误并回到 DraftReview
-And Task 仍在任务池，不覆盖现有正式安排
-
-Given 任务池有数学和英语
-When Ward 只表达“18 点开始”
-Then 不给数学和英语同时写入 18:00
-And `ambiguous_target_task` 进入 missing_fields
-And 系统只追问“18 点先开始数学还是英语？”
-
-Given Ward 表达“18 点先数学再英语”
-When 时间意图通过唯一任务绑定校验
-Then 数学的 `start_at=18:00` 来自 `ward_explicit`
-And 英语的时间槽只由 `after=数学` 和确定性时长推导
-And DraftReview 在确认前展示无重叠时间轴
-
-Given 任务池已有“英语听力”且 Ward 表达“英语听力从 19 点开始”
-When `TaskReferenceResolver` 以规范化名称唯一匹配
-Then 生成该 Task 的 `target_task_id + start_at` patch
-And 不生成 `new_task` 候选或新的 Task
-
-Given 任务池同时有“英语听力”和“英语阅读”
-When Ward 表达“英语从 19 点开始”
-Then `TaskReferenceResolver` 不能选择任一 Task
-And 创建 `target_task_id` 的 single_choice ClarificationSlot
-And 在 Ward 选择前不创建 Task，也不写任何时间槽
-
-Given Ward 从“英语听力”的受控 Task 卡片进入对话
-When Ward 只表达“19 点开始”
-Then 卡片携带的 `task_id` 优先绑定为 target_task_id
-And 不依赖“修改”或“调整”等关键词
-
-Given Ward 已打开 draft version 8 的确认列表
-When `confirm_plan` 使 Planning Graph resume
-Then resume 只读取 version 8 的 draft 并调用 ConfirmPlanDraft
-And 不调用 CaptureArrangementIntent、RegisterTask 或 save_draft
-And 只有返回 `closed + confirmed` 后 App 才提示确认成功
-
-Given 数学试卷和英语阅读都缺预计时长
-When 系统创建 active ClarificationBatch
-Then Batch 含两个 `planned_minutes` Slot
-And Ward 可回复“数学 30 分钟，英语 50 分钟”一次解决两个 Slot
-And Ward 只回复“30 分钟”时系统不得广播，必须澄清归属
-
-Given active ClarificationBatch 的 response_mode 是 structured_form
-When Ward 一次填写两个 Slot
-Then 每个值按 `slot_id` 原子写入其目标 Task 或 Candidate
-And 不调用模型猜测字段归属
-
-Given “英语听力”有 active planned_minutes ClarificationSlot
-When Ward 表达“英语听力改成十九点三十分开始”
-Then 本轮文本仍进入 `extract_arrangement_intent`
-And 模型返回英语听力的 `start_at=19:30` schedule patch
-And 不把“十九点三十分”中的“三十分”写入 planned_minutes
-
-Given active ClarificationBatch 尚有时长 Slot
-When Ward 表达“英语听力三十分钟，十九点半开始”
-Then 模型在同一轮返回该 Slot 的 duration update 与 start_at patch
-And 服务端分别校验、绑定并写入两类更新
-
-Given Ward 以 named_text 回答 active ClarificationBatch
-When 模型无法唯一归属某个值
-Then 服务端不以正则、关键词或字符串规则猜测写入
-And 返回带未解决 Slot 的 clarify interaction
-
-Given Ward 说“加一个二十分钟的任务”，没有给出名字
-When 本轮新增操作被处理
-Then 保存稳定 candidate_id 与 title Slot，仅追问名字，不创建 Task
-When Ward 补充“科学阅读”
-Then 为该候选幂等登记一个 Task，不因缺开始时间阻止登记
-
-Given 未排期的数学 Task 为四十分钟，草稿安排在 19:00，英语明示 19:40 开始
-When Ward 将数学名字改为“数学练习”并将耗时改为六十分钟
-Then UpdateTask 保留 Task ID，保存内容和当前草稿的新版本
-And 数学结束时间变为 20:00，英语仍为 19:40，展示重叠并禁用确认
-And 原确认 action 失效，不静默推迟英语
-
-Given 任务池同时有英语听力和英语阅读
-When Ward 说“英语改成三十分钟”
-Then 保存待执行修改并单选澄清目标，不修改任一 Task
-When Ward 明确回复“两项都改”并通过受权目标集合校验
-Then 两个目标原子修改为各三十分钟，随后重新检查安排
-And 若其中一个目标已不可编辑，则整个批量修改不提交并说明原因
-
-Given 英语候选缺耗时，数学信息完整且时间无冲突
-When Ward 只补充数学开始时间
-Then 数学变更保存并显示，但英语 pending Slot 仍阻止确认
-When Ward 明确表示“英语这次先不安排，只确认数学”
-Then 英语候选保留，其关联操作本次不执行且 Slot 为 skipped
-And 在其他门禁满足后展示数学的可确认草稿，仍需明确确认动作
-And 重新安排英语时必须再次补齐耗时，skipped 不作为有效值
-
-Given 本轮有“数学改四十分钟”和另一个目标不明的英语修改，二者互不依赖
-When 本轮操作处理结束
-Then 保存数学操作，保留英语修改等待澄清，并同时展示两项结果
-And 使用相同 command_id 与 operation_id 重试不重复应用已完成修改
-
-Given Ward 已审阅草稿，而另一请求更新了日程版本
-When Ward 点击确认
-Then 返回 409 与最新草稿视图，撤销旧 action，不提交本次日程
-And 刷新、处理冲突并重新审阅后才可签发新的确认动作
-
-Given 正式日程已确认且尚未开始执行
-When Ward 请求修改其中任务耗时
-Then CreateScheduleRevision 创建基于正式版本的新草稿与新 Run
-And 拟修改耗时只保存在修订草稿，原 Task 与正式日程暂不改变
-When 新草稿通过重检且 Ward 确认
-Then 原子更新 Task、日程新版本、草稿与 Outbox，并保留历史和修改主体
-And 取消修订或确认失败不改变原正式版本
-
-Given 正式日程已有任务开始执行
-When Ward 请求修订，或修订确认前执行状态已变化
-Then 拒绝当前范围不支持的执行中修订，说明原因且保留正式安排
-
-Given 确认已提交但客户端没有收到响应
-When 客户端以相同 confirmation_id 重试
-Then 返回同一已确认版本，不新建日程或再次发布同一确认事实
-```
+| 场景 | 必须满足 |
+|---|---|
+| 新任务登记 | `title + planned_minutes` 即创建 Task 并进入未排期列表；缺任一字段只保存 Candidate 和 Slot，不追问开始时间 |
+| 入计划 | 只有明确 `start_at` 或可推导顺序的 Task 才进入 PlanDraft；只说“18 点开始”且目标不唯一时进入 `target_task_id` 澄清 |
+| 相对顺序 | “18 点先数学再英语”只把数学标为 `ward_explicit`，英语由 `after=数学` 和时长确定性推导 |
+| 引用解析 | 唯一命中写入 `target_task_id + schedule patch`；多候选必须单选澄清；受控卡片携带的 `task_id` 优先于名称匹配 |
+| 标题重复 | 新增/改名遇到规范化精确重名时进入 `title_conflict`，由 Ward 选择复用、仍新增/接受重复或取消 |
+| 澄清批次 | 一个 Batch 可含多个 Slot；结构化表单按 `slot_id` 原子写入；自然语言无法唯一归属时不得广播写入 |
+| 混合输入 | `PlanningAgentLoop` 可在同一轮同时处理 Slot 答案和新的时间/内容修改，但所有真实 ID 与版本必须来自工具 observation |
+| 内容修改 | 改名不换 Task ID；改耗时使旧审阅动作失效并重新推导，产生重叠时展示冲突，不静默平移其它任务 |
+| 多目标修改 | 明确批量修改必须目标和字段都合法才原子提交；独立操作可部分成功，结果必须在 `OperationResultReview` 汇总 |
+| 暂不安排 | Ward 明确暂不安排时对应 Slot 为 `skipped`，不等于字段有效；重新安排时仍需补齐缺失字段 |
+| 确认 | `confirm_plan` 只读取已审阅 `draft_id + version`，不重新运行 `PlanningAgentLoop`，不创建 Task；冲突或版本变化返回最新 DraftReview |
+| 修订 | 尚未开始的正式计划可创建修订草稿；确认前原正式计划不变；已开始执行或版本变化时拒绝 |
+| 幂等 | `command_id + operation_id` 防止重复应用操作；相同 `confirmation_id` 重试返回同一确认版本 |
