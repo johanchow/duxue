@@ -250,76 +250,156 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(
               '周${_weekday(DateTime.now())} · ${DateTime.now().month} 月 ${DateTime.now().day} 日',
-              style: const TextStyle(fontSize: 12, color: Colors.blueGrey)),
+              style: const TextStyle(
+                  fontSize: 12,
+                  color: Color(0xff8b95a8),
+                  letterSpacing: 0.2)),
           const SizedBox(height: 4),
           Text('晚上好，${profile?['display_name'] ?? '同学'}',
-              style: Theme.of(context)
-                  .textTheme
-                  .headlineSmall
-                  ?.copyWith(fontWeight: FontWeight.w700)),
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xff0c1222))),
           const SizedBox(height: 5),
           const Text('你先说，我来帮你记录和检查安排。',
-              style: TextStyle(fontSize: 13, color: Colors.blueGrey)),
+              style: TextStyle(fontSize: 13, color: Color(0xff5b667a))),
         ])),
       ]));
 
   Widget _contextHeader(String title,
           {String? meta, VoidCallback? action, String? actionLabel}) =>
       Padding(
-          padding: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.only(bottom: 10),
           child: Row(children: [
-            const Icon(Icons.circle, size: 7, color: Color(0xff0f766e)),
+            Container(
+              width: 6,
+              height: 6,
+              decoration: const BoxDecoration(
+                color: Color(0xff0f766e),
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Color(0xffe6f4f1),
+                    spreadRadius: 3,
+                  ),
+                ],
+              ),
+            ),
             const SizedBox(width: 8),
             Text(title.toUpperCase(),
                 style: const TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
-                    color: Colors.blueGrey,
-                    letterSpacing: 1)),
+                    color: Color(0xff8b95a8),
+                    letterSpacing: 0.8)),
             const Spacer(),
             if (meta != null)
               Text(meta,
-                  style: const TextStyle(fontSize: 12, color: Colors.blueGrey)),
+                  style: const TextStyle(
+                      fontSize: 12, color: Color(0xff8b95a8))),
             if (action != null)
-              TextButton(onPressed: action, child: Text(actionLabel ?? '查看')),
+              TextButton(
+                  onPressed: action,
+                  style: TextButton.styleFrom(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: Text(actionLabel ?? '查看',
+                      style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xff0f766e)))),
           ]));
 
   Widget _planRail(List<dynamic> planned) => SizedBox(
-      height: 116,
+      height: 128,
       child: ListView.separated(
           scrollDirection: Axis.horizontal,
           itemCount: planned.length,
           separatorBuilder: (_, __) => const SizedBox(width: 8),
           itemBuilder: (_, index) {
             final item = planned[index] as Map<String, dynamic>;
+            final isCurrent = _isItemCurrent(item, index);
+            final startTime = _formatItemStartTime(item, index, planned);
+            final durationText = _formatPlannedDuration(item);
+            final title = item['title'] as String? ?? '计划项';
+
             return SizedBox(
-                width: 150,
-                child: Card(
-                    color: index == 0 ? const Color(0xfff0fdfa) : Colors.white,
+                width: 148,
+                child: Material(
+                    color: Colors.transparent,
                     child: InkWell(
                         borderRadius: BorderRadius.circular(16),
-                        onTap: () => _openPlanChat(item['title'] as String),
-                        child: Padding(
-                            padding: const EdgeInsets.all(12),
+                        onTap: () => _openPlanChat(title),
+                        child: Ink(
+                            decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(16),
+                                gradient: isCurrent
+                                    ? const LinearGradient(
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                        colors: [
+                                            Color(0xf2ccfbf1),
+                                            Color(0xe6ffffff),
+                                          ])
+                                    : null,
+                                color: isCurrent ? null : Colors.white,
+                                border: Border.all(
+                                    color: isCurrent
+                                        ? const Color(0x590d9488)
+                                        : const Color(0x1a0f172a)),
+                                boxShadow: const [
+                                  BoxShadow(
+                                      color: Color(0x0c0c1222),
+                                      blurRadius: 10,
+                                      offset: Offset(0, 4)),
+                                ]),
+                            padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
                             child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(index == 0 ? '现在' : '稍后',
-                                      style: const TextStyle(
+                                  Text(startTime,
+                                      style: TextStyle(
                                           fontSize: 11,
-                                          color: Colors.blueGrey)),
+                                          fontFeatures: const [
+                                            FontFeature.tabularFigures()
+                                          ],
+                                          fontWeight: FontWeight.w600,
+                                          color: isCurrent
+                                              ? const Color(0xff0f766e)
+                                              : const Color(0xff8b95a8))),
                                   const SizedBox(height: 4),
-                                  Text(item['title'] as String,
+                                  Text(title,
                                       maxLines: 2,
                                       overflow: TextOverflow.ellipsis,
                                       style: const TextStyle(
-                                          fontWeight: FontWeight.w700)),
-                                  const Spacer(),
-                                  Text('约 ${item['planned_minutes'] ?? 30} 分钟',
+                                          fontSize: 13,
+                                          height: 1.25,
+                                          fontWeight: FontWeight.w700,
+                                          color: Color(0xff0c1222))),
+                                  const SizedBox(height: 4),
+                                  Text(durationText,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                       style: const TextStyle(
                                           fontSize: 11,
-                                          color: Colors.blueGrey)),
-                                ])))));
+                                          color: Color(0xff5b667a))),
+                                  const Spacer(),
+                                  if (isCurrent)
+                                    Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 7, vertical: 2),
+                                        decoration: BoxDecoration(
+                                            color: const Color(0xffe6f4f1),
+                                            borderRadius:
+                                                BorderRadius.circular(999)),
+                                        child: const Text('当前',
+                                            style: TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w700,
+                                                color: Color(0xff0f766e)))),
+                                ]))))) ;
           }));
 
   Widget _poolTask(Map<String, dynamic> item) {
@@ -386,33 +466,146 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
           onPickImage: _pickPlanImage,
           onVoiceFinal: _onVoicePlanInput));
 
-  Widget _planListOverlay(List<dynamic> planned) => _HomeOverlay(
+  Widget _planListOverlay(List<dynamic> planned) => _PlanSheetOverlay(
       title: '今日计划',
       subtitle: '已确认 · 共 ${planned.length} 项 · 你说了算',
       onClose: () => setState(() => planListOpen = false),
       child: planned.isEmpty
-          ? const Text('还没有确认计划。')
-          : ListView.separated(
-              shrinkWrap: true,
+          ? const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text('还没有确认计划。',
+                    style: TextStyle(color: Color(0xff5b667a))),
+              ),
+            )
+          : ListView.builder(
+              padding: const EdgeInsets.symmetric(vertical: 14),
               itemCount: planned.length,
-              separatorBuilder: (_, __) => const Divider(),
               itemBuilder: (_, index) {
                 final item = planned[index] as Map<String, dynamic>;
-                return ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: CircleAvatar(
-                        radius: 14,
-                        backgroundColor: const Color(0xffe6f4f1),
-                        child: Text('${index + 1}',
-                            style: const TextStyle(fontSize: 12))),
-                    title: Text(item['title'] as String),
-                    subtitle: Text('约 ${item['planned_minutes'] ?? 30} 分钟'),
+                final isCurrent = _isItemCurrent(item, index);
+                final time = _formatItemStartTime(item, index, planned);
+                final subtitle = _formatPlanItemSubtitle(item);
+                final title = item['title'] as String? ?? '计划项';
+
+                return _TimelineRow(
+                    time: time,
+                    title: title,
+                    subtitle: subtitle,
+                    isCurrent: isCurrent,
+                    isFirst: index == 0,
+                    isLast: index == planned.length - 1,
                     onTap: () => setState(() {
                           planListOpen = false;
-                          chatSubject = item['title'] as String;
+                          chatSubject = title;
                           planChatOpen = true;
                         }));
               }));
+
+  bool _isItemCurrent(Map<String, dynamic> item, int index) {
+    final status = item['status'] as String?;
+    if (status == 'active' || status == 'in_progress') {
+      return true;
+    }
+    return index == 0;
+  }
+
+  String _formatPlannedDuration(Map<String, dynamic> item) {
+    final details = (item['details'] as String?) ?? '';
+    if (details.contains('固定') || details.contains('不可移动')) {
+      return '固定 · 不可移动';
+    }
+    final mins = item['planned_minutes'] as num?;
+    if (mins != null && mins > 0) {
+      return '约 ${mins.toInt()} 分钟';
+    }
+    return '约 30 分钟';
+  }
+
+  String _formatPlanItemSubtitle(Map<String, dynamic> item) {
+    final details = item['details'] as String?;
+    final duration = _formatPlannedDuration(item);
+    if (details != null && details.trim().isNotEmpty) {
+      if (details.contains('固定') || details.contains('不可移动')) {
+        return '固定时间 · 不可移动';
+      }
+      return '$details · $duration';
+    }
+    return duration;
+  }
+
+  String _formatItemStartTime(
+      Map<String, dynamic> item, int index, List<dynamic> planned) {
+    final startAt = item['start_at'] ?? item['start_time'];
+    if (startAt is String && startAt.trim().isNotEmpty) {
+      final parsed = _extractClockTime(startAt);
+      if (parsed != null) return parsed;
+    }
+
+    var baseHour = 19;
+    var baseMinute = 0;
+
+    for (int i = 0; i < planned.length; i++) {
+      final s = (planned[i] as Map<String, dynamic>)['start_at'];
+      if (s is String && s.trim().isNotEmpty) {
+        final clock = _extractClockTime(s);
+        if (clock != null) {
+          final parts = clock.split(':');
+          if (parts.length == 2) {
+            final h = int.tryParse(parts[0]);
+            final m = int.tryParse(parts[1]);
+            if (h != null && m != null) {
+              int totalMinsBefore = 0;
+              for (int k = 0; k < i; k++) {
+                final mins = (planned[k] as Map<String, dynamic>)['planned_minutes']
+                        as num? ??
+                    30;
+                totalMinsBefore += mins.toInt();
+              }
+              final startMins = (h * 60 + m) - totalMinsBefore;
+              baseHour = (startMins ~/ 60) % 24;
+              baseMinute = startMins % 60;
+              if (baseMinute < 0) {
+                baseMinute += 60;
+                baseHour = (baseHour - 1 + 24) % 24;
+              }
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    int accumulatedMinutes = 0;
+    for (int i = 0; i < index; i++) {
+      final mins = (planned[i] as Map<String, dynamic>)['planned_minutes']
+              as num? ??
+          30;
+      accumulatedMinutes += mins.toInt();
+    }
+
+    final itemTotalMinutes =
+        (baseHour * 60 + baseMinute + accumulatedMinutes) % (24 * 60);
+    final h = (itemTotalMinutes ~/ 60).toString().padLeft(2, '0');
+    final m = (itemTotalMinutes % 60).toString().padLeft(2, '0');
+    return '$h:$m';
+  }
+
+  static String? _extractClockTime(String raw) {
+    final match = RegExp(r'(?:^|[T\s])(\d{1,2}):(\d{2})').firstMatch(raw);
+    if (match != null) {
+      final hour = match.group(1)!.padLeft(2, '0');
+      final minute = match.group(2)!.padLeft(2, '0');
+      return '$hour:$minute';
+    }
+    final dt = DateTime.tryParse(raw);
+    if (dt != null) {
+      final hour = dt.hour.toString().padLeft(2, '0');
+      final minute = dt.minute.toString().padLeft(2, '0');
+      return '$hour:$minute';
+    }
+    return null;
+  }
 
   Widget _planChatOverlay() => _HomeOverlay(
       title: '读学',
@@ -1141,5 +1334,239 @@ class _ChatBubble extends StatelessWidget {
               const SizedBox(height: 4),
               Text(text),
             ])));
+  }
+}
+
+class _PlanSheetOverlay extends StatelessWidget {
+  const _PlanSheetOverlay({
+    required this.title,
+    required this.subtitle,
+    required this.onClose,
+    required this.child,
+  });
+
+  final String title;
+  final String subtitle;
+  final VoidCallback onClose;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Positioned.fill(
+        child: ColoredBox(
+          color: const Color(0x660c1222),
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(10, 10, 10, 82),
+              child: Material(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                clipBehavior: Clip.antiAlias,
+                elevation: 10,
+                shadowColor: const Color(0x2e0c1222),
+                child: Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 12, 12),
+                      decoration: const BoxDecoration(
+                        border: Border(
+                          bottom: BorderSide(color: Color(0x1a0f172a)),
+                        ),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  title,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 16,
+                                    color: Color(0xff0c1222),
+                                    letterSpacing: -0.3,
+                                  ),
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  subtitle,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Color(0xff5b667a),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            width: 32,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              color: const Color(0xfff8fafc),
+                              border:
+                                  Border.all(color: const Color(0x1a0f172a)),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: IconButton(
+                              padding: EdgeInsets.zero,
+                              iconSize: 16,
+                              onPressed: onClose,
+                              tooltip: '关闭',
+                              icon: const Icon(Icons.close,
+                                  color: Color(0xff5b667a)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(child: child),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+}
+
+class _TimelineRow extends StatelessWidget {
+  const _TimelineRow({
+    required this.time,
+    required this.title,
+    required this.subtitle,
+    required this.isCurrent,
+    required this.isFirst,
+    required this.isLast,
+    required this.onTap,
+  });
+
+  final String time;
+  final String title;
+  final String subtitle;
+  final bool isCurrent;
+  final bool isFirst;
+  final bool isLast;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 44,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      time,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                        fontWeight: FontWeight.w600,
+                        color: isCurrent
+                            ? const Color(0xff0f766e)
+                            : const Color(0xff5b667a),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 14,
+                  child: Stack(
+                    alignment: Alignment.topCenter,
+                    children: [
+                      Positioned(
+                        top: isFirst ? 16 : 0,
+                        bottom: isLast ? null : 0,
+                        height: isLast ? 16 : null,
+                        child: Container(
+                          width: 2,
+                          color: const Color(0x1a0f172a),
+                        ),
+                      ),
+                      Positioned(
+                        top: 11,
+                        child: Container(
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            color: const Color(0xff0f766e),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 2),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xffe6f4f1),
+                                spreadRadius: isCurrent ? 4 : 2,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 6, bottom: 18),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: isCurrent
+                                ? const Color(0xff0f766e)
+                                : const Color(0xff0c1222),
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xff5b667a),
+                          ),
+                        ),
+                        if (isCurrent) ...[
+                          const SizedBox(height: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xffe6f4f1),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: const Text(
+                              '当前',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xff0f766e),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
