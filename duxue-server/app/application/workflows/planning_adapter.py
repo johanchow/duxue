@@ -99,9 +99,12 @@ class PlanningWorkflowAdapter:
                         attachment_keys=invocation.turn.get("attachment_keys", [])),
                 )
             answers = deepcopy(extracted.slot_updates)
+            accepted_answers = []
             for answer in answers:
                 slot = next((s for s in slots if s["slot_id"] == answer.get("slot_id")), None)
                 if slot and slot["field"] == "target_task_ids" and not answer.get("skip"):
+                    if not slot.get("candidates"):
+                        continue
                     names = answer.get("value")
                     names = names if isinstance(names, list) else [names]
                     values = []
@@ -122,6 +125,8 @@ class PlanningWorkflowAdapter:
                             raise HTTPException(400, "请从当前同名任务中明确选择")
                         value["task_id"] = matches[0]["id"]
                         answer["value"] = value
+                accepted_answers.append(answer)
+            answers = accepted_answers
             operations = [op.model_dump(exclude_none=True) for op in extracted.operations]
             if not operations:
                 # Old model responses remain readable without trusting their IDs.

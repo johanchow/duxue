@@ -14,6 +14,10 @@ def operate(service, ward, operations=(), answers=(), command_id='turn-1'):
     return service.apply_operations(ward.id, DAY, list(operations), answers=list(answers), command_id=command_id)
 
 
+def loop_status(draft):
+    return draft.working_state['planning_agent_loop']['status']
+
+
 def scheduled(service, ward):
     return service.save_draft(ward.id, DAY, [{'new_task': True, 'title': '数学', 'planned_minutes': 40, 'start_at': '2026-09-20T19:00:00'}])
 
@@ -31,6 +35,72 @@ def test_missing_name_candidate_preserves_duration_and_registers_once(db):
     assert [(t.title, t.planned_minutes) for t in db.query(Task)] == [('科学阅读', 20)]
     assert not draft.pending_fields
     assert not service.plan_draft_view(ward.id, draft.id)['confirm_enabled']
+
+
+def test_loop_reports_task_pool_only_when_created_without_start_time(db):
+    ward = create_ward(db)
+    service = PlanningDomainService(db)
+    draft = operate(service, ward, [{'kind': 'create', 'title': '数学', 'planned_minutes': 30}])
+    view = service.plan_draft_view(ward.id, draft.id)
+    assert loop_status(draft) == 'task_pool_changed_only'
+    assert view['planning_agent_loop']['status'] == 'task_pool_changed_only'
+    assert view['operation_results'][0]['status'] == 'applied'
+    assert view['items'][0]['title'] == '数学'
+    assert 'start_at' not in view['items'][0]
+    assert not view['confirm_enabled']
+
+
+def test_loop_reports_draft_changed_when_explicit_start_time_enters_plan(db):
+    ward = create_ward(db)
+    service = PlanningDomainService(db)
+    draft = operate(service, ward, [{
+        'kind': 'create', 'title': '数学', 'planned_minutes': 30,
+        'start_at': '2026-09-20T19:00:00',
+    }])
+    view = service.plan_draft_view(ward.id, draft.id)
+    assert loop_status(draft) == 'draft_changed'
+    assert view['planning_agent_loop']['status'] == 'draft_changed'
+    assert view['items'][0]['will_enter_plan']
+    assert view['confirm_enabled']
+
+
+def test_loop_reports_partial_success_when_independent_ops_apply_and_others_wait(db):
+    ward = create_ward(db)
+    service = PlanningDomainService(db)
+    draft = operate(service, ward, [
+        {'kind': 'create', 'title': '数学', 'planned_minutes': 30},
+        {'kind': 'create', 'title': '英语'},
+    ])
+    statuses = {result['status'] for result in draft.working_state['operation_results']}
+    assert loop_status(draft) == 'partial_success'
+    assert statuses == {'applied', 'waiting'}
+    assert db.query(Task).count() == 1
+
+
+def test_loop_reports_needs_clarification_when_no_operation_can_apply(db):
+    ward = create_ward(db)
+    service = PlanningDomainService(db)
+    draft = operate(service, ward, [{'kind': 'create', 'title': '英语'}])
+    assert loop_status(draft) == 'needs_clarification'
+    assert draft.pending_fields == ['planned_minutes']
+    assert db.query(Task).count() == 0
+
+
+def test_loop_reports_no_op_for_empty_turn_refresh(db):
+    ward = create_ward(db)
+    service = PlanningDomainService(db)
+    draft = operate(service, ward, command_id='refresh')
+    assert loop_status(draft) == 'no_op'
+    assert service.plan_draft_view(ward.id, draft.id)['planning_agent_loop']['status'] == 'no_op'
+
+
+def test_loop_reports_rejected_when_all_operations_are_rejected(db):
+    ward = create_ward(db)
+    create_task(db, ward=ward, title='数学', planned_minutes=30)
+    service = PlanningDomainService(db)
+    draft = operate(service, ward, [{'kind': 'defer', 'references': ['数学']}])
+    assert loop_status(draft) == 'rejected'
+    assert draft.working_state['operation_results'][0]['status'] == 'rejected'
 
 
 def test_content_patch_preserves_other_slots_and_detects_overlap(db):
@@ -69,7 +139,8 @@ def test_batch_invalid_target_does_not_partially_update(db):
     draft = operate(PlanningDomainService(db), ward, [{'kind': 'update', 'references': ['听力', '阅读'], 'planned_minutes': 30}])
     assert first.planned_minutes == 20
     assert second.planned_minutes == 25
-    assert draft.pending_fields
+    assert draft.pending_fields == []
+    assert draft.working_state['operation_results'][0]['status'] == 'rejected'
 
 
 def test_explicit_defer_closes_candidate_slot_without_creating_task(db):
@@ -282,7 +353,80 @@ def test_unknown_target_update_never_creates_task(db):
     service = PlanningDomainService(db)
     draft = operate(service, ward, [{'kind': 'update', 'references': ['不存在'], 'planned_minutes': 30}])
     assert db.query(Task).count() == 0
-    assert draft.pending_fields == ['target_task_ids']
+    assert draft.pending_fields == []
+    result = draft.working_state['operation_results'][0]
+    assert result['status'] == 'rejected'
+    assert result['reason'] == '未找到可修改的任务'
+    assert 'active_clarification_batch' not in draft.working_state
+
+
+def test_unknown_target_does_not_block_independent_create_operation(db):
+    ward = create_ward(db)
+    service = PlanningDomainService(db)
+    draft = operate(service, ward, [
+        {'kind': 'schedule', 'references': ['英语听力'], 'start_at': '2026-09-20T19:00:00'},
+        {'kind': 'create', 'title': '英语听力', 'planned_minutes': 30, 'start_at': '2026-09-20T19:00:00'},
+    ])
+    assert [(task.title, task.planned_minutes) for task in db.query(Task).all()] == [('英语听力', 30)]
+    assert draft.pending_fields == []
+    statuses = [result['status'] for result in draft.working_state['operation_results']]
+    assert statuses == ['rejected', 'applied']
+    assert loop_status(draft) == 'draft_changed'
+
+
+def test_adapter_ignores_legacy_empty_target_slot_when_new_operation_can_apply(db, monkeypatch):
+    from langgraph.checkpoint.memory import InMemorySaver
+
+    from app.application.commands.plan_intake import PlanIntakeResult
+    from app.application.ports.companion import RunInvocation
+    from app.application.workflows.planning_adapter import PlanningWorkflowAdapter
+    from app.infrastructure.persistence.models import AgentRun, ConversationThread
+
+    ward = create_ward(db)
+    monkeypatch.setattr('app.application.workflows.planning_adapter.planning_today', lambda current=None: DAY)
+    service = PlanningDomainService(db)
+    draft = operate(service, ward, [{'kind': 'schedule', 'references': ['英语听力'],
+                                     'start_at': '2026-09-20T19:00:00'}])
+    slot = {
+        'slot_id': 'legacy-empty-target',
+        'operation_id': 'legacy-op',
+        'field': 'target_task_ids',
+        'title': '英语听力',
+        'target': {'kind': 'operation', 'operation_id': 'legacy-op'},
+        'candidate_task_ids': [],
+        'candidates': [],
+    }
+    state = dict(draft.working_state)
+    state['active_clarification_batch'] = {'batch_id': 'legacy-batch',
+                                           'issued_draft_version': draft.version,
+                                           'slots': [slot]}
+    state['operations'] = {'legacy-op': {'kind': 'schedule', 'references': ['英语听力'],
+                                         'start_at': '2026-09-20T19:00:00',
+                                         'status': 'waiting'}}
+    draft.working_state = state
+    db.flush()
+    thread = ConversationThread(ward_id=ward.id)
+    db.add(thread)
+    db.flush()
+    run = AgentRun(thread_id=thread.id, ward_id=ward.id, agent_type='planning', run_ref='test')
+    db.add(run)
+    db.flush()
+
+    adapter = PlanningWorkflowAdapter(db, checkpointer=InMemorySaver())
+    monkeypatch.setattr('app.application.workflows.planning_adapter.PlanIntakeService.respond',
+        lambda *a, **k: PlanIntakeResult(
+            assistant_text='已添加英语听力',
+            slot_updates=[{'slot_id': 'legacy-empty-target', 'value': ['英语听力']}],
+            operations=[{'kind': 'create', 'title': '英语听力', 'planned_minutes': 30,
+                         'start_at': '2026-09-20T19:00:00'}],
+        ))
+
+    outcome = adapter.invoke(invocation=RunInvocation(run_id=run.id, thread_id=thread.id,
+        ward_id=ward.id, agent_type='planning', command_id='new-listening',
+        turn={'content': '加一个英语听力要三十分钟，从七点开始'}))
+
+    assert outcome.next_interaction['kind'] == 'plan_confirm_list'
+    assert [(task.title, task.planned_minutes) for task in db.query(Task).all()] == [('英语听力', 30)]
 
 
 def test_explicit_bound_overlapping_times_remain_visible_as_conflict(db):

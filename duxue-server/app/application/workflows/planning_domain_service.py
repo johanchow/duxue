@@ -459,6 +459,7 @@ class PlanningDomainService(PlanningOperations):
                 "pending_fields": sorted(pending), "conflicts": conflicts,
                 "clarification_batch": batch,
                 "operation_results": state.get("operation_results", []),
+                "planning_agent_loop": state.get("planning_agent_loop", {}),
                 "is_revision": bool(schedule), "proposed_task_changes": state.get("proposed_task_changes", {})}
 
     def confirm(self, ward_id: str, draft_id: str, expected_draft_version: int | None = None) -> DailySchedule:

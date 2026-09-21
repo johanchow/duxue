@@ -45,9 +45,23 @@ class PlanningOperations:
         answers = answers or []
         if answers and batch.get('issued_draft_version') != draft.version:
             raise HTTPException(409, '澄清问题已过期，请刷新')
-        remaining_slots = []
+        invalid_slot_ids = set()
         answer_results = []
-        supplied = {a.get('slot_id'): a for a in answers}
+        valid_slots = []
+        for slot in slots:
+            if (slot.get('field') == 'target_task_ids'
+                    and not slot.get('candidate_task_ids') and not slot.get('candidates')):
+                invalid_slot_ids.add(slot.get('slot_id'))
+                op_id = slot.get('operation_id')
+                if op_id in pending_ops:
+                    pending_ops[op_id].update(status='rejected', reason='未找到可修改的任务')
+                    answer_results.append({'operation_id': op_id, 'status': 'rejected',
+                                           'reason': pending_ops[op_id]['reason']})
+                continue
+            valid_slots.append(slot)
+        slots = valid_slots
+        remaining_slots = []
+        supplied = {a.get('slot_id'): a for a in answers if a.get('slot_id') not in invalid_slot_ids}
         if set(supplied) - {s['slot_id'] for s in slots}:
             raise HTTPException(409, '澄清目标不存在或已失效')
         # Legacy duration batches are handled by the same authority-checked path.
@@ -183,9 +197,29 @@ class PlanningOperations:
             if kind != 'create' and not ids:
                 refs = op.get('references') or []
                 matches = [TaskReferenceResolver.resolve(ref, candidates) for ref in refs]
-                if not refs or any(len(m) != 1 for m in matches):
+                if not refs:
+                    choices = [c['id'] for c in candidates]
+                    if not choices:
+                        op.update(status='rejected', reason='未找到可修改的任务')
+                        results.append({'operation_id': op_id, 'status': 'rejected',
+                                        'reason': op['reason']})
+                        continue
+                    ask(op_id, op, 'target_task_ids', choices)
+                    continue
+                if any(len(m) == 0 for m in matches):
+                    op.update(status='rejected', reason='未找到可修改的任务')
+                    results.append({'operation_id': op_id, 'status': 'rejected',
+                                    'reason': op['reason']})
+                    continue
+                if any(len(m) != 1 for m in matches):
                     choices = [c['id'] for match in matches for c in match] or [c['id'] for c in candidates]
-                    ask(op_id, op, 'target_task_ids', list(dict.fromkeys(choices)))
+                    choices = list(dict.fromkeys(choices))
+                    if not choices:
+                        op.update(status='rejected', reason='未找到可修改的任务')
+                        results.append({'operation_id': op_id, 'status': 'rejected',
+                                        'reason': op['reason']})
+                        continue
+                    ask(op_id, op, 'target_task_ids', choices)
                     continue
                 ids = list(dict.fromkeys(m[0]['id'] for m in matches))
                 op['task_ids'] = ids
@@ -308,6 +342,13 @@ class PlanningOperations:
             state.pop('active_clarification_batch', None)
         state['task_versions'] = {t.id: t.version for t in tasks.values() if t.id in items}
         pending = {s['field'] for s in slots}
+        state['planning_agent_loop'] = self._loop_outcome(
+            operations=operations,
+            answers=answers,
+            operation_results=state['operation_results'],
+            pending_fields=pending,
+            items=list(items.values()),
+        )
         draft = self._persist_review(draft, self._draft_items_for_pool(ward_id, list(items.values())), pending, state)
         return draft
 
@@ -315,3 +356,36 @@ class PlanningOperations:
     def _task_item(task):
         return {'assignment_id': task.id, 'title': task.title, 'planned_minutes': task.planned_minutes,
                 'new_task': False, 'details': task.details}
+
+    @staticmethod
+    def _loop_outcome(*, operations, answers, operation_results, pending_fields, items):
+        terminal = {'applied', 'deferred', 'rejected'}
+        statuses = [result.get('status') for result in operation_results]
+        has_terminal = any(status in terminal for status in statuses)
+        has_applied_change = any(status in {'applied', 'deferred'} for status in statuses)
+        if pending_fields and has_terminal:
+            status = 'partial_success'
+        elif pending_fields:
+            status = 'needs_clarification'
+        elif statuses and all(status == 'rejected' for status in statuses):
+            status = 'rejected'
+        elif any(status == 'waiting' for status in statuses):
+            status = 'needs_clarification'
+        elif not operations and not answers and not statuses:
+            status = 'no_op'
+        elif has_applied_change and any(
+            (item.get('schedule_requested') and (
+                item.get('start_at') or item.get('after_assignment_id') or item.get('before_assignment_id')
+            ))
+            for item in items
+        ):
+            status = 'draft_changed'
+        elif has_applied_change:
+            status = 'task_pool_changed_only'
+        else:
+            status = 'no_op'
+        return {
+            'status': status,
+            'pending_fields': sorted(pending_fields),
+            'results': operation_results,
+        }
