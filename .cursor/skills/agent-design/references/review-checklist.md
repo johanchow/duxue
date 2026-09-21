@@ -21,6 +21,8 @@ Mark every item pass, fail, or inapplicable with a reason.
 ## Tools and collaboration
 
 - [ ] Each tool has least privilege, authorization, typed parameters, safe errors, timeouts, and traceability.
+- [ ] Tool result enums distinguish answerable ambiguity from no-match, not-editable/rejected, stale/conflict, and execution failure where those states can occur.
+- [ ] Clarification or choice prompts are issued only with a concrete missing field or a non-empty authorized candidate set.
 - [ ] Material side effects are idempotent and use approval or propose/confirm controls where warranted.
 - [ ] A material action capability binds actor, operation, target/version, expiry, and idempotency.
 - [ ] Multi-agent use has a concrete boundary and evaluation rationale; a simpler single-agent design was considered.
