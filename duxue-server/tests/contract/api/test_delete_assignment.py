@@ -16,7 +16,7 @@ def _ward_headers(ward):
     return {"Authorization": f"Bearer {token}"}
 
 
-def test_ward_delete_removes_task_and_schedule_item(client, db):
+def test_ward_delete_rejects_confirmed_schedule_item_without_review(client, db):
     ward = create_ward(db, display_name="小宇", session_version=1)
     schedule = create_daily_schedule(
         db, ward=ward, schedule_date=date(2026, 9, 18), status="confirmed")
@@ -30,13 +30,13 @@ def test_ward_delete_removes_task_and_schedule_item(client, db):
     response = client.delete(
         f"/wards/{ward.id}/assignments/{task.id}", headers=_ward_headers(ward))
 
-    assert response.status_code == 204
-    assert db.get(Task, task.id) is None
+    assert response.status_code == 409
+    assert db.get(Task, task.id) is not None
     remaining = db.get(DailySchedule, schedule.id)
-    assert remaining.items == []
+    assert remaining.items[0]["assignment_id"] == task.id
     listed = client.get(f"/wards/{ward.id}/assignments", headers=_ward_headers(ward))
     assert listed.status_code == 200
-    assert listed.json() == []
+    assert [item["id"] for item in listed.json()] == [task.id]
 
 
 def test_delete_rejects_task_with_study_history(client, db):

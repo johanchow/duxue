@@ -116,6 +116,51 @@ class _WardHomeApi extends ApiClient {
       const {'thread_version': 1, 'messages': []};
 }
 
+class _MultiPlanWardHomeApi extends _WardHomeApi {
+  @override
+  Future<Map<String, dynamic>> plan(String wardId, DateTime day) async => {
+        'status': 'confirmed',
+        'items': [
+          {
+            'id': 'plan-1',
+            'assignment_id': 'planned-1',
+            'title': '数学练习册 P23–25',
+            'planned_minutes': 40,
+            'start_at': '2026-09-20T19:00:00',
+            'details': '学校作业',
+            'status': 'active',
+            'session': null,
+          },
+          {
+            'id': 'plan-2',
+            'assignment_id': 'planned-2',
+            'title': '休息',
+            'planned_minutes': 10,
+            'status': 'pending',
+            'session': null,
+          },
+          {
+            'id': 'plan-3',
+            'assignment_id': 'planned-3',
+            'title': '英语朗读三遍',
+            'planned_minutes': 20,
+            'details': '学校作业',
+            'status': 'pending',
+            'session': null,
+          },
+          {
+            'id': 'plan-4',
+            'assignment_id': 'planned-4',
+            'title': '网课',
+            'planned_minutes': 30,
+            'details': '固定时间 · 不可移动',
+            'status': 'pending',
+            'session': null,
+          },
+        ],
+      };
+}
+
 class _FakeVoice implements VoiceTranscription {
   late TranscriptHandler onPartial;
   late TranscriptHandler onFinal;
@@ -184,10 +229,62 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('今日计划'), findsOneWidget);
     expect(find.text('已确认 · 共 1 项 · 你说了算'), findsOneWidget);
+    expect(find.text('19:00'), findsWidgets);
+    expect(find.text('约 30 分钟'), findsWidgets);
 
     await tester.tap(find.text('数学练习册').last);
     await tester.pumpAndSettle();
     expect(find.text('语境：关于「数学练习册」——按住下方再说。'), findsOneWidget);
+  });
+
+  testWidgets(
+      'V3 home displays start times, planned durations, and timeline styles aligned with mockup',
+      (tester) async {
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiProvider.overrideWithValue(_MultiPlanWardHomeApi())],
+      child: const MaterialApp(home: WardDayPage(wardId: 'ward-1')),
+    ));
+    await tester.pumpAndSettle();
+
+    // 检查首页横滑计划轨中的开始时间与预计时长
+    expect(find.text('19:00'), findsOneWidget);
+    expect(find.text('数学练习册 P23–25'), findsOneWidget);
+    expect(find.text('约 40 分钟'), findsOneWidget);
+    expect(find.text('当前'), findsOneWidget);
+
+    expect(find.text('19:40'), findsOneWidget);
+    expect(find.text('休息'), findsOneWidget);
+    expect(find.text('约 10 分钟'), findsOneWidget);
+
+    expect(find.text('19:50'), findsOneWidget);
+    expect(find.text('英语朗读三遍'), findsOneWidget);
+    expect(find.text('约 20 分钟'), findsOneWidget);
+
+    expect(find.text('20:10'), findsOneWidget);
+    expect(find.text('网课'), findsOneWidget);
+    expect(find.text('固定 · 不可移动'), findsOneWidget);
+
+    // 点击「全部」打开完整时间轴
+    await tester.tap(find.text('全部'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('今日计划'), findsOneWidget);
+    expect(find.text('已确认 · 共 4 项 · 你说了算'), findsOneWidget);
+
+    // 时间轴中的时间列与时长详情
+    expect(find.text('19:00'), findsWidgets);
+    expect(find.text('学校作业 · 约 40 分钟'), findsOneWidget);
+    expect(find.text('19:40'), findsWidgets);
+    expect(find.text('约 10 分钟'), findsWidgets);
+    expect(find.text('19:50'), findsWidgets);
+    expect(find.text('学校作业 · 约 20 分钟'), findsOneWidget);
+    expect(find.text('20:10'), findsWidgets);
+    expect(find.text('固定时间 · 不可移动'), findsOneWidget);
+
+    // 点击时间轴中第二项（休息）进入对应任务上下文对话
+    await tester.tap(find.text('休息').last);
+    await tester.pumpAndSettle();
+    expect(find.text('语境：关于「休息」——按住下方再说。'), findsOneWidget);
   });
 
   testWidgets('V3 home deletes a task-pool item when swiped', (tester) async {
