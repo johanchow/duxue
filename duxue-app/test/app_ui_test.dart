@@ -13,6 +13,12 @@ class _WardHomeApi extends ApiClient {
   _WardHomeApi()
       : super(baseUrl: 'http://localhost', tokens: const TokenStorage());
   var startedAssignment = false;
+  final deleted = <String>[];
+
+  @override
+  Future<void> deleteAssignment(String wardId, String assignmentId) async {
+    deleted.add(assignmentId);
+  }
 
   @override
   Future<List<dynamic>> assignments(String wardId) async => [
@@ -184,10 +190,10 @@ void main() {
     expect(find.text('语境：关于「数学练习册」——按住下方再说。'), findsOneWidget);
   });
 
-  testWidgets('V3 home removes a task-pool item locally when swiped',
-      (tester) async {
+  testWidgets('V3 home deletes a task-pool item when swiped', (tester) async {
+    final api = _WardHomeApi();
     await tester.pumpWidget(ProviderScope(
-      overrides: [apiProvider.overrideWithValue(_WardHomeApi())],
+      overrides: [apiProvider.overrideWithValue(api)],
       child: const MaterialApp(home: WardDayPage(wardId: 'ward-1')),
     ));
     await tester.pumpAndSettle();
@@ -196,6 +202,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('观察蚂蚁路线'), findsNothing);
     expect(find.text('今天没有待定项了。想加任务，走下方统一入口。'), findsOneWidget);
+    expect(api.deleted, ['pool-1']);
   });
 
   testWidgets(

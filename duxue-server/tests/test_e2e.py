@@ -208,8 +208,7 @@ class EndToEndTest(unittest.TestCase):
         assignment_id = self.request(
             "GET", f"/wards/{ward}/assignments", token=ward_token
         ).json()[0]["id"]
-        self.assertEqual(
-            self.request(
+        saved_plan = self.request(
                 "PUT",
                 f"/wards/{ward}/plans/{day}",
                 token=ward_token,
@@ -220,15 +219,17 @@ class EndToEndTest(unittest.TestCase):
                             "assignment_id": assignment_id,
                             "title": "数学作业",
                             "planned_minutes": 30,
+                            "start_at": f"{day}T19:00:00",
                         }
                     ],
                 },
-            ).status_code,
-            200,
-        )
+            )
+        self.assertEqual(saved_plan.status_code, 200)
         self.assertEqual(
             self.request(
-                "POST", f"/wards/{ward}/plans/{day}/confirm", token=ward_token
+                "POST", f"/wards/{ward}/plans/{day}/confirm", token=ward_token,
+                json={"draft_id": saved_plan.json()["draft_id"],
+                      "expected_draft_version": saved_plan.json()["object_version"]}
             ).status_code,
             200,
         )
@@ -339,8 +340,7 @@ class EndToEndTest(unittest.TestCase):
             "POST", "/ward-auth/bind", json={"invite_code": invite["invite_code"]}
         ).json()["access_token"]
         day = datetime.now(timezone.utc).date().isoformat()
-        self.assertEqual(
-            self.request(
+        saved_plan = self.request(
                 "PUT",
                 f"/wards/{ward}/plans/{day}",
                 token=ward_token,
@@ -351,15 +351,19 @@ class EndToEndTest(unittest.TestCase):
                             "assignment_id": first,
                             "title": "计划内任务",
                             "planned_minutes": 30,
-                        }
+                            "start_at": f"{day}T19:00:00",
+                        },
+                        {"assignment_id": second, "title": "任务池任务", "planned_minutes": 20,
+                         "unscheduled_reason": "下次安排"}
                     ],
                 },
-            ).status_code,
-            200,
-        )
+            )
+        self.assertEqual(saved_plan.status_code, 200)
         self.assertEqual(
             self.request(
-                "POST", f"/wards/{ward}/plans/{day}/confirm", token=ward_token
+                "POST", f"/wards/{ward}/plans/{day}/confirm", token=ward_token,
+                json={"draft_id": saved_plan.json()["draft_id"],
+                      "expected_draft_version": saved_plan.json()["object_version"]}
             ).status_code,
             200,
         )

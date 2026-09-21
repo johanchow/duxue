@@ -336,10 +336,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
                     color: Colors.red.shade700,
                     borderRadius: BorderRadius.circular(16)),
                 child: const Icon(Icons.delete_outline, color: Colors.white)),
-            onDismissed: (_) {
-              setState(() => removedPoolTaskIds.add(item['id'] as String));
-              showMessage(context, '「${item['title']}」已从任务池移除');
-            },
+            onDismissed: (_) => _removePoolTask(item),
             child: AppCard(
                 padding: EdgeInsets.zero,
                 onTap: () => _taskTapped(item, false),
@@ -598,6 +595,26 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
           child: Text('退出只会移除这台设备的登录凭据，不会删除学习记录或家庭关联。',
               style: TextStyle(fontSize: 12, color: Colors.blueGrey))),
     ]);
+  }
+
+  Future<void> _removePoolTask(Map<String, dynamic> item) async {
+    final id = item['id'] as String;
+    setState(() => removedPoolTaskIds.add(id));
+    try {
+      await ref.read(apiProvider).deleteAssignment(widget.wardId, id);
+      if (!mounted) return;
+      setState(() => tasks.removeWhere((row) => row['id'] == id));
+      showMessage(context, '「${item['title']}」已从任务池移除');
+    } on DioException catch (error) {
+      if (!mounted) return;
+      setState(() => removedPoolTaskIds.remove(id));
+      final detail = error.response?.data;
+      final message = detail is Map && detail['detail'] is String
+          ? detail['detail'] as String
+          : '删除失败，请稍后重试';
+      showMessage(context, message);
+      await _load();
+    }
   }
 
   Future<void> _load() async {

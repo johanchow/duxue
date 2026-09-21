@@ -70,6 +70,7 @@ erDiagram
     user_wards ||--o{ devices : "拥有采集设备"
     user_wards ||--o{ tasks : "任务清单"
     user_wards ||--o{ daily_schedules : "每日计划"
+    user_wards ||--o{ plan_drafts : "计划草稿与修订"
     user_wards ||--o{ tutoring_sessions : "伴学答疑"
     user_wards ||--o{ self_reviews : "主观自评"
     user_wards ||--o{ reports : "日报"
@@ -266,6 +267,7 @@ erDiagram
         uuid id PK
         uuid ward_id FK
         uuid schedule_id FK "已确认归入的每日计划(可为空；为空时在任务池)"
+        int version "乐观并发版本"
         string title "任务名称"
         text details "任务补充说明"
         date due_date "可选截止日期"
@@ -281,7 +283,24 @@ erDiagram
         uuid ward_id FK
         date schedule_date UK "排期所属日期(单学生单日唯一)"
         string status "draft | confirmed"
+        int version "正式日程版本"
+        jsonb items "当前确认的时间槽快照"
+        jsonb history "历次正式版本快照"
         timestamp confirmed_at "Ward最终确认时间"
+    }
+
+    plan_drafts {
+        uuid id PK
+        uuid ward_id FK
+        date plan_date "排期所属本地日期"
+        int base_schedule_version "草稿基于的正式日程版本"
+        jsonb items "审阅中的任务与时间槽"
+        jsonb pending_fields "尚待补充字段"
+        jsonb working_state "操作、澄清批次与Task版本"
+        string status "active | confirmed"
+        int version "乐观并发版本"
+        timestamp created_at
+        timestamp updated_at
     }
 
     frames {
@@ -566,6 +585,10 @@ CREATE UNIQUE INDEX uq_derived_signal_identity ON derived_signals(ward_id, signa
 CREATE UNIQUE INDEX uq_derived_signal_event_role ON derived_signal_events(derived_signal_id, learning_event_id, role);
 CREATE INDEX idx_derived_signal_events_event ON derived_signal_events(learning_event_id);
 CREATE INDEX idx_devices_heartbeat ON devices(status, last_heartbeat_at);
+
+-- 4. Planning 并发与修订：同一 Ward/日期只允许一个活动草稿，已确认草稿作为历史保留
+CREATE UNIQUE INDEX uq_daily_schedules_ward_date ON daily_schedules(ward_id, schedule_date);
+CREATE UNIQUE INDEX uq_active_plan_draft_ward_date ON plan_drafts(ward_id, plan_date) WHERE status = 'active';
 ```
 
 `companion_messages` 是 Application 维护的 transcript journal store，而非任何 Aggregate 的表；

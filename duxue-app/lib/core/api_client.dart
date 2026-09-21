@@ -445,6 +445,8 @@ class ApiClient {
 
   Future<List<dynamic>> assignments(String wardId) async =>
       (await dio.get('/wards/$wardId/assignments')).data as List<dynamic>;
+  Future<void> deleteAssignment(String wardId, String assignmentId) =>
+      dio.delete('/wards/$wardId/assignments/$assignmentId');
   Future<Map<String, dynamic>> savePlan(String wardId, DateTime day,
           List<Map<String, dynamic>> items) async =>
       Map<String, dynamic>.from((await dio.put(

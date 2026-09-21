@@ -37,6 +37,64 @@ Do not enter the graph/runtime if preflight fails. Return a defined conflict or
 recovery outcome instead. Specify whether a waiting run may cross a time or
 policy boundary, and whether it must expire, migrate, or restart.
 
+## Workflow diagram and node table
+
+Include a top-level workflow diagram for any stateful workflow or hybrid. The
+diagram should show only durable stages, waiting points, terminal states, and
+allowed transitions. Do not mix in every internal validation branch, database
+write, version check, or tool call as if it were a workflow state. Put internal
+agent/tool loops in a separate diagram when they materially affect behavior.
+
+Use a stable notation such as Mermaid:
+
+```mermaid
+flowchart TD
+    A[LoadContext] --> B[AgentOrDecisionNode]
+    B -->|needs_input| C[WaitForInput]
+    B -->|ready_for_review| D[Review]
+    D -->|revise| B
+    D -->|approve| E[Commit]
+    E -->|conflict| D
+    E -->|committed| F[Done]
+```
+
+For hybrid designs, explicitly show which node contains the bounded agent loop,
+then add a second small diagram for that loop:
+
+```mermaid
+flowchart TD
+    A[Observation + context] --> B[Select allowed tool/action]
+    B --> C[Execute through runtime]
+    C --> D[Structured observation]
+    D --> E{Exit condition met?}
+    E -->|no| B
+    E -->|yes| F[Return typed outcome]
+```
+
+The diagram is not the contract. Follow it with a node table that identifies
+authority, AI involvement, exit conditions, and allowed tools/calls. Use this
+table as the runtime permission boundary:
+
+| Workflow node | AI-driven? | Loop / wait type | Satisfying exit condition | Allowed tools/calls | Must not do |
+|---|---|---|---|---|---|
+| `LoadContext` | no | deterministic step | authoritative context and scope loaded, or typed technical failure | read-only queries | infer missing facts from transcript |
+| `AgentOrDecisionNode` | yes/no | bounded loop or single model call | typed outcome such as `changed`, `needs_input`, `no_op`, `rejected`, `tool_error`, or `budget_exhausted` | stage-scoped tools only | create trusted IDs/facts or bypass validation |
+| `WaitForInput` | no | actor wait state | valid response, cancellation, expiry, or new input routed to the right node | slot/capability validation, read-only context | silently treat ambiguous input as approval |
+| `Review` | no unless explicitly justified | actor wait state | revise, approve, cancel, expire, or conflict refresh | render/read-only calls and validation | perform material writes or infer approval |
+| `Commit` | no | deterministic transaction | committed, stale/conflict, rejected, unknown-timeout, or retryable failure | one governed use case / side-effect call | re-run semantic interpretation or broaden scope |
+| `Done` | no | terminal state | committed result returned idempotently | authoritative read of result | mutate closed workflow state |
+
+For each row, define all possible outcomes, not just the happy path. If a node
+is AI-driven, define the deterministic runtime validator and budgets in the
+design, and also apply the bounded-loop reference. If a node is not AI-driven,
+the model may not decide its transition or material result; at most it may
+produce copy that is derived from already-validated facts.
+
+Keep the table generic and operational. Prefer tool categories such as
+`Query:*`, `Command:*`, `Renderer:*`, and `UseCase:*` when a project uses mixed
+tool types. A command or use case that performs durable writes should normally
+appear only in the node that owns that write.
+
 ## Approval and resumable actions
 
 Use an issued capability for a material action. In addition to the general

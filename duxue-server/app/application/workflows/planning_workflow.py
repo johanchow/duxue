@@ -6,6 +6,8 @@ from typing import Literal, TypedDict
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
+from app.infrastructure.persistence.models import PlanDraft
+
 from .planning_domain_service import PlanningDomainService
 
 
@@ -17,18 +19,22 @@ class PlanningState(TypedDict, total=False):
     draft_id: str
     ready_for_confirmation: bool
     outcome: dict
+    prepared_draft_id: str
 
 
 def build_planning_graph(service: PlanningDomainService):
     """A bounded HITL graph with a write-free confirmation resume node."""
 
     def prepare_review(state: PlanningState) -> dict:
-        draft = service.save_draft(
-            state["ward_id"],
-            date.fromisoformat(state["plan_date"]),
-            state["items"],
-            state.get("pending_fields", []),
-        )
+        if state.get("prepared_draft_id"):
+            draft = service.db.get(PlanDraft, state["prepared_draft_id"])
+            if draft is None or draft.ward_id != state["ward_id"]:
+                raise ValueError("invalid prepared draft")
+        else:
+            draft = service.save_draft(
+                state["ward_id"], date.fromisoformat(state["plan_date"]),
+                state["items"], state.get("pending_fields", []),
+            )
         if draft.pending_fields:
             return {
                 "draft_id": draft.id,
@@ -53,7 +59,8 @@ def build_planning_graph(service: PlanningDomainService):
             return {"outcome": {"status": "waiting_for_ward"}}
         schedule = service.confirm(state["ward_id"], state["draft_id"], command.get("expected_draft_version"))
         return {
-            "outcome": {"status": "confirmed", "schedule_id": schedule.id},
+            "outcome": {"status": "confirmed", "schedule_id": schedule.id,
+                        "schedule_version": (service.db.get(PlanDraft, state["draft_id"]).working_state or {}).get("confirmed_schedule_version", schedule.version)},
         }
 
     graph = StateGraph(PlanningState)

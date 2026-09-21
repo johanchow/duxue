@@ -347,7 +347,8 @@ class MemoryFacadeTest(unittest.TestCase):
         first = service.confirm(self.ward_id, draft.id)
         second = service.confirm(self.ward_id, draft.id)
         self.assertEqual(first.id, second.id)
-        outbox = self.db.query(OutboxEvent).one()
+        outbox = self.db.query(OutboxEvent).filter_by(event_type="LearningFactRecorded.v1").one()
+        self.assertEqual(self.db.query(OutboxEvent).filter_by(event_type="PlanConfirmed.v1").count(), 1)
         self.assertEqual(outbox.event_type, "LearningFactRecorded.v1")
         self.assertEqual(outbox.payload["schema_version"], "LearningFactRecorded.v1")
 

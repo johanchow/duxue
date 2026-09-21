@@ -1,25 +1,30 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from copy import deepcopy
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
+from fastapi import HTTPException
 from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.types import Command
 from sqlalchemy.orm import Session
 
+from app.application.commands.memory import SqlAlchemyMemoryFacade
+from app.application.commands.plan_intake import PlanIntakeInput, PlanIntakeService
+from app.application.ports.companion import RunInvocation, WorkflowOutcome
+from app.application.queries.context_builder import ContextBuilder
 from app.application.workflows.planning_domain_service import PlanningDomainService
 from app.application.workflows.planning_workflow import build_planning_graph
 from app.bootstrap.settings import settings
-from app.application.commands.memory import SqlAlchemyMemoryFacade
-from app.infrastructure.persistence.models import AgentRun, PlanDraft, Task, Ward
-from app.application.commands.plan_intake import PlanIntakeInput, PlanIntakeService
-from app.application.queries.context_builder import ContextBuilder
-from app.application.ports.companion import RunInvocation, WorkflowOutcome
 from app.contexts.companion.domain.policy import PolicyRegistry
+from app.contexts.planning.domain.scheduling import TaskReferenceResolver
 from app.infrastructure.ai.model_gateway import ModelGatewayError, QwenAgentModelGateway
-from app.infrastructure.observability.telemetry import planning_stage_span, record_llm_fallback
-
+from app.infrastructure.observability.telemetry import (
+    planning_stage_span,
+    record_llm_fallback,
+)
+from app.infrastructure.persistence.models import AgentRun, PlanDraft, Task, Ward
 
 _PLANNING_TIME_ZONE = ZoneInfo("Asia/Shanghai")
 
@@ -33,11 +38,10 @@ def planning_today(current: datetime | None = None):
 @contextmanager
 def _postgres_checkpointer():
     url = settings.database_url.replace("postgresql+psycopg://", "postgresql://", 1)
-    with planning_stage_span("checkpointer_connect"):
-        with PostgresSaver.from_conn_string(url) as saver:
-            with planning_stage_span("checkpointer_setup"):
-                saver.setup()
-            yield saver
+    with planning_stage_span("checkpointer_connect"), PostgresSaver.from_conn_string(url) as saver:
+        with planning_stage_span("checkpointer_setup"):
+            saver.setup()
+        yield saver
 
 
 class PlanningWorkflowAdapter:
@@ -67,79 +71,89 @@ class PlanningWorkflowAdapter:
         assistant_text = None
         pending_fields: list[str] = []
         service = PlanningDomainService(self.db)
-        # A slot_id form is protocol data, not language; it may bypass LLM.
-        # It still enters the review graph below so confirm_plan always has a
-        # corresponding interrupt checkpoint.
+        prepared_draft_id = None
         if not confirm and structured.get("command") == "clarify_reply":
             payload = structured.get("payload") or {}
-            resolved = service.resolve_duration_clarification(
-                ward_id=run.ward_id, plan_date=planning_today(),
-                answers=payload.get("answers"),
-            )
-            if resolved is not None:
-                draft, _ = resolved
-                items, pending_fields = list(draft.items), list(draft.pending_fields)
-                assistant_text = "已记录补充的信息。"
-        if not confirm and items is None:
+            draft = service.apply_operations(run.ward_id, planning_today(), [],
+                answers=payload.get("answers") or [], command_id=invocation.command_id)
+            items, pending_fields = draft.items, draft.pending_fields
+            prepared_draft_id = draft.id
+            assistant_text = "已记录补充的信息。"
+        elif not confirm and items is None:
             ward = self.db.get(Ward, run.ward_id)
             tasks = self.db.query(Task).filter_by(ward_id=run.ward_id).filter(Task.status != "completed").all()
-            active_draft = self.db.query(PlanDraft).filter_by(
-                ward_id=run.ward_id,
-                plan_date=planning_today(),
-                status="active",
-            ).one_or_none()
+            active_draft = service.active_draft(run.ward_id, planning_today())
+            slots = deepcopy(((active_draft.working_state or {}).get("active_clarification_batch") or {}).get("slots", [])) if active_draft else []
+            # Only slot IDs are model-visible capabilities; Task IDs are resolved
+            # by trusted code from candidate names, including multiselect replies.
+            model_slots = [{"slot_id": slot["slot_id"], "field": slot["field"], "title": slot.get("title"),
+                            "candidates": [c["title"] for c in slot.get("candidates", [])],
+                            "choices": slot.get("choices", []), "question": slot.get("question")} for slot in slots]
             with planning_stage_span("plan_intake", run_id=run.id):
                 extracted = PlanIntakeService().respond(
                     ward={"id": ward.id, "display_name": ward.display_name, "grade_stage": ward.grade_stage},
-                    tasks=[{"title": task.title, "details": task.details} for task in tasks],
-                    request=PlanIntakeInput(
-                        content=invocation.turn["content"],
-                        draft_items=active_draft.items if active_draft else [],
-                        clarification_slots=((active_draft.working_state or {}).get("active_clarification_batch") or {}).get("slots", []) if active_draft else [],
-                        attachment_keys=invocation.turn.get("attachment_keys", []),
-                    ),
+                    tasks=[{"title": task.title, "details": task.details, "planned_minutes": task.planned_minutes,
+                            "scheduled": bool(task.schedule_id)} for task in tasks],
+                    request=PlanIntakeInput(content=invocation.turn.get("content", ""),
+                        draft_items=active_draft.items if active_draft else [], clarification_slots=model_slots,
+                        attachment_keys=invocation.turn.get("attachment_keys", [])),
                 )
-            if extracted.slot_updates:
-                resolved = service.resolve_duration_clarification(
-                    ward_id=run.ward_id, plan_date=planning_today(),
-                    answers=extracted.slot_updates,
-                )
-                if resolved is not None:
-                    active_draft, _ = resolved
-            items = [item.model_dump(mode="json") for item in extracted.items] or (active_draft.items if active_draft else [])
+            answers = deepcopy(extracted.slot_updates)
+            accepted_answers = []
+            for answer in answers:
+                slot = next((s for s in slots if s["slot_id"] == answer.get("slot_id")), None)
+                if slot and slot["field"] == "target_task_ids" and not answer.get("skip"):
+                    if not slot.get("candidates"):
+                        continue
+                    names = answer.get("value")
+                    names = names if isinstance(names, list) else [names]
+                    values = []
+                    for name in names:
+                        matches = [c for c in slot.get("candidates", []) if c["title"] == name]
+                        if len(matches) != 1:
+                            raise HTTPException(400, "请从当前候选名称中明确选择任务")
+                        values.append(matches[0]["id"])
+                    answer["value"] = values
+                if slot and slot["field"] == "title_conflict" and not answer.get("skip"):
+                    value = answer.get("value")
+                    if isinstance(value, dict) and value.get("action") == "use_existing" and not value.get("task_id"):
+                        title = value.get("title") or value.get("task_title")
+                        matches = [candidate for candidate in slot.get("candidates", [])
+                                   if TaskReferenceResolver.normalise(candidate["title"])
+                                   == TaskReferenceResolver.normalise(title)]
+                        if len(matches) != 1:
+                            raise HTTPException(400, "请从当前同名任务中明确选择")
+                        value["task_id"] = matches[0]["id"]
+                        answer["value"] = value
+                accepted_answers.append(answer)
+            answers = accepted_answers
+            operations = [op.model_dump(exclude_none=True) for op in extracted.operations]
+            if not operations:
+                # Old model responses remain readable without trusting their IDs.
+                candidates = [{"id": t.id, "title": t.title} for t in tasks]
+                for item in extracted.items:
+                    raw = item.model_dump(exclude_none=True)
+                    ref = raw.get("task_reference") or raw.get("title")
+                    existing = TaskReferenceResolver.resolve(ref, candidates)
+                    operation = {k: v for k, v in raw.items() if k in {
+                        "title", "planned_minutes", "start_at", "after_task_reference", "before_task_reference"}}
+                    if existing or raw.get("task_reference"):
+                        operation.update(kind="update", references=[ref])
+                        operation.pop("title", None)
+                    else:
+                        operation["kind"] = "create"
+                    operations.append(operation)
+            draft = service.apply_operations(run.ward_id, planning_today(), operations,
+                answers=answers, command_id=invocation.command_id)
+            items, pending_fields = draft.items, draft.pending_fields
+            prepared_draft_id = draft.id
             assistant_text = extracted.assistant_text
-            if extracted.clarification_required:
-                pending_fields.append("planned_minutes")
-            # The intake model may correctly handle a time statement without
-            # restating the unresolved duration candidates.  Keep that batch
-            # pending and let its targets survive this scheduling-only turn.
-            if active_draft and (active_draft.working_state or {}).get("active_clarification_batch"):
-                pending_fields.append("planned_minutes")
         elif not confirm:
-            items = items or []
+            items, target_pending = service.resolve_task_references(
+                run.ward_id, items or [], trust_explicit_ids=True)
+            pending_fields = sorted(target_pending)
             if any(item.get("planned_minutes") is None for item in items):
                 pending_fields.append("planned_minutes")
-                assistant_text = "还需要补充每项任务的预计时长。"
-        if not confirm:
-            # Bind references before register_tasks.  Extracted model output is
-            # never trusted to select an ID; legacy planning_items may retain
-            # an already-authorized explicit ID for compatibility.
-            items, target_pending = PlanningDomainService(self.db).resolve_task_references(
-                run.ward_id, items or [], trust_explicit_ids=invocation.turn.get("planning_items") is not None,
-            )
-            pending_fields.extend(sorted(target_pending))
-            current_draft = self.db.query(PlanDraft).filter_by(
-                ward_id=run.ward_id, plan_date=planning_today(), status="active",
-            ).one_or_none()
-            has_duration_batch = bool(
-                current_draft and (current_draft.working_state or {}).get("active_clarification_batch")
-            )
-            # The LLM may emit a schedule item with duration=null and resolve
-            # that exact duration in slot_updates in the same response.  The
-            # post-resolution state, not the pre-resolution model flag, is
-            # authoritative.
-            if not has_duration_batch and not any(item.get("planned_minutes") is None for item in items):
-                pending_fields = [field for field in pending_fields if field != "planned_minutes"]
         model_guidance, model_fallback = None, False
         if not confirm and not pending_fields:
             try:
@@ -155,12 +169,20 @@ class PlanningWorkflowAdapter:
                 record_llm_fallback(operation="agent_text", reason=str(error))
         if self.checkpointer is not None:
             return self._invoke(
-                self.checkpointer, run, items, confirm, pending_fields, envelope.trace_snapshot(), model_guidance or assistant_text, model_fallback, structured
+                self.checkpointer, run, items, confirm, pending_fields, envelope.trace_snapshot(), model_guidance or assistant_text, model_fallback, structured, prepared_draft_id
             )
         with _postgres_checkpointer() as checkpointer:
             return self._invoke(
-                checkpointer, run, items, confirm, pending_fields, envelope.trace_snapshot(), model_guidance or assistant_text, model_fallback, structured
+                checkpointer, run, items, confirm, pending_fields, envelope.trace_snapshot(), model_guidance or assistant_text, model_fallback, structured, prepared_draft_id
             )
+
+    @staticmethod
+    def _operation_summary(view):
+        labels = {"applied": "已保存", "waiting": "待补充", "rejected": "未修改", "deferred": "本次暂不安排"}
+        return "；".join(
+            labels.get(result['status'], result['status']) + "：" + "、".join(result.get('titles', []))
+            + ("（" + result['reason'] + "）" if result.get('reason') else "")
+            for result in view.get('operation_results', []))
 
     def _clarification_outcome(
         self, *, run: AgentRun, draft: PlanDraft, resolved_count: int, context_snapshot: dict,
@@ -171,11 +193,10 @@ class PlanningWorkflowAdapter:
         # Confirmation is signed only in _invoke after LangGraph yielded the
         # review interrupt that owns the resumable state.
         if batch:
-            titles = "、".join(f"“{slot.get('title')}”" for slot in batch.get("slots", []))
-            text = (
-                f"还需要补充 {titles} 的预计时长。请按任务名称分别说明，"
-                "例如“数学试卷 30 分钟，英语作业 50 分钟”；也可以说“都 30 分钟”。"
-            )
+            labels = {"title": "名字", "planned_minutes": "预计时长", "start_at": "开始时间", "target_task_ids": "具体任务（可明确选择多项）"}
+            questions = [slot.get('question') or f"“{slot.get('title') or '这个任务'}”的{labels.get(slot['field'], slot['field'])}"
+                         for slot in batch.get("slots", [])]
+            text = "还需要补充：" + "、".join(questions) + "。也可以明确说明本次暂不安排。"
             kind = "clarify"
             actions = [{"name": "reply", "label": "补充信息", "command": "clarify_reply",
                         "id": f"clarify:{run.id}:{run.attempt}:{draft.id}:{draft.version}",
@@ -192,6 +213,9 @@ class PlanningWorkflowAdapter:
             actions = [{"name": "reply", "label": "补充信息", "command": "clarify_reply",
                         "id": f"clarify:{run.id}:{run.attempt}:{draft.id}:{draft.version}",
                         "enabled": True, "payload_schema": None}]
+        summary = self._operation_summary(view)
+        if summary:
+            text = summary + "。" + text
         run.status = "waiting_for_ward"
         interaction = {
             "protocol": "companion-interaction.v1", "kind": kind,
@@ -218,6 +242,7 @@ class PlanningWorkflowAdapter:
         model_guidance: str | None,
         model_fallback: bool,
         structured_command: dict,
+        prepared_draft_id: str | None = None,
     ) -> WorkflowOutcome:
         with planning_stage_span("graph_compile", run_id=run.id):
             graph = build_planning_graph(PlanningDomainService(self.db)).compile(
@@ -231,11 +256,17 @@ class PlanningWorkflowAdapter:
             # reviewed draft and can never confirm it.
             if confirm:
                 payload = structured_command.get("payload") or {}
+                snapshot = graph.get_state(config)
+                if not snapshot.next or "wait_for_confirmation" not in snapshot.next:
+                    raise HTTPException(409, "审阅执行状态已失效，请重新打开草稿")
+                if payload.get("draft_id") and snapshot.values.get("draft_id") != payload["draft_id"]:
+                    raise HTTPException(409, "确认动作不属于当前草稿")
                 result = graph.invoke(Command(resume={"action": "confirm", "expected_draft_version": payload.get("expected_draft_version")}), config)
             else:
                 proposed = items or []
                 result = graph.invoke(
                     {
+                        "prepared_draft_id": prepared_draft_id,
                         "ward_id": run.ward_id,
                         "plan_date": planning_today().isoformat(),
                         "items": proposed,
@@ -266,7 +297,16 @@ class PlanningWorkflowAdapter:
                 actions = [{"name": "reply", "label": "继续说明", "command": "clarify_reply",
                             "enabled": True, "payload_schema": None}]
             elif needs_schedule:
-                visible_text = "草稿已记录。请告诉我每项任务的开始时间，或想安排在什么任务之前、之后。"
+                if review.get("conflicts"):
+                    conflict_ids = {i for c in review["conflicts"] for i in c["task_ids"]}
+                    titles = "、".join(i["title"] for i in review["items"] if i["assignment_id"] in conflict_ids)
+                    visible_text = f"已保存修改，但{titles}的时间安排冲突或超过容量。请调整时间或明确本次不安排的任务。"
+                elif "version_conflict" in review.get("pending_fields", []):
+                    visible_text = "任务或日程已变化，请刷新并重新说明安排。"
+                elif "unscheduled_reason" in review.get("pending_fields", []):
+                    visible_text = "必做任务尚未安排，请补充安排或说明本次暂不安排的原因。"
+                else:
+                    visible_text = "任务已记录在任务池。如果要排入计划，可以告诉我开始时间或先后顺序。"
                 kind = "clarify"
                 actions = [{"name": "reply", "label": "继续说明", "command": "clarify_reply",
                             "enabled": True, "payload_schema": None}]
@@ -279,6 +319,9 @@ class PlanningWorkflowAdapter:
                             "id": f"plan:{run.id}:{run.attempt}:{review['draft_id']}:{review['object_version']}",
                             "enabled": review["confirm_enabled"],
                             "payload_schema": "confirm-plan.v1"}]
+            summary = self._operation_summary(review)
+            if summary:
+                visible_text = summary + "。" + visible_text
             interaction = {
                 "protocol": "companion-interaction.v1", "kind": kind,
                 "run_id": run.id, "turn_id": run.current_turn_id, "attempt": run.attempt,

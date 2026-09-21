@@ -230,7 +230,7 @@ def test_cannot_confirm_draft_with_pending_fields(db):
     with pytest.raises(HTTPException) as exc:
         service.confirm(ward.id, draft.id)
     assert exc.value.status_code == 409
-    assert "待确认" in exc.value.detail
+    assert "待确认" in exc.value.detail["message"]
 
 
 def test_conflict_on_base_schedule_version_mismatch(db):
