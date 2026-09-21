@@ -23,6 +23,10 @@ architecture, domain rules, authorization, or reliability engineering.
   workflow, then one bounded agent loop. Split into multiple agents only for a
   demonstrated boundary in responsibility, context, tools, permission, or
   evaluation.
+- Use an agent loop to choose among reliable capabilities, not to replace
+  domain checks. Tools should return typed observations such as `unique`,
+  `ambiguous`, `no_match`, `rejected`, `changed`, or `needs_input`; the model
+  decides the next allowed action from those observations.
 - Make state ownership explicit. Do not use one mutable prompt, transcript, or
   scratchpad as a substitute for business data, durable runtime state, long-term
   memory, and audit evidence.
@@ -31,6 +35,9 @@ architecture, domain rules, authorization, or reliability engineering.
   apply a mutation only after a unique, deterministic resolution. Ambiguity or
   a failed resolution must not silently become object creation or a different
   mutation.
+- Never issue an actor-facing clarification for a state the actor cannot answer.
+  For example, an empty authorized candidate set is a `no_match/rejected`
+  observation, not a multiple-choice question with no choices.
 - Give every externally visible result an honest outcome. Do not represent a
   rejected, failed, or incomplete operation as a successful response with an
   empty or contradictory payload. Define a machine-readable outcome, safe user

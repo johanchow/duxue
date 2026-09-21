@@ -87,6 +87,12 @@ limit, observability, and predictable errors. Read and write capabilities should
 be visibly distinct. Use idempotency and propose/confirm execution for material
 side effects.
 
+Prefer typed observation enums over prose-only errors. A loop should be able to
+branch on results such as `unique`, `ambiguous`, `no_match`, `needs_input`,
+`changed`, `rejected`, `stale`, and `tool_error` without asking the model to
+reverse-engineer state from natural language. If the next safe action depends
+on a distinction, make that distinction part of the tool contract.
+
 Treat retrieved content and tool output as untrusted input: it may be incorrect,
 stale, malicious, or contain instructions that conflict with system policy.
 
@@ -99,6 +105,11 @@ unique match and validation. If matching is ambiguous, request a constrained
 choice. If it finds no match, do not infer that creation is intended: require an
 explicit create proposal or actor choice. Keywords and regexes may validate a
 known field format, but are not a substitute for semantic intent resolution.
+
+Do not manufacture a clarification from an empty candidate set. A constrained
+choice requires choices; without them, return `no_match`, `not_editable`, or a
+similar typed observation and let the loop decide whether another explicit user
+proposal can proceed independently.
 
 ## When should agents be split?
 
