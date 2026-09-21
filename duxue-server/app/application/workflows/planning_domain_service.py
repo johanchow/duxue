@@ -308,6 +308,39 @@ class PlanningDomainService(PlanningOperations):
                 or (ids and self.db.query(StudySession).filter(StudySession.task_id.in_(ids)).first())):
             raise HTTPException(409, "已开始的计划不能修改")
 
+    def delete_task(self, ward_id: str, task_id: str) -> Task:
+        self._lock_ward(ward_id)
+        task = self.db.get(Task, task_id)
+        if task is None or task.ward_id != ward_id:
+            raise HTTPException(404, "任务不存在")
+        if task.status not in {"open", "pending"}:
+            raise HTTPException(409, "任务当前不可删除")
+        if self.db.query(StudySession).filter_by(task_id=task.id).first():
+            raise HTTPException(409, "已有学习记录的任务不能删除")
+        if task.schedule_id:
+            raise HTTPException(409, "已进入计划的任务需要确认后删除")
+        for schedule in self.db.query(DailySchedule).filter_by(ward_id=ward_id).all():
+            items = [item for item in (schedule.items or []) if item.get("assignment_id") != task.id]
+            if len(items) != len(schedule.items or []):
+                schedule.items = items
+                schedule.version += 1
+        for draft in self.db.query(PlanDraft).filter_by(ward_id=ward_id).all():
+            items = [item for item in (draft.items or []) if item.get("assignment_id") != task.id]
+            if len(items) != len(draft.items or []):
+                state = deepcopy(draft.working_state or {})
+                state["task_versions"] = {
+                    ident: version for ident, version in state.get("task_versions", {}).items()
+                    if ident != task.id}
+                state["proposed_task_changes"] = {
+                    ident: value for ident, value in state.get("proposed_task_changes", {}).items()
+                    if ident != task.id}
+                draft.items = items
+                draft.working_state = state
+                draft.version += 1
+        self.db.delete(task)
+        self.db.flush()
+        return task
+
     def _ensure_draft(self, ward_id, plan_date):
         self._lock_ward(ward_id)
         draft = self.active_draft(ward_id, plan_date)
@@ -450,17 +483,22 @@ class PlanningDomainService(PlanningOperations):
         for task_id, version in state.get("task_versions", {}).items():
             task = self.db.get(Task, task_id)
             stale |= task is None or task.version != version
+        proposed_task_deletions = state.get("proposed_task_deletions", {})
+        for task_id, payload in proposed_task_deletions.items():
+            task = self.db.get(Task, task_id)
+            stale |= task is None or task.version != payload.get("task_version")
         if stale:
             pending.add("version_conflict")
         return {"draft_id": draft.id, "object_version": draft.version,
                 "plan_date": draft.plan_date.isoformat(), "items": items,
                 "confirm_enabled": bool(draft.status == "active" and not pending and not conflicts
-                                        and any(i["will_enter_plan"] for i in items)),
+                                        and (any(i["will_enter_plan"] for i in items) or proposed_task_deletions)),
                 "pending_fields": sorted(pending), "conflicts": conflicts,
                 "clarification_batch": batch,
                 "operation_results": state.get("operation_results", []),
                 "planning_agent_loop": state.get("planning_agent_loop", {}),
-                "is_revision": bool(schedule), "proposed_task_changes": state.get("proposed_task_changes", {})}
+                "is_revision": bool(schedule), "proposed_task_changes": state.get("proposed_task_changes", {}),
+                "proposed_task_deletions": proposed_task_deletions}
 
     def confirm(self, ward_id: str, draft_id: str, expected_draft_version: int | None = None) -> DailySchedule:
         self._lock_ward(ward_id)
@@ -480,6 +518,10 @@ class PlanningDomainService(PlanningOperations):
         state = deepcopy(draft.working_state or {})
         for ident, version in state.get("task_versions", {}).items():
             if ident not in tasks or tasks[ident].version != version:
+                raise HTTPException(409, "任务已变化，请重新审阅")
+        proposed_deletions = state.get("proposed_task_deletions", {})
+        for ident, payload in proposed_deletions.items():
+            if ident not in tasks or tasks[ident].version != payload.get("task_version"):
                 raise HTTPException(409, "任务已变化，请重新审阅")
         view = self.plan_draft_view(ward_id, draft.id)
         if not view["confirm_enabled"]:
@@ -503,9 +545,14 @@ class PlanningDomainService(PlanningOperations):
                             "confirmed_at": schedule.confirmed_at.isoformat() if schedule.confirmed_at else None,
                             "actor_id": ward_id})
         selected_ids = {i["assignment_id"] for i in selected}
+        deletion_ids = set(proposed_deletions)
         for task in tasks.values():
             if task.schedule_id == schedule.id and task.id not in selected_ids:
                 task.schedule_id = task.position = None
+        for task_id in deletion_ids:
+            task = tasks.get(task_id)
+            if task is not None:
+                self.db.delete(task)
         for position, item in enumerate(selected):
             task = tasks[item["assignment_id"]]
             task.title, task.planned_minutes = item["title"], int(item["planned_minutes"])

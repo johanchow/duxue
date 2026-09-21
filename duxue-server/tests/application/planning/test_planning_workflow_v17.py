@@ -5,7 +5,7 @@ from fastapi import HTTPException
 
 from app.application.workflows.planning_domain_service import PlanningDomainService
 from app.infrastructure.persistence.models import PlanDraft, Task
-from tests.support.factories import create_task, create_ward
+from tests.support.factories import create_study_session, create_task, create_ward
 
 DAY = date(2026, 9, 20)
 
@@ -372,6 +372,83 @@ def test_unknown_target_does_not_block_independent_create_operation(db):
     statuses = [result['status'] for result in draft.working_state['operation_results']]
     assert statuses == ['rejected', 'applied']
     assert loop_status(draft) == 'draft_changed'
+
+
+def test_delete_operation_removes_task_pool_item_and_draft_references(db):
+    ward = create_ward(db)
+    math = create_task(db, ward=ward, title='数学', planned_minutes=30)
+    english = create_task(db, ward=ward, title='英语', planned_minutes=20)
+    service = PlanningDomainService(db)
+    draft = operate(service, ward, [{'kind': 'schedule', 'references': ['数学'],
+                                     'start_at': '2026-09-20T19:00:00'}])
+    assert {item['assignment_id'] for item in draft.items} == {math.id, english.id}
+
+    draft = operate(service, ward, [{'kind': 'delete', 'references': ['数学']}], command_id='delete-math')
+
+    assert db.get(Task, math.id) is None
+    assert db.get(Task, english.id) is not None
+    assert {item['assignment_id'] for item in draft.items} == {english.id}
+    result = draft.working_state['operation_results'][0]
+    assert result['status'] == 'applied'
+    assert result['kind'] == 'delete'
+    assert result['titles'] == ['数学']
+    assert loop_status(draft) == 'task_pool_changed_only'
+
+
+def test_delete_operation_rejects_task_with_learning_record(db):
+    ward = create_ward(db)
+    task = create_task(db, ward=ward, title='数学', planned_minutes=30)
+    create_study_session(db, ward=ward, task=task)
+    service = PlanningDomainService(db)
+
+    draft = operate(service, ward, [{'kind': 'delete', 'references': ['数学']}])
+
+    assert db.get(Task, task.id) is not None
+    result = draft.working_state['operation_results'][0]
+    assert result['status'] == 'rejected'
+    assert result['reason'] == '已有学习记录的任务不能删除'
+    assert loop_status(draft) == 'rejected'
+
+
+def test_delete_operation_for_confirmed_schedule_waits_for_review_confirmation(db):
+    ward = create_ward(db)
+    service = PlanningDomainService(db)
+    original = scheduled(service, ward)
+    schedule = service.confirm(ward.id, original.id, original.version)
+    task = db.query(Task).one()
+    old_version = schedule.version
+    db.commit()
+
+    draft = operate(service, ward, [{'kind': 'delete', 'references': ['数学']}], command_id='delete-scheduled')
+    view = service.plan_draft_view(ward.id, draft.id)
+
+    assert db.get(Task, task.id) is not None
+    assert schedule.items[0]['assignment_id'] == task.id
+    assert schedule.version == old_version
+    assert draft.base_schedule_version == old_version
+    assert view['proposed_task_deletions'][task.id]['title'] == '数学'
+    assert view['confirm_enabled']
+    assert 'version_conflict' not in view['pending_fields']
+
+    service.confirm(ward.id, draft.id, draft.version)
+
+    assert db.get(Task, task.id) is None
+    assert schedule.items == []
+    assert schedule.version == old_version + 1
+
+
+def test_direct_delete_rejects_confirmed_schedule_task_without_review(db):
+    ward = create_ward(db)
+    service = PlanningDomainService(db)
+    original = scheduled(service, ward)
+    service.confirm(ward.id, original.id, original.version)
+    task = db.query(Task).one()
+
+    with pytest.raises(HTTPException) as exc:
+        service.delete_task(ward.id, task.id)
+
+    assert exc.value.status_code == 409
+    assert db.get(Task, task.id) is not None
 
 
 def test_adapter_ignores_legacy_empty_target_slot_when_new_operation_can_apply(db, monkeypatch):

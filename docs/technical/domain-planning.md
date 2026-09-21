@@ -12,9 +12,9 @@
 
 ## 二、应用用例与 Workflow Definition
 
-计划协商是固定 Graph + 局部受控 Agent Loop，不是全自由 ReAct。固定 Graph 负责业务阶段、等待点、版本恢复和确认提交；`PlanningAgentLoop` 只在本轮自然语言处理阶段使用一组窄工具完成任务提取、引用解析、重复名澄清、任务创建/修改和草稿 patch。任务归属、容量、时间冲突、基准版本和确认写入仍为确定性服务，模型不能创建真实 ID、不能判定无冲突、不能确认正式计划。
+计划协商是固定 Graph + 局部受控 Agent Loop，不是全自由 ReAct。固定 Graph 负责业务阶段、等待点、版本恢复和确认提交；`PlanningAgentLoop` 只在本轮自然语言处理阶段使用一组窄工具完成任务提取、引用解析、重复名澄清、任务创建/修改/删除和草稿 patch。任务归属、容量、时间冲突、基准版本和确认写入仍为确定性服务，模型不能创建真实 ID、不能判定无冲突、不能确认正式计划。
 
-Workflow 及其阶段属于 **Application（应用层）编排**；`LoadPlanningContext`、`PlanningAgentLoop`、`OperationResultReview`、`Clarify`、`DraftReview`、`Confirming` 等只是阶段标签，不是独立 DDD 构件。`RegisterTask`、`UpdateTask`、`PatchPlanDraft`、`ConfirmPlanDraft` 是 **Application Use Case（应用用例）**。例如 `Confirming` 阶段执行 `ConfirmPlanDraft`，后者调用 Domain 层的 `PlanDraft.confirm()` 等领域行为。阶段、用例与领域方法不要求一一对应，名称也不要求对应同名实现类；时序图生命线已标注角色。
+Workflow 及其阶段属于 **Application（应用层）编排**；`LoadPlanningContext`、`PlanningAgentLoop`、`OperationResultReview`、`Clarify`、`DraftReview`、`Confirming` 等只是阶段标签，不是独立 DDD 构件。`RegisterTask`、`UpdateTask`、`DeleteTask`、`PatchPlanDraft`、`ConfirmPlanDraft` 是 **Application Use Case（应用用例）**。例如 `Confirming` 阶段执行 `ConfirmPlanDraft`，后者调用 Domain 层的 `PlanDraft.confirm()` 等领域行为。阶段、用例与领域方法不要求一一对应，名称也不要求对应同名实现类；时序图生命线已标注角色。
 
 以下是目标业务流程。顶层 Workflow 只画应用阶段和等待点；阶段内部判断、工具调用、版本复核和事务写入不作为顶层节点出现。`PlanningAgentLoop` 可以在一次输入中处理多个独立操作，不按一句话强制选择单一分支；每个写入动作都必须通过工具返回结构化 observation 后才能继续。
 
@@ -62,6 +62,7 @@ flowchart TD
 4. **批量修改不静默执行一半。** 一个明确的多目标修改操作中，任一目标未绑定或无效，该操作整体等待；目标和字段都合法后，目标集合的内容修改在同一本地事务中原子保存。一轮中相互独立的操作可以分别成功，依赖未完成操作的后续安排继续等待。每项以 `command_id + operation_id` 去重，报告逐项结果；重试不重复登记已成功任务。
 5. **内容与安排分开维护。** `UpdateTask` 用例加载 Task 与受影响的当前草稿，校验 Ward、Task 版本及草稿版本，调用 `update_details()` 后保存。改名字不换 Task ID；改耗时使旧审阅动作失效，并重新推导结束时间及受影响的相对安排。Ward 明示的绝对开始时间保持不变，产生重叠则展示冲突，不静默平移。其他草稿保存其引用 Task 的版本，确认时必须重验，不能靠旧时间槽确认。
 6. **已正式排期任务的修改进入修订。** 不通过 UpdateTask 直接改变已确认安排所依赖的名字或耗时；拟修改内容保存在修订草稿 `proposed_task_changes`，与新日程一起确认提交。`UpdateTask` 直接修改范围限定为未正式排期、未开始执行的任务。
+7. **删除任务是独立 Use Case，不等于暂不安排。** 未进入正式计划的 Task，`DeleteTask` 用例只在目标唯一绑定、Ward 有权限且任务未开始/无学习记录时执行；成功后从任务池移除 Task，并在同一事务清理 active/pending 草稿、澄清 Slot 和 Task 版本快照中的引用。已进入正式计划的 Task 不允许在 `PlanningAgentLoop` 中直接删除，只能写入修订草稿的 `proposed_task_deletions`，在 `DraftReview` 二次确认后由 `ConfirmPlanDraft` 同事务删除 Task、移除日程项并记录历史版本。已有 `StudySession`、学习事实或已开始执行的任务返回结构化拒绝，不物理删除。`remove_task_from_draft()` 只移除本次草稿安排，`defer_task()` 只表示本次暂不安排，二者都保留 Task。
 
 #### 澄清范围与开始时间
 
@@ -96,7 +97,7 @@ flowchart LR
 |---|---|---|---|
 | `PlanDraft` | `draft_id`；`DraftItem`（**只含 Task ID** + `TaskScheduleIntent` + 可选派生 `start_at`/`end_at`）；`ArrangementIntent`、`DraftConstraint` | `capture_intent()`、`apply_patch()`、`request_clarification()`、`confirm()`；仅入计划校验通过才发 `PlanDraftConfirmed` | `PlanDraftRepository` |
 | `DailySchedule` | `schedule_id`；`ScheduledItem` child entity（Task ID + 时间槽） | `apply_confirmed_draft()`（修订保留历史版本）；`ScheduleUpdated` | `DailyScheduleRepository` |
-| `Task` | `task_id`；`title`、`planned_minutes`；安排引用另存 | `register(title, planned_minutes)`、`update_details()`、`mark_scheduled(schedule_id)`、`unschedule()` | `TaskRepository` |
+| `Task` | `task_id`；`title`、`planned_minutes`；安排引用另存 | `register(title, planned_minutes)`、`update_details()`、`delete()` / `cancel()`、`mark_scheduled(schedule_id)`、`unschedule()` | `TaskRepository` |
 
 任务与计划是两条生命周期：`RegisterTask` 在具备 `title` + `planned_minutes` 时**立即**创建 `Task` 并进入任务池，不经过 Ward 确认；说错了删除即可。`start_at` 不是创建条件。`PlanDraft` / `DailySchedule` 只按 Task ID 引用。要把任务排入正式计划，确认屏必须列出**全部未完成 Task**（每项含耗时、开始、结束时间）；Ward 看清后点「确认这个计划」，只有带有效时间槽且无冲突的项才 `mark_scheduled()`。缺开始/结束的项继续留在任务池，不会因为确认而被悄悄排入。口头说明不能替代该动作。
 
@@ -106,7 +107,7 @@ flowchart LR
 
 | 所属聚合 | 对象 / 规范类型 | 身份 | 主要业务状态 / 输入 | 主要方法 / 输出 | 业务职责与约束 |
 |---|---|---|---|---|---|
-| Task | `Task` / Aggregate Root | `task_id` | 标题、预计时长、排期引用 | `register()`、`update_details()`、`mark_scheduled()`、`unschedule()` | 登记条件、合法排期变更；任务内容与本次安排分离 |
+| Task | `Task` / Aggregate Root | `task_id` | 标题、预计时长、排期引用 | `register()`、`update_details()`、`delete()` / `cancel()`、`mark_scheduled()`、`unschedule()` | 登记条件、合法排期变更；任务内容与本次安排分离；已有学习记录或已开始执行时不可删除 |
 | PlanDraft | `PlanDraft` / Aggregate Root | `draft_id` | Ward、本地日期、版本、编辑状态、草稿项、澄清批次、基准日程/Task 版本、拟修改内容 | `capture_intent()`、`apply_patch()`、`request_clarification()`、`resolve_clarification()`、`defer_target()`、`confirm()` | 目标归属、编辑资格、审阅版本；保护子对象之间的一致性 |
 | PlanDraft | `DraftItem` / Entity | 聚合内 `task_id` | 既有 Task 引用、安排意图、可选时间槽 | `change_arrangement()`、`clear_arrangement()` | 当前草稿每个 Task 至多一项；不得通过草稿项创建 Task |
 | PlanDraft | `ClarificationBatch` / Entity | `batch_id` | 槽位集合、响应模式、签发版本、状态 | `resolve_slot()`、`expire()` | 同一草稿最多一个 active 批次；过期回答不能改变新版本 |
@@ -375,7 +376,7 @@ sequenceDiagram
 | Workflow 节点 | AI-driven | Loop / 等待类型 | 满足 / 退出条件 | 允许的全部工具 | 规则与禁止事项 |
 |---|---|---|---|---|---|
 | `LoadPlanningContext` | 否 | 单步确定性节点 | 成功加载任务池、未排期 Task、当前草稿、正式日程和 active ClarificationBatch；失败则返回可重试技术错误 | `get_task_pool()`、`get_unscheduled_tasks()`、`get_active_draft()`、`get_daily_schedule()`、`get_pending_clarifications()` | 只读；负责建立本轮权威上下文，不调用模型，不写 Task 或 Draft |
-| `PlanningAgentLoop` | 是，唯一 AI-driven 节点 | 受控工具循环，建议 `max_tool_calls=8-12` | 必须调用 `finish_loop(status, summary)`；`status` 只能是 `draft_changed`、`task_pool_changed_only`、`needs_clarification`、`partial_success`、`no_op`、`rejected`、`tool_error`、`loop_limit_exceeded` | `get_task_pool()`、`get_unscheduled_tasks()`、`get_active_draft()`、`get_daily_schedule()`、`get_pending_clarifications()`、`get_task_detail(task_id)`、`resolve_task_reference(surface, role, candidate_scope?)`、`resolve_task_references_batch(references[])`、`check_title_conflict(title)`、`create_task_candidate(title?, planned_minutes?, arrangement?)`、`register_task(title, planned_minutes)`、`update_task_details(task_id, title?, planned_minutes?, expected_task_version?)`、`patch_draft_start_at(task_id, start_at, source)`、`patch_draft_order(task_id, anchor, reference_task_id)`、`remove_task_from_draft(task_id)`、`defer_task(task_id, reason)`、`create_clarification_slot(type, candidates, pending_operation)`、`resolve_clarification_slot(slot_id, value)`、`cancel_pending_operation(operation_id)`、`validate_draft_plan()`、`preview_timeline()`、`get_operation_summary()`、`finish_loop(status, summary)` | 模型只决定工具调用顺序和结构化参数。不能生成 Task ID、不能绕过 `title_conflict`、不能判定无冲突、不能调用 `confirm_plan_draft()` |
+| `PlanningAgentLoop` | 是，唯一 AI-driven 节点 | 受控工具循环，建议 `max_tool_calls=8-12` | 必须调用 `finish_loop(status, summary)`；`status` 只能是 `draft_changed`、`task_pool_changed_only`、`needs_clarification`、`partial_success`、`no_op`、`rejected`、`tool_error`、`loop_limit_exceeded` | `get_task_pool()`、`get_unscheduled_tasks()`、`get_active_draft()`、`get_daily_schedule()`、`get_pending_clarifications()`、`get_task_detail(task_id)`、`resolve_task_reference(surface, role, candidate_scope?)`、`resolve_task_references_batch(references[])`、`check_title_conflict(title)`、`create_task_candidate(title?, planned_minutes?, arrangement?)`、`register_task(title, planned_minutes)`、`update_task_details(task_id, title?, planned_minutes?, expected_task_version?)`、`delete_task(task_id, expected_task_version?, deletion_id)`、`propose_task_deletion(task_id, expected_task_version?, deletion_id)`、`patch_draft_start_at(task_id, start_at, source)`、`patch_draft_order(task_id, anchor, reference_task_id)`、`remove_task_from_draft(task_id)`、`defer_task(task_id, reason)`、`create_clarification_slot(type, candidates, pending_operation)`、`resolve_clarification_slot(slot_id, value)`、`cancel_pending_operation(operation_id)`、`validate_draft_plan()`、`preview_timeline()`、`get_operation_summary()`、`finish_loop(status, summary)` | 模型只决定工具调用顺序和结构化参数。删除意图必须先唯一绑定：未入正式计划可调用 `delete_task` 并返回 `changed/no_op/stale/rejected/not_editable/has_learning_record/tool_error`；已入正式计划只能调用 `propose_task_deletion`，返回 `draft_changed/requires_confirmation` 并进入 `DraftReview`，真正删除只能由 `ConfirmPlanDraft` 执行。不能生成 Task ID、不能把“本次不安排”当删除、不能绕过 `title_conflict`、不能判定无冲突、不能调用 `confirm_plan_draft()` |
 | `OperationResultReview` | 否 | 展示节点 | 本轮结果已渲染：已保存、未排期、已入草稿、待澄清、被拒绝和失败操作均可见；用户继续输入后回 `LoadPlanningContext` | `get_operation_summary()`、`get_task_pool()`、`get_unscheduled_tasks()`、`get_active_draft()`、`preview_timeline()`、`render_operation_result()` | 只读展示本轮结果；不能继续补写任务或草稿 |
 | `Clarify` | 否 | 用户等待点，不是 Agent Loop | 用户提交结构化 Slot 答案、取消待执行操作，或输入自然语言补充；解决受控 Slot 后必须回到 `PlanningAgentLoop` | `get_pending_clarifications()`、`resolve_clarification_slot(slot_id, value)`、`cancel_pending_operation(operation_id)`、`get_operation_summary()` | 只处理已签发 Slot 或取消待执行操作；自然语言答案可同时包含新意图，因此不能在本节点直接完成全部业务 |
 | `DraftEvaluation` | 否 | 单步确定性校验节点 | `validate_draft_plan()` 输出 `needs_clarification`、`empty/no_schedulable_task`、`has_conflict` 或 `reviewable` | `get_active_draft()`、`preview_timeline()`、`validate_draft_plan()`、`compose_timeline()`、`validate_schedule()` | 不调用模型；不做用户可见话术；只判断事实状态和下一跳 |
@@ -406,6 +407,7 @@ sequenceDiagram
 | 澄清批次 | 一个 Batch 可含多个 Slot；结构化表单按 `slot_id` 原子写入；自然语言无法唯一归属时不得广播写入 |
 | 混合输入 | `PlanningAgentLoop` 可在同一轮同时处理 Slot 答案和新的时间/内容修改，但所有真实 ID 与版本必须来自工具 observation |
 | 内容修改 | 改名不换 Task ID；改耗时使旧审阅动作失效并重新推导，产生重叠时展示冲突，不静默平移其它任务 |
+| 删除任务 | Ward 明确删除且目标唯一绑定时，未入正式计划的 Task 可立即从任务池删除并清理草稿引用；已入正式计划的 Task 只写入 `proposed_task_deletions` 并要求 DraftReview 二次确认，确认前原日程与 Task 不变；多候选必须澄清；无匹配返回 rejected；已有学习记录或已开始执行返回 409 / `has_learning_record` / `not_editable`，不得物理删除 |
 | 多目标修改 | 明确批量修改必须目标和字段都合法才原子提交；独立操作可部分成功，结果必须在 `OperationResultReview` 汇总 |
 | 暂不安排 | Ward 明确暂不安排时对应 Slot 为 `skipped`，不等于字段有效；重新安排时仍需补齐缺失字段 |
 | 确认 | `confirm_plan` 只读取已审阅 `draft_id + version`，不重新运行 `PlanningAgentLoop`，不创建 Task；冲突或版本变化返回最新 DraftReview |

@@ -94,22 +94,7 @@ def assignments(ward_id: str, principal: Principal = Depends(current_guardian_or
 def delete_assignment(ward_id: str, assignment_id: str, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
     """Remove a task from the pool. Past schedule slots that only reference it are cleared too."""
     _ward_owned(principal, ward_id)
-    task = db.get(Task, assignment_id)
-    if task is None or task.ward_id != ward_id:
-        raise HTTPException(404, "任务不存在")
-    if db.query(StudySession).filter_by(task_id=task.id).first():
-        raise HTTPException(409, "已有学习记录的任务不能删除")
-    for schedule in db.query(DailySchedule).filter_by(ward_id=ward_id).all():
-        items = [item for item in (schedule.items or []) if item.get("assignment_id") != task.id]
-        if len(items) != len(schedule.items or []):
-            schedule.items = items
-            schedule.version += 1
-    for draft in db.query(DraftRecord).filter_by(ward_id=ward_id).all():
-        items = [item for item in (draft.items or []) if item.get("assignment_id") != task.id]
-        if len(items) != len(draft.items or []):
-            draft.items = items
-            draft.version += 1
-    db.delete(task)
+    PlanningDomainService(db).delete_task(ward_id, assignment_id)
     db.commit()
 
 @router.put("/wards/{ward_id}/plans/{plan_date}")

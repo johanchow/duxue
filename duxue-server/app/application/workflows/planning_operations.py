@@ -9,7 +9,7 @@ from uuid import uuid4
 from fastapi import HTTPException
 
 from app.contexts.planning.domain.scheduling import TaskReferenceResolver
-from app.infrastructure.persistence.models import PlanDraft, Task
+from app.infrastructure.persistence.models import DailySchedule, PlanDraft, StudySession, Task
 
 
 class PlanningOperations:
@@ -141,7 +141,7 @@ class PlanningOperations:
             op = {k: deepcopy(v) for k, v in raw.items() if k in {
                 'kind', 'references', 'title', 'planned_minutes', 'start_at',
                 'after_task_reference', 'before_task_reference', 'reason'}}
-            if op.get('kind') not in {'create', 'update', 'schedule', 'defer'}:
+            if op.get('kind') not in {'create', 'update', 'schedule', 'defer', 'delete'}:
                 raise HTTPException(400, '未知计划操作')
             op_id = f'{command_id}:{index}'
             pending_ops.setdefault(op_id, {**op, 'status': 'waiting'})
@@ -265,6 +265,52 @@ class PlanningOperations:
                     if prior_id != op_id and set(prior.get('task_ids', [])) & set(ids):
                         prior['status'] = 'deferred'
                         slots = [s for s in slots if s['operation_id'] != prior_id]
+            elif kind == 'delete':
+                if self.db.query(StudySession).filter(StudySession.task_id.in_(ids)).first():
+                    op['status'] = 'rejected'
+                    results.append({'operation_id': op_id, 'status': 'rejected',
+                                    'reason': '已有学习记录的任务不能删除'})
+                    continue
+                proposed = {task.id for task in targets if task.schedule_id}
+                deleted = set(ids) - proposed
+                op['requires_confirmation'] = bool(proposed)
+                proposed_deletions = state.setdefault('proposed_task_deletions', {})
+                for task in targets:
+                    items.pop(task.id, None)
+                    if task.id in proposed:
+                        proposed_deletions[task.id] = {
+                            'title': task.title,
+                            'planned_minutes': task.planned_minutes,
+                            'task_version': task.version,
+                        }
+                        continue
+                    tasks.pop(task.id, None)
+                    if task in editable:
+                        editable.remove(task)
+                    self.db.delete(task)
+                candidates = [candidate for candidate in candidates if candidate['id'] not in set(ids)]
+                state['proposed_task_changes'] = {
+                    ident: value for ident, value in state.get('proposed_task_changes', {}).items()
+                    if ident not in set(ids)}
+                slots = [slot for slot in slots
+                         if not set(ids).intersection(pending_ops.get(slot.get('operation_id'), {}).get('task_ids', []))]
+                if deleted:
+                    for schedule_row in self.db.query(DailySchedule).filter_by(ward_id=ward_id).all():
+                        schedule_items = [item for item in (schedule_row.items or [])
+                                          if item.get('assignment_id') not in deleted]
+                        if len(schedule_items) != len(schedule_row.items or []):
+                            schedule_row.items = schedule_items
+                            schedule_row.version += 1
+                            if schedule and schedule_row.id == schedule.id:
+                                draft.base_schedule_version = schedule_row.version
+                    for draft_row in self.db.query(PlanDraft).filter_by(ward_id=ward_id).all():
+                        if draft_row.id == draft.id:
+                            continue
+                        draft_items = [item for item in (draft_row.items or [])
+                                       if item.get('assignment_id') not in deleted]
+                        if len(draft_items) != len(draft_row.items or []):
+                            draft_row.items = draft_items
+                            draft_row.version += 1
             else:
                 if kind == 'create' and not targets:
                     task = Task(ward_id=ward_id, title=op['title'].strip(), planned_minutes=minutes, source='ward')
@@ -324,7 +370,10 @@ class PlanningOperations:
                     if item.get('schedule_requested') and not item.get('start_at') and not timing:
                         ask(op_id, op, 'start_at')
             op['status'] = 'waiting' if any(s['operation_id'] == op_id for s in slots) else 'applied'
-            results.append({'operation_id': op_id, 'status': op['status'], 'task_ids': op.get('task_ids', [])})
+            result = {'operation_id': op_id, 'status': op['status'], 'task_ids': op.get('task_ids', [])}
+            if op.get('requires_confirmation'):
+                result['requires_confirmation'] = True
+            results.append(result)
         self.db.flush()
         state['processed_commands'] = [*state.get('processed_commands', []), command_id]
         state['operation_results'] = results + [
@@ -363,6 +412,7 @@ class PlanningOperations:
         statuses = [result.get('status') for result in operation_results]
         has_terminal = any(status in terminal for status in statuses)
         has_applied_change = any(status in {'applied', 'deferred'} for status in statuses)
+        has_reviewed_plan_change = any(result.get('requires_confirmation') for result in operation_results)
         if pending_fields and has_terminal:
             status = 'partial_success'
         elif pending_fields:
@@ -373,6 +423,8 @@ class PlanningOperations:
             status = 'needs_clarification'
         elif not operations and not answers and not statuses:
             status = 'no_op'
+        elif has_reviewed_plan_change:
+            status = 'draft_changed'
         elif has_applied_change and any(
             (item.get('schedule_requested') and (
                 item.get('start_at') or item.get('after_assignment_id') or item.get('before_assignment_id')
