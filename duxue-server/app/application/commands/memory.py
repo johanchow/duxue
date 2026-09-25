@@ -149,9 +149,11 @@ class SqlAlchemyMemoryCommandService:
         """Settle only closed-session facts; never copy tutoring messages."""
         events = self.db.query(LearningEvent).filter(
             LearningEvent.event_type.in_([
+                "tutoring.attempt_recorded",
                 "tutoring.ward_attempt_recorded",
                 "tutoring.understanding_confirmed",
                 "tutoring.hint_given",
+                "tutoring.curiosity_observed",
                 "tutoring.session_closed",
             ]),
             LearningEvent.payload["tutoring_session_id"].as_string() == tutoring_session_id,
@@ -160,9 +162,11 @@ class SqlAlchemyMemoryCommandService:
         has_closed = any(event.event_type == "tutoring.session_closed" for event in events)
         has_interaction = any(
             event.event_type in {
+                "tutoring.attempt_recorded",
                 "tutoring.ward_attempt_recorded",
                 "tutoring.understanding_confirmed",
                 "tutoring.hint_given",
+                "tutoring.curiosity_observed",
             }
             for event in events
         )

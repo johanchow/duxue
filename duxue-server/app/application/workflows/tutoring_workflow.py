@@ -11,6 +11,7 @@ from app.infrastructure.observability.telemetry import record_llm_fallback
 from app.bootstrap.settings import settings
 from app.infrastructure.messaging.outbox import publish_learning_fact
 from app.application.commands.memory import SqlAlchemyMemoryFacade
+from app.contexts.study.domain.execution import HintingPolicy
 from app.infrastructure.persistence.models import StudySession, TutoringMessage, TutoringSession, now
 
 class TutoringWorkflow:
@@ -46,28 +47,43 @@ class TutoringWorkflow:
             publish_learning_fact(self.db, ward_id=session.ward_id, event_type="tutoring.session_closed", source_type="tutoring_session", source_id=tutor.id, payload={"tutoring_session_id": tutor.id, "study_session_id": session.id})
             return WorkflowOutcome(run_status="closed", outcome_type="completed", context_refs=[f"tutoring_session:{tutor.id}"], next_interaction={"status": "closed"}, context_snapshot=envelope.trace_snapshot())
         content = turn.get("content", "")
-        decision = policy.validate_tutoring_input(content)
-        blocked = not decision.accepted
-        ward = TutoringMessage(tutoring_session_id=tutor.id, role="ward", content=content, is_stuck_point=True, safety_blocked=blocked)
+        input_decision = policy.validate_tutoring_input(content)
+        blocked = not input_decision.accepted
+        label = "answer_seeking" if blocked else turn.get("intent_label") or "problem"
+        failed_attempts = self.db.query(TutoringMessage).filter_by(tutoring_session_id=tutor.id, role="ward", safety_blocked=False).count()
+        hinting = HintingPolicy.evaluate(failed_attempts=failed_attempts, intent_label=label, has_task=bool(session.task_id), session_status=session.status)
+        ward = TutoringMessage(tutoring_session_id=tutor.id, role="ward", content=content, is_stuck_point=label == "problem", safety_blocked=blocked)
         self.db.add(ward); self.db.flush()
-        attempt_type = "tutoring.understanding_confirmed" if directive == "understood" else "tutoring.ward_attempt_recorded"
-        publish_learning_fact(self.db, ward_id=session.ward_id, event_type=attempt_type, source_type="tutoring_message", source_id=ward.id, source="ward", visibility="ward", payload={"tutoring_session_id": tutor.id, "study_session_id": session.id, "directive": directive})
-        level = min(4, self.db.query(TutoringMessage).filter_by(tutoring_session_id=tutor.id, role="assistant").count() + 1)
-        answer = decision.safe_response if blocked else "先把题目的已知条件和要解决的问题分别写出来；你想先试哪一步？"
+        if directive == "understood":
+            publish_learning_fact(self.db, ward_id=session.ward_id, event_type="tutoring.understanding_confirmed", source_type="tutoring_message", source_id=ward.id, source="ward", visibility="ward", payload={"tutoring_session_id": tutor.id, "study_session_id": session.id})
+            return WorkflowOutcome(run_status="waiting_for_ward", outcome_type="waiting", context_refs=[f"tutoring_session:{tutor.id}"], next_interaction={"status": "understood", "hint_level": hinting.allowed_level, "safety_blocked": False}, context_snapshot=envelope.trace_snapshot())
+        if hinting.record_fact and label == "curiosity":
+            publish_learning_fact(self.db, ward_id=session.ward_id, event_type="tutoring.curiosity_observed", source_type="tutoring_message", source_id=ward.id, source="ward", visibility="ward", payload={"tutoring_session_id": tutor.id, "study_session_id": session.id})
+        elif hinting.record_fact:
+            publish_learning_fact(self.db, ward_id=session.ward_id, event_type="tutoring.attempt_recorded", source_type="tutoring_message", source_id=ward.id, source="ward", visibility="ward", payload={"tutoring_session_id": tutor.id, "study_session_id": session.id, "directive": directive})
+        level = hinting.allowed_level
+        answer = input_decision.safe_response if blocked else _fallback_hint(level, hinting.l4_walkthrough_allowed)
         model_fallback = False
         if not blocked:
             try:
                 candidate = QwenAgentModelGateway().generate(
                     agent_type="tutoring", envelope=envelope.model_dump(),
-                    instruction=f"孩子刚才说：{content!r}。请给一条不直接给答案的启发式回应。",
+                    instruction=f"孩子刚才说：{content!r}。请给一条不超过 L{level} 的启发式回应。",
                 )
                 policy_result = policy.validate_candidate(candidate.model_dump(), allowed_tools=set())
-                if policy_result.accepted:
+                if policy_result.accepted and HintingPolicy.accepts_display(hinting, candidate.content):
                     answer = candidate.content
             except ModelGatewayError as error:
                 model_fallback = True
                 record_llm_fallback(operation="agent_text", reason=str(error))
         hint = TutoringMessage(tutoring_session_id=tutor.id, role="assistant", content=answer, hint_level=level, safety_blocked=blocked)
         self.db.add(hint); self.db.flush()
-        publish_learning_fact(self.db, ward_id=session.ward_id, event_type="tutoring.hint_given", source_type="tutoring_message", source_id=hint.id, source="system", payload={"tutoring_session_id": tutor.id, "study_session_id": session.id, "hint_level": level, "safety_blocked": blocked})
-        return WorkflowOutcome(run_status="waiting_for_ward", outcome_type="waiting", context_refs=[f"tutoring_session:{tutor.id}"], next_interaction={"status": "needs_input", "content": answer, "hint_level": level, "safety_blocked": blocked, "model": settings.agent_model("tutoring"), "model_fallback": model_fallback}, context_snapshot=envelope.trace_snapshot())
+        if hinting.record_fact and label != "curiosity":
+            publish_learning_fact(self.db, ward_id=session.ward_id, event_type="tutoring.hint_given", source_type="tutoring_message", source_id=hint.id, source="system", payload={"tutoring_session_id": tutor.id, "study_session_id": session.id, "hint_level": level})
+        return WorkflowOutcome(run_status="waiting_for_ward", outcome_type="waiting", context_refs=[f"tutoring_session:{tutor.id}"], next_interaction={"status": "needs_input", "content": answer, "hint_level": level, "safety_blocked": blocked, "return_to_task": hinting.return_to_task, "model": settings.agent_model("tutoring"), "model_fallback": model_fallback}, context_snapshot=envelope.trace_snapshot())
+
+
+def _fallback_hint(level: int, l4_allowed: bool) -> str:
+    if level >= 4 and l4_allowed:
+        return "我们把已知条件和下一步对应起来。如果换一个更小的数字，这一步还成立吗？用这个验证问题自己再算一次。"
+    return "先把题目的已知条件和要解决的问题分别写出来；你想先试哪一步？"

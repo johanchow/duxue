@@ -450,7 +450,7 @@ class EndToEndTest(unittest.TestCase):
                 .count(),
                 4,
             )
-        self.assertNotIn(
+        self.assertIn(
             second,
             {
                 item["id"]

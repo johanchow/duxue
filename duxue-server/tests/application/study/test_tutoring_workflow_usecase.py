@@ -36,7 +36,7 @@ def test_tutoring_workflow_step_by_step_and_close(db):
     # 检查 Outbox 生成的两个事件 (attempt, hint)
     outbox_events_1 = db.query(OutboxEvent).all()
     event_types_1 = [e.payload.get("event_type") for e in outbox_events_1]
-    assert "tutoring.ward_attempt_recorded" in event_types_1
+    assert "tutoring.attempt_recorded" in event_types_1
     assert "tutoring.hint_given" in event_types_1
 
     # 2. 学生确认理解了当前步骤

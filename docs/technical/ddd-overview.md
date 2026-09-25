@@ -134,7 +134,7 @@ flowchart TB
 | Context | 详情文档 | 当前设计状态 |
 |---|---|---|
 | Planning & Scheduling | [domain-planning.md](domain-planning.md) | Ward 计划草稿、确认日程与固定协商 Graph |
-| Study & Tutoring | [domain-study.md](domain-study.md) | 学习执行、受限 ReAct、过程事实与会话结算 |
+| Study & Tutoring | [domain-study.md](domain-study.md) | 学习执行、提示等级策略、一次输入内的 Turn Loop、过程事实与会话结算 |
 | Evaluation & Reflection | [domain-evaluation.md](domain-evaluation.md) | 自评、证据版本化复盘与行动采纳 |
 | Memory & Understanding | [domain-memory.md](domain-memory.md) | 已有 Aggregate、触发矩阵和局部因果链；物理 Schema 对齐另行处理 |
 | Companion Orchestration | [domain-companion.md](domain-companion.md) | Supporting Context：维护 Thread/Run 连续性状态；Coordinator 是其 Application-layer Process Manager，并定义目标 Workflow 边界 |

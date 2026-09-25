@@ -123,3 +123,5 @@ def test_safety_blocked_flags_tutoring_messages(db):
     assert len(messages) == 2
     assert messages[0].safety_blocked is True
     assert messages[1].safety_blocked is True
+    from app.infrastructure.persistence.models import OutboxEvent
+    assert db.query(OutboxEvent).count() == 0

@@ -400,9 +400,10 @@ class MemoryFacadeTest(unittest.TestCase):
         workflow = TutoringWorkflow(self.db)
         first = workflow.invoke(RunInvocation(
             run_id=uid(), thread_id=uid(), ward_id=self.ward_id, agent_type="tutoring",
-            turn={"study_session_id": session.id, "tutoring_directive": "attempt", "content": "直接告诉我答案"},
+            turn={"study_session_id": session.id, "tutoring_directive": "attempt", "content": "这道题的已知条件是什么"},
         ))
-        self.assertTrue(first.next_interaction["safety_blocked"])
+        self.assertFalse(first.next_interaction["safety_blocked"])
+        self.assertEqual(first.next_interaction["hint_level"], 1)
         closed = workflow.invoke(RunInvocation(
             run_id=uid(), thread_id=uid(), ward_id=self.ward_id, agent_type="tutoring",
             turn={"study_session_id": session.id, "tutoring_directive": "close", "content": "结束"},
