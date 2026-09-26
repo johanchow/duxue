@@ -36,7 +36,7 @@ class QwenAgentModelGateway:
             raise ModelGatewayError("model_provider_disabled")
         if not settings.dashscope_api_key:
             raise ModelGatewayError("model_provider_not_configured")
-        from openai import OpenAI
+        from app.infrastructure.ai.client import dashscope_client
 
         system = (
             "你是读学系统的受控学习助手。只返回一个 JSON 对象，字段为 content 和 "
@@ -47,9 +47,7 @@ class QwenAgentModelGateway:
         model = settings.agent_model(agent_type)
         try:
             with model_call_span(operation="agent_text", model=model, agent_type=agent_type) as telemetry:
-                response = OpenAI(
-                    api_key=settings.dashscope_api_key,
-                    base_url=settings.dashscope_base_url,
+                response = dashscope_client(
                     timeout=settings.agent_model_timeout_seconds,
                 ).chat.completions.create(
                     model=model,

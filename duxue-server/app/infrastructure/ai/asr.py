@@ -38,12 +38,15 @@ class DashscopeRealtimeAsr:
 
         from websockets.asyncio.client import connect
 
+        # Reach DashScope directly. A shell HTTP proxy such as a stopped local
+        # proxy on 127.0.0.1 must not fail hold-to-talk.
         connection = await connect(
             url,
             additional_headers={
                 "Authorization": f"Bearer {settings.asr_api_key}",
                 "OpenAI-Beta": "realtime=v1",
             },
+            proxy=None,
         )
         session = cls(connection)
         await session._send({"type": "session.update", "session": {"turn_detection": None}})
