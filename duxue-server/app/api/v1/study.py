@@ -1,3 +1,4 @@
+from app.application.workflows.planning_domain_service import PlanningDomainService
 from app.contexts.study.domain.execution import can_finish
 
 from .common import *
@@ -77,5 +78,6 @@ def finish_session(session_id: str, body: SessionFinish, principal: Principal = 
         interval.ended_at=now(); interval.end_reason="completed"; interval.active_seconds=max(0, body.active_seconds-session.active_seconds)
     session.status="completed"; session.ended_at=now(); session.active_seconds=body.active_seconds; session.completion_reason="ward_finished"; session.version += 1
     publish_learning_fact(db, ward_id=session.ward_id, event_type="study_session.completed", source_type="study_session", source_id=session.id, source_version=session.version, payload={"task_id": session.task_id, "active_seconds": session.active_seconds})
+    PlanningDomainService(db).complete_task(session.ward_id, session.task_id)
     db.commit(); return {"status": "completed"}
 

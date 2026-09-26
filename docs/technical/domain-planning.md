@@ -1,6 +1,6 @@
 # 读学系统 — Planning & Scheduling Domain Design
 
-> 状态：讨论稿 · 版本：v1.10
+> 状态：讨论稿 · 版本：v1.11
 > 范围：已知任务池、Ward 安排意图、计划草稿、确认后的正式日程，以及计划协商 Workflow。  
 > 关联：[系统 Context Map](ddd-overview.md) · [Companion 编排](domain-companion.md) · [Memory Context](domain-memory.md) · [Server 物理设计](design-server.md) · [计划 PRD](../product/prd-schedule.md)
 
@@ -97,9 +97,35 @@ flowchart LR
 |---|---|---|---|
 | `PlanDraft` | `draft_id`；`DraftItem`（**只含 Task ID** + `TaskScheduleIntent` + 可选派生 `start_at`/`end_at`）；`ArrangementIntent`、`DraftConstraint` | `capture_intent()`、`apply_patch()`、`request_clarification()`、`confirm()`；仅入计划校验通过才发 `PlanDraftConfirmed` | `PlanDraftRepository` |
 | `DailySchedule` | `schedule_id`；`ScheduledItem` child entity（Task ID + 时间槽） | `apply_confirmed_draft()`（修订保留历史版本）；`ScheduleUpdated` | `DailyScheduleRepository` |
-| `Task` | `task_id`；`title`、`planned_minutes`；安排引用另存 | `register(title, planned_minutes)`、`update_details()`、`delete()` / `cancel()`、`mark_scheduled(schedule_id)`、`unschedule()` | `TaskRepository` |
+| `Task` | `task_id`；`title`、`planned_minutes`；安排引用另存；状态见下表 | `register(title, planned_minutes)`、`update_details()`、`delete()` / `cancel()`、`mark_scheduled(schedule_id)`、`unschedule()`、`complete()` | `TaskRepository` |
 
 任务与计划是两条生命周期：`RegisterTask` 在具备 `title` + `planned_minutes` 时**立即**创建 `Task` 并进入任务池，不经过 Ward 确认；说错了删除即可。`start_at` 不是创建条件。`PlanDraft` / `DailySchedule` 只按 Task ID 引用。要把任务排入正式计划，确认屏必须列出**全部未完成 Task**（每项含耗时、开始、结束时间）；Ward 看清后点「确认这个计划」，只有带有效时间槽且无冲突的项才 `mark_scheduled()`。缺开始/结束的项继续留在任务池，不会因为确认而被悄悄排入。口头说明不能替代该动作。
+
+#### `Task` 状态
+
+`Task` 只有下表四种状态。学习进行中、暂停属于 [StudySession](domain-study.md)，不写入 `Task`。当日可安排的任务是 `pool`，以及已经排在**今天**这份 `DailySchedule` 上的 `scheduled`。登记写入 `pool`，确认写入 `scheduled`，`ReleaseUnfinishedTasks` 在读取当天任务或处理当天安排时释放已过本地日的未完成任务，`FinishStudySession` 发布事实后由 `CompleteTask` 写入 `completed`。
+
+| 状态 | 含义 | 转入 | 转出 | 当日任务池 | 终态 |
+|---|---|---|---|---|---|
+| `pool` | 未完成，且没有绑定当前本地日的正式日程 | `RegisterTask` → `register()`。确认时该项没有完整时间槽，保持 `pool`。修订确认把任务移出当日计划 → `unschedule()`。`ReleaseUnfinishedTasks` 把已过本地日、仍未完成的 `scheduled` 释放回任务池 | 确认进入当日计划 → `scheduled`。无学习记录且未开始时 `DeleteTask` 移除记录。`CompleteTask` → `completed`。明确放弃且需保留记录 → `cancelled` | 是 | 否 |
+| `scheduled` | 已进入某一本地日的正式日程 | `ConfirmPlanDraft` 对带有效时间槽的项调用 `mark_scheduled(schedule_id)` | 同一天的修订把它移出计划 → `pool`。绑定日程的本地日早于今天，且任务仍未完成 → `pool`（见下）。`CompleteTask` → `completed`。已入计划的删除只经修订草稿确认后移除记录。明确放弃且需保留记录 → `cancelled` | 仅当 `schedule_id` 属于今天 | 否 |
+| `completed` | 这项任务已经完成 | `CompleteTask` 消费带 `task_id` 的 `StudySessionCompleted.v1` 后调用 `complete()`。无任务的答疑完成不会发布该事件，也不能把别的任务标完成。重复投递保持 `completed` | 无。新的一天不回到任务池 | 否 | 是 |
+| `cancelled` | 明确放弃，记录保留 | Ward 明确取消，且任务已有学习记录或已开始执行、不能物理删除时，`cancel()` | 无 | 否 | 是 |
+
+本地日以 `Asia/Shanghai` 的 `plan_date` 为准。`ReleaseUnfinishedTasks` 由本地日切换触发，对「状态为 `scheduled`、所绑日程日期早于今天、且不是 `completed` / `cancelled`」的任务调用 `unschedule()`。昨天的 `DailySchedule` 保留为历史，不把原来的时间槽搬到今天。进行中的 `StudySession` 不阻止这次释放；会话仍按自己的状态继续，任务回到当天任务池后可以被今天重新安排。Study 不直接修改 `Task`。
+
+```mermaid
+stateDiagram-v2
+    [*] --> pool: RegisterTask
+    pool --> scheduled: ConfirmPlanDraft / mark_scheduled
+    scheduled --> pool: 移出当日计划，或本地日已过且未完成
+    pool --> completed: CompleteTask
+    scheduled --> completed: CompleteTask
+    pool --> cancelled: cancel
+    scheduled --> cancelled: cancel
+    pool --> [*]: DeleteTask 移除记录
+    scheduled --> [*]: 修订确认后删除
+```
 
 #### 领域模型清单（聚合及领域服务）
 
@@ -107,7 +133,7 @@ flowchart LR
 
 | 所属聚合 | 对象 / 规范类型 | 身份 | 主要业务状态 / 输入 | 主要方法 / 输出 | 业务职责与约束 |
 |---|---|---|---|---|---|
-| Task | `Task` / Aggregate Root | `task_id` | 标题、预计时长、排期引用 | `register()`、`update_details()`、`delete()` / `cancel()`、`mark_scheduled()`、`unschedule()` | 登记条件、合法排期变更；任务内容与本次安排分离；已有学习记录或已开始执行时不可删除 |
+| Task | `Task` / Aggregate Root | `task_id` | 标题、预计时长、排期引用、上表四种状态 | `register()`、`update_details()`、`delete()` / `cancel()`、`mark_scheduled()`、`unschedule()`、`complete()` | 登记条件、合法排期变更；任务内容与本次安排分离；已有学习记录或已开始执行时不可删除；状态迁移只按上表 |
 | PlanDraft | `PlanDraft` / Aggregate Root | `draft_id` | Ward、本地日期、版本、编辑状态、草稿项、澄清批次、基准日程/Task 版本、拟修改内容 | `capture_intent()`、`apply_patch()`、`request_clarification()`、`resolve_clarification()`、`defer_target()`、`confirm()` | 目标归属、编辑资格、审阅版本；保护子对象之间的一致性 |
 | PlanDraft | `DraftItem` / Entity | 聚合内 `task_id` | 既有 Task 引用、安排意图、可选时间槽 | `change_arrangement()`、`clear_arrangement()` | 当前草稿每个 Task 至多一项；不得通过草稿项创建 Task |
 | PlanDraft | `ClarificationBatch` / Entity | `batch_id` | 槽位集合、响应模式、签发版本、状态 | `resolve_slot()`、`expire()` | 同一草稿最多一个 active 批次；过期回答不能改变新版本 |
@@ -346,7 +372,7 @@ sequenceDiagram
 
 | Query / View | 消费者与新鲜度 | 来源 |
 |---|---|---|
-| `GetPlanningTaskPool` / `TaskPoolView` | Ward；`TaskRegistered` 提交后必须重新读取最新投影 | 未完成且未入正式日程的 Task、固定约束、授权 MemoryBundle |
+| `GetPlanningTaskPool` / `TaskPoolView` | Ward；`TaskRegistered` 或日界释放提交后必须重新读取最新投影 | 状态为 `pool` 的 Task（含已过本地日、未完成而释放回来的任务）、固定约束、授权 MemoryBundle |
 | `GetPlanDraft` / `PlanDraftView` | Ward；草稿提交后强一致 | **全部未完成 Task** 的确认列表：`title`、`planned_minutes`、`start_at`、`end_at`、`will_enter_plan` |
 | `GetConfirmedSchedule` / `ScheduleView` | Ward/Guardian；确认后强一致 | DailySchedule projection |
 

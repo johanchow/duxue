@@ -205,7 +205,7 @@ class WardInvite(Base):
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 class Task(Base):
-    """A task exists once; schedule_id is null while it remains in the task pool."""
+    """A task exists once. schedule_id is set only while status is scheduled."""
     __tablename__ = "tasks"
     id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
     ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id"), index=True)
@@ -218,7 +218,7 @@ class Task(Base):
     position: Mapped[int | None] = mapped_column(Integer, nullable=True)
     planned_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     source: Mapped[str] = mapped_column(String(20), default="guardian")
-    status: Mapped[str] = mapped_column(String(20), default="open")
+    status: Mapped[str] = mapped_column(String(20), default="pool")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 class DailySchedule(Base):

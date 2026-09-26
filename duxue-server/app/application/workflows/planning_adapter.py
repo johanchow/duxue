@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from copy import deepcopy
-from datetime import datetime, timezone
-from zoneinfo import ZoneInfo
+from datetime import datetime
 
 from fastapi import HTTPException
 from langgraph.checkpoint.postgres import PostgresSaver
@@ -18,7 +17,7 @@ from app.application.workflows.planning_domain_service import PlanningDomainServ
 from app.application.workflows.planning_workflow import build_planning_graph
 from app.bootstrap.settings import settings
 from app.contexts.companion.domain.policy import PolicyRegistry
-from app.contexts.planning.domain.scheduling import TaskReferenceResolver
+from app.contexts.planning.domain.scheduling import CANCELLED, COMPLETED, TaskReferenceResolver, local_plan_date
 from app.infrastructure.ai.model_gateway import ModelGatewayError, QwenAgentModelGateway
 from app.infrastructure.observability.telemetry import (
     planning_stage_span,
@@ -26,13 +25,10 @@ from app.infrastructure.observability.telemetry import (
 )
 from app.infrastructure.persistence.models import AgentRun, PlanDraft, Task, Ward
 
-_PLANNING_TIME_ZONE = ZoneInfo("Asia/Shanghai")
-
 
 def planning_today(current: datetime | None = None):
     """Return the Ward-facing calendar day; persisted timestamps remain UTC."""
-    moment = current or datetime.now(timezone.utc)
-    return moment.astimezone(_PLANNING_TIME_ZONE).date()
+    return local_plan_date(current)
 
 
 @contextmanager
@@ -71,6 +67,7 @@ class PlanningWorkflowAdapter:
         assistant_text = None
         pending_fields: list[str] = []
         service = PlanningDomainService(self.db)
+        service.release_unfinished_tasks(run.ward_id, planning_today())
         prepared_draft_id = None
         if not confirm and structured.get("command") == "clarify_reply":
             payload = structured.get("payload") or {}
@@ -81,7 +78,7 @@ class PlanningWorkflowAdapter:
             assistant_text = "已记录补充的信息。"
         elif not confirm and items is None:
             ward = self.db.get(Ward, run.ward_id)
-            tasks = self.db.query(Task).filter_by(ward_id=run.ward_id).filter(Task.status != "completed").all()
+            tasks = self.db.query(Task).filter_by(ward_id=run.ward_id).filter(Task.status.notin_([COMPLETED, CANCELLED])).all()
             active_draft = service.active_draft(run.ward_id, planning_today())
             slots = deepcopy(((active_draft.working_state or {}).get("active_clarification_batch") or {}).get("slots", [])) if active_draft else []
             # Only slot IDs are model-visible capabilities; Task IDs are resolved

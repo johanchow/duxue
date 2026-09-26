@@ -405,7 +405,7 @@ class FinishLoopCandidate(BaseModel):
 | 事件 | 生产者 | 消费者 | 幂等 | 失败 |
 |---|---|---|---|---|
 | `LearningFactRecorded.v1` | `ApplyTutorTurn`、`ConfirmUnderstanding`、`CloseTutoringSession` | Memory `IngestLearningFact` | `source_type + source_id + event_type + source_version` | 投递重试；Study 不因投递失败回滚已提交会话 |
-| `StudySessionCompleted.v1` | `FinishStudySession`，且存在 `task_id` | Evaluation | `study_session_id + version` | 无任务完成不发布；重复完成返回原结果 |
+| `StudySessionCompleted.v1` | `FinishStudySession`，且存在 `task_id` | Evaluation；Planning `CompleteTask`（把该 Task 标为 `completed`，见 [Task 状态](domain-planning.md#task-状态)） | `study_session_id + version` | 无任务完成不发布；重复完成返回原结果。Study 不写 `Task` |
 
 信封、SSE 和 Run 生命周期的失败语义以 Companion 为准。Fact 入账与 Episode 结算以 Memory 为准。
 

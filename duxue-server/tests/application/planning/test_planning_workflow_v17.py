@@ -193,7 +193,7 @@ def test_revision_rejected_if_study_started(db):
     service = PlanningDomainService(db)
     draft = scheduled(service, ward)
     service.confirm(ward.id, draft.id)
-    db.query(Task).one().status = 'in_progress'
+    create_study_session(db, ward=ward, task=db.query(Task).one())
     db.flush()
     with pytest.raises(HTTPException) as exc:
         operate(service, ward, [{'kind': 'update', 'references': ['数学'], 'planned_minutes': 60}])

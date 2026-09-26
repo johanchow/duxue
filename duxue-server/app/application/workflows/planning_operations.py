@@ -8,13 +8,19 @@ from uuid import uuid4
 
 from fastapi import HTTPException
 
-from app.contexts.planning.domain.scheduling import TaskReferenceResolver
+from app.contexts.planning.domain.scheduling import (
+    TaskReferenceResolver,
+    can_schedule,
+    local_plan_date,
+)
 from app.infrastructure.persistence.models import DailySchedule, PlanDraft, StudySession, Task
 
 
 class PlanningOperations:
     def apply_operations(self, ward_id, plan_date, operations, *, answers=None, command_id):
         self._lock_ward(ward_id)
+        if plan_date == local_plan_date():
+            self.release_unfinished_tasks(ward_id, plan_date)
         for previous in self.db.query(PlanDraft).filter_by(ward_id=ward_id, plan_date=plan_date).all():
             if command_id in (previous.working_state or {}).get('processed_commands', []):
                 return previous
@@ -31,7 +37,7 @@ class PlanningOperations:
             saved.update({i['assignment_id']: deepcopy(i) for i in draft.items})
             draft.items = list(saved.values())
         tasks = {t.id: t for t in self.db.query(Task).filter_by(ward_id=ward_id).all()}
-        editable = [t for t in tasks.values() if t.status in {'open', 'pending'}
+        editable = [t for t in tasks.values() if can_schedule(t.status)
                     and (t.schedule_id is None or (schedule and t.schedule_id == schedule.id))]
         candidates = [{'id': t.id, 'title': t.title} for t in editable]
         items = {i['assignment_id']: deepcopy(i) for i in draft.items}

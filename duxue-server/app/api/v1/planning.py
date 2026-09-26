@@ -1,6 +1,8 @@
 from pydantic import BaseModel, Field
 
+from app.application.workflows.planning_adapter import planning_today
 from app.application.workflows.planning_domain_service import PlanningDomainService
+from app.contexts.planning.domain.scheduling import CANCELLED, COMPLETED
 from app.infrastructure.persistence.models import PlanDraft as DraftRecord
 
 from .common import *
@@ -85,7 +87,9 @@ def create_assignment(ward_id: str, body: AssignmentCreate, principal: Principal
 def assignments(ward_id: str, principal: Principal = Depends(current_guardian_or_ward), db: Session = Depends(get_db)):
     if principal.role == "ward": _ward_owned(principal, ward_id)
     else: owned_ward(db, principal.user_id, ward_id)
-    rows = db.query(Task).filter_by(ward_id=ward_id).filter(Task.status != "completed").all()
+    PlanningDomainService(db).release_unfinished_tasks(ward_id, planning_today())
+    db.commit()
+    rows = db.query(Task).filter_by(ward_id=ward_id).filter(Task.status.notin_([COMPLETED, CANCELLED])).all()
     return [{"id": x.id, "title": x.title, "details": x.details, "due_date": x.due_date, "status": x.status,
              "session": open_session_for_task(db, task_id=x.id)} for x in rows]
 

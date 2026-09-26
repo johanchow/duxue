@@ -99,7 +99,7 @@ def create_task(
     ward: Ward,
     title: str = "练习作业",
     planned_minutes: int = 30,
-    status: str = "open",
+    status: str = "pool",
     schedule_id: str | None = None,
     position: int | None = None,
 ) -> Task:
