@@ -8,7 +8,7 @@ from app.application.ports.companion import CoordinatorResult, RouteDecision, Wo
 from app.application.workflows.planning_domain_service import PlanningDomainService
 from app.infrastructure.persistence.models import AgentCheckpoint, AgentRun, AgentStreamEvent, AgentTrace, CompanionMessage, ConversationThread, uid
 from tests.support.factories import create_task, create_ward
-from tests.support.fakes import FakeWorkflowDispatcher
+from tests.support.fakes import FakeWorkflowDispatcher, StaticIntentClassifier
 from datetime import date
 
 
@@ -25,7 +25,7 @@ def test_coordinator_handles_turn_and_records_trace_and_stream_event(db):
             checkpoint_ref="chk:test:1",
         )
     )
-    coordinator = CompanionCoordinator(db, dispatcher=dispatcher)
+    coordinator = CompanionCoordinator(db, dispatcher=dispatcher, classifier=StaticIntentClassifier("planning"))
 
     result = coordinator.handle(
         ward_id=ward.id,
@@ -60,6 +60,20 @@ def test_coordinator_handles_turn_and_records_trace_and_stream_event(db):
     assert [(message.author_type, message.content) for message in messages] == [
         ("ward", "帮我安排复习计划"), ("companion", "这是第一步指引"),
     ]
+
+
+def test_unclear_intent_writes_a_visible_reply_without_a_run(db):
+    ward = create_ward(db)
+    db.commit()
+    result = CompanionCoordinator(db, classifier=StaticIntentClassifier("unclear")).handle(
+        ward_id=ward.id, content="铁木真统一了蒙古的什么？", thread_id=None,
+        expected_thread_version=0, route_hint=None,
+    )
+    assert result.run_id is None
+    assert result.decision.target == "clarify"
+    messages = db.query(CompanionMessage).filter_by(thread_id=result.thread_id).order_by(CompanionMessage.thread_version).all()
+    assert [message.author_type for message in messages] == ["ward", "companion"]
+    assert messages[1].content
 
 
 def test_coordinator_exposes_a_controlled_failure_reply_when_workflow_raises(db):
@@ -118,7 +132,7 @@ def test_coordinator_fences_late_outcome_and_records_discard_trace(db):
     ward = create_ward(db)
     db.commit()
 
-    coordinator = CompanionCoordinator(db, dispatcher=FakeWorkflowDispatcher())
+    coordinator = CompanionCoordinator(db, dispatcher=FakeWorkflowDispatcher(), classifier=StaticIntentClassifier("planning"))
     result = coordinator.handle(
         ward_id=ward.id,
         content="排个计划",
@@ -170,7 +184,7 @@ def test_coordinator_command_id_idempotency_and_digest_conflict(db):
     db.commit()
 
     dispatcher = FakeWorkflowDispatcher()
-    coordinator = CompanionCoordinator(db, dispatcher=dispatcher)
+    coordinator = CompanionCoordinator(db, dispatcher=dispatcher, classifier=StaticIntentClassifier("planning"))
     command_id = uid()
 
     # 第一次调用

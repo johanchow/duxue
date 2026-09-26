@@ -66,6 +66,7 @@ class _WardHomeApi extends ApiClient {
     required String content,
     required String? threadId,
     required int? expectedThreadVersion,
+    String? routeHint,
     Map<String, dynamic>? structuredCommand,
     List<String> attachmentKeys = const [],
   }) async {
@@ -166,6 +167,9 @@ class _FakeVoice implements VoiceTranscription {
   late TranscriptHandler onFinal;
   late VoiceErrorHandler onError;
   var cancelled = false;
+  var committed = false;
+  String? failOnStartWith;
+  var commitProducesFinal = true;
 
   @override
   Future<void> start(
@@ -175,13 +179,18 @@ class _FakeVoice implements VoiceTranscription {
     this.onPartial = onPartial;
     this.onFinal = onFinal;
     this.onError = onError;
+    final error = failOnStartWith;
+    if (error != null) onError(error);
   }
 
   @override
   Future<void> cancel() async => cancelled = true;
 
   @override
-  Future<void> commit() async => onFinal('今天整理错题');
+  Future<void> commit() async {
+    committed = true;
+    if (commitProducesFinal) onFinal('今天整理错题');
+  }
 
   @override
   Future<void> dispose() async {}
@@ -386,5 +395,40 @@ void main() {
 
     expect(voice.cancelled, isTrue);
     expect(transcript, isNull);
+  });
+
+  testWidgets('a startup recognition error does not leave the listening overlay',
+      (tester) async {
+    final voice = _FakeVoice()
+      ..failOnStartWith = 'voice transcription is temporarily unavailable'
+      ..commitProducesFinal = false;
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: VoiceComposer(
+                baseUrl: 'http://localhost',
+                tokens: const TokenStorage(),
+                telemetry: AppTelemetry(
+                    config: const TelemetryConfig(
+                        enabled: false, relayUrl: '', sampleRate: 0),
+                    accessToken: () async => null),
+                voiceFactory: (
+                        {required baseUrl,
+                        required tokens,
+                        required telemetry}) =>
+                    voice,
+                onVoiceFinal: (_) async {},
+                onPickImage: () async {}))));
+
+    final gesture =
+        await tester.startGesture(tester.getCenter(find.text('按住说话')));
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+
+    expect(find.text('正在听…上滑取消'), findsNothing);
+    expect(find.text('松开发送'), findsNothing);
+    expect(find.text('voice transcription is temporarily unavailable'),
+        findsOneWidget);
   });
 }

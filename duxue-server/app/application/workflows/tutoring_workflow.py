@@ -12,11 +12,37 @@ from app.bootstrap.settings import settings
 from app.infrastructure.messaging.outbox import publish_learning_fact
 from app.application.commands.memory import SqlAlchemyMemoryFacade
 from app.contexts.study.domain.execution import HintingPolicy
-from app.infrastructure.persistence.models import StudySession, TutoringMessage, TutoringSession, now
+from app.infrastructure.persistence.models import StudySession, StudySessionInterval, TutoringMessage, TutoringSession, now
 
 class TutoringWorkflow:
     """Safe deterministic fallback; a model may only replace its validated candidate."""
     def __init__(self, db: Session): self.db = db
+
+    def _open_session(self, ward_id: str, session_id: str | None) -> StudySession:
+        if session_id:
+            session = self.db.get(StudySession, session_id)
+            if session is None:
+                raise HTTPException(404, "study session not found")
+            if session.ward_id != ward_id:
+                raise HTTPException(403, "study session does not belong to Ward")
+            return session
+        session = (
+            self.db.query(StudySession)
+            .filter(StudySession.ward_id == ward_id, StudySession.status.in_(("active", "paused")))
+            .order_by(StudySession.started_at.desc())
+            .first()
+        )
+        if session is not None:
+            return session
+        session = StudySession(ward_id=ward_id, task_id=None, status="active")
+        self.db.add(session)
+        self.db.flush()
+        self.db.add(StudySessionInterval(study_session_id=session.id))
+        publish_learning_fact(
+            self.db, ward_id=ward_id, event_type="study_session.started",
+            source_type="study_session", source_id=session.id, payload={"task_id": None},
+        )
+        return session
 
     def invoke(self, invocation: RunInvocation) -> WorkflowOutcome:
         turn = invocation.turn; session_id = turn.get("study_session_id")
@@ -26,13 +52,7 @@ class TutoringWorkflow:
             actor_role="ward", agent_type="tutoring", context_refs=invocation.context_refs,
             context_spec=policy.context_spec("tutoring"),
         )
-        session = self.db.get(StudySession, session_id) if session_id else None
-        if session_id is None:
-            return WorkflowOutcome(run_status="waiting_for_ward", outcome_type="waiting", next_interaction={"status": "needs_study_session"}, context_snapshot=envelope.trace_snapshot())
-        if session is None:
-            raise HTTPException(404, "study session not found")
-        if session.ward_id != invocation.ward_id:
-            raise HTTPException(403, "study session does not belong to Ward")
+        session = self._open_session(invocation.ward_id, session_id)
         tutor = self.db.query(TutoringSession).filter_by(study_session_id=session.id).one_or_none()
         directive = turn.get("tutoring_directive") or "ask"
         if tutor is None and directive == "close":
@@ -50,7 +70,9 @@ class TutoringWorkflow:
         input_decision = policy.validate_tutoring_input(content)
         blocked = not input_decision.accepted
         label = "answer_seeking" if blocked else turn.get("intent_label") or "problem"
-        failed_attempts = self.db.query(TutoringMessage).filter_by(tutoring_session_id=tutor.id, role="ward", safety_blocked=False).count()
+        prior_attempts = self.db.query(TutoringMessage).filter_by(tutoring_session_id=tutor.id, role="ward", safety_blocked=False).count()
+        # 新提问从 L1 开始。只有「再试一次 / 继续求提示」才沿用同一题的尝试次数。
+        failed_attempts = 0 if directive == "ask" else prior_attempts
         hinting = HintingPolicy.evaluate(failed_attempts=failed_attempts, intent_label=label, has_task=bool(session.task_id), session_status=session.status)
         ward = TutoringMessage(tutoring_session_id=tutor.id, role="ward", content=content, is_stuck_point=label == "problem", safety_blocked=blocked)
         self.db.add(ward); self.db.flush()

@@ -401,6 +401,7 @@ class ApiClient {
     required String content,
     required String? threadId,
     required int? expectedThreadVersion,
+    String? routeHint,
     Map<String, dynamic>? structuredCommand,
     List<String> attachmentKeys = const [],
   }) async =>
@@ -408,7 +409,7 @@ class ApiClient {
         'content': content,
         'thread_id': threadId,
         'expected_thread_version': expectedThreadVersion,
-        'route_hint': 'planning',
+        if (routeHint != null) 'route_hint': routeHint,
         if (structuredCommand != null) 'structured_command': structuredCommand,
         'attachment_keys': attachmentKeys,
       }))

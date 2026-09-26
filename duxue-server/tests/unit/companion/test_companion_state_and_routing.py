@@ -3,8 +3,11 @@ from __future__ import annotations
 from types import SimpleNamespace
 import pytest
 
+from app.application.ports.companion import IntentProposal
 from app.contexts.companion.domain.intent_router import IntentRouter
 from app.contexts.companion.domain.policy import PolicyRegistry
+from app.infrastructure.ai.intent_classifier import ModelIntentClassifier, parse_intent_payload
+from app.infrastructure.ai.model_gateway import ModelGatewayError
 
 
 @pytest.fixture
@@ -30,78 +33,83 @@ def test_safety_keyword_triggers_immediate_safety_route(router):
 
 
 def test_explicit_route_hint_takes_precedence(router):
-    """客户端校验后的 route_hint 应直接生效。"""
+    """已验证的 route_hint 覆盖模型提议。"""
     decision = router.decide(
         content="随便聊两句",
         route_hint="reflection",
         focus_run=None,
+        proposal=IntentProposal(intent="tutoring"),
     )
     assert decision.target == "reflection"
     assert decision.mode == "start"
     assert decision.route_reason == "validated_route_hint"
 
 
-def test_single_intent_starts_cleanly(router):
-    """明确的单意图且无活跃会话时，作为 start 启动。"""
+def test_model_proposal_starts_one_business_intent(router):
+    """模型提议的单一意图在没有 focus 时作为 start。关键词不能改写该提议。"""
     decision = router.decide(
-        content="帮我排一下明天的学习计划",
+        content="铁木真统一了蒙古的什么？",
         route_hint=None,
         focus_run=None,
+        proposal=IntentProposal(intent="tutoring"),
     )
-    assert decision.target == "planning"
+    assert decision.target == "tutoring"
     assert decision.mode == "start"
-    assert decision.confidence > 0.9
+    assert decision.route_reason == "model_intent_proposal"
 
 
-def test_multiple_conflicting_intents_require_clarification(router):
-    """当单句话同时命中多个意图关键词时，要求澄清，不盲目分发。"""
+def test_unclear_proposal_clarifies_even_when_words_match_several_scenes(router):
+    """多个场景或听不清时，模型提议 unclear，代码进入澄清，不再扫描关键词。"""
     decision = router.decide(
         content="帮我安排计划，顺便这道题目怎么做",
         route_hint=None,
         focus_run=None,
+        proposal=IntentProposal(intent="unclear"),
     )
     assert decision.target == "clarify"
     assert decision.mode == "clarify"
-    assert decision.route_reason == "multiple_explicit_intents"
+    assert decision.route_reason == "insufficient_route_confidence"
 
 
-def test_intent_continuation_with_active_focus(router):
-    """在已有 focus_run 的情况下，属于同类型的意图应以 continue 模式继续。"""
+def test_same_proposal_continues_focus(router):
     focus_run = SimpleNamespace(agent_type="tutoring", id="run-tutor-1")
     decision = router.decide(
         content="这道几何题第一步怎么做？",
         route_hint=None,
         focus_run=focus_run,
+        proposal=IntentProposal(intent="tutoring"),
     )
     assert decision.target == "tutoring"
     assert decision.mode == "continue"
     assert decision.active_session_id == "run-tutor-1"
 
 
-def test_handoff_from_planning_to_tutoring(router):
-    """在计划进行中，用户突然提出答疑请求，应触发 handoff 交接。"""
+def test_different_proposal_hands_off(router):
     focus_run = SimpleNamespace(agent_type="planning", id="run-plan-1")
     decision = router.decide(
         content="这道题我看不懂",
         route_hint=None,
         focus_run=focus_run,
+        proposal=IntentProposal(intent="tutoring"),
     )
     assert decision.target == "tutoring"
     assert decision.mode == "handoff"
     assert decision.active_session_id == "run-plan-1"
 
 
-def test_vague_input_continues_existing_focus(router):
-    """模糊日常回复在有活跃工作流时，默认延续当前 focus。"""
-    focus_run = SimpleNamespace(agent_type="tutoring", id="run-tutor-2")
-    decision = router.decide(
-        content="好的，然后呢",
-        route_hint=None,
-        focus_run=focus_run,
-    )
-    assert decision.target == "tutoring"
-    assert decision.mode == "continue"
-    assert decision.route_reason == "focus_run_normal_continuation"
+def test_invalid_model_payload_becomes_unclear():
+    assert parse_intent_payload('{"intent":"tutoring"}').intent == "tutoring"
+    assert parse_intent_payload('{"intent":"none"}').intent == "unclear"
+    assert parse_intent_payload('{"intent":"delete_all"}').intent == "unclear"
+    assert parse_intent_payload("not-json").intent == "unclear"
+
+
+def test_classifier_failure_proposes_unclear():
+    def fail(*, content: str, focus_agent_type: str | None) -> str:
+        raise ModelGatewayError("model_transport_error")
+
+    proposal = ModelIntentClassifier(complete=fail).propose(content="铁木真是谁", focus_agent_type=None)
+    assert proposal.intent == "unclear"
 
 
 def test_policy_blocks_direct_answer_request(policy):

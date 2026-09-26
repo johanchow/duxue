@@ -36,6 +36,12 @@ def test_display_rejects_final_answer_before_l4():
     assert HintingPolicy.accepts_display(early, "先看看已知条件") is True
 
 
+def test_l4_keeps_an_explanation_instead_of_requiring_magic_words():
+    opened = HintingPolicy.evaluate(failed_attempts=3, intent_label="problem", has_task=False, session_status="active")
+    explanation = "湿衣服上的水蒸发时会带走皮肤上的热量，所以会觉得更冷。"
+    assert HintingPolicy.accepts_display(opened, explanation) is True
+
+
 def test_finish_requires_a_task_and_long_sessions_pause():
     assert can_finish(None) is False
     assert can_finish("task-1") is True

@@ -489,11 +489,27 @@ class EndToEndTest(unittest.TestCase):
             [item["name"] for item in profile.json()["guardians"]], ["林妈妈"]
         )
 
+    @patch("app.application.process_managers.companion_coordinator.ModelIntentClassifier")
     @patch("app.application.process_managers.companion_coordinator.PlanningWorkflowAdapter")
     def test_companion_coordinator_routes_one_run_and_records_a_redacted_trace(
-        self, adapter_class
+        self, adapter_class, classifier_class
     ):
-        from app.application.ports.companion import WorkflowOutcome
+        from app.application.ports.companion import IntentProposal, WorkflowOutcome
+
+        def propose(*, content, focus_agent_type):
+            if "也" in content and "安排" in content:
+                intent = "unclear"
+            elif "安排" in content:
+                intent = "planning"
+            elif "不会" in content:
+                intent = "tutoring"
+            elif focus_agent_type in {"planning", "tutoring", "reflection"}:
+                intent = focus_agent_type
+            else:
+                intent = "unclear"
+            return IntentProposal(intent=intent)
+
+        classifier_class.return_value.propose.side_effect = propose
 
         adapter_class.return_value.invoke.return_value = WorkflowOutcome(
             run_status="waiting_for_ward",

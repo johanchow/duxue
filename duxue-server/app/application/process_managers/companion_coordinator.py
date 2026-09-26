@@ -11,12 +11,14 @@ from sqlalchemy.orm.exc import StaleDataError
 
 from app.application.ports.companion import (
     CoordinatorResult,
+    IntentClassifier,
     RouteDecision,
     RunInvocation,
     WorkflowOutcome,
 )
 from app.application.workflows.planning_adapter import PlanningWorkflowAdapter
 from app.contexts.companion.domain.intent_router import IntentRouter
+from app.infrastructure.ai.intent_classifier import ModelIntentClassifier
 from app.infrastructure.observability.telemetry import (
     agent_workflow_span,
     record_agent_input,
@@ -41,6 +43,9 @@ from app.infrastructure.persistence.workflow_dispatcher import (
 
 _ACTIVE_STATUSES = ("active", "waiting_for_ward", "paused")
 _RESUMABLE_STATUSES = ("waiting_for_ward", "paused", "failed", "timed_out")
+_CLARIFY_REPLY = "我还没分清你是想安排学习、问一个问题，还是复盘今天。你直接说一件就好。"
+_SAFETY_REPLY = "如果你现在很难受，请立刻告诉身边的大人。"
+_VALID_HINTS = {"planning", "tutoring", "reflection"}
 
 
 class CompanionCoordinator:
@@ -50,9 +55,13 @@ class CompanionCoordinator:
     then accepted only if Run, turn, attempt and Thread focus still match.
     """
 
-    def __init__(self, db: Session, router: IntentRouter | None = None, dispatcher=None):
+    def __init__(
+        self, db: Session, router: IntentRouter | None = None, dispatcher=None,
+        classifier: IntentClassifier | None = None,
+    ):
         self.db = db
         self.router = router or IntentRouter()
+        self.classifier = classifier or ModelIntentClassifier()
         self.dispatcher = dispatcher or SqlAlchemyWorkflowDispatcher(db, planning_factory=PlanningWorkflowAdapter)
 
     @staticmethod
@@ -200,7 +209,14 @@ class CompanionCoordinator:
         command = CompanionCommand(id=command_id, ward_id=ward_id, thread_id=thread.id, payload_digest=digest)
         self.db.add(command)
         focus_run = self._focus_run(thread)
-        decision = self.router.decide(content=content, route_hint=route_hint, focus_run=focus_run)
+        proposal = None
+        if not self.router.blocks_for_safety(content) and route_hint not in _VALID_HINTS:
+            proposal = self.classifier.propose(
+                content=content, focus_agent_type=getattr(focus_run, "agent_type", None),
+            )
+        decision = self.router.decide(
+            content=content, route_hint=route_hint, focus_run=focus_run, proposal=proposal,
+        )
         if decision.mode == "start" and focus_run is not None and decision.target not in {"clarify", "safety"}:
             decision.mode = "continue" if focus_run.agent_type == decision.target else "handoff"
         if structured_command:
@@ -244,6 +260,14 @@ class CompanionCoordinator:
             attempt=run.attempt if run else None,
             attachment_refs=attachment_keys,
         )
+        terminal_reply = { "clarify": _CLARIFY_REPLY, "safety": _SAFETY_REPLY }.get(decision.target)
+        if terminal_reply is not None:
+            thread.version = version
+            version = self._advance_thread(thread)
+            self._write_transcript(
+                thread=thread, command_id=command_id, author_type="companion",
+                content=terminal_reply, thread_version=version,
+            )
         self.db.commit()
         # The conditional SQL update deliberately bypasses the identity map;
         # reload before the outcome transaction so its fence sees the new

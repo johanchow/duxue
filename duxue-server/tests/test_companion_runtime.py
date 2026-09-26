@@ -13,6 +13,7 @@ from app.application.workflows.planning_adapter import PlanningWorkflowAdapter, 
 from app.application.workflows.tutoring_workflow import TutoringWorkflow
 from app.application.workflows.reflection_workflow import ReflectionWorkflow
 from app.application.process_managers.companion_coordinator import CompanionCoordinator
+from tests.support.fakes import StaticIntentClassifier
 from app.application.ports.companion import RunInvocation, WorkflowOutcome
 from app.infrastructure.ai.model_gateway import ModelGatewayError
 from app.infrastructure.persistence.database import Base
@@ -506,7 +507,7 @@ class MemoryFacadeTest(unittest.TestCase):
                 )
 
         dispatcher = FakeDispatcher()
-        result = CompanionCoordinator(self.db, dispatcher=dispatcher).handle(
+        result = CompanionCoordinator(self.db, dispatcher=dispatcher, classifier=StaticIntentClassifier("planning")).handle(
             ward_id=self.ward_id,
             content="帮我安排明天复习",
             thread_id=None,
@@ -533,7 +534,7 @@ class MemoryFacadeTest(unittest.TestCase):
                 )
 
         dispatcher = FakeDispatcher()
-        coordinator = CompanionCoordinator(self.db, dispatcher=dispatcher)
+        coordinator = CompanionCoordinator(self.db, dispatcher=dispatcher, classifier=StaticIntentClassifier("planning"))
         command_id = uid()
         first = coordinator.handle(
             ward_id=self.ward_id, content="帮我安排明天复习", thread_id=None,

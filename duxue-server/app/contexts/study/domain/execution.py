@@ -45,9 +45,11 @@ class HintingPolicy:
 
     @staticmethod
     def accepts_display(decision: HintingDecision, text: str) -> bool:
+        leaked = any(marker in text for marker in _ANSWER_LEAK)
         if decision.allowed_level >= 4 and decision.l4_walkthrough_allowed:
-            return "验证" in text or "如果" in text
-        return not any(marker in text for marker in _ANSWER_LEAK)
+            has_check = "验证" in text or "如果" in text or "？" in text or "?" in text
+            return has_check or not leaked
+        return not leaked
 
 
 def should_auto_pause(active_seconds: int) -> bool:

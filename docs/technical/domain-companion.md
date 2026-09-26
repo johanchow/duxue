@@ -184,15 +184,31 @@ Coordinator 是 Application-layer Process Manager：它可通过本 Context 的 
 并编排同一 Context 的短 Unit of Work；它不得直接使用 ORM/SQL，也不能直接写目标 Context 的
 Repository/ORM 或创建多 Context 全局事务。
 
-路由优先级固定为：安全与权限 → 服务端验证的 `route_hint` → focus Run 正常续接 → 明确单一
-意图 → 有限分类/澄清。多个未指定优先级的业务意图必须澄清。未来分类模型只能提出受限
-`RouteDecision`，仍受规则和 UI hint 覆盖，不得获得工具或写权限。
+自由文本的意图由一次无状态的结构化模型调用提议，不由关键词或正则解释。模型只返回
+`IntentProposal`：`intent` 取 `planning`、`tutoring`、`reflection`、`unclear` 之一。
+延续当前场景时必须再次写出该场景名，不另设「无新意图」取值。它没有工具、没有写权限，
+也不能自行决定 `mode` 或创建 Run。`HandleCompanionTurn` 校验该提议属于这个闭集；非法 JSON、
+闭集之外的值、提供者关闭或调用失败都视为 `unclear`。
+
+代码按固定优先级把已校验提议变成 `RouteDecision`：
+
+| 顺序 | 判断者 | 条件 | 结果 |
+|---|---|---|---|
+| 1 | Domain 封闭安全词表 | 命中自伤或伤人短语 | `safety`，不调用模型，不建 Run |
+| 2 | 已验证 UI | `route_hint` 属于 `planning` / `tutoring` / `reflection` | 该目标，`mode=start`，不调用模型 |
+| 3 | 模型提议 + Domain | `unclear` 或没有有效提议 | `clarify`，不建 Run |
+| 4 | 模型提议 + Domain | 提议与 focus 的场景相同 | `continue` |
+| 5 | 模型提议 + Domain | 提议是另一个业务场景，或没有 focus | 有 focus 时 `handoff`，否则 `start` |
+
+同时出现多个业务意图时，模型必须提议 `unclear`，由代码进入澄清，不得猜测其中一个。
+澄清和安全都写入一条固定的、已校验的 Ward-facing 回复；不能返回没有正文的成功结果。
+安全词表只拦截已知伤害表述，不承担开放说法的意图理解。
 
 ### 3.1 状态变更触发矩阵
 
 | 触发 | Interface | Use Case / Process Manager | 本地行为 | 后续 | 一致性、幂等与失败 |
 |---|---|---|---|---|---|
-| Ward 文本、ASR 或 UI 动作 | `POST /companion/turn` | `HandleCompanionTurn` | load Thread → `route()` → start/resume Link → version++ → append accepted Ward journal record | `RunRouted`、最小 Trace、`RunInvocation` | optimistic lock；`command_id` 重试返原结果；澄清/安全不建 Run，但可产生已校验的 Ward-facing 回复 |
+| Ward 文本、ASR 或 UI 动作 | `POST /companion/turn` | `HandleCompanionTurn` | load Thread → 安全或已验证 `route_hint` 短路，否则一次意图模型调用 → `route()` → start/resume Link → version++ → append accepted Ward journal record | `RunRouted`、最小 Trace、`RunInvocation` | optimistic lock；`command_id` 重试返原结果；澄清/安全不建 Run，但写入已校验的 Ward-facing 回复 |
 | focus Run 续接 | 同上 | `ResumeAgentRun` | 校验状态和 checkpoint/policy → `resume()` | 新 attempt 的 Invocation | `run_id + turn_id` 唯一；不兼容返回重新审阅 |
 | 明确新目标或受验证 UI | 同上 | `HandoffRun` | 原 Link pause/close，创建/恢复目标 Link，更新 focus | `RunHandedOff` | 同一 Thread 事务；没有明确意图则澄清 |
 | Workflow 返回结果 | completion adapter | `RecordWorkflowOutcome` | fence `run_id + attempt + focus` → `record_outcome()` → append validated companion journal record | Trace / 可恢复引用 | 重复无副作用；迟到 Outcome 不夺回回复权或写可见消息 |
