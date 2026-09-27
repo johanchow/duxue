@@ -141,12 +141,12 @@ def create_study_session(
     db: Session,
     *,
     ward: Ward,
-    task: Task,
+    task: Task | None = None,
     status: str = "active",
 ) -> StudySession:
     session = StudySession(
         ward_id=ward.id,
-        task_id=task.id,
+        task_id=None if task is None else task.id,
         status=status,
     )
     db.add(session)

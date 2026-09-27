@@ -7,6 +7,8 @@ import 'package:image_picker/image_picker.dart';
 import '../providers.dart';
 import '../shared/app_ui.dart';
 import '../shared/voice_composer.dart';
+import 'home_task_card.dart';
+import 'task_status_dialogs.dart';
 
 String wardBindFailureMessage(Object error) {
   if (error is DioException) {
@@ -320,7 +322,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
           separatorBuilder: (_, __) => const SizedBox(width: 8),
           itemBuilder: (_, index) {
             final item = planned[index] as Map<String, dynamic>;
-            final isCurrent = _isItemCurrent(item, index);
+            final isCurrent = _isItemCurrent(item);
             final startTime = _formatItemStartTime(item, index, planned);
             final durationText = _formatPlannedDuration(item);
             final title = item['title'] as String? ?? '计划项';
@@ -331,7 +333,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
                     color: Colors.transparent,
                     child: InkWell(
                         borderRadius: BorderRadius.circular(16),
-                        onTap: () => _openPlanChat(title),
+                        onTap: () => _taskTapped(item, true),
                         child: Ink(
                             decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(16),
@@ -386,24 +388,18 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
                                           fontSize: 11,
                                           color: Color(0xff5b667a))),
                                   const Spacer(),
-                                  if (isCurrent)
-                                    Container(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 7, vertical: 2),
-                                        decoration: BoxDecoration(
-                                            color: const Color(0xffe6f4f1),
-                                            borderRadius:
-                                                BorderRadius.circular(999)),
-                                        child: const Text('当前',
-                                            style: TextStyle(
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.w700,
-                                                color: Color(0xff0f766e)))),
+                                  Text(homeTaskCardLabel(homeTaskCardKind(item)),
+                                      style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w700,
+                                          color: isCurrent
+                                              ? const Color(0xff0f766e)
+                                              : const Color(0xff8b95a8))),
                                 ]))))) ;
           }));
 
   Widget _poolTask(Map<String, dynamic> item) {
-    final status = item['status'] as String? ?? 'open';
+    final kind = homeTaskCardKind(item);
     return Padding(
         padding: const EdgeInsets.only(bottom: 8),
         child: Dismissible(
@@ -439,16 +435,15 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
                                     fontSize: 12, color: Colors.blueGrey)),
                           ])),
                       StatusPill(
-                          text: status == 'active'
-                              ? '进行中'
-                              : status == 'paused'
-                                  ? '已暂停'
-                                  : '未安排',
-                          color: status == 'open'
-                              ? Colors.deepPurple
-                              : status == 'paused'
-                                  ? Colors.orange
-                                  : brandBlue),
+                          text: homeTaskCardLabel(kind),
+                          color: switch (kind) {
+                            HomeTaskCardKind.unscheduled => Colors.deepPurple,
+                            HomeTaskCardKind.paused => Colors.orange,
+                            HomeTaskCardKind.completed => Colors.blueGrey,
+                            HomeTaskCardKind.scheduled ||
+                            HomeTaskCardKind.inProgress =>
+                              brandBlue,
+                          }),
                     ])))));
   }
 
@@ -483,7 +478,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
               itemCount: planned.length,
               itemBuilder: (_, index) {
                 final item = planned[index] as Map<String, dynamic>;
-                final isCurrent = _isItemCurrent(item, index);
+                final isCurrent = _isItemCurrent(item);
                 final time = _formatItemStartTime(item, index, planned);
                 final subtitle = _formatPlanItemSubtitle(item);
                 final title = item['title'] as String? ?? '计划项';
@@ -492,22 +487,18 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
                     time: time,
                     title: title,
                     subtitle: subtitle,
+                    statusLabel: homeTaskCardLabel(homeTaskCardKind(item)),
                     isCurrent: isCurrent,
                     isFirst: index == 0,
                     isLast: index == planned.length - 1,
-                    onTap: () => setState(() {
-                          planListOpen = false;
-                          chatSubject = title;
-                          planChatOpen = true;
-                        }));
+                    onTap: () {
+                      setState(() => planListOpen = false);
+                      _taskTapped(item, true);
+                    });
               }));
 
-  bool _isItemCurrent(Map<String, dynamic> item, int index) {
-    final status = item['status'] as String?;
-    if (status == 'active' || status == 'in_progress') {
-      return true;
-    }
-    return index == 0;
+  bool _isItemCurrent(Map<String, dynamic> item) {
+    return homeTaskCardKind(item) == HomeTaskCardKind.inProgress;
   }
 
   String _formatPlannedDuration(Map<String, dynamic> item) {
@@ -829,14 +820,37 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
     final approved = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
-                title: const Text('退出此设备绑定？'),
-                content: const Text('之后需要用新的绑定码才能再次进入学习空间。'),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20)),
+                backgroundColor: Colors.white,
+                surfaceTintColor: Colors.transparent,
+                titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                contentPadding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
+                actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                title: const Text('退出此设备绑定？',
+                    style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xff0c1222))),
+                content: const Text('之后需要用新的绑定码才能再次进入学习空间。',
+                    style: TextStyle(
+                        fontSize: 13,
+                        color: Color(0xff64748b),
+                        height: 1.4)),
                 actions: [
                   TextButton(
                       onPressed: () => Navigator.pop(dialogContext, false),
+                      style: TextButton.styleFrom(
+                          foregroundColor: const Color(0xff64748b)),
                       child: const Text('取消')),
                   FilledButton(
                       onPressed: () => Navigator.pop(dialogContext, true),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xff0f766e),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10)),
+                      ),
                       child: const Text('确认退出'))
                 ]));
     if (approved != true || !mounted) return;
@@ -872,15 +886,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
 
   int get _elapsedSeconds => savedSeconds + watch.elapsed.inSeconds;
 
-  Future<void> _finish() async {
-    watch.stop();
-    await ref.read(apiProvider).finishSession(session!, _elapsedSeconds);
-    timer?.cancel();
-    session = null;
-    savedSeconds = 0;
-    await _load();
-  }
-
   Future<void> _review() async {
     try {
       await ref.read(apiProvider).review(widget.wardId, DateTime.now(), '顺利');
@@ -893,118 +898,232 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
   }
 
   Future<void> _taskTapped(Map<String, dynamic> item, bool planned) async {
-    final status = item['status'] as String? ?? 'pending';
-    final data = item['session'] as Map<String, dynamic>?;
-    if (status == 'completed') {
+    final kind = homeTaskCardKind(item);
+    final rawSession = item['session'];
+    final data =
+        rawSession is Map ? Map<String, dynamic>.from(rawSession) : null;
+    if (kind == HomeTaskCardKind.completed) {
       return;
     }
-    if (status == 'active' && data != null) {
-      return _showActiveActions(data['id'] as String);
+    if (kind == HomeTaskCardKind.inProgress && data != null) {
+      return _showActiveActions(item, data);
     }
-    if (status == 'paused' && data != null) {
-      return _confirm(
-        title: '继续学习？',
-        message: '会继续累计这项任务的学习时长。',
-        confirm: '确认继续',
-        action: () async {
-          await ref.read(apiProvider).resumeSession(data['id'] as String);
-          await _load();
-        },
-      );
+    if (kind == HomeTaskCardKind.paused && data != null) {
+      final sessionId = data['id'] as String;
+      final seconds = data['active_seconds'] as int? ?? 0;
+      return _showPausedActions(item, sessionId, seconds);
     }
-    await _confirm(
-      title: '开始学习？',
-      message: '开始后你可以随时暂停或完成。',
-      confirm: '确认开始',
-      action: () async {
-        final result = planned
-            ? await ref.read(apiProvider).startSession(item['id'] as String)
-            : await ref
-                .read(apiProvider)
-                .startAssignmentSession(item['id'] as String);
-        session = result['id'] as String;
-        savedSeconds = result['active_seconds'] as int? ?? 0;
-        watch
-          ..reset()
-          ..start();
-        timer?.cancel();
-        timer = Timer.periodic(const Duration(seconds: 1), (_) {
-          if (mounted) setState(() {});
-        });
-        await _load();
-      },
-    );
+    await _showStartTaskDialog(item, planned);
   }
 
-  Future<void> _showActiveActions(String sessionId) =>
-      showModalBottomSheet<void>(
-        context: context,
-        builder: (sheetContext) => Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('这项任务正在进行',
-                      style:
-                          TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 8),
-                  Text('已累计 ${_elapsedSeconds ~/ 60} 分钟。你可以按自己的节奏决定下一步。'),
-                  const SizedBox(height: 16),
-                  FilledButton(
-                      onPressed: () {
-                        Navigator.pop(sheetContext);
-                        _confirm(
-                            title: '完成这项任务？',
-                            message: '完成后会记录本次学习时长。',
-                            confirm: '确认完成',
-                            action: _finish);
-                      },
-                      child: const Text('完成任务')),
-                  const SizedBox(height: 8),
-                  OutlinedButton(
-                      onPressed: () {
-                        Navigator.pop(sheetContext);
-                        _confirm(
-                            title: '暂停这项任务？',
-                            message: '学习时长会保留，之后可以继续。',
-                            confirm: '确认暂停',
-                            action: () async {
-                              watch.stop();
-                              await ref
-                                  .read(apiProvider)
-                                  .pauseSession(sessionId, _elapsedSeconds);
-                              timer?.cancel();
-                              session = null;
-                              savedSeconds = 0;
-                              await _load();
-                            });
-                      },
-                      child: const Text('暂停')),
-                ])),
-      );
-
-  Future<void> _confirm(
-      {required String title,
-      required String message,
-      required String confirm,
-      required Future<void> Function() action}) async {
+  Future<void> _showStartTaskDialog(
+      Map<String, dynamic> item, bool planned) async {
+    final taskTitle = item['title'] as String? ?? '当前任务';
+    final durationText = _formatPlannedDuration(item);
+    final details = item['details'] as String?;
     final approved = await showDialog<bool>(
         context: context,
-        builder: (dialogContext) =>
-            AlertDialog(title: Text(title), content: Text(message), actions: [
-              TextButton(
-                  onPressed: () => Navigator.pop(dialogContext, false),
-                  child: const Text('取消')),
-              FilledButton(
-                  onPressed: () => Navigator.pop(dialogContext, true),
-                  child: Text(confirm))
-            ]));
+        builder: (dialogContext) => StartTaskDialog(
+              taskTitle: taskTitle,
+              isPlanned: planned,
+              durationText: durationText,
+              details: details,
+            ));
     if (approved != true) return;
     try {
-      await action();
+      final result = planned
+          ? await ref.read(apiProvider).startSession(item['id'] as String)
+          : await ref
+              .read(apiProvider)
+              .startAssignmentSession(item['id'] as String);
+      final sessionId = result['id'] as String;
+      final seconds = result['active_seconds'] as int? ?? 0;
+      _patchTaskSession(item['id'] as String, {
+        'id': sessionId,
+        'status': 'active',
+        'active_seconds': seconds,
+      });
+      _trackSession(sessionId, seconds);
+      await _load();
     } catch (error) {
       if (mounted) showMessage(context, '操作没有完成，请稍后再试：$error');
+    }
+  }
+
+  int _secondsFor(Map<String, dynamic> data) {
+    final id = data['id'] as String?;
+    if (id != null && id == session) return _elapsedSeconds;
+    return data['active_seconds'] as int? ?? 0;
+  }
+
+  Future<void> _showActiveActions(
+      Map<String, dynamic> item, Map<String, dynamic> data) {
+    final taskId = item['id'] as String;
+    final taskTitle = item['title'] as String? ?? '当前任务';
+    final sessionId = data['id'] as String;
+    final seconds = _secondsFor(data);
+    final details = item['details'] as String?;
+    return showDialog<void>(
+        context: context,
+        builder: (dialogContext) => ActiveTaskDialog(
+              taskTitle: taskTitle,
+              seconds: seconds,
+              details: details,
+              onPause: () {
+                Navigator.pop(dialogContext);
+                _pauseSession(taskId, sessionId, seconds);
+              },
+              onFinish: () {
+                Navigator.pop(dialogContext);
+                _confirmFinishTask(taskTitle, taskId, sessionId, seconds);
+              },
+            ));
+  }
+
+  Future<void> _showPausedActions(
+      Map<String, dynamic> item, String sessionId, int seconds) async {
+    final taskId = item['id'] as String;
+    final taskTitle = item['title'] as String? ?? '当前任务';
+    final details = item['details'] as String?;
+    final action = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => PausedTaskDialog(
+              taskTitle: taskTitle,
+              seconds: seconds,
+              details: details,
+            ));
+    if (action == 'resume') {
+      await _resumeSession(taskId, sessionId, seconds);
+    } else if (action == 'finish') {
+      await _confirmFinishTask(taskTitle, taskId, sessionId, seconds);
+    }
+  }
+
+  Future<void> _confirmFinishTask(
+      String taskTitle, String taskId, String sessionId, int seconds) async {
+    final approved = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => FinishTaskConfirmDialog(
+              taskTitle: taskTitle,
+              seconds: seconds,
+            ));
+    if (approved != true) return;
+    await _finishSession(taskId, sessionId, seconds, taskTitle: taskTitle);
+  }
+
+  void _patchTaskSession(String taskId, Map<String, dynamic>? session) {
+    tasks = [
+      for (final raw in tasks)
+        if (raw is Map && raw['id'] == taskId)
+          {...Map<String, dynamic>.from(raw), 'session': session}
+        else
+          raw,
+    ];
+    final items = plan?['items'];
+    if (items is List) {
+      plan = {
+        ...plan!,
+        'items': [
+          for (final raw in items)
+            if (raw is Map &&
+                (raw['id'] == taskId || raw['assignment_id'] == taskId))
+              {...Map<String, dynamic>.from(raw), 'session': session}
+            else
+              raw,
+        ],
+      };
+    }
+    setState(() {});
+  }
+
+  void _trackSession(String sessionId, int seconds) {
+    session = sessionId;
+    savedSeconds = seconds;
+    watch
+      ..reset()
+      ..start();
+    timer?.cancel();
+    timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  void _clearTrackedSession(String sessionId) {
+    if (session != sessionId) return;
+    watch.stop();
+    timer?.cancel();
+    session = null;
+    savedSeconds = 0;
+  }
+
+  Future<void> _pauseSession(
+      String taskId, String sessionId, int seconds) async {
+    final previous = {
+      'id': sessionId,
+      'status': 'active',
+      'active_seconds': seconds,
+    };
+    _clearTrackedSession(sessionId);
+    _patchTaskSession(taskId, {
+      'id': sessionId,
+      'status': 'paused',
+      'active_seconds': seconds,
+    });
+    try {
+      await ref.read(apiProvider).pauseSession(sessionId, seconds);
+      await _load();
+    } catch (error) {
+      if (!mounted) return;
+      _patchTaskSession(taskId, previous);
+      _trackSession(sessionId, seconds);
+      showMessage(context, '操作没有完成，请稍后再试：$error');
+    }
+  }
+
+  Future<void> _resumeSession(
+      String taskId, String sessionId, int seconds) async {
+    _patchTaskSession(taskId, {
+      'id': sessionId,
+      'status': 'active',
+      'active_seconds': seconds,
+    });
+    _trackSession(sessionId, seconds);
+    try {
+      await ref.read(apiProvider).resumeSession(sessionId);
+      await _load();
+    } catch (error) {
+      if (!mounted) return;
+      _clearTrackedSession(sessionId);
+      _patchTaskSession(taskId, {
+        'id': sessionId,
+        'status': 'paused',
+        'active_seconds': seconds,
+      });
+      showMessage(context, '操作没有完成，请稍后再试：$error');
+    }
+  }
+
+  Future<void> _finishSession(
+      String taskId, String sessionId, int seconds,
+      {String? taskTitle}) async {
+    _clearTrackedSession(sessionId);
+    _patchTaskSession(taskId, null);
+    try {
+      await ref.read(apiProvider).finishSession(sessionId, seconds);
+      if (mounted && taskTitle != null) {
+        final minutes = seconds ~/ 60;
+        showMessage(context, '🎉 已完成「$taskTitle」，本次学习累计 $minutes 分钟！');
+      }
+      await _load();
+    } catch (error) {
+      if (!mounted) return;
+      _patchTaskSession(taskId, {
+        'id': sessionId,
+        'status': 'active',
+        'active_seconds': seconds,
+      });
+      _trackSession(sessionId, seconds);
+      showMessage(context, '操作没有完成，请稍后再试：$error');
     }
   }
 
@@ -1435,6 +1554,7 @@ class _TimelineRow extends StatelessWidget {
     required this.time,
     required this.title,
     required this.subtitle,
+    required this.statusLabel,
     required this.isCurrent,
     required this.isFirst,
     required this.isLast,
@@ -1444,6 +1564,7 @@ class _TimelineRow extends StatelessWidget {
   final String time;
   final String title;
   final String subtitle;
+  final String statusLabel;
   final bool isCurrent;
   final bool isFirst;
   final bool isLast;
@@ -1539,25 +1660,17 @@ class _TimelineRow extends StatelessWidget {
                             color: Color(0xff5b667a),
                           ),
                         ),
-                        if (isCurrent) ...[
-                          const SizedBox(height: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: const Color(0xffe6f4f1),
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: const Text(
-                              '当前',
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xff0f766e),
-                              ),
-                            ),
+                        const SizedBox(height: 6),
+                        Text(
+                          statusLabel,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: isCurrent
+                                ? const Color(0xff0f766e)
+                                : const Color(0xff8b95a8),
                           ),
-                        ],
+                        ),
                       ],
                     ),
                   ),

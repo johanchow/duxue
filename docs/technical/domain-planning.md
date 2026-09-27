@@ -1,6 +1,6 @@
 # 读学系统 — Planning & Scheduling Domain Design
 
-> 状态：讨论稿 · 版本：v1.11
+> 状态：讨论稿 · 版本：v1.12
 > 范围：已知任务池、Ward 安排意图、计划草稿、确认后的正式日程，以及计划协商 Workflow。  
 > 关联：[系统 Context Map](ddd-overview.md) · [Companion 编排](domain-companion.md) · [Memory Context](domain-memory.md) · [Server 物理设计](design-server.md) · [计划 PRD](../product/prd-schedule.md)
 
@@ -126,6 +126,20 @@ stateDiagram-v2
     pool --> [*]: DeleteTask 移除记录
     scheduled --> [*]: 修订确认后删除
 ```
+
+#### 首页任务卡片
+
+首页任务卡片是读模型 `HomeTaskCard`，不是 `Task` 的另一种写状态。安排状态来自 `Task`，进行中和暂停来自该任务未结束的 [StudySession](domain-study.md)。
+
+| 卡片展示 | 判定 |
+|---|---|
+| 已完成 | `Task.status = completed` |
+| 进行中 | 该任务有 `status = active` 的 `StudySession` |
+| 暂停 | 该任务有 `status = paused` 的 `StudySession` |
+| 已排期 | `Task.status = scheduled`，日程是今天，且没有未结束的学习会话 |
+| 未排期 | `Task.status = pool`，且没有未结束的学习会话 |
+
+未排期卡片和今日计划卡片都可以点按并确认开始。确认后调用 Study 的 `StartStudySession`，并带上该 `task_id`。`Task` 仍保持 `pool` 或 `scheduled`。进行中的卡片可以选择暂停或完成；暂停的卡片可以继续。暂停、继续只改变 `StudySession`。完成且会话带有 `task_id` 时，才由 `CompleteTask` 把任务写成 `completed`。不挂任务的问答不走这张卡片，见 [无任务答疑](domain-study.md#无任务答疑)。
 
 #### 领域模型清单（聚合及领域服务）
 
@@ -375,6 +389,7 @@ sequenceDiagram
 | `GetPlanningTaskPool` / `TaskPoolView` | Ward；`TaskRegistered` 或日界释放提交后必须重新读取最新投影 | 状态为 `pool` 的 Task（含已过本地日、未完成而释放回来的任务）、固定约束、授权 MemoryBundle |
 | `GetPlanDraft` / `PlanDraftView` | Ward；草稿提交后强一致 | **全部未完成 Task** 的确认列表：`title`、`planned_minutes`、`start_at`、`end_at`、`will_enter_plan` |
 | `GetConfirmedSchedule` / `ScheduleView` | Ward/Guardian；确认后强一致 | DailySchedule projection |
+| `GetHomeTaskCards` / `HomeTaskCard` | Ward 首页；`Task` 或该任务的 `StudySession` 提交后重新读取 | 上表：安排状态来自 `Task`，进行中和暂停来自未结束的 `StudySession` |
 
 `POST /companion/turn` 是统一入口；目标 UI 的 `edit`、`regenerate`、`confirm` 由 `StructuredWardCommand` 映射为上述 Use Case。Ward 只能修改自己的草稿；Guardian 对确认日程只读。版本冲突（包括确认时草稿或日程基准变化）必须原样映射为 `409` 与最新 `PlanDraftView`，不得被包装为 HTTP 200 的 workflow failure；App 收到后撤销旧 action 并刷新版本。
 

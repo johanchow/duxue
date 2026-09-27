@@ -33,6 +33,8 @@ class HintingPolicy:
         )
         if intent_label == "answer_seeking":
             return HintingDecision(1, return_to_task, False, False)
+        if curiosity and has_task and session_status in {"active", "paused"}:
+            return HintingDecision(1, True, False, True)
         if curiosity and not has_task:
             return HintingDecision(1, False, False, True)
         level = min(4, failed_attempts + 1)

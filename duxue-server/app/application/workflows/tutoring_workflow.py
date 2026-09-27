@@ -98,6 +98,10 @@ class TutoringWorkflow:
             except ModelGatewayError as error:
                 model_fallback = True
                 record_llm_fallback(operation="agent_text", reason=str(error))
+        if hinting.return_to_task:
+            reminder = "先回到正在进行的任务，这个问题可以稍后再问。"
+            if reminder not in answer:
+                answer = f"{answer.rstrip()}\n{reminder}"
         hint = TutoringMessage(tutoring_session_id=tutor.id, role="assistant", content=answer, hint_level=level, safety_blocked=blocked)
         self.db.add(hint); self.db.flush()
         if hinting.record_fact and label != "curiosity":
