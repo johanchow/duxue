@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:duxue_app/core/api_client.dart';
 import 'package:duxue_app/core/token_storage.dart';
 import 'package:duxue_app/core/voice_transcription_service.dart';
@@ -13,6 +15,9 @@ class _WardHomeApi extends ApiClient {
   _WardHomeApi()
       : super(baseUrl: 'http://localhost', tokens: const TokenStorage());
   var startedAssignment = false;
+  String? startedPlanItem;
+  String? pausedSessionId;
+  String? finishedSessionId;
   final deleted = <String>[];
 
   @override
@@ -59,6 +64,28 @@ class _WardHomeApi extends ApiClient {
       String assignmentId) async {
     startedAssignment = true;
     return {'id': 'session-1', 'status': 'active', 'active_seconds': 0};
+  }
+
+  @override
+  Future<Map<String, dynamic>> startSession(String itemId) async {
+    startedPlanItem = itemId;
+    return {'id': 'session-plan', 'status': 'active', 'active_seconds': 0};
+  }
+
+  @override
+  Future<Map<String, dynamic>> pauseSession(
+      String sessionId, int seconds) async {
+    pausedSessionId = sessionId;
+    return {
+      'id': sessionId,
+      'status': 'paused',
+      'active_seconds': seconds,
+    };
+  }
+
+  @override
+  Future<void> finishSession(String sessionId, int seconds) async {
+    finishedSessionId = sessionId;
   }
 
   @override
@@ -117,6 +144,78 @@ class _WardHomeApi extends ApiClient {
       const {'thread_version': 1, 'messages': []};
 }
 
+class _ActiveTaskApi extends _WardHomeApi {
+  Completer<void>? pauseGate;
+
+  @override
+  Future<List<dynamic>> assignments(String wardId) async => [
+        {
+          'id': 'pool-1',
+          'title': '观察蚂蚁路线',
+          'details': '兴趣探索',
+          'status': 'pool',
+          'session': {
+            'id': 'session-live',
+            'status': pausedSessionId == null ? 'active' : 'paused',
+            'active_seconds': 120,
+          },
+        },
+      ];
+
+  @override
+  Future<Map<String, dynamic>> pauseSession(
+      String sessionId, int seconds) async {
+    pausedSessionId = sessionId;
+    final gate = pauseGate;
+    if (gate != null) await gate.future;
+    return {
+      'id': sessionId,
+      'status': 'paused',
+      'active_seconds': seconds,
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>> plan(String wardId, DateTime day) async => {
+        'status': 'confirmed',
+        'items': const [],
+      };
+}
+
+class _PausedTaskApi extends _WardHomeApi {
+  Completer<void>? resumeGate;
+  var resumed = false;
+
+  @override
+  Future<List<dynamic>> assignments(String wardId) async => [
+        {
+          'id': 'pool-1',
+          'title': '观察蚂蚁路线',
+          'details': '兴趣探索',
+          'status': 'pool',
+          'session': {
+            'id': 'session-live',
+            'status': resumed ? 'active' : 'paused',
+            'active_seconds': 30,
+          },
+        },
+      ];
+
+  @override
+  Future<Map<String, dynamic>> plan(String wardId, DateTime day) async => {
+        'status': 'confirmed',
+        'items': const [],
+      };
+
+  @override
+  Future<Map<String, dynamic>> resumeSession(String sessionId) async {
+    resumed = true;
+    final gate = resumeGate;
+    if (gate != null) await gate.future;
+    return {'id': sessionId, 'status': 'active', 'active_seconds': 30};
+  }
+}
+
 class _MultiPlanWardHomeApi extends _WardHomeApi {
   @override
   Future<Map<String, dynamic>> plan(String wardId, DateTime day) async => {
@@ -129,8 +228,12 @@ class _MultiPlanWardHomeApi extends _WardHomeApi {
             'planned_minutes': 40,
             'start_at': '2026-09-20T19:00:00',
             'details': '学校作业',
-            'status': 'active',
-            'session': null,
+            'status': 'scheduled',
+            'session': {
+              'id': 'session-math',
+              'status': 'active',
+              'active_seconds': 60,
+            },
           },
           {
             'id': 'plan-2',
@@ -216,6 +319,91 @@ void main() {
     expect(api.startedAssignment, isTrue);
   });
 
+  testWidgets('an in-progress card offers pause and finish from the session',
+      (tester) async {
+    final api = _ActiveTaskApi();
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiProvider.overrideWithValue(api)],
+      child: const MaterialApp(home: WardDayPage(wardId: 'ward-1')),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('进行中'), findsOneWidget);
+    await tester.tap(find.text('观察蚂蚁路线'));
+    await tester.pumpAndSettle();
+    expect(find.text('这项任务正在进行'), findsOneWidget);
+
+    expect(find.byType(AlertDialog), findsOneWidget);
+    await tester.tap(find.text('暂停'));
+    await tester.pumpAndSettle();
+    expect(find.text('确认暂停'), findsNothing);
+    expect(find.text('暂停'), findsOneWidget);
+    expect(find.text('进行中'), findsNothing);
+    expect(api.pausedSessionId, 'session-live');
+  });
+
+  testWidgets('pause updates the card before the server answers',
+      (tester) async {
+    final api = _ActiveTaskApi()..pauseGate = Completer<void>();
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiProvider.overrideWithValue(api)],
+      child: const MaterialApp(home: WardDayPage(wardId: 'ward-1')),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('观察蚂蚁路线'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('暂停'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('暂停'), findsOneWidget);
+    expect(find.text('进行中'), findsNothing);
+    api.pauseGate!.complete();
+    await tester.pumpAndSettle();
+    expect(find.text('暂停'), findsOneWidget);
+  });
+
+  testWidgets('resume updates the card before the server answers',
+      (tester) async {
+    final api = _PausedTaskApi()..resumeGate = Completer<void>();
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiProvider.overrideWithValue(api)],
+      child: const MaterialApp(home: WardDayPage(wardId: 'ward-1')),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('暂停'), findsOneWidget);
+    await tester.tap(find.text('观察蚂蚁路线'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsOneWidget);
+    await tester.tap(find.text('确认继续'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('进行中'), findsOneWidget);
+    expect(find.text('暂停'), findsNothing);
+    api.resumeGate!.complete();
+    await tester.pumpAndSettle();
+    expect(find.text('进行中'), findsOneWidget);
+  });
+
+  testWidgets('today plan card confirms before it starts', (tester) async {
+    final api = _WardHomeApi();
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiProvider.overrideWithValue(api)],
+      child: const MaterialApp(home: WardDayPage(wardId: 'ward-1')),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('数学练习册').first);
+    await tester.pumpAndSettle();
+    expect(find.text('开始学习？'), findsOneWidget);
+    expect(api.startedPlanItem, isNull);
+
+    await tester.tap(find.text('确认开始'));
+    await tester.pumpAndSettle();
+    expect(api.startedPlanItem, 'plan-1');
+  });
+
   testWidgets('V3 home opens the complete plan timeline and task context',
       (tester) async {
     await tester.pumpWidget(ProviderScope(
@@ -243,7 +431,7 @@ void main() {
 
     await tester.tap(find.text('数学练习册').last);
     await tester.pumpAndSettle();
-    expect(find.text('语境：关于「数学练习册」——按住下方再说。'), findsOneWidget);
+    expect(find.text('开始学习？'), findsOneWidget);
   });
 
   testWidgets(
@@ -259,7 +447,7 @@ void main() {
     expect(find.text('19:00'), findsOneWidget);
     expect(find.text('数学练习册 P23–25'), findsOneWidget);
     expect(find.text('约 40 分钟'), findsOneWidget);
-    expect(find.text('当前'), findsOneWidget);
+    expect(find.text('进行中'), findsOneWidget);
 
     expect(find.text('19:40'), findsOneWidget);
     expect(find.text('休息'), findsOneWidget);
@@ -290,10 +478,9 @@ void main() {
     expect(find.text('20:10'), findsWidgets);
     expect(find.text('固定时间 · 不可移动'), findsOneWidget);
 
-    // 点击时间轴中第二项（休息）进入对应任务上下文对话
     await tester.tap(find.text('休息').last);
     await tester.pumpAndSettle();
-    expect(find.text('语境：关于「休息」——按住下方再说。'), findsOneWidget);
+    expect(find.text('开始学习？'), findsOneWidget);
   });
 
   testWidgets('V3 home deletes a task-pool item when swiped', (tester) async {

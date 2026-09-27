@@ -1,6 +1,6 @@
 # 读学系统 — Study & Tutoring Domain Design
 
-> 状态：讨论稿 · 版本：v2.0  
+> 状态：讨论稿 · 版本：v2.1  
 > 范围：学习执行会话、启发式答疑、任务优先提醒、过程事实，以及一次 Ward 输入内的 `TutoringTurnLoop`。  
 > 关联：[系统 Context Map](ddd-overview.md) · [Companion 编排](domain-companion.md) · [Memory Context](domain-memory.md) · [Server 物理设计](design-server.md) · [陪伴 PRD](../product/prd-companion.md)
 
@@ -25,7 +25,7 @@ Context Map 与分层图只在 [ddd-overview.md](ddd-overview.md) 维护。Threa
 | `TutorWorkingState` | 答疑 Run 的 checkpoint | Aggregate、长期记忆、完整 transcript |
 | `TutoringTurnLoop` | 一次 Ward 输入内的有界循环 | 跨回合的教学状态机，也不是第二个 Agent |
 
-非目标：不发明交互 `kind`；本期不做作文共创画布、视频媒体、实时监工和拍照搜题。无任务也可以学习问答。有任务时段内的任务外提问可以简短承接，但必须提醒回到任务，并且不结束任务会话。
+非目标：不发明交互 `kind`；本期不做作文共创画布、视频媒体、实时监工和拍照搜题。无任务问答与任务进行中的题外提问见下文「无任务答疑」。
 
 ### 1.1 控制模型
 
@@ -81,6 +81,12 @@ stateDiagram-v2
     Completed --> [*]
     Abandoned --> [*]
 ```
+
+#### 无任务答疑
+
+学习答疑可以不挂在任何任务上。此时 `StudySession.task_id` 为空，问答照常进行，不修改任何 `Task`，也不能把这次会话完成成某项任务。
+
+只有一种要分开的情况：当前已经有一项任务的 `StudySession` 处于 `active` 或 `paused`，这段时间里孩子又问了与该任务无关的问题。允许简短回答，同时提醒回到那项任务，并且不结束原来的任务会话。
 
 ### 2.2 `TutoringSession`
 

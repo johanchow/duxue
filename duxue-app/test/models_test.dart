@@ -5,6 +5,7 @@ import 'package:duxue_app/main.dart' show appRedirect;
 import 'package:duxue_app/providers.dart' show AppSession;
 import 'package:duxue_app/features/day_story_pages.dart'
     show wardBindFailureMessage;
+import 'package:duxue_app/features/home_task_card.dart';
 
 void main() {
   test('voice transcription derives an authenticated server WebSocket URL', () {
@@ -33,6 +34,41 @@ void main() {
     expect(
       wardBindFailureMessage(StateError('secure storage unavailable')),
       '绑定请求已成功，但本机登录状态保存失败；请查看 Flutter 终端日志。',
+    );
+  });
+
+  test('home task card reads arrangement from the task and progress from the session', () {
+    expect(
+      homeTaskCardLabel(homeTaskCardKind({'status': 'pool', 'session': null})),
+      '未排期',
+    );
+    expect(
+      homeTaskCardLabel(homeTaskCardKind({
+        'status': 'scheduled',
+        'session': null,
+      })),
+      '已排期',
+    );
+    expect(
+      homeTaskCardLabel(homeTaskCardKind({
+        'status': 'scheduled',
+        'session': {'id': 's1', 'status': 'active'},
+      })),
+      '进行中',
+    );
+    expect(
+      homeTaskCardLabel(homeTaskCardKind({
+        'status': 'pool',
+        'session': {'id': 's1', 'status': 'paused'},
+      })),
+      '暂停',
+    );
+    expect(
+      homeTaskCardLabel(homeTaskCardKind({
+        'status': 'completed',
+        'session': {'id': 's1', 'status': 'active'},
+      })),
+      '已完成',
     );
   });
 

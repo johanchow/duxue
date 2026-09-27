@@ -20,8 +20,9 @@ def test_answer_seeking_does_not_record_a_fact():
 
 
 def test_curiosity_during_a_task_asks_to_return_without_ending_it():
-    decision = HintingPolicy.evaluate(failed_attempts=0, intent_label="curiosity", has_task=True, session_status="active")
+    decision = HintingPolicy.evaluate(failed_attempts=3, intent_label="curiosity", has_task=True, session_status="active")
     assert decision.return_to_task is True
+    assert decision.allowed_level == 1
     assert decision.record_fact is True
 
 

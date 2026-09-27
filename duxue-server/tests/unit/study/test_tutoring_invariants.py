@@ -83,17 +83,70 @@ def test_hint_level_increments_and_caps_at_4(db):
     db.commit()
 
     workflow = TutoringWorkflow(db)
-    for expected_level in [1, 2, 3, 4, 4]:
+    for index, expected_level in enumerate([1, 2, 3, 4, 4]):
         outcome = workflow.invoke(
             RunInvocation(
                 run_id=uid(),
                 thread_id=uid(),
                 ward_id=ward.id,
                 agent_type="tutoring",
-                turn={"study_session_id": session.id, "content": f"还是不理解第{expected_level}次"},
+                turn={
+                    "study_session_id": session.id,
+                    "content": f"还是不理解第{expected_level}次",
+                    "tutoring_directive": "ask" if index == 0 else "attempt",
+                },
             )
         )
         assert outcome.next_interaction["hint_level"] == expected_level
+
+
+def test_off_task_question_during_a_task_stays_brief_and_keeps_the_session(db):
+    """任务进行中问了别的：简短回答并提醒回任务，不结束原来的学习会话。"""
+    ward = create_ward(db)
+    task = create_task(db, ward=ward, title="数学练习")
+    session = create_study_session(db, ward=ward, task=task)
+    db.commit()
+
+    outcome = TutoringWorkflow(db).invoke(
+        RunInvocation(
+            run_id=uid(),
+            thread_id=uid(),
+            ward_id=ward.id,
+            agent_type="tutoring",
+            turn={
+                "study_session_id": session.id,
+                "content": "蚂蚁为什么排成一条线",
+                "intent_label": "curiosity",
+            },
+        )
+    )
+    db.refresh(session)
+    assert session.status == "active"
+    assert outcome.next_interaction["return_to_task"] is True
+    assert outcome.next_interaction["hint_level"] == 1
+    assert "先回到正在进行的任务" in outcome.next_interaction["content"]
+
+
+def test_taskless_curiosity_does_not_ask_to_return(db):
+    ward = create_ward(db)
+    session = create_study_session(db, ward=ward, task=None)
+    db.commit()
+
+    outcome = TutoringWorkflow(db).invoke(
+        RunInvocation(
+            run_id=uid(),
+            thread_id=uid(),
+            ward_id=ward.id,
+            agent_type="tutoring",
+            turn={
+                "study_session_id": session.id,
+                "content": "蚂蚁为什么排成一条线",
+                "intent_label": "curiosity",
+            },
+        )
+    )
+    assert outcome.next_interaction["return_to_task"] is False
+    assert "先回到正在进行的任务" not in outcome.next_interaction["content"]
 
 
 def test_safety_blocked_flags_tutoring_messages(db):
