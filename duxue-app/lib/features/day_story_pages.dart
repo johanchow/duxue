@@ -8,6 +8,7 @@ import '../providers.dart';
 import '../shared/app_ui.dart';
 import '../shared/voice_composer.dart';
 import 'home_task_card.dart';
+import 'task_status_dialogs.dart';
 
 String wardBindFailureMessage(Object error) {
   if (error is DioException) {
@@ -819,14 +820,37 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
     final approved = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
-                title: const Text('退出此设备绑定？'),
-                content: const Text('之后需要用新的绑定码才能再次进入学习空间。'),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20)),
+                backgroundColor: Colors.white,
+                surfaceTintColor: Colors.transparent,
+                titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                contentPadding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
+                actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                title: const Text('退出此设备绑定？',
+                    style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xff0c1222))),
+                content: const Text('之后需要用新的绑定码才能再次进入学习空间。',
+                    style: TextStyle(
+                        fontSize: 13,
+                        color: Color(0xff64748b),
+                        height: 1.4)),
                 actions: [
                   TextButton(
                       onPressed: () => Navigator.pop(dialogContext, false),
+                      style: TextButton.styleFrom(
+                          foregroundColor: const Color(0xff64748b)),
                       child: const Text('取消')),
                   FilledButton(
                       onPressed: () => Navigator.pop(dialogContext, true),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xff0f766e),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10)),
+                      ),
                       child: const Text('确认退出'))
                 ]));
     if (approved != true || !mounted) return;
@@ -882,40 +906,48 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
       return;
     }
     if (kind == HomeTaskCardKind.inProgress && data != null) {
-      return _showActiveActions(item['id'] as String, data);
+      return _showActiveActions(item, data);
     }
     if (kind == HomeTaskCardKind.paused && data != null) {
       final sessionId = data['id'] as String;
       final seconds = data['active_seconds'] as int? ?? 0;
-      return _confirm(
-        title: '继续学习？',
-        message: '会继续累计这项任务的学习时长。',
-        confirm: '确认继续',
-        action: () => _resumeSession(
-            item['id'] as String, sessionId, seconds),
-      );
+      return _showPausedActions(item, sessionId, seconds);
     }
-    await _confirm(
-      title: '开始学习？',
-      message: '开始后你可以随时暂停或完成。',
-      confirm: '确认开始',
-      action: () async {
-        final result = planned
-            ? await ref.read(apiProvider).startSession(item['id'] as String)
-            : await ref
-                .read(apiProvider)
-                .startAssignmentSession(item['id'] as String);
-        final sessionId = result['id'] as String;
-        final seconds = result['active_seconds'] as int? ?? 0;
-        _patchTaskSession(item['id'] as String, {
-          'id': sessionId,
-          'status': 'active',
-          'active_seconds': seconds,
-        });
-        _trackSession(sessionId, seconds);
-        await _load();
-      },
-    );
+    await _showStartTaskDialog(item, planned);
+  }
+
+  Future<void> _showStartTaskDialog(
+      Map<String, dynamic> item, bool planned) async {
+    final taskTitle = item['title'] as String? ?? '当前任务';
+    final durationText = _formatPlannedDuration(item);
+    final details = item['details'] as String?;
+    final approved = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => StartTaskDialog(
+              taskTitle: taskTitle,
+              isPlanned: planned,
+              durationText: durationText,
+              details: details,
+            ));
+    if (approved != true) return;
+    try {
+      final result = planned
+          ? await ref.read(apiProvider).startSession(item['id'] as String)
+          : await ref
+              .read(apiProvider)
+              .startAssignmentSession(item['id'] as String);
+      final sessionId = result['id'] as String;
+      final seconds = result['active_seconds'] as int? ?? 0;
+      _patchTaskSession(item['id'] as String, {
+        'id': sessionId,
+        'status': 'active',
+        'active_seconds': seconds,
+      });
+      _trackSession(sessionId, seconds);
+      await _load();
+    } catch (error) {
+      if (mounted) showMessage(context, '操作没有完成，请稍后再试：$error');
+    }
   }
 
   int _secondsFor(Map<String, dynamic> data) {
@@ -924,36 +956,59 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
     return data['active_seconds'] as int? ?? 0;
   }
 
-  Future<void> _showActiveActions(String taskId, Map<String, dynamic> data) {
+  Future<void> _showActiveActions(
+      Map<String, dynamic> item, Map<String, dynamic> data) {
+    final taskId = item['id'] as String;
+    final taskTitle = item['title'] as String? ?? '当前任务';
     final sessionId = data['id'] as String;
     final seconds = _secondsFor(data);
+    final details = item['details'] as String?;
     return showDialog<void>(
         context: context,
-        builder: (dialogContext) => AlertDialog(
-                title: const Text('这项任务正在进行'),
-                content: Text('已累计 ${seconds ~/ 60} 分钟。暂停会保留时长，完成会记下这次学习。'),
-                actions: [
-                  TextButton(
-                      onPressed: () => Navigator.pop(dialogContext),
-                      child: const Text('取消')),
-                  TextButton(
-                      onPressed: () {
-                        Navigator.pop(dialogContext);
-                        _pauseSession(taskId, sessionId, seconds);
-                      },
-                      child: const Text('暂停')),
-                  FilledButton(
-                      onPressed: () {
-                        Navigator.pop(dialogContext);
-                        _confirm(
-                            title: '完成这项任务？',
-                            message: '完成后会记录本次学习时长。',
-                            confirm: '确认完成',
-                            action: () =>
-                                _finishSession(taskId, sessionId, seconds));
-                      },
-                      child: const Text('完成任务')),
-                ]));
+        builder: (dialogContext) => ActiveTaskDialog(
+              taskTitle: taskTitle,
+              seconds: seconds,
+              details: details,
+              onPause: () {
+                Navigator.pop(dialogContext);
+                _pauseSession(taskId, sessionId, seconds);
+              },
+              onFinish: () {
+                Navigator.pop(dialogContext);
+                _confirmFinishTask(taskTitle, taskId, sessionId, seconds);
+              },
+            ));
+  }
+
+  Future<void> _showPausedActions(
+      Map<String, dynamic> item, String sessionId, int seconds) async {
+    final taskId = item['id'] as String;
+    final taskTitle = item['title'] as String? ?? '当前任务';
+    final details = item['details'] as String?;
+    final action = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => PausedTaskDialog(
+              taskTitle: taskTitle,
+              seconds: seconds,
+              details: details,
+            ));
+    if (action == 'resume') {
+      await _resumeSession(taskId, sessionId, seconds);
+    } else if (action == 'finish') {
+      await _confirmFinishTask(taskTitle, taskId, sessionId, seconds);
+    }
+  }
+
+  Future<void> _confirmFinishTask(
+      String taskTitle, String taskId, String sessionId, int seconds) async {
+    final approved = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => FinishTaskConfirmDialog(
+              taskTitle: taskTitle,
+              seconds: seconds,
+            ));
+    if (approved != true) return;
+    await _finishSession(taskId, sessionId, seconds, taskTitle: taskTitle);
   }
 
   void _patchTaskSession(String taskId, Map<String, dynamic>? session) {
@@ -1049,11 +1104,16 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
   }
 
   Future<void> _finishSession(
-      String taskId, String sessionId, int seconds) async {
+      String taskId, String sessionId, int seconds,
+      {String? taskTitle}) async {
     _clearTrackedSession(sessionId);
     _patchTaskSession(taskId, null);
     try {
       await ref.read(apiProvider).finishSession(sessionId, seconds);
+      if (mounted && taskTitle != null) {
+        final minutes = seconds ~/ 60;
+        showMessage(context, '🎉 已完成「$taskTitle」，本次学习累计 $minutes 分钟！');
+      }
       await _load();
     } catch (error) {
       if (!mounted) return;
@@ -1064,30 +1124,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
       });
       _trackSession(sessionId, seconds);
       showMessage(context, '操作没有完成，请稍后再试：$error');
-    }
-  }
-
-  Future<void> _confirm(
-      {required String title,
-      required String message,
-      required String confirm,
-      required Future<void> Function() action}) async {
-    final approved = await showDialog<bool>(
-        context: context,
-        builder: (dialogContext) =>
-            AlertDialog(title: Text(title), content: Text(message), actions: [
-              TextButton(
-                  onPressed: () => Navigator.pop(dialogContext, false),
-                  child: const Text('取消')),
-              FilledButton(
-                  onPressed: () => Navigator.pop(dialogContext, true),
-                  child: Text(confirm))
-            ]));
-    if (approved != true) return;
-    try {
-      await action();
-    } catch (error) {
-      if (mounted) showMessage(context, '操作没有完成，请稍后再试：$error');
     }
   }
 

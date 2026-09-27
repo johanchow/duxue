@@ -386,6 +386,56 @@ void main() {
     expect(find.text('进行中'), findsOneWidget);
   });
 
+  testWidgets('an in-progress card allows completing the task with rich dialog feedback',
+      (tester) async {
+    final api = _ActiveTaskApi();
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiProvider.overrideWithValue(api)],
+      child: const MaterialApp(home: WardDayPage(wardId: 'ward-1')),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('观察蚂蚁路线'));
+    await tester.pumpAndSettle();
+    expect(find.text('这项任务正在进行'), findsOneWidget);
+    expect(find.text('已累计 2 分钟'), findsOneWidget);
+
+    await tester.tap(find.text('完成任务'));
+    await tester.pumpAndSettle();
+    expect(find.text('完成这项任务？'), findsOneWidget);
+    expect(find.text('本次累计专注时长：2 分钟'), findsOneWidget);
+
+    await tester.tap(find.text('确认完成'));
+    await tester.pumpAndSettle();
+    expect(api.finishedSessionId, 'session-live');
+    expect(find.textContaining('已完成「观察蚂蚁路线」'), findsOneWidget);
+  });
+
+  testWidgets('a paused card allows finishing directly from dialog',
+      (tester) async {
+    final api = _PausedTaskApi();
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiProvider.overrideWithValue(api)],
+      child: const MaterialApp(home: WardDayPage(wardId: 'ward-1')),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('暂停'), findsOneWidget);
+    await tester.tap(find.text('观察蚂蚁路线'));
+    await tester.pumpAndSettle();
+    expect(find.text('继续学习？'), findsOneWidget);
+    expect(find.text('已累计学习 30 秒（进度已保留）'), findsOneWidget);
+
+    await tester.tap(find.text('完成任务'));
+    await tester.pumpAndSettle();
+    expect(find.text('完成这项任务？'), findsOneWidget);
+
+    await tester.tap(find.text('确认完成'));
+    await tester.pumpAndSettle();
+    expect(api.finishedSessionId, 'session-live');
+    expect(find.textContaining('已完成「观察蚂蚁路线」'), findsOneWidget);
+  });
+
   testWidgets('today plan card confirms before it starts', (tester) async {
     final api = _WardHomeApi();
     await tester.pumpWidget(ProviderScope(
