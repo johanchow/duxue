@@ -10,8 +10,13 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.contexts.planning.domain.scheduling import (
+    CANCELLED,
+    COMPLETED,
+    POOL,
+    SCHEDULED,
     SchedulingService,
     TaskReferenceResolver,
+    can_schedule,
 )
 from app.infrastructure.messaging.outbox import publish_learning_fact
 from app.infrastructure.persistence.models import (
@@ -204,7 +209,7 @@ class PlanningDomainService(PlanningOperations):
                     "candidates": conflicts,
                 })
             task = Task(ward_id=ward_id, title=title, details=copied.get("details"),
-                        planned_minutes=int(minutes), source="ward")
+                        planned_minutes=int(minutes), source="ward", status=POOL)
             self.db.add(task)
             self.db.flush()
             copied.update({"assignment_id": task.id, "new_task": False,
@@ -299,12 +304,47 @@ class PlanningDomainService(PlanningOperations):
     def _schedule(self, ward_id, plan_date):
         return self.db.query(DailySchedule).filter_by(ward_id=ward_id, schedule_date=plan_date).populate_existing().one_or_none()
 
+    def release_unfinished_tasks(self, ward_id: str, today: date) -> int:
+        """Return unfinished tasks from a past local day to today's pool.
+
+        The old DailySchedule row stays as history. An open study session does
+        not keep the task pinned to that day.
+        """
+        self._lock_ward(ward_id)
+        rows = (
+            self.db.query(Task)
+            .join(DailySchedule, Task.schedule_id == DailySchedule.id)
+            .filter(
+                Task.ward_id == ward_id,
+                Task.status.in_([SCHEDULED, "open", "pending"]),
+                DailySchedule.schedule_date < today,
+            )
+            .all()
+        )
+        for task in rows:
+            task.status = POOL
+            task.schedule_id = None
+            task.position = None
+        if rows:
+            self.db.flush()
+        return len(rows)
+
+    def complete_task(self, ward_id: str, task_id: str) -> Task | None:
+        """Mark a task completed. Repeat delivery keeps the terminal status."""
+        task = self.db.get(Task, task_id)
+        if task is None or task.ward_id != ward_id or task.status == CANCELLED:
+            return None
+        if task.status != COMPLETED:
+            task.status = COMPLETED
+            self.db.flush()
+        return task
+
     def _check_not_started(self, schedule):
         if not schedule:
             return
         tasks = self.db.query(Task).filter_by(schedule_id=schedule.id).all()
         ids = [t.id for t in tasks]
-        if (any(t.status not in {"open", "pending"} for t in tasks)
+        if (any(t.status in {COMPLETED, CANCELLED} for t in tasks)
                 or (ids and self.db.query(StudySession).filter(StudySession.task_id.in_(ids)).first())):
             raise HTTPException(409, "已开始的计划不能修改")
 
@@ -313,11 +353,11 @@ class PlanningDomainService(PlanningOperations):
         task = self.db.get(Task, task_id)
         if task is None or task.ward_id != ward_id:
             raise HTTPException(404, "任务不存在")
-        if task.status not in {"open", "pending"}:
+        if task.status in {COMPLETED, CANCELLED}:
             raise HTTPException(409, "任务当前不可删除")
         if self.db.query(StudySession).filter_by(task_id=task.id).first():
             raise HTTPException(409, "已有学习记录的任务不能删除")
-        if task.schedule_id:
+        if task.status == SCHEDULED or task.schedule_id:
             raise HTTPException(409, "已进入计划的任务需要确认后删除")
         for schedule in self.db.query(DailySchedule).filter_by(ward_id=ward_id).all():
             items = [item for item in (schedule.items or []) if item.get("assignment_id") != task.id]
@@ -402,7 +442,7 @@ class PlanningDomainService(PlanningOperations):
             task = self.db.get(Task, item.get("assignment_id"))
             if task is None or task.ward_id != ward_id or item.get("new_task"):
                 raise HTTPException(400, "计划草稿包含无效任务来源")
-            if task.status not in {"open", "pending"}:
+            if not can_schedule(task.status):
                 raise HTTPException(409, "任务当前不可修改")
             if not str(item.get("title") or "").strip():
                 raise HTTPException(400, "计划草稿任务不完整")
@@ -531,7 +571,7 @@ class PlanningDomainService(PlanningOperations):
                           key=lambda i: SchedulingService.instant(i["start_at"]))
         for item in selected:
             task = tasks.get(item["assignment_id"])
-            if task is None or task.status not in {"open", "pending"}:
+            if task is None or not can_schedule(task.status):
                 raise HTTPException(409, "任务当前不可安排")
             if task.schedule_id and (schedule is None or task.schedule_id != schedule.id):
                 raise HTTPException(409, "任务已在其他计划中")
@@ -549,6 +589,8 @@ class PlanningDomainService(PlanningOperations):
         for task in tasks.values():
             if task.schedule_id == schedule.id and task.id not in selected_ids:
                 task.schedule_id = task.position = None
+                if task.status == SCHEDULED:
+                    task.status = POOL
         for task_id in deletion_ids:
             task = tasks.get(task_id)
             if task is not None:
@@ -557,6 +599,7 @@ class PlanningDomainService(PlanningOperations):
             task = tasks[item["assignment_id"]]
             task.title, task.planned_minutes = item["title"], int(item["planned_minutes"])
             task.schedule_id, task.position = schedule.id, position
+            task.status = SCHEDULED
         schedule.items, schedule.history = deepcopy(selected), history
         schedule.status, schedule.confirmed_at = "confirmed", now()
         schedule.version += 1

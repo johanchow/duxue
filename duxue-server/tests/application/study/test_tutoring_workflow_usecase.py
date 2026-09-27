@@ -4,7 +4,7 @@ import pytest
 
 from app.application.workflows.tutoring_workflow import TutoringWorkflow
 from app.application.ports.companion import RunInvocation
-from app.infrastructure.persistence.models import OutboxEvent, TutoringMessage, TutoringSession, uid
+from app.infrastructure.persistence.models import OutboxEvent, StudySession, TutoringMessage, TutoringSession, uid
 from tests.support.factories import create_ward, create_task, create_study_session
 
 
@@ -36,7 +36,7 @@ def test_tutoring_workflow_step_by_step_and_close(db):
     # 检查 Outbox 生成的两个事件 (attempt, hint)
     outbox_events_1 = db.query(OutboxEvent).all()
     event_types_1 = [e.payload.get("event_type") for e in outbox_events_1]
-    assert "tutoring.ward_attempt_recorded" in event_types_1
+    assert "tutoring.attempt_recorded" in event_types_1
     assert "tutoring.hint_given" in event_types_1
 
     # 2. 学生确认理解了当前步骤
@@ -76,3 +76,37 @@ def test_tutoring_workflow_step_by_step_and_close(db):
     outbox_events_3 = db.query(OutboxEvent).all()
     event_types_3 = [e.payload.get("event_type") for e in outbox_events_3]
     assert "tutoring.session_closed" in event_types_3
+
+
+def test_a_new_question_stays_at_level_one_after_earlier_questions(db):
+    ward = create_ward(db)
+    task = create_task(db, ward=ward, title="科学")
+    session = create_study_session(db, ward=ward, task=task)
+    db.commit()
+    workflow = TutoringWorkflow(db)
+    for content in ("铁木真统一了蒙古的什么？", "五的英语单词是什么？", "任务的英语单词是什么？"):
+        workflow.invoke(RunInvocation(
+            run_id=uid(), thread_id=uid(), ward_id=ward.id, agent_type="tutoring",
+            turn={"study_session_id": session.id, "content": content, "tutoring_directive": "ask"},
+        ))
+    outcome = workflow.invoke(RunInvocation(
+        run_id=uid(), thread_id=uid(), ward_id=ward.id, agent_type="tutoring",
+        turn={"study_session_id": session.id, "content": "为什么穿湿的衣服会越来越冷？", "tutoring_directive": "ask"},
+    ))
+    db.commit()
+    assert outcome.next_interaction["hint_level"] == 1
+    assert "已知条件和下一步" not in outcome.next_interaction["content"]
+
+
+def test_tutoring_without_session_opens_a_taskless_session_and_replies(db):
+    ward = create_ward(db)
+    db.commit()
+    outcome = TutoringWorkflow(db).invoke(RunInvocation(
+        run_id=uid(), thread_id=uid(), ward_id=ward.id, agent_type="tutoring",
+        turn={"content": "铁木真统一了蒙古的什么？", "tutoring_directive": "ask"},
+    ))
+    db.commit()
+    assert outcome.next_interaction["content"]
+    session = db.query(StudySession).filter_by(ward_id=ward.id).one()
+    assert session.task_id is None
+    assert session.status == "active"

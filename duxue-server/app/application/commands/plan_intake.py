@@ -107,9 +107,9 @@ class PlanIntakeService:
         if not request.content and not request.attachment_keys:
             raise TaskIntakeError("请先输入文字、说话或添加图片")
         try:
-            from openai import OpenAI
+            from app.infrastructure.ai.client import dashscope_client
 
-            client = OpenAI(api_key=settings.dashscope_api_key, base_url=settings.dashscope_base_url)
+            client = dashscope_client()
             content: list[dict] = [{"type": "text", "text": _prompt(ward, tasks, request) + "\n\n本轮学生消息：\n" + request.content}]
             content.extend({"type": "image_url", "image_url": {"url": _data_url(key)}} for key in request.attachment_keys)
             with model_call_span(operation="plan_intake", model=settings.task_intake_model) as telemetry:

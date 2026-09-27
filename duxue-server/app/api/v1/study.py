@@ -1,3 +1,6 @@
+from app.application.workflows.planning_domain_service import PlanningDomainService
+from app.contexts.study.domain.execution import can_finish
+
 from .common import *
 
 router = APIRouter(tags=["study"])
@@ -13,7 +16,7 @@ def start_session(item_id: str, principal: Principal = Depends(current_ward), db
     if plan is None or plan.ward_id != principal.user_id: raise HTTPException(404, "plan task not found")
     active = _open_session(db, task_id=item.id)
     if active: return active
-    row = StudySession(ward_id=principal.user_id, task_id=item.id); item.status="active"; db.add(row); db.flush(); db.add(StudySessionInterval(study_session_id=row.id))
+    row = StudySession(ward_id=principal.user_id, task_id=item.id); db.add(row); db.flush(); db.add(StudySessionInterval(study_session_id=row.id))
     publish_learning_fact(db, ward_id=row.ward_id, event_type="study_session.started", source_type="study_session", source_id=row.id, payload={"task_id": row.task_id})
     db.commit(); return {"id": row.id, "status": row.status, "active_seconds": 0}
 
@@ -24,7 +27,7 @@ def start_assignment_session(assignment_id: str, principal: Principal = Depends(
     if assignment is None or assignment.ward_id != principal.user_id or assignment.status == "completed": raise HTTPException(404, "assignment not found")
     active = _open_session(db, task_id=assignment.id)
     if active: return active
-    row = StudySession(ward_id=principal.user_id, task_id=assignment.id); assignment.status="active"; db.add(row); db.flush(); db.add(StudySessionInterval(study_session_id=row.id))
+    row = StudySession(ward_id=principal.user_id, task_id=assignment.id); db.add(row); db.flush(); db.add(StudySessionInterval(study_session_id=row.id))
     publish_learning_fact(db, ward_id=row.ward_id, event_type="study_session.started", source_type="study_session", source_id=row.id, payload={"task_id": row.task_id})
     db.commit(); return {"id": row.id, "status": row.status, "active_seconds": 0}
 
@@ -34,7 +37,7 @@ def resume_session(session_id: str, principal: Principal = Depends(current_ward)
     session = db.get(StudySession, session_id)
     if session is None or session.ward_id != principal.user_id or session.status != "paused": raise HTTPException(404, "paused session not found")
     session.status="active"; session.version += 1; session.last_activity_at=now()
-    db.get(Task, session.task_id).status="active"; db.add(StudySessionInterval(study_session_id=session.id))
+    db.add(StudySessionInterval(study_session_id=session.id))
     publish_learning_fact(db, ward_id=session.ward_id, event_type="study_session.resumed", source_type="study_session", source_id=session.id, source_version=session.version, payload={"task_id": session.task_id})
     db.commit(); return {"id": session.id, "status": session.status, "active_seconds": session.active_seconds}
 
@@ -46,7 +49,6 @@ def pause_session(session_id: str, body: SessionPause, principal: Principal = De
     interval = db.query(StudySessionInterval).filter_by(study_session_id=session.id, ended_at=None).one()
     interval.ended_at=now(); interval.end_reason="paused"; interval.active_seconds=max(0, body.active_seconds-session.active_seconds)
     session.status="paused"; session.active_seconds=body.active_seconds; session.pause_count += 1; session.version += 1; session.last_activity_at=interval.ended_at
-    db.get(Task, session.task_id).status="paused"
     publish_learning_fact(db, ward_id=session.ward_id, event_type="study_session.paused", source_type="study_session", source_id=session.id, source_version=session.version, payload={"task_id": session.task_id, "active_seconds": session.active_seconds})
     db.commit(); return {"id": session.id, "status": session.status, "active_seconds": session.active_seconds}
 
@@ -70,11 +72,12 @@ def finish_session(session_id: str, body: SessionFinish, principal: Principal = 
     session = db.get(StudySession, session_id)
     if session is None or session.ward_id != principal.user_id: raise HTTPException(404, "session not found")
     if session.status not in ("active", "paused"): raise HTTPException(409, "session is already completed")
+    if not can_finish(session.task_id): raise HTTPException(409, "a taskless session cannot be finished as a task")
     if session.status == "active":
         interval = db.query(StudySessionInterval).filter_by(study_session_id=session.id, ended_at=None).one()
         interval.ended_at=now(); interval.end_reason="completed"; interval.active_seconds=max(0, body.active_seconds-session.active_seconds)
     session.status="completed"; session.ended_at=now(); session.active_seconds=body.active_seconds; session.completion_reason="ward_finished"; session.version += 1
-    db.get(Task, session.task_id).status="completed"
     publish_learning_fact(db, ward_id=session.ward_id, event_type="study_session.completed", source_type="study_session", source_id=session.id, source_version=session.version, payload={"task_id": session.task_id, "active_seconds": session.active_seconds})
+    PlanningDomainService(db).complete_task(session.ward_id, session.task_id)
     db.commit(); return {"status": "completed"}
 

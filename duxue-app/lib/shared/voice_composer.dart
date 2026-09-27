@@ -50,6 +50,7 @@ class _VoiceComposerState extends State<VoiceComposer> {
   OverlayEntry? _overlay;
   var _recording = false;
   var _cancelArmed = false;
+  var _aborted = false;
 
   @override
   void initState() {
@@ -133,19 +134,24 @@ class _VoiceComposerState extends State<VoiceComposer> {
 
   Future<void> _start() async {
     if (_recording || !widget.enabled) return;
+    _aborted = false;
     try {
       await widget.onBeforeRecording?.call();
       await _voice.start(
           onPartial: (text) => _updateFeedback(transcript: text),
           onFinal: (text) async {
+            if (_aborted) return;
             _limit?.cancel();
             _removeOverlay();
             if (mounted) setState(() => _recording = false);
             _feedback.value = null;
             if (text.trim().isNotEmpty) await widget.onVoiceFinal(text.trim());
           },
-          onError: _showError);
-      if (!mounted) return;
+          onError: (message) {
+            _aborted = true;
+            _showError(message);
+          });
+      if (!mounted || _aborted) return;
       setState(() => _recording = true);
       _cancelArmed = false;
       _feedback.value = const _RecordingFeedback();
@@ -155,6 +161,7 @@ class _VoiceComposerState extends State<VoiceComposer> {
         _showError('最长可录 60 秒，已结束识别');
       });
     } catch (error) {
+      _aborted = true;
       _showError('$error');
     }
   }

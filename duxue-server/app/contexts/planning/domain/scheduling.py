@@ -1,7 +1,27 @@
 """Pure, deterministic Planning rules; no persistence, transport or model calls."""
 import unicodedata
-from datetime import datetime
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
+
+PLAN_TIME_ZONE = ZoneInfo("Asia/Shanghai")
+POOL = "pool"
+SCHEDULED = "scheduled"
+COMPLETED = "completed"
+CANCELLED = "cancelled"
+# Rows written before the status table still use these names until migrated.
+_LEGACY_POOL = {"open", "pending"}
+
+
+def local_plan_date(current: datetime | None = None):
+    """Ward-facing calendar day. Persisted timestamps stay UTC."""
+    moment = current or datetime.now(timezone.utc)
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return moment.astimezone(PLAN_TIME_ZONE).date()
+
+
+def can_schedule(status: str) -> bool:
+    return status in {POOL, SCHEDULED, *_LEGACY_POOL}
 
 
 class TaskReferenceResolver:

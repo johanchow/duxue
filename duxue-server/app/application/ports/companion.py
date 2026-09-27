@@ -7,10 +7,22 @@ from pydantic import BaseModel, Field
 
 AgentType = Literal["planning", "tutoring", "reflection"]
 RouteTarget = Literal["planning", "tutoring", "reflection", "clarify", "safety"]
+IntentLabel = Literal["planning", "tutoring", "reflection", "unclear"]
 RunStatus = Literal[
     "active", "waiting_for_ward", "paused", "closed", "escalated",
     "failed", "timed_out", "cancelled",
 ]
+
+
+class IntentProposal(BaseModel):
+    """Untrusted semantic candidate. Code accepts only this closed label set."""
+
+    intent: IntentLabel
+
+
+class IntentClassifier(Protocol):
+    def propose(self, *, content: str, focus_agent_type: str | None) -> IntentProposal:
+        """Return one closed intent label. No tools and no writes."""
 
 
 class RouteDecision(BaseModel):

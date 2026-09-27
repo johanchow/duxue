@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app.application.ports.companion import (
+    IntentProposal,
     RunInvocation,
     WorkflowOutcome,
 )
@@ -21,6 +22,14 @@ class FakeModelGateway:
         if self.raise_error:
             raise ModelGatewayError("fake model error")
         return self.candidate
+
+
+class StaticIntentClassifier:
+    def __init__(self, intent: str = "planning"):
+        self.intent = intent
+
+    def propose(self, *, content: str, focus_agent_type: str | None) -> IntentProposal:
+        return IntentProposal(intent=self.intent)
 
 
 class FakeWorkflowDispatcher:

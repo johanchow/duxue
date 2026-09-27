@@ -37,8 +37,8 @@ class DashscopeInference:
     def __init__(self):
         if not settings.dashscope_api_key:
             raise RuntimeError("DASHSCOPE_API_KEY is required")
-        from openai import OpenAI
-        self.client = OpenAI(api_key=settings.dashscope_api_key, base_url=settings.dashscope_base_url)
+        from app.infrastructure.ai.client import dashscope_client
+        self.client = dashscope_client()
 
     def submit(self, frames: list[Frame], prompts: dict[str, str]) -> str:
         with tempfile.NamedTemporaryFile("w", suffix=".jsonl", encoding="utf-8", delete=False) as handle:
