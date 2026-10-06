@@ -13,6 +13,7 @@ from app.application.commands.memory import SqlAlchemyMemoryFacade
 from app.application.commands.plan_intake import PlanIntakeInput, PlanIntakeService
 from app.application.ports.companion import RunInvocation, WorkflowOutcome
 from app.application.queries.context_builder import ContextBuilder
+from app.application.queries.run_transcript import recent_run_utterances
 from app.application.workflows.planning_domain_service import PlanningDomainService
 from app.application.workflows.planning_workflow import build_planning_graph
 from app.bootstrap.settings import settings
@@ -22,6 +23,8 @@ from app.infrastructure.ai.model_gateway import ModelGatewayError, QwenAgentMode
 from app.infrastructure.observability.telemetry import (
     planning_stage_span,
     record_llm_fallback,
+    record_planning_input_rejected,
+    record_planning_loop_outcome,
 )
 from app.infrastructure.persistence.models import AgentRun, PlanDraft, Task, Ward
 
@@ -86,6 +89,10 @@ class PlanningWorkflowAdapter:
             model_slots = [{"slot_id": slot["slot_id"], "field": slot["field"], "title": slot.get("title"),
                             "candidates": [c["title"] for c in slot.get("candidates", [])],
                             "choices": slot.get("choices", []), "question": slot.get("question")} for slot in slots]
+            attachment_keys = invocation.turn.get("attachment_keys") or []
+            utterances, omitted_utterances = recent_run_utterances(
+                self.db, ward_id=run.ward_id, run_id=run.id, exclude_turn_id=invocation.turn_id,
+            )
             with planning_stage_span("plan_intake", run_id=run.id):
                 extracted = PlanIntakeService().respond(
                     ward={"id": ward.id, "display_name": ward.display_name, "grade_stage": ward.grade_stage},
@@ -93,8 +100,19 @@ class PlanningWorkflowAdapter:
                             "scheduled": bool(task.schedule_id)} for task in tasks],
                     request=PlanIntakeInput(content=invocation.turn.get("content", ""),
                         draft_items=active_draft.items if active_draft else [], clarification_slots=model_slots,
-                        attachment_keys=invocation.turn.get("attachment_keys", [])),
+                        attachment_keys=attachment_keys, recent_utterances=utterances,
+                        omitted_utterance_count=omitted_utterances),
                 )
+            if not extracted.operations and not extracted.slot_updates:
+                clarification = self._model_clarification_text(extracted)
+                if clarification:
+                    record_planning_loop_outcome(status="needs_clarification", has_image=bool(attachment_keys))
+                    return self._text_clarification_outcome(
+                        run=run, text=clarification, context_snapshot=envelope.trace_snapshot(),
+                    )
+                if attachment_keys:
+                    record_planning_loop_outcome(status="no_op", has_image=True)
+                    return self._unrecognized_image_outcome(run=run, context_snapshot=envelope.trace_snapshot())
             answers = deepcopy(extracted.slot_updates)
             accepted_answers = []
             for answer in answers:
@@ -108,6 +126,9 @@ class PlanningWorkflowAdapter:
                     for name in names:
                         matches = [c for c in slot.get("candidates", []) if c["title"] == name]
                         if len(matches) != 1:
+                            record_planning_input_rejected(
+                                field="target_task_ids", code="invalid_target_task", value=name,
+                            )
                             raise HTTPException(400, "请从当前候选名称中明确选择任务")
                         values.append(matches[0]["id"])
                     answer["value"] = values
@@ -119,29 +140,19 @@ class PlanningWorkflowAdapter:
                                    if TaskReferenceResolver.normalise(candidate["title"])
                                    == TaskReferenceResolver.normalise(title)]
                         if len(matches) != 1:
+                            record_planning_input_rejected(
+                                field="title_conflict", code="invalid_title_conflict", value=title,
+                            )
                             raise HTTPException(400, "请从当前同名任务中明确选择")
                         value["task_id"] = matches[0]["id"]
                         answer["value"] = value
                 accepted_answers.append(answer)
             answers = accepted_answers
             operations = [op.model_dump(exclude_none=True) for op in extracted.operations]
-            if not operations:
-                # Old model responses remain readable without trusting their IDs.
-                candidates = [{"id": t.id, "title": t.title} for t in tasks]
-                for item in extracted.items:
-                    raw = item.model_dump(exclude_none=True)
-                    ref = raw.get("task_reference") or raw.get("title")
-                    existing = TaskReferenceResolver.resolve(ref, candidates)
-                    operation = {k: v for k, v in raw.items() if k in {
-                        "title", "planned_minutes", "start_at", "after_task_reference", "before_task_reference"}}
-                    if existing or raw.get("task_reference"):
-                        operation.update(kind="update", references=[ref])
-                        operation.pop("title", None)
-                    else:
-                        operation["kind"] = "create"
-                    operations.append(operation)
             draft = service.apply_operations(run.ward_id, planning_today(), operations,
                 answers=answers, command_id=invocation.command_id)
+            loop_status = ((draft.working_state or {}).get("planning_agent_loop") or {}).get("status") or "unknown"
+            record_planning_loop_outcome(status=loop_status, has_image=bool(attachment_keys))
             items, pending_fields = draft.items, draft.pending_fields
             prepared_draft_id = draft.id
             assistant_text = extracted.assistant_text
@@ -172,6 +183,38 @@ class PlanningWorkflowAdapter:
             return self._invoke(
                 checkpointer, run, items, confirm, pending_fields, envelope.trace_snapshot(), model_guidance or assistant_text, model_fallback, structured, prepared_draft_id
             )
+
+    @staticmethod
+    def _model_clarification_text(extracted) -> str | None:
+        """Use the model's own question when it refused to emit operations."""
+        if not extracted.clarification_required:
+            return None
+        text = extracted.assistant_text.strip()
+        extras = [question.strip() for question in extracted.questions if question.strip() and question.strip() not in text]
+        if extras:
+            text = f"{text} {' '.join(extras)}".strip()
+        return text or None
+
+    def _text_clarification_outcome(self, *, run: AgentRun, text: str, context_snapshot: dict) -> WorkflowOutcome:
+        run.status = "waiting_for_ward"
+        interaction = {
+            "protocol": "companion-interaction.v1", "kind": "clarify",
+            "run_id": run.id, "turn_id": run.current_turn_id, "attempt": run.attempt,
+            "content": text, "parts": [{"type": "text", "text": text}],
+            "actions": [],
+            "model": settings.agent_model("planning"), "model_fallback": False,
+        }
+        return WorkflowOutcome(
+            run_status=run.status, outcome_type="waiting", next_interaction=interaction,
+            context_snapshot=context_snapshot,
+        )
+
+    def _unrecognized_image_outcome(self, *, run: AgentRun, context_snapshot: dict) -> WorkflowOutcome:
+        return self._text_clarification_outcome(
+            run=run,
+            text="没有从这张图片里识别出新任务。可以换一张更清晰的图片，或直接告诉我任务名字。",
+            context_snapshot=context_snapshot,
+        )
 
     @staticmethod
     def _operation_summary(view):

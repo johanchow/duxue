@@ -262,7 +262,7 @@ Server 端 OTEL SDK 完整支持通过环境变量配置，无需改动代码：
 
 Agent span / OTLP log event 只包含运行关联 ID、模型、结果、时延、token 用量（供应商返回时）以及输入/输出的长度和 SHA-256 摘要；容器 stdout 也输出携带 trace/span ID 的 JSON 日志。不得将原始儿童输入、模型原文、完整 ContextEnvelope、图像 data URL、Authorization 或 API Key 写入 Grafana。
 
-应急模型问题排查使用独立的 `AGENT_DEBUG_AUDIT_*` 文件 sink：它默认关闭，启用时也只写经过常见邮箱和中国大陆手机号替换、最多 160 字的摘要。该路径必须是加密挂载、访问受控且有短留存清理的目录，不能指向 stdout、普通应用日志或 Loki。
+模型原文写在独立文件，不进 stdout、普通应用日志或 Loki。非生产环境默认写入 `duxue-server/var/agent-llm-audit.jsonl`；生产环境只有同时设置 `AGENT_DEBUG_AUDIT_ENABLED=true` 和 `AGENT_DEBUG_AUDIT_PATH` 才写入，路径必须是加密挂载、访问受控且有短留存清理的目录。`AGENT_DEBUG_AUDIT_ENABLED=false` 在任何环境都关闭。每一行带与 stdout 摘要相同的 `trace_id`、`span_id`、操作名、长度和 SHA-256，`content` 是完整模型原文，只替换常见邮箱和中国大陆手机号。
 
 ### 7.2 duxue-cam（Android Build Config）
 

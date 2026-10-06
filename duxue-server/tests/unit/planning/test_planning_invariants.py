@@ -8,9 +8,7 @@ from fastapi import HTTPException
 from app.application.commands.plan_intake import (
     PlanIntakeInput,
     PlanIntakeItem,
-    PlanIntakeResult,
     _prompt,
-    require_missing_duration_clarification,
 )
 from app.application.workflows.planning_domain_service import PlanningDomainService
 from app.infrastructure.persistence.models import Task
@@ -189,19 +187,6 @@ def test_scheduling_turn_preserves_unresolved_duration_slot_and_can_become_confi
     assert service.plan_draft_view(ward.id, updated.id)["confirm_enabled"] is True
 
 
-def test_missing_task_duration_generates_a_direct_clarification_question():
-    result = require_missing_duration_clarification(PlanIntakeResult(
-        assistant_text="已整理任务。",
-        items=[PlanIntakeItem(title="整理错题", new_task=True)],
-        ready_to_confirm=True,
-    ))
-
-    assert result.ready_to_confirm is False
-    assert result.clarification_required is True
-    assert result.questions == ["“整理错题” 预计需要多长时间？"]
-    assert result.assistant_text == "还需要补充预计时长：“整理错题” 预计需要多长时间？"
-
-
 def test_plan_intake_prompt_renders_slot_update_example_literally():
     prompt = _prompt(
         {"id": "ward-1", "display_name": "小读"},
@@ -213,6 +198,32 @@ def test_plan_intake_prompt_renders_slot_update_example_literally():
     )
 
     assert '{slot_id, value:"30分钟"}' in prompt
+    assert "图片上写明预计时长" in prompt
+    assert '"kind":"create"' in prompt
+    assert "可能不是学习任务" in prompt
+    assert "items" not in prompt
+    assert "旧格式" not in prompt
+
+
+def test_plan_intake_prompt_keeps_prior_run_utterances_verbatim():
+    question = "已从图片中识别出行程安排：码头出发 7:00、rumah pohon 9:00。请确认是否创建？"
+    prompt = _prompt(
+        {"id": "ward-1", "display_name": "小读"},
+        [{"title": "英语的典范故事阅读", "planned_minutes": 20}],
+        PlanIntakeInput(
+            content="是的，都安排成任务。每个都是二十五分钟。",
+            recent_utterances=[
+                {"author": "ward", "text": "我把这些图片里的安排成任务。", "had_image": True},
+                {"author": "companion", "text": question},
+            ],
+        ),
+    )
+
+    assert question in prompt
+    assert "我把这些图片里的安排成任务。" in prompt
+    assert "（本句附有图片）" in prompt
+    assert "不要把「都」改写成任务池里已有的其他任务" in prompt
+    assert prompt.index(question) < prompt.index("当前未完成任务池")
 
 
 def test_cannot_confirm_draft_with_pending_fields(db):

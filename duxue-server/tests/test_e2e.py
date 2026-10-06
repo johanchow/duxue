@@ -702,13 +702,21 @@ class EndToEndTest(unittest.TestCase):
                 self.assertEqual(socket.receive_json()["type"], "ready")
                 socket.send_bytes(b"pcm")
                 socket.send_json({"type": "commit"})
-                self.assertEqual(
-                    socket.receive_json(), {"type": "partial", "text": "安排明天的数"}
+                events = []
+                for _ in range(4):
+                    events.append(socket.receive_json())
+                    if events[-1]["type"] == "final":
+                        break
+                self.assertTrue(
+                    any(
+                        event["type"] == "partial" and "安排明天" in event["text"]
+                        for event in events
+                    )
                 )
                 self.assertEqual(
-                    socket.receive_json(),
-                    {"type": "final", "text": "安排明天的数学作业"},
+                    events[-1], {"type": "final", "text": "安排明天的数学作业"}
                 )
+                self.assertTrue(all(event["type"] != "final" for event in events[:-1]))
 
     def test_voice_socket_reports_an_actionable_error_before_closing_when_unauthorized(self):
         with self.client.websocket_connect("/ws/asr/transcribe") as socket:

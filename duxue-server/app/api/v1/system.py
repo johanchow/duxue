@@ -69,7 +69,8 @@ async def transcribe_voice(websocket: WebSocket) -> None:
 
         provider = await DashscopeRealtimeAsr.connect()
         await websocket.send_json({"type": "ready", "max_seconds": settings.asr_max_record_seconds})
-        forward_task = asyncio.create_task(forward_asr_events(provider, websocket.send_json))
+        hold = AsrHold()
+        forward_task = asyncio.create_task(forward_asr_events(provider, websocket.send_json, hold))
         while True:
             try:
                 message = await asyncio.wait_for(websocket.receive(), timeout=settings.asr_max_record_seconds)
@@ -77,6 +78,7 @@ async def transcribe_voice(websocket: WebSocket) -> None:
                 await websocket.send_json({"type": "error", "message": "recording exceeded the maximum duration"})
                 return
             if message.get("bytes") is not None:
+                hold.note_audio()
                 await provider.send_audio(message["bytes"])
                 continue
             if message.get("text"):
@@ -85,13 +87,18 @@ async def transcribe_voice(websocket: WebSocket) -> None:
                     record_asr_session(result="cancelled", stage="recording", role=principal.role)
                     return
                 if command.get("type") == "commit":
-                    await provider.commit()
-                    outcome = await forward_task
-                    record_asr_session(
-                        result="success" if outcome == "final" else "error",
-                        stage="completed" if outcome == "final" else "provider",
-                        role=principal.role,
-                    )
+                    ready = hold.commit()
+                    if not hold.finished:
+                        if forward_task.done():
+                            ready = hold.unfinished_final()
+                        else:
+                            await provider.commit()
+                            await forward_task
+                            if not hold.finished:
+                                ready = hold.unfinished_final()
+                    for item in ready:
+                        await websocket.send_json(item)
+                    record_asr_session(result="success" if hold.finished else "error", stage="completed" if hold.finished else "provider", role=principal.role)
                     return
                 await websocket.send_json({"type": "error", "message": "unsupported ASR command"})
                 return

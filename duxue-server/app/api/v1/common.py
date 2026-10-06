@@ -13,7 +13,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.bootstrap.settings import settings
-from app.infrastructure.ai.asr import AsrConfigurationError, DashscopeRealtimeAsr, forward_asr_events
+from app.infrastructure.ai.asr import AsrConfigurationError, AsrHold, DashscopeRealtimeAsr, forward_asr_events
 from app.infrastructure.persistence.database import Base, SessionLocal, engine, get_db
 from app.api.deps import Principal, _bearer, current_device, current_guardian, current_guardian_or_ward, current_ward, guardian_principal_for_token
 from app.infrastructure.persistence.models import (

@@ -405,14 +405,19 @@ class ApiClient {
     Map<String, dynamic>? structuredCommand,
     List<String> attachmentKeys = const [],
   }) async =>
-      Map<String, dynamic>.from((await dio.post('/companion/turn', data: {
-        'content': content,
-        'thread_id': threadId,
-        'expected_thread_version': expectedThreadVersion,
-        if (routeHint != null) 'route_hint': routeHint,
-        if (structuredCommand != null) 'structured_command': structuredCommand,
-        'attachment_keys': attachmentKeys,
-      }))
+      Map<String, dynamic>.from((await dio.post('/companion/turn',
+              data: {
+                'content': content,
+                'thread_id': threadId,
+                'expected_thread_version': expectedThreadVersion,
+                if (routeHint != null) 'route_hint': routeHint,
+                if (structuredCommand != null)
+                  'structured_command': structuredCommand,
+                'attachment_keys': attachmentKeys,
+              },
+              // A planning turn with an image runs several model calls and
+              // exceeds the 20s default before the HTTP response is written.
+              options: Options(receiveTimeout: const Duration(seconds: 90))))
           .data);
 
   Future<Map<String, dynamic>> companionPlanDraft(String draftId) async =>

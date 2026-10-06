@@ -59,6 +59,18 @@ class LocalStorage:
         return f"{base_url.rstrip('/')}/uploads/{key}?expires={expires}&signature={signature}", expires, {"Content-Type": content_type}
 
 
+def server_side_oss_endpoint(*, app_env: str, public_endpoint: str, internal_endpoint: str) -> str:
+    """Choose the endpoint the API itself uses to read and check objects.
+
+    ``oss-*-internal`` hostnames only resolve inside an Aliyun VPC. Calling
+    them from a laptop returns a proxy 502, and ``object_exists`` then fails
+    the whole companion turn. Production keeps the internal endpoint.
+    """
+    if app_env == "production" and internal_endpoint:
+        return internal_endpoint
+    return public_endpoint or internal_endpoint
+
+
 class OssStorage:
     def __init__(self) -> None:
         try:
@@ -67,7 +79,12 @@ class OssStorage:
             raise RuntimeError("oss2 is required when STORAGE_BACKEND=oss") from exc
         auth = oss2.Auth(settings.oss_access_key_id, settings.oss_access_key_secret)
         self.public_bucket = oss2.Bucket(auth, settings.oss_endpoint, settings.oss_bucket)
-        self.internal_bucket = oss2.Bucket(auth, settings.oss_endpoint_internal, settings.oss_bucket)
+        server_endpoint = server_side_oss_endpoint(
+            app_env=settings.app_env,
+            public_endpoint=settings.oss_endpoint,
+            internal_endpoint=settings.oss_endpoint_internal,
+        )
+        self.internal_bucket = oss2.Bucket(auth, server_endpoint, settings.oss_bucket)
 
     def upload_url(self, key: str, base_url: str, content_type: str) -> tuple[str, int, dict]:
         expires = int(time.time()) + settings.oss_presign_expire_seconds

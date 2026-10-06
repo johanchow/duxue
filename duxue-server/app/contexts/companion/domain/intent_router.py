@@ -25,6 +25,7 @@ class IntentRouter:
         route_hint: str | None,
         focus_run: object | None,
         proposal: IntentProposal | None = None,
+        has_image: bool = False,
     ) -> RouteDecision:
         if self.blocks_for_safety(content):
             return RouteDecision(
@@ -47,6 +48,17 @@ class IntentRouter:
         active_type = getattr(focus_run, "agent_type", None)
         active_id = getattr(focus_run, "id", None)
         if intent == "unclear":
+            # The classifier only sees text. An image with no explicit scene
+            # still has to reach Planning, the only workflow that reads pixels.
+            # An active tutoring or reflection focus is left unchanged.
+            if has_image and active_type in {None, "planning"}:
+                return RouteDecision(
+                    target="planning",
+                    mode="continue" if active_type == "planning" else "start",
+                    confidence=0.7,
+                    active_session_id=active_id if active_type == "planning" else None,
+                    route_reason="image_without_explicit_intent",
+                )
             return RouteDecision(
                 target="clarify",
                 mode="clarify",

@@ -13,7 +13,18 @@ from app.contexts.planning.domain.scheduling import (
     can_schedule,
     local_plan_date,
 )
-from app.infrastructure.persistence.models import DailySchedule, PlanDraft, StudySession, Task
+from app.infrastructure.observability.telemetry import record_planning_input_rejected
+from app.infrastructure.persistence.models import (
+    DailySchedule,
+    PlanDraft,
+    StudySession,
+    Task,
+)
+
+
+def _reject_slot_value(*, field: str, code: str, value, detail: str) -> None:
+    record_planning_input_rejected(field=field, code=code, value=value)
+    raise HTTPException(400, detail)
 
 
 class PlanningOperations:
@@ -90,7 +101,8 @@ class PlanningOperations:
                 continue
             if answer.get('skip'):
                 if any(tasks[i].source == 'guardian' for i in op.get('task_ids', []) if i in tasks) and not answer.get('reason'):
-                    raise HTTPException(400, '必做任务暂不安排需要说明原因')
+                    _reject_slot_value(field=slot['field'], code='defer_reason_required', value=answer.get('reason'),
+                                       detail='必做任务暂不安排需要说明原因')
                 op.update(status='deferred', reason=answer.get('reason', '本次暂不安排'))
                 for ident in op.get('task_ids', []):
                     if ident in items:
@@ -104,28 +116,34 @@ class PlanningOperations:
                 values = value if isinstance(value, list) else [value]
                 allowed = set(slot.get('candidate_task_ids', []))
                 if not values or not set(values) <= allowed:
-                    raise HTTPException(400, '请选择当前问题中的任务')
+                    _reject_slot_value(field=field, code='invalid_target_task', value=value,
+                                       detail='请选择当前问题中的任务')
                 op['task_ids'] = list(dict.fromkeys(values))
             elif field == 'planned_minutes':
                 minutes = value if isinstance(value, int) and not isinstance(value, bool) else self._duration_minutes(value)
                 if minutes is None or not 1 <= minutes <= 480:
-                    raise HTTPException(400, '预计时长必须为 1 到 480 分钟')
+                    _reject_slot_value(field=field, code='invalid_planned_minutes', value=value,
+                                       detail='预计时长必须为 1 到 480 分钟')
                 op[field] = minutes
             elif field == 'title':
                 if not isinstance(value, str) or not value.strip() or len(value.strip()) > 300:
-                    raise HTTPException(400, '请补充有效任务名字')
+                    _reject_slot_value(field=field, code='invalid_title', value=value,
+                                       detail='请补充有效任务名字')
                 op[field] = value.strip()
             elif field == 'title_conflict':
                 if not isinstance(value, dict):
-                    raise HTTPException(400, '标题冲突需要明确选择')
+                    _reject_slot_value(field=field, code='invalid_title_conflict', value=value,
+                                       detail='标题冲突需要明确选择')
                 action = value.get('action')
                 allowed = {choice['value'] for choice in slot.get('choices', [])}
                 if action not in allowed:
-                    raise HTTPException(400, '标题冲突选项已失效')
+                    _reject_slot_value(field=field, code='invalid_title_conflict', value=action,
+                                       detail='标题冲突选项已失效')
                 if action == 'use_existing':
                     task_id = value.get('task_id')
                     if task_id not in set(slot.get('candidate_task_ids', [])):
-                        raise HTTPException(400, '请选择当前标题对应的任务')
+                        _reject_slot_value(field=field, code='invalid_title_conflict', value=task_id,
+                                           detail='请选择当前标题对应的任务')
                     op['kind'] = 'update'
                     op['task_ids'] = [task_id]
                 elif action == 'cancel':
@@ -137,10 +155,12 @@ class PlanningOperations:
                 try:
                     SchedulingService.instant(value)
                 except (ValueError, TypeError):
-                    raise HTTPException(400, '开始时间格式无效') from None
+                    _reject_slot_value(field=field, code='invalid_start_at', value=value,
+                                       detail='开始时间格式无效')
                 op[field] = value
             else:
-                raise HTTPException(400, '不支持的澄清字段')
+                _reject_slot_value(field=field, code='unsupported_clarification_field', value=value,
+                                   detail='不支持的澄清字段')
         slots = [s for s in remaining_slots if pending_ops[s['operation_id']].get('status') != 'deferred']
         for index, raw in enumerate(operations):
             # IDs can only come from issued slot answers, never raw model output.
@@ -148,7 +168,8 @@ class PlanningOperations:
                 'kind', 'references', 'title', 'planned_minutes', 'start_at',
                 'after_task_reference', 'before_task_reference', 'reason'}}
             if op.get('kind') not in {'create', 'update', 'schedule', 'defer', 'delete'}:
-                raise HTTPException(400, '未知计划操作')
+                _reject_slot_value(field='operation_kind', code='unknown_plan_operation', value=op.get('kind'),
+                                   detail='未知计划操作')
             op_id = f'{command_id}:{index}'
             pending_ops.setdefault(op_id, {**op, 'status': 'waiting'})
         results = answer_results

@@ -216,6 +216,7 @@ class CompanionCoordinator:
             )
         decision = self.router.decide(
             content=content, route_hint=route_hint, focus_run=focus_run, proposal=proposal,
+            has_image=bool(attachment_keys),
         )
         if decision.mode == "start" and focus_run is not None and decision.target not in {"clarify", "safety"}:
             decision.mode = "continue" if focus_run.agent_type == decision.target else "handoff"
