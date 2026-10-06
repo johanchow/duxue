@@ -20,6 +20,7 @@ def test_context_spec_contract_defaults():
     spec = ContextSpec(policy_version="v1", max_model_calls=1)
     assert spec.policy_version == "v1"
     assert spec.max_model_calls == 1
+    assert spec.utterance_scope == "thread"
 
 
 def test_context_envelope_trace_snapshot_redacts_sensitive_payloads():

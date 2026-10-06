@@ -13,7 +13,7 @@ from app.application.commands.memory import SqlAlchemyMemoryFacade
 from app.application.commands.plan_intake import PlanIntakeInput, PlanIntakeService
 from app.application.ports.companion import RunInvocation, WorkflowOutcome
 from app.application.queries.context_builder import ContextBuilder
-from app.application.queries.run_transcript import recent_run_utterances
+from app.application.queries.run_transcript import recent_thread_utterances
 from app.application.workflows.planning_domain_service import PlanningDomainService
 from app.application.workflows.planning_workflow import build_planning_graph
 from app.bootstrap.settings import settings
@@ -27,6 +27,31 @@ from app.infrastructure.observability.telemetry import (
     record_planning_loop_outcome,
 )
 from app.infrastructure.persistence.models import AgentRun, PlanDraft, Task, Ward
+
+
+def _operation_changes_task(operation, tasks: list) -> bool:
+    """An update that restates the current title and leaves time untouched is not a change."""
+    data = operation.model_dump(exclude_none=True)
+    if data.get("kind") != "update":
+        return True
+    if any(data.get(field) for field in ("start_at", "after_task_reference", "before_task_reference", "reason")):
+        return True
+    title = data.get("title")
+    minutes = data.get("planned_minutes")
+    references = data.get("references") or []
+    if not references:
+        return title is not None or minutes is not None
+    matched = []
+    for reference in references:
+        name = TaskReferenceResolver.normalise(reference)
+        matched.extend(task for task in tasks if TaskReferenceResolver.normalise(task.title) == name)
+    if len(matched) != len(references):
+        return True
+    return any(
+        (title is not None and TaskReferenceResolver.normalise(title) != TaskReferenceResolver.normalise(task.title))
+        or (minutes is not None and minutes != task.planned_minutes)
+        for task in matched
+    )
 
 
 def planning_today(current: datetime | None = None):
@@ -90,8 +115,9 @@ class PlanningWorkflowAdapter:
                             "candidates": [c["title"] for c in slot.get("candidates", [])],
                             "choices": slot.get("choices", []), "question": slot.get("question")} for slot in slots]
             attachment_keys = invocation.turn.get("attachment_keys") or []
-            utterances, omitted_utterances = recent_run_utterances(
-                self.db, ward_id=run.ward_id, run_id=run.id, exclude_turn_id=invocation.turn_id,
+            utterances, omitted_utterances = recent_thread_utterances(
+                self.db, ward_id=run.ward_id, thread_id=invocation.thread_id,
+                exclude_turn_id=invocation.turn_id,
             )
             with planning_stage_span("plan_intake", run_id=run.id):
                 extracted = PlanIntakeService().respond(
@@ -103,6 +129,17 @@ class PlanningWorkflowAdapter:
                         attachment_keys=attachment_keys, recent_utterances=utterances,
                         omitted_utterance_count=omitted_utterances),
                 )
+            substantive = [op for op in extracted.operations if _operation_changes_task(op, tasks)]
+            unchanged_only = bool(extracted.operations) and not substantive
+            if (extracted.clarification_required or unchanged_only) and not extracted.slot_updates:
+                clarification = self._model_clarification_text(extracted) if extracted.clarification_required else None
+                record_planning_loop_outcome(status="needs_clarification", has_image=bool(attachment_keys))
+                return self._text_clarification_outcome(
+                    run=run,
+                    text=clarification or "我还不能确定这次要怎么改。请说明要改的名字、时长或开始时间。",
+                    context_snapshot=envelope.trace_snapshot(),
+                )
+            extracted.operations = [] if extracted.clarification_required else substantive
             if not extracted.operations and not extracted.slot_updates:
                 clarification = self._model_clarification_text(extracted)
                 if clarification:

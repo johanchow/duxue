@@ -78,6 +78,7 @@ class ContextSpec(BaseModel):
     max_tool_calls: int = Field(default=0, ge=0, le=20)
     checkpoint_version: str = "v1"
     policy_version: str = "v1"
+    utterance_scope: Literal["thread"] = "thread"
 
 
 class RunInvocation(BaseModel):

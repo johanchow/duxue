@@ -407,7 +407,7 @@ sequenceDiagram
 |---|---|---|
 | 已知任务池和约束 | Planning Query | 生成/校验草稿的唯一任务来源 |
 | 当前草稿与版本 | `PlanDraft` | 支持继续编辑与确认前重检 |
-| 最近本 Run 的表达摘要 | 受控消息窗口 | 解决“放到后面”等指代 |
+| 同一条对话的最近原句 | 受控消息窗口，按 Thread 而不是当前 Run 截取 | 解决“同样的操作”“放到后面”等指代 |
 | 估时偏差/计划偏好 | `MemoryFacade` 的最小 Bundle | 仅作软建议，数据不足时不推断 |
 
 `PlanningAgentLoop` 是有工具边界的应用层循环。模型可以决定下一步调用哪个工具，但工具参数必须是结构化数据；所有真实 ID、版本、重复名结果和草稿状态都必须来自工具 observation。Loop 内任何写工具成功后，必须在退出前触发 `validate_draft_plan()` 或由 Graph 在 `DraftEvaluation` 自动重验；不能只凭模型回复宣布 start_at 已生效。

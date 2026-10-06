@@ -1,8 +1,10 @@
-"""Same-run message window for the next model call.
+"""Thread transcript window for the next model call.
 
-The window keeps recent utterances verbatim. Older ones are omitted by count,
-not rewritten into a summary. The current turn is excluded because the caller
-already supplies it as this turn's student message.
+The window keeps recent utterances on the same conversation verbatim. Older ones
+are omitted by count, not rewritten into a summary. The current turn is excluded
+because the caller already supplies it as this turn's student message. Run
+boundaries do not hide the previous sentence: the student refers to the dialogue
+they can see.
 """
 from __future__ import annotations
 
@@ -21,7 +23,7 @@ def select_recent_utterances(
     max_messages: int = MAX_UTTERANCES,
     max_chars: int = MAX_UTTERANCE_CHARS,
 ) -> tuple[list[dict], int]:
-    """Keep the newest same-run originals that fit the budget.
+    """Keep the newest thread originals that fit the budget.
 
     ``rows`` are oldest first. Each row has ``turn_id``, ``author``, ``text``
     and ``had_image``. Returns ``(kept, omitted_count)``.
@@ -43,12 +45,12 @@ def select_recent_utterances(
     return kept, omitted
 
 
-def recent_run_utterances(
-    db: Session, *, ward_id: str, run_id: str, exclude_turn_id: str | None,
+def recent_thread_utterances(
+    db: Session, *, ward_id: str, thread_id: str, exclude_turn_id: str | None,
 ) -> tuple[list[dict], int]:
     rows = (
         db.query(CompanionMessage)
-        .filter_by(ward_id=ward_id, run_id=run_id)
+        .filter_by(ward_id=ward_id, thread_id=thread_id)
         .order_by(CompanionMessage.thread_version)
         .all()
     )

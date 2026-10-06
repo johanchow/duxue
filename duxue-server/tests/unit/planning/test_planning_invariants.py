@@ -223,6 +223,9 @@ def test_plan_intake_prompt_keeps_prior_run_utterances_verbatim():
     assert "我把这些图片里的安排成任务。" in prompt
     assert "（本句附有图片）" in prompt
     assert "不要把「都」改写成任务池里已有的其他任务" in prompt
+    assert "同一条对话的最近原句" in prompt
+    assert "同样的操作" in prompt
+    assert "clarification_required=true" in prompt
     assert prompt.index(question) < prompt.index("当前未完成任务池")
 
 
