@@ -281,6 +281,39 @@ class StudySessionInterval(Base):
     active_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
+class StartCueRecord(Base):
+    """一张到点开始邀请。同一 Ward 同时至多一张未关闭记录。"""
+
+    __tablename__ = "start_cues"
+    __table_args__ = (
+        Index(
+            "uq_open_start_cue_ward",
+            "ward_id",
+            unique=True,
+            postgresql_where=text("status IN ('pending','held','ready','presented')"),
+            sqlite_where=text("status IN ('pending','held','ready','presented')"),
+        ),
+    )
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
+    ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id"), index=True)
+    due_task_id: Mapped[str] = mapped_column(ForeignKey("tasks.id"), index=True)
+    schedule_id: Mapped[str] = mapped_column(ForeignKey("daily_schedules.id"), index=True)
+    schedule_version: Mapped[int] = mapped_column(Integer)
+    start_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    end_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    earlier_task_ids: Mapped[list] = mapped_column(JSON, default=list)
+    current_session_id: Mapped[str | None] = mapped_column(ForeignKey("study_sessions.id"), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    scene_label: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    gap_reason: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    snooze_count: Mapped[int] = mapped_column(Integer, default=0)
+    snoozed_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    actions: Mapped[list] = mapped_column(JSON, default=list)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 class TutoringSession(Base):
     """A bounded AI dialogue inside a study session; a session may have no dialogue."""
     __tablename__ = "tutoring_sessions"

@@ -28,7 +28,7 @@ from app.api.schemas import (
     AnalyzeDayRequest, DeviceBind, FrameCreate, LabelCreate, LoginRequest, ProfileCreate,
     ProfilePatch, RefreshRequest, RegisterRequest, TokenPair, UploadUrlRequest, WardCreate,
     WardOut, WardPatch, WardBindRequest, AssignmentCreate, PlanDraft,
-    MessageCreate, SessionFinish, SessionPause, SelfReviewCreate, TaskIntakeCleanup, TaskIntakeConfirm,
+    MessageCreate, SessionFinish, SessionPause, StartCueCommand, SelfReviewCreate, TaskIntakeCleanup, TaskIntakeConfirm,
     TaskIntakeRequest, CompanionTurnRequest, AgentRunCancelRequest, SignalChallengeRequest, ClientTelemetryBatch,
 )
 from app.infrastructure.security.tokens import create_access_token, hash_secret, random_token, token_hash, verify_secret

@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>读学 · 到点开始邀请 start_cue</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ink: #0c1222;
+      --muted: #5b667a;
+      --faint: #8b95a8;
+      --line: rgba(15, 23, 42, 0.1);
+      --card: #ffffff;
+      --ai: #0f766e;
+      --ai-deep: #115e59;
+      --ai-soft: #e6f4f1;
+      --surface: #f4f6f8;
+      --phone-w: 390px;
+      --phone-h: 844px;
+      --tab-h: 64px;
+      --composer-h: 72px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Noto Sans SC", "DM Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #e8ecf1;
+      color: var(--ink);
+      min-height: 100vh;
+      padding: 28px 16px 48px;
+    }
+    .page-header { max-width: 880px; margin: 0 auto 16px; text-align: center; }
+    .page-header h1 {
+      font-family: "DM Sans", "Noto Sans SC", sans-serif;
+      font-size: 1.35rem; font-weight: 700; letter-spacing: -0.03em; margin-bottom: 6px;
+    }
+    .page-header p { color: var(--muted); font-size: 0.86rem; line-height: 1.6; }
+    .page-header code {
+      font-family: "DM Sans", ui-monospace, monospace;
+      font-size: 0.82em; background: #fff; border: 1px solid var(--line);
+      border-radius: 6px; padding: 0 5px;
+    }
+
+    .scenarios {
+      max-width: 880px; margin: 0 auto 22px;
+      display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
+    }
+    .scenarios button {
+      border: 1px solid var(--line); background: #fff; color: var(--ink);
+      border-radius: 999px; padding: 8px 12px;
+      font: 600 0.78rem inherit; cursor: pointer;
+    }
+    .scenarios button.active {
+      background: var(--ai); color: #fff; border-color: var(--ai);
+    }
+
+    .layout { display: flex; justify-content: center; gap: 28px; flex-wrap: wrap; align-items: flex-start; }
+
+    .phone {
+      width: var(--phone-w); height: var(--phone-h);
+      background: var(--surface);
+      border-radius: 40px;
+      box-shadow: 0 20px 50px rgba(12, 18, 34, 0.16), inset 0 0 0 10px #1e293b;
+      overflow: hidden; display: flex; flex-direction: column; position: relative;
+    }
+    .status-bar {
+      height: 44px; padding: 12px 24px 0;
+      display: flex; justify-content: space-between;
+      font-size: 0.75rem; font-weight: 600;
+    }
+    .screen {
+      flex: 1; overflow: hidden; padding: 0 16px 12px;
+      display: flex; flex-direction: column;
+    }
+    .greeting { padding: 4px 0 14px; }
+    .greeting .date { font-size: 0.72rem; color: var(--faint); margin-bottom: 4px; }
+    .greeting h2 { font-size: 1.35rem; font-weight: 700; letter-spacing: -0.03em; }
+    .greeting p { font-size: 0.82rem; color: var(--muted); margin-top: 6px; }
+
+    .context-label {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 0.68rem; font-weight: 700; color: var(--faint);
+      letter-spacing: 0.08em; margin-bottom: 10px;
+    }
+    .context-label .dot {
+      width: 6px; height: 6px; border-radius: 50%; background: var(--ai);
+      box-shadow: 0 0 0 3px var(--ai-soft);
+    }
+    .task-row {
+      background: #fff; border: 1px solid var(--line); border-radius: 16px;
+      padding: 12px 14px; display: flex; justify-content: space-between; gap: 10px;
+      margin-bottom: 8px;
+    }
+    .task-row h3 { font-size: 0.92rem; font-weight: 650; }
+    .task-row p { font-size: 0.75rem; color: var(--muted); margin-top: 3px; }
+    .pill {
+      align-self: center; flex-shrink: 0;
+      font-size: 0.68rem; font-weight: 700;
+      border-radius: 999px; padding: 4px 8px;
+      background: #eef2ff; color: #3730a3;
+    }
+    .pill.live { background: var(--ai-soft); color: var(--ai-deep); }
+    .pill.due { background: #fff7ed; color: #b45309; }
+
+    .stage { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; min-height: 0; }
+
+    .held {
+      margin-bottom: 10px; padding: 12px 14px;
+      border-radius: 14px; background: #fff; border: 1px dashed var(--line);
+      color: var(--muted); font-size: 0.8rem; line-height: 1.5;
+    }
+    .held strong { display: block; color: var(--ink); font-size: 0.78rem; margin-bottom: 2px; }
+
+    .cue {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 16px 16px 14px;
+      box-shadow: 0 12px 32px rgba(12, 18, 34, 0.08);
+      margin-bottom: 10px;
+    }
+    .cue-kicker {
+      font-size: 0.68rem; font-weight: 700; letter-spacing: 0.06em;
+      color: var(--ai-deep); margin-bottom: 8px;
+    }
+    .cue-text { font-size: 0.95rem; line-height: 1.55; font-weight: 500; }
+    .cue-tasks { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
+    .cue-task {
+      display: flex; justify-content: space-between; gap: 8px; align-items: baseline;
+      background: var(--surface); border-radius: 12px; padding: 8px 10px;
+      font-size: 0.78rem;
+    }
+    .cue-task b { font-weight: 650; }
+    .cue-task span { color: var(--muted); }
+    .cue-task.due-now { outline: 1px solid rgba(15, 118, 110, 0.35); background: var(--ai-soft); }
+    .actions { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+    .actions button {
+      width: 100%; border-radius: 14px; padding: 12px 14px;
+      font: 700 0.86rem inherit; cursor: pointer;
+    }
+    .btn-primary { background: var(--ai); color: #fff; border: none; }
+    .btn-outline { background: #fff; color: var(--ink); border: 1.5px solid var(--line); }
+    .btn-quiet { background: transparent; color: var(--muted); border: none; font-weight: 600; padding: 8px; }
+
+    .composer {
+      height: var(--composer-h); border-top: 1px solid var(--line);
+      background: rgba(255,255,255,0.92);
+      display: flex; align-items: center; gap: 8px; padding: 0 12px;
+    }
+    .composer .hold {
+      flex: 1; height: 48px; border-radius: 14px; border: 1px solid var(--line);
+      background: var(--surface); color: var(--muted);
+      font: 600 0.82rem inherit;
+    }
+    .bottom-nav {
+      height: var(--tab-h); border-top: 1px solid var(--line);
+      background: #fff; display: flex; padding-bottom: 8px;
+    }
+    .nav-item {
+      flex: 1; border: none; background: transparent;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 2px; color: var(--faint); font: 500 0.62rem inherit;
+    }
+    .nav-item.active { color: var(--ai-deep); font-weight: 700; }
+    .toast {
+      position: absolute; left: 24px; right: 24px; bottom: 148px;
+      background: var(--ink); color: #fff; border-radius: 12px;
+      padding: 10px 12px; font-size: 0.78rem; text-align: center;
+      opacity: 0; transform: translateY(6px); pointer-events: none;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+    .toast.show { opacity: 1; transform: none; }
+
+    .spec { width: min(420px, 100%); display: flex; flex-direction: column; gap: 10px; }
+    .spec article {
+      background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px;
+    }
+    .spec h2 { font-size: 0.84rem; margin-bottom: 6px; }
+    .spec p, .spec li { color: var(--muted); font-size: 0.78rem; line-height: 1.55; }
+    .spec ul { padding-left: 1.1em; }
+    .spec code {
+      font-family: "DM Sans", ui-monospace, monospace;
+      font-size: 0.92em; color: var(--ink);
+    }
+  </style>
+</head>
+<body>
+  <header class="page-header">
+    <h1>到点开始邀请</h1>
+    <p>一种卡片 <code>start_cue</code>。按钮由当时有没有别的会话决定，句子由现场决定。人离开时不出现。同一孩子同时只有一张。</p>
+  </header>
+
+  <div class="scenarios" id="scenarios"></div>
+
+  <div class="layout">
+    <div class="phone">
+      <div class="status-bar"><span>19:41</span><span>读学</span></div>
+      <div class="screen">
+        <div class="greeting">
+          <div class="date">10月6日 · 周二</div>
+          <h2>今晚的安排</h2>
+          <p id="homeHint">数学还开着。英语刚刚到点。</p>
+        </div>
+        <div class="context-label"><span class="dot"></span>今晚</div>
+        <div id="homeTasks"></div>
+        <div class="stage">
+          <div class="held" id="held" hidden>
+            <strong>邀请先留着</strong>
+            <span id="heldText"></span>
+          </div>
+          <section class="cue" id="cue" aria-label="开始邀请">
+            <div class="cue-kicker">到点了</div>
+            <p class="cue-text" id="cueText"></p>
+            <div class="cue-tasks" id="cueTasks"></div>
+            <div class="actions" id="actions"></div>
+          </section>
+        </div>
+      </div>
+      <div class="composer"><button class="hold" type="button">按住说话</button></div>
+      <nav class="bottom-nav">
+        <button class="nav-item active" type="button">首页</button>
+        <button class="nav-item" type="button">成长</button>
+        <button class="nav-item" type="button">我的</button>
+      </nav>
+      <div class="toast" id="toast" role="status"></div>
+    </div>
+
+    <aside class="spec">
+      <article>
+        <h2>落到 App</h2>
+        <p>做成首页陪伴层上的一张卡片，不新开路由，也不用系统弹窗。进行中的答疑轮次说完后再出现。颜色跟随 <code>ThemeData</code>，主按钮用 <code>colorScheme.primary</code>。</p>
+      </article>
+      <article>
+        <h2>组件</h2>
+        <ul>
+          <li><code>StartCueCard</code>：<code>text</code>、任务列表、<code>actions</code></li>
+          <li>任务标题来自 <code>GetStartCue</code>，不从句子里拆</li>
+          <li>按钮只渲染允许集合里的命令：<code>start_due_task</code>、<code>continue_current</code>、<code>pause_current_and_start_due</code>、<code>snooze_once</code></li>
+          <li>主按钮是集合里的第一项；「等一下」用文字按钮，且每张只用一次</li>
+        </ul>
+      </article>
+      <article>
+        <h2>这一屏的数据</h2>
+        <p id="specNow"></p>
+      </article>
+    </aside>
+  </div>
+
+  <script>
+    const scenes = [
+      {
+        id: "working",
+        label: "已经在写",
+        hint: "数学到点了，书桌前已经在写。",
+        home: [
+          { title: "数学练习册 P23–25", meta: "19:00–19:40", pill: "到点", tone: "due" }
+        ],
+        show: true,
+        text: "看起来已经在写数学了。要把现在记成数学开始吗？",
+        tasks: [{ title: "数学练习册 P23–25", meta: "19:00 · 40 分钟", due: true }],
+        actions: [
+          { command: "start_due_task", label: "开始数学", primary: true },
+          { command: "snooze_once", label: "等一下", quiet: true }
+        ]
+      },
+      {
+        id: "settling",
+        label: "正在铺本子",
+        hint: "英语到点了，本子已经打开。",
+        home: [
+          { title: "英语朗读", meta: "19:40–20:00", pill: "到点", tone: "due" }
+        ],
+        show: true,
+        text: "英语本已经打开了。现在开始这 20 分钟？",
+        tasks: [{ title: "英语朗读", meta: "19:40 · 20 分钟", due: true }],
+        actions: [
+          { command: "start_due_task", label: "开始英语", primary: true },
+          { command: "snooze_once", label: "等一下", quiet: true }
+        ]
+      },
+      {
+        id: "unseen",
+        label: "没看到书桌",
+        hint: "数学到点了。这次没有可用的现场。",
+        home: [
+          { title: "数学练习册 P23–25", meta: "19:00–19:40", pill: "到点", tone: "due" }
+        ],
+        show: true,
+        text: "数学 19:00 到了，我没看到书桌。要现在开始吗？",
+        tasks: [{ title: "数学练习册 P23–25", meta: "19:00 · 40 分钟", due: true }],
+        actions: [
+          { command: "start_due_task", label: "开始数学", primary: true },
+          { command: "snooze_once", label: "等一下", quiet: true }
+        ]
+      },
+      {
+        id: "switch",
+        label: "前一项还在进行",
+        hint: "数学还开着。英语刚刚到点。",
+        home: [
+          { title: "数学练习册 P23–25", meta: "19:00 开始 · 还在进行", pill: "进行中", tone: "live" },
+          { title: "英语朗读", meta: "19:40–20:00", pill: "到点", tone: "due" }
+        ],
+        show: true,
+        text: "英语到点了，数学还在进行。先做完数学，还是暂停数学、开始英语？",
+        tasks: [
+          { title: "数学练习册 P23–25", meta: "进行中", due: false },
+          { title: "英语朗读", meta: "19:40 · 刚到点", due: true }
+        ],
+        actions: [
+          { command: "continue_current", label: "继续数学", primary: true },
+          { command: "pause_current_and_start_due", label: "暂停数学，开始英语", primary: false },
+          { command: "snooze_once", label: "等一下", quiet: true }
+        ]
+      },
+      {
+        id: "earlier",
+        label: "更早的也没开始",
+        hint: "数学和英语都到点了，都还没开始。",
+        home: [
+          { title: "数学练习册 P23–25", meta: "19:00–19:40", pill: "到点", tone: "due" },
+          { title: "英语朗读", meta: "19:40–20:00", pill: "到点", tone: "due" }
+        ],
+        show: true,
+        text: "数学还没开始，英语也到点了。要先开始英语吗？",
+        tasks: [
+          { title: "数学练习册 P23–25", meta: "19:00 · 还没开始", due: false },
+          { title: "英语朗读", meta: "19:40 · 当前这项", due: true }
+        ],
+        actions: [
+          { command: "start_due_task", label: "开始英语", primary: true },
+          { command: "snooze_once", label: "等一下", quiet: true }
+        ]
+      },
+      {
+        id: "away",
+        label: "人离开了",
+        hint: "英语到点了，座位是空的。",
+        home: [
+          { title: "英语朗读", meta: "19:40–20:00", pill: "到点", tone: "due" }
+        ],
+        show: false,
+        held: "座位空着。人回来后再问要不要开始英语。"
+      }
+    ];
+
+    const root = document.getElementById("scenarios");
+    scenes.forEach((scene, index) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = scene.label;
+      button.addEventListener("click", () => render(index));
+      root.appendChild(button);
+    });
+
+    function render(index) {
+      const scene = scenes[index];
+      [...root.children].forEach((button, i) => button.classList.toggle("active", i === index));
+      document.getElementById("homeHint").textContent = scene.hint;
+      document.getElementById("homeTasks").innerHTML = scene.home.map((task) =>
+        `<article class="task-row"><div><h3>${task.title}</h3><p>${task.meta}</p></div><span class="pill ${task.tone}">${task.pill}</span></article>`
+      ).join("");
+
+      const cue = document.getElementById("cue");
+      const held = document.getElementById("held");
+      if (!scene.show) {
+        cue.hidden = true;
+        held.hidden = false;
+        document.getElementById("heldText").textContent = scene.held;
+        document.getElementById("specNow").textContent = "状态 Held。不调用文案，不渲染 StartCueCard。";
+        return;
+      }
+      cue.hidden = false;
+      held.hidden = true;
+      document.getElementById("cueText").textContent = scene.text;
+      document.getElementById("cueTasks").innerHTML = scene.tasks.map((task) =>
+        `<div class="cue-task${task.due ? " due-now" : ""}"><b>${task.title}</b><span>${task.meta}</span></div>`
+      ).join("");
+      document.getElementById("actions").innerHTML = scene.actions.map((action) => {
+        const cls = action.quiet ? "btn-quiet" : action.primary ? "btn-primary" : "btn-outline";
+        return `<button class="${cls}" type="button" data-command="${action.command}">${action.label}</button>`;
+      }).join("");
+      document.getElementById("specNow").textContent =
+        `kind = start_cue。主命令 ${scene.actions.find((action) => action.primary).command}。`;
+    }
+
+    document.getElementById("actions").addEventListener("click", (event) => {
+      const button = event.target.closest("button");
+      if (!button) return;
+      const toast = document.getElementById("toast");
+      toast.textContent = button.dataset.command;
+      toast.classList.add("show");
+      clearTimeout(render.timer);
+      render.timer = setTimeout(() => toast.classList.remove("show"), 1400);
+    });
+
+    render(3);
+  </script>
+</body>
+</html>

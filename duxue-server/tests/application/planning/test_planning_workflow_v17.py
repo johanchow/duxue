@@ -335,36 +335,46 @@ def test_confirmation_turn_sees_prior_itinerary_and_creates_those_tasks(db, monk
     db.add(thread)
     db.flush()
     run = AgentRun(thread_id=thread.id, ward_id=ward.id, agent_type='planning', run_ref='itinerary')
-    other = AgentRun(thread_id=thread.id, ward_id=ward.id, agent_type='planning', run_ref='other')
-    db.add_all([run, other])
+    earlier = AgentRun(thread_id=thread.id, ward_id=ward.id, agent_type='planning', run_ref='earlier')
+    other_thread = ConversationThread(ward_id=ward.id)
+    db.add(other_thread)
+    db.flush()
+    other = AgentRun(thread_id=other_thread.id, ward_id=ward.id, agent_type='planning', run_ref='other')
+    db.add_all([run, earlier, other])
     db.flush()
     question = '已从图片中识别出行程安排：码头出发 7:00、rumah pohon 9:00。请确认是否创建？'
     first = CompanionCommand(id=uid(), ward_id=ward.id, thread_id=thread.id, payload_digest='ask')
     current = CompanionCommand(id=uid(), ward_id=ward.id, thread_id=thread.id, payload_digest='now')
-    foreign = CompanionCommand(id=uid(), ward_id=ward.id, thread_id=thread.id, payload_digest='other')
-    ask_turn, reply_turn, confirm_turn, other_turn = uid(), uid(), uid(), uid()
-    db.add_all([first, current, foreign])
+    prior = CompanionCommand(id=uid(), ward_id=ward.id, thread_id=thread.id, payload_digest='prior')
+    foreign = CompanionCommand(id=uid(), ward_id=ward.id, thread_id=other_thread.id, payload_digest='other')
+    ask_turn, reply_turn, confirm_turn, other_turn, prior_turn = uid(), uid(), uid(), uid(), uid()
+    db.add_all([first, current, prior, foreign])
     db.flush()
     db.add_all([
         CompanionMessage(
+            ward_id=ward.id, thread_id=thread.id, command_id=prior.id, run_id=earlier.id,
+            turn_id=prior_turn, attempt=1, thread_version=1, author_type='ward',
+            content='名字改成码头出发，今天七点开始，时长二十分钟。',
+        ),
+        CompanionMessage(
             ward_id=ward.id, thread_id=thread.id, command_id=first.id, run_id=run.id,
-            turn_id=ask_turn, attempt=1, thread_version=1, author_type='ward',
+            turn_id=ask_turn, attempt=1, thread_version=2, author_type='ward',
             content='我把这些图片里的安排成任务。', attachment_refs=['page.jpg'],
         ),
         CompanionMessage(
             ward_id=ward.id, thread_id=thread.id, command_id=first.id, run_id=run.id,
-            turn_id=reply_turn, attempt=1, thread_version=2, author_type='companion',
+            turn_id=reply_turn, attempt=1, thread_version=3, author_type='companion',
             content=question,
         ),
         CompanionMessage(
             ward_id=ward.id, thread_id=thread.id, command_id=current.id, run_id=run.id,
-            turn_id=confirm_turn, attempt=1, thread_version=3, author_type='ward',
+            turn_id=confirm_turn, attempt=1, thread_version=4, author_type='ward',
             content='是的，都安排成任务。每个都是二十五分钟。',
         ),
         CompanionMessage(
-            ward_id=ward.id, thread_id=thread.id, command_id=foreign.id, run_id=other.id,
-            turn_id=other_turn, attempt=1, thread_version=4, author_type='companion',
-            content='另一轮的秘密行程不该出现。',
+            ward_id=ward.id, thread_id=other_thread.id, command_id=foreign.id, run_id=other.id,
+            turn_id=other_turn, attempt=1, thread_version=1, author_type='companion',
+            content='另一条对话的秘密行程不该出现。',
         ),
     ])
     db.flush()
@@ -399,13 +409,103 @@ def test_confirmation_turn_sees_prior_itinerary_and_creates_those_tasks(db, monk
     texts = [item['text'] for item in request.recent_utterances]
     assert question in texts
     assert '我把这些图片里的安排成任务。' in texts
+    assert '名字改成码头出发，今天七点开始，时长二十分钟。' in texts
     assert '是的，都安排成任务。每个都是二十五分钟。' not in texts
-    assert '另一轮的秘密行程不该出现。' not in texts
-    assert request.recent_utterances[0]['had_image'] is True
+    assert '另一条对话的秘密行程不该出现。' not in texts
+    image = next(item for item in request.recent_utterances if '图片' in item['text'])
+    assert image['had_image'] is True
     titles = {task.title: task.planned_minutes for task in db.query(Task)}
     assert titles['英语的典范故事阅读'] == 20
     assert titles['码头出发'] == 25
     assert titles['rumah pohon'] == 25
+
+
+def test_unchanged_update_asks_instead_of_saving(db, monkeypatch):
+    from langgraph.checkpoint.memory import InMemorySaver
+
+    from app.application.commands.plan_intake import PlanIntakeResult, PlanIntakeService
+    from app.application.ports.companion import RunInvocation
+    from app.application.workflows.planning_adapter import PlanningWorkflowAdapter
+    from app.infrastructure.ai.model_gateway import ModelGatewayError
+    from app.infrastructure.persistence.models import AgentRun, ConversationThread
+
+    ward = create_ward(db)
+    task = create_task(db, ward=ward, title='diamond beach 10:00', planned_minutes=35)
+    thread = ConversationThread(ward_id=ward.id)
+    db.add(thread)
+    db.flush()
+    run = AgentRun(thread_id=thread.id, ward_id=ward.id, agent_type='planning', run_ref='same-op')
+    db.add(run)
+    db.flush()
+
+    def respond(self, *, ward, tasks, request):
+        return PlanIntakeResult(
+            assistant_text='已将同样的操作同步到 diamond beach 10:00，保持原计划时长35分钟。',
+            operations=[{'kind': 'update', 'references': ['diamond beach 10:00'], 'title': 'diamond beach 10:00'}],
+        )
+
+    class OfflineGateway:
+        def generate(self, **kwargs):
+            raise ModelGatewayError('offline')
+
+    monkeypatch.setattr(PlanIntakeService, 'respond', respond)
+    monkeypatch.setattr('app.application.workflows.planning_adapter.QwenAgentModelGateway', OfflineGateway)
+    outcome = PlanningWorkflowAdapter(db, checkpointer=InMemorySaver()).invoke(invocation=RunInvocation(
+        run_id=run.id, thread_id=thread.id, ward_id=ward.id, agent_type='planning',
+        command_id='same-op', turn={'content': '同样的操作给十点那个任务。'},
+    ))
+
+    assert outcome.next_interaction['kind'] == 'clarify'
+    assert '已保存' not in outcome.next_interaction['content']
+    assert '我还不能确定这次要怎么改' in outcome.next_interaction['content']
+    db.refresh(task)
+    assert task.title == 'diamond beach 10:00'
+    assert task.planned_minutes == 35
+
+
+def test_clarification_required_does_not_apply_operations(db, monkeypatch):
+    from langgraph.checkpoint.memory import InMemorySaver
+
+    from app.application.commands.plan_intake import PlanIntakeResult, PlanIntakeService
+    from app.application.ports.companion import RunInvocation
+    from app.application.workflows.planning_adapter import PlanningWorkflowAdapter
+    from app.infrastructure.ai.model_gateway import ModelGatewayError
+    from app.infrastructure.persistence.models import AgentRun, ConversationThread
+
+    ward = create_ward(db)
+    task = create_task(db, ward=ward, title='diamond beach 10:00', planned_minutes=35)
+    thread = ConversationThread(ward_id=ward.id)
+    db.add(thread)
+    db.flush()
+    run = AgentRun(thread_id=thread.id, ward_id=ward.id, agent_type='planning', run_ref='ask-op')
+    db.add(run)
+    db.flush()
+    question = '要同样改成去掉时间的名字、改成二十分钟，还是只改开始时间？'
+
+    def respond(self, *, ward, tasks, request):
+        return PlanIntakeResult(
+            assistant_text=question,
+            clarification_required=True,
+            questions=['要重复改名、时长，还是开始时间？'],
+            operations=[{'kind': 'update', 'references': ['diamond beach 10:00'], 'title': 'diamond beach', 'planned_minutes': 20}],
+        )
+
+    class OfflineGateway:
+        def generate(self, **kwargs):
+            raise ModelGatewayError('offline')
+
+    monkeypatch.setattr(PlanIntakeService, 'respond', respond)
+    monkeypatch.setattr('app.application.workflows.planning_adapter.QwenAgentModelGateway', OfflineGateway)
+    outcome = PlanningWorkflowAdapter(db, checkpointer=InMemorySaver()).invoke(invocation=RunInvocation(
+        run_id=run.id, thread_id=thread.id, ward_id=ward.id, agent_type='planning',
+        command_id='ask-op', turn={'content': '同样的操作给十点那个任务。'},
+    ))
+
+    assert outcome.next_interaction['kind'] == 'clarify'
+    assert question in outcome.next_interaction['content']
+    db.refresh(task)
+    assert task.title == 'diamond beach 10:00'
+    assert task.planned_minutes == 35
 
 
 def test_image_create_without_duration_still_asks_instead_of_claiming_recorded(db, monkeypatch):
