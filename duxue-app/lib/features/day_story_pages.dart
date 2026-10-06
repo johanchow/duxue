@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import '../core/cue_notifications.dart';
 import '../providers.dart';
 import '../shared/app_ui.dart';
 import '../shared/voice_composer.dart';
@@ -162,7 +163,7 @@ class WardDayPage extends ConsumerStatefulWidget {
   ConsumerState<WardDayPage> createState() => _WardDayPageState();
 }
 
-class _WardDayPageState extends ConsumerState<WardDayPage> {
+class _WardDayPageState extends ConsumerState<WardDayPage> with WidgetsBindingObserver {
   List<dynamic> tasks = [];
   Map<String, dynamic>? plan, insight, profile, startCue;
   String? session;
@@ -188,22 +189,32 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
   String? chatSubject;
   final removedPoolTaskIds = <String>{};
   Timer? timer;
+  Timer? cueRefresh;
   int savedSeconds = 0;
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     draftText.addListener(() {
       if (mounted) setState(() {});
     });
     _load();
     _restoreCompanionThread();
+    cueRefresh = Timer.periodic(const Duration(minutes: 1), (_) => _refreshCue());
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     timer?.cancel();
+    cueRefresh?.cancel();
     draftText.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _refreshCue();
   }
 
   @override
@@ -979,10 +990,20 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
     _restoreActiveSession();
     try {
       startCue = await ref.read(apiProvider).currentStartCue();
+      await CueNotifications.replace(startCue?['notifications']);
     } catch (_) {
       startCue = null;
     }
     if (mounted) setState(() {});
+  }
+
+  Future<void> _refreshCue() async {
+    try {
+      final cue = await ref.read(apiProvider).currentStartCue();
+      if (!mounted) return;
+      setState(() => startCue = cue);
+      await CueNotifications.replace(cue['notifications']);
+    } catch (_) {}
   }
 
   Future<void> _actOnStartCue(String command) async {

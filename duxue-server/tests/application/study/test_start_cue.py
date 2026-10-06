@@ -21,12 +21,11 @@ def test_due_task_without_a_camera_presents_one_card(db):
     ward = create_ward(db, guardian=create_guardian(db))
     schedule = _schedule(db, ward)
     math = create_task(db, ward=ward, title="数学", planned_minutes=40, status="scheduled", schedule_id=schedule.id)
-    schedule.items = [{
-        "assignment_id": math.id,
-        "planned_minutes": 40,
-        "start_at": "2026-10-06T19:00:00",
-        "end_at": "2026-10-06T19:40:00",
-    }]
+    english = create_task(db, ward=ward, title="英语", planned_minutes=20, status="scheduled", schedule_id=schedule.id)
+    schedule.items = [
+        {"assignment_id": math.id, "planned_minutes": 40, "start_at": "2026-10-06T19:00:00", "end_at": "2026-10-06T19:40:00"},
+        {"assignment_id": english.id, "planned_minutes": 20, "start_at": "2026-10-06T19:40:00", "end_at": "2026-10-06T20:00:00"},
+    ]
     db.flush()
 
     view = StartCueService(db).sync(ward.id, moment=AT)
@@ -35,6 +34,9 @@ def test_due_task_without_a_camera_presents_one_card(db):
     assert view["actions"][0]["command"] == "start_due_task"
     assert view["actions"][-1]["command"] == "snooze_once"
     assert db.query(LearningEvent).filter_by(event_type="start_cue.presented").count() == 0
+    start_notes = [item for item in view["notifications"] if item["kind"] == "start"]
+    assert [item["id"] for item in start_notes] == [f"start:{english.id}"]
+    assert any(item["kind"] == "day_review" for item in view["notifications"])
 
 
 def test_previous_task_still_running_offers_continue_or_switch(db):
