@@ -44,7 +44,7 @@ class StartCueService:
         if schedule is None or schedule.status != "confirmed":
             if cue is not None:
                 self._expire(cue)
-            return {"status": "none"}
+            return self._with_notifications(ward_id, current, {"status": "none"})
         if cue is not None and (cue.schedule_id != schedule.id or cue.schedule_version != schedule.version):
             self._expire(cue)
             cue = None
@@ -56,7 +56,7 @@ class StartCueService:
             if cue is not None and current >= cue.end_at and cue.status != "presented":
                 self._expire(cue)
                 cue = None
-            return self._view(cue)
+            return self._with_notifications(ward_id, current, self._view(cue))
         target = due[-1]
         earlier = self._earlier_unstarted(schedule, ward_id, current, target["start"])
         if cue is not None and cue.due_task_id != target["task_id"]:
@@ -67,10 +67,10 @@ class StartCueService:
         else:
             cue.earlier_task_ids = [item["task_id"] for item in earlier]
         if cue.snoozed_until is not None and current < cue.snoozed_until:
-            return {"status": "none"}
+            return self._with_notifications(ward_id, current, {"status": "none"})
         if current >= cue.end_at and cue.status != "presented":
             self._expire(cue)
-            return {"status": "none"}
+            return self._with_notifications(ward_id, current, {"status": "none"})
         other = self._other_session(ward_id, target["task_id"])
         decision = StartCuePolicy.decide(
             other_session=other is not None,
@@ -79,7 +79,85 @@ class StartCueService:
             past_end=False,
         )
         self._apply(cue, target, earlier, other, scene, decision)
-        return self._view(cue)
+        return self._with_notifications(ward_id, current, self._view(cue))
+
+    def _with_notifications(self, ward_id: str, current: datetime, view: dict) -> dict:
+        schedule = self._schedule(ward_id, local_plan_date(current))
+        view["notifications"] = self._upcoming(ward_id, schedule, current)
+        return view
+
+    def _upcoming(self, ward_id: str, schedule: DailySchedule | None, current: datetime) -> list[dict]:
+        if schedule is None or schedule.status != "confirmed":
+            return []
+        notes = []
+        last_end = None
+        for item in self._slots(schedule, ward_id):
+            if last_end is None or item["end"] > last_end:
+                last_end = item["end"]
+            if item["start"] > current and not self._task_in_progress(ward_id, item["task_id"]):
+                notes.append({
+                    "id": f"start:{item['task_id']}",
+                    "fire_at": item["start"].isoformat(),
+                    "title": f"{item['title']}到点了",
+                    "body": f"{item['title']} {item['start_label']} 到了。打开读学可以开始。",
+                    "kind": "start",
+                })
+        session = (
+            self.db.query(StudySession)
+            .filter(StudySession.ward_id == ward_id, StudySession.status == "active", StudySession.task_id.is_not(None))
+            .order_by(StudySession.started_at.desc())
+            .first()
+        )
+        if session is not None and session.task_id:
+            task = self.db.get(Task, session.task_id)
+            started = session.started_at
+            if started.tzinfo is None:
+                started = started.replace(tzinfo=timezone.utc)
+            if task is not None and task.planned_minutes:
+                fire = started + timedelta(minutes=int(task.planned_minutes))
+                if fire > current:
+                    notes.append({
+                        "id": f"rest:{session.id}",
+                        "fire_at": fire.isoformat(),
+                        "title": "可以休息一下",
+                        "body": f"{task.title}的这段时间到了。可以暂停，也可以继续。",
+                        "kind": "rest",
+                    })
+        if last_end is not None and last_end > current:
+            notes.append({
+                "id": f"day:{schedule.id}",
+                "fire_at": last_end.isoformat(),
+                "title": "可以总结今天",
+                "body": "今天计划的时间到了。打开读学，先说说自己的感受。",
+                "kind": "day_review",
+            })
+        return notes
+
+    def _slots(self, schedule: DailySchedule, ward_id: str) -> list[dict]:
+        rows = []
+        for item in schedule.items or []:
+            task_id = item.get("assignment_id")
+            start_raw = item.get("start_at")
+            if not task_id or not start_raw:
+                continue
+            task = self.db.get(Task, task_id)
+            if task is None or task.ward_id != ward_id:
+                continue
+            start = SchedulingService.instant(start_raw).astimezone(timezone.utc)
+            end_raw = item.get("end_at")
+            if end_raw:
+                end = SchedulingService.instant(end_raw).astimezone(timezone.utc)
+            else:
+                end = start + timedelta(minutes=int(item.get("planned_minutes") or task.planned_minutes or 0))
+            rows.append({
+                "task_id": task_id,
+                "title": task.title,
+                "start": start,
+                "end": end,
+                "start_label": SchedulingService.instant(start_raw).strftime("%H:%M"),
+                "planned_minutes": task.planned_minutes,
+            })
+        return rows
 
     def act(self, ward_id: str, cue_id: str, command: str, expected_version: int) -> dict:
         cue = self.db.get(StartCueRecord, cue_id)
