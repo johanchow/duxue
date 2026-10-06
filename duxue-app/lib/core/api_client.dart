@@ -464,6 +464,14 @@ class ApiClient {
   Future<Map<String, dynamic>> plan(String wardId, DateTime day) async =>
       Map<String, dynamic>.from(
           (await dio.get('/wards/$wardId/plans/${_day(day)}')).data);
+  Future<Map<String, dynamic>> currentStartCue() async =>
+      Map<String, dynamic>.from((await dio.get('/start-cues/current')).data as Map);
+  Future<Map<String, dynamic>> actOnStartCue(
+          String cueId, String command, int expectedVersion) async =>
+      Map<String, dynamic>.from((await dio.post('/start-cues/$cueId/commands',
+              data: {'command': command, 'expected_version': expectedVersion}))
+          .data as Map);
+
   Future<Map<String, dynamic>> startSession(String itemId) async =>
       Map<String, dynamic>.from(
           (await dio.post('/plan-items/$itemId/sessions')).data);

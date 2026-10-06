@@ -10,6 +10,7 @@ import '../providers.dart';
 import '../shared/app_ui.dart';
 import '../shared/voice_composer.dart';
 import 'home_task_card.dart';
+import 'start_cue_card.dart';
 import 'task_status_dialogs.dart';
 
 int chatImageCachePixels(double logicalPixels, double devicePixelRatio) {
@@ -163,7 +164,7 @@ class WardDayPage extends ConsumerStatefulWidget {
 
 class _WardDayPageState extends ConsumerState<WardDayPage> {
   List<dynamic> tasks = [];
-  Map<String, dynamic>? plan, insight, profile;
+  Map<String, dynamic>? plan, insight, profile, startCue;
   String? session;
   int tab = 0;
   final watch = Stopwatch();
@@ -251,6 +252,19 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
               16, 14, 16, stagedImages.isNotEmpty ? 292 : 220),
           children: [
             _homeGreeting(context),
+            if (startCue?['status'] == 'presented')
+              StartCueCard(
+                text: startCue?['text'] as String? ?? '',
+                tasks: [
+                  for (final task in (startCue?['tasks'] as List?) ?? const [])
+                    Map<String, dynamic>.from(task as Map),
+                ],
+                actions: [
+                  for (final action in (startCue?['actions'] as List?) ?? const [])
+                    Map<String, dynamic>.from(action as Map),
+                ],
+                onCommand: _actOnStartCue,
+              ),
             _contextHeader(
                 plan?['status'] == 'confirmed' ? '已确认 · 今日计划' : '今日计划',
                 action: planned.isEmpty ? null : _openPlanList,
@@ -963,7 +977,24 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
       plan = null;
     }
     _restoreActiveSession();
+    try {
+      startCue = await ref.read(apiProvider).currentStartCue();
+    } catch (_) {
+      startCue = null;
+    }
     if (mounted) setState(() {});
+  }
+
+  Future<void> _actOnStartCue(String command) async {
+    final cueId = startCue?['id'] as String?;
+    final version = startCue?['version'] as int?;
+    if (cueId == null || version == null) return;
+    try {
+      await ref.read(apiProvider).actOnStartCue(cueId, command, version);
+      await _load();
+    } catch (error) {
+      if (mounted) showMessage(context, '操作没有完成，请稍后再试：$error');
+    }
   }
 
   Future<void> _confirmLogout() async {

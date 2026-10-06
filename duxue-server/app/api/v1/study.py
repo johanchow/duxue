@@ -1,5 +1,7 @@
+from app.application.commands.start_cue import StartCueService
 from app.application.workflows.planning_domain_service import PlanningDomainService
 from app.contexts.study.domain.execution import can_finish
+from app.contexts.study.domain.start_cue import StartCueError
 
 from .common import *
 
@@ -15,7 +17,10 @@ def start_session(item_id: str, principal: Principal = Depends(current_ward), db
     item = db.get(Task, item_id); plan = db.get(DailySchedule, item.schedule_id) if item and item.schedule_id else None
     if plan is None or plan.ward_id != principal.user_id: raise HTTPException(404, "plan task not found")
     active = _open_session(db, task_id=item.id)
-    if active: return active
+    if active:
+        StartCueService(db).note_task_started(principal.user_id, item.id)
+        db.commit()
+        return active
     row = StudySession(ward_id=principal.user_id, task_id=item.id); db.add(row); db.flush(); db.add(StudySessionInterval(study_session_id=row.id))
     publish_learning_fact(db, ward_id=row.ward_id, event_type="study_session.started", source_type="study_session", source_id=row.id, payload={"task_id": row.task_id})
     db.commit(); return {"id": row.id, "status": row.status, "active_seconds": 0}
@@ -26,7 +31,10 @@ def start_assignment_session(assignment_id: str, principal: Principal = Depends(
     assignment = db.get(Task, assignment_id)
     if assignment is None or assignment.ward_id != principal.user_id or assignment.status == "completed": raise HTTPException(404, "assignment not found")
     active = _open_session(db, task_id=assignment.id)
-    if active: return active
+    if active:
+        StartCueService(db).note_task_started(principal.user_id, assignment.id)
+        db.commit()
+        return active
     row = StudySession(ward_id=principal.user_id, task_id=assignment.id); db.add(row); db.flush(); db.add(StudySessionInterval(study_session_id=row.id))
     publish_learning_fact(db, ward_id=row.ward_id, event_type="study_session.started", source_type="study_session", source_id=row.id, payload={"task_id": row.task_id})
     db.commit(); return {"id": row.id, "status": row.status, "active_seconds": 0}
@@ -80,4 +88,29 @@ def finish_session(session_id: str, body: SessionFinish, principal: Principal = 
     publish_learning_fact(db, ward_id=session.ward_id, event_type="study_session.completed", source_type="study_session", source_id=session.id, source_version=session.version, payload={"task_id": session.task_id, "active_seconds": session.active_seconds})
     PlanningDomainService(db).complete_task(session.ward_id, session.task_id)
     db.commit(); return {"status": "completed"}
+
+
+def _cue_error(error: StartCueError) -> HTTPException:
+    status = 404 if error.code == "not_found" else 409
+    return HTTPException(status, error.code)
+
+
+@router.get("/start-cues/current")
+def current_start_cue(principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
+    try:
+        view = StartCueService(db).sync(principal.user_id)
+    except StartCueError as error:
+        raise _cue_error(error) from error
+    db.commit()
+    return view
+
+
+@router.post("/start-cues/{cue_id}/commands")
+def act_on_start_cue(cue_id: str, body: StartCueCommand, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
+    try:
+        view = StartCueService(db).act(principal.user_id, cue_id, body.command, body.expected_version)
+    except StartCueError as error:
+        raise _cue_error(error) from error
+    db.commit()
+    return view
 

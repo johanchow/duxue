@@ -489,6 +489,7 @@ App 按 `kind` 选择组件；业务数字一律用 `object_ref` 再拉一次目
 | `tutoring_hint`     | 启发式提示卡 + 阶梯       | `text`（Markdown/LaTeX） | `understood`、`more_hint`、`close`                | TutoringInteractionView             |
 | `self_review`       | 盲评自评卡             | `object_ref`           | `submit_review`                                 | Evaluation 盲评投影                     |
 | `achievement`       | 任务收官轻量成就          | `text`                 | `close`                                         | StudySession 结算                     |
+| `start_cue`  | 到点后的开始邀请          | `text` + `object_ref`  | `start_due_task`、`continue_current`、`pause_current_and_start_due`、`snooze_once`（仅 `StartCueView` 允许的子集） | [StartCueView](domain-study.md) |
 | `failure`           | 可恢复失败             | `text`                 | `retry` / `restart`（仅 Outcome 允许时）              | 无                                   |
 
 
@@ -520,12 +521,16 @@ class AllowedAction(BaseModel):
         "confirm", "edit", "discard", "reply",
         "understood", "more_hint", "close",
         "submit_review", "retry", "restart",
+        "start_due_task", "continue_current",
+        "pause_current_and_start_due", "snooze_once",
     ]
     label: str
     command: Literal[
         "confirm_plan", "patch_plan", "discard_plan",
         "clarify_reply", "tutor_understood", "tutor_more_hint", "tutor_close",
         "submit_self_review", "retry_run", "restart_run",
+        "start_due_task", "continue_current",
+        "pause_current_and_start_due", "snooze_once",
     ]
     enabled: bool
     payload_schema: str | None = None
@@ -534,7 +539,7 @@ class WorkflowInteractionView(BaseModel):
     protocol: Literal["companion-interaction.v1"]
     kind: Literal[
         "text", "text_media", "clarify", "plan_confirm_list",
-        "tutoring_hint", "self_review", "achievement", "failure",
+        "tutoring_hint", "self_review", "achievement", "start_cue", "failure",
     ]
     run_id: str
     turn_id: str

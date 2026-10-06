@@ -95,13 +95,15 @@ flowchart LR
 
 | Integration Event | 生产 Context / 本地事实 | 消费 Context | 接收方本地意图 | 幂等与一致性 |
 |---|---|---|---|---|
-| `PlanConfirmed.v1` | Planning / `PlanConfirmed` | Study | 准备或校验可执行的任务计划 | `schedule_id + version`；最终一致 |
+| `PlanConfirmed.v1` | Planning / `PlanConfirmed` | Study | 准备或校验可执行的任务计划；使仍未关闭且日程版本不一致的 `StartCue` 过期 | `schedule_id + version`；最终一致 |
 | `FrameRecorded.v1` | Device & Ingestion / 帧元数据已入账 | Behavior Analysis | 分析受控帧 | `frame_id`；可重试 |
 | `BehaviorSegmentGenerated.v1` | Behavior Analysis / 片段已生成 | Evaluation & Reflection | 合并客观行为证据 | `study_session_id + segment version`；最终一致 |
 | `StudySessionCompleted.v1` | Study / 执行会话已关闭 | Evaluation & Reflection | 启动或更新复盘材料 | `study_session_id + version`；最终一致 |
 | `LearningFactRecorded.v1` | Planning、Study、Behavior Analysis、Evaluation & Reflection / 已确认学习事实 | Memory & Understanding | `IngestLearningFact` | `source_type + source_id + event_type + source_version`；重复无副作用 |
 
 `MemoryBundle` 是受权查询结果，不是 Integration Event。调用方必须传入 actor、Ward、use case、可见性范围和预算；Memory Context 负责 ACL、脱敏与最小化投影。
+
+`SceneWindow` 同样是受权查询，不是 Integration Event。Study 用它读取一段短时现场；Behavior Analysis 返回观察或缺席，不接收 `StartCue` 的生命周期。
 
 ## 五、Layered Architecture Map
 
