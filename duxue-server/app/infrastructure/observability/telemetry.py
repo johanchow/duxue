@@ -15,6 +15,7 @@ import os
 import re
 import threading
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 from time import perf_counter
 from typing import Any, Iterator
@@ -214,11 +215,6 @@ def _summary(value: str | None) -> dict[str, Any]:
     return {"sha256": hashlib.sha256(text.encode()).hexdigest(), "length": len(text)}
 
 
-def _redacted_excerpt(value: str, limit: int = 160) -> str:
-    text = _PHONE.sub("[phone]", _EMAIL.sub("[email]", value))
-    return text[:limit]
-
-
 def _attrs(**attrs: Any) -> dict[str, Any]:
     return {key: value for key, value in attrs.items() if value is not None}
 
@@ -252,7 +248,7 @@ def record_agent_outcome(*, agent_type: str, status: str, duration_ms: int, fall
 
 def record_companion_rejection(*, code: str, status_code: int, has_thread: bool,
                                has_structured_command: bool) -> None:
-    """Audit a pre-workflow rejection without recording Ward text or IDs."""
+    """Audit a rejected companion turn without recording Ward text or IDs."""
     attrs = {
         "companion.rejection_code": code,
         "http.status_code": status_code,
@@ -261,6 +257,49 @@ def record_companion_rejection(*, code: str, status_code: int, has_thread: bool,
     }
     _span_event("companion.turn.rejected", attrs)
     _audit_logger.warning("companion.turn.rejected", extra={"telemetry": attrs})
+
+
+_CLOCK_VALUE = re.compile(r"^\d{1,2}:\d{2}(?::\d{2})?$")
+
+
+def _planning_value_shape(value: Any) -> str:
+    """Classify a rejected planning value without retaining the value itself."""
+    if isinstance(value, bool):
+        return "bool"
+    if isinstance(value, int):
+        return "int"
+    if isinstance(value, float):
+        return "float"
+    if isinstance(value, list):
+        return "list"
+    if isinstance(value, dict):
+        return "object"
+    if value is None:
+        return "empty"
+    if not isinstance(value, str):
+        return "other"
+    text = value.strip()
+    if not text:
+        return "empty"
+    if _CLOCK_VALUE.fullmatch(text):
+        return "clock"
+    try:
+        datetime.fromisoformat(text)
+    except ValueError:
+        return "text"
+    return "iso"
+
+
+def record_planning_input_rejected(*, field: str, code: str, value: Any) -> None:
+    """Audit why a planning answer was refused, keeping only a low-cardinality shape."""
+    attrs = {
+        "planning.field": field,
+        "planning.rejection_code": code,
+        "planning.value_shape": _planning_value_shape(value),
+        "http.status_code": 400,
+    }
+    _span_event("planning.input.rejected", attrs)
+    _audit_logger.warning("planning.input.rejected", extra={"telemetry": attrs})
 
 
 def record_planning_stage(*, stage: str, duration_ms: int | None = None, **extra: Any) -> None:
@@ -320,7 +359,36 @@ def model_call_span(*, operation: str, model: str, agent_type: str | None = None
             span.set_attribute("llm.duration_ms", duration_ms)
 
 
+def record_plan_intake_structure(
+    *, has_image: bool, operation_count: int, slot_update_count: int, clarification_required: bool,
+    recent_utterance_count: int = 0,
+) -> None:
+    """Record how many structured proposals the intake model returned, never their text."""
+    attrs = _attrs(**{
+        "llm.operation": "plan_intake",
+        "plan_intake.has_image": has_image,
+        "plan_intake.operation_count": operation_count,
+        "plan_intake.slot_update_count": slot_update_count,
+        "plan_intake.clarification_required": clarification_required,
+        "plan_intake.recent_utterance_count": recent_utterance_count,
+    })
+    _span_event("plan_intake.structured", attrs)
+    _audit_logger.info("plan_intake.structured", extra={"telemetry": attrs})
+
+
+def record_planning_loop_outcome(*, status: str, has_image: bool) -> None:
+    """Record the deterministic planning loop status after intake is applied."""
+    attrs = _attrs(**{
+        "llm.operation": "plan_intake",
+        "plan_intake.has_image": has_image,
+        "planning.loop_status": status,
+    })
+    _span_event("planning.loop", attrs)
+    _audit_logger.info("planning.loop", extra={"telemetry": attrs})
+
+
 def record_model_response(*, agent_type: str, model: str, content: str, operation: str | None = None) -> None:
+    """Record one model completion. Stdout and Grafana stay content-free; the original text goes to the local audit file."""
     summary = _summary(content)
     attrs = _attrs(**{
         "agent.type": agent_type,
@@ -330,7 +398,6 @@ def record_model_response(*, agent_type: str, model: str, content: str, operatio
         "output.sha256": summary["sha256"],
     })
     _span_event("llm.response.validated", attrs)
-    # Default Loki/audit logs stay content-free; excerpts only go to the gated debug sink.
     _audit_logger.info("llm.response.validated", extra={"telemetry": attrs})
     _write_debug_audit("output", {"agent.type": agent_type, "llm.model": model, "llm.operation": operation, "output": summary}, content)
 
@@ -368,17 +435,44 @@ def record_asr_session(*, result: str, stage: str, role: str | None = None) -> N
     _span_event("asr.session.completed", attrs)
 
 
+def _llm_original_sink() -> Path | None:
+    """Return the file that keeps full model text outside Grafana.
+
+    Non-production writes by default so a trace_id in the stdout summary can be
+    joined to the original completion. Production stays off unless the explicit
+    audit switch and path are both set. ``AGENT_DEBUG_AUDIT_ENABLED=false``
+    disables the file in every environment.
+    """
+    flag = os.getenv("AGENT_DEBUG_AUDIT_ENABLED", "").strip().lower()
+    if flag in {"0", "false", "no"}:
+        return None
+    app_env = os.getenv("APP_ENV", "development").lower()
+    explicit = flag in {"1", "true", "yes"}
+    if app_env == "production" and not explicit:
+        return None
+    configured = os.getenv("AGENT_DEBUG_AUDIT_PATH", "").strip()
+    if configured:
+        return Path(configured)
+    if app_env == "production":
+        _audit_logger.warning("agent.debug_audit.not_configured", extra={"telemetry": {"audit.kind": "output"}})
+        return None
+    return Path(__file__).resolve().parents[3] / "var" / "agent-llm-audit.jsonl"
+
+
 def _write_debug_audit(kind: str, metadata: dict[str, Any], value: str) -> None:
-    """Write redacted excerpts only to a deliberately configured audit sink."""
-    if os.getenv("AGENT_DEBUG_AUDIT_ENABLED", "false").lower() not in {"1", "true", "yes"}:
+    """Append the original model text to the local audit file, correlated by trace id."""
+    target = _llm_original_sink()
+    if target is None or kind != "output":
         return
-    path = os.getenv("AGENT_DEBUG_AUDIT_PATH", "").strip()
-    if not path:
-        _audit_logger.warning("agent.debug_audit.not_configured", extra={"telemetry": {"audit.kind": kind}})
-        return
-    record = {"kind": kind, "metadata": metadata, "redacted_excerpt": _redacted_excerpt(value)}
+    span_context = trace.get_current_span().get_span_context()
+    record = {
+        "kind": kind,
+        "trace_id": format(span_context.trace_id, "032x") if span_context.is_valid else "",
+        "span_id": format(span_context.span_id, "016x") if span_context.is_valid else "",
+        "metadata": metadata,
+        "content": _PHONE.sub("[phone]", _EMAIL.sub("[email]", value)),
+    }
     try:
-        target = Path(path)
         target.parent.mkdir(parents=True, exist_ok=True)
         with target.open("a", encoding="utf-8") as stream:
             stream.write(json.dumps(record, ensure_ascii=False) + "\n")

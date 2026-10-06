@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,6 +11,13 @@ import '../shared/app_ui.dart';
 import '../shared/voice_composer.dart';
 import 'home_task_card.dart';
 import 'task_status_dialogs.dart';
+
+int chatImageCachePixels(double logicalPixels, double devicePixelRatio) {
+  final pixels = (logicalPixels * devicePixelRatio).ceil();
+  if (pixels < 1) return 1;
+  if (pixels > 4096) return 4096;
+  return pixels;
+}
 
 String wardBindFailureMessage(Object error) {
   if (error is DioException) {
@@ -128,9 +137,26 @@ class _GuardianStoryPageState extends ConsumerState<GuardianStoryPage> {
   }
 }
 
+class PickedChatImage {
+  const PickedChatImage({required this.bytes, required this.extension});
+  final Uint8List bytes;
+  final String extension;
+}
+
+class _StagedImage {
+  _StagedImage({required this.bytes, required this.extension});
+  final Uint8List bytes;
+  final String extension;
+  String? key;
+  bool failed = false;
+}
+
 class WardDayPage extends ConsumerStatefulWidget {
-  const WardDayPage({required this.wardId, super.key});
+  const WardDayPage({required this.wardId, super.key, this.pickChatImage});
   final String wardId;
+
+  /// Gallery picker. Tests supply bytes directly; production uses the camera roll.
+  final Future<PickedChatImage?> Function()? pickChatImage;
   @override
   ConsumerState<WardDayPage> createState() => _WardDayPageState();
 }
@@ -142,8 +168,11 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
   int tab = 0;
   final watch = Stopwatch();
   final planAttachments = <String>[];
+  final stagedImages = <_StagedImage>[];
+  final draftText = TextEditingController();
   List<Map<String, dynamic>> planDraft = [];
-  final planMessages = <Map<String, String>>[];
+  final planMessages = <_ChatLine>[];
+  final rememberedImages = <String, Uint8List>{};
   String? companionThreadId;
   int? companionThreadVersion;
   String? planFeedback;
@@ -162,6 +191,9 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
   @override
   void initState() {
     super.initState();
+    draftText.addListener(() {
+      if (mounted) setState(() {});
+    });
     _load();
     _restoreCompanionThread();
   }
@@ -169,6 +201,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
   @override
   void dispose() {
     timer?.cancel();
+    draftText.dispose();
     super.dispose();
   }
 
@@ -213,30 +246,35 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
             !removedPoolTaskIds.contains(item['id']))
         .toList();
     return Stack(children: [
-      ListView(padding: const EdgeInsets.fromLTRB(16, 14, 16, 156), children: [
-        _homeGreeting(context),
-        _contextHeader(plan?['status'] == 'confirmed' ? '已确认 · 今日计划' : '今日计划',
-            action: planned.isEmpty ? null : _openPlanList, actionLabel: '全部'),
-        if (planned.isEmpty)
-          const _HomeEmptyCard(message: '今天还没有确认计划。可以在下方说说你想怎么安排。')
-        else
-          _planRail(planned),
-        const SizedBox(height: 14),
-        _contextHeader('未排期任务', meta: '${pool.length} 项 · 左滑删除'),
-        if (pool.isEmpty)
-          const _HomeEmptyCard(message: '今天没有待定项了。想加任务，走下方统一入口。')
-        else
-          ...pool.map((item) => _poolTask(item as Map<String, dynamic>)),
-        const Padding(
-            padding: EdgeInsets.only(top: 8, left: 2, right: 2),
-            child: Text('这些不会自动排进今天。左滑可移除；想调整安排，直接告诉读学。',
-                style: TextStyle(fontSize: 12, color: Colors.blueGrey))),
-        if (planned.isNotEmpty) ...[
-          const SizedBox(height: 18),
-          FilledButton.tonal(
-              onPressed: _review, child: const Text('完成今日计划，先说说自己的感受')),
-        ],
-      ]),
+      ListView(
+          padding: EdgeInsets.fromLTRB(
+              16, 14, 16, stagedImages.isNotEmpty ? 292 : 220),
+          children: [
+            _homeGreeting(context),
+            _contextHeader(
+                plan?['status'] == 'confirmed' ? '已确认 · 今日计划' : '今日计划',
+                action: planned.isEmpty ? null : _openPlanList,
+                actionLabel: '全部'),
+            if (planned.isEmpty)
+              const _HomeEmptyCard(message: '今天还没有确认计划。可以在下方说说你想怎么安排。')
+            else
+              _planRail(planned),
+            const SizedBox(height: 14),
+            _contextHeader('未排期任务', meta: '${pool.length} 项 · 左滑删除'),
+            if (pool.isEmpty)
+              const _HomeEmptyCard(message: '今天没有待定项了。想加任务，走下方统一入口。')
+            else
+              ...pool.map((item) => _poolTask(item as Map<String, dynamic>)),
+            const Padding(
+                padding: EdgeInsets.only(top: 8, left: 2, right: 2),
+                child: Text('这些不会自动排进今天。左滑可移除；想调整安排，直接告诉读学。',
+                    style: TextStyle(fontSize: 12, color: Colors.blueGrey))),
+            if (planned.isNotEmpty) ...[
+              const SizedBox(height: 18),
+              FilledButton.tonal(
+                  onPressed: _review, child: const Text('完成今日计划，先说说自己的感受')),
+            ],
+          ]),
       if (planListOpen) _planListOverlay(planned),
       if (planChatOpen) _planChatOverlay(),
       if (!planListOpen)
@@ -253,14 +291,11 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
           Text(
               '周${_weekday(DateTime.now())} · ${DateTime.now().month} 月 ${DateTime.now().day} 日',
               style: const TextStyle(
-                  fontSize: 12,
-                  color: Color(0xff8b95a8),
-                  letterSpacing: 0.2)),
+                  fontSize: 12, color: Color(0xff8b95a8), letterSpacing: 0.2)),
           const SizedBox(height: 4),
           Text('晚上好，${profile?['display_name'] ?? '同学'}',
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: const Color(0xff0c1222))),
+                  fontWeight: FontWeight.w700, color: const Color(0xff0c1222))),
           const SizedBox(height: 5),
           const Text('你先说，我来帮你记录和检查安排。',
               style: TextStyle(fontSize: 13, color: Color(0xff5b667a))),
@@ -296,8 +331,8 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
             const Spacer(),
             if (meta != null)
               Text(meta,
-                  style: const TextStyle(
-                      fontSize: 12, color: Color(0xff8b95a8))),
+                  style:
+                      const TextStyle(fontSize: 12, color: Color(0xff8b95a8))),
             if (action != null)
               TextButton(
                   onPressed: action,
@@ -388,14 +423,15 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
                                           fontSize: 11,
                                           color: Color(0xff5b667a))),
                                   const Spacer(),
-                                  Text(homeTaskCardLabel(homeTaskCardKind(item)),
+                                  Text(
+                                      homeTaskCardLabel(homeTaskCardKind(item)),
                                       style: TextStyle(
                                           fontSize: 10,
                                           fontWeight: FontWeight.w700,
                                           color: isCurrent
                                               ? const Color(0xff0f766e)
                                               : const Color(0xff8b95a8))),
-                                ]))))) ;
+                                ])))));
           }));
 
   Widget _poolTask(Map<String, dynamic> item) {
@@ -447,19 +483,115 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
                     ])))));
   }
 
+  bool get _canSendDraft {
+    if (planSending) return false;
+    if (stagedImages.any((image) => image.key == null && !image.failed)) {
+      return false;
+    }
+    return draftText.text.trim().isNotEmpty ||
+        stagedImages.any((image) => image.key != null);
+  }
+
   Widget _chatEntry() => AppCard(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      child: VoiceComposer(
-          baseUrl: apiBaseUrl,
-          tokens: ref.read(tokenStorageProvider),
-          telemetry: ref.read(telemetryProvider),
-          holdToTalkText: '说出你的任何想法、问题、安排',
-          helperText: '按住说话',
-          enabled: !planSending,
-          onTap: _openPlanChat,
-          onBeforeRecording: () => ref.read(apiProvider).ensureValidAccess(),
-          onPickImage: _pickPlanImage,
-          onVoiceFinal: _onVoicePlanInput));
+      padding: const EdgeInsets.fromLTRB(12, 8, 8, 10),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        if (stagedImages.isNotEmpty) ...[
+          _stagedImageStrip(),
+          const SizedBox(height: 8),
+        ],
+        Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          Expanded(
+              child: TextField(
+                  controller: draftText,
+                  enabled: !planSending,
+                  minLines: 1,
+                  maxLines: 4,
+                  textInputAction: TextInputAction.newline,
+                  decoration: const InputDecoration(
+                      hintText: '补充一句，或直接发送图片',
+                      border: InputBorder.none,
+                      isDense: true,
+                      contentPadding:
+                          EdgeInsets.symmetric(horizontal: 4, vertical: 10)))),
+          IconButton(
+              tooltip: '发送',
+              onPressed: _canSendDraft ? () => _sendDraft() : null,
+              style: IconButton.styleFrom(
+                  backgroundColor: _canSendDraft
+                      ? const Color(0xff0f766e)
+                      : const Color(0xffe2e8f0),
+                  foregroundColor:
+                      _canSendDraft ? Colors.white : const Color(0xff94a3b8),
+                  disabledBackgroundColor: const Color(0xffe2e8f0),
+                  minimumSize: const Size(36, 36),
+                  padding: EdgeInsets.zero),
+              icon: const Icon(Icons.arrow_upward, size: 18)),
+        ]),
+        VoiceComposer(
+            baseUrl: apiBaseUrl,
+            tokens: ref.read(tokenStorageProvider),
+            telemetry: ref.read(telemetryProvider),
+            holdToTalkText: '说出你的任何想法、问题、安排',
+            helperText: '按住说话',
+            enabled: !planSending,
+            onTap: _openPlanChat,
+            onBeforeRecording: () => ref.read(apiProvider).ensureValidAccess(),
+            onPickImage: _pickPlanImage,
+            onVoiceFinal: (text) => _sendDraft(spoken: text)),
+      ]));
+
+  Widget _stagedImageStrip() => SizedBox(
+      key: const Key('staged-image-strip'),
+      height: 64,
+      child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: stagedImages.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 8),
+          itemBuilder: (_, index) {
+            final image = stagedImages[index];
+            return Stack(children: [
+              ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.memory(image.bytes,
+                      width: 56,
+                      height: 56,
+                      fit: BoxFit.cover,
+                      cacheWidth: chatImageCachePixels(
+                          56, MediaQuery.devicePixelRatioOf(context)),
+                      cacheHeight: chatImageCachePixels(
+                          56, MediaQuery.devicePixelRatioOf(context)),
+                      gaplessPlayback: true)),
+              if (image.key == null || image.failed)
+                Positioned.fill(
+                    child: DecoratedBox(
+                        decoration: BoxDecoration(
+                            color: const Color(0x990c1222),
+                            borderRadius: BorderRadius.circular(10)),
+                        child: Icon(
+                            image.failed
+                                ? Icons.error_outline
+                                : Icons.hourglass_top,
+                            color: Colors.white,
+                            size: 18))),
+              Positioned(
+                  top: 2,
+                  right: 2,
+                  child: IconButton(
+                      tooltip: '移除图片',
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      constraints:
+                          const BoxConstraints.tightFor(width: 22, height: 22),
+                      style: IconButton.styleFrom(
+                          backgroundColor: const Color(0xff0c1222),
+                          foregroundColor: Colors.white,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                      onPressed: planSending
+                          ? null
+                          : () => setState(() => stagedImages.remove(image)),
+                      icon: const Icon(Icons.close, size: 14))),
+            ]);
+          }));
 
   Widget _planListOverlay(List<dynamic> planned) => _PlanSheetOverlay(
       title: '今日计划',
@@ -548,8 +680,8 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
             if (h != null && m != null) {
               int totalMinsBefore = 0;
               for (int k = 0; k < i; k++) {
-                final mins = (planned[k] as Map<String, dynamic>)['planned_minutes']
-                        as num? ??
+                final mins = (planned[k]
+                        as Map<String, dynamic>)['planned_minutes'] as num? ??
                     30;
                 totalMinsBefore += mins.toInt();
               }
@@ -569,9 +701,8 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
 
     int accumulatedMinutes = 0;
     for (int i = 0; i < index; i++) {
-      final mins = (planned[i] as Map<String, dynamic>)['planned_minutes']
-              as num? ??
-          30;
+      final mins =
+          (planned[i] as Map<String, dynamic>)['planned_minutes'] as num? ?? 30;
       accumulatedMinutes += mins.toInt();
     }
 
@@ -601,6 +732,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
   Widget _planChatOverlay() => _HomeOverlay(
       title: '读学',
       subtitle: '你先说；我记录并检查冲突，确认后才生效。',
+      bottomInset: stagedImages.isNotEmpty ? 230 : 148,
       onClose: () => setState(() => planChatOpen = false),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Container(
@@ -617,12 +749,10 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
             label: '读学 AI', text: '我不会替你排今天。你说想怎么安排，我帮你记下来，并检查有没有冲突。'),
         for (final message in planMessages) ...[
           const SizedBox(height: 10),
-          _ChatBubble(label: message['label']!, text: message['content']!),
-        ],
-        if (planAttachments.isNotEmpty) ...[
-          const SizedBox(height: 10),
-          Text('已添加 ${planAttachments.length} 张图片，读学会一起整理。',
-              style: const TextStyle(fontSize: 12, color: Colors.blueGrey)),
+          _ChatBubble(
+              label: message.label,
+              text: message.content,
+              images: message.images),
         ],
         if (planSending) ...[
           const SizedBox(height: 14),
@@ -703,10 +833,30 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
     return end == null ? '${clock(start)} 开始' : '${clock(start)}–${clock(end)}';
   }
 
-  Future<void> _onVoicePlanInput(String text) async {
+  Future<void> _sendDraft({String? spoken}) async {
+    if (planSending) return;
+    if (stagedImages.any((image) => image.key == null && !image.failed)) {
+      showMessage(context, '图片还在上传，请稍候再发送');
+      return;
+    }
+    final text = (spoken ?? draftText.text).trim();
+    final hasImage = stagedImages.any((image) => image.key != null);
+    if (text.isEmpty && !hasImage) {
+      if (stagedImages.any((image) => image.failed)) {
+        showMessage(context, '图片上传失败，请移除后重试');
+      }
+      return;
+    }
+    final content = text.isEmpty ? '请看这张图片。' : text;
+    final images = [
+      for (final image in stagedImages)
+        if (image.key != null) image.bytes,
+    ];
     _openPlanChat();
-    setState(() => planMessages.add({'label': '我', 'content': text}));
-    await _submitPlanInput(text);
+    setState(() => planMessages
+        .add(_ChatLine(label: '我', content: content, images: images)));
+    if (spoken == null) draftText.clear();
+    await _submitPlanInput(content);
   }
 
   Widget _growth(BuildContext context) =>
@@ -834,9 +984,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
                         color: Color(0xff0c1222))),
                 content: const Text('之后需要用新的绑定码才能再次进入学习空间。',
                     style: TextStyle(
-                        fontSize: 13,
-                        color: Color(0xff64748b),
-                        height: 1.4)),
+                        fontSize: 13, color: Color(0xff64748b), height: 1.4)),
                 actions: [
                   TextButton(
                       onPressed: () => Navigator.pop(dialogContext, false),
@@ -1103,8 +1251,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
     }
   }
 
-  Future<void> _finishSession(
-      String taskId, String sessionId, int seconds,
+  Future<void> _finishSession(String taskId, String sessionId, int seconds,
       {String? taskTitle}) async {
     _clearTrackedSession(sessionId);
     _patchTaskSession(taskId, null);
@@ -1127,38 +1274,64 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
     }
   }
 
+  Future<PickedChatImage?> _defaultPickChatImage() async {
+    final image = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+      maxWidth: 1600,
+      maxHeight: 1600,
+    );
+    if (image == null) return null;
+    final extension = image.name.split('.').last.toLowerCase();
+    return PickedChatImage(
+        bytes: await image.readAsBytes(), extension: extension);
+  }
+
   Future<void> _pickPlanImage() async {
     _openPlanChat();
-    final image = await ImagePicker()
-        .pickImage(source: ImageSource.gallery, imageQuality: 85);
+    if (stagedImages.length >= 8) {
+      showMessage(context, '一次最多添加 8 张图片');
+      return;
+    }
+    final image = await (widget.pickChatImage ?? _defaultPickChatImage)();
     if (image == null || !mounted) return;
-    final extension = image.name.split('.').last.toLowerCase();
-    if (!const {'jpg', 'jpeg', 'png', 'webp'}.contains(extension)) {
+    if (!const {'jpg', 'jpeg', 'png', 'webp'}.contains(image.extension)) {
       showMessage(context, '暂只支持 JPG、PNG 或 WebP 图片');
       return;
     }
+    final staged = _StagedImage(bytes: image.bytes, extension: image.extension);
+    setState(() => stagedImages.add(staged));
     try {
       final key = await ref
           .read(apiProvider)
-          .uploadCompanionAttachment(await image.readAsBytes(), extension);
-      if (mounted) {
-        setState(() => planAttachments.add(key));
-        await _submitPlanInput('请根据这张图片帮我安排今天的学习。');
-      }
+          .uploadCompanionAttachment(image.bytes, image.extension);
+      if (!mounted || !stagedImages.contains(staged)) return;
+      setState(() {
+        staged.key = key;
+        rememberedImages[key] = staged.bytes;
+      });
     } catch (_) {
-      if (mounted) showMessage(context, '图片上传失败，请重试');
+      if (!mounted || !stagedImages.contains(staged)) return;
+      setState(() => staged.failed = true);
+      showMessage(context, '图片上传失败，请重试');
     }
   }
 
   Future<void> _submitPlanInput(String text) async {
     if (planSending) return;
+    planAttachments
+      ..clear()
+      ..addAll([
+        for (final image in stagedImages)
+          if (image.key != null) image.key!,
+      ]);
     setState(() => planSending = true);
     try {
       final result = await ref.read(apiProvider).companionTurn(
           content: text,
           threadId: companionThreadId,
           expectedThreadVersion: companionThreadVersion,
-          attachmentKeys: planAttachments);
+          attachmentKeys: List<String>.from(planAttachments));
       if (!mounted) return;
       final interaction =
           Map<String, dynamic>.from(result['interaction'] as Map? ?? const {});
@@ -1182,6 +1355,8 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
       }
       setState(() {
         failedPlanText = null;
+        stagedImages.clear();
+        planAttachments.clear();
         planFeedback = ((interaction['parts'] as List? ?? const []).isNotEmpty)
             ? Map<String, dynamic>.from(
                 (interaction['parts'] as List).first as Map)['text'] as String?
@@ -1312,10 +1487,15 @@ class _WardDayPageState extends ConsumerState<WardDayPage> {
         ..clear()
         ..addAll(messages.map((message) {
           final item = Map<String, dynamic>.from(message as Map);
-          return {
-            'label': item['author_type'] == 'ward' ? '我' : '读学 AI',
-            'content': item['content'] as String,
-          };
+          final refs = (item['attachment_refs'] as List? ?? const [])
+              .whereType<String>();
+          return _ChatLine(
+              label: item['author_type'] == 'ward' ? '我' : '读学 AI',
+              content: item['content'] as String,
+              images: [
+                for (final ref in refs)
+                  if (rememberedImages[ref] != null) rememberedImages[ref]!,
+              ]);
         }));
     });
     if (version != null && companionThreadId != null) {
@@ -1368,11 +1548,13 @@ class _HomeOverlay extends StatelessWidget {
     required this.subtitle,
     required this.onClose,
     required this.child,
+    this.bottomInset = 82,
   });
   final String title;
   final String subtitle;
   final VoidCallback onClose;
   final Widget child;
+  final double bottomInset;
 
   @override
   Widget build(BuildContext context) => Positioned.fill(
@@ -1380,7 +1562,7 @@ class _HomeOverlay extends StatelessWidget {
           color: const Color(0x660c1222),
           child: SafeArea(
               child: Padding(
-                  padding: const EdgeInsets.fromLTRB(10, 10, 10, 82),
+                  padding: EdgeInsets.fromLTRB(10, 10, 10, bottomInset),
                   child: Material(
                       borderRadius: BorderRadius.circular(24),
                       clipBehavior: Clip.antiAlias,
@@ -1422,10 +1604,20 @@ class _HomeOverlay extends StatelessWidget {
                       ]))))));
 }
 
+class _ChatLine {
+  const _ChatLine(
+      {required this.label, required this.content, this.images = const []});
+  final String label;
+  final String content;
+  final List<Uint8List> images;
+}
+
 class _ChatBubble extends StatelessWidget {
-  const _ChatBubble({required this.label, required this.text});
+  const _ChatBubble(
+      {required this.label, required this.text, this.images = const []});
   final String label;
   final String text;
+  final List<Uint8List> images;
 
   @override
   Widget build(BuildContext context) {
@@ -1450,8 +1642,29 @@ class _ChatBubble extends StatelessWidget {
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
                       color: Colors.blueGrey)),
-              const SizedBox(height: 4),
-              Text(text),
+              if (images.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Wrap(spacing: 6, runSpacing: 6, children: [
+                  for (var index = 0; index < images.length; index++)
+                    ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.memory(images[index],
+                            key: ValueKey('sent-chat-image-$index'),
+                            width: 72,
+                            height: 72,
+                            fit: BoxFit.cover,
+                            cacheWidth: chatImageCachePixels(
+                                72, MediaQuery.devicePixelRatioOf(context)),
+                            cacheHeight: chatImageCachePixels(
+                                72, MediaQuery.devicePixelRatioOf(context)),
+                            gaplessPlayback: true)),
+                ]),
+              ],
+              if (text.isNotEmpty &&
+                  !(images.isNotEmpty && text == '请看这张图片。')) ...[
+                const SizedBox(height: 4),
+                Text(text),
+              ],
             ])));
   }
 }

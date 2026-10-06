@@ -6,15 +6,38 @@ from app.infrastructure.observability.telemetry import record_companion_rejectio
 router = APIRouter(tags=["companion"])
 
 
+_REJECTION_CODES = {
+    "开始时间格式无效": "invalid_start_at",
+    "计划开始时间格式无效": "invalid_start_at",
+    "预计时长必须为 1 到 480 分钟": "invalid_planned_minutes",
+    "请选择当前问题中的任务": "invalid_target_task",
+    "请从当前候选名称中明确选择任务": "invalid_target_task",
+    "请从当前同名任务中明确选择": "invalid_title_conflict",
+    "请补充有效任务名字": "invalid_title",
+    "标题冲突需要明确选择": "invalid_title_conflict",
+    "标题冲突选项已失效": "invalid_title_conflict",
+    "请选择当前标题对应的任务": "invalid_title_conflict",
+    "不支持的澄清字段": "unsupported_clarification_field",
+    "必做任务暂不安排需要说明原因": "defer_reason_required",
+    "未知计划操作": "unknown_plan_operation",
+    "invalid companion attachment": "invalid_attachment",
+}
+
+
 def _rejection_code(error: HTTPException) -> str:
-    detail = str(error.detail)
-    if "thread has changed" in detail or "version 0" in detail:
+    detail = error.detail
+    if isinstance(detail, dict) and isinstance(detail.get("code"), str):
+        return detail["code"]
+    text = detail if isinstance(detail, str) else str(detail)
+    if text in _REJECTION_CODES:
+        return _REJECTION_CODES[text]
+    if "thread has changed" in text or "version 0" in text:
         return "thread_version_conflict"
-    if "交互已过期" in detail or "交互已失效" in detail or "不允许这个动作" in detail:
+    if "交互已过期" in text or "交互已失效" in text or "不允许这个动作" in text:
         return "interaction_expired"
-    if "cannot be resumed" in detail:
+    if "cannot be resumed" in text:
         return "focus_run_not_resumable"
-    if "command_id" in detail or "command is already" in detail:
+    if "command_id" in text or "command is already" in text:
         return "command_id_conflict"
     return "companion_request_rejected"
 
@@ -96,12 +119,11 @@ def companion_turn(body: CompanionTurnRequest, principal: Principal = Depends(cu
         )
         return result.model_dump()
     except HTTPException as error:
-        if error.status_code == 409:
-            record_companion_rejection(
-                code=_rejection_code(error), status_code=error.status_code,
-                has_thread=body.thread_id is not None,
-                has_structured_command=body.structured_command is not None,
-            )
+        record_companion_rejection(
+            code=_rejection_code(error), status_code=error.status_code,
+            has_thread=body.thread_id is not None,
+            has_structured_command=body.structured_command is not None,
+        )
         db.rollback()
         raise
     except Exception:

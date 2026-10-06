@@ -13,6 +13,7 @@ __pycache__/
 !.env.example
 
 # 帧图片素材（含真实场景照片，属敏感数据，不入 Git）
+duxue-server/var/
 duxue-server/data/frames/
 duxue-server/data/uploads/
 duxue-server/*.db

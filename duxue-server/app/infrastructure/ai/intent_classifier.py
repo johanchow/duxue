@@ -8,7 +8,7 @@ from collections.abc import Callable
 from app.application.ports.companion import IntentProposal
 from app.bootstrap.settings import settings
 from app.infrastructure.ai.model_gateway import ModelGatewayError
-from app.infrastructure.observability.telemetry import model_call_span
+from app.infrastructure.observability.telemetry import model_call_span, record_model_response
 
 _LABELS = {"planning", "tutoring", "reflection", "unclear"}
 _SYSTEM = (
@@ -62,7 +62,9 @@ def complete_intent(*, content: str, focus_agent_type: str | None) -> str:
             telemetry["provider_request_id"] = getattr(response, "id", None)
             telemetry["tokens_in"] = getattr(usage, "prompt_tokens", None)
             telemetry["tokens_out"] = getattr(usage, "completion_tokens", None)
-            return (response.choices[0].message.content or "").strip()
+            raw = (response.choices[0].message.content or "").strip()
+            record_model_response(agent_type="intent", model=model, content=raw, operation="intent_proposal")
+            return raw
     except Exception as error:
         raise ModelGatewayError("model_transport_error") from error
 

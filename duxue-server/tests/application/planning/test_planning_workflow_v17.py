@@ -260,6 +260,185 @@ def test_multiselect_cannot_select_foreign_task(db):
     assert other.planned_minutes == 30
 
 
+def test_image_with_empty_extraction_does_not_claim_tasks_were_recorded(db, monkeypatch):
+    from app.application.commands.plan_intake import PlanIntakeResult, PlanIntakeService
+    from app.application.ports.companion import RunInvocation
+    from app.application.workflows.planning_adapter import PlanningWorkflowAdapter
+    from app.infrastructure.persistence.models import AgentRun, ConversationThread
+
+    ward = create_ward(db)
+    create_task(db, ward=ward, title='英语的典范故事阅读', planned_minutes=20)
+    thread = ConversationThread(ward_id=ward.id)
+    db.add(thread)
+    db.flush()
+    run = AgentRun(thread_id=thread.id, ward_id=ward.id, agent_type='planning', run_ref='image-empty')
+    db.add(run)
+    db.flush()
+    monkeypatch.setattr(PlanIntakeService, 'respond', lambda *a, **k: PlanIntakeResult(
+        assistant_text='任务已整理好。'))
+    outcome = PlanningWorkflowAdapter(db).invoke(invocation=RunInvocation(
+        run_id=run.id, thread_id=thread.id, ward_id=ward.id, agent_type='planning',
+        command_id='image-empty', turn={
+            'content': '把图片里面的都提成任务',
+            'attachment_keys': ['ward/ward-1/companion/page.jpg'],
+        }))
+
+    assert outcome.next_interaction['kind'] == 'clarify'
+    assert '没有从这张图片里识别出新任务' in outcome.next_interaction['content']
+    assert '任务已记录在任务池' not in outcome.next_interaction['content']
+    assert db.query(Task).count() == 1
+
+
+def test_image_clarification_uses_the_model_question(db, monkeypatch):
+    from app.application.commands.plan_intake import PlanIntakeResult, PlanIntakeService
+    from app.application.ports.companion import RunInvocation
+    from app.application.workflows.planning_adapter import PlanningWorkflowAdapter
+    from app.infrastructure.persistence.models import AgentRun, ConversationThread
+
+    ward = create_ward(db)
+    thread = ConversationThread(ward_id=ward.id)
+    db.add(thread)
+    db.flush()
+    run = AgentRun(thread_id=thread.id, ward_id=ward.id, agent_type='planning', run_ref='image-ask')
+    db.add(run)
+    db.flush()
+    question = "已从图片中识别出行程安排：码头出发 7:00。这些是外出行程而非学习任务。请确认是否创建？"
+    monkeypatch.setattr(PlanIntakeService, 'respond', lambda *a, **k: PlanIntakeResult(
+        assistant_text=question, clarification_required=True, questions=["请确认是否创建？"]))
+    outcome = PlanningWorkflowAdapter(db).invoke(invocation=RunInvocation(
+        run_id=run.id, thread_id=thread.id, ward_id=ward.id, agent_type='planning',
+        command_id='image-ask', turn={
+            'content': '把图片里面的都提成任务',
+            'attachment_keys': ['ward/ward-1/companion/page.jpg'],
+        }))
+
+    assert outcome.next_interaction['kind'] == 'clarify'
+    assert outcome.next_interaction['content'] == question
+    assert '没有从这张图片里识别出新任务' not in outcome.next_interaction['content']
+    assert db.query(Task).count() == 0
+
+
+def test_confirmation_turn_sees_prior_itinerary_and_creates_those_tasks(db, monkeypatch):
+    from langgraph.checkpoint.memory import InMemorySaver
+
+    from app.application.commands.plan_intake import PlanIntakeResult, PlanIntakeService
+    from app.application.ports.companion import RunInvocation
+    from app.application.workflows.planning_adapter import PlanningWorkflowAdapter
+    from app.infrastructure.ai.model_gateway import ModelGatewayError
+    from app.infrastructure.persistence.models import (
+        AgentRun, CompanionCommand, CompanionMessage, ConversationThread, uid,
+    )
+
+    ward = create_ward(db)
+    create_task(db, ward=ward, title='英语的典范故事阅读', planned_minutes=20)
+    thread = ConversationThread(ward_id=ward.id)
+    db.add(thread)
+    db.flush()
+    run = AgentRun(thread_id=thread.id, ward_id=ward.id, agent_type='planning', run_ref='itinerary')
+    other = AgentRun(thread_id=thread.id, ward_id=ward.id, agent_type='planning', run_ref='other')
+    db.add_all([run, other])
+    db.flush()
+    question = '已从图片中识别出行程安排：码头出发 7:00、rumah pohon 9:00。请确认是否创建？'
+    first = CompanionCommand(id=uid(), ward_id=ward.id, thread_id=thread.id, payload_digest='ask')
+    current = CompanionCommand(id=uid(), ward_id=ward.id, thread_id=thread.id, payload_digest='now')
+    foreign = CompanionCommand(id=uid(), ward_id=ward.id, thread_id=thread.id, payload_digest='other')
+    ask_turn, reply_turn, confirm_turn, other_turn = uid(), uid(), uid(), uid()
+    db.add_all([first, current, foreign])
+    db.flush()
+    db.add_all([
+        CompanionMessage(
+            ward_id=ward.id, thread_id=thread.id, command_id=first.id, run_id=run.id,
+            turn_id=ask_turn, attempt=1, thread_version=1, author_type='ward',
+            content='我把这些图片里的安排成任务。', attachment_refs=['page.jpg'],
+        ),
+        CompanionMessage(
+            ward_id=ward.id, thread_id=thread.id, command_id=first.id, run_id=run.id,
+            turn_id=reply_turn, attempt=1, thread_version=2, author_type='companion',
+            content=question,
+        ),
+        CompanionMessage(
+            ward_id=ward.id, thread_id=thread.id, command_id=current.id, run_id=run.id,
+            turn_id=confirm_turn, attempt=1, thread_version=3, author_type='ward',
+            content='是的，都安排成任务。每个都是二十五分钟。',
+        ),
+        CompanionMessage(
+            ward_id=ward.id, thread_id=thread.id, command_id=foreign.id, run_id=other.id,
+            turn_id=other_turn, attempt=1, thread_version=4, author_type='companion',
+            content='另一轮的秘密行程不该出现。',
+        ),
+    ])
+    db.flush()
+
+    seen = {}
+
+    def respond(self, *, ward, tasks, request):
+        seen['request'] = request
+        return PlanIntakeResult(
+            assistant_text='已按确认创建行程任务。',
+            operations=[
+                {'kind': 'create', 'title': '码头出发', 'planned_minutes': 25},
+                {'kind': 'create', 'title': 'rumah pohon', 'planned_minutes': 25},
+            ],
+        )
+
+    class OfflineGateway:
+        def generate(self, **kwargs):
+            raise ModelGatewayError('offline')
+
+    monkeypatch.setattr(PlanIntakeService, 'respond', respond)
+    monkeypatch.setattr(
+        'app.application.workflows.planning_adapter.QwenAgentModelGateway', OfflineGateway,
+    )
+    PlanningWorkflowAdapter(db, checkpointer=InMemorySaver()).invoke(invocation=RunInvocation(
+        run_id=run.id, thread_id=thread.id, ward_id=ward.id, agent_type='planning',
+        command_id='confirm-itinerary', turn_id=confirm_turn,
+        turn={'content': '是的，都安排成任务。每个都是二十五分钟。'},
+    ))
+
+    request = seen['request']
+    texts = [item['text'] for item in request.recent_utterances]
+    assert question in texts
+    assert '我把这些图片里的安排成任务。' in texts
+    assert '是的，都安排成任务。每个都是二十五分钟。' not in texts
+    assert '另一轮的秘密行程不该出现。' not in texts
+    assert request.recent_utterances[0]['had_image'] is True
+    titles = {task.title: task.planned_minutes for task in db.query(Task)}
+    assert titles['英语的典范故事阅读'] == 20
+    assert titles['码头出发'] == 25
+    assert titles['rumah pohon'] == 25
+
+
+def test_image_create_without_duration_still_asks_instead_of_claiming_recorded(db, monkeypatch):
+    from langgraph.checkpoint.memory import InMemorySaver
+
+    from app.application.commands.plan_intake import PlanIntakeResult, PlanIntakeService
+    from app.application.ports.companion import RunInvocation
+    from app.application.workflows.planning_adapter import PlanningWorkflowAdapter
+    from app.infrastructure.persistence.models import AgentRun, ConversationThread, PlanDraft
+
+    ward = create_ward(db)
+    thread = ConversationThread(ward_id=ward.id)
+    db.add(thread)
+    db.flush()
+    run = AgentRun(thread_id=thread.id, ward_id=ward.id, agent_type='planning', run_ref='image-create')
+    db.add(run)
+    db.flush()
+    monkeypatch.setattr(PlanIntakeService, 'respond', lambda *a, **k: PlanIntakeResult(
+        assistant_text='已从图片整理出任务。',
+        operations=[{'kind': 'create', 'title': '数学口算'}]))
+    outcome = PlanningWorkflowAdapter(db, checkpointer=InMemorySaver()).invoke(invocation=RunInvocation(
+        run_id=run.id, thread_id=thread.id, ward_id=ward.id, agent_type='planning',
+        command_id='image-create', turn={
+            'content': '把图片里面的都提成任务',
+            'attachment_keys': ['ward/ward-1/companion/page.jpg'],
+        }))
+
+    assert '没有从这张图片里识别出新任务' not in outcome.next_interaction['content']
+    assert '任务已记录在任务池' not in outcome.next_interaction['content']
+    assert db.query(Task).count() == 0
+    assert db.query(PlanDraft).one().working_state['planning_agent_loop']['status'] == 'needs_clarification'
+
+
 def test_adapter_model_operations_reach_review_and_confirmation(db, monkeypatch):
     from langgraph.checkpoint.memory import InMemorySaver
 
@@ -306,6 +485,26 @@ def test_content_edit_recomputes_relative_successor(db):
     draft = operate(service, ward, [{'kind': 'update', 'references': ['数学'], 'planned_minutes': 60}], command_id='longer')
     english = next(i for i in draft.items if i['title'] == '英语')
     assert english['start_at'].endswith('20:00:00')
+
+
+def test_clock_time_on_start_slot_is_audited_without_the_raw_value(db, caplog):
+    ward = create_ward(db)
+    create_task(db, ward=ward, title='数学', planned_minutes=30)
+    service = PlanningDomainService(db)
+    draft = operate(service, ward, [{'kind': 'schedule', 'references': ['数学']}])
+    slot = draft.working_state['active_clarification_batch']['slots'][0]
+    assert slot['field'] == 'start_at'
+    raw = '07:41'
+    with caplog.at_level('WARNING', logger='duxue.agent.audit'), pytest.raises(HTTPException) as exc:
+        operate(service, ward, answers=[{'slot_id': slot['slot_id'], 'value': raw}], command_id='clock')
+    assert exc.value.status_code == 400
+    assert exc.value.detail == '开始时间格式无效'
+    record = next(item for item in caplog.records if item.getMessage() == 'planning.input.rejected')
+    telemetry = getattr(record, 'telemetry', {})
+    assert telemetry['planning.field'] == 'start_at'
+    assert telemetry['planning.rejection_code'] == 'invalid_start_at'
+    assert telemetry['planning.value_shape'] == 'clock'
+    assert raw not in str(telemetry)
 
 
 def test_slot_invalid_duration_cannot_treat_clock_as_elapsed_minutes(db):

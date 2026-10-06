@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:duxue_app/core/api_client.dart';
 import 'package:duxue_app/core/token_storage.dart';
@@ -8,6 +9,8 @@ import 'package:duxue_app/features/day_story_pages.dart';
 import 'package:duxue_app/providers.dart';
 import 'package:duxue_app/shared/voice_composer.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/test/test_flutter_secure_storage_platform.dart';
+import 'package:flutter_secure_storage_platform_interface/flutter_secure_storage_platform_interface.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -19,6 +22,7 @@ class _WardHomeApi extends ApiClient {
   String? pausedSessionId;
   String? finishedSessionId;
   final deleted = <String>[];
+  final turns = <({String content, List<String> attachmentKeys})>[];
 
   @override
   Future<void> deleteAssignment(String wardId, String assignmentId) async {
@@ -97,6 +101,10 @@ class _WardHomeApi extends ApiClient {
     Map<String, dynamic>? structuredCommand,
     List<String> attachmentKeys = const [],
   }) async {
+    turns.add((
+      content: content,
+      attachmentKeys: List<String>.from(attachmentKeys),
+    ));
     if (structuredCommand != null) {
       return {
         'thread_id': threadId ?? 'thread-1',
@@ -140,9 +148,94 @@ class _WardHomeApi extends ApiClient {
       };
 
   @override
-  Future<Map<String, dynamic>> companionMessages(String threadId) async =>
-      const {'thread_version': 1, 'messages': []};
+  Future<Map<String, dynamic>> companionMessages(String threadId) async => {
+        'thread_version': 1,
+        'messages': [
+          for (final turn in turns)
+            {
+              'author_type': 'ward',
+              'content': turn.content,
+              'attachment_refs': turn.attachmentKeys,
+            },
+        ],
+      };
+
+  @override
+  Future<String> uploadCompanionAttachment(
+          Uint8List bytes, String extension) async =>
+      'ward/ward-1/companion/test.$extension';
 }
+
+const _tinyPng = <int>[
+  137,
+  80,
+  78,
+  71,
+  13,
+  10,
+  26,
+  10,
+  0,
+  0,
+  0,
+  13,
+  73,
+  72,
+  68,
+  82,
+  0,
+  0,
+  0,
+  1,
+  0,
+  0,
+  0,
+  1,
+  8,
+  2,
+  0,
+  0,
+  0,
+  144,
+  119,
+  83,
+  222,
+  0,
+  0,
+  0,
+  11,
+  73,
+  68,
+  65,
+  84,
+  120,
+  156,
+  99,
+  96,
+  0,
+  2,
+  0,
+  0,
+  5,
+  0,
+  1,
+  122,
+  94,
+  171,
+  63,
+  0,
+  0,
+  0,
+  0,
+  73,
+  69,
+  78,
+  68,
+  174,
+  66,
+  96,
+  130,
+];
 
 class _ActiveTaskApi extends _WardHomeApi {
   Completer<void>? pauseGate;
@@ -386,7 +479,8 @@ void main() {
     expect(find.text('进行中'), findsOneWidget);
   });
 
-  testWidgets('an in-progress card allows completing the task with rich dialog feedback',
+  testWidgets(
+      'an in-progress card allows completing the task with rich dialog feedback',
       (tester) async {
     final api = _ActiveTaskApi();
     await tester.pumpWidget(ProviderScope(
@@ -548,6 +642,86 @@ void main() {
     expect(api.deleted, ['pool-1']);
   });
 
+  testWidgets('a picked chat image stays as a thumbnail until send',
+      (tester) async {
+    FlutterSecureStoragePlatform.instance =
+        TestFlutterSecureStoragePlatform({});
+    final api = _WardHomeApi();
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiProvider.overrideWithValue(api)],
+      child: MaterialApp(
+          home: WardDayPage(
+              wardId: 'ward-1',
+              pickChatImage: () async => PickedChatImage(
+                  bytes: Uint8List.fromList(_tinyPng), extension: 'png'))),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('图片'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('staged-image-strip')), findsOneWidget);
+    expect(api.turns, isEmpty);
+
+    await tester.tap(find.byTooltip('发送'));
+    await tester.pumpAndSettle();
+
+    expect(api.turns, hasLength(1));
+    expect(api.turns.single.content, '请看这张图片。');
+    expect(api.turns.single.attachmentKeys, ['ward/ward-1/companion/test.png']);
+    expect(find.byKey(const Key('staged-image-strip')), findsNothing);
+    expect(find.byKey(const ValueKey('sent-chat-image-0')), findsOneWidget);
+    expect(find.text('请看这张图片。'), findsNothing);
+  });
+
+  testWidgets('typed text is sent together with the staged image',
+      (tester) async {
+    FlutterSecureStoragePlatform.instance =
+        TestFlutterSecureStoragePlatform({});
+    final api = _WardHomeApi();
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiProvider.overrideWithValue(api)],
+      child: MaterialApp(
+          home: WardDayPage(
+              wardId: 'ward-1',
+              pickChatImage: () async => PickedChatImage(
+                  bytes: Uint8List.fromList(_tinyPng), extension: 'png'))),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('图片'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '把这页作业排到今晚');
+    await tester.tap(find.byTooltip('发送'));
+    await tester.pumpAndSettle();
+
+    expect(api.turns.single.content, '把这页作业排到今晚');
+    expect(api.turns.single.attachmentKeys, ['ward/ward-1/companion/test.png']);
+  });
+
+  testWidgets('removing the staged image does not send it', (tester) async {
+    FlutterSecureStoragePlatform.instance =
+        TestFlutterSecureStoragePlatform({});
+    final api = _WardHomeApi();
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiProvider.overrideWithValue(api)],
+      child: MaterialApp(
+          home: WardDayPage(
+              wardId: 'ward-1',
+              pickChatImage: () async => PickedChatImage(
+                  bytes: Uint8List.fromList(_tinyPng), extension: 'png'))),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('图片'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('移除图片'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('staged-image-strip')), findsNothing);
+    expect(api.turns, isEmpty);
+  });
+
   testWidgets(
       'holding talk sends its final transcript and image invokes callback',
       (tester) async {
@@ -634,7 +808,8 @@ void main() {
     expect(transcript, isNull);
   });
 
-  testWidgets('a startup recognition error does not leave the listening overlay',
+  testWidgets(
+      'a startup recognition error does not leave the listening overlay',
       (tester) async {
     final voice = _FakeVoice()
       ..failOnStartWith = 'voice transcription is temporarily unavailable'

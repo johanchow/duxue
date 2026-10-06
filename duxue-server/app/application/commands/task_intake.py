@@ -9,7 +9,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field, ValidationError
 
 from app.bootstrap.settings import settings
-from app.infrastructure.observability.telemetry import model_call_span
+from app.infrastructure.observability.telemetry import model_call_span, record_model_response
 from app.api.schemas import TaskCandidate, TaskIntakeRequest
 from app.infrastructure.storage.object_storage import storage
 
@@ -74,6 +74,9 @@ class TaskIntakeService:
                 telemetry["tokens_in"] = getattr(usage, "prompt_tokens", None)
                 telemetry["tokens_out"] = getattr(usage, "completion_tokens", None)
             raw = response.choices[0].message.content or "{}"
+            record_model_response(
+                agent_type="planning", model=settings.task_intake_model, content=raw, operation="task_intake",
+            )
             result = TaskIntakeResult.model_validate_json(raw)
         except (ValidationError, ValueError, json.JSONDecodeError) as error:
             raise TaskIntakeError("任务解析结果格式异常，请换一种说法重试") from error

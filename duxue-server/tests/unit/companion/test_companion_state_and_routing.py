@@ -97,6 +97,56 @@ def test_different_proposal_hands_off(router):
     assert decision.active_session_id == "run-plan-1"
 
 
+def test_image_without_explicit_intent_starts_planning(router):
+    """图片本身没有场景词时，仍交给唯一会读图片的 Planning。"""
+    decision = router.decide(
+        content="请看这张图片。",
+        route_hint=None,
+        focus_run=None,
+        proposal=IntentProposal(intent="unclear"),
+        has_image=True,
+    )
+    assert decision.target == "planning"
+    assert decision.mode == "start"
+    assert decision.route_reason == "image_without_explicit_intent"
+
+
+def test_image_without_explicit_intent_continues_planning_focus(router):
+    focus_run = SimpleNamespace(agent_type="planning", id="run-plan-1")
+    decision = router.decide(
+        content="请看这张图片。",
+        route_hint=None,
+        focus_run=focus_run,
+        proposal=IntentProposal(intent="unclear"),
+        has_image=True,
+    )
+    assert decision.target == "planning"
+    assert decision.mode == "continue"
+    assert decision.active_session_id == "run-plan-1"
+
+
+def test_image_does_not_override_an_explicit_scene_or_other_focus(router):
+    tutoring = router.decide(
+        content="这道题怎么做",
+        route_hint=None,
+        focus_run=None,
+        proposal=IntentProposal(intent="tutoring"),
+        has_image=True,
+    )
+    assert tutoring.target == "tutoring"
+    assert tutoring.route_reason == "model_intent_proposal"
+
+    held = router.decide(
+        content="请看这张图片。",
+        route_hint=None,
+        focus_run=SimpleNamespace(agent_type="tutoring", id="run-tutor-1"),
+        proposal=IntentProposal(intent="unclear"),
+        has_image=True,
+    )
+    assert held.target == "clarify"
+    assert held.route_reason == "insufficient_route_confidence"
+
+
 def test_invalid_model_payload_becomes_unclear():
     assert parse_intent_payload('{"intent":"tutoring"}').intent == "tutoring"
     assert parse_intent_payload('{"intent":"none"}').intent == "unclear"
