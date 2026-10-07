@@ -24,11 +24,23 @@ class FakeModelGateway:
         return self.candidate
 
 
+class StaticTutoringIntent:
+    def __init__(self, intent: str | None = "problem_solving"):
+        self.intent = intent
+        self.calls: list[str] = []
+        self.windows: list[list[dict]] = []
+
+    def propose(self, *, content: str, recent_utterances: list[dict] | None = None) -> str | None:
+        self.calls.append(content)
+        self.windows.append(list(recent_utterances or []))
+        return self.intent
+
+
 class StaticIntentClassifier:
     def __init__(self, intent: str = "planning"):
         self.intent = intent
 
-    def propose(self, *, content: str, focus_agent_type: str | None) -> IntentProposal:
+    def propose(self, *, content: str, focus_agent_type: str | None, recent_utterances: list[dict] | None = None) -> IntentProposal:
         return IntentProposal(intent=self.intent)
 
 

@@ -1,6 +1,6 @@
 # 读学系统 — Study & Tutoring Domain Design
 
-> 状态：讨论稿 · 版本：v2.4
+> 状态：讨论稿 · 版本：v2.7
 >
 > 范围：学习执行会话、启发式答疑、发音辅导、任务优先提醒（口头回任务与到点开始邀请）、过程事实，以及一次 Ward 输入内的 `TutoringTurnLoop`。
 >
@@ -14,7 +14,7 @@ Context Map 与分层图只在 [ddd-overview.md](ddd-overview.md) 维护。Threa
 
 核心不变量：
 
-- L1–L3 不输出最终作业答案、完整解题或代写。L4 只有 `HintingPolicy` 放行后才允许完整思路，并且必须附带验证问题。
+- L1–L3 不输出最终作业答案、完整解题或代写。L4 只有 `HintingPolicy` 放行后才允许完整思路，并且必须附带验证问题。`reply_mode=direct_answer` 只放开原子释义，不放开作业题的最终答案。教学技能不能改等级或 `reply_mode`。
 - 单次卡点、单次好奇心不升级为稳定能力或稳定兴趣结论。一次到点未开始也不写成学习事实或稳定特质。
 - 模型可以起草给 Ward 看的散文；提示等级和事实写入只能来自已提交的领域结果，按钮、对象/媒体引用只能来自已校验的 Application Outcome；“已经记下”必须有已提交事实。
 - 发音辅导是只读教学展示，不经过解题 L1–L4，不写 `VerifiedTurn` 或学习 Fact；TTS 只能朗读 Application 已确认的原文。
@@ -26,6 +26,9 @@ Context Map 与分层图只在 [ddd-overview.md](ddd-overview.md) 维护。Threa
 | `TutoringSession` | 隶属某个未结束 `StudySession` 的答疑会话 | Companion Run 的复制 |
 | `VerifiedTurn` | 已通过校验并写入的尝试、提示、理解确认或好奇心观察 | 原始对话、模型候选、Trace |
 | `HintLevel` | 当前题目允许的提示等级 L1–L4 | 模型自行选择的下一句话类型 |
+| `QuestionShape` | 本轮是作业题 `problem`，还是可一句话答完、且不是该题最终答案的原子释义 `atomic` | 关键词分类、发音请求 |
+| `HistoryMatch` | 已授权历史候选与本轮的关系：`none`、`same_question` 或 `similar_concept` | 模型自行检索到的记忆、编造的「上次学过」 |
+| `ReplyMode` | `scaffold` 按等级提示，或 `direct_answer` 直接作答 | 技能自己改选的答法 |
 | `TutorWorkingState` | 答疑 Run 的 checkpoint | Aggregate、长期记忆、完整 transcript |
 | `TutoringTurnLoop` | 一次 Ward 输入内的有界循环 | 跨回合的教学状态机，也不是第二个 Agent |
 | `PronunciationGuidance` | 已确认原文的易读发音提示和少量重音、连读、弱读、音变或语调说明 | 解题提示、跟读评分、音频文件、学习事实 |
@@ -33,15 +36,15 @@ Context Map 与分层图只在 [ddd-overview.md](ddd-overview.md) 维护。Threa
 | `SceneRead` | 这次邀请采用的现场标签 | 帧、`BehaviorSegment`、专注分 |
 | `StartCuePolicy` | 按当前执行和现场标签决定说不说，以及允许哪些动作 | 文案生成、记忆解读、日程冲突校验 |
 
-非目标：Study 不私自发明交互 `kind`；本期不做作文共创画布、视频媒体、实时监工、一键拍照搜题、跟读录音或发音评分。图片发音只读取本 Turn 已授权附件，不等于拍照搜题。到点邀请不是分心打分，也不把摄像结论写入本 Context。无任务问答与任务进行中的题外提问见下文「无任务答疑」。
+非目标：Study 不私自发明交互 `kind`；本期不做作文共创画布、视频媒体、实时监工、一键拍照搜题、跟读录音或发音评分。图片发音只读取本轮和同一对话最近原句窗口里当前 Ward 的已授权图片，不等于拍照搜题。到点邀请不是分心打分，也不把摄像结论写入本 Context。无任务问答与任务进行中的题外提问见下文「无任务答疑」。
 
 ### 1.1 控制模型
 
 答疑是混合模式。跨回合的开始、暂停、完成、关闭、取消和超时由应用用例与 Aggregate 状态机控制。`TutoringTurnLoop` 只处理一次 Ward 输入内部的不确定性：理解意图、解析题目或资料、按当前允许等级起草一个交互。
 
-`problem_solving` 使用下述有界循环和 `HintingPolicy`。`pronunciation` 是同一多模态能力执行框架选择的一个只读 capability profile：它共用 Run 的预算、取消、超时、授权和结果校验，不新增 Extractor、Policy 或 Agent Loop。
+Companion 只把本轮场景定成 `tutoring`（见 [意图路由](domain-companion.md#三coordinator-process-manager)）。进入答疑之后、打开 `HintingPolicy` 或任一 capability profile 之前，再做一次无状态的结构化模型调用，提议 `TutoringIntent`。闭集只有 `problem_solving`、`curiosity`、`conversation`、`safety`、`pronunciation`，五者互斥。`problem_solving` 是卡在作业题上，包括没看懂题目在问什么，或想知道这一步怎么做；`curiosity` 是想弄懂眼前材料里、并不属于这道作业题的内容，例如一个词或一句话的意思；`conversation` 是与学习材料无关的闲聊；`safety` 是伤害、危险或求助；`pronunciation` 只在明确要听怎么读、怎么发音时选用。模型只返回这一个字段，没有工具，也没有写权限。Application 校验闭集后选择路径：`pronunciation` 选择只读 profile `pronunciation-guidance.v1`，不进入 `HintingPolicy`。其余四种意图进入 `HintingPolicy`。策略先裁决本轮允许什么，再由已登记的教学技能按该许可写回复。发音与教学技能共用 Run 的预算、取消、超时、授权和结果校验，不新增 Extractor、Policy 或 Agent Loop。三层的输入、输出和技能边界见 [§2.4](#24-hintingpolicy)。
 
-`TutoringIntent` 增加 `pronunciation`，与 `problem_solving`、`curiosity`、`conversation` 和 `safety` 互斥。开放文本意图仍由结构化模型候选提出，Application 校验后路由；关键词或正则不作为主要解释器。
+已验证的界面动作可以跳过这次提议，规则与 Companion 的 `route_hint` 相同。当前唯一的已验证值是 `tutoring_intent=pronunciation`（「读出发音」）。开放文本不靠关键词或正则解释。非法 JSON、闭集之外的值、提供者关闭或调用失败都不猜测其中一种，也不打开解题循环或发音 profile；按 Companion 已有的 `unclear` 澄清回复，不新建标签。
 
 | 决策 | 选择 | 原因 | 拒绝的方案 | 验证 |
 |---|---|---|---|---|
@@ -49,7 +52,10 @@ Context Map 与分层图只在 [ddd-overview.md](ddd-overview.md) 维护。Threa
 | problem-solving 谁控制等级 | `HintingPolicy` | 首轮等级和 L4 门槛是固定教学政策 | 模型自选 `ask_socratic_question` 等动作 | 门槛前的 L4 候选被拒绝 |
 | problem-solving 谁确认循环完成 | `HintingPolicy` 与 `ApplyTutorTurn` | 模型返回的 `finish_loop` 只是候选 | 模型声明“孩子已经懂了”即成功 | 决策拒绝时不写 Fact |
 | 循环由谁驱动 | `CompanionCoordinator` | 它是 Process Manager，只编排预算、取消和超时 | 再设一个 Harness 类型 | 未实现的工具由 `ToolGateway` 返回失败 |
+| 谁在 tutoring 场景里区分五种意图 | 一次无状态结构化调用提议 `TutoringIntent`；已验证的 `tutoring_intent=pronunciation` 跳过该调用 | Companion 的场景闭集没有发音；解题提示和发音卡不是同一条路径 | 把 pronunciation 加进 Companion 场景枚举；用「怎么读」等关键词改判 | 未带已验证意图时先有提议；非法提议不进入任一路径；按钮直接进入发音 profile |
 | pronunciation 如何执行 | Application 选择已登记的 capability profile，再由通用能力执行框架调用 `ModelGatewayPort` | 图片理解、讲解和澄清与其他多模态问答复用同一入口和治理 | 为发音另建 Policy、Extractor、两阶段业务工作流或 Agent Loop | profile、输入授权、输出 Schema、失败映射和无写入边界均可断言 |
+| 谁决定阶梯提示还是直接作答 | `HintingPolicy` 输出 `reply_mode` | 作业题不能因技能文案变成报答案；原子释义不能因固定 L1 变成让孩子猜 | 把整份策略换成可替换提示词；好奇心一律 L1 启发 | `problem` 永远 `scaffold`；`atomic` 且历史为空或已授权命中时为 `direct_answer`；非法题型按 `problem` |
+| 教学技能如何替换 | `HintingDecision` 放行后选择已登记 profile | 新增答法只登记技能，不改等级不变量 | 技能自选等级、把 `direct_answer` 改成追问，或在工作流里为每种答法写分支 | 未放行的模式没有对应技能调用；技能工具集为空 |
 
 `budget_exhausted`、取消和超时由 `CompanionCoordinator` 在模型还能返回 `finish_loop` 之前终止。它们表示本轮没有得到可靠教学结果。
 
@@ -149,7 +155,9 @@ stateDiagram-v2
 | `VerifiedTurn` | Entity | `turn_id` | `kind`、`hint_level?`、`command_id` | 由 Root 追加 | 只记录已校验事实，不含思维链和工具原文 |
 | `ProblemRef` | Value Object | 无 | 授权题目引用与版本 | `validate()` | 引用必须来自授权解析结果 |
 | `HintRecord` | Value Object | 无 | `level`、`policy_version` | `within(allowed)` | 等级只可取自 Policy 结果 |
-| `HintingDecision` | Value Object | 无 | `allowed_level`、`return_to_task`、`l4_walkthrough_allowed` | `validate()` | L4 未放行时 `l4_walkthrough_allowed=false` |
+| `HintingDecision` | Value Object | 无 | `allowed_level`、`reply_mode`、`return_to_task`、`l4_walkthrough_allowed`、`history_ref?` | `validate()` | L4 未放行时 `l4_walkthrough_allowed=false`；`scaffold` 不携带可直接朗读的最终作业答案；`direct_answer` 只伴随 `atomic` |
+| `QuestionShape` | Value Object | 无 | `problem` 或 `atomic` | `validate()` | 非法、空值或调用失败按 `problem` |
+| `HistoryMatch` | Value Object | 无 | `none`、`same_question` 或 `similar_concept`；命中时带候选引用 | `validate()` | 引用必须属于本轮已授权候选集；集合为空只能是 `none` |
 | `StartCue` | Aggregate Root | `start_cue_id` | `ward_id`、`due_task_id`、`status`、`schedule_version`、`snooze_count`、`version` | `open`、`apply_assessment`、`present`、`accept`、`snooze`、`expire`、`supersede` | 每名 Ward 同时只有一张未关闭邀请；动作不得超出已保存的允许集合 |
 | `SceneRead` | Value Object | 无 | `label`、`gap_reason?` | `validate()` | `no_observation` 必有缺口原因；`away` 不是缺口 |
 | `CueAllowance` | Value Object | 无 | 允许动作、兜底主按钮、兜底句、`scene_claim_allowed` | `admits(action)` | 无其他会话时不含暂停或继续；已提醒过一次后不含再推迟 |
@@ -194,19 +202,35 @@ classDiagram
 
 ### 2.4 `HintingPolicy`
 
-`HintingPolicy` 是无状态领域服务。它根据当前 `HintLevel`、同一题目的已验证尝试次数、Policy 版本，以及本轮是否为任务外提问，返回 `HintingDecision`。它不调用模型，不写 Repository，也不解释开放文本。
+`HintingPolicy` 是 Study & Tutoring 的无状态领域服务，也是本轮提示等级和 `reply_mode` 的唯一裁决。它不调用模型，不写 Repository，不解释开放文本，也不能被替换成一段提示词。可替换的是它放行之后的教学技能。
 
-规则：
+一次裁决分成三层：
 
-- 新题目从 L1 开始。Ward 继续求提示或再次未通过时，才可升到下一等级。
-- L1–L3 禁止最终答案、完整解题和代写。
+1. **策略内核。** 输入是已校验的 `TutoringIntent`、同一题目的已验证失败次数、当前 `StudySession` 是否挂着任务且为 `active` 或 `paused`，以及两个已校验事实 `QuestionShape` 与 `HistoryMatch`。输出是 `HintingDecision`。L1–L3 不给作业最终答案、三次未通过才放行 L4，这两条只写在本服务里。
+2. **教学技能。** `reply_mode=scaffold` 选择 `problem-hint.v1`；`reply_mode=direct_answer` 选择 `direct-gloss.v1`。技能是已登记的 capability profile，只含说明、输出结构和空的工具表。它按许可写回复，不能升等级，不能把 `direct_answer` 改成追问。新增答法是登记一个 profile，不是在工作流里再写一条分支。`pronunciation-guidance.v1` 仍在策略之前由意图直接选中，不进入本服务。
+3. **题型与历史先成为候选。** 意图判断、题型判断和教学技能这些要理解本轮原句的调用，都带上 [Companion 规定的最近 8 句](domain-companion.md#11-threadrun-与-turn-的层级)。`QuestionShape` 由一次无状态结构化调用提议：作业题或没看懂题目是 `problem`；词义、翻译这类可一句话答完、且不是这道题最终答案的内容是 `atomic`。非法 JSON、闭集之外的值或调用失败按 `problem`，避免误放答案。「他们」「刚才那句」在这 8 句里对不上时，技能返回追问，不猜测对象，也不把孩子的原句本身当成待解释的英文。历史不由模型检索全库。Application 从已提交的答疑事实和这个窗口取出有限候选；模型只能从这组里指出 `same_question` 或 `similar_concept`。候选为空就是 `none`，不能编造「你上次学过」。引用必须落在该候选集内，否则本轮按 `none`。
+
+| 已校验输入 | `reply_mode` | 技能与回复 |
+|---|---|---|
+| `problem`，`history_match=none` | `scaffold` | `problem-hint.v1` 按 L1–L4 提示，不给最终作业答案 |
+| `problem`，`same_question` 或 `similar_concept` | `scaffold` | 仍按等级提示，并且必须接上 `history_ref` 指向的已授权历史 |
+| `atomic`，`history_match=none` | `direct_answer` | `direct-gloss.v1` 直接给词义或解释 |
+| `atomic`，`same_question` 或 `similar_concept` | `direct_answer` | 直接给答案，并接上那条已授权历史 |
+
+`problem_solving` 的 `QuestionShape` 固定为 `problem`。`conversation` 与 `safety` 不进入直接作答。`safety` 保持现有的不记录事实、不放行讲解。
+
+阶梯规则：
+
+- `scaffold` 下，新题目从 L1 开始。Ward 继续求提示或再次未通过时，才可升到下一等级。
+- L1–L3 禁止最终作业答案、完整解题和代写。
 - 同一题目已有三次已验证的未通过尝试，或 Ward 在 L3 之后明确要求再讲解时，才允许 L4。L4 正文必须包含验证问题。
-- 当前 `StudySession.task_id` 非空且会话为 `active` 或 `paused`，或者当前时间落在该任务已确认时段内，而本轮是好奇心或闲聊时，`return_to_task=true`。任务会话保持原状态。
-- 无任务会话的好奇心不触发回任务提醒。
+- `direct_answer` 不使用这四层来压住词义。它仍然不输出作业题的最终答案。
 
-开放文本属于索答、代写、好奇心、闲聊还是危机情绪，由一次结构化分类调用给出标签。`HintingPolicy` 只消费这个标签。分类调用不选择教学动作，也不写会话。
+当前 `StudySession.task_id` 非空且会话为 `active` 或 `paused`，而本轮是好奇心或闲聊时，`return_to_task=true`。任务会话保持原状态。无任务会话的好奇心不触发回任务提醒。技能可以按任务名写这句提醒；Application 检查提醒在不在，不在就补上规定句子。要不要提醒只由 `HintingPolicy` 决定。
 
-口头闲聊时的回任务只由 `HintingPolicy` 决定。到点仍未开始的邀请由 `StartCuePolicy` 决定，二者不合并。
+开放文本的意图、题型和历史命中都由结构化调用给出候选。`HintingPolicy` 只消费校验后的值。分类调用不选择教学动作，也不写会话。
+
+口头回任务只由 `HintingPolicy` 决定。到点仍未开始的邀请由 `StartCuePolicy` 决定，二者不合并。
 
 ### 2.5 `StartCue`
 
@@ -480,7 +504,7 @@ sequenceDiagram
 | `CheckpointStore` | Infrastructure | 保存并读出 checkpoint 摘要 |
 | `ModelGateway` | Infrastructure | 发送上下文并返回候选 |
 | `ToolGateway` | Infrastructure | 执行一次工具调用；没有实现则返回 `tool_error` |
-| `HintingPolicy` | Domain Service | 判断提示等级和是否提醒回任务 |
+| `HintingPolicy` | Domain Service | 判断提示等级、`reply_mode` 和是否提醒回任务 |
 | `ApplyTutorTurn` | Use Case | 唯一可以写入答疑事实的入口 |
 
 模型每次只返回一个候选。`tool_error` 或拒绝会回到 `ModelGateway`；预算用尽、取消或超时时，Coordinator 把失败结果交给 Interface。
@@ -497,7 +521,7 @@ sequenceDiagram
 
 模型在循环中只能返回工具请求、`TutorWorkingStatePatch` 候选，或 `finish_loop`。`finish_loop` 由模型经 `ModelGateway` 返回，不由 Coordinator 代写。
 
-本节的 `FinishLoopCandidate` 只适用于 problem-solving、curiosity 和 conversation。pronunciation 使用 §4.6 定义的 capability 输出；Application 校验后投影为 `pronunciation_lesson` 或通用 `clarify`，模型不返回交互信封。
+本节的 `FinishLoopCandidate` 只适用于 `reply_mode=scaffold` 的 problem-solving、curiosity 和 conversation。`reply_mode=direct_answer` 使用 §2.4 的 `direct-gloss.v1`，不按 L1 压成启发追问。pronunciation 使用 §4.6 定义的 capability 输出；Application 校验后投影为 `pronunciation_lesson` 或通用 `clarify`，模型不返回交互信封。
 
 ```python
 class FinishLoopCandidate(BaseModel):
@@ -567,7 +591,11 @@ class FinishLoopCandidate(BaseModel):
 
 ### 4.6 pronunciation capability（只读）
 
-发音不新增 `PronunciationPolicy`、`PronunciationTargetExtractor`、`PronunciationRequest` 或独立 Agent。它是通用多模态能力执行框架的一个已登记 profile：同一个 `ModelGatewayPort` 直接接收本 Turn 的文本、已授权图片和指代；模型在一次结构化响应中完成图片文字理解与发音讲解，或提出澄清。它不先经过专属 Extractor，也不把图片拆成第二条业务链路。
+发音不新增 `PronunciationPolicy`、`PronunciationTargetExtractor`、`PronunciationRequest` 或独立 Agent。它是通用多模态能力执行框架的一个已登记 profile：同一个 `ModelGatewayPort` 直接接收本 Turn 的文本、同一对话的最近原句，以及这些句子里仍属于当前 Ward 的已授权图片；模型在一次结构化响应中完成图片文字理解与发音讲解，或提出澄清。它不先经过专属 Extractor，也不把图片拆成第二条业务链路。
+
+已授权图片以视觉内容进入这次调用，和计划录入看图相同。Application 先用对象存储路径核对附件属于当前 Ward；通过后读取图片字节，放进多模态消息的 `image_url`，内容是 `data:<mime>;base64,...`。模型看到的是图像数据。路径只用于授权和读取，不写进给模型的文本。未授权图片不读取、不发送。对外 HTTP URL 不作为这条链路的图像载体。
+
+同一条对话的最近原句窗口与计划录入相同：当前 Turn 之外的原句按原样带入，不改写成摘要。该窗口里仍属于当前 Ward 的已授权图片，与本轮新图一起再次读成 data URL。本轮新图若不属于当前 Ward，整轮拒绝；历史窗口里的他人图片只跳过，不发送。结构非法时把校验错误附在同一次 profile 的唯一次重试里，不把不合格 JSON 收成教学卡。
 
 发音没有新的 Aggregate、Entity、Value Object、Domain Service、Domain Event 或生命周期，所以不增加状态图。它只产生一个可丢弃、可重建的教学投影；是否播放语音、怎样合成和缓存，均不参与 Study 领域状态。
 
@@ -590,7 +618,7 @@ sequenceDiagram
 
     W->>I: 文本或图片 + 发音请求
     I->>C: 已授权 Turn
-    C->>G: 选择 pronunciation-guidance.v1 并发送多模态上下文
+    C->>G: 选择 pronunciation-guidance.v1，发送文字和已授权图像的 data URL
     G-->>C: lesson / clarify / no_match / rejected 候选
     C->>V: 提交 profile 候选做 Schema、ACL、provenance 与安全校验
     alt lesson 已接受
@@ -641,7 +669,7 @@ Study 消费已有的 `PlanConfirmed.v1`。除准备可执行计划外，`Expire
 
 卡片的 `kind` 为 `start_cue`，`object_ref` 指向 `GetStartCue`。动作命令为 `start_due_task`、`continue_current`、`pause_current_and_start_due`、`snooze_once`。这些必须先登记在 [Companion Interaction Protocol](domain-companion.md#52-companion-interaction-protocol)，Study 不私自增加 `kind`。Companion 在当前 Run 仍有回复权时排队，答疑轮次结束后再呈现。送达以 `start_cue_id + version` 去重。
 
-发音卡的 `kind` 为 `pronunciation_lesson`，`object_ref` 指向 `GetPronunciationLesson`，不带业务写动作。确认一个候选、选择多个候选或补充未识别原文复用 Companion `clarify + reply`；当前 Run 只保留已授权附件与候选摘要，后续 Turn 仍通过同一 capability profile 解释输入。首期音频不作为 Companion `media_ref`；端侧播放契约见 App/Server 物理设计。
+发音卡的 `kind` 为 `pronunciation_lesson`，`object_ref` 指向 `GetPronunciationLesson`，不带业务写动作。确认一个候选、选择多个候选或补充未识别原文复用 Companion `clarify + reply`；后续 Turn 仍通过同一 capability profile 解释输入，并带上最近原句窗口与其中已授权图片。首期音频不作为 Companion `media_ref`；端侧播放契约见 App/Server 物理设计。
 
 `StartCue` 不发布 `LearningFactRecorded.v1`。一次未开始不进入 Memory。
 
@@ -708,10 +736,31 @@ When Ward 只进行学习问答
 Then 会话可以保持 Active
 And 不发布 StudySessionCompleted.v1
 
+Given 好奇心提问的题型候选非法或调用失败
+When HintingPolicy 裁决
+Then QuestionShape 按 problem
+And reply_mode 为 scaffold
+
+Given 好奇心提问是原子释义，且已授权历史候选为空
+When HintingPolicy 裁决
+Then reply_mode 为 direct_answer
+And direct-gloss.v1 直接给出词义
+And 不要求孩子先猜
+
+Given 原子释义命中一条已授权的相似概念
+When direct-gloss.v1 起草回复
+Then 直接给出词义，并接上该 history_ref
+And 引用不在候选集内时本轮按 history_match=none
+
+Given 作业题命中一条已授权的相似概念，当前等级是 L1
+When problem-hint.v1 起草回复
+Then 提示接上该历史，且不给出最终作业答案
+
 Given 进行中的任务会话里出现好奇心提问
 When 分类标签为好奇心且事实提交成功
 Then 发布 tutoring.curiosity_observed
-And 交互包含回任务动作
+And 交互包含回任务提醒
+And 技能草稿若没有这句提醒，Application 补上规定句子
 And StudySession 不被结束
 
 Given 已排进当日计划的任务到达 start_at，且该任务没有进行中或暂停的 StudySession，现场端口没有帧
@@ -744,11 +793,35 @@ Then 当前会话暂停，到点任务的新会话开始
 And StartCue 进入 Accepted
 And Planning 的 start_at 不变
 
+Given Companion 已把本轮场景定成 tutoring，且没有已验证的 tutoring_intent
+When 开放文本请求给图中的某一排单词发音
+Then 一次结构化调用提议 TutoringIntent
+And 提议为 pronunciation 时选择 pronunciation-guidance.v1，不进入 HintingPolicy
+
+Given 该提议是非法 JSON、闭集之外的值，或调用失败
+When Application 校验 TutoringIntent
+Then 不猜测五种意图中的任何一种
+And 不打开解题循环或发音 profile，按 Companion 的 unclear 澄清
+
+Given 界面动作已经验证 tutoring_intent=pronunciation
+When 处理本轮
+Then 跳过 TutoringIntent 提议，直接选择 pronunciation-guidance.v1
+
 Given Ward 输入已知 locale 的明确外语原文并请求发音
 When 通用能力执行框架选择 pronunciation-guidance.v1
-Then ModelGatewayPort 直接接收本 Turn 的原文与已授权多模态输入
+Then ModelGatewayPort 直接接收本 Turn 的原文、最近原句，以及这些句子里已授权图像的 data URL
+And 对象存储路径不出现在给模型的文本里
 And Application 投影 pronunciation_lesson，不写 Study Aggregate
 And 不写 VerifiedTurn、Domain Event 或 LearningFactRecorded.v1
+
+Given 上一轮已授权图片仍在同一对话的最近原句窗口，本轮没有新附件
+When Ward 用指代继续请求发音
+Then 该图片与上一句原文再次进入同一次 pronunciation-guidance.v1 调用
+
+Given 模型第一次返回的 JSON 不符合 OutputSchema
+When Application 校验候选
+Then 唯一次重试附带校验错误
+And 第二次仍不合格时返回可恢复失败，不投影发音卡
 
 Given 当前 Turn 的授权图片含两个可朗读句子且 Ward 未明确指代
 When pronunciation-guidance.v1 返回 clarify 候选

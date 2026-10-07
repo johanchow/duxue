@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Protocol
+
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
@@ -7,6 +9,7 @@ from app.application.ports.companion import RunInvocation, WorkflowOutcome
 from app.application.queries.context_builder import ContextBuilder
 from app.contexts.companion.domain.policy import PolicyRegistry
 from app.infrastructure.ai.model_gateway import ModelGatewayError, QwenAgentModelGateway
+from app.infrastructure.ai.utterance_window import instruction_with_window
 from app.infrastructure.observability.telemetry import record_llm_fallback
 from app.bootstrap.settings import settings
 from app.infrastructure.messaging.outbox import publish_learning_fact
@@ -14,9 +17,64 @@ from app.application.commands.memory import SqlAlchemyMemoryFacade
 from app.contexts.study.domain.execution import HintingPolicy
 from app.infrastructure.persistence.models import StudySession, StudySessionInterval, TutoringMessage, TutoringSession, now
 
+_HINT_LABEL = {
+    "problem_solving": "problem",
+    "curiosity": "curiosity",
+    "conversation": "chat",
+    "safety": "answer_seeking",
+}
+
+
+class TutoringIntentPort(Protocol):
+    def propose(self, *, content: str, recent_utterances: list[dict] | None = None) -> str | None: ...
+
+
 class TutoringWorkflow:
     """Safe deterministic fallback; a model may only replace its validated candidate."""
-    def __init__(self, db: Session): self.db = db
+    def __init__(self, db: Session, intent_proposer: TutoringIntentPort | None = None):
+        self.db = db
+        self.intent_proposer = intent_proposer
+
+    def _proposer(self) -> TutoringIntentPort:
+        if self.intent_proposer is None:
+            from app.infrastructure.ai.tutoring_intent import QwenTutoringIntentProposer
+            self.intent_proposer = QwenTutoringIntentProposer()
+        return self.intent_proposer
+
+    def _window(self, invocation: RunInvocation) -> list[dict]:
+        from app.application.queries.run_transcript import load_visible_utterances
+
+        return load_visible_utterances(
+            self.db, ward_id=invocation.ward_id, thread_id=invocation.thread_id,
+            exclude_turn_id=invocation.turn_id,
+        )
+
+    def _resolve_intent(self, invocation: RunInvocation) -> str:
+        turn = invocation.turn
+        if turn.get("tutoring_directive") == "close":
+            return "problem_solving"
+        if turn.get("tutoring_intent") == "pronunciation":
+            return "pronunciation"
+        proposed = self._proposer().propose(
+            content=turn.get("content") or "", recent_utterances=self._window(invocation),
+        )
+        if proposed == "pronunciation" or proposed in _HINT_LABEL:
+            return proposed
+        return "unclear"
+
+    def invoke(self, invocation: RunInvocation) -> WorkflowOutcome:
+        intent = self._resolve_intent(invocation)
+        if intent == "unclear":
+            from app.application.process_managers.companion_coordinator import _CLARIFY_REPLY
+            return WorkflowOutcome(
+                run_status="waiting_for_ward", outcome_type="waiting",
+                next_interaction={"status": "needs_input", "kind": "clarify", "content": _CLARIFY_REPLY},
+            )
+        if intent == "pronunciation":
+            from app.application.workflows.pronunciation_guidance import PronunciationGuidance
+            return PronunciationGuidance(self.db).present(invocation)
+        invocation.turn["intent_label"] = invocation.turn.get("intent_label") or _HINT_LABEL[intent]
+        return self._hint(invocation)
 
     def _open_session(self, ward_id: str, session_id: str | None) -> StudySession:
         if session_id:
@@ -44,10 +102,7 @@ class TutoringWorkflow:
         )
         return session
 
-    def invoke(self, invocation: RunInvocation) -> WorkflowOutcome:
-        if invocation.turn.get("tutoring_intent") == "pronunciation":
-            from app.application.workflows.pronunciation_guidance import PronunciationGuidance
-            return PronunciationGuidance(self.db).present(invocation)
+    def _hint(self, invocation: RunInvocation) -> WorkflowOutcome:
         turn = invocation.turn; session_id = turn.get("study_session_id")
         policy = PolicyRegistry()
         envelope = ContextBuilder(SqlAlchemyMemoryFacade(self.db)).build(
@@ -93,7 +148,10 @@ class TutoringWorkflow:
             try:
                 candidate = QwenAgentModelGateway().generate(
                     agent_type="tutoring", envelope=envelope.model_dump(),
-                    instruction=f"孩子刚才说：{content!r}。请给一条不超过 L{level} 的启发式回应。",
+                    instruction=instruction_with_window(
+                        f"孩子刚才说：{content!r}。请给一条不超过 L{level} 的启发式回应。",
+                        self._window(invocation),
+                    ),
                 )
                 policy_result = policy.validate_candidate(candidate.model_dump(), allowed_tools=set())
                 if policy_result.accepted and HintingPolicy.accepts_display(hinting, candidate.content):

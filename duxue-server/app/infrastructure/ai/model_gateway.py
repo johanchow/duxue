@@ -13,6 +13,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, ValidationError
 
 from app.bootstrap.settings import settings
+from app.infrastructure.ai.utterance_window import WINDOW_RULE
 from app.infrastructure.observability.telemetry import model_call_span, record_model_response
 
 
@@ -42,6 +43,7 @@ class QwenAgentModelGateway:
             "你是读学系统的受控学习助手。只返回一个 JSON 对象，字段为 content 和 "
             "follow_up_question；不得调用工具、不得给出解题最终答案、不得输出思维链，"
             "不得把上下文中的个人数据扩写或泄露。content 必须是面向孩子的简短中文。"
+            + WINDOW_RULE
         )
         user = json.dumps({"instruction": instruction, "context": envelope}, ensure_ascii=False)
         model = settings.agent_model(agent_type)

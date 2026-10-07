@@ -60,10 +60,28 @@ def recent_thread_utterances(
             "author": row.author_type,
             "text": row.content,
             "had_image": bool(row.attachment_refs),
+            "attachment_refs": list(row.attachment_refs or []),
         }
         for row in rows
     ]
     return select_recent_utterances(projected, exclude_turn_id=exclude_turn_id)
+
+
+def visible_utterances(rows: list[dict]) -> list[dict]:
+    """Model-facing window. Storage paths stay out of the text payload."""
+    return [
+        {"author": row.get("author"), "text": row.get("text"), "had_image": bool(row.get("had_image"))}
+        for row in rows
+    ]
+
+
+def load_visible_utterances(
+    db: Session, *, ward_id: str, thread_id: str, exclude_turn_id: str | None,
+) -> list[dict]:
+    rows, _omitted = recent_thread_utterances(
+        db, ward_id=ward_id, thread_id=thread_id, exclude_turn_id=exclude_turn_id,
+    )
+    return visible_utterances(rows)
 
 
 def _chars(rows: list[dict]) -> int:

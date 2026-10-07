@@ -6,6 +6,7 @@ from fastapi import HTTPException
 from app.application.workflows.tutoring_workflow import TutoringWorkflow
 from app.application.ports.companion import RunInvocation
 from app.infrastructure.persistence.models import TutoringMessage, TutoringSession, uid
+from tests.support.fakes import StaticTutoringIntent
 from tests.support.factories import create_ward, create_task, create_study_session
 
 
@@ -17,7 +18,7 @@ def test_cannot_access_another_wards_study_session(db):
     session2 = create_study_session(db, ward=ward2, task=task2)
     db.commit()
 
-    workflow = TutoringWorkflow(db)
+    workflow = TutoringWorkflow(db, intent_proposer=StaticTutoringIntent())
     with pytest.raises(HTTPException) as exc:
         workflow.invoke(
             RunInvocation(
@@ -38,7 +39,7 @@ def test_cannot_ask_in_closed_tutoring_session(db):
     session = create_study_session(db, ward=ward, task=task)
     db.commit()
 
-    workflow = TutoringWorkflow(db)
+    workflow = TutoringWorkflow(db, intent_proposer=StaticTutoringIntent())
     # 第一次提问
     workflow.invoke(
         RunInvocation(
@@ -82,7 +83,7 @@ def test_hint_level_increments_and_caps_at_4(db):
     session = create_study_session(db, ward=ward, task=task)
     db.commit()
 
-    workflow = TutoringWorkflow(db)
+    workflow = TutoringWorkflow(db, intent_proposer=StaticTutoringIntent())
     for index, expected_level in enumerate([1, 2, 3, 4, 4]):
         outcome = workflow.invoke(
             RunInvocation(
@@ -107,7 +108,7 @@ def test_off_task_question_during_a_task_stays_brief_and_keeps_the_session(db):
     session = create_study_session(db, ward=ward, task=task)
     db.commit()
 
-    outcome = TutoringWorkflow(db).invoke(
+    outcome = TutoringWorkflow(db, intent_proposer=StaticTutoringIntent()).invoke(
         RunInvocation(
             run_id=uid(),
             thread_id=uid(),
@@ -132,7 +133,7 @@ def test_taskless_curiosity_does_not_ask_to_return(db):
     session = create_study_session(db, ward=ward, task=None)
     db.commit()
 
-    outcome = TutoringWorkflow(db).invoke(
+    outcome = TutoringWorkflow(db, intent_proposer=StaticTutoringIntent()).invoke(
         RunInvocation(
             run_id=uid(),
             thread_id=uid(),
@@ -156,7 +157,7 @@ def test_safety_blocked_flags_tutoring_messages(db):
     session = create_study_session(db, ward=ward, task=task)
     db.commit()
 
-    workflow = TutoringWorkflow(db)
+    workflow = TutoringWorkflow(db, intent_proposer=StaticTutoringIntent())
     outcome = workflow.invoke(
         RunInvocation(
             run_id=uid(),

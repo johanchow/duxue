@@ -21,7 +21,7 @@ class IntentProposal(BaseModel):
 
 
 class IntentClassifier(Protocol):
-    def propose(self, *, content: str, focus_agent_type: str | None) -> IntentProposal:
+    def propose(self, *, content: str, focus_agent_type: str | None, recent_utterances: list[dict] | None = None) -> IntentProposal:
         """Return one closed intent label. No tools and no writes."""
 
 

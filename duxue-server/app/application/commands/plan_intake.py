@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 from pydantic import BaseModel, Field, ValidationError
 
 from app.bootstrap.settings import settings
+from app.infrastructure.ai.utterance_window import WINDOW_RULE
 from app.infrastructure.observability.telemetry import (
     model_call_span,
     record_model_response,
@@ -108,6 +109,7 @@ def _recent_utterance_block(request: PlanIntakeInput) -> str:
         "这些是同一条对话到上一轮为止的原句，不是改写。\n"
     )
     return (
+        WINDOW_RULE + "\n"
         "同一条对话的最近原句（从旧到新）：\n"
         + "\n".join(lines)
         + "\n"
