@@ -110,6 +110,7 @@ def companion_turn(body: CompanionTurnRequest, principal: Principal = Depends(cu
             planning_confirm=body.planning_confirm,
             study_session_id=body.study_session_id,
             tutoring_directive=body.tutoring_directive,
+            tutoring_intent=body.tutoring_intent,
             review_date=body.review_date,
             review_feeling=body.review_feeling,
             review_reflection=body.review_reflection,

@@ -183,16 +183,19 @@ class CompanionCoordinator:
         expected_thread_version: int | None, route_hint: str | None,
         command_id: str | None = None, planning_items: list[dict] | None = None,
         planning_confirm: bool = False, study_session_id: str | None = None,
-        tutoring_directive: str | None = None, review_date=None,
+        tutoring_directive: str | None = None, tutoring_intent: str | None = None, review_date=None,
         review_feeling: str | None = None, review_reflection: str | None = None,
         adopt_focus_kit: bool = False, attachment_keys: list[str] | None = None,
         structured_command: dict | None = None,
     ) -> CoordinatorResult:
         started = perf_counter()
         command_id = command_id or str(uuid4())
+        if tutoring_intent == "pronunciation" and route_hint is None:
+            route_hint = "tutoring"
         turn = {
             "planning_items": planning_items, "planning_confirm": planning_confirm,
             "study_session_id": study_session_id, "tutoring_directive": tutoring_directive,
+            "tutoring_intent": tutoring_intent,
             "content": content, "review_date": review_date.isoformat() if review_date else None,
             "review_feeling": review_feeling, "review_reflection": review_reflection,
             "adopt_focus_kit": adopt_focus_kit,

@@ -163,6 +163,7 @@ class CompanionTurnRequest(BaseModel):
     planning_confirm: bool = False
     study_session_id: str | None = None
     tutoring_directive: str | None = Field(default=None, pattern=r"^(ask|attempt|understood|close)$")
+    tutoring_intent: str | None = Field(default=None, pattern=r"^pronunciation$")
     review_date: date | None = None
     review_feeling: str | None = Field(default=None, max_length=40)
     review_reflection: str | None = Field(default=None, max_length=2000)

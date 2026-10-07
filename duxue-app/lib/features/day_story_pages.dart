@@ -7,10 +7,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import '../core/cue_notifications.dart';
+import '../core/speech_playback.dart';
 import '../providers.dart';
 import '../shared/app_ui.dart';
 import '../shared/voice_composer.dart';
 import 'home_task_card.dart';
+import 'pronunciation_player.dart';
 import 'start_cue_card.dart';
 import 'task_status_dialogs.dart';
 
@@ -154,11 +156,19 @@ class _StagedImage {
 }
 
 class WardDayPage extends ConsumerStatefulWidget {
-  const WardDayPage({required this.wardId, super.key, this.pickChatImage});
+  const WardDayPage({
+    required this.wardId,
+    super.key,
+    this.pickChatImage,
+    this.speechPlayback,
+  });
   final String wardId;
 
   /// Gallery picker. Tests supply bytes directly; production uses the camera roll.
   final Future<PickedChatImage?> Function()? pickChatImage;
+
+  /// 播放器。测试注入替身；正式环境用设备播放与系统朗读。
+  final SpeechPlayback Function()? speechPlayback;
   @override
   ConsumerState<WardDayPage> createState() => _WardDayPageState();
 }
@@ -183,6 +193,8 @@ class _WardDayPageState extends ConsumerState<WardDayPage> with WidgetsBindingOb
   String? planDraftId;
   int? planDraftVersion;
   String? failedPlanText;
+  Map<String, dynamic>? pronunciationLesson;
+  SpeechPlayback? _speechPlayback;
   bool planSending = false;
   bool planListOpen = false;
   bool planChatOpen = false;
@@ -203,12 +215,16 @@ class _WardDayPageState extends ConsumerState<WardDayPage> with WidgetsBindingOb
     cueRefresh = Timer.periodic(const Duration(minutes: 1), (_) => _refreshCue());
   }
 
+  SpeechPlayback _playback() =>
+      _speechPlayback ??= (widget.speechPlayback ?? DeviceSpeechPlayback.new)();
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     timer?.cancel();
     cueRefresh?.cancel();
     draftText.dispose();
+    _speechPlayback?.dispose();
     super.dispose();
   }
 
@@ -539,6 +555,12 @@ class _WardDayPageState extends ConsumerState<WardDayPage> with WidgetsBindingOb
                       contentPadding:
                           EdgeInsets.symmetric(horizontal: 4, vertical: 10)))),
           IconButton(
+              tooltip: '读出发音',
+              onPressed: !planSending && draftText.text.trim().isNotEmpty
+                  ? () => _sendDraft(pronunciation: true)
+                  : null,
+              icon: const Icon(Icons.volume_up_outlined, size: 20)),
+          IconButton(
               tooltip: '发送',
               onPressed: _canSendDraft ? () => _sendDraft() : null,
               style: IconButton.styleFrom(
@@ -829,7 +851,17 @@ class _WardDayPageState extends ConsumerState<WardDayPage> with WidgetsBindingOb
                           child: const Text('确认这个计划'))),
                 ])
               ]))
-        ]
+        ],
+        if (pronunciationLesson != null) ...[
+          const SizedBox(height: 14),
+          PronunciationLessonCard(
+            lesson: pronunciationLesson!,
+            loadSpeech: (speechRef, rate) => ref
+                .read(apiProvider)
+                .pronunciationSpeech(speechRef, rate),
+            playback: _playback(),
+          ),
+        ],
       ]));
 
   void _openPlanList() => setState(() {
@@ -858,7 +890,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage> with WidgetsBindingOb
     return end == null ? '${clock(start)} 开始' : '${clock(start)}–${clock(end)}';
   }
 
-  Future<void> _sendDraft({String? spoken}) async {
+  Future<void> _sendDraft({String? spoken, bool pronunciation = false}) async {
     if (planSending) return;
     if (stagedImages.any((image) => image.key == null && !image.failed)) {
       showMessage(context, '图片还在上传，请稍候再发送');
@@ -881,7 +913,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage> with WidgetsBindingOb
     setState(() => planMessages
         .add(_ChatLine(label: '我', content: content, images: images)));
     if (spoken == null) draftText.clear();
-    await _submitPlanInput(content);
+    await _submitPlanInput(content, pronunciation: pronunciation);
   }
 
   Widget _growth(BuildContext context) =>
@@ -1369,7 +1401,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage> with WidgetsBindingOb
     }
   }
 
-  Future<void> _submitPlanInput(String text) async {
+  Future<void> _submitPlanInput(String text, {bool pronunciation = false}) async {
     if (planSending) return;
     planAttachments
       ..clear()
@@ -1383,7 +1415,9 @@ class _WardDayPageState extends ConsumerState<WardDayPage> with WidgetsBindingOb
           content: text,
           threadId: companionThreadId,
           expectedThreadVersion: companionThreadVersion,
-          attachmentKeys: List<String>.from(planAttachments));
+          attachmentKeys: List<String>.from(planAttachments),
+          routeHint: pronunciation ? 'tutoring' : null,
+          tutoringIntent: pronunciation ? 'pronunciation' : null);
       if (!mounted) return;
       final interaction =
           Map<String, dynamic>.from(result['interaction'] as Map? ?? const {});
@@ -1399,16 +1433,24 @@ class _WardDayPageState extends ConsumerState<WardDayPage> with WidgetsBindingOb
       final actions = (interaction['actions'] as List? ?? const [])
           .map((action) => Map<String, dynamic>.from(action as Map));
       Map<String, dynamic>? draft;
+      Map<String, dynamic>? lesson;
       if (objectRef['context'] == 'planning' &&
           objectRef['object_id'] is String) {
         draft = await ref
             .read(apiProvider)
             .companionPlanDraft(objectRef['object_id'] as String);
       }
+      if (interaction['kind'] == 'pronunciation_lesson' &&
+          objectRef['object_id'] is String) {
+        lesson = await ref
+            .read(apiProvider)
+            .pronunciationLesson(objectRef['object_id'] as String);
+      }
       setState(() {
         failedPlanText = null;
         stagedImages.clear();
         planAttachments.clear();
+        pronunciationLesson = lesson;
         planFeedback = ((interaction['parts'] as List? ?? const []).isNotEmpty)
             ? Map<String, dynamic>.from(
                 (interaction['parts'] as List).first as Map)['text'] as String?

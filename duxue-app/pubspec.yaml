@@ -19,6 +19,8 @@ dependencies:
   image_picker: ^1.1.2
   flutter_local_notifications: ^18.0.1
   timezone: ^0.9.4
+  audioplayers: ^6.4.0
+  flutter_tts: ^4.2.2
 dev_dependencies:
   flutter_test:
     sdk: flutter

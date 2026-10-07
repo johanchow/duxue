@@ -195,6 +195,7 @@ def delete_ward_data(ward_id: str, principal: Principal = Depends(current_guardi
     if tutor_ids:
         db.query(TutoringMessage).filter(TutoringMessage.tutoring_session_id.in_(tutor_ids)).delete(synchronize_session=False)
     db.query(TutoringSession).filter(TutoringSession.ward_id == ward_id).delete(synchronize_session=False)
+    db.query(PronunciationLesson).filter(PronunciationLesson.ward_id == ward_id).delete(synchronize_session=False)
     db.query(Frame).filter(Frame.ward_id == ward_id).delete(synchronize_session=False)
     session_ids = [row[0] for row in db.query(StudySession.id).filter_by(ward_id=ward_id).all()]
     if session_ids:
