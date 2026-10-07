@@ -393,6 +393,25 @@ erDiagram
         timestamp created_at
     }
 
+    pronunciation_lessons {
+        uuid id PK "lesson_ref，同时作为 speech_ref"
+        uuid ward_id FK
+        uuid thread_id "所属对话，不作为第二份事实"
+        uuid run_id
+        uuid turn_id
+        int attempt
+        text source_text "已确认、将被朗读的原文"
+        string locale "en-US | en-GB"
+        text introduction
+        text reading_guide
+        jsonb notes "重音、连读、弱读、音变或语调说明"
+        string speech_ref "等于 id，不是跨 Ward 的凭证"
+        jsonb supported_rates "0.5, 0.75, 1.0"
+        string payload_digest
+        int version
+        timestamp created_at
+    }
+
     self_evaluations {
         uuid id PK
         uuid ward_id FK
@@ -570,6 +589,8 @@ CREATE INDEX idx_companion_commands_ward ON companion_commands(ward_id);
 CREATE UNIQUE INDEX uq_companion_messages_thread_version ON companion_messages(thread_id, thread_version);
 CREATE UNIQUE INDEX uq_companion_messages_ward_command_author ON companion_messages(ward_id, command_id, author_type);
 CREATE INDEX idx_companion_messages_ward_thread_version ON companion_messages(ward_id, thread_id, thread_version DESC);
+CREATE UNIQUE INDEX uq_pronunciation_lesson_run_turn_attempt ON pronunciation_lessons(run_id, turn_id, attempt);
+CREATE INDEX idx_pronunciation_lessons_ward ON pronunciation_lessons(ward_id);
 CREATE UNIQUE INDEX uq_companion_messages_run_turn_attempt_author ON companion_messages(run_id, turn_id, attempt, author_type) WHERE run_id IS NOT NULL;
 CREATE INDEX idx_agent_stream_events_run ON agent_stream_events(run_id);
 CREATE UNIQUE INDEX uq_agent_stream_sequence ON agent_stream_events(run_id, attempt, sequence);
@@ -605,6 +626,20 @@ CREATE UNIQUE INDEX uq_active_plan_draft_ward_date ON plan_drafts(ward_id, plan_
 `agent_runs.outcome` 还保存当前已签发、可执行 interaction 的最小 `interaction_id`。结构化命令必须同时
 匹配该 ID、Run/attempt、Thread version 和目标对象版本；它不是可由客户端根据草稿 ID 自行推导的授权。
 计划确认卡本身只保存 `PlanDraft` 的对象引用，任务列表始终经 Planning Query 刷新。
+
+`pronunciation_lessons` 是发音教学卡的 Read Model，不是 Study Aggregate，也不写入 `LearningFactRecorded`。同一 `run_id + turn_id + attempt` 只保留一行；内容摘要不同的重复提交返回冲突，不覆盖旧卡。`speech_ref` 等于本行 `id`。读取时还要核对 `ward_id`。Guardian 删除 Ward 时，与 Thread、答疑消息一起删除这些行。迁移为 `20261007_22`。
+
+合成音频不入库、不进 OSS、也不写进 Companion journal。每个 API 进程持有一份内存缓存：
+
+| 项目 | 约定 |
+|---|---|
+| 键 | `sha256(原文 + locale + voice + speech_rate + engine_version)` |
+| 值 | MP3 字节。`en-US` 用 `betty`，`en-GB` 用 `emily`。倍速 `0.5 / 0.75 / 1.0` 对应阿里云 `speech_rate` `-500 / -167 / 0` |
+| 命中 | 同一进程内再次点读同一句、同一倍速，不再请求阿里云 |
+| 失效 | 进程退出即丢。多进程不共享。未配置、超时、超过 300 字或供应商失败不写入缓存 |
+| 删除 | 没有音频文件可删。删 Ward 只删教学卡行 |
+
+`engine_version` 当前为 `aliyun-isi-tts-v1`。更换音色或倍速映射时改这个版本，旧缓存自然失效。
 
 ---
 
@@ -803,6 +838,7 @@ FUNCTION verifyWardAccess(wardId, currentUser, db):
 1. **未成年人隐私与存储留存**：
    - 阿里云 OSS 抓拍帧配置生命周期，**90 天到期自动物理销毁**（训练候选集 `training_candidate=true` 豁免）；
    - 伴学问答中上传的草稿与截图片段，**24 小时内物理擦除**；
+   - 发音教学卡随 Ward 删除；合成音频只在 API 进程内存中，不落盘；
    - 监护人享有最高“被遗忘权”，支持在 App 端一键彻底注销并清除学生全部记忆与历史档案。
 2. **高可用与性能指标（SLO）**：
    - **预签名签发与元数据入库**：P95 < 50ms；

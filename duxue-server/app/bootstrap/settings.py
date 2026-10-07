@@ -83,6 +83,15 @@ class Settings:
     asr_workspace_id: str = os.getenv("ASR_WORKSPACE_ID", "")
     asr_websocket_url: str = os.getenv("ASR_WEBSOCKET_URL", "")
     asr_max_record_seconds: int = _integer("ASR_MAX_RECORD_SECONDS", "60")
+    # 标准语音合成。Appkey 与 OSS AccessKey 必须属于同一个阿里云账号。
+    # 未配置时发音教学卡仍可返回，点读映射为 tts_error。
+    tts_appkey: str = os.getenv("TTS_APPKEY", "").strip()
+    tts_gateway_url: str = os.getenv(
+        "TTS_GATEWAY_URL", "https://nls-gateway-cn-shenzhen.aliyuncs.com/stream/v1/tts",
+    ).strip()
+    tts_token_url: str = os.getenv(
+        "TTS_TOKEN_URL", "https://nls-meta.cn-shanghai.aliyuncs.com/",
+    ).strip()
 
     def agent_model(self, agent_type: str) -> str:
         return {

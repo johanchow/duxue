@@ -45,6 +45,9 @@ class TutoringWorkflow:
         return session
 
     def invoke(self, invocation: RunInvocation) -> WorkflowOutcome:
+        if invocation.turn.get("tutoring_intent") == "pronunciation":
+            from app.application.workflows.pronunciation_guidance import PronunciationGuidance
+            return PronunciationGuidance(self.db).present(invocation)
         turn = invocation.turn; session_id = turn.get("study_session_id")
         policy = PolicyRegistry()
         envelope = ContextBuilder(SqlAlchemyMemoryFacade(self.db)).build(

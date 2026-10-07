@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:duxue_app/core/api_client.dart';
 import 'package:duxue_app/core/token_storage.dart';
 import 'package:duxue_app/core/voice_transcription_service.dart';
+import 'package:duxue_app/core/speech_playback.dart';
 import 'package:duxue_app/core/telemetry.dart';
 import 'package:duxue_app/features/day_story_pages.dart';
 import 'package:duxue_app/providers.dart';
@@ -14,10 +15,31 @@ import 'package:flutter_secure_storage_platform_interface/flutter_secure_storage
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+class _FakePlayback implements SpeechPlayback {
+  final played = <Uint8List>[];
+
+  @override
+  Future<void> playMp3(Uint8List bytes) async {
+    played.add(bytes);
+  }
+
+  @override
+  Future<void> speak(String text, String locale) async {}
+
+  @override
+  Future<void> stop() async {}
+
+  @override
+  Future<void> dispose() async {}
+}
+
 class _WardHomeApi extends ApiClient {
   _WardHomeApi()
       : super(baseUrl: 'http://localhost', tokens: const TokenStorage());
   var startedAssignment = false;
+  String? lastRouteHint;
+  String? lastTutoringIntent;
+  final speechRates = <double>[];
   String? startedPlanItem;
   String? pausedSessionId;
   String? finishedSessionId;
@@ -98,13 +120,33 @@ class _WardHomeApi extends ApiClient {
     required String? threadId,
     required int? expectedThreadVersion,
     String? routeHint,
+    String? tutoringIntent,
     Map<String, dynamic>? structuredCommand,
     List<String> attachmentKeys = const [],
   }) async {
+    lastRouteHint = routeHint;
+    lastTutoringIntent = tutoringIntent;
     turns.add((
       content: content,
       attachmentKeys: List<String>.from(attachmentKeys),
     ));
+    if (tutoringIntent == 'pronunciation') {
+      return {
+        'thread_id': threadId ?? 'thread-1',
+        'thread_version': (expectedThreadVersion ?? 0) + 2,
+        'interaction': {
+          'protocol': 'companion-interaction.v1',
+          'kind': 'pronunciation_lesson',
+          'parts': [
+            {'type': 'text', 'text': '先听这个词。'},
+          ],
+          'object_ref': {
+            'context': 'study',
+            'object_id': 'lesson-1',
+          },
+        },
+      };
+    }
     if (structuredCommand != null) {
       return {
         'thread_id': threadId ?? 'thread-1',
@@ -146,6 +188,25 @@ class _WardHomeApi extends ApiClient {
         ],
         'confirm_enabled': true,
       };
+
+  @override
+  Future<Map<String, dynamic>> currentStartCue() async => {'status': 'none'};
+
+  @override
+  Future<Map<String, dynamic>> pronunciationLesson(String lessonRef) async => {
+        'id': lessonRef,
+        'source_text': 'apple',
+        'locale': 'en-US',
+        'introduction': '先听这个词。',
+        'speech_ref': lessonRef,
+        'supported_rates': [0.5, 0.75, 1.0],
+      };
+
+  @override
+  Future<Uint8List> pronunciationSpeech(String lessonRef, double rate) async {
+    speechRates.add(rate);
+    return Uint8List.fromList([9, 9, 9]);
+  }
 
   @override
   Future<Map<String, dynamic>> companionMessages(String threadId) async => {
@@ -640,6 +701,45 @@ void main() {
     expect(find.text('观察蚂蚁路线'), findsNothing);
     expect(find.text('今天没有待定项了。想加任务，走下方统一入口。'), findsOneWidget);
     expect(api.deleted, ['pool-1']);
+  });
+
+  testWidgets('read-aloud asks for pronunciation and plays the lesson',
+      (tester) async {
+    FlutterSecureStoragePlatform.instance =
+        TestFlutterSecureStoragePlatform({});
+    final api = _WardHomeApi();
+    final playback = _FakePlayback();
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiProvider.overrideWithValue(api)],
+      child: MaterialApp(
+          home: WardDayPage(
+              wardId: 'ward-1', speechPlayback: () => playback)),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), 'apple');
+    await tester.pump();
+    await tester.tap(find.byTooltip('读出发音'));
+    await tester.pumpAndSettle();
+
+    expect(api.lastRouteHint, 'tutoring');
+    expect(api.lastTutoringIntent, 'pronunciation');
+    expect(api.turns.single.content, 'apple');
+    expect(find.text('apple'), findsWidgets);
+    expect(playback.played, isEmpty);
+
+    await tester.ensureVisible(find.text('0.75x'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('0.75x'));
+    await tester.pump();
+    await tester.ensureVisible(find.text('播放'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('播放'));
+    await tester.pumpAndSettle();
+
+    expect(api.speechRates, [0.75]);
+    expect(playback.played, isNotEmpty);
+    expect(find.text('正在播放'), findsOneWidget);
   });
 
   testWidgets('a picked chat image stays as a thumbnail until send',

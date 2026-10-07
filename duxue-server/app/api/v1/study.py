@@ -1,4 +1,7 @@
+from fastapi.responses import Response
+
 from app.application.commands.start_cue import StartCueService
+from app.application.queries.pronunciation_speech import PronunciationLessonQuery
 from app.application.workflows.planning_domain_service import PlanningDomainService
 from app.contexts.study.domain.execution import can_finish
 from app.contexts.study.domain.start_cue import StartCueError
@@ -103,6 +106,19 @@ def current_start_cue(principal: Principal = Depends(current_ward), db: Session 
         raise _cue_error(error) from error
     db.commit()
     return view
+
+
+@router.get("/pronunciation-lessons/{lesson_ref}")
+def get_pronunciation_lesson(lesson_ref: str, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
+    return PronunciationLessonQuery(db).get(ward_id=principal.user_id, lesson_ref=lesson_ref)
+
+
+@router.get("/pronunciation-lessons/{lesson_ref}/speech")
+def speak_pronunciation_lesson(
+    lesson_ref: str, rate: float, principal: Principal = Depends(current_ward), db: Session = Depends(get_db),
+):
+    audio = PronunciationLessonQuery(db).speak(ward_id=principal.user_id, lesson_ref=lesson_ref, rate=rate)
+    return Response(content=audio, media_type="audio/mpeg")
 
 
 @router.post("/start-cues/{cue_id}/commands")

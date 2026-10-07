@@ -330,6 +330,31 @@ class TutoringSession(Base):
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class PronunciationLesson(Base):
+    """只读发音教学卡。同一 Run 回合只投影一张，不参与学习事实。"""
+
+    __tablename__ = "pronunciation_lessons"
+    __table_args__ = (
+        UniqueConstraint("run_id", "turn_id", "attempt", name="uq_pronunciation_lesson_run_turn_attempt"),
+    )
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
+    ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id"), index=True)
+    thread_id: Mapped[str] = mapped_column(Uuid(as_uuid=False), index=True)
+    run_id: Mapped[str] = mapped_column(Uuid(as_uuid=False), index=True)
+    turn_id: Mapped[str] = mapped_column(Uuid(as_uuid=False))
+    attempt: Mapped[int] = mapped_column(Integer)
+    source_text: Mapped[str] = mapped_column(Text)
+    locale: Mapped[str] = mapped_column(String(16))
+    introduction: Mapped[str] = mapped_column(Text)
+    reading_guide: Mapped[str] = mapped_column(Text)
+    notes: Mapped[list] = mapped_column(JSON, default=list)
+    speech_ref: Mapped[str] = mapped_column(String(64))
+    supported_rates: Mapped[list] = mapped_column(JSON, default=list)
+    payload_digest: Mapped[str] = mapped_column(String(64))
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 class TutoringMessage(Base):
     __tablename__ = "tutoring_messages"
     id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)

@@ -402,6 +402,7 @@ class ApiClient {
     required String? threadId,
     required int? expectedThreadVersion,
     String? routeHint,
+    String? tutoringIntent,
     Map<String, dynamic>? structuredCommand,
     List<String> attachmentKeys = const [],
   }) async =>
@@ -411,6 +412,7 @@ class ApiClient {
                 'thread_id': threadId,
                 'expected_thread_version': expectedThreadVersion,
                 if (routeHint != null) 'route_hint': routeHint,
+                if (tutoringIntent != null) 'tutoring_intent': tutoringIntent,
                 if (structuredCommand != null)
                   'structured_command': structuredCommand,
                 'attachment_keys': attachmentKeys,
@@ -419,6 +421,19 @@ class ApiClient {
               // exceeds the 20s default before the HTTP response is written.
               options: Options(receiveTimeout: const Duration(seconds: 90))))
           .data);
+
+  Future<Map<String, dynamic>> pronunciationLesson(String lessonRef) async =>
+      Map<String, dynamic>.from(
+          (await dio.get('/pronunciation-lessons/$lessonRef')).data as Map);
+
+  Future<Uint8List> pronunciationSpeech(String lessonRef, double rate) async {
+    final response = await dio.get<List<int>>(
+      '/pronunciation-lessons/$lessonRef/speech',
+      queryParameters: {'rate': rate},
+      options: Options(responseType: ResponseType.bytes),
+    );
+    return Uint8List.fromList(response.data ?? const []);
+  }
 
   Future<Map<String, dynamic>> companionPlanDraft(String draftId) async =>
       Map<String, dynamic>.from(

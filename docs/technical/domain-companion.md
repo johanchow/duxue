@@ -1,6 +1,6 @@
 # 读学系统 — Companion Orchestration Context & Agent Runtime Design
 
-> 状态：讨论稿 · 版本：v3.1  
+> 状态：讨论稿 · 版本：v3.3
 >
 > 范围：统一陪伴入口、Thread/Run 连续性、Coordinator Process Manager、目标 Workflow 的受控运行契约，以及 Ward 可见的 Companion Interaction Protocol。  
 >
@@ -397,7 +397,7 @@ Workflow 必须声明版本化 `ContextSpec`：Memory 范围、近期会话窗�
 | 目标 Context              | Workflow 可做什么                           | 不可做什么                         | 当前状态                 |
 | ----------------------- | --------------------------------------- | ----------------------------- | -------------------- |
 | Planning                | 审阅草稿、补字段、等待确认、调用 Planning 用例            | 绕过确认、容量/version guard 或直接写正式表 | 有限 Adapter 已接入       |
-| Study / Tutoring        | 受限 ReAct、教学候选、校验动作/工具/预算、调用 Tutoring 用例 | 代写、无限循环、候选直接升 Signal          | 目标契约，完整 Runtime 待落地  |
+| Study / Tutoring        | problem-solving 使用受限 ReAct；pronunciation 选择一次无工具的多模态 capability profile；校验候选、动作、预算并按需调用 Tutoring 用例 | 代写、无限循环、为发音另建 Extractor/Agent Loop、候选直接升 Signal | 目标契约，完整 Runtime 待落地 |
 | Evaluation & Reflection | 收集自评、基于锁定证据生成候选、调用 Reflection 用例        | 伪装未到达证据、覆盖旧报告语义               | 目标契约，完整 Workflow 待落地 |
 
 
@@ -461,7 +461,8 @@ attempt 已变化或 Run 不再是 focus，服务端返回当前 `CompanionThrea
 Ward 输入     CompanionTurn = TextTurn | StructuredWardCommand + media_refs
 历史气泡     CompanionMessage = text + media_refs + object_ref?     （journal，不可变）
 当前屏       WorkflowInteractionView = kind + parts + actions + object_ref
-业务真相     PlanDraftView / TutoringInteractionView / DualTrackReport …  （目标 Context Query）
+业务真相     PlanDraftView / TutoringInteractionView / PronunciationLessonView / DualTrackReport …
+             （目标 Context Query）
 ```
 
 
@@ -484,26 +485,27 @@ App 按 `kind` 选择组件；业务数字一律用 `object_ref` 再拉一次目
 | ------------------- | ----------------- | ---------------------- | ----------------------------------------------- | ----------------------------------- |
 | `text`              | 普通说明、追问、安全降级文案    | `text`                 | 无，或仅继续输入                                        | 无                                   |
 | `text_media`        | 图文提示（当前仅图片；视频未开放） | `text` + `media_ref`   | 无                                               | 无                                   |
-| `clarify`           | 缺时长等单一必要问题        | `text`                 | `reply`                                         | 无或当前草稿引用                            |
+| `clarify`           | 单一必要问题、发音原文确认或候选选择 | `text`                 | `reply`                                         | 无或当前 Workflow 等待点                    |
 | `plan_confirm_list` | 全部未完成任务：耗时、开始、结束  | `text` + `object_ref`  | `confirm`（仅 `confirm_enabled`）、`edit`、`discard` | [PlanDraftView](domain-planning.md) |
 | `tutoring_hint`     | 启发式提示卡 + 阶梯       | `text`（Markdown/LaTeX） | `understood`、`more_hint`、`close`                | TutoringInteractionView             |
+| `pronunciation_lesson` | 已校验原文、发音提示与按需播放 | `text` + `object_ref`  | 无                                               | [PronunciationLessonView](domain-study.md#五query) |
 | `self_review`       | 盲评自评卡             | `object_ref`           | `submit_review`                                 | Evaluation 盲评投影                     |
 | `achievement`       | 任务收官轻量成就          | `text`                 | `close`                                         | StudySession 结算                     |
 | `start_cue`  | 到点后的开始邀请          | `text` + `object_ref`  | `start_due_task`、`continue_current`、`pause_current_and_start_due`、`snooze_once`（仅 `StartCueView` 允许的子集） | [StartCueView](domain-study.md) |
 | `failure`           | 可恢复失败             | `text`                 | `retry` / `restart`（仅 Outcome 允许时）              | 无                                   |
 
 
-没有 `generative_ui`、`custom_widget`、`tool_call_card`。视频、语音播报作为 `media_ref.kind` 扩展，不新开交互协议。
+没有 `generative_ui`、`custom_widget`、`tool_call_card`。首期发音不扩展 `MediaRef.kind=audio`：`pronunciation_lesson` 通过 `object_ref` 读取目标 View，App 再用其中的 `speech_ref + rate` 请求按需音频。未来若把音频作为 journal 附件，再单独评审 `media_ref.kind` 扩展，不新开交互协议。
 
 #### 5.2.3 信封与动作契约
 
 ```python
 class ObjectRef(BaseModel):
     context: Literal["planning", "study", "evaluation"]
-    object_type: str          # plan_draft | tutoring_session | self_review | ...
+    object_type: str          # plan_draft | tutoring_session | pronunciation_lesson | self_review | ...
     object_id: str
     object_version: int
-    query: str                # GetPlanDraft / GetTutoringInteraction / ...
+    query: str                # GetPlanDraft / GetTutoringInteraction / GetPronunciationLesson / ...
 
 class MediaRef(BaseModel):
     kind: Literal["image"]    # 本期仅 image；audio/video 需另开评审
@@ -539,7 +541,8 @@ class WorkflowInteractionView(BaseModel):
     protocol: Literal["companion-interaction.v1"]
     kind: Literal[
         "text", "text_media", "clarify", "plan_confirm_list",
-        "tutoring_hint", "self_review", "achievement", "start_cue", "failure",
+        "tutoring_hint", "pronunciation_lesson", "self_review",
+        "achievement", "start_cue", "failure",
     ]
     run_id: str
     turn_id: str
@@ -562,10 +565,14 @@ class StructuredWardCommand(BaseModel):
 确认类动作（`confirm_plan`、`submit_self_review`）由目标 Use Case 再校验不变量；信封里的
 `enabled=false` 只是 UI 门闩，不是业务授权。
 
+pronunciation 的 `clarify` 仍使用普通 `reply`：一个待确认文本可以要求确认或改正；多个候选必须在正文中给出非空选择集。权威候选及其附件 provenance 留在当前 checkpoint，下一轮只允许解析回该授权集合；`no_match` 只能要求裁剪、重拍或输入文字，不能生成空选择题。
+
 #### 5.2.4 流式事件（目标能力，非写模型）
 
 SSE 只传输展示增量，事件名固定。客户端可拼 `TEXT_DELTA`；只有最终 `INTERACTION_READY` 才刷新当前屏，
 只有 fence 通过的 Outcome 才写入一条 `CompanionMessage`。
+
+`pronunciation_lesson` 的播放器和速率控制只在最终 `INTERACTION_READY` 且 `object_ref` 可读后出现；`TEXT_DELTA` 不携带 `speech_ref`、音频 URL 或播放器状态。
 
 
 | event               | 含义                                             |
@@ -586,6 +593,7 @@ SSE 只传输展示增量，事件名固定。客户端可拼 `TEXT_DELTA`；只
 | 未知 `kind` / 未知 `command`              | 拒绝执行；展示 `text` 降级或 `failure` |
 | `confirm` 但目标 `confirm_enabled=false` | `409`，返回最新 `PlanDraftView`   |
 | `media_ref` 不属于当前 Ward 前缀或不存在         | `400`，不展示                    |
+| `pronunciation_lesson` 缺少 Study `object_ref`，或 `GetPronunciationLesson` 不可读 | 拒绝候选；降级为 `failure`，不得从正文解析发音字段 |
 | 模型候选含未登记 `kind` 或动作                   | OutputValidator 丢弃，确定性降级     |
 | 旧客户端只认识 `interaction.items`           | 服务端可同时填兼容字段一个版本窗口，之后删除       |
 
@@ -708,5 +716,19 @@ Given Ward 用新的 command_id 取消当前 focus Run
 When CancelAgentRun 通过 Ward、Thread 版本与 Run fence 校验
 Then Run 转为 cancelled 且后续迟到 Outcome 不再获得回复权
 And 已由目标 Context 提交的独立业务事务不会被 Coordinator 回滚
-```
 
+Given Study 返回 pronunciation_lesson 和可读的 GetPronunciationLesson object_ref
+When OutputValidator 接受当前 focus Run 的 Outcome
+Then INTERACTION_READY 才携带完整 pronunciation_lesson 交互
+And TEXT_DELTA 不携带 speech_ref、音频 URL 或播放器状态
+
+Given pronunciation 返回多个授权文本候选
+When Companion 呈现 clarify
+Then 正文包含非空选择集且动作只有 reply
+And 下一轮只能解析回 checkpoint 中的授权候选集合
+
+Given pronunciation 没有合法文本候选
+When Study 返回 no_match 的 needs_input
+Then Companion 要求裁剪、重拍或输入文字
+And 不呈现空选择题或 pronunciation_lesson
+```
