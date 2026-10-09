@@ -8,6 +8,7 @@ from collections.abc import Callable
 from app.application.ports.companion import IntentProposal
 from app.bootstrap.settings import settings
 from app.infrastructure.ai.model_gateway import ModelGatewayError
+from app.infrastructure.ai.utterance_window import WINDOW_RULE, user_content
 from app.infrastructure.observability.telemetry import model_call_span, record_model_response
 
 _LABELS = {"planning", "tutoring", "reflection", "unclear"}
@@ -17,6 +18,8 @@ _SYSTEM = (
     "planning 表示安排或修改学习任务；tutoring 表示提问、求解或想弄明白一个知识；"
     "reflection 表示复盘今天的学习；unclear 表示同时要做多件事，或听不出要哪一件。"
     "如果这句话是在延续当前 focus 场景，就再次返回该场景名。"
+    + WINDOW_RULE +
+    "场景仍然按这句话要做的事判断；对不上的指代不要猜成另一个场景。"
     "不得调用工具，不得回答问题本身，不得输出其它字段。"
 )
 
@@ -37,7 +40,10 @@ def parse_intent_payload(raw: str) -> IntentProposal:
     return IntentProposal(intent=intent)  # type: ignore[arg-type]
 
 
-def complete_intent(*, content: str, focus_agent_type: str | None) -> str:
+def complete_intent(
+    *, content: str, focus_agent_type: str | None, recent_utterances: list[dict] | None = None,
+    current_images: list[str | None] | None = None,
+) -> str:
     if not settings.agent_model_enabled:
         raise ModelGatewayError("model_provider_disabled")
     if not settings.dashscope_api_key:
@@ -45,9 +51,9 @@ def complete_intent(*, content: str, focus_agent_type: str | None) -> str:
     from app.infrastructure.ai.client import dashscope_client
 
     model = settings.planning_model
-    user = json.dumps(
+    user = user_content(
         {"content": content, "focus_agent_type": focus_agent_type},
-        ensure_ascii=False,
+        recent_utterances, current_images,
     )
     try:
         with model_call_span(operation="intent_proposal", model=model, agent_type=None) as telemetry:
@@ -73,8 +79,14 @@ class ModelIntentClassifier:
     def __init__(self, complete: Callable[..., str] | None = None):
         self._complete = complete or complete_intent
 
-    def propose(self, *, content: str, focus_agent_type: str | None) -> IntentProposal:
+    def propose(
+        self, *, content: str, focus_agent_type: str | None, recent_utterances: list[dict] | None = None,
+        current_images: list[str | None] | None = None,
+    ) -> IntentProposal:
         try:
-            return parse_intent_payload(self._complete(content=content, focus_agent_type=focus_agent_type))
+            return parse_intent_payload(self._complete(
+                content=content, focus_agent_type=focus_agent_type, recent_utterances=recent_utterances,
+                current_images=current_images,
+            ))
         except ModelGatewayError:
             return IntentProposal(intent="unclear")

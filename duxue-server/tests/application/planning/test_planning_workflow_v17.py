@@ -342,6 +342,9 @@ def test_confirmation_turn_sees_prior_itinerary_and_creates_those_tasks(db, monk
     other = AgentRun(thread_id=other_thread.id, ward_id=ward.id, agent_type='planning', run_ref='other')
     db.add_all([run, earlier, other])
     db.flush()
+    monkeypatch.setattr(
+        'app.application.queries.run_transcript._default_reader', lambda key: 'data:image/jpeg;base64,YQ==',
+    )
     question = '已从图片中识别出行程安排：码头出发 7:00、rumah pohon 9:00。请确认是否创建？'
     first = CompanionCommand(id=uid(), ward_id=ward.id, thread_id=thread.id, payload_digest='ask')
     current = CompanionCommand(id=uid(), ward_id=ward.id, thread_id=thread.id, payload_digest='now')
@@ -359,7 +362,7 @@ def test_confirmation_turn_sees_prior_itinerary_and_creates_those_tasks(db, monk
         CompanionMessage(
             ward_id=ward.id, thread_id=thread.id, command_id=first.id, run_id=run.id,
             turn_id=ask_turn, attempt=1, thread_version=2, author_type='ward',
-            content='我把这些图片里的安排成任务。', attachment_refs=['page.jpg'],
+            content='我把这些图片里的安排成任务。', attachment_refs=[f'ward/{ward.id}/companion/page.jpg'],
         ),
         CompanionMessage(
             ward_id=ward.id, thread_id=thread.id, command_id=first.id, run_id=run.id,
@@ -413,7 +416,8 @@ def test_confirmation_turn_sees_prior_itinerary_and_creates_those_tasks(db, monk
     assert '是的，都安排成任务。每个都是二十五分钟。' not in texts
     assert '另一条对话的秘密行程不该出现。' not in texts
     image = next(item for item in request.recent_utterances if '图片' in item['text'])
-    assert image['had_image'] is True
+    assert image['image_urls'] == ['data:image/jpeg;base64,YQ==']
+    assert not any('had_image' in item or 'attachment_refs' in item for item in request.recent_utterances)
     titles = {task.title: task.planned_minutes for task in db.query(Task)}
     assert titles['英语的典范故事阅读'] == 20
     assert titles['码头出发'] == 25

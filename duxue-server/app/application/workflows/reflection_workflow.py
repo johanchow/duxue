@@ -5,7 +5,9 @@ from sqlalchemy.orm import Session
 from app.application.ports.companion import RunInvocation, WorkflowOutcome
 from app.application.queries.context_builder import ContextBuilder
 from app.contexts.companion.domain.policy import PolicyRegistry
+from app.application.queries.run_transcript import current_turn_images, load_visible_utterances
 from app.infrastructure.ai.model_gateway import ModelGatewayError, QwenAgentModelGateway
+from app.infrastructure.ai.utterance_window import instruction_with_window
 from app.infrastructure.observability.telemetry import record_llm_fallback
 from app.bootstrap.settings import settings
 from app.infrastructure.messaging.outbox import publish_learning_fact
@@ -47,9 +49,18 @@ class ReflectionWorkflow:
         advice = "下一次卡住时，先写下已知条件再继续。"
         model_fallback = False
         try:
+            window = load_visible_utterances(
+                self.db, ward_id=invocation.ward_id, thread_id=invocation.thread_id,
+                exclude_turn_id=invocation.turn_id,
+            )
+            current_images = current_turn_images(invocation.ward_id, turn.get("attachment_keys"))
             candidate = QwenAgentModelGateway().generate(
                 agent_type="reflection", envelope=envelope.model_dump(),
-                instruction=f"孩子的今日自评是：{review.feeling}。给一句积极、具体且不评价人格的复盘建议。",
+                recent_utterances=window, current_images=current_images,
+                instruction=instruction_with_window(
+                    f"孩子的今日自评是：{review.feeling}。给一句积极、具体且不评价人格的复盘建议。",
+                    window, len(current_images),
+                ),
             )
             if PolicyRegistry().validate_candidate(candidate.model_dump(), allowed_tools=set()).accepted:
                 advice = candidate.content

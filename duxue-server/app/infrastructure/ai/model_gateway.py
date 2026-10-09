@@ -13,6 +13,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, ValidationError
 
 from app.bootstrap.settings import settings
+from app.infrastructure.ai.utterance_window import WINDOW_RULE, image_parts
 from app.infrastructure.observability.telemetry import model_call_span, record_model_response
 
 
@@ -28,22 +29,37 @@ class ModelGatewayError(RuntimeError):
     """A provider or candidate validation failure safe for deterministic fallback."""
 
 
+def system_prompt() -> str:
+    return (
+        "你是读学系统的受控学习助手。只返回一个 JSON 对象，字段为 content 和 "
+        "follow_up_question；不得调用工具、不得输出思维链，"
+        "不得把上下文中的个人数据扩写或泄露。content 必须是面向孩子的简短中文。"
+        "作业题不得给出最终答案。若指令中的 reply_mode 是 direct_answer，"
+        "content 必须直接写出词义或翻译，不能改成让孩子猜。"
+        + WINDOW_RULE
+    )
+
+
 class QwenAgentModelGateway:
     """OpenAI-compatible gateway, with model selection per Agent type."""
 
-    def generate(self, *, agent_type: AgentName, envelope: dict, instruction: str) -> AgentTextCandidate:
+    def generate(
+        self, *, agent_type: AgentName, envelope: dict, instruction: str,
+        recent_utterances: list[dict] | None = None, current_images: list[str | None] | None = None,
+    ) -> AgentTextCandidate:
+        """``instruction`` already carries the window text (``instruction_with_window``);
+        the pictures in that window and this turn's pictures follow as vision parts."""
         if not settings.agent_model_enabled:
             raise ModelGatewayError("model_provider_disabled")
         if not settings.dashscope_api_key:
             raise ModelGatewayError("model_provider_not_configured")
         from app.infrastructure.ai.client import dashscope_client
 
-        system = (
-            "你是读学系统的受控学习助手。只返回一个 JSON 对象，字段为 content 和 "
-            "follow_up_question；不得调用工具、不得给出解题最终答案、不得输出思维链，"
-            "不得把上下文中的个人数据扩写或泄露。content 必须是面向孩子的简短中文。"
-        )
-        user = json.dumps({"instruction": instruction, "context": envelope}, ensure_ascii=False)
+        system = system_prompt()
+        user = [
+            {"type": "text", "text": json.dumps({"instruction": instruction, "context": envelope}, ensure_ascii=False)},
+            *image_parts(list(recent_utterances or []), list(current_images or [])),
+        ]
         model = settings.agent_model(agent_type)
         try:
             with model_call_span(operation="agent_text", model=model, agent_type=agent_type) as telemetry:

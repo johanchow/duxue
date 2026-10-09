@@ -21,8 +21,15 @@ class IntentProposal(BaseModel):
 
 
 class IntentClassifier(Protocol):
-    def propose(self, *, content: str, focus_agent_type: str | None) -> IntentProposal:
-        """Return one closed intent label. No tools and no writes."""
+    def propose(
+        self, *, content: str, focus_agent_type: str | None, recent_utterances: list[dict] | None = None,
+        current_images: list[str | None] | None = None,
+    ) -> IntentProposal:
+        """Return one closed intent label. No tools and no writes.
+
+        ``recent_utterances`` rows may carry ``image_urls`` and ``current_images``
+        holds this turn's pictures; both reach the model as vision input.
+        """
 
 
 class RouteDecision(BaseModel):

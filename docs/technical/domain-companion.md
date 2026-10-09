@@ -1,6 +1,6 @@
 # 读学系统 — Companion Orchestration Context & Agent Runtime Design
 
-> 状态：讨论稿 · 版本：v3.3
+> 状态：讨论稿 · 版本：v3.4
 >
 > 范围：统一陪伴入口、Thread/Run 连续性、Coordinator Process Manager、目标 Workflow 的受控运行契约，以及 Ward 可见的 Companion Interaction Protocol。  
 >
@@ -100,9 +100,11 @@ flowchart TB
 
 
 
-`ContextSpec.utterance_scope` 固定为 `thread`。当前 Workflow 按预算读取这条 Thread 的近期原句，解决
-“同样的操作”“刚才那题”的指代；学生看到的是对话记录，不是 Run。Run 仍只拥有本次工作流的 checkpoint，
-确认后关闭。完整 transcript 不得进入 Memory、Trace 或 Checkpoint，也不得跨 Ward。
+`ContextSpec.utterance_scope` 固定为 `thread`。凡是要理解本轮 Ward 原句的模型调用，都带上这条 Thread 的最近原句窗口：当前 Turn 之外、按原样保留的最近 8 句，超预算时丢掉更早的句子，不改写成摘要。Run 边界不挡住上一句。学生看到的是对话记录，不是 Run。对象存储路径不写进这个窗口的文本。
+
+窗口里的图片和原句一起带入，不用 `had_image` 之类的标记代替。凡是读这个窗口的模型调用，包括场景路由、答疑主调用与泄露检查、计划整理、复盘建议和发音，都把窗口中当前 Ward 的已授权图片读成 `data:<mime>;base64,...`，放进同一条用户消息的 `image_url`；每句只在文本里列出它的 `image_ids`，同编号图片随后附上，本轮新图用 `current_image_ids`。窗口最多带最近 8 张。不属于当前 Ward 的图片只跳过、不发送。读不出来的图片告诉模型「无法读取」，不让它猜内容；只有发音在窗口图片读不出来时整轮失败。
+
+「他们」「刚才那句」「上面那个」这类指代，只能在这 8 句里确定对象。窗口里对不上、或有多个同样可能的对象时，模型必须追问是哪一句，不得自己补一个对象。完整 transcript 不得进入 Memory、Trace 或 Checkpoint，也不得跨 Ward。Run 仍只拥有本次工作流的 checkpoint，确认后关闭。
 
 ## 二、Companion 的领域模型
 
@@ -231,6 +233,8 @@ Repository/ORM 或创建多 Context 全局事务。
 同时出现多个业务意图时，模型必须提议 `unclear`，由代码进入澄清，不得猜测其中一个。
 澄清和安全都写入一条固定的、已校验的 Ward-facing 回复；不能返回没有正文的成功结果。
 安全词表只拦截已知伤害表述，不承担开放说法的意图理解。
+
+`tutoring` 只表示进入答疑场景。进入之后如何在 `problem_solving`、`curiosity`、`conversation`、`safety`、`pronunciation` 中选择，见 [Study §1.1](domain-study.md#11-控制模型)。这里不把发音加进 `IntentProposal`。
 
 ### 3.1 状态变更触发矩阵
 
@@ -381,7 +385,7 @@ Workflow 必须声明版本化 `ContextSpec`：Memory 范围、近期会话窗�
 | 内容          | 来源与规则                                                                     |
 | ----------- | ------------------------------------------------------------------------- |
 | 当前目标和对象 ID  | `RunInvocation` / 授权 `ContextRef`                                         |
-| 同一条对话的连续性 | 这条 Thread 的受控消息窗口、当前 Run 的确定性状态与已验证摘要，按预算裁剪 |
+| 同一条对话的连续性 | 这条 Thread 的最近 8 句原句，另加当前 Run 的确定性状态与已验证摘要。指代不能在这 8 句内确定时，候选必须是追问，不能是猜测的对象 |
 | 学习理解        | `MemoryFacade.resolve_context()` 返回的 ACL、visibility、freshness 标注后的 Bundle |
 | Policy / 工具 | `PolicyRegistry` 的版本快照与 allow-list                                        |
 | 禁止内容        | 其他 Ward 数据、完整原始聊天、Memory Aggregate、CoT、未裁剪工具原文                            |
@@ -397,7 +401,7 @@ Workflow 必须声明版本化 `ContextSpec`：Memory 范围、近期会话窗�
 | 目标 Context              | Workflow 可做什么                           | 不可做什么                         | 当前状态                 |
 | ----------------------- | --------------------------------------- | ----------------------------- | -------------------- |
 | Planning                | 审阅草稿、补字段、等待确认、调用 Planning 用例            | 绕过确认、容量/version guard 或直接写正式表 | 有限 Adapter 已接入       |
-| Study / Tutoring        | problem-solving 使用受限 ReAct；pronunciation 选择一次无工具的多模态 capability profile；校验候选、动作、预算并按需调用 Tutoring 用例 | 代写、无限循环、为发音另建 Extractor/Agent Loop、候选直接升 Signal | 目标契约，完整 Runtime 待落地 |
+| Study / Tutoring        | 进入 tutoring 后按 [Study §1.1](domain-study.md#11-控制模型) 由模型在一次受限循环里驱动，只读工具，唯一出口 `finish_turn`；发音是同一流程里的 `act=pronounce`；代码在出口做结构、越权与泄露三道检查，并按需调用 Tutoring 用例 | 代写、无限循环、为发音另建分支、Extractor 或 Agent Loop，候选直接升 Signal、把发音加进 Companion 场景枚举 | 目标契约，完整 Runtime 待落地 |
 | Evaluation & Reflection | 收集自评、基于锁定证据生成候选、调用 Reflection 用例        | 伪装未到达证据、覆盖旧报告语义               | 目标契约，完整 Workflow 待落地 |
 
 

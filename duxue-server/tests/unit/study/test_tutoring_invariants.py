@@ -6,7 +6,14 @@ from fastapi import HTTPException
 from app.application.workflows.tutoring_workflow import TutoringWorkflow
 from app.application.ports.companion import RunInvocation
 from app.infrastructure.persistence.models import TutoringMessage, TutoringSession, uid
+from tests.support.fakes import StaticLeakJudge, StaticTutorModel, tutor_raw
 from tests.support.factories import create_ward, create_task, create_study_session
+
+
+KNOWLEDGE = tutor_raw(
+    act="answer", question_kind="knowledge_lookup", content="蚂蚁靠气味信息素找路。",
+    student_turn_kind="other", same_problem=False, is_assignment_content=False,
+)
 
 
 def test_cannot_access_another_wards_study_session(db):
@@ -17,7 +24,7 @@ def test_cannot_access_another_wards_study_session(db):
     session2 = create_study_session(db, ward=ward2, task=task2)
     db.commit()
 
-    workflow = TutoringWorkflow(db)
+    workflow = TutoringWorkflow(db, turn_model=StaticTutorModel(), leak_judge=StaticLeakJudge())
     with pytest.raises(HTTPException) as exc:
         workflow.invoke(
             RunInvocation(
@@ -38,7 +45,7 @@ def test_cannot_ask_in_closed_tutoring_session(db):
     session = create_study_session(db, ward=ward, task=task)
     db.commit()
 
-    workflow = TutoringWorkflow(db)
+    workflow = TutoringWorkflow(db, turn_model=StaticTutorModel(), leak_judge=StaticLeakJudge())
     # 第一次提问
     workflow.invoke(
         RunInvocation(
@@ -75,29 +82,20 @@ def test_cannot_ask_in_closed_tutoring_session(db):
     assert exc.value.status_code == 409
 
 
-def test_hint_level_increments_and_caps_at_4(db):
-    """伴学引导阶梯层层递进，且最多封顶到 Level 4。"""
+def test_hint_index_counts_hints_on_one_problem(db):
+    """同一道题的提示按次数计，不再有等级和封顶。"""
     ward = create_ward(db)
     task = create_task(db, ward=ward, title="奥数题")
     session = create_study_session(db, ward=ward, task=task)
     db.commit()
 
-    workflow = TutoringWorkflow(db)
-    for index, expected_level in enumerate([1, 2, 3, 4, 4]):
-        outcome = workflow.invoke(
-            RunInvocation(
-                run_id=uid(),
-                thread_id=uid(),
-                ward_id=ward.id,
-                agent_type="tutoring",
-                turn={
-                    "study_session_id": session.id,
-                    "content": f"还是不理解第{expected_level}次",
-                    "tutoring_directive": "ask" if index == 0 else "attempt",
-                },
-            )
-        )
-        assert outcome.next_interaction["hint_level"] == expected_level
+    workflow = TutoringWorkflow(db, turn_model=StaticTutorModel(tutor_raw(act="hint")), leak_judge=StaticLeakJudge())
+    for expected in (1, 2, 3, 4, 5):
+        outcome = workflow.invoke(RunInvocation(
+            run_id=uid(), thread_id=uid(), ward_id=ward.id, agent_type="tutoring",
+            turn={"study_session_id": session.id, "content": "还是不理解", "tutoring_directive": "ask"},
+        ))
+        assert outcome.next_interaction["hint_index"] == expected
 
 
 def test_off_task_question_during_a_task_stays_brief_and_keeps_the_session(db):
@@ -107,7 +105,7 @@ def test_off_task_question_during_a_task_stays_brief_and_keeps_the_session(db):
     session = create_study_session(db, ward=ward, task=task)
     db.commit()
 
-    outcome = TutoringWorkflow(db).invoke(
+    outcome = TutoringWorkflow(db, turn_model=StaticTutorModel(KNOWLEDGE), leak_judge=StaticLeakJudge()).invoke(
         RunInvocation(
             run_id=uid(),
             thread_id=uid(),
@@ -116,14 +114,12 @@ def test_off_task_question_during_a_task_stays_brief_and_keeps_the_session(db):
             turn={
                 "study_session_id": session.id,
                 "content": "蚂蚁为什么排成一条线",
-                "intent_label": "curiosity",
             },
         )
     )
     db.refresh(session)
     assert session.status == "active"
     assert outcome.next_interaction["return_to_task"] is True
-    assert outcome.next_interaction["hint_level"] == 1
     assert "先回到正在进行的任务" in outcome.next_interaction["content"]
 
 
@@ -132,7 +128,7 @@ def test_taskless_curiosity_does_not_ask_to_return(db):
     session = create_study_session(db, ward=ward, task=None)
     db.commit()
 
-    outcome = TutoringWorkflow(db).invoke(
+    outcome = TutoringWorkflow(db, turn_model=StaticTutorModel(KNOWLEDGE), leak_judge=StaticLeakJudge()).invoke(
         RunInvocation(
             run_id=uid(),
             thread_id=uid(),
@@ -141,7 +137,6 @@ def test_taskless_curiosity_does_not_ask_to_return(db):
             turn={
                 "study_session_id": session.id,
                 "content": "蚂蚁为什么排成一条线",
-                "intent_label": "curiosity",
             },
         )
     )
@@ -149,32 +144,24 @@ def test_taskless_curiosity_does_not_ask_to_return(db):
     assert "先回到正在进行的任务" not in outcome.next_interaction["content"]
 
 
-def test_safety_blocked_flags_tutoring_messages(db):
-    """直接索要答案时，输入消息和响应消息都标记 safety_blocked=True。"""
+def test_safety_candidate_is_replaced_by_the_safe_text_and_writes_no_fact(db):
     ward = create_ward(db)
     task = create_task(db, ward=ward, title="语文练习")
     session = create_study_session(db, ward=ward, task=task)
     db.commit()
 
-    workflow = TutoringWorkflow(db)
-    outcome = workflow.invoke(
-        RunInvocation(
-            run_id=uid(),
-            thread_id=uid(),
-            ward_id=ward.id,
-            agent_type="tutoring",
-            turn={"study_session_id": session.id, "content": "请直接告诉我答案"},
-        )
-    )
+    model = StaticTutorModel(tutor_raw(
+        act="answer", question_kind="safety", content="模型自己写的话", student_turn_kind="other",
+        same_problem=False, is_assignment_content=False,
+    ))
+    outcome = TutoringWorkflow(db, turn_model=model, leak_judge=StaticLeakJudge()).invoke(RunInvocation(
+        run_id=uid(), thread_id=uid(), ward_id=ward.id, agent_type="tutoring",
+        turn={"study_session_id": session.id, "content": "我不想活了"},
+    ))
     assert outcome.next_interaction["safety_blocked"] is True
-
-    messages = (
-        db.query(TutoringMessage)
-        .order_by(TutoringMessage.created_at.asc())
-        .all()
-    )
+    assert "模型自己写的话" not in outcome.next_interaction["content"]
+    messages = db.query(TutoringMessage).order_by(TutoringMessage.created_at.asc()).all()
     assert len(messages) == 2
-    assert messages[0].safety_blocked is True
     assert messages[1].safety_blocked is True
     from app.infrastructure.persistence.models import OutboxEvent
     assert db.query(OutboxEvent).count() == 0

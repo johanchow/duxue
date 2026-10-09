@@ -27,6 +27,9 @@ def guard_external_ai_gateway():
     ), patch(
         "app.infrastructure.ai.intent_classifier.complete_intent",
         side_effect=ModelGatewayError("external_network_disabled_in_tests"),
+    ), patch(
+        "app.infrastructure.ai.tutor_turn_model._chat",
+        side_effect=ModelGatewayError("external_network_disabled_in_tests"),
     ):
         yield
 

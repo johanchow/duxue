@@ -7,7 +7,8 @@ plugins {
 
 android {
     namespace = "com.duxue.app"
-    compileSdk = flutter.compileSdkVersion
+    // flutter_tts compiles against Android SDK 36.
+    compileSdk = 36
     // Native Flutter plugins (including record_android) require NDK 27.
     ndkVersion = "27.0.12077973"
 
@@ -25,8 +26,8 @@ android {
         applicationId = "com.duxue.app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        // record_android 6.x captures PCM audio only on Android API 23+.
-        minSdk = 23
+        // record_android 6.x needs API 23+. flutter_tts needs API 24+.
+        minSdk = 24
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
