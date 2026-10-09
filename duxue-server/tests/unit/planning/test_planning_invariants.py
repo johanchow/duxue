@@ -213,7 +213,7 @@ def test_plan_intake_prompt_keeps_prior_run_utterances_verbatim():
         PlanIntakeInput(
             content="是的，都安排成任务。每个都是二十五分钟。",
             recent_utterances=[
-                {"author": "ward", "text": "我把这些图片里的安排成任务。", "had_image": True},
+                {"author": "ward", "text": "我把这些图片里的安排成任务。", "image_urls": ["data:image/jpeg;base64,YQ=="]},
                 {"author": "companion", "text": question},
             ],
         ),
@@ -221,7 +221,9 @@ def test_plan_intake_prompt_keeps_prior_run_utterances_verbatim():
 
     assert question in prompt
     assert "我把这些图片里的安排成任务。" in prompt
-    assert "（本句附有图片）" in prompt
+    assert "（附图片1）" in prompt
+    assert "data:image" not in prompt
+    assert "had_image" not in prompt
     assert "不要把「都」改写成任务池里已有的其他任务" in prompt
     assert "同一条对话的最近原句" in prompt
     assert "同样的操作" in prompt

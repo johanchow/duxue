@@ -17,30 +17,69 @@ class FakeModelGateway:
         self.raise_error = raise_error
         self.calls: list[dict[str, Any]] = []
 
-    def generate(self, *, agent_type: str, envelope: dict, instruction: str) -> AgentTextCandidate:
-        self.calls.append({"agent_type": agent_type, "envelope": envelope, "instruction": instruction})
+    def generate(
+        self, *, agent_type: str, envelope: dict, instruction: str,
+        recent_utterances: list[dict] | None = None, current_images: list | None = None,
+    ) -> AgentTextCandidate:
+        self.calls.append({
+            "agent_type": agent_type, "envelope": envelope, "instruction": instruction,
+            "recent_utterances": list(recent_utterances or []), "current_images": list(current_images or []),
+        })
         if self.raise_error:
             raise ModelGatewayError("fake model error")
         return self.candidate
 
 
-class StaticTutoringIntent:
-    def __init__(self, intent: str | None = "problem_solving"):
-        self.intent = intent
-        self.calls: list[str] = []
-        self.windows: list[list[dict]] = []
+def tutor_raw(**fields) -> dict:
+    """A valid tutor-turn.v1 candidate; override only what a test cares about."""
+    base = {
+        "act": "hint", "question_kind": "work_product_help", "content": "先说说已知条件是什么？",
+        "follow_up_question": None, "candidates": [], "student_turn_kind": "ask_hint",
+        "progress": None, "same_problem": True, "is_assignment_content": True,
+        "reveals_solution": False, "history_ref": None, "lesson": None,
+    }
+    return {**base, **fields}
 
-    def propose(self, *, content: str, recent_utterances: list[dict] | None = None) -> str | None:
-        self.calls.append(content)
-        self.windows.append(list(recent_utterances or []))
-        return self.intent
+
+class StaticTutorModel:
+    """Returns queued raw candidates in order (the last one repeats)."""
+
+    def __init__(self, *raws: dict):
+        self.raws = list(raws) or [tutor_raw()]
+        self.calls: list[dict] = []
+
+    def complete(
+        self, *, envelope: dict, instruction: str, recent_utterances: list[dict] | None = None,
+        current_images: list | None = None, repair_error: str | None = None,
+        observations: list[dict] | None = None,
+    ) -> dict:
+        self.calls.append({"observations": list(observations or []),
+            "envelope": envelope, "instruction": instruction,
+            "recent_utterances": list(recent_utterances or []),
+            "current_images": list(current_images or []), "repair_error": repair_error,
+        })
+        index = min(len(self.calls) - 1, len(self.raws) - 1)
+        return self.raws[index]
+
+
+class StaticLeakJudge:
+    def __init__(self, result: bool | None = False):
+        self.result = result
+        self.calls = 0
+
+    def leaks(self, *, text: str, task_title: str | None, problem_summary: str | None) -> bool | None:
+        self.calls += 1
+        return self.result
 
 
 class StaticIntentClassifier:
     def __init__(self, intent: str = "planning"):
         self.intent = intent
 
-    def propose(self, *, content: str, focus_agent_type: str | None, recent_utterances: list[dict] | None = None) -> IntentProposal:
+    def propose(
+        self, *, content: str, focus_agent_type: str | None, recent_utterances: list[dict] | None = None,
+        current_images: list | None = None,
+    ) -> IntentProposal:
         return IntentProposal(intent=self.intent)
 
 

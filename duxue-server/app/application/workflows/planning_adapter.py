@@ -13,7 +13,12 @@ from app.application.commands.memory import SqlAlchemyMemoryFacade
 from app.application.commands.plan_intake import PlanIntakeInput, PlanIntakeService
 from app.application.ports.companion import RunInvocation, WorkflowOutcome
 from app.application.queries.context_builder import ContextBuilder
-from app.application.queries.run_transcript import load_visible_utterances, recent_thread_utterances
+from app.application.queries.run_transcript import (
+    current_turn_images,
+    load_visible_utterances,
+    recent_thread_utterances,
+    visible_utterances,
+)
 from app.infrastructure.ai.utterance_window import instruction_with_window
 from app.application.workflows.planning_domain_service import PlanningDomainService
 from app.application.workflows.planning_workflow import build_planning_graph
@@ -98,6 +103,7 @@ class PlanningWorkflowAdapter:
         service = PlanningDomainService(self.db)
         service.release_unfinished_tasks(run.ward_id, planning_today())
         prepared_draft_id = None
+        window_rows: list[dict] | None = None
         if not confirm and structured.get("command") == "clarify_reply":
             payload = structured.get("payload") or {}
             draft = service.apply_operations(run.ward_id, planning_today(), [],
@@ -116,10 +122,11 @@ class PlanningWorkflowAdapter:
                             "candidates": [c["title"] for c in slot.get("candidates", [])],
                             "choices": slot.get("choices", []), "question": slot.get("question")} for slot in slots]
             attachment_keys = invocation.turn.get("attachment_keys") or []
-            utterances, omitted_utterances = recent_thread_utterances(
+            raw_utterances, omitted_utterances = recent_thread_utterances(
                 self.db, ward_id=run.ward_id, thread_id=invocation.thread_id,
                 exclude_turn_id=invocation.turn_id,
             )
+            utterances = window_rows = visible_utterances(raw_utterances, ward_id=run.ward_id)
             with planning_stage_span("plan_intake", run_id=run.id):
                 extracted = PlanIntakeService().respond(
                     ward={"id": ward.id, "display_name": ward.display_name, "grade_stage": ward.grade_stage},
@@ -203,15 +210,19 @@ class PlanningWorkflowAdapter:
         model_guidance, model_fallback = None, False
         if not confirm and not pending_fields:
             try:
+                if window_rows is None:
+                    window_rows = load_visible_utterances(
+                        self.db, ward_id=run.ward_id, thread_id=invocation.thread_id,
+                        exclude_turn_id=invocation.turn_id,
+                    )
+                review_images = current_turn_images(run.ward_id, invocation.turn.get("attachment_keys"))
                 with planning_stage_span("agent_text", run_id=run.id):
                     candidate = QwenAgentModelGateway().generate(
                         agent_type="planning", envelope=envelope.model_dump(),
+                        recent_utterances=window_rows, current_images=review_images,
                         instruction=instruction_with_window(
                             "根据已有任务，给一条简短的计划审阅提示；不得创建任务或声称已确认计划。",
-                            load_visible_utterances(
-                                self.db, ward_id=run.ward_id, thread_id=invocation.thread_id,
-                                exclude_turn_id=invocation.turn_id,
-                            ),
+                            window_rows, len(review_images),
                         ),
                     )
                 if PolicyRegistry().validate_candidate(candidate.model_dump(), allowed_tools=set()).accepted:

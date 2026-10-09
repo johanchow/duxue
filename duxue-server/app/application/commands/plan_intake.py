@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 from pydantic import BaseModel, Field, ValidationError
 
 from app.bootstrap.settings import settings
-from app.infrastructure.ai.utterance_window import WINDOW_RULE
+from app.infrastructure.ai.utterance_window import WINDOW_RULE, image_parts, window_text
 from app.infrastructure.observability.telemetry import (
     model_call_span,
     record_model_response,
@@ -95,12 +95,14 @@ def _prompt(ward: dict, tasks: list[dict], request: PlanIntakeInput) -> str:
 
 
 def _recent_utterance_block(request: PlanIntakeInput) -> str:
-    if not request.recent_utterances:
-        return ""
+    rows, current_ids = window_text(request.recent_utterances, len(request.attachment_keys))
+    if not rows:
+        return _current_image_block(current_ids)
     lines = []
-    for item in request.recent_utterances:
+    for item in rows:
         speaker = "学生" if item.get("author") == "ward" else "读学"
-        image = "（本句附有图片）" if item.get("had_image") else ""
+        ids = item.get("image_ids") or []
+        image = f"（附图片{'、'.join(str(i) for i in ids)}）" if ids else ""
         prefix = "（前段已按预算省略）" if item.get("leading_omitted") else ""
         lines.append(f"{speaker}{image}：{prefix}{item.get('text', '')}")
     omitted = (
@@ -114,8 +116,16 @@ def _recent_utterance_block(request: PlanIntakeInput) -> str:
         + "\n".join(lines)
         + "\n"
         + omitted
-        + "学生确认这些原句里列出的事项要创建时，为其中尚未出现在当前任务池的标题各输出一条 kind=create，并把学生明确说出的时长写入 planned_minutes。不要把「都」改写成任务池里已有的其他任务。本轮没有新图片时，以这些原句里已经写出的观察为准。\n\n"
+        + "学生确认这些原句里列出的事项要创建时，为其中尚未出现在当前任务池的标题各输出一条 kind=create，并把学生明确说出的时长写入 planned_minutes。不要把「都」改写成任务池里已有的其他任务。原句附带的图片会随后按编号给出，直接看图确认；本轮没有新图片时，以这些原句和它们的附图为准。\n"
+        + _current_image_block(current_ids)
+        + "\n"
     )
+
+
+def _current_image_block(current_ids: list[int]) -> str:
+    if not current_ids:
+        return ""
+    return f"本轮学生发来的图片编号：{'、'.join(str(i) for i in current_ids)}。\n"
 
 
 class PlanIntakeService:
@@ -127,7 +137,9 @@ class PlanIntakeService:
 
             client = dashscope_client()
             content: list[dict] = [{"type": "text", "text": _prompt(ward, tasks, request) + "\n\n本轮学生消息：\n" + request.content}]
-            content.extend({"type": "image_url", "image_url": {"url": _data_url(key)}} for key in request.attachment_keys)
+            content.extend(image_parts(
+                request.recent_utterances, [_data_url(key) for key in request.attachment_keys],
+            ))
             with model_call_span(operation="plan_intake", model=settings.task_intake_model) as telemetry:
                 response = client.chat.completions.create(
                     model=settings.task_intake_model,

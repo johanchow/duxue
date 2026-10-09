@@ -496,7 +496,7 @@ class EndToEndTest(unittest.TestCase):
     ):
         from app.application.ports.companion import IntentProposal, WorkflowOutcome
 
-        def propose(*, content, focus_agent_type, recent_utterances=None):
+        def propose(*, content, focus_agent_type, recent_utterances=None, current_images=None):
             if "也" in content and "安排" in content:
                 intent = "unclear"
             elif "安排" in content:

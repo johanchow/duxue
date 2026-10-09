@@ -155,7 +155,7 @@ def test_invalid_model_payload_becomes_unclear():
 
 
 def test_classifier_failure_proposes_unclear():
-    def fail(*, content: str, focus_agent_type: str | None, recent_utterances: list | None = None) -> str:
+    def fail(*, content: str, focus_agent_type: str | None, recent_utterances: list | None = None, current_images: list | None = None) -> str:
         raise ModelGatewayError("model_transport_error")
 
     proposal = ModelIntentClassifier(complete=fail).propose(content="铁木真是谁", focus_agent_type=None)

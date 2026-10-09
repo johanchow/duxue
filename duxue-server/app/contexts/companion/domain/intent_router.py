@@ -48,9 +48,10 @@ class IntentRouter:
         active_type = getattr(focus_run, "agent_type", None)
         active_id = getattr(focus_run, "id", None)
         if intent == "unclear":
-            # The classifier only sees text. An image with no explicit scene
-            # still has to reach Planning, the only workflow that reads pixels.
-            # An active tutoring or reflection focus is left unchanged.
+            # The classifier sees the images too, yet may still return unclear.
+            # An image with no explicit scene keeps its established default of
+            # reaching Planning. An active tutoring or reflection focus is
+            # left unchanged.
             if has_image and active_type in {None, "planning"}:
                 return RouteDecision(
                     target="planning",

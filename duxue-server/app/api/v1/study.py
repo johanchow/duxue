@@ -76,7 +76,7 @@ def tutor(session_id: str, body: MessageCreate, principal: Principal = Depends(c
     publish_learning_fact(db, ward_id=session.ward_id, event_type="tutoring.stuck_point_recorded", source_type="tutoring_message", source_id=question.id, payload={"study_session_id": session.id, "tutoring_session_id": tutoring_session.id})
     # Model routing remains injectable; this safe fallback keeps an unavailable provider from blocking study.
     answer = "先别急着找答案。你能说说题目已知什么、要解决什么吗？把第一步写出来，我们一起检查。"
-    db.add(TutoringMessage(tutoring_session_id=tutoring_session.id, role="assistant", content=answer, hint_level=1)); db.commit(); return {"role": "assistant", "content": answer, "mode": "socratic"}
+    db.add(TutoringMessage(tutoring_session_id=tutoring_session.id, role="assistant", content=answer)); db.commit(); return {"role": "assistant", "content": answer, "mode": "socratic"}
 
 @router.post("/sessions/{session_id}/finish")
 def finish_session(session_id: str, body: SessionFinish, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):

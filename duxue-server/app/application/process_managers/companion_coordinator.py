@@ -214,13 +214,14 @@ class CompanionCoordinator:
         focus_run = self._focus_run(thread)
         proposal = None
         if not self.router.blocks_for_safety(content) and route_hint not in _VALID_HINTS:
-            from app.application.queries.run_transcript import load_visible_utterances
+            from app.application.queries.run_transcript import current_turn_images, load_visible_utterances
 
             proposal = self.classifier.propose(
                 content=content, focus_agent_type=getattr(focus_run, "agent_type", None),
                 recent_utterances=load_visible_utterances(
                     self.db, ward_id=ward_id, thread_id=thread.id, exclude_turn_id=None,
                 ),
+                current_images=current_turn_images(ward_id, attachment_keys),
             )
         decision = self.router.decide(
             content=content, route_hint=route_hint, focus_run=focus_run, proposal=proposal,
