@@ -9,11 +9,13 @@ from sqlalchemy.orm.exc import StaleDataError
 
 from app.api.router import router
 from app.bootstrap.settings import settings
+from app.infrastructure.ai import components
 from app.infrastructure.observability.telemetry import configure_observability
 from app.infrastructure.persistence.database import engine
 
 
 def create_app() -> FastAPI:
+    components.validate_overrides()
     app = FastAPI(title="读学 Server", version="0.1.0")
     app.add_middleware(
         CORSMiddleware,

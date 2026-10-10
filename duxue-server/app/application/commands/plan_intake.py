@@ -8,13 +8,10 @@ from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, Field, ValidationError
 
-from app.bootstrap.settings import settings
+from app.infrastructure.ai import components
+from app.infrastructure.ai.errors import ModelGatewayError
 from app.infrastructure.ai.utterance_window import WINDOW_RULE, image_parts, window_text
-from app.infrastructure.observability.telemetry import (
-    model_call_span,
-    record_model_response,
-    record_plan_intake_structure,
-)
+from app.infrastructure.observability.telemetry import record_plan_intake_structure
 
 from .task_intake import TaskIntakeError, _data_url
 
@@ -133,30 +130,12 @@ class PlanIntakeService:
         if not request.content and not request.attachment_keys:
             raise TaskIntakeError("请先输入文字、说话或添加图片")
         try:
-            from app.infrastructure.ai.client import dashscope_client
-
-            client = dashscope_client()
             content: list[dict] = [{"type": "text", "text": _prompt(ward, tasks, request) + "\n\n本轮学生消息：\n" + request.content}]
             content.extend(image_parts(
                 request.recent_utterances, [_data_url(key) for key in request.attachment_keys],
             ))
-            with model_call_span(operation="plan_intake", model=settings.task_intake_model) as telemetry:
-                response = client.chat.completions.create(
-                    model=settings.task_intake_model,
-                    messages=[{"role": "user", "content": content}],
-                    response_format={"type": "json_object"},
-                    temperature=0,
-                    max_tokens=1600,
-                )
-                usage = response.usage
-                telemetry["provider_request_id"] = getattr(response, "id", None)
-                telemetry["tokens_in"] = getattr(usage, "prompt_tokens", None)
-                telemetry["tokens_out"] = getattr(usage, "completion_tokens", None)
-                raw = response.choices[0].message.content or "{}"
-            record_model_response(
-                agent_type="planning", model=settings.task_intake_model, content=raw, operation="plan_intake",
-            )
-            result = PlanIntakeResult.model_validate_json(raw)
+            payload = components.invoke_json_component(spec=components.COMPONENTS.get("planning.intake"), user=content)
+            result = PlanIntakeResult.model_validate(payload)
             record_plan_intake_structure(
                 has_image=bool(request.attachment_keys),
                 operation_count=len(result.operations),
@@ -166,6 +145,10 @@ class PlanIntakeService:
             )
         except (ValidationError, ValueError, json.JSONDecodeError) as error:
             raise TaskIntakeError("计划草稿格式异常，请换一种说法重试") from error
+        except ModelGatewayError as error:
+            if str(error) == "invalid_model_candidate":
+                raise TaskIntakeError("计划草稿格式异常，请换一种说法重试") from error
+            raise TaskIntakeError("计划整理暂不可用，请稍后重试") from error
         except Exception as error:
             raise TaskIntakeError("计划整理暂不可用，请稍后重试") from error
         if result.clarification_required or not result.operations:

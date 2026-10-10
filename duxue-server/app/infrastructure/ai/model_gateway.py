@@ -12,12 +12,14 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, ValidationError
 
-from app.bootstrap.settings import settings
-from app.infrastructure.ai.utterance_window import WINDOW_RULE, image_parts
-from app.infrastructure.observability.telemetry import model_call_span, record_model_response
+from app.infrastructure.ai import components
+from app.infrastructure.ai.errors import ModelGatewayError
+from app.infrastructure.ai.utterance_window import image_parts
 
+__all__ = ["AgentTextCandidate", "ModelGatewayError", "QwenAgentModelGateway"]
 
-AgentName = Literal["planning", "tutoring", "reflection"]
+AgentName = Literal["planning", "reflection"]
+_COMPONENT_BY_AGENT = {"planning": "planning.reply", "reflection": "reflection.advice"}
 
 
 class AgentTextCandidate(BaseModel):
@@ -25,23 +27,8 @@ class AgentTextCandidate(BaseModel):
     follow_up_question: str | None = Field(default=None, max_length=300)
 
 
-class ModelGatewayError(RuntimeError):
-    """A provider or candidate validation failure safe for deterministic fallback."""
-
-
-def system_prompt() -> str:
-    return (
-        "你是读学系统的受控学习助手。只返回一个 JSON 对象，字段为 content 和 "
-        "follow_up_question；不得调用工具、不得输出思维链，"
-        "不得把上下文中的个人数据扩写或泄露。content 必须是面向孩子的简短中文。"
-        "作业题不得给出最终答案。若指令中的 reply_mode 是 direct_answer，"
-        "content 必须直接写出词义或翻译，不能改成让孩子猜。"
-        + WINDOW_RULE
-    )
-
-
 class QwenAgentModelGateway:
-    """OpenAI-compatible gateway, with model selection per Agent type."""
+    """Planning / reflection text candidates through the registered components."""
 
     def generate(
         self, *, agent_type: AgentName, envelope: dict, instruction: str,
@@ -49,39 +36,14 @@ class QwenAgentModelGateway:
     ) -> AgentTextCandidate:
         """``instruction`` already carries the window text (``instruction_with_window``);
         the pictures in that window and this turn's pictures follow as vision parts."""
-        if not settings.agent_model_enabled:
-            raise ModelGatewayError("model_provider_disabled")
-        if not settings.dashscope_api_key:
-            raise ModelGatewayError("model_provider_not_configured")
-        from app.infrastructure.ai.client import dashscope_client
-
-        system = system_prompt()
         user = [
             {"type": "text", "text": json.dumps({"instruction": instruction, "context": envelope}, ensure_ascii=False)},
             *image_parts(list(recent_utterances or []), list(current_images or [])),
         ]
-        model = settings.agent_model(agent_type)
+        payload = components.invoke_json_component(
+            spec=components.COMPONENTS.get(_COMPONENT_BY_AGENT[agent_type]), user=user,
+        )
         try:
-            with model_call_span(operation="agent_text", model=model, agent_type=agent_type) as telemetry:
-                response = dashscope_client(
-                    timeout=settings.agent_model_timeout_seconds,
-                ).chat.completions.create(
-                    model=model,
-                    messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-                    temperature=0.2,
-                    max_tokens=450,
-                    response_format={"type": "json_object"},
-                )
-                usage = response.usage
-                telemetry["provider_request_id"] = getattr(response, "id", None)
-                telemetry["tokens_in"] = getattr(usage, "prompt_tokens", None)
-                telemetry["tokens_out"] = getattr(usage, "completion_tokens", None)
-                raw = (response.choices[0].message.content or "").strip()
-                record_model_response(
-                    agent_type=agent_type, model=model, content=raw, operation="agent_text",
-                )
-                return AgentTextCandidate.model_validate_json(raw)
-        except (ValidationError, ValueError, KeyError) as error:
+            return AgentTextCandidate.model_validate(payload)
+        except ValidationError as error:
             raise ModelGatewayError("invalid_model_candidate") from error
-        except Exception as error:
-            raise ModelGatewayError("model_transport_error") from error

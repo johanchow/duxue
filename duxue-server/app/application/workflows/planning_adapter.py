@@ -25,6 +25,7 @@ from app.application.workflows.planning_workflow import build_planning_graph
 from app.bootstrap.settings import settings
 from app.contexts.companion.domain.policy import PolicyRegistry
 from app.contexts.planning.domain.scheduling import CANCELLED, COMPLETED, TaskReferenceResolver, local_plan_date
+from app.infrastructure.ai import components
 from app.infrastructure.ai.model_gateway import ModelGatewayError, QwenAgentModelGateway
 from app.infrastructure.observability.telemetry import (
     planning_stage_span,
@@ -257,7 +258,7 @@ class PlanningWorkflowAdapter:
             "run_id": run.id, "turn_id": run.current_turn_id, "attempt": run.attempt,
             "content": text, "parts": [{"type": "text", "text": text}],
             "actions": [],
-            "model": settings.agent_model("planning"), "model_fallback": False,
+            "model": components.model_for("planning.reply"), "model_fallback": False,
         }
         return WorkflowOutcome(
             run_status=run.status, outcome_type="waiting", next_interaction=interaction,
@@ -320,7 +321,7 @@ class PlanningWorkflowAdapter:
                            "object_id": draft.id, "object_version": draft.version,
                            "query": "GetPlanDraft"},
             "actions": actions,
-            "model": settings.agent_model("planning"), "model_fallback": False,
+            "model": components.model_for("planning.reply"), "model_fallback": False,
         }
         return WorkflowOutcome(run_status=run.status, next_interaction=interaction,
                                checkpoint_ref=run.graph_checkpoint_ref,
@@ -427,7 +428,7 @@ class PlanningWorkflowAdapter:
                                "query": "GetPlanDraft"},
                 "actions": actions,
             }
-            interaction.update({"model": settings.agent_model("planning"), "model_fallback": model_fallback})
+            interaction.update({"model": components.model_for("planning.reply"), "model_fallback": model_fallback})
             if model_guidance:
                 interaction["model_guidance"] = model_guidance
             return WorkflowOutcome(
@@ -448,7 +449,7 @@ class PlanningWorkflowAdapter:
         run.status = (
             "closed" if outcome.get("status") == "confirmed" else "waiting_for_ward"
         )
-        outcome["model"] = settings.agent_model("planning")
+        outcome["model"] = components.model_for("planning.reply")
         outcome["model_fallback"] = model_fallback
         if model_guidance:
             outcome["model_guidance"] = model_guidance

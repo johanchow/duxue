@@ -450,7 +450,9 @@ class EndToEndTest(unittest.TestCase):
                 .count(),
                 4,
             )
-        self.assertIn(
+        # FinishStudySession completes the Task, which leaves the day's task pool
+        # (domain-planning.md, Task states).
+        self.assertNotIn(
             second,
             {
                 item["id"]
