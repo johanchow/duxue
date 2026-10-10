@@ -2,7 +2,7 @@
 
 > 状态：讨论稿 · 版本：v2.2
 > 适用范围：`duxue-server` 中 Ward 学习证据、情境记忆、可校正理解与长期画像投影。
-> 关联：[DDD 系统级 Overview](ddd-overview.md) · [陪伴编排](domain-companion.md) · [Planning Context](domain-planning.md) · [Study Context](domain-study.md) · [Evaluation Context](domain-evaluation.md) · [服务端物理 Schema](design-server.md) · [记忆 PRD](../product/prd-memory.md)
+> 关联：[DDD 系统级 Overview](ddd-overview.md) · [陪伴编排](domain-companion.md) · [Planning Context](domain-planning.md) · [Tutoring Context](domain-tutoring.md) · [Evaluation Context](domain-evaluation.md) · [服务端物理 Schema](design-server.md) · [记忆 PRD](../product/prd-memory.md)
 
 ## 一、边界、上下游与统一语言
 
@@ -11,7 +11,7 @@
 ```mermaid
 flowchart LR
     PL[Planning Context]
-    ST[Study Context]
+    ST[Tutoring Context]
     BA[Behavior Analysis]
     ER[Evaluation & Reflection]
     MC[Memory & Understanding Context]
@@ -37,7 +37,7 @@ flowchart LR
 | Long-Term Profile | Active 长期 Signal 的可重算读模型 | Memory Query Side |
 | Working Memory | 当前 Run 的可恢复运行状态 | Companion Runtime，不是本 Context 写 Aggregate |
 
-Planning、Study、Behavior Analysis 与 Evaluation & Reflection 在各自 Use Case 的本地事务中发布版本化 `LearningFactRecorded.v1`。Memory Consumer Adapter 负责 transport/schema 校验、去重和投递，`IngestLearningFact` 再以来源四元组 `source_type + source_id + event_type + source_version` 幂等写入本地 Evidence Ledger。跨 Context 不共享 Aggregate，也不直接改写彼此业务表。
+Planning、Tutoring、Behavior Analysis 与 Evaluation & Reflection 在各自 Use Case 的本地事务中发布版本化 `LearningFactRecorded.v1`。Memory Consumer Adapter 负责 transport/schema 校验、去重和投递，`IngestLearningFact` 再以来源四元组 `source_type + source_id + event_type + source_version` 幂等写入本地 Evidence Ledger。跨 Context 不共享 Aggregate，也不直接改写彼此业务表。
 
 ## 二、领域模型与 Aggregate
 
@@ -302,7 +302,7 @@ Aggregate 产生的 **Domain Event**。前者由接收方的 Application Event H
 
 | 触发与来源 | Adapter / 入口 | Memory Application Command / Handler | Domain 调用与原子边界 | 本地领域事件 | 后续 Outbox / Projection | 一致性、幂等与失败 |
 |---|---|---|---|---|---|---|
-| Planning、Study、Behavior Analysis、Evaluation & Reflection 发布 `LearningFactRecorded.v1` | Consumer Adapter 验证 transport/schema 后投递 | `IngestLearningFact` 校验版本、来源四元组与 ACL | create `LearningEvidence`；原子保证 append-only 与来源去重 | `LearningEvidenceRecorded`（本地） | 标记可被结算 Worker 处理 | 四元组唯一；未知 schema 死信/人工对账；重复投递无副作用 |
+| Planning、Tutoring、Behavior Analysis、Evaluation & Reflection 发布 `LearningFactRecorded.v1` | Consumer Adapter 验证 transport/schema 后投递 | `IngestLearningFact` 校验版本、来源四元组与 ACL | create `LearningEvidence`；原子保证 append-only 与来源去重 | `LearningEvidenceRecorded`（本地） | 标记可被结算 Worker 处理 | 四元组唯一；未知 schema 死信/人工对账；重复投递无副作用 |
 | 会话关闭、关联事实到达或周期性结算窗口 | Scheduler / Outbox Worker | `SettleEpisodicMemory` 选择同一 `aggregate_ref` 的证据并开启本地事务 | `EpisodicSettlementPolicy.decide()` → load/create `EpisodicMemory` → `attach_evidence()` → `settle(payload)` | `EpisodicMemorySettled` | 同 Context 结算/信号 Worker；更新 `EpisodicMemoryView` | 以 `memory_type + aggregate_ref + aggregate_version` 幂等；失败重试并可由 Ledger 重放 |
 | 已结算的情境、或受控证据窗口达到候选阈值 | Local Domain-Event Dispatcher / Worker | `ProposeCandidateSignal` | `SignalEvolutionService` 计算资格 → load/create `DerivedSignal` → `propose()` / `attach_evidence()` | `SignalProposed` | 更新 Candidate View；**不**更新 Profile | Policy/version 和 Signal identity 幂等；候选失败不影响 Evidence Ledger |
 | Ward 明确纠正 / 否认 | 受权 API / UI Command Adapter | `ChallengeSignal` 先把 Ward 陈述记录为可追溯证据，再处理命令 | load Signal → `attach_evidence(ward_fact, counterevidence)` → `challenge(statement)` | `SignalChallenged` | Profile Worker 移除其 Active 长期投影 | Ward、visibility、Signal 归属必须校验；重复命令按 evidence role 去重 |
@@ -323,7 +323,7 @@ Aggregate 产生的 **Domain Event**。前者由接收方的 Application Event H
 
 | Use Case | 触发与授权 | 输入与本地事务 | 决策结果 / 幂等键 |
 |---|---|---|---|
-| `CloseTutoringSession` | Ward 明确结束，或受权 UI 发出 `close` 指令；由 Study Context 拥有 | 关闭 `TutoringSession`，同事务记录 `tutoring.session_closed` Fact 与 Outbox | 一次会话关闭只发布一个关闭 Fact；未关闭、暂停或失联不等同于关闭 |
+| `CloseTutoringSession` | Ward 明确结束，或受权 UI 发出 `close` 指令；由 Tutoring Context 拥有 | 关闭 `TutoringSession`，同事务记录 `tutoring.session_closed` Fact 与 Outbox | 一次会话关闭只发布一个关闭 Fact；未关闭、暂停或失联不等同于关闭 |
 | `IngestLearningFact` | Memory Consumer 接到 `LearningFactRecorded.v1` | 校验 schema、ACL、来源四元组，创建 `LearningEvidence` | `source_type + source_id + event_type + source_version`；重复投递无副作用 |
 | `SettleEpisodicMemory` | 收到关闭 Fact 或结算 Worker 扫描到可结算来源 | 按 `EpisodicSettlementPolicy` 加载/创建 Episode，并附加证据链接 | `memory_type + aggregate_ref + aggregate_version`；重试只补齐遗漏链接 |
 | `ProposeCandidateSignal` | Episode 已结算，或证据窗口满足候选资格 | `SignalEvolutionService` 检查可用证据，创建/补充 `DerivedSignal` | Signal identity；只能写 `candidate`，不改变 Profile |
@@ -360,7 +360,7 @@ Aggregate 产生的 **Domain Event**。前者由接收方的 Application Event H
 
 | 异步步骤 | 生产者 → 接收方 | 幂等 / 顺序 | 失败、对账与重放 |
 |---|---|---|---|
-| 稳定 Fact 投递 | Planning / Study / Evaluation 本地事务 → `outbox_events` → Memory Consumer Adapter | 来源四元组；同一来源对象按 `source_version` 有序处理 | 投递失败保留待发送记录并退避重试；未知 schema 死信，人工对账后才可重放 |
+| 稳定 Fact 投递 | Planning / Tutoring / Evaluation 本地事务 → `outbox_events` → Memory Consumer Adapter | 来源四元组；同一来源对象按 `source_version` 有序处理 | 投递失败保留待发送记录并退避重试；未知 schema 死信，人工对账后才可重放 |
 | Fact 入账 | Consumer Adapter → `IngestLearningFact` | Evidence Ledger 的来源四元组唯一约束 | 重复投递无副作用；可根据 Outbox 与 Ledger 对账并补投 |
 | Episode 结算 | 关闭 Fact / Scheduler → `SettleEpisodicMemory` | `memory_type + aggregate_ref + aggregate_version`，证据链接去重 | 从 Ledger 重放；不能靠重新读取原始聊天补造证据 |
 | Signal / Profile 投影 | 本地 Episode 或 Signal 事件 → Worker / Projection | Signal identity；Profile 是全量覆盖式读模型 | 单个 Signal 失败可独立重试；Profile 可从 Active long-term Signals 全量重建 |
@@ -376,9 +376,9 @@ sequenceDiagram
     participant C as CompanionCoordinator
     participant T as Tutoring Workflow
     participant V as PolicyValidator
-    participant A as Study Application Service
+    participant A as Tutoring Application Service
     participant S as TutoringSession Aggregate
-    participant O as Study Outbox
+    participant O as Tutoring Outbox
     participant CA as Memory Consumer Adapter
     participant H as IngestLearningFact Handler
     participant L as LearningEvidence Aggregate
@@ -464,9 +464,9 @@ Outbox 投递、Fact 入账、Episode 结算、Signal 演进与 Profile 重建�
 |---|---|---|
 | Ward App / ASR | Actor | 发起受权学习交互 |
 | CompanionTurnEndpoint | Interface | 转换 HTTP/SSE 输入，不直接写领域状态 |
-| CompanionCoordinator | Process Manager | 路由一次受权 Run，不拥有 Study 或 Memory Aggregate |
-| Tutoring Workflow / Study Application Service | Use Case | 校验并在 Study 本地事务写入稳定 Fact 与 Outbox |
-| Study Outbox | Infrastructure | 可靠投递跨 Context `LearningFactRecorded.v1` |
+| CompanionCoordinator | Process Manager | 路由一次受权 Run，不拥有 Tutoring 或 Memory Aggregate |
+| Tutoring Workflow / Tutoring Application Service | Use Case | 校验并在 Tutoring 本地事务写入稳定 Fact 与 Outbox |
+| Tutoring Outbox | Infrastructure | 可靠投递跨 Context `LearningFactRecorded.v1` |
 | Memory Consumer Adapter | Interface | 验证 transport/schema、去重投递 `IngestLearningFact` |
 | IngestLearningFact | Use Case | ACL、来源四元组幂等和本地事务 |
 | LearningEvidence / EpisodicMemory / DerivedSignal | Aggregate Root | 分别保证证据、情境、理解主张的不变量 |

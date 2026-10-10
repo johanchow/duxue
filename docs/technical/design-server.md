@@ -44,7 +44,8 @@ duxue-server/
 |---|---|---|
 | Companion Orchestration | [domain-companion.md](domain-companion.md) | Thread/Run、Checkpoint/Trace、入口 API/SSE |
 | Planning & Scheduling | [domain-planning.md](domain-planning.md) | Task、PlanDraft、DailySchedule、确认事务 |
-| Study & Tutoring | [domain-study.md](domain-study.md) | Study/Tutoring Session、消息、运行时存储 |
+| Study | [domain-study.md](domain-study.md) | StudySession、StartCue |
+| Tutoring | [domain-tutoring.md](domain-tutoring.md) | TutoringSession、ProblemRecord、消息、运行时存储 |
 | Evaluation & Reflection | [domain-evaluation.md](domain-evaluation.md) | SelfReview、报告、投影与 Worker |
 | Memory & Understanding | [domain-memory.md](domain-memory.md) | Evidence、Memory、Signal、Profile 与清理 |
 
@@ -932,7 +933,7 @@ duxue-server/tests/
 |---|---|---|
 | Companion Orchestration | Thread version、唯一 focus、Run 生命周期、Handoff、迟到 Outcome fencing、传输断开不等于取消 | `command_id` 重放、SSE sequence 唯一、Checkpoint 兼容与恢复 |
 | Planning & Scheduling | 未确认不得写正式日程、任务归属、容量/时间冲突、基准版本冲突、确认幂等 | `draft_id + confirmation_id`、日程/任务/Outbox 原子提交 |
-| Study & Tutoring | 关闭后不得追加、直接索答/代写降级、不合规 patch 拒绝、提示/工具预算、Fact 产生条件 | 工具 ACL/超时降级、关闭 Fact 的可靠投递 |
+| Tutoring | 关闭后不得追加、直接索答/代写降级、不合规 patch 拒绝、提示/工具预算、Fact 产生条件 | 工具 ACL/超时降级、关闭 Fact 的可靠投递 |
 | Evaluation & Reflection | 盲评不泄露客观结论、Evidence Snapshot 锁定、报告只追加版本、行动采纳才产生 Fact | 迟到证据生成 supplement、报告/证据版本兼容 |
 | Memory & Understanding | Fact 来源四元组去重、Episode 必须“关闭 + 有效互动”、独立 Episode 才能晋升、反证立即 challenge、Profile 只投影 active long-term Signal | 数据库 identity 约束、顺序/重放/死信、Profile 全量重建 |
 | Behavior Analysis | 物理字段分类优先级、滑窗边界/同票、空输入、碎片吸收、异常时间间隔 | YAML 规则加载、帧/片段持久化与查询 |
