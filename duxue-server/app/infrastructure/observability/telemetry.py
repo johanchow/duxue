@@ -332,9 +332,15 @@ def agent_workflow_span(*, agent_type: str, run_id: str, thread_id: str) -> Iter
 
 
 @contextmanager
-def model_call_span(*, operation: str, model: str, agent_type: str | None = None) -> Iterator[dict[str, Any]]:
+def model_call_span(*, operation: str, model: str, agent_type: str | None = None,
+                    component_id: str | None = None, component_version: str | None = None,
+                    model_source: str | None = None) -> Iterator[dict[str, Any]]:
     started = perf_counter()
-    attrs = _attrs(**{"llm.operation": operation, "llm.model": model, "agent.type": agent_type})
+    attrs = _attrs(**{
+        "llm.operation": operation, "llm.model": model, "agent.type": agent_type,
+        "ai.component_id": component_id, "ai.component_version": component_version,
+        "ai.model_source": model_source,
+    })
     with trace.get_tracer("duxue.model").start_as_current_span("llm.request", attributes=attrs) as span:
         result: dict[str, Any] = {"result": "success", "tokens_in": None, "tokens_out": None, "provider_request_id": None}
         try:
@@ -387,13 +393,16 @@ def record_planning_loop_outcome(*, status: str, has_image: bool) -> None:
     _audit_logger.info("planning.loop", extra={"telemetry": attrs})
 
 
-def record_model_response(*, agent_type: str, model: str, content: str, operation: str | None = None) -> None:
+def record_model_response(*, agent_type: str, model: str, content: str, operation: str | None = None,
+                          component_id: str | None = None, component_version: str | None = None) -> None:
     """Record one model completion. Stdout and Grafana stay content-free; the original text goes to the local audit file."""
     summary = _summary(content)
     attrs = _attrs(**{
         "agent.type": agent_type,
         "llm.model": model,
         "llm.operation": operation,
+        "ai.component_id": component_id,
+        "ai.component_version": component_version,
         "output.length": summary["length"],
         "output.sha256": summary["sha256"],
     })

@@ -31,7 +31,6 @@ from app.application.workflows.tutor_turn import (
     format_schema_error,
     schema_error_diagnostic,
 )
-from app.bootstrap.settings import settings
 from app.contexts.companion.domain.policy import PolicyRegistry
 from app.contexts.tutoring.domain.tutor_permit import (
     HINT_ACTS,
@@ -39,6 +38,7 @@ from app.contexts.tutoring.domain.tutor_permit import (
     ProblemState,
     TutorPermitPolicy,
 )
+from app.infrastructure.ai import components
 from app.infrastructure.ai.model_gateway import ModelGatewayError
 from app.infrastructure.messaging.outbox import publish_learning_fact
 from app.infrastructure.observability.telemetry import (
@@ -158,7 +158,7 @@ class TutoringWorkflow:
         if tutor is None:
             tutor = TutoringSession(
                 ward_id=session.ward_id, study_session_id=session.id,
-                question_summary=content, model_name=settings.agent_model("tutoring"),
+                question_summary=content, model_name=components.model_for("tutoring.turn"),
             )
             self.db.add(tutor)
             self.db.flush()
@@ -413,7 +413,7 @@ class TutoringWorkflow:
                 "status": "needs_input", "content": text, "act": candidate.act,
                 "hint_index": hint_index, "problem_status": problem_status,
                 "answer_protected": answer_protected if problem_status is None else problem_status == "open", "safety_blocked": False,
-                "return_to_task": remind, "model": settings.agent_model("tutoring"), "model_fallback": False,
+                "return_to_task": remind, "model": components.model_for("tutoring.turn"), "model_fallback": False,
             },
             context_snapshot=envelope.trace_snapshot(),
         )
@@ -451,7 +451,7 @@ class TutoringWorkflow:
                 "status": "needs_input", "content": text, "problem_status": problem_status,
                 "answer_protected": permit.answer_protected,
                 "safety_blocked": blocked, "return_to_task": False,
-                "model": settings.agent_model("tutoring"), "model_fallback": not blocked,
+                "model": components.model_for("tutoring.turn"), "model_fallback": not blocked,
             },
             context_snapshot=envelope.trace_snapshot(),
         )

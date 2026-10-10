@@ -6,24 +6,11 @@ import json
 from collections.abc import Callable
 
 from app.application.ports.companion import IntentProposal
-from app.bootstrap.settings import settings
-from app.infrastructure.ai.model_gateway import ModelGatewayError
-from app.infrastructure.ai.utterance_window import WINDOW_RULE, user_content
-from app.infrastructure.observability.telemetry import model_call_span, record_model_response
+from app.infrastructure.ai import components
+from app.infrastructure.ai.errors import ModelGatewayError
+from app.infrastructure.ai.utterance_window import user_content
 
 _LABELS = {"planning", "tutoring", "reflection", "unclear"}
-_SYSTEM = (
-    "你只判断孩子这句话要进入哪个学习场景。只返回一个 JSON 对象，字段只有 intent。"
-    "intent 只能是 planning、tutoring、reflection、unclear 之一。"
-    "planning 表示安排或修改学习任务；tutoring 表示提问、求解或想弄明白一个知识；"
-    "reflection 表示复盘今天的学习；unclear 表示同时要做多件事，或听不出要哪一件。"
-    "如果这句话是在延续当前 focus 场景，就再次返回该场景名。"
-    + WINDOW_RULE +
-    "场景仍然按这句话要做的事判断；对不上的指代不要猜成另一个场景。"
-    "不得调用工具，不得回答问题本身，不得输出其它字段。"
-)
-
-
 def parse_intent_payload(raw: str) -> IntentProposal:
     text = (raw or "").strip()
     if text.startswith("```"):
@@ -44,35 +31,14 @@ def complete_intent(
     *, content: str, focus_agent_type: str | None, recent_utterances: list[dict] | None = None,
     current_images: list[str | None] | None = None,
 ) -> str:
-    if not settings.agent_model_enabled:
-        raise ModelGatewayError("model_provider_disabled")
-    if not settings.dashscope_api_key:
-        raise ModelGatewayError("model_provider_not_configured")
-    from app.infrastructure.ai.client import dashscope_client
-
-    model = settings.planning_model
     user = user_content(
         {"content": content, "focus_agent_type": focus_agent_type},
         recent_utterances, current_images,
     )
-    try:
-        with model_call_span(operation="intent_proposal", model=model, agent_type=None) as telemetry:
-            response = dashscope_client(timeout=settings.agent_model_timeout_seconds).chat.completions.create(
-                model=model,
-                messages=[{"role": "system", "content": _SYSTEM}, {"role": "user", "content": user}],
-                temperature=0,
-                max_tokens=60,
-                response_format={"type": "json_object"},
-            )
-            usage = response.usage
-            telemetry["provider_request_id"] = getattr(response, "id", None)
-            telemetry["tokens_in"] = getattr(usage, "prompt_tokens", None)
-            telemetry["tokens_out"] = getattr(usage, "completion_tokens", None)
-            raw = (response.choices[0].message.content or "").strip()
-            record_model_response(agent_type="intent", model=model, content=raw, operation="intent_proposal")
-            return raw
-    except Exception as error:
-        raise ModelGatewayError("model_transport_error") from error
+    payload = components.invoke_json_component(
+        spec=components.COMPONENTS.get("companion.intent"), user=user,
+    )
+    return json.dumps(payload, ensure_ascii=False)
 
 
 class ModelIntentClassifier:

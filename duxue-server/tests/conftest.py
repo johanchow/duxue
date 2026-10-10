@@ -25,10 +25,7 @@ def guard_external_ai_gateway():
         "app.infrastructure.ai.model_gateway.QwenAgentModelGateway.generate",
         side_effect=ModelGatewayError("external_network_disabled_in_tests"),
     ), patch(
-        "app.infrastructure.ai.intent_classifier.complete_intent",
-        side_effect=ModelGatewayError("external_network_disabled_in_tests"),
-    ), patch(
-        "app.infrastructure.ai.tutor_turn_model._chat",
+        "app.infrastructure.ai.components.invoke_json_component",
         side_effect=ModelGatewayError("external_network_disabled_in_tests"),
     ):
         yield

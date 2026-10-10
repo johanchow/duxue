@@ -63,14 +63,10 @@ class Settings:
     dashscope_api_key: str = os.getenv("VLM_API_KEY") or os.getenv("DASHSCOPE_API_KEY", "")
     dashscope_base_url: str = os.getenv("VLM_BATCH_BASE_URL") or os.getenv("VLM_API_BASE_URL") or os.getenv("DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
     vlm_model: str = os.getenv("VLM_MODEL_NAME") or os.getenv("VLM_MODEL", "qwen3-vl-flash")
-    # Each text use case is independently routable.  A provider migration only
-    # changes environment values; records retain the factual inputs, not a model
-    # specific response schema.
-    tutoring_model: str = os.getenv("TUTORING_MODEL_NAME") or os.getenv("VLM_MODEL_NAME") or "qwen3-vl-flash"
-    planning_model: str = os.getenv("PLANNING_MODEL_NAME") or os.getenv("VLM_MODEL_NAME") or "qwen3-vl-flash"
-    insight_model: str = os.getenv("INSIGHT_MODEL_NAME") or os.getenv("VLM_MODEL_NAME") or "qwen3-vl-flash"
-    guardian_story_model: str = os.getenv("GUARDIAN_STORY_MODEL_NAME") or os.getenv("VLM_MODEL_NAME") or "qwen3-vl-flash"
-    task_intake_model: str = os.getenv("TASK_INTAKE_MODEL") or os.getenv("VLM_MODEL_NAME") or "qwen3-vl-flash"
+    # Model names, prompts and generation parameters live in
+    # app/infrastructure/ai/components.py.  This is only the emergency override for
+    # non-protected components: JSON like {"planning.intake": "model-name"}.
+    ai_model_overrides: str = os.getenv("AI_MODEL_OVERRIDES", "").strip()
     agent_model_timeout_seconds: int = _integer("AGENT_MODEL_TIMEOUT_SECONDS", "20")
     agent_model_enabled: bool = os.getenv("AGENT_MODEL_ENABLED", "").lower() in {"1", "true", "yes"}
     batch_completion_window: str = os.getenv("VLM_BATCH_COMPLETION_WINDOW", "24h")
@@ -93,12 +89,6 @@ class Settings:
         "TTS_TOKEN_URL", "https://nls-meta.cn-shanghai.aliyuncs.com/",
     ).strip()
 
-    def agent_model(self, agent_type: str) -> str:
-        return {
-            "planning": self.planning_model,
-            "tutoring": self.tutoring_model,
-            "reflection": self.insight_model,
-        }[agent_type]
     redis_url: str = os.getenv("REDIS_URL") or ""
     redis_host: str = os.getenv("REDIS_HOST", "").strip()
     redis_port: int = _integer("REDIS_PORT", "6379")

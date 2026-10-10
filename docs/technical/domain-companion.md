@@ -664,8 +664,8 @@ Context Fact 通过目标 Outbox 最终一致进入 Memory。
 当前已实现：Thread/Run/Checkpoint/Trace 持久化、规则路由、`MemoryFacade`、`/companion/turn`、
 `command_id` 幂等、Run/turn/attempt/focus fence、取消命令与可重放 SSE 事件。Memory Fact 的异步
 投递由 Outbox Consumer/Celery Worker 处理。Planning、Tutoring、Reflection 通过类型化 Qwen
-Gateway 各允许每 Turn 一个候选调用，分别由 `PLANNING_MODEL_NAME`、`TUTORING_MODEL_NAME`、
-`INSIGHT_MODEL_NAME` 路由；只有 `AGENT_MODEL_ENABLED=true` 才会发送脱敏 `ContextEnvelope`。
+Gateway 各允许每 Turn 一个候选调用，模型、prompt 与参数由
+[AI Component Registry](design-ai-components.md) 统一声明；只有 `AGENT_MODEL_ENABLED=true` 才会发送脱敏 `ContextEnvelope`。
 外部工具仍为零预算。候选必须通过 Policy/Validator；失败时确定性降级，且不得作为业务写入。
 `CompanionMessage` journal 由 Coordinator 在短事务中追加，`CompanionTranscriptView` 通过 Ward 专属
 分页 API 读取；Ward 首页只经 `/companion/turn` 写入统一入口。

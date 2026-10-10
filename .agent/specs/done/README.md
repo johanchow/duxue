@@ -9,3 +9,4 @@
 | [companion-message-transcript.md](companion-message-transcript.md) | 2026-09-15 |
 | [implement-companion-messages.md](implement-companion-messages.md) | 2026-09-15 |
 | [split-study-tutoring-domain.md](split-study-tutoring-domain.md) | 2026-10-10 |
+| [unify-ai-component-gateway.md](unify-ai-component-gateway.md) | 2026-10-11 |

@@ -143,7 +143,7 @@ def test_tutor_turn_gateway_attaches_window_and_current_pictures(monkeypatch):
         sent.update(kwargs)
         return {"act": "hint"}
 
-    monkeypatch.setattr(tutor_turn_model, "_chat", chat)
+    monkeypatch.setattr(tutor_turn_model.components, "invoke_json_component", chat)
     tutor_turn_model.QwenTutorTurnGateway().complete(
         envelope={}, instruction="{}",
         recent_utterances=[{"author": "ward", "text": "第一页", "image_urls": ["data:a"]}],

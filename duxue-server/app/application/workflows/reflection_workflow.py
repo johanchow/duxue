@@ -6,10 +6,10 @@ from app.application.ports.companion import RunInvocation, WorkflowOutcome
 from app.application.queries.context_builder import ContextBuilder
 from app.contexts.companion.domain.policy import PolicyRegistry
 from app.application.queries.run_transcript import current_turn_images, load_visible_utterances
+from app.infrastructure.ai import components
 from app.infrastructure.ai.model_gateway import ModelGatewayError, QwenAgentModelGateway
 from app.infrastructure.ai.utterance_window import instruction_with_window
 from app.infrastructure.observability.telemetry import record_llm_fallback
-from app.bootstrap.settings import settings
 from app.infrastructure.messaging.outbox import publish_learning_fact
 from app.application.commands.memory import SqlAlchemyMemoryFacade
 from app.infrastructure.persistence.models import FocusKit, Report, SelfReview, now
@@ -67,4 +67,4 @@ class ReflectionWorkflow:
         except ModelGatewayError as error:
             model_fallback = True
             record_llm_fallback(operation="agent_text", reason=str(error))
-        return WorkflowOutcome(run_status="closed", outcome_type="completed", context_refs=[f"self_review:{review.id}"], next_interaction={"status": "ready", "objective_evidence_status": "available" if report else "pending", "advice": advice, "model": settings.agent_model("reflection"), "model_fallback": model_fallback}, context_snapshot=envelope.trace_snapshot())
+        return WorkflowOutcome(run_status="closed", outcome_type="completed", context_refs=[f"self_review:{review.id}"], next_interaction={"status": "ready", "objective_evidence_status": "available" if report else "pending", "advice": advice, "model": components.model_for("reflection.advice"), "model_fallback": model_fallback}, context_snapshot=envelope.trace_snapshot())
