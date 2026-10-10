@@ -77,6 +77,38 @@ def test_flat_pronounce_fields_become_a_lesson():
     assert _verdict(raw).ok
 
 
+def test_clarify_discards_a_malformed_stray_lesson_and_misplaced_pronounce_kind():
+    """不明指代时，坏掉的发音卡不能吞掉仍可安全展示的澄清。"""
+    raw = {
+        "act": "clarify", "question_kind": "pronounce",
+        "content": "你说的是上面的哪一个单词？请点一下或把它发给我。",
+        # 这正是模型把 act/字段位置混淆时的残留；lesson 本身不完整。
+        "lesson": {"source_text": "", "locale": "en-US", "notes": []},
+    }
+    candidate = TutorTurnCandidate.model_validate(raw)
+    assert candidate.question_kind == "chat"
+    assert candidate.lesson is None
+    assert _verdict(raw).ok
+
+
+def test_malformed_lesson_on_an_answer_is_not_repaired():
+    """只有 clarify 可丢 lesson，answer 不得借容错绕开出口检查。"""
+    raw = {
+        "act": "answer", "question_kind": "work_product_help",
+        "content": "这道题的答案是 42。",
+        "lesson": {"source_text": "", "locale": "en-US", "notes": []},
+    }
+    with pytest.raises(ValidationError):
+        TutorTurnCandidate.model_validate(raw)
+
+
+def test_pronounce_in_question_kind_is_not_repaired_for_an_answer():
+    """不得把未知 answer 的错误分类降级为 chat，避免绕开作业保护。"""
+    raw = {"act": "answer", "question_kind": "pronounce", "content": "答案是 42。"}
+    with pytest.raises(ValidationError):
+        TutorTurnCandidate.model_validate(raw)
+
+
 def test_answer_without_question_kind_still_fails():
     raw = {"act": "answer", "content": "这个词是 in advance。"}
     with pytest.raises(ValidationError):

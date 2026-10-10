@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.application.ports.companion import RunInvocation
 from app.application.workflows.tutoring_workflow import TutoringWorkflow
+from app.infrastructure.ai.model_gateway import ModelGatewayError
 from app.infrastructure.persistence.models import (
     CompanionCommand,
     CompanionMessage,
@@ -241,6 +242,29 @@ def test_structure_error_retries_once_then_falls_back(db):
     assert len(model.calls) == 2 and model.calls[1]["repair_error"]
     assert outcome.next_interaction["model_fallback"] is True
     assert _events(db) == []
+
+
+def test_invalid_json_gateway_response_retries_once_then_keeps_a_valid_reply(db):
+    """空字符串等网关层 JSON 错误也应得到一次定向修复机会。"""
+    _, session = _setup(db)
+
+    class InvalidJsonThenValidModel:
+        def __init__(self):
+            self.calls = []
+
+        def complete(self, **kwargs):
+            self.calls.append(kwargs)
+            if len(self.calls) == 1:
+                raise ModelGatewayError("invalid_model_candidate")
+            return KNOWLEDGE
+
+    model = InvalidJsonThenValidModel()
+    workflow = TutoringWorkflow(db, turn_model=model, leak_judge=StaticLeakJudge())
+    outcome = _ask(db, workflow, session, "beach 是什么意思")
+    assert len(model.calls) == 2
+    assert model.calls[1]["repair_error"]
+    assert outcome.next_interaction["model_fallback"] is False
+    assert "钻石海滩" in outcome.next_interaction["content"]
 
 
 def test_tutoring_without_session_opens_a_taskless_session_and_replies(db):

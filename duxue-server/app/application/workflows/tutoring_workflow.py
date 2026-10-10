@@ -39,6 +39,7 @@ from app.contexts.tutoring.domain.tutor_permit import (
     ProblemState,
     TutorPermitPolicy,
 )
+from app.infrastructure.ai.model_gateway import ModelGatewayError
 from app.infrastructure.messaging.outbox import publish_learning_fact
 from app.infrastructure.observability.telemetry import (
     record_llm_fallback,
@@ -190,6 +191,18 @@ class TutoringWorkflow:
                     envelope=envelope, instruction=instruction, recent_utterances=window,
                     current_images=images, repair_error=repair, observations=observations,
                 )
+            except ModelGatewayError as error:
+                # json.loads() lives in the provider adapter.  An empty string
+                # or malformed JSON gets here before Pydantic can issue its
+                # usual repair request, but it deserves the same one retry.
+                if str(error) == "invalid_model_candidate" and repair is None:
+                    record_tutor_candidate_rejection(
+                        error_type="invalid_json", field="root", retrying=True,
+                    )
+                    repair = "返回的内容不是有效 JSON 对象；只返回一个符合 tutor-turn.v1 的 JSON 对象。"
+                    continue
+                record_llm_fallback(operation="tutor_turn", reason=str(error))
+                return None
             except Exception as error:  # noqa: BLE001 - provider failures must fall back safely.
                 record_llm_fallback(operation="tutor_turn", reason=str(error))
                 return None

@@ -9,7 +9,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal, Protocol
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 from app.application.workflows.pronunciation_guidance import (
     LessonBody,
@@ -63,10 +70,32 @@ class TutorTurnCandidate(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def normalize_pronounce_shape(cls, value):
-        """Accept a flat lesson and a missing question_kind. Pronounce does not use that label."""
-        if not isinstance(value, dict) or value.get("act") != "pronounce":
+        """Discard harmless misplaced metadata before validating the child-facing core.
+
+        This normalizes only the unprojected lesson on ``clarify``.  In
+        particular, an invalid ``question_kind`` on an answer is deliberately
+        *not* repaired: guessing there could weaken work-product protection.
+        """
+        if not isinstance(value, dict):
             return value
         value = dict(value)
+        act = value.get("act")
+        if act == "clarify":
+            # A clarification says the referenced source has not been
+            # confirmed.  lesson is never projected for it, so it is safe to
+            # discard before its own fields are validated.
+            value.pop("lesson", None)
+            for key in _LESSON_KEYS:
+                value.pop(key, None)
+
+        # "pronounce" is an act, never a question_kind.  Repair this exact
+        # misplaced token only for acts that cannot reveal an answer.
+        if value.get("question_kind") == "pronounce" and act in {"pronounce", "clarify"}:
+            value["question_kind"] = "chat"
+
+        if act != "pronounce":
+            return value
+
         kind = value.get("question_kind")
         if kind is None or (isinstance(kind, str) and not kind.strip()):
             value["question_kind"] = "chat"
