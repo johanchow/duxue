@@ -3,50 +3,74 @@ from __future__ import annotations
 import json
 
 from fastapi import HTTPException
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.application.commands.memory import SqlAlchemyMemoryFacade
 from app.application.ports.companion import RunInvocation, WorkflowOutcome
+from app.application.ports.tutoring import SafetyScreeningPort
 from app.application.queries.context_builder import ContextBuilder
-from app.application.workflows.pronunciation_guidance import build_interaction, project_lesson
+from app.application.workflows.pronunciation_guidance import (
+    build_interaction,
+    project_lesson,
+)
 from app.application.workflows.teaching_skills import history_candidates
+from app.application.workflows.tutor_tools import (
+    MAX_MODEL_CALLS,
+    MAX_TOOL_CALLS,
+    TutorToolbox,
+)
 from app.application.workflows.tutor_turn import (
-    FALLBACK_TEXT, REMINDER, SAFE_TEXT, LeakJudgePort, TutorModelPort, TutorTurnCandidate,
-    check_authority, format_schema_error,
+    FALLBACK_TEXT,
+    REMINDER,
+    SAFE_TEXT,
+    LeakJudgePort,
+    TutorModelPort,
+    TutorTurnCandidate,
+    check_authority,
+    format_schema_error,
+    schema_error_diagnostic,
 )
 from app.bootstrap.settings import settings
 from app.contexts.companion.domain.policy import PolicyRegistry
-from app.contexts.study.domain.tutor_permit import (
-    HINT_ACTS, ProblemAssessment, ProblemState, TutorPermitPolicy,
+from app.contexts.tutoring.domain.tutor_permit import (
+    HINT_ACTS,
+    ProblemAssessment,
+    ProblemState,
+    TutorPermitPolicy,
 )
 from app.infrastructure.messaging.outbox import publish_learning_fact
-from app.infrastructure.observability.telemetry import record_llm_fallback
-from app.infrastructure.persistence.models import (
-    StudySession, StudySessionInterval, Task, TutoringMessage, TutoringProblem, TutoringSession, now,
+from app.infrastructure.observability.telemetry import (
+    record_llm_fallback,
+    record_tutor_candidate_rejection,
 )
-from pydantic import ValidationError
-
-from app.application.workflows.tutor_tools import MAX_MODEL_CALLS, MAX_TOOL_CALLS, TutorToolbox
-
+from app.infrastructure.persistence.models import (
+    StudySession,
+    StudySessionInterval,
+    Task,
+    TutoringMessage,
+    TutoringProblem,
+    TutoringSession,
+    now,
+)
 
 
 def _state(row: TutoringProblem | None) -> ProblemState | None:
     if row is None:
         return None
     return ProblemState(
-        solution_state=row.solution_state, substantive_attempts=row.substantive_attempts,
-        no_progress_streak=row.no_progress_streak, hints_given=row.hints_given,
-        answer_requested=row.answer_requested, status=row.status,
+        status=row.status, active_subgoal=row.active_subgoal,
+        substantive_attempts=row.substantive_attempts, hints_given=row.hints_given,
+        evidence_summary=row.evidence_summary,
     )
 
 
 def _store(row: TutoringProblem, state: ProblemState) -> None:
-    row.solution_state = state.solution_state
     row.status = state.status
+    row.active_subgoal = state.active_subgoal
     row.substantive_attempts = state.substantive_attempts
-    row.no_progress_streak = state.no_progress_streak
     row.hints_given = state.hints_given
-    row.answer_requested = state.answer_requested
+    row.evidence_summary = state.evidence_summary
 
 
 class TutoringWorkflow:
@@ -54,10 +78,12 @@ class TutoringWorkflow:
 
     def __init__(
         self, db: Session, turn_model: TutorModelPort | None = None, leak_judge: LeakJudgePort | None = None,
+        safety_screening: SafetyScreeningPort | None = None,
     ):
         self.db = db
         self.turn_model = turn_model
         self.leak_judge = leak_judge
+        self.safety_screening = safety_screening
         self._media_cache: dict[str, tuple[list[dict], list[str | None]]] = {}
 
     def _model(self) -> TutorModelPort:
@@ -72,11 +98,20 @@ class TutoringWorkflow:
             self.leak_judge = QwenLeakJudge()
         return self.leak_judge
 
+    def _safety(self) -> SafetyScreeningPort:
+        if self.safety_screening is None:
+            from app.infrastructure.ai.tutoring_safety import LocalSafetyScreening
+            self.safety_screening = LocalSafetyScreening()
+        return self.safety_screening
+
     def _media(self, invocation: RunInvocation) -> tuple[list[dict], list[str | None]]:
         """Window rows with their images, plus this turn's images. Read once per turn."""
         key = f"{invocation.run_id}:{invocation.turn_id}"
         if key not in self._media_cache:
-            from app.application.queries.run_transcript import current_turn_images, load_visible_utterances
+            from app.application.queries.run_transcript import (
+                current_turn_images,
+                load_visible_utterances,
+            )
 
             self._media_cache[key] = (
                 load_visible_utterances(
@@ -155,7 +190,7 @@ class TutoringWorkflow:
                     envelope=envelope, instruction=instruction, recent_utterances=window,
                     current_images=images, repair_error=repair, observations=observations,
                 )
-            except Exception as error:
+            except Exception as error:  # noqa: BLE001 - provider failures must fall back safely.
                 record_llm_fallback(operation="tutor_turn", reason=str(error))
                 return None
             if isinstance(raw, dict) and "tool" in raw:
@@ -169,6 +204,10 @@ class TutoringWorkflow:
             try:
                 return TutorTurnCandidate.model_validate(raw)
             except (ValidationError, ValueError) as error:
+                error_type, field = schema_error_diagnostic(error)
+                record_tutor_candidate_rejection(
+                    error_type=error_type, field=field, retrying=repair is None,
+                )
                 if repair is not None:  # 结构错误只重试一次
                     break
                 repair = format_schema_error(error)
@@ -206,14 +245,22 @@ class TutoringWorkflow:
             )
         if tutor is not None and tutor.status == "closed":
             raise HTTPException(409, "tutoring session is closed")
+        if session is not None and session.status not in {"active", "paused"}:
+            raise HTTPException(409, "study session is no longer open for tutoring")
 
         content = turn.get("content", "")
         problem_row = self._open_problem(tutor) if tutor is not None else None
-        permit = TutorPermitPolicy.permit(
-            _state(problem_row), task_id=session.task_id if session else None,
-            session_status=session.status if session else "",
-            task_title=self._task_title(session.task_id if session else None),
-        )
+        permit = TutorPermitPolicy.permit(_state(problem_row))
+        task_title = self._task_title(session.task_id if session else None)
+        task_active = bool(session and session.task_id and session.status in {"active", "paused"})
+        if self._safety().blocks_input(text=content):
+            session, tutor = self._ensure_tutor(invocation.ward_id, session, tutor, content)
+            refs = [f"tutoring_session:{tutor.id}"]
+            self._ward_message(tutor, content)
+            return self._reply(
+                invocation, tutor, refs, envelope, text=SAFE_TEXT, blocked=True,
+                permit=permit, problem_status=problem_row.status if problem_row else None,
+            )
         if directive == "understood":
             session, tutor = self._ensure_tutor(invocation.ward_id, session, tutor, content)
             ward_msg = self._ward_message(tutor, content)
@@ -224,7 +271,8 @@ class TutoringWorkflow:
             )
             return WorkflowOutcome(
                 run_status="waiting_for_ward", outcome_type="waiting", context_refs=[f"tutoring_session:{tutor.id}"],
-                next_interaction={"status": "understood", "solution_state": permit.solution, "safety_blocked": False},
+                next_interaction={"status": "understood", "problem_status": problem_row.status if problem_row else None,
+                                  "answer_protected": permit.answer_protected, "safety_blocked": False},
                 context_snapshot=envelope.trace_snapshot(),
             )
 
@@ -249,11 +297,16 @@ class TutoringWorkflow:
         }, ensure_ascii=False)
         tools = TutorToolbox(
             self.db, tutoring_session_id=tutor.id if tutor else None, problem=problem_row,
-            task_title=permit.task_title, task_active=permit.must_remind_task, window=window,
+            task_title=task_title, task_active=task_active, window=window,
         )
         candidate = self._call_model(envelope.model_dump(), instruction, window, images, tools)
         verdict = None
         if candidate is not None:
+            # A clarification says the referenced source is not yet confirmed.
+            # Its accompanying lesson must never be projected, but the safe
+            # clarification itself is still useful to the Ward.
+            if candidate.act == "clarify" and candidate.lesson is not None:
+                candidate = candidate.model_copy(update={"lesson": None})
             verdict = check_authority(
                 candidate, permit, has_open_problem=problem_row is not None,
                 authorized_history_refs=frozenset(tools.authorized_refs),
@@ -264,13 +317,15 @@ class TutoringWorkflow:
             elif verdict.needs_leak_check:
                 judged = self._judge().leaks(
                     text=f"{candidate.content}\n{candidate.follow_up_question or ''}",
-                    task_title=permit.task_title, problem_summary=problem_row.summary if problem_row else content,
+                    task_title=task_title, problem_summary=problem_row.summary if problem_row else content,
                 )
                 if judged is not False:  # True 泄露；None 判定失败，同样 fail-closed
                     verdict = None
                     record_llm_fallback(operation="tutor_turn", reason="leak_check_failed" if judged is None else "leak_detected")
         failed = candidate is None or verdict is None or not verdict.ok
-        safety = not failed and candidate.question_kind == "safety"
+        safety = not failed and (
+            candidate.question_kind == "safety" or self._safety().blocks_output(text=candidate.content)
+        )
         # 发音和澄清是只读展示：不打开会话，不写消息、事实或题目记录。
         if not failed and not safety and candidate.act == "pronounce":
             outcome = project_lesson(self.db, invocation, candidate.lesson)
@@ -293,21 +348,28 @@ class TutoringWorkflow:
         refs = [f"tutoring_session:{tutor.id}"]
         ward_msg = self._ward_message(tutor, content)
         if failed:
-            return self._reply(invocation, tutor, refs, envelope, text=FALLBACK_TEXT, blocked=False, permit_solution=permit.solution)
+            return self._reply(
+                invocation, tutor, refs, envelope, text=FALLBACK_TEXT, blocked=False,
+                permit=permit, problem_status=problem_row.status if problem_row else None,
+            )
         if safety:
-            return self._reply(invocation, tutor, refs, envelope, text=SAFE_TEXT, blocked=True, permit_solution=permit.solution)
+            return self._reply(
+                invocation, tutor, refs, envelope, text=SAFE_TEXT, blocked=True,
+                permit=permit, problem_status=problem_row.status if problem_row else None,
+            )
         text = candidate.content
         if candidate.follow_up_question and candidate.follow_up_question not in text:
             text = f"{text.rstrip()}\n{candidate.follow_up_question}"
         work = verdict.effective_work_product
-        remind = permit.must_remind_task and not work
+        remind = task_active and not work
         if remind and REMINDER not in text:
             text = f"{text.rstrip()}\n{REMINDER}"
 
-        solution_after = permit.solution
+        problem_status = problem_row.status if problem_row else None
+        answer_protected = permit.answer_protected
         hint_index = None
         if work:
-            solution_after, hint_index = self._apply_problem(
+            problem_status, hint_index = self._apply_problem(
                 tutor, problem_row, candidate, verdict, invocation, has_work_input=bool(content.strip() or images),
                 summary=content,
             )
@@ -336,19 +398,20 @@ class TutoringWorkflow:
             run_status="waiting_for_ward", outcome_type="waiting", context_refs=refs,
             next_interaction={
                 "status": "needs_input", "content": text, "act": candidate.act,
-                "hint_index": hint_index, "solution_state": solution_after, "safety_blocked": False,
+                "hint_index": hint_index, "problem_status": problem_status,
+                "answer_protected": answer_protected if problem_status is None else problem_status == "open", "safety_blocked": False,
                 "return_to_task": remind, "model": settings.agent_model("tutoring"), "model_fallback": False,
             },
             context_snapshot=envelope.trace_snapshot(),
         )
 
     def _apply_problem(self, tutor, row, candidate, verdict, invocation, *, has_work_input, summary):
-        """按 `TutorPermitPolicy.advance()` 推进题目记录。返回（答案状态，本轮提示序号）。
+        """按 `TutorPermitPolicy.advance()` 推进题目记录。返回（题目状态，本轮提示序号）。
 
         同一个 Ward Turn 的重放不重复计数：记录已处理过本 turn 时原样返回。
         """
         if row is not None and candidate.same_problem and row.last_turn_id == invocation.turn_id:
-            return row.solution_state, None
+            return row.status, None
         if row is None or not candidate.same_problem:
             if row is not None:
                 row.status = "abandoned"
@@ -358,20 +421,22 @@ class TutoringWorkflow:
         assessment = ProblemAssessment(
             effective_work_product=True, student_turn_kind=candidate.student_turn_kind,
             progress=candidate.progress, same_problem=True, act=candidate.act,
-            counts_as_attempt=has_work_input,
+            counts_as_attempt=has_work_input, subgoal_evidence=candidate.subgoal_evidence,
+            next_subgoal=candidate.next_subgoal,
         )
         new = TutorPermitPolicy.advance(_state(row), assessment)
         _store(row, new)
         row.last_turn_id = invocation.turn_id
-        return row.solution_state, (new.hints_given if candidate.act in HINT_ACTS else None)
+        return row.status, (new.hints_given if candidate.act in HINT_ACTS else None)
 
-    def _reply(self, invocation, tutor, refs, envelope, *, text, blocked, permit_solution):
+    def _reply(self, invocation, tutor, refs, envelope, *, text, blocked, permit, problem_status):
         self.db.add(TutoringMessage(tutoring_session_id=tutor.id, role="assistant", content=text, safety_blocked=blocked))
         self.db.flush()
         return WorkflowOutcome(
             run_status="waiting_for_ward", outcome_type="waiting", context_refs=refs,
             next_interaction={
-                "status": "needs_input", "content": text, "solution_state": permit_solution,
+                "status": "needs_input", "content": text, "problem_status": problem_status,
+                "answer_protected": permit.answer_protected,
                 "safety_blocked": blocked, "return_to_task": False,
                 "model": settings.agent_model("tutoring"), "model_fallback": not blocked,
             },

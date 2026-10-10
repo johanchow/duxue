@@ -331,16 +331,15 @@ class TutoringSession(Base):
 
 
 class TutoringProblem(Base):
-    """One homework problem inside a tutoring session; owns the answer state."""
+    """One work-product problem; `submitted` never asserts correctness."""
     __tablename__ = "tutoring_problems"
     id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
     tutoring_session_id: Mapped[str] = mapped_column(ForeignKey("tutoring_sessions.id"), index=True)
     status: Mapped[str] = mapped_column(String(20), default="open", index=True)
-    solution_state: Mapped[str] = mapped_column(String(20), default="locked")
+    active_subgoal: Mapped[str | None] = mapped_column(Text, nullable=True)
     substantive_attempts: Mapped[int] = mapped_column(Integer, default=0)
-    no_progress_streak: Mapped[int] = mapped_column(Integer, default=0)
     hints_given: Mapped[int] = mapped_column(Integer, default=0)
-    answer_requested: Mapped[bool] = mapped_column(Boolean, default=False)
+    evidence_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_turn_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

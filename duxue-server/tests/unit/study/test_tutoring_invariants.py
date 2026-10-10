@@ -3,12 +3,16 @@ from __future__ import annotations
 import pytest
 from fastapi import HTTPException
 
-from app.application.workflows.tutoring_workflow import TutoringWorkflow
 from app.application.ports.companion import RunInvocation
-from app.infrastructure.persistence.models import TutoringMessage, TutoringSession, uid
-from tests.support.fakes import StaticLeakJudge, StaticTutorModel, tutor_raw
-from tests.support.factories import create_ward, create_task, create_study_session
-
+from app.application.workflows.tutoring_workflow import TutoringWorkflow
+from app.infrastructure.persistence.models import TutoringMessage, uid
+from tests.support.factories import create_study_session, create_task, create_ward
+from tests.support.fakes import (
+    StaticLeakJudge,
+    StaticSafetyScreening,
+    StaticTutorModel,
+    tutor_raw,
+)
 
 KNOWLEDGE = tutor_raw(
     act="answer", question_kind="knowledge_lookup", content="蚂蚁靠气味信息素找路。",
@@ -79,6 +83,20 @@ def test_cannot_ask_in_closed_tutoring_session(db):
                 turn={"study_session_id": session.id, "content": "关闭后又问"},
             )
         )
+    assert exc.value.status_code == 409
+
+
+def test_cannot_append_a_tutoring_turn_after_the_study_session_ends(db):
+    ward = create_ward(db)
+    session = create_study_session(db, ward=ward, task=None)
+    session.status = "completed"
+    db.commit()
+    workflow = TutoringWorkflow(db, turn_model=StaticTutorModel(), leak_judge=StaticLeakJudge())
+    with pytest.raises(HTTPException) as exc:
+        workflow.invoke(RunInvocation(
+            run_id=uid(), thread_id=uid(), ward_id=ward.id, agent_type="tutoring",
+            turn={"study_session_id": session.id, "content": "还能问吗"},
+        ))
     assert exc.value.status_code == 409
 
 
@@ -165,3 +183,28 @@ def test_safety_candidate_is_replaced_by_the_safe_text_and_writes_no_fact(db):
     assert messages[1].safety_blocked is True
     from app.infrastructure.persistence.models import OutboxEvent
     assert db.query(OutboxEvent).count() == 0
+
+
+def test_independent_safety_screening_blocks_input_and_output(db):
+    ward = create_ward(db)
+    session = create_study_session(db, ward=ward, task=None)
+    db.commit()
+    input_screen = StaticSafetyScreening(input_blocked=True)
+    outcome = TutoringWorkflow(
+        db, turn_model=StaticTutorModel(KNOWLEDGE), leak_judge=StaticLeakJudge(), safety_screening=input_screen,
+    ).invoke(RunInvocation(
+        run_id=uid(), thread_id=uid(), ward_id=ward.id, agent_type="tutoring",
+        turn={"study_session_id": session.id, "content": "普通问题"},
+    ))
+    assert outcome.next_interaction["safety_blocked"] is True
+    assert input_screen.input_calls == 1 and input_screen.output_calls == 0
+
+    output_screen = StaticSafetyScreening(output_blocked=True)
+    outcome = TutoringWorkflow(
+        db, turn_model=StaticTutorModel(KNOWLEDGE), leak_judge=StaticLeakJudge(), safety_screening=output_screen,
+    ).invoke(RunInvocation(
+        run_id=uid(), thread_id=uid(), ward_id=ward.id, agent_type="tutoring",
+        turn={"study_session_id": session.id, "content": "另一个普通问题"},
+    ))
+    assert outcome.next_interaction["safety_blocked"] is True
+    assert output_screen.input_calls == 1 and output_screen.output_calls == 1

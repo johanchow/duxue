@@ -88,7 +88,7 @@ erDiagram
     study_sessions ||--o{ frames : "执行期间抓拍"
     study_sessions ||--o{ behavior_segments : "会话级行为片段"
     study_sessions ||--o{ tutoring_sessions : "会话内答疑"
-    tutoring_sessions ||--o{ tutoring_problems : "作业题与答案状态"
+    tutoring_sessions ||--o{ tutoring_problems : "作业题与证据状态"
 
     devices ||--o{ frames : "物理产生"
     frames ||--o| frame_predictions : "逐帧标签"
@@ -391,19 +391,18 @@ erDiagram
         int hint_level "已废弃的旧提示等级，新行不写，保留为只读；提示次数见 tutoring_problems.hints_given"
         jsonb interest_signal "抽取的兴趣点/好奇心元数据"
         bool is_stuck_point "Ward 明确表达卡住的事实标识"
-        bool safety_blocked "是否因 question_kind=safety 被换成安全话术"
+        bool safety_blocked "是否因独立安全筛查或安全候选被换成安全话术"
         timestamp created_at
     }
 
     tutoring_problems {
         uuid id PK
         uuid tutoring_session_id FK
-        string status "open | solved | abandoned"
-        string solution_state "locked | unlocked | solved"
+        string status "open | submitted | abandoned（submitted 不等于正确）"
+        text active_subgoal "当前唯一最小教学目标"
         int substantive_attempts "有效尝试数"
-        int no_progress_streak "连续无进展次数"
         int hints_given "已给提示次数"
-        bool answer_requested "孩子是否明确要过完整讲解"
+        text evidence_summary "最近有效证据摘要"
         string last_turn_id "最近一次推进的 Turn，防重放重复计数"
         text summary "题目摘要，供泄露检查"
         timestamp created_at
@@ -795,7 +794,7 @@ graph TD
 
 ### 7.3 伴学与启发答疑 (Companion & Tutoring)
 - `POST /api/v1/companion/tutoring-sessions`：开启某任务的答疑会话；
-- `POST /api/v1/companion/tutoring-sessions/{tutoring_session_id}/ask`：流式发起提问（返回 `text/event-stream` SSE，包含 L1~L4 阶梯引导）。
+- `POST /api/v1/companion/tutoring-sessions/{tutoring_session_id}/ask`：流式发起提问（返回 `text/event-stream` SSE，按已提交证据逐步引导）。
 
 ### 7.4 评估与双轨对比 (Evaluations & Reflection)
 - `GET /api/v1/evaluations/schedules/{schedule_id}/blind-card`：获取锁闭状态的自评盲评卡片；

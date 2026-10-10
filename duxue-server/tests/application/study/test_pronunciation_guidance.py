@@ -214,7 +214,17 @@ def test_segment_outside_source_does_not_project(db):
     assert db.query(PronunciationLesson).count() == 0
 
 
-def test_lesson_on_a_non_pronounce_act_is_rejected(db):
+def test_clarify_with_a_stray_lesson_keeps_the_clarification(db):
+    ward = create_ward(db)
+    db.commit()
+    raw = {**_pronounce(), "act": "clarify", "content": "你是指上面哪一个单词？"}
+    outcome = _present(db, _invocation(ward.id, "apple"), raw)
+    assert outcome.next_interaction["kind"] == "clarify"
+    assert "哪一个单词" in outcome.next_interaction["content"]
+    assert db.query(PronunciationLesson).count() == 0
+
+
+def test_lesson_on_an_answer_act_is_still_rejected(db):
     ward = create_ward(db)
     db.commit()
     raw = {**_pronounce(), "act": "answer"}

@@ -14,12 +14,12 @@ Context Map 与分层图只在 [ddd-overview.md](ddd-overview.md) 维护。`Stud
 
 核心不变量：
 
-- **唯一的教学红线：作业成果不被代替完成。** 受保护的是当前问题的最终答案、完整解法、待填内容、选择项和代写成品；在答案状态为 `locked` 时不得输出。孩子明确问字怎么写、词义、翻译、发音、看图或「这是什么」等原子知识时，可以直接回答，即使提问发生在听写、填空或任务会话中。是否受保护只看这一次请求是否要求交付当前任务的产出或关键推理成果，不由任务容器、题目图片或“作业中”这一事实自动收紧。
-- 过程题按孩子已经产出的证据逐步引导，而不是按统一的 L1–L4 或 N 步升级：一轮只开放当前必要的最小下一步；只有孩子对该小目标给出思考、判断、式子、草稿或解释，才可以继续深入。许可、答案状态和事实写入只来自代码已提交的结果；模型自述字段只用于交叉检查，不能放宽许可。
-- 孩子提出完整答案不等于系统确认正确。未接入特定题型的外部校验器前，系统只记录“孩子已提交完整思路/答案”；模型可以帮助核查并指出疑点，但不得把不确定判断写成“答对”或“已掌握”。
+- **唯一的教学红线：作业成果不被代替完成。** 受保护的是当前问题的最终答案、完整解法、待填内容、选择项和代写成品；题目处于 `open` 状态时不得输出。字词释义、翻译、发音、看图等原子知识可直接回答，即使发生在作业会话中。是否受保护只看本轮是否要求交付当前任务的产出或关键推理成果。
+- 过程题按孩子已经产出的证据逐步引导，而不是按统一步数升级：一轮只开放一个最小下一步；只有孩子对该小目标给出思考、判断、式子、草稿或解释，才可以继续深入。许可、题目状态和事实写入只来自已提交的领域结果；模型自述只能收紧，不能放宽许可。
+- `submitted` 只表示孩子提出了完整思路/答案，不表示系统确认正确。未接入特定题型校验器前，模型只能帮助核查和指出疑点，不得断言“答对”或“已掌握”。
 - 单次卡点、单次好奇心不升级为稳定能力或稳定兴趣结论。一次到点未开始也不写成学习事实或稳定特质。
-- 模型可以起草给 Ward 看的散文；答案状态和事实写入只能来自已提交的领域结果，按钮、对象/媒体引用只能来自已校验的 Application Outcome；“已经记下”必须有已提交事实。
-- 发音辅导是只读教学展示，不进入答案状态机，不写 `VerifiedTurn` 或学习 Fact；TTS 只能朗读 Application 已确认的原文。
+- 模型可以起草给 Ward 看的散文；题目状态和事实写入只能来自已提交的领域结果，按钮、对象/媒体引用只能来自已校验的 Application Outcome；“已经记下”必须有已提交事实。
+- 发音辅导是只读教学展示，不进入题目状态机，不写 `VerifiedTurn` 或学习 Fact；TTS 只能朗读 Application 已确认的原文。
 - `TutoringSession` 只能依附一个未结束的 `StudySession`，依据是 Study 提供的受权 Query `GetStudySession`；`StudySession` 结束后不追加新轮次，但不会因此自动关闭答疑，关闭只由 `CloseTutoringSession` 完成。
 
 | 术语 | 本 Context 中的含义 | 明确不是 |
@@ -27,10 +27,9 @@ Context Map 与分层图只在 [ddd-overview.md](ddd-overview.md) 维护。`Stud
 | `StudySession`（外部） | [Study](domain-study.md) 拥有的一次学习执行；本 Context 只持有 `study_session_id`，经受权 Query 读取状态与 `task_id` | 本 Context 的 Aggregate |
 | `TutoringSession` | 隶属某个未结束 `StudySession` 的答疑会话 | Companion Run 的复制 |
 | `VerifiedTurn` | 已通过校验并写入的尝试、提示、理解确认或好奇心观察 | 原始对话、模型候选、Trace |
-| `ProblemRecord` | `TutoringSession` 内一道作业题的运行记录：当前最小教学目标、孩子的有效尝试摘要、已给提示数和答案状态 | 题目正文、模型对「懂没懂」的判断 |
-| `SolutionState` | 一道作业题的答案状态：`locked`（默认）或 `solved`（孩子已提出完整思路/答案） | 提示等级；模型自行宣布的正确性 |
-| `VerificationStatus` | 对孩子答案的确认程度：`unverified` 或可选的 `verified` | 模型自行宣布“答对了” |
-| `TutorPermit` | 每轮调用模型前由代码算出的许可：答案状态、是否提醒回任务、任务名、尝试摘要 | 可被替换的提示词片段 |
+| `ProblemRecord` | `TutoringSession` 内一道作业题的运行记录：题目状态、当前最小教学目标、必要计数 | 题目正文、模型对「懂没懂」的判断 |
+| `ProblemStatus` | `open`（受保护）、`submitted`（孩子已提交完整思路/答案）、`abandoned` | 模型自行宣布的正确性 |
+| `TutorPermit` | 每轮调用模型前由代码算出的答疑许可：题目是否受保护、当前小目标和必要摘要 | 可被替换的提示词片段 |
 | `QuestionKind` | 模型随回复声明的本轮所问：`knowledge_lookup`（含原子知识直答）、`work_product_help`、`chat`、`safety` | 仅因处于作业会话就把原子知识改判为作业成果 |
 | `StudentTurnKind` | 模型对孩子这句话的标注：`attempt`、`ask_hint`、`ask_answer`、`off_topic`、`other` | 已验证事实（要经代码校验和计数后才算） |
 | `TutorTurnCandidate` | 模型经 `finish_turn` 返回的结构化候选，见 [§4.1](#41-模型候选与-finish_turn) | 交互信封、已写入的事实 |
@@ -38,7 +37,7 @@ Context Map 与分层图只在 [ddd-overview.md](ddd-overview.md) 维护。`Stud
 | `TutoringTurnLoop` | 一次 Ward 输入内由 LLM 驱动、代码守住入口与出口的有界循环 | 跨回合的教学状态机，也不是第二个 Agent |
 | `PronunciationGuidance` | 已确认原文的易读发音提示和少量重音、连读、弱读、音变或语调说明 | 解题提示、跟读评分、音频文件、学习事实 |
 
-非目标：Tutoring 不私自发明交互 `kind`；本期不做作文共创画布、视频媒体、实时监工、一键拍照搜题、跟读录音或发音评分。同一对话最近原句窗口里当前 Ward 的已授权图片，与本轮图片一起进入答疑的每一次模型调用（见 [Companion 窗口规则](domain-companion.md#11-threadrun-与-turn-的层级)），模型看得到图，不等于一键拍照搜题。到点邀请由 [Study](domain-study.md) 拥有，不属于本 Context。无任务问答与任务进行中的题外提问见 [§2.1](#21-tutoringsession)。
+非目标：Tutoring 不私自发明交互 `kind`；本期不做通用数学验证器、离线评测或 A/B 实验平台，也不做作文共创画布、视频媒体、实时监工、一键拍照搜题、跟读录音或发音评分。同一对话最近原句窗口里当前 Ward 的已授权图片，与本轮图片一起进入答疑的每一次模型调用（见 [Companion 窗口规则](domain-companion.md#11-threadrun-与-turn-的层级)），模型看得到图，不等于一键拍照搜题。到点邀请由 [Study](domain-study.md) 拥有，不属于本 Context。无任务问答与任务进行中的题外提问见 [§2.1](#21-tutoringsession)。
 
 ### 1.1 控制模型
 
@@ -47,7 +46,7 @@ Context Map 与分层图只在 [ddd-overview.md](ddd-overview.md) 维护。`Stud
 | 由代码负责 | 由 LLM 负责 |
 |---|---|
 | 授权（附件和数据只属于当前 Ward）、输入/输出安全审核 | 判断这句话在问什么（`question_kind`），以及孩子这一轮做了什么（`student_turn_kind`、`progress`） |
-| 计算本轮许可 `TutorPermit`，裁决答案状态 | 诊断孩子卡在哪里，选 `act`：追问、提示、确认、例子、直接回答、澄清、提醒、发音 |
+| 计算本轮许可 `TutorPermit`，裁决题目状态 | 诊断孩子卡在哪里，选 `act`：追问、提示、确认、例子、直接回答、澄清、提醒、发音 |
 | 预算：模型调用、工具调用、token、deadline、取消 | 看图、理解指代、识别语音转写里的错误 |
 | 三道教学出口检查与独立输出安全审核，不通过则回退固定话术 | 要不要调只读工具 |
 | 写事实、推进 `ProblemRecord`、补回任务提醒、投影发音卡 | 措辞、语气、长度 |
@@ -59,9 +58,9 @@ Companion 只把本轮场景定成 `tutoring`（见 [意图路由](domain-compan
 | 决策 | 选择 | 原因 | 拒绝的方案 | 验证 |
 |---|---|---|---|---|
 | 谁驱动一轮 | LLM，在有界循环里自主决定下一步；`CompanionCoordinator` 只编排预算、取消和超时 | 孩子的回答决定下一步，固定流水线每次只看一个窄视角，错误逐级放大，带图时每次调用都很贵 | 意图、题型、历史命中、回复四次独立调用串联；再设一个 Harness 类型 | 无工具输入直接 `finish_turn`；有图时图片随上下文进入同一次调用 |
-| 红线是什么 | 只有「作业成果不被代替完成」，用 `SolutionState` 表达 | 原子知识直答能消除无意义卡壳；过程题才需要保护推理成果 | 用 L1–L4 等级压住所有回答；因处于作业会话就拒答字词释义 | `knowledge_lookup` 直接回答；`work_product_help` 在 `locked` 时拒绝最终答案 |
+| 红线是什么 | 只有「作业成果不被代替完成」，用 `ProblemStatus=open` 表达 | 原子知识直答能消除无意义卡壳；过程题才需要保护推理成果 | 用 L1–L4 等级压住所有回答；因处于作业会话就拒答字词释义 | `knowledge_lookup` 直接回答；`work_product_help` 在 `open` 时拒绝最终答案 |
 | 谁判断本轮在问什么 | 模型随回复声明 `question_kind`；代码只会收紧“作业成果”范围 | 语义判断属于模型；但任务容器本身不能把原子知识收紧 | 独立的分类调用；关键词改判 | “字怎么写/词义是什么”可直答；请求选项、填空、完整过程仍按作业成果校验 |
-| 谁裁决答案状态 | `TutorPermitPolicy`，按已提交的证据推进 | 教学进度不能由模型宣布；次数不是答案放行条件 | 模型自宣解锁；按 Ward 消息条数计数；N 次后给完整答案 | 本轮 `locked` 校验不因卡住次数而放开 |
+| 谁裁决题目状态 | `TutorPermitPolicy`，按已提交的证据推进 | 教学进度不能由模型宣布；次数不是答案放行条件 | 模型自宣解锁；按 Ward 消息条数计数；N 次后给完整答案 | 本轮保护不因卡住次数而放开 |
 | 出口谁把关 | 代码，三道教学检查与独立输出安全审核每轮必经 | 能被模型跳过的检查不是红线；检查必须在输出路径上 | 把安全检查做成模型可选的工具 | 模型不调任何工具也要过检查；辅助自检工具存在与否结果相同 |
 | 发音是否单独成支 | 不单独成支，是同一契约里的 `act=pronounce` | 发音同样依赖原句窗口、指代和图片，单独分支会重复组装上下文 | 为发音另建 Policy、Extractor 或第二条流程 | 同一入口上下文、同一主调用；校验和投影规则见 [§4.6](#46-pronunciation-act只读) |
 | 谁确认一轮完成 | 三道教学检查和输出安全审核通过后，由 `ApplyTutorTurn` 提交 | `finish_turn` 只是候选 | 模型声明「孩子已经懂了」即成功 | 检查失败时不写 Fact、不推进 `ProblemRecord` |
@@ -75,7 +74,7 @@ Companion 只把本轮场景定成 `tutoring`（见 [意图路由](domain-compan
 | 方面 | 现状（v2.7 的实现） | 目标（本文） |
 |---|---|---|
 | 一轮调用 | 场景路由、`TutoringIntent`、`QuestionShape`、`HistoryMatch`、回复，最多 5 次独立调用，每次带全部图片，单次约 2300 token | 场景路由一次，主调用一次（含按需只读工具），作业成果另加一次泄露检查 |
-| 等级 | `failed_attempts` 是 Ward 非拦截消息的条数，直接换成 L1–L4 | `ProblemRecord` 按有进展的证据推进 `SolutionState`；不再有等级 |
+| 等级 | `failed_attempts` 是 Ward 非拦截消息的条数，直接换成 L1–L4 | `ProblemRecord` 按有效证据推进 `ProblemStatus`；不再有等级 |
 | 回答方式 | 只有 `atomic` 才直接回答，其余一律 `scaffold` 反问 | 只有作业成果受锁，其余直接回答 |
 | 回复契约 | `content` 与 `follow_up_question` 两个字段 | [`TutorTurnCandidate`](#41-模型候选与-finish_turn) |
 | 发音 | 独立的 `PronunciationGuidance`，重复组装上下文 | 同一主流程里的 `act=pronounce` |
@@ -83,7 +82,7 @@ Companion 只把本轮场景定成 `tutoring`（见 [意图路由](domain-compan
 
 迁移顺序，每一步都要有测试再合并：
 
-1. 先上 `TutorTurnCandidate` 契约和出口前两道检查，答案状态暂时固定为 `locked` 且只作用于作业成果。
+1. 先上 `TutorTurnCandidate` 契约和出口前两道检查，题目保护暂时固定为 `open` 且只作用于作业成果。
 2. 加 `ProblemRecord`、`TutorPermitPolicy` 和事实映射，替换按消息条数计数。
 3. 把发音并入同一主流程。
 4. 删除 `TutoringIntent`、`QuestionShape`、`HistoryMatch` 三类调用及其端口。
@@ -120,7 +119,7 @@ flowchart LR
 | Identity | `tutoring_session_id`，归属 `ward_id` 与 `study_session_id` |
 | 子实体 | `VerifiedTurn`、`ProblemRecord` |
 | 值对象 | `ProblemRef` |
-| 不变量 | 所属学习会话未结束；关闭后不能追加；`SolutionState` 只按 `TutorPermitPolicy` 的结果转移，`solved` 之后不回到 `locked`；同一时刻至多一道 `open` 的 `ProblemRecord` |
+| 不变量 | 所属学习会话未结束；关闭后不能追加；`ProblemStatus` 只按 `TutorPermitPolicy` 的结果转移；同一时刻至多一道 `open` 的 `ProblemRecord` |
 | 行为 | `open()`、`apply_validated_turn()`、`record_hint()`、`confirm_understanding()`、`close()` |
 | 本地事件 | `TutoringSessionOpened`、`TutorTurnRecorded`、`HintRecorded`、`UnderstandingConfirmed`、`TutoringSessionClosed` |
 | Repository | `TutoringSessionRepository` |
@@ -148,11 +147,11 @@ stateDiagram-v2
 
 | 对象 | 类型 | Identity | 参与决策的状态 | 行为 | 不变量 |
 |---|---|---|---|---|---|
-| `TutoringSession` | Aggregate Root | `tutoring_session_id` | `study_session_id`、`status`、`version`、当前 `ProblemRecord` | `open`、`apply_validated_turn`、`record_hint`、`confirm_understanding`、`close` | 关闭后不可追加；答案状态只按 Policy 转移 |
+| `TutoringSession` | Aggregate Root | `tutoring_session_id` | `study_session_id`、`status`、`version`、当前 `ProblemRecord` | `open`、`apply_validated_turn`、`record_hint`、`confirm_understanding`、`close` | 关闭后不可追加；题目状态只按 Policy 转移 |
 | `VerifiedTurn` | Entity | `turn_id` | `kind`、`hint_index?`、`command_id` | 由 Root 追加 | 只记录已校验事实，不含思维链和工具原文 |
 | `ProblemRef` | Value Object | 无 | 授权题目引用与版本 | `validate()` | 引用必须来自授权解析结果 |
-| `ProblemRecord` | Entity | `problem_id` | `problem_ref`、`status`（`open`/`solved`/`abandoned`）、`solution_state`、`verification_status`、`active_subgoal`、`completed_subgoals`、`substantive_attempts`、`hints_given` | 由 Root 按 `TutorPermitPolicy.advance()` 的结果更新 | 只有 Root 能改；`solved` 表示孩子已提交完整思路，不等于已验证正确 |
-| `TutorPermit` | Value Object | 无 | `solution`、`must_remind_task`、`task_title?`、`attempt_summary`、`active_subgoal?` | `validate()` | 只由 `TutorPermitPolicy` 产生；模型只读 |
+| `ProblemRecord` | Entity | `problem_id` | `problem_ref`、`status`（`open`/`submitted`/`abandoned`）、`active_subgoal`、`substantive_attempts`、`hints_given` | 由 Root 按 `TutorPermitPolicy.advance()` 的结果更新 | 只有 Root 能改；`submitted` 表示孩子已提交完整思路，不等于已验证正确 |
+| `TutorPermit` | Value Object | 无 | `answer_protected`、`attempt_summary`、`active_subgoal?` | `validate()` | 只由 `TutorPermitPolicy` 产生；模型只读 |
 | `ProblemAssessment` | Value Object | 无 | 已通过出口检查的 `question_kind`、`student_turn_kind`、`progress?`、`same_problem`、`subgoal_evidence?` | `validate()` | `subgoal_evidence` 只在 `attempt` 时有值；每个 `command_id` 至多记一次 |
 
 `VerifiedTurn.kind` 只取 `attempt`、`hint`、`understanding`、`curiosity`。它不是 Companion journal，不保存完整聊天。
@@ -174,8 +173,7 @@ classDiagram
     }
     class ProblemRecord {
         +problem_id
-        +solution_state
-        +verification_status
+        +status
         +active_subgoal
         +substantive_attempts
         +hints_given
@@ -188,32 +186,30 @@ classDiagram
 
 ### 2.3 `TutorPermitPolicy`
 
-`TutorPermitPolicy` 取代 v2.7 的 `HintingPolicy`。它是 Tutoring 的无状态领域服务，也是答案状态的唯一裁决。它不调用模型，不写 Repository，不解释开放文本，也不能被替换成一段提示词。可调整的是提示里的教学做法（`tutor-turn.v1`）。
+`TutorPermitPolicy` 取代 v2.7 的 `HintingPolicy`。它是 Tutoring 的无状态领域服务，也是题目状态和答案保护的唯一裁决。它不调用模型，不写 Repository，不解释开放文本，也不能被替换成一段提示词。可调整的是提示里的教学做法（`tutor-turn.v1`）。
 
 它只有两个纯函数：
 
 | 函数 | 时机 | 输入 | 输出 |
 |---|---|---|---|
-| `permit()` | 每轮调用模型之前 | 当前 `ProblemRecord`（可空）、`StudySession` 状态与 `task_id`、任务名 | `TutorPermit` |
+| `permit()` | 每轮调用模型之前 | 当前 `ProblemRecord`（可空） | `TutorPermit` |
 | `advance()` | 本轮通过出口检查、`ApplyTutorTurn` 提交时 | 当前 `ProblemRecord`、已校验的 `ProblemAssessment` | 新的 `ProblemRecord` 字段 |
 
-**答案状态和当前小目标在本轮调用前就已确定，本轮的表现只影响下一轮。** 模型不能在同一轮里自行推进小目标，更不能因孩子已卡住若干次而放行完整解法。
+**题目状态和当前小目标在本轮调用前就已确定，本轮的表现只影响下一轮。** 模型不能在同一轮里自行推进小目标，更不能因孩子已卡住若干次而放行完整解法。
 
 ```mermaid
 stateDiagram-v2
-    [*] --> locked: 新作业题（open）
-    locked --> solved: 孩子提出完整思路/答案
-    solved --> [*]
-    locked --> [*]: 换题（abandoned）
+    [*] --> open: 新作业题
+    open --> submitted: 孩子提出完整思路/答案
+    submitted --> [*]
+    open --> [*]: 换题（abandoned）
 ```
 
 `TutorPermit` 的字段：
 
 | 字段 | 含义 | 计算 |
 |---|---|---|
-| `solution` | `locked` 或 `solved`。只管作业成果 | 取当前 `ProblemRecord.solution_state`；没有 open 的题时为 `locked`。`solved` 表示孩子已经提出完整答案，不是模型确认正确 |
-| `must_remind_task` | 候选条件：当前是任务会话，回答后是否要提醒回任务 | `StudySession.task_id` 非空且状态为 `active` 或 `paused` 时为真。只有本轮按知识问题或闲聊处理时才要求提醒，作业成果本身就在做任务，不提醒。无任务会话不提醒。由出口检查在落地时核对 |
-| `task_title` | 提醒用的任务名 | `task_id` 经 Planning 受权查询得到；没有任务时省略，`must_remind_task` 必为假 |
+| `answer_protected` | `true` 或 `false`。只管作业成果 | 当前 `ProblemRecord.status=open` 时为 `true`；没有 open 的题时为 `false` |
 | `attempt_summary` | `substantive_attempts`、`hints_given` 与最近有效证据摘要 | 取自当前 `ProblemRecord` |
 | `active_subgoal` | 当前唯一可继续深入的最小教学目标 | 由上一轮已提交的结果保存；没有 open 的过程题时省略 |
 
@@ -221,13 +217,13 @@ stateDiagram-v2
 
 | 本轮已校验的标注 | 对 `ProblemRecord` 的影响 |
 |---|---|
-| `same_problem=false`，或没有 open 的题，且本轮是作业成果 | 关闭旧题为 `abandoned`，新建一条 `locked`、计数全零的记录 |
-| `student_turn_kind=attempt` 且含 `subgoal_evidence` | `substantive_attempts += 1`；仅当证据针对 `active_subgoal` 时，关闭该目标并保存模型提议的下一个最小目标；`progress=solved` 只在孩子提出完整思路/答案时进入 `solved`，`verification_status=unverified` |
+| `same_problem=false`，或没有 open 的题，且本轮是作业成果 | 关闭旧题为 `abandoned`，新建一条 `open`、计数全零的记录 |
+| `student_turn_kind=attempt` 且含 `subgoal_evidence` | `substantive_attempts += 1`；仅当证据针对 `active_subgoal` 时，关闭该目标并保存模型提议的下一个最小目标；`progress=solved` 只在孩子提出完整思路/答案时进入 `submitted` |
 | `student_turn_kind=ask_hint` | 不改尝试计数 |
-| `student_turn_kind=ask_answer` | 不改答案状态，也不放行完整解法 |
+| `student_turn_kind=ask_answer` | 不改题目状态，也不放行完整解法 |
 | 助手本轮的 `act` 是 `probe`、`hint`、`example` | `hints_given += 1` |
 
-连续无有效推进不是答案放行条件。策略可以据此要求模型换一种表征、把小目标拆得更细、给同构例题，或建议把问题标为待问老师；它不能输出本题最终答案、完整解法或待填内容。`solved` 也不等于理解确认，后者仍只来自 `ConfirmUnderstanding`。
+连续无有效推进不是答案放行条件。策略可以据此要求模型换一种表征、把小目标拆得更细、给同构例题，或建议把问题标为待问老师；它不能输出本题最终答案、完整解法或待填内容。`submitted` 也不等于理解确认，后者仍只来自 `ConfirmUnderstanding`。
 
 计数的保护：每个 Ward Turn（`command_id`）至多计一次；`attempt` 要求 Ward 这一轮有非空文本或附图，且 `subgoal_evidence` 可关联当前小目标；通不过出口检查的轮次不计数。模型标签不是放行依据。
 
@@ -237,9 +233,9 @@ stateDiagram-v2
 |---|---|---|
 | 每轮工具调用上限 | 3 | 见 [§4.3](#43-工具) |
 
-教学做法不写进策略，而是写进版本化的 `tutor-turn.v1`：苏格拉底式的做法按题目实际推理链和孩子的回答诊断，不固定步数；每轮只提出一个能由孩子完成的下一步；看不清图就说看不清，不编造；`locked` 时可以追问、提示、确认、给类似题的例子，不说本题最终答案。`TutorPermit` 在提示里是数据，不是可被改写的自然语言规则。
+教学做法不写进策略，而是写进版本化的 `tutor-turn.v1`：苏格拉底式的做法按题目实际推理链和孩子的回答诊断，不固定步数；每轮只提出一个能由孩子完成的下一步；看不清图就说看不清，不编造；`answer_protected=true` 时可以追问、提示、确认、给类似题的例子，不说本题最终答案。`TutorPermit` 在提示里是数据，不是可被改写的自然语言规则。
 
-口头回任务只由 `TutorPermitPolicy` 的 `must_remind_task` 决定。到点仍未开始的邀请由 [Study](domain-study.md#22-startcue) 的 `StartCuePolicy` 决定，二者不合并。
+口头回任务由 Application 根据 `StudySessionQuery` 返回的活动任务决定，不进入 `TutorPermit`。到点仍未开始的邀请由 [Study](domain-study.md#22-startcue) 的 `StartCuePolicy` 决定，二者不合并。
 
 ## 三、应用用例
 
@@ -292,14 +288,14 @@ sequenceDiagram
 | 出口检查 | Application 校验逻辑 | 结构、越权与一致性、泄露三道教学检查；输出安全审核在送达前独立执行，见 [§4.2](#42-出口检查) |
 | `TutorPermitPolicy` | Domain Service | `advance()` 返回新的 `ProblemRecord` 字段 |
 | `ApplyTutorTurn` | Use Case | 授权并提交本地短事务 |
-| `TutoringSession` | Aggregate Root | 拒绝关闭后的追加和不合法的答案状态转移 |
+| `TutoringSession` | Aggregate Root | 拒绝关闭后的追加和不合法的题目状态转移 |
 | `Outbox` | Infrastructure | 与聚合在同一事务中保存 `LearningFactRecorded.v1` |
 
 本轮结果与事实的对应：
 
 | 本轮已校验的结果 | 写入 |
 |---|---|
-| 按作业成果处理，且 `student_turn_kind=attempt` | `tutoring.attempt_recorded`；推进尝试数并记录当前小目标的有效证据；孩子提出完整思路/答案时进入 `solved`，但默认为 `unverified` |
+| 按作业成果处理，且 `student_turn_kind=attempt` | `tutoring.attempt_recorded`；推进尝试数并记录当前小目标的有效证据；孩子提出完整思路/答案时进入 `submitted` |
 | 按作业成果处理，且 `act` 是 `probe`、`hint`、`example` | `tutoring.hint_given`；`hints_given += 1` |
 | `question_kind=knowledge_lookup`，且 `act` 不是 `pronounce`、`clarify`、`redirect` | `tutoring.curiosity_observed` |
 | `chat`、`safety`、`pronounce`、`clarify`、`redirect`、回退固定话术 | 不写事实，不推进 `ProblemRecord` |
@@ -310,26 +306,9 @@ sequenceDiagram
 
 一轮分成三段：**入口（代码）→ 循环（LLM 驱动）→ 出口（代码）**。循环由 `CompanionCoordinator` 这个 Process Manager 编排，它不另成一种类型。它只做四件事：入口组装只读上下文并取得 `TutorPermit`；通过基础设施网关执行模型或工具调用；模型返回 `finish_turn` 后跑三道教学出口检查、输出安全审核并交给 `ApplyTutorTurn`；在预算用尽、取消或超时时停住。未实现的工具由 `ToolGateway` 返回 `tool_error`。Coordinator 不维护工具名单，也不检查 schema 版本。
 
-`tutoring-turn-loop.v1` 只声明本 Run 消息窗口、循环次数和 token 预算。答案状态仍只由 `TutorPermitPolicy` 决定。
+`tutoring-turn-loop.v1` 只声明本 Run 消息窗口、循环次数和 token 预算。题目状态仍只由 `TutorPermitPolicy` 决定。
 
-外层图只表示 Ward 可见的阶段，不是类型图。答疑循环只是其中一条路，走完仍回到计时中的会话：
-
-```mermaid
-flowchart TD
-    A[Ward 开始或继续学习] --> B[学习会话正在计时]
-    B --> C{Ward 这一步做什么?}
-    C -->|提问、要提示或回答| D[一次 TutoringTurnLoop]
-    D -->|拿出一张提示卡| B
-    D -->|预算用尽或本轮失败| E[告诉 Ward 本轮失败]
-    E --> B
-    C -->|暂停，或满 180 分钟| F[暂停计时]
-    F -->|继续| B
-    C -->|完成学习| G[结束学习会话]
-    C -->|结束答疑| H[关闭答疑会话]
-    C -->|取消| I[停止本轮回复]
-```
-
-暂停、失败和取消都不关闭答疑会话。完成学习才结束 `StudySession`。结束答疑才关闭 `TutoringSession`。
+暂停、失败和取消都不关闭答疑会话。学习执行的开始、暂停和完成由 Study 管理；Tutoring 只在收到 Ward 输入时运行一轮，并由 `CloseTutoringSession` 显式关闭。
 
 一轮内部的控制流如下。灰色是代码，蓝色是 LLM，橙色是每轮必经、模型无法跳过的出口检查：
 
@@ -341,7 +320,7 @@ flowchart TD
     D{"入口2 安全预检，只拦明显情况"}:::code
     D1["固定安全回复，不调模型"]:::code
     E["入口3 组装上下文<br/>最近8句原句，窗口图片，本轮图片<br/>任务上下文，本题状态"]:::code
-    F["入口4 TutorPermitPolicy.permit<br/>solution，must_remind_task，task_title，attempt_summary"]:::code
+    F["入口4 TutorPermitPolicy.permit<br/>answer_protected，active_subgoal，attempt_summary"]:::code
 
     subgraph LOOP["LLM 驱动的有界循环，工具调用有上限，受 Run deadline 约束"]
         G["LLM 决策：理解学生，判断下一步"]:::llm
@@ -378,63 +357,9 @@ flowchart TD
     classDef gate fill:#ffedd5,stroke:#c2410c,color:#0f172a
 ```
 
-读取走 Query，模型与工具走 Infrastructure，答案状态走 Domain Service，写入走 Use Case 和 Aggregate Root。消息窗口、checkpoint 摘要和 `MemoryBundle` 是 Query 的返回值，不是图上的对象。窗口图片和本轮图片随上下文进入同一次主调用，读取与授权规则以 [Companion 窗口规则](domain-companion.md#11-threadrun-与-turn-的层级) 为准。
+读取走 Query，模型与工具走 Infrastructure，题目状态走 Domain Service，写入走 Use Case 和 Aggregate Root。消息窗口、checkpoint 摘要和 `MemoryBundle` 是 Query 的返回值，不是图上的对象。窗口图片和本轮图片随上下文进入同一次主调用，读取与授权规则以 [Companion 窗口规则](domain-companion.md#11-threadrun-与-turn-的层级) 为准。
 
-下面是一个带工具调用的作业题例子：
-
-```mermaid
-sequenceDiagram
-    participant W as Ward
-    participant C as CompanionCoordinator
-    participant P as TutorPermitPolicy
-    participant G as ModelGateway
-    participant T as ToolGateway
-    participant X as 出口检查
-    participant U as ApplyTutorTurn
-
-    W->>C: 本轮输入
-    C->>C: 授权、安全预检、组装上下文
-    C->>P: permit()
-    P-->>C: TutorPermit，solution=locked
-    C->>G: 上下文与许可
-    G->>C: 工具请求 get_attempt_summary
-    C->>T: 执行
-    T-->>C: 尝试2次，连续无进展
-    C->>G: observation
-    G-->>C: finish_turn 候选，act=hint
-    C->>X: 候选与许可
-    alt 三道检查通过
-        C->>U: 已校验的标注
-        Note over U: 记录本轮对当前小目标的证据；下一轮按该证据选择一个后续小目标
-        C-->>W: 提示卡
-    else 任一检查不通过
-        C-->>W: 固定话术，不写 Fact
-    end
-```
-
-本轮的 `locked` 校验不因这一轮的表现或累计卡住次数而放开。下一轮只会基于已提交的证据继续一个新的最小教学目标。
-
-| 参与者 | 标准类型 | 职责 |
-|---|---|---|
-| `Ward` | Actor | 发起本轮输入 |
-| `CompanionTurn` | Interface | 接收 Turn，把最终结果返回给 Ward |
-| `CompanionCoordinator` | Process Manager | 入口组装上下文，编排模型与工具调用、预算、取消和超时，跑出口检查 |
-| `GetStudySession` / `GetCompanionTranscript` / `ResolveMemoryContext` | Query | 返回 `StudySessionView`、窗口原句与图片、`MemoryBundle`，不修改聚合 |
-| `CheckpointStore` | Infrastructure | 保存并读出运行态 checkpoint |
-| `TutorPermitPolicy` | Domain Service | `permit()` 与 `advance()` |
-| `ModelGateway` | Infrastructure | 发送上下文并返回候选；也承载泄露检查那一次独立调用 |
-| `ToolGateway` | Infrastructure | 执行一次只读工具调用；没有实现则返回 `tool_error` |
-| `ApplyTutorTurn` | Use Case | 唯一可以写入答疑事实和推进 `ProblemRecord` 的入口 |
-
-模型每次只返回一个候选。`tool_error` 会回到 `ModelGateway`；预算用尽、取消或超时时，Coordinator 把失败结果交给 Interface。
-
-| 节点 | AI-driven | 循环 / 等待 | 退出条件 | 允许调用 | 禁止 |
-|---|---|---|---|---|---|
-| `StartOrResumeStudy` | 否 | 确定性用例 | 会话已开始、已恢复，或类型化拒绝 | `StartStudySession`、`ResumeStudySession` | 从 transcript 推断任务 |
-| `WaitForWard` | 否 | Actor 等待 | 新的自然语言、受权动作、暂停、完成、关闭或取消 | 校验上一轮动作绑定 | 把断线当作取消或关闭 |
-| `TutoringTurnLoop` | 是 | 有界循环，发音与答疑同一条；澄清后以新 Turn 重入 | 出口检查接受恰好一个 Ward 交互；或预算、取消、超时停住 | 只读工具；`finish_turn`；一次泄露检查调用 | 写入、修改许可或答案状态、连续发出多个教学动作、声称孩子已掌握 |
-| `RunFailure` | 否 | 终止展示 | Companion `failed` 或 `timed_out` | 读当前会话 | 写 Fact 或关闭答疑 |
-| `Paused` / `StudyFinished` / `TutoringClosed` / `Cancelled` | 否 | 终止或可恢复 | 对应用例已提交 | 读已提交结果 | 由模型选择这些迁移 |
+本轮的答案保护不因累计卡住次数而放开。下一轮只会基于已提交的证据继续一个新的最小教学目标。具体 Run 生命周期、等待与失败状态由 [Companion](domain-companion.md) 维护；本 Context 只规定候选、出口检查和提交。
 
 ### 4.1 模型候选与 `finish_turn`
 
@@ -462,7 +387,7 @@ class TutorTurnCandidate(BaseModel):
 | 字段 | 谁信任 | 用途 |
 |---|---|---|
 | `act` | 出口检查核对是否在许可内 | 决定交互类型 |
-| `question_kind`、`is_assignment_content`、`reveals_solution`、`student_turn_kind`、`progress`、`same_problem`、`next_subgoal`、`subgoal_evidence` | 模型自述，代码只用来交叉检查，只会收紧 | 决定是否受答案锁、是否记录对当前小目标的证据 |
+| `question_kind`、`is_assignment_content`、`reveals_solution`、`student_turn_kind`、`progress`、`same_problem`、`next_subgoal`、`subgoal_evidence` | 模型自述，代码只用来交叉检查，只会收紧 | 决定是否受答案保护、是否记录对当前小目标的证据 |
 | `history_ref` | 必须来自本轮 `lookup_history` 返回的授权候选，否则按无引用，不拒绝整轮 | 接上历史 |
 | `lesson` | 只在 `act=pronounce` 时出现，其他 `act` 带 `lesson` 则拒绝 | 发音卡 |
 
@@ -477,7 +402,7 @@ class TutorTurnCandidate(BaseModel):
 
 `kind` 和动作必须能投影为 [Companion Interaction Protocol](domain-companion.md#52-companion-interaction-protocol) 的 `WorkflowInteractionView`。图片只接受已授权 `media_ref`，由 Application 附加。视频和正文中的任意 URL 不成为可播放或可跳转媒体。
 
-`must_remind_task=true` 且本轮不按作业成果处理时，投影必须包含回任务动作，并核对正文有提醒句，没有就补上规定句子。该动作的 `command` 须登记在 `companion-interaction.v1` 后才能启用；Study 不私自增加 `kind`。回任务不关闭 `StudySession` 或 `TutoringSession`。
+Application 在本轮不是作业成果、且 `StudySessionQuery` 返回活动任务时，投影必须包含回任务动作，并核对正文有提醒句，没有就补上规定句子。该动作的 `command` 须登记在 `companion-interaction.v1` 后才能启用；Tutoring 不私自增加 `kind`。回任务不关闭 `StudySession` 或 `TutoringSession`。
 
 ### 4.2 出口检查
 
@@ -486,8 +411,8 @@ class TutorTurnCandidate(BaseModel):
 | 检查 | 逻辑 | 目的 | 不通过 |
 |---|---|---|---|
 | 1 结构校验 | Pydantic 校验字段、枚举、长度，多余字段也拒绝 | 保证后面的代码可以放心使用候选 | 把校验错误附在同一次调用里重试一次；仍不合法则回退 |
-| 2 越权与一致性 | 对照 `TutorPermit` 和授权集合：按作业成果处理且 `solution=locked` 时，`reveals_solution=true` 或 `act=answer` 一律拒绝；`next_subgoal` 至多一个，且只可在新题建立时或当前轮有对 `active_subgoal` 的有效证据时设置；`act=confirm` 要求孩子已提出完整答案，但不得声称已验证正确；`progress` 只与 `attempt` 同现；`act=pronounce` 才能带 `lesson`，且 `locale`、`segment` 合法；`question_kind=safety` 由代码换成安全话术 | 确定性地拦住越权、跳步和矛盾，不依赖模型自觉 | 直接回退，不重试 |
-| 3 泄露检查 | 只在按作业成果处理，或任务会话里 `act=answer` 时触发。独立的一次结构化调用，只回答「正文是否给出了这道作业的最终答案、待填内容或完整解法」。现有的关键词只作兜底 | 拦住模型自述「没泄露」而实际泄露的情况（概率性） | `locked` 时判定泄露、调用超时或结果非法都按泄露处理，回退（fail-closed） |
+| 2 越权与一致性 | 对照 `TutorPermit` 和授权集合：按作业成果处理且 `answer_protected=true` 时，`reveals_solution=true` 或 `act=answer` 一律拒绝；`next_subgoal` 至多一个，且只可在新题建立时或当前轮有对 `active_subgoal` 的有效证据时设置；`act=confirm` 要求孩子已提出完整答案，但不得声称已验证正确；`progress` 只与 `attempt` 同现；`act=pronounce` 才能带 `lesson`，且 `locale`、`segment` 合法；`question_kind=safety` 由代码换成安全话术 | 确定性地拦住越权、跳步和矛盾，不依赖模型自觉 | 直接回退，不重试 |
+| 3 泄露检查 | 只在按作业成果处理，或任务会话里 `act=answer` 时触发。独立的一次结构化调用，只回答「正文是否给出了这道作业的最终答案、待填内容或完整解法」。现有的关键词只作兜底 | 拦住模型自述「没泄露」而实际泄露的情况（概率性） | `answer_protected=true` 时判定泄露、调用超时或结果非法都按泄露处理，回退（fail-closed） |
 
 任一检查失败的结果都一样：返回固定话术，记录 `model_fallback`，不写 Fact，不推进 `ProblemRecord`，不用反问掩盖失败。只有检查 1 允许重试一次，因为它的失败通常是格式问题。
 
@@ -524,10 +449,10 @@ class TutorTurnCandidate(BaseModel):
 
 | 数据 | 权威 | 可写者 | 模型能否直接改 | 保留 |
 |---|---|---|---|---|
-| 学习/答疑事实 | Study Aggregate | Study Use Case | 否 | 见 design-server |
-| 答案状态与题目计数（`ProblemRecord`） | Study Aggregate | `ApplyTutorTurn`，经 `TutorPermitPolicy.advance()` | 否，也不能经自述改变 | 见 design-server |
+| 答疑事实 | Tutoring Aggregate | Tutoring Use Case | 否 | 见 design-server |
+| 题目状态与计数（`ProblemRecord`） | Tutoring Aggregate | `ApplyTutorTurn`，经 `TutorPermitPolicy.advance()` | 否，也不能经自述改变 | 见 design-server |
 | 本轮许可（`TutorPermit`） | 无持久化；每轮由 `permit()` 现算 | `TutorPermitPolicy` | 否 | 不落业务库 |
-| checkpoint | `CheckpointStore` | 校验通过后的 `CompanionCoordinator` | 否 | 只保存运行态（等待点、澄清上下文、已用预算），不保存答案状态；与 Run 一起删除 |
+| checkpoint | `CheckpointStore` | 校验通过后的 `CompanionCoordinator` | 否 | 只保存运行态（等待点、澄清上下文、已用预算），不保存题目状态；与 Run 一起删除 |
 | 澄清上下文 | `CheckpointStore` | `CompanionCoordinator` | 否 | 仅当前 Run 的授权附件、候选摘要和选择；与 Run 一起删除 |
 | 发音教学卡 | `PronunciationLessonView` projection | Application projection writer | 否 | 随 Thread/Ward 删除；物理存储见 design-server |
 | 工作上下文 | `ContextBuilder` 的单次装配 | 无持久写 | 否 | 不落业务库 |
@@ -546,7 +471,7 @@ class TutorTurnCandidate(BaseModel):
 | `model_error` | 主调用的模型超时、限流或结构非法且重试耗尽 | Companion `failed` 信封 | 按 `retriable + resume_action` 显式重试或重新输入 |
 | `tool_error` | 工具耗尽且无法降级 | 失败信封 | 有界重试 |
 | `conflict` | 会话版本不匹配 | 刷新后的权威会话 | 丢弃本地动作并重读 |
-| `cancelled` | `CancelAgentRun` | 当前回复权结束 | 已提交的 Study 事务保留；不发布关闭 Fact |
+| `cancelled` | `CancelAgentRun` | 当前回复权结束 | 已提交的 Tutoring 事务保留；不发布关闭 Fact |
 
 失败不用空的成功信封表示。澄清结果只能携带一个具体待确认文本或非空选择集；没有候选时必须是明确补充要求，不能伪装为选择题。成就卡上的时长和攻克数只来自已关闭的 `StudyInterval` 与已提交 Fact；模型只起草鼓励语。
 
@@ -627,15 +552,15 @@ sequenceDiagram
 
 `PronunciationLessonView` 的领域可见字段是 `source_text`、`locale`、易读读法和提示说明；播放所需的不透明引用可由接口附带，但不是领域字段。View 以 `run_id + turn_id + attempt` 唯一且幂等，仅当前 Ward 可读，重试产生新 attempt，不覆盖旧消息对应 View，并随 Thread/Ward 删除。其物理 schema、播放引用、TTS 调用和缓存策略只在 [Server 物理设计](design-server.md) 与 App 设计维护。
 
-`TutoringInteractionView` 提供当前题目引用、当前小目标、已给提示的次数、答案状态（`locked` / `solved`）、确认状态（`unverified` / `verified`）、是否需要回任务，以及已提交的尝试和提示摘要。业务数字经信封的 `object_ref` 再读一次，不从展示句子解析。`StartCueView` 在读取时经 Planning 受权查询填入任务标题，标题不写回 `StartCue`。Guardian 不通过这些 Query 读取进行中的答疑正文、发音教学卡或到点邀请。
+`TutoringInteractionView` 提供当前题目引用、当前小目标、已给提示的次数、题目状态（`open` / `submitted` / `abandoned`）和已提交的尝试摘要。是否需要回任务由 Application 根据 Study Query 投影，业务数字经信封的 `object_ref` 再读一次，不从展示句子解析。Guardian 不通过这些 Query 读取进行中的答疑正文或发音教学卡。
 
 ## 六、跨 Context 契约
 
 | 事件 | 生产者 | 消费者 | 幂等 | 失败 |
 |---|---|---|---|---|
-| `LearningFactRecorded.v1` | `ApplyTutorTurn`、`ConfirmUnderstanding`、`CloseTutoringSession` | Memory `IngestLearningFact` | `source_type + source_id + event_type + source_version` | 投递重试；Study 不因投递失败回滚已提交会话 |
+| `LearningFactRecorded.v1` | `ApplyTutorTurn`、`ConfirmUnderstanding`、`CloseTutoringSession` | Memory `IngestLearningFact` | `source_type + source_id + event_type + source_version` | 投递重试；Tutoring 不因投递失败回滚已提交会话 |
 
-本 Context 从 [Study](domain-study.md) 读取受权 Query `GetStudySession`（`status`、`ward_id`、`task_id`），用于 `open()` 的前置检查和 `must_remind_task`；不订阅其 Domain Event，也不调用其 Aggregate。任务标题经 Planning 的受权 Query 取得，不写回本 Context。`MemoryBundle` 来自 Memory 的受权查询，只进入模型上下文。
+本 Context 从 [Study](domain-study.md) 读取受权 Query `GetStudySession`（`status`、`ward_id`、`task_id`），用于 `open()` 前置检查；Application 另据此投影回任务提醒。不订阅 Study 的 Domain Event，也不调用其 Aggregate。任务标题经 Planning 的受权 Query 取得，不写回本 Context。`MemoryBundle` 来自 Memory 的受权查询，只进入模型上下文。
 
 发音卡的 `kind` 为 `pronunciation_lesson`，`object_ref` 指向 `GetPronunciationLesson`，不带业务写动作。确认一个候选、选择多个候选或补充未识别原文复用 Companion `clarify + reply`；后续 Turn 仍走同一主流程，并带上最近原句窗口与其中已授权图片。首期音频不作为 Companion `media_ref`；端侧播放契约见 App/Server 物理设计。
 
@@ -648,7 +573,7 @@ sequenceDiagram
 | Port | Adapter | 超时与失败 |
 |---|---|---|
 | `TutoringSessionRepository` | SQLAlchemy | 用例本地短事务；版本冲突返回 `conflict` |
-| `LearningFactPublisher` | Study Outbox | 来源四元组去重；死信与补投见 Memory |
+| `LearningFactPublisher` | Tutoring Outbox | 来源四元组去重；死信与补投见 Memory |
 | `AttachmentQuery` / `LearningMaterialQuery` | 授权检索适配器 | 超时、ACL 拒绝映射为工具 observation |
 | `ModelGatewayPort` | 现有多模态/文本模型 Adapter | 执行版本化的 `tutor-turn.v1`，每次调用都带窗口图片和本轮图片，返回结构化候选；受 Run deadline 与通用重试政策约束 |
 | `LeakJudgePort` | 模型 Gateway 的一次结构化调用 | 只回答是否泄露；超时或结果非法按泄露处理（fail-closed）；与主调用分开计量 |
@@ -667,32 +592,32 @@ checkpoint、Trace 和 Ward 可见 journal 的存储属于 Companion。Tutoring 
 ## 八、验收场景
 
 ```gherkin
-Given 作业题的 ProblemRecord 为 locked，且孩子还没有任何尝试
+Given 作业题的 ProblemRecord 为 open，且孩子还没有任何尝试
 When 孩子说“直接告诉我答案”
-Then 本轮 TutorPermit.solution 为 locked
+Then 本轮 TutorPermit.answer_protected 为 true
 And 出口检查拒绝 reveals_solution=true 或 act=answer 的候选
 And 孩子得到固定话术或追问，不写 Fact，不推进 ProblemRecord
 
-Given 同一题目 locked，孩子给出第一次实质性尝试
+Given 同一题目为 open，孩子给出第一次实质性尝试
 When 模型返回 act=hint，且该尝试含对当前小目标的有效证据
 Then 同事务写 tutoring.attempt_recorded 与 tutoring.hint_given
 And ProblemRecord 的尝试数为 1，关闭当前小目标并保存至多一个后续小目标，hints_given 加 1
-And 本题仍是 locked
+And 本题仍是 open
 
 Given 同一题目连续多次实质性尝试都没有对当前小目标产生有效证据
 When 最新一轮提交
-Then 本轮回复仍按 locked 校验
+Then 本轮回复仍按答案保护校验
 And 系统要求改用更小目标、另一种表征、同构例题或标记待问老师
 And 不因次数输出本题最终答案、待填内容或完整解法
 
 Given 孩子没有任何尝试，连续三次只说“告诉我答案”
 When 每一轮提交
-Then ProblemRecord 一直是 locked
+Then ProblemRecord 一直是 open
 And ask_answer 本身不被计为实质性尝试
 
 Given 孩子本轮给出完整的推理和最终答案
 When 本轮提交
-Then ProblemRecord 进入 solved 且 verification_status 为 unverified
+Then ProblemRecord 进入 submitted
 And Ward 看见的是对其已给出推理的核查或验算邀请，而不是模型补出的答案
 And 不调用 ConfirmUnderstanding
 
@@ -709,7 +634,7 @@ And 不写 tutoring.understanding_confirmed
 Given 孩子换了一道新的作业题
 When 本轮提交
 Then 旧 ProblemRecord 变为 abandoned
-And 新 ProblemRecord 是 locked，计数全零
+And 新 ProblemRecord 是 open，计数全零
 
 Given 本轮产生一条已验证提示
 When ApplyTutorTurn 提交
@@ -718,18 +643,18 @@ And 不发布 tutoring.session_closed
 
 Given Ward 取消当前答疑 Run
 When CancelAgentRun 完成
-Then 已提交的 Study 事务保留
+Then 已提交的 Tutoring 事务保留
 And TutoringSession 仍不是 Closed
 
 Given StudySession 没有 task_id
 When Ward 只进行学习问答
 Then 会话可以保持 Active
 And 不发布 StudySessionCompleted.v1
-And TutorPermit.must_remind_task 为 false
+And Application 不投影回任务提醒
 
-Given 孩子问图片里的内容是用什么 App 拍的，ProblemRecord 为 locked
+Given 孩子问图片里的内容是用什么 App 拍的，ProblemRecord 为 open
 When 模型标注 question_kind=knowledge_lookup 并直接回答
-Then 不受答案锁限制，不被反问，且不推进 ProblemRecord
+Then 不受答案保护限制，不被反问，且不推进 ProblemRecord
 And 写 tutoring.curiosity_observed
 
 Given 模型把本题的追问标成 knowledge_lookup 和 is_assignment_content=false
@@ -738,12 +663,12 @@ Then 代码按 work_product_help 校验
 And 只会收紧，不会放松
 
 Given 候选自述 reveals_solution=false，但泄露检查判定正文给出了最终答案
-When 本轮 locked
+When 本轮 `answer_protected=true`
 Then 回退固定话术，记录 model_fallback
 And 不写 Fact，不推进 ProblemRecord
 
 Given 泄露检查调用超时或返回非法结果
-When 本轮是 locked 的作业成果
+When 本轮是受答案保护的作业成果
 Then 按泄露处理，回退固定话术（fail-closed）
 
 Given 候选的 history_ref 不在本轮授权候选集内
@@ -800,7 +725,7 @@ Given Ward 输入已知 locale 的明确外语原文并请求发音
 When 主调用返回 act=pronounce
 Then 模型直接接收本 Turn 的原文、最近原句，以及这些句子里已授权图像的 data URL
 And 对象存储路径不出现在给模型的文本里
-And Application 投影 pronunciation_lesson，不写 Study Aggregate
+And Application 投影 pronunciation_lesson，不写 Tutoring Aggregate
 And 不写 VerifiedTurn、ProblemRecord、Domain Event 或 LearningFactRecorded.v1
 And 不做泄露检查
 

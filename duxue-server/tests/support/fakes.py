@@ -72,6 +72,22 @@ class StaticLeakJudge:
         return self.result
 
 
+class StaticSafetyScreening:
+    def __init__(self, *, input_blocked: bool = False, output_blocked: bool = False):
+        self.input_blocked = input_blocked
+        self.output_blocked = output_blocked
+        self.input_calls = 0
+        self.output_calls = 0
+
+    def blocks_input(self, *, text: str) -> bool:
+        self.input_calls += 1
+        return self.input_blocked
+
+    def blocks_output(self, *, text: str) -> bool:
+        self.output_calls += 1
+        return self.output_blocked
+
+
 class StaticIntentClassifier:
     def __init__(self, intent: str = "planning"):
         self.intent = intent
