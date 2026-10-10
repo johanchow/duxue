@@ -1,17 +1,25 @@
 from __future__ import annotations
 
-import pytest
-
 from app.application.ports.companion import RunInvocation
 from app.application.workflows.tutoring_workflow import TutoringWorkflow
+from app.infrastructure.ai.model_gateway import ModelGatewayError
 from app.infrastructure.persistence.models import (
-    CompanionCommand, CompanionMessage, ConversationThread, OutboxEvent, StudySession, TutoringMessage,
-    TutoringProblem, TutoringSession, uid,
+    CompanionCommand,
+    CompanionMessage,
+    ConversationThread,
+    OutboxEvent,
+    StudySession,
+    TutoringProblem,
+    TutoringSession,
+    uid,
 )
-from tests.support.factories import create_ward, create_task, create_study_session
+from tests.support.factories import create_study_session, create_task, create_ward
 from tests.support.fakes import StaticLeakJudge, StaticTutorModel, tutor_raw
 
-ATTEMPT = tutor_raw(act="hint", student_turn_kind="attempt", progress="none")
+ATTEMPT = tutor_raw(
+    act="hint", student_turn_kind="attempt", progress="none",
+    subgoal_evidence="我先试着把已知条件写出来", next_subgoal="写出第一个等式",
+)
 KNOWLEDGE = tutor_raw(
     act="answer", question_kind="knowledge_lookup", content="diamond beach 的中文意思是钻石海滩。",
     student_turn_kind="other", same_problem=False, is_assignment_content=False,
@@ -44,7 +52,7 @@ def _workflow(db, *raws, judge=None):
 
 
 def test_tutoring_workflow_step_by_step_and_close(db):
-    ward, session = _setup(db)
+    _, session = _setup(db)
     workflow, _ = _workflow(db, ATTEMPT)
 
     outcome1 = _ask(db, workflow, session, "我先把 y 代入第一个式子，得到 3")
@@ -75,19 +83,18 @@ def test_locked_refuses_a_solution_and_writes_nothing(db):
     assert db.query(TutoringProblem).count() == 0
 
 
-def test_two_attempts_without_progress_unlock_the_next_round(db):
+def test_repeated_attempts_never_unlock_the_next_round(db):
     _, session = _setup(db)
     workflow, model = _workflow(db, ATTEMPT)
     _ask(db, workflow, session, "我觉得是 3")
     second = _ask(db, workflow, session, "那是 4")
-    # 第二次尝试的这一轮仍按 locked 校验，下一轮才是 unlocked。
-    assert second.next_interaction["solution_state"] == "unlocked"
-    assert '"solution": "locked"' in model.calls[1]["instruction"]
+    assert second.next_interaction["problem_status"] == "open"
+    assert '"answer_protected": true' in model.calls[1]["instruction"]
     _ask(db, workflow, session, "还是不会")
-    assert '"solution": "unlocked"' in model.calls[2]["instruction"]
+    assert '"answer_protected": true' in model.calls[2]["instruction"]
 
 
-def test_unlocked_reveal_needs_a_verification_question(db):
+def test_protected_problem_never_accepts_a_revealed_solution(db):
     _, session = _setup(db)
     workflow, _ = _workflow(db, ATTEMPT)
     _ask(db, workflow, session, "3")
@@ -96,26 +103,25 @@ def test_unlocked_reveal_needs_a_verification_question(db):
     workflow.turn_model = StaticTutorModel(reveal)
     rejected = _ask(db, workflow, session, "讲给我听")
     assert rejected.next_interaction["model_fallback"] is True
-    workflow.turn_model = StaticTutorModel({**reveal, "follow_up_question": "把 x=2 代回去检验一下？"})
-    accepted = _ask(db, workflow, session, "讲给我听")
-    assert accepted.next_interaction["model_fallback"] is False
-    assert "检验" in accepted.next_interaction["content"]
 
 
 def test_asking_for_the_answer_without_attempts_never_unlocks(db):
     _, session = _setup(db)
-    workflow, model = _workflow(db, tutor_raw(act="probe", student_turn_kind="ask_answer"))
+    workflow, _ = _workflow(db, tutor_raw(act="probe", student_turn_kind="ask_answer"))
     for _ in range(4):
         _ask(db, workflow, session, "告诉我答案")
     problem = db.query(TutoringProblem).one()
-    assert problem.solution_state == "locked" and problem.substantive_attempts == 0
+    assert problem.status == "open" and problem.substantive_attempts == 0
 
 
 def test_solved_attempt_ends_the_problem_without_confirming_understanding(db):
     _, session = _setup(db)
-    workflow, _ = _workflow(db, tutor_raw(act="confirm", student_turn_kind="attempt", progress="solved", content="对，x=2。"))
+    workflow, _ = _workflow(db, tutor_raw(
+        act="confirm", student_turn_kind="attempt", progress="solved", content="对，x=2。",
+        subgoal_evidence="先移项再除以系数，所以 x=2",
+    ))
     outcome = _ask(db, workflow, session, "x=2")
-    assert outcome.next_interaction["solution_state"] == "solved"
+    assert outcome.next_interaction["problem_status"] == "submitted"
     assert "tutoring.understanding_confirmed" not in _events(db)
 
 
@@ -134,7 +140,7 @@ def test_new_problem_starts_locked(db):
     _ask(db, workflow, session, "再看另一道题")
     rows = db.query(TutoringProblem).order_by(TutoringProblem.created_at).all()
     assert [r.status for r in rows] == ["abandoned", "open"]
-    assert rows[1].solution_state == "locked" and rows[1].substantive_attempts == 0
+    assert rows[1].status == "open" and rows[1].substantive_attempts == 0
 
 
 def test_replayed_turn_counts_the_attempt_once(db):
@@ -173,6 +179,34 @@ def test_knowledge_question_is_answered_directly_without_leak_check_or_problem(d
     assert outcome.next_interaction["model_fallback"] is False
 
 
+def test_non_attempt_progress_is_ignored_instead_of_replacing_a_safe_reply(db):
+    _, session = _setup(db, "英语阅读")
+    raw = tutor_raw(
+        act="hint", question_kind="knowledge_lookup", content="这个词表示海滩。",
+        student_turn_kind="ask_hint", progress="some", same_problem=False,
+        is_assignment_content=False,
+    )
+    workflow, _ = _workflow(db, raw)
+    outcome = _ask(db, workflow, session, "beach 是什么意思")
+    assert outcome.next_interaction["model_fallback"] is False
+    assert "海滩" in outcome.next_interaction["content"]
+
+
+def test_candidate_with_omitted_safe_metadata_and_extra_field_is_accepted(db):
+    _, session = _setup(db, "英语阅读")
+    raw = {
+        "act": "answer",
+        "question_kind": "knowledge_lookup",
+        "content": "beach 的意思是海滩。",
+        "provider_debug": "unused",
+    }
+    workflow, model = _workflow(db, raw)
+    outcome = _ask(db, workflow, session, "beach 是什么意思")
+    assert len(model.calls) == 1
+    assert outcome.next_interaction["model_fallback"] is False
+    assert "海滩" in outcome.next_interaction["content"]
+
+
 def test_open_problem_tightens_a_mislabeled_followup(db):
     _, session = _setup(db)
     workflow, _ = _workflow(db, ATTEMPT)
@@ -194,12 +228,10 @@ def test_history_ref_outside_the_candidates_is_dropped_not_rejected(db):
 
 def test_a_task_session_gets_the_reminder_after_a_knowledge_answer(db):
     _, session = _setup(db, "英语的典范故事阅读")
-    workflow, model = _workflow(db, KNOWLEDGE)
+    workflow, _ = _workflow(db, KNOWLEDGE)
     outcome = _ask(db, workflow, session, "diamond beach 是什么意思")
     assert "钻石海滩" in outcome.next_interaction["content"]
     assert "先回到正在进行的任务" in outcome.next_interaction["content"]
-    assert '"must_remind_task": true' in model.calls[0]["instruction"]
-    assert "英语的典范故事阅读" in model.calls[0]["instruction"]
 
 
 def test_structure_error_retries_once_then_falls_back(db):
@@ -210,6 +242,29 @@ def test_structure_error_retries_once_then_falls_back(db):
     assert len(model.calls) == 2 and model.calls[1]["repair_error"]
     assert outcome.next_interaction["model_fallback"] is True
     assert _events(db) == []
+
+
+def test_invalid_json_gateway_response_retries_once_then_keeps_a_valid_reply(db):
+    """空字符串等网关层 JSON 错误也应得到一次定向修复机会。"""
+    _, session = _setup(db)
+
+    class InvalidJsonThenValidModel:
+        def __init__(self):
+            self.calls = []
+
+        def complete(self, **kwargs):
+            self.calls.append(kwargs)
+            if len(self.calls) == 1:
+                raise ModelGatewayError("invalid_model_candidate")
+            return KNOWLEDGE
+
+    model = InvalidJsonThenValidModel()
+    workflow = TutoringWorkflow(db, turn_model=model, leak_judge=StaticLeakJudge())
+    outcome = _ask(db, workflow, session, "beach 是什么意思")
+    assert len(model.calls) == 2
+    assert model.calls[1]["repair_error"]
+    assert outcome.next_interaction["model_fallback"] is False
+    assert "钻石海滩" in outcome.next_interaction["content"]
 
 
 def test_tutoring_without_session_opens_a_taskless_session_and_replies(db):

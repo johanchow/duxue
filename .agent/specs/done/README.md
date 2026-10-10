@@ -8,3 +8,4 @@
 | [split-api-context-routers.md](split-api-context-routers.md) | 2026-09-14 |
 | [companion-message-transcript.md](companion-message-transcript.md) | 2026-09-15 |
 | [implement-companion-messages.md](implement-companion-messages.md) | 2026-09-15 |
+| [split-study-tutoring-domain.md](split-study-tutoring-domain.md) | 2026-10-10 |

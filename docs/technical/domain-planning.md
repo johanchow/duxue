@@ -139,7 +139,7 @@ stateDiagram-v2
 | 已排期 | `Task.status = scheduled`，日程是今天，且没有未结束的学习会话 |
 | 未排期 | `Task.status = pool`，且没有未结束的学习会话 |
 
-未排期卡片和今日计划卡片都可以点按并确认开始。确认后调用 Study 的 `StartStudySession`，并带上该 `task_id`。`Task` 仍保持 `pool` 或 `scheduled`。进行中的卡片可以选择暂停或完成；暂停的卡片可以继续。暂停、继续只改变 `StudySession`。完成且会话带有 `task_id` 时，才由 `CompleteTask` 把任务写成 `completed`。不挂任务的问答不走这张卡片，见 [无任务答疑](domain-study.md#无任务答疑)。
+未排期卡片和今日计划卡片都可以点按并确认开始。确认后调用 Study 的 `StartStudySession`，并带上该 `task_id`。`Task` 仍保持 `pool` 或 `scheduled`。进行中的卡片可以选择暂停或完成；暂停的卡片可以继续。暂停、继续只改变 `StudySession`。完成且会话带有 `task_id` 时，才由 `CompleteTask` 把任务写成 `completed`。不挂任务的问答不走这张卡片，见 [无任务答疑](domain-study.md#无任务会话)。
 
 #### 领域模型清单（聚合及领域服务）
 

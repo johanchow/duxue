@@ -4,7 +4,7 @@
 >
 > 范围：统一陪伴入口、Thread/Run 连续性、Coordinator Process Manager、目标 Workflow 的受控运行契约，以及 Ward 可见的 Companion Interaction Protocol。  
 >
-> 关联：[DDD Overview](ddd-overview.md) · [Memory Context](domain-memory.md) · [Planning Context](domain-planning.md) · [Study Context](domain-study.md) · [Evaluation Context](domain-evaluation.md) · [Server 物理设计](design-server.md)
+> 关联：[DDD Overview](ddd-overview.md) · [Memory Context](domain-memory.md) · [Planning Context](domain-planning.md) · [Study Context](domain-study.md) · [Tutoring Context](domain-tutoring.md) · [Evaluation Context](domain-evaluation.md) · [Server 物理设计](design-server.md)
 
 ## 一、边界、所有权与统一语言
 
@@ -14,7 +14,7 @@
 无状态的 Application utility。
 
 `CompanionCoordinator` 是这个 Context 内的 **Application-layer Process Manager**。它路由
-一次 Ward 输入、维护 Thread/Run 连续性；它不拥有 Planning、Study、Evaluation 或 Memory 的
+一次 Ward 输入、维护 Thread/Run 连续性；它不拥有 Planning、Study、Tutoring、Evaluation 或 Memory 的
 Aggregate、领域规则和跨 Context 写权限。
 
 
@@ -22,7 +22,7 @@ Aggregate、领域规则和跨 Context 写权限。
 | ------------------------------------------------------------------ | -------------------------------------------- | -------------------------------------------- |
 | 全局 Context Map、类型与所有权                                              | [ddd-overview.md](ddd-overview.md)           | 只引用，不重新分类                                    |
 | Planning 的模型、用例与固定 Graph                                           | [domain-planning.md](domain-planning.md)     | 仅定义 `RunInvocation` / `WorkflowOutcome` 调用契约 |
-| Study/Tutoring 的模型、受限 ReAct 与结算                                    | [domain-study.md](domain-study.md)           | 仅定义 `RunInvocation` / `WorkflowOutcome` 调用契约 |
+| Tutoring 的模型、受限 ReAct 与结算                                         | [domain-tutoring.md](domain-tutoring.md)     | 仅定义 `RunInvocation` / `WorkflowOutcome` 调用契约 |
 | Evaluation/Reflection 的模型、证据工作流与报告版本                               | [domain-evaluation.md](domain-evaluation.md) | 仅定义 `RunInvocation` / `WorkflowOutcome` 调用契约 |
 | Evidence、Episode、Signal、Profile、Memory Bundle                      | [domain-memory.md](domain-memory.md)         | 仅定义 ACL Query 与事实投递边界                        |
 | Thread/Run、Ward-facing transcript journal、Coordinator、Runtime 执行协议 | 本文                                           | 唯一维护                                         |
@@ -35,19 +35,21 @@ flowchart LR
     CO[Companion Orchestration<br/>Thread · Run · Handoff]
     PL[Planning]
     ST[Study]
+    TU[Tutoring]
     ER[Evaluation & Reflection]
     MU[Memory & Understanding]
     RT[AI Runtime adapters]
     W -->|CompanionTurn| CO
     CO -->|authorized RunInvocation| PL
     CO -->|authorized RunInvocation| ST
+    CO -->|authorized RunInvocation| TU
     CO -->|authorized RunInvocation| ER
     PL -->|LearningFactRecorded.v1| MU
-    ST -->|LearningFactRecorded.v1| MU
+    TU -->|LearningFactRecorded.v1| MU
     ER -->|LearningFactRecorded.v1| MU
     MU -->|authorized MemoryBundle ACL| CO
     RT -. validated candidate only .-> PL
-    RT -. validated candidate only .-> ST
+    RT -. validated candidate only .-> TU
     RT -. validated candidate only .-> ER
 ```
 
@@ -234,7 +236,7 @@ Repository/ORM 或创建多 Context 全局事务。
 澄清和安全都写入一条固定的、已校验的 Ward-facing 回复；不能返回没有正文的成功结果。
 安全词表只拦截已知伤害表述，不承担开放说法的意图理解。
 
-`tutoring` 只表示进入答疑场景。进入之后如何在 `problem_solving`、`curiosity`、`conversation`、`safety`、`pronunciation` 中选择，见 [Study §1.1](domain-study.md#11-控制模型)。这里不把发音加进 `IntentProposal`。
+`tutoring` 只表示进入答疑场景。进入之后如何在 `problem_solving`、`curiosity`、`conversation`、`safety`、`pronunciation` 中选择，见 [Tutoring §1.1](domain-tutoring.md#11-控制模型)。这里不把发音加进 `IntentProposal`。
 
 ### 3.1 状态变更触发矩阵
 
@@ -401,7 +403,7 @@ Workflow 必须声明版本化 `ContextSpec`：Memory 范围、近期会话窗�
 | 目标 Context              | Workflow 可做什么                           | 不可做什么                         | 当前状态                 |
 | ----------------------- | --------------------------------------- | ----------------------------- | -------------------- |
 | Planning                | 审阅草稿、补字段、等待确认、调用 Planning 用例            | 绕过确认、容量/version guard 或直接写正式表 | 有限 Adapter 已接入       |
-| Study / Tutoring        | 进入 tutoring 后按 [Study §1.1](domain-study.md#11-控制模型) 由模型在一次受限循环里驱动，只读工具，唯一出口 `finish_turn`；发音是同一流程里的 `act=pronounce`；代码在出口做结构、越权与泄露三道检查，并按需调用 Tutoring 用例 | 代写、无限循环、为发音另建分支、Extractor 或 Agent Loop，候选直接升 Signal、把发音加进 Companion 场景枚举 | 目标契约，完整 Runtime 待落地 |
+| Tutoring               | 进入 tutoring 后按 [Tutoring §1.1](domain-tutoring.md#11-控制模型) 由模型在一次受限循环里驱动，只读工具，唯一出口 `finish_turn`；发音是同一流程里的 `act=pronounce`；代码在出口做结构、越权与泄露三道检查，并按需调用 Tutoring 用例 | 代写、无限循环、为发音另建分支、Extractor 或 Agent Loop，候选直接升 Signal、把发音加进 Companion 场景枚举 | 目标契约，完整 Runtime 待落地 |
 | Evaluation & Reflection | 收集自评、基于锁定证据生成候选、调用 Reflection 用例        | 伪装未到达证据、覆盖旧报告语义               | 目标契约，完整 Workflow 待落地 |
 
 
@@ -475,7 +477,7 @@ Ward 输入     CompanionTurn = TextTurn | StructuredWardCommand + media_refs
 | `CompanionTurn`           | Interface                     | 文本、附件引用、已校验动作、`command_id`、Thread 版本 | 模型自由 JSON、未授权媒体            |
 | `CompanionMessage`        | Application journal           | 最终可见文字与媒体引用                          | 计划草稿快照、CoT、tool 原文         |
 | `WorkflowInteractionView` | Application Outcome           | `kind`、展示 parts、允许动作、对象引用            | 另一个 Context 的 Aggregate 内部 |
-| 目标 Query                  | Planning / Study / Evaluation | 确认列表、提示卡、盲评卡等业务字段                    | 聊天历史                       |
+| 目标 Query                  | Planning / Study / Tutoring / Evaluation | 确认列表、提示卡、盲评卡等业务字段                    | 聊天历史                       |
 
 
 App 按 `kind` 选择组件；业务数字一律用 `object_ref` 再拉一次目标 Query，避免气泡里的过期草稿。
@@ -492,10 +494,10 @@ App 按 `kind` 选择组件；业务数字一律用 `object_ref` 再拉一次目
 | `clarify`           | 单一必要问题、发音原文确认或候选选择 | `text`                 | `reply`                                         | 无或当前 Workflow 等待点                    |
 | `plan_confirm_list` | 全部未完成任务：耗时、开始、结束  | `text` + `object_ref`  | `confirm`（仅 `confirm_enabled`）、`edit`、`discard` | [PlanDraftView](domain-planning.md) |
 | `tutoring_hint`     | 启发式提示卡 + 阶梯       | `text`（Markdown/LaTeX） | `understood`、`more_hint`、`close`                | TutoringInteractionView             |
-| `pronunciation_lesson` | 已校验原文、发音提示与按需播放 | `text` + `object_ref`  | 无                                               | [PronunciationLessonView](domain-study.md#五query) |
+| `pronunciation_lesson` | 已校验原文、发音提示与按需播放 | `text` + `object_ref`  | 无                                               | [PronunciationLessonView](domain-tutoring.md#五query) |
 | `self_review`       | 盲评自评卡             | `object_ref`           | `submit_review`                                 | Evaluation 盲评投影                     |
 | `achievement`       | 任务收官轻量成就          | `text`                 | `close`                                         | StudySession 结算                     |
-| `start_cue`  | 到点后的开始邀请          | `text` + `object_ref`  | `start_due_task`、`continue_current`、`pause_current_and_start_due`、`snooze_once`（仅 `StartCueView` 允许的子集） | [StartCueView](domain-study.md) |
+| `start_cue`  | 到点后的开始邀请          | `text` + `object_ref`  | `start_due_task`、`continue_current`、`pause_current_and_start_due`、`snooze_once`（仅 `StartCueView` 允许的子集） | [StartCueView](domain-study.md#四query) |
 | `failure`           | 可恢复失败             | `text`                 | `retry` / `restart`（仅 Outcome 允许时）              | 无                                   |
 
 
@@ -597,7 +599,7 @@ SSE 只传输展示增量，事件名固定。客户端可拼 `TEXT_DELTA`；只
 | 未知 `kind` / 未知 `command`              | 拒绝执行；展示 `text` 降级或 `failure` |
 | `confirm` 但目标 `confirm_enabled=false` | `409`，返回最新 `PlanDraftView`   |
 | `media_ref` 不属于当前 Ward 前缀或不存在         | `400`，不展示                    |
-| `pronunciation_lesson` 缺少 Study `object_ref`，或 `GetPronunciationLesson` 不可读 | 拒绝候选；降级为 `failure`，不得从正文解析发音字段 |
+| `pronunciation_lesson` 缺少 Tutoring `object_ref`，或 `GetPronunciationLesson` 不可读 | 拒绝候选；降级为 `failure`，不得从正文解析发音字段 |
 | 模型候选含未登记 `kind` 或动作                   | OutputValidator 丢弃，确定性降级     |
 | 旧客户端只认识 `interaction.items`           | 服务端可同时填兼容字段一个版本窗口，之后删除       |
 
@@ -721,7 +723,7 @@ When CancelAgentRun 通过 Ward、Thread 版本与 Run fence 校验
 Then Run 转为 cancelled 且后续迟到 Outcome 不再获得回复权
 And 已由目标 Context 提交的独立业务事务不会被 Coordinator 回滚
 
-Given Study 返回 pronunciation_lesson 和可读的 GetPronunciationLesson object_ref
+Given Tutoring 返回 pronunciation_lesson 和可读的 GetPronunciationLesson object_ref
 When OutputValidator 接受当前 focus Run 的 Outcome
 Then INTERACTION_READY 才携带完整 pronunciation_lesson 交互
 And TEXT_DELTA 不携带 speech_ref、音频 URL 或播放器状态
@@ -732,7 +734,7 @@ Then 正文包含非空选择集且动作只有 reply
 And 下一轮只能解析回 checkpoint 中的授权候选集合
 
 Given pronunciation 没有合法文本候选
-When Study 返回 no_match 的 needs_input
+When Tutoring 返回 no_match 的 needs_input
 Then Companion 要求裁剪、重拍或输入文字
 And 不呈现空选择题或 pronunciation_lesson
 ```

@@ -407,6 +407,17 @@ def record_llm_fallback(*, operation: str, reason: str) -> None:
     _span_event("llm.fallback", {"llm.operation": operation, "fallback.reason": reason})
 
 
+def record_tutor_candidate_rejection(*, error_type: str, field: str, retrying: bool) -> None:
+    """Expose schema drift without sending a child's or model's text to Grafana."""
+    attrs = {
+        "tutor.candidate.error_type": error_type,
+        "tutor.candidate.field": field,
+        "tutor.candidate.retrying": retrying,
+    }
+    _span_event("tutor.candidate.rejected", attrs)
+    _audit_logger.warning("tutor.candidate.rejected", extra={"telemetry": attrs})
+
+
 def record_vlm_frames(*, count: int, mode: str) -> None:
     _vlm_frames.add(count, attributes={"vlm.mode": mode})
 

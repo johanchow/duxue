@@ -27,11 +27,12 @@
 | 1 | 身份与监护关系 | Generic | Identity & Relationship | 身份、角色资料、Guardian-Ward 关系、凭据 | 认证并判定 Ward 访问权；不拥有学习业务状态 | 下游：全部业务 Context | 授权 ACL / 受权查询 |
 | 2 | 设备接入与采集 | Supporting | Device & Ingestion | Device、采集帧元数据、设备健康 | 接入设备并记录可信采集；不解释学习行为 | 上游：Identity；下游：Behavior Analysis、Study | 受权 API；`FrameRecorded.v1` |
 | 3 | 学习计划协商 | Core | Planning | Task、DailySchedule、PlanDraft | 形成并确认计划；不记录实际执行或理解结论 | 上游：Identity、Memory 查询；下游：Study、Memory | ACL；`PlanConfirmed.v1`、`LearningFactRecorded.v1` |
-| 4 | 学习执行 | Core | Study | StudySession、执行区间、任务完成、TutoringSession 生命周期 | 记录实际开始、暂停、完成和答疑事实；不形成长期画像 | 上游：Planning、Identity；下游：Evaluation、Memory、Companion | `PlanConfirmed.v1`；`StudySessionCompleted.v1`、`LearningFactRecorded.v1` |
-| 5 | 行为观察与分析 | Supporting | Behavior Analysis | 分析任务、FramePrediction、BehaviorSegment | 从采集事实生成受控观察结果；不判定 Ward 主观感受或长期能力 | 上游：Device & Ingestion、Study；下游：Evaluation、Memory | `FrameRecorded.v1`；`BehaviorSegmentGenerated.v1`、`LearningFactRecorded.v1` |
-| 6 | 评估与复盘 | Core | Evaluation & Reflection | SelfEvaluation、DualTrackReport、ActionableTip、DialoguePrompt | 对照主客观结果并形成复盘建议；不回写计划或孩子画像 | 上游：Study、Behavior Analysis、Identity；下游：Memory、Planning | `StudySessionCompleted.v1`、`BehaviorSegmentGenerated.v1`；`LearningFactRecorded.v1` |
-| 7 | 孩子理解 | Core | Memory & Understanding | Learning Evidence、EpisodicMemory、DerivedSignal、LongTermProfileView | 将已确认事实演进为可校正理解；不拥有计划、会话、报告或运行时状态 | 上游：Planning、Study、Evaluation、Behavior Analysis；下游：Companion、Planning、Evaluation | `LearningFactRecorded.v1`；受权 `MemoryBundle` 查询 ACL |
-| 8 | 陪伴编排 | Supporting | Companion Orchestration | ConversationThread、AgentRunLink、运行编排状态 | 拥有入口连续性状态；其核心用例由 Application-layer Process Manager 路由一次受权 Run 并保持会话连续性。它不是核心学习业务领域，不拥有 Planning、Study、Evaluation 或 Memory 的业务 Aggregate 或领域决策 | 上游：Identity；下游：Planning、Study、Evaluation、Memory | ACL；本地 Use Case；受权查询 |
+| 4 | 学习执行 | Core | Study | StudySession、执行区间、任务完成、StartCue（到点开始邀请） | 记录实际开始、暂停、完成与到点未开始的邀请；不做答疑、不形成长期画像 | 上游：Planning、Identity；下游：Evaluation、Companion；被 Tutoring 受权查询 | `PlanConfirmed.v1`；`StudySessionCompleted.v1`；受权 `GetStudySession` |
+| 5 | 辅导答疑 | Core | Tutoring | TutoringSession、ProblemRecord、已验证尝试/提示/理解确认/好奇心观察、发音教学卡（只读投影） | 守住「作业成果不被代替完成」红线，记录答疑过程事实；不拥有学习计时、日程或长期画像 | 上游：Study（受权查询）、Planning（任务标题）、Identity；下游：Memory、Companion | 受权 `GetStudySession`；`LearningFactRecorded.v1` |
+| 6 | 行为观察与分析 | Supporting | Behavior Analysis | 分析任务、FramePrediction、BehaviorSegment | 从采集事实生成受控观察结果；不判定 Ward 主观感受或长期能力 | 上游：Device & Ingestion、Study；下游：Evaluation、Memory | `FrameRecorded.v1`；`BehaviorSegmentGenerated.v1`、`LearningFactRecorded.v1` |
+| 7 | 评估与复盘 | Core | Evaluation & Reflection | SelfEvaluation、DualTrackReport、ActionableTip、DialoguePrompt | 对照主客观结果并形成复盘建议；不回写计划或孩子画像 | 上游：Study、Behavior Analysis、Identity；下游：Memory、Planning | `StudySessionCompleted.v1`、`BehaviorSegmentGenerated.v1`；`LearningFactRecorded.v1` |
+| 8 | 孩子理解 | Core | Memory & Understanding | Learning Evidence、EpisodicMemory、DerivedSignal、LongTermProfileView | 将已确认事实演进为可校正理解；不拥有计划、会话、报告或运行时状态 | 上游：Planning、Tutoring、Evaluation、Behavior Analysis；下游：Companion、Planning、Evaluation | `LearningFactRecorded.v1`；受权 `MemoryBundle` 查询 ACL |
+| 9 | 陪伴编排 | Supporting | Companion Orchestration | ConversationThread、AgentRunLink、运行编排状态 | 拥有入口连续性状态；其核心用例由 Application-layer Process Manager 路由一次受权 Run 并保持会话连续性。它不是核心学习业务领域，不拥有 Planning、Study、Tutoring、Evaluation 或 Memory 的业务 Aggregate 或领域决策 | 上游：Identity；下游：Planning、Study、Tutoring、Evaluation、Memory | ACL；本地 Use Case；受权查询 |
 
 ### 统一语言与所有权原则
 
@@ -51,6 +52,7 @@ flowchart LR
     DI[Device & Ingestion<br/>Supporting]
     PL[Planning<br/>Core]
     ST[Study<br/>Core]
+    TU[Tutoring<br/>Core]
     BA[Behavior Analysis<br/>Supporting]
     ER[Evaluation & Reflection<br/>Core]
     MU[Memory & Understanding<br/>Core]
@@ -59,17 +61,19 @@ flowchart LR
     IR -->|authorization ACL| DI
     IR -->|authorization ACL| PL
     IR -->|authorization ACL| ST
+    IR -->|authorization ACL| TU
     IR -->|authorization ACL| ER
     IR -->|authorization ACL| CO
 
     PL -->|PlanConfirmed.v1| ST
     DI -->|FrameRecorded.v1| BA
     ST -->|study-session reference| BA
+    ST -->|authorized GetStudySession query| TU
     ST -->|StudySessionCompleted.v1| ER
     BA -->|BehaviorSegmentGenerated.v1| ER
 
     PL -->|LearningFactRecorded.v1| MU
-    ST -->|LearningFactRecorded.v1| MU
+    TU -->|LearningFactRecorded.v1| MU
     BA -->|LearningFactRecorded.v1| MU
     ER -->|LearningFactRecorded.v1| MU
 
@@ -78,6 +82,7 @@ flowchart LR
     MU -->|authorized MemoryBundle ACL| ER
     CO -->|typed local intent| PL
     CO -->|typed local intent| ST
+    CO -->|typed local intent| TU
     CO -->|typed local intent| ER
 ```
 
@@ -99,7 +104,9 @@ flowchart LR
 | `FrameRecorded.v1` | Device & Ingestion / 帧元数据已入账 | Behavior Analysis | 分析受控帧 | `frame_id`；可重试 |
 | `BehaviorSegmentGenerated.v1` | Behavior Analysis / 片段已生成 | Evaluation & Reflection | 合并客观行为证据 | `study_session_id + segment version`；最终一致 |
 | `StudySessionCompleted.v1` | Study / 执行会话已关闭 | Evaluation & Reflection | 启动或更新复盘材料 | `study_session_id + version`；最终一致 |
-| `LearningFactRecorded.v1` | Planning、Study、Behavior Analysis、Evaluation & Reflection / 已确认学习事实 | Memory & Understanding | `IngestLearningFact` | `source_type + source_id + event_type + source_version`；重复无副作用 |
+| `LearningFactRecorded.v1` | Planning、Tutoring、Behavior Analysis、Evaluation & Reflection / 已确认学习事实 | Memory & Understanding | `IngestLearningFact` | `source_type + source_id + event_type + source_version`；重复无副作用 |
+
+`GetStudySession` 是 Study 提供给 Tutoring 的受权查询（`status`、`ward_id`、`task_id`），不是 Integration Event；Tutoring 不订阅 Study 的 Domain Event，也不调用其 Aggregate。
 
 `MemoryBundle` 是受权查询结果，不是 Integration Event。调用方必须传入 actor、Ward、use case、可见性范围和预算；Memory Context 负责 ACL、脱敏与最小化投影。
 
@@ -114,7 +121,7 @@ flowchart TB
     ACT[Ward / Guardian / Device / Scheduler]
     IF[Interface<br/>FastAPI endpoints · SSE endpoints · event consumers]
     APP[Application<br/>Use Cases · Queries · Companion Process Manager]
-    DC[Domain Context Modules<br/>Identity · Planning · Study · Behavior Analysis<br/>Evaluation · Memory & Understanding]
+    DC[Domain Context Modules<br/>Identity · Planning · Study · Tutoring · Behavior Analysis<br/>Evaluation · Memory & Understanding]
     PORT[Domain / Application Ports<br/>repositories · publishers · gateways]
     INF[Infrastructure<br/>ORM · PostgreSQL · Outbox · Celery workers<br/>Redis · OSS · model gateways · observability]
 
@@ -136,7 +143,8 @@ flowchart TB
 | Context | 详情文档 | 当前设计状态 |
 |---|---|---|
 | Planning & Scheduling | [domain-planning.md](domain-planning.md) | Ward 计划草稿、确认日程与固定协商 Graph |
-| Study & Tutoring | [domain-study.md](domain-study.md) | 学习执行、提示等级策略、一次输入内的 Turn Loop、过程事实与会话结算 |
+| Study | [domain-study.md](domain-study.md) | 学习执行（开始、暂停、完成、计时）与到点开始邀请 `StartCue` |
+| Tutoring | [domain-tutoring.md](domain-tutoring.md) | 答疑红线与答案状态、一次输入内的 Turn Loop、发音 act、过程事实与答疑会话结算 |
 | Evaluation & Reflection | [domain-evaluation.md](domain-evaluation.md) | 自评、证据版本化复盘与行动采纳 |
 | Memory & Understanding | [domain-memory.md](domain-memory.md) | 已有 Aggregate、触发矩阵和局部因果链；物理 Schema 对齐另行处理 |
 | Companion Orchestration | [domain-companion.md](domain-companion.md) | Supporting Context：维护 Thread/Run 连续性状态；Coordinator 是其 Application-layer Process Manager，并定义目标 Workflow 边界 |

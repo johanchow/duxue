@@ -12,6 +12,7 @@ from app.infrastructure.observability.telemetry import (
     record_companion_rejection,
     record_model_response,
     record_planning_input_rejected,
+    record_tutor_candidate_rejection,
 )
 
 
@@ -33,6 +34,18 @@ def test_default_agent_audit_logs_only_a_summary(caplog, monkeypatch):
     assert raw not in metadata
     assert "input.sha256" in metadata
     assert "input.length" in metadata
+
+
+def test_tutor_candidate_rejection_records_only_low_cardinality_diagnostics(caplog):
+    with caplog.at_level("WARNING", logger="duxue.agent.audit"):
+        record_tutor_candidate_rejection(error_type="missing", field="same_problem", retrying=True)
+
+    telemetry = next(getattr(record, "telemetry", {}) for record in caplog.records)
+    assert telemetry == {
+        "tutor.candidate.error_type": "missing",
+        "tutor.candidate.field": "same_problem",
+        "tutor.candidate.retrying": True,
+    }
 
 
 def test_model_original_is_stored_beside_the_content_free_summary(tmp_path, monkeypatch, caplog):

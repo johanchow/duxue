@@ -40,7 +40,7 @@ class TutorToolbox:
             return {"tool": name, "status": "tool_error", "detail": "unknown_tool"}
         try:
             return {"tool": name, **handler(args)}
-        except Exception:
+        except Exception:  # noqa: BLE001 - tool failures are intentionally isolated per observation.
             return {"tool": name, "status": "tool_error"}
 
     def _task_context(self, _args: dict) -> dict:
@@ -54,8 +54,8 @@ class TutorToolbox:
             return {"status": "no_match"}
         return {
             "status": "unique", "substantive_attempts": row.substantive_attempts,
-            "no_progress_streak": row.no_progress_streak, "hints_given": row.hints_given,
-            "problem_summary": row.summary,
+            "hints_given": row.hints_given, "evidence_summary": row.evidence_summary,
+            "active_subgoal": row.active_subgoal, "problem_summary": row.summary,
         }
 
     def _lookup_history(self, args: dict) -> dict:

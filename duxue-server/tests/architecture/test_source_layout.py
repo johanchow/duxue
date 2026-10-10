@@ -5,7 +5,6 @@ from __future__ import annotations
 import importlib
 from pathlib import Path
 
-
 SERVER_ROOT = Path(__file__).resolve().parents[2]
 SOURCE_ROOT = SERVER_ROOT / "app"
 
@@ -24,6 +23,7 @@ def test_layer_and_context_namespaces_exist():
         "device_ingestion",
         "planning",
         "study",
+        "tutoring",
         "behavior_analysis",
         "evaluation",
         "memory",
