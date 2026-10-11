@@ -75,7 +75,7 @@ class Settings:
     # Real-time ASR is optional at startup so existing non-voice deployments
     # remain available until the provider workspace has been configured.
     asr_api_key: str = os.getenv("ASR_API_KEY") or os.getenv("VLM_API_KEY") or os.getenv("DASHSCOPE_API_KEY", "")
-    asr_model: str = os.getenv("ASR_MODEL", "qwen3-asr-flash-realtime-2026-02-10")
+    asr_model: str = os.getenv("ASR_MODEL", "qwen3-asr-flash-realtime")
     asr_workspace_id: str = os.getenv("ASR_WORKSPACE_ID", "")
     asr_websocket_url: str = os.getenv("ASR_WEBSOCKET_URL", "")
     asr_max_record_seconds: int = _integer("ASR_MAX_RECORD_SECONDS", "60")

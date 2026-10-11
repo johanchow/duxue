@@ -121,7 +121,7 @@ flowchart LR
 | `reflection.advice` | `qwen3.7-plus-2026-05-26`（纯文本） | 会后生成，重语气与文字质量；不发送图片；关闭思考 |
 | `planning.intake` / `task.intake` | `qwen3.7-plus-2026-05-26`，60s 超时 | 读图加多条硬规则的结构化提取；关闭思考 |
 | 帧分析 VLM（未迁移） | `qwen3-vl-flash-2026-01-22` | 调用量最大；该快照加强了桌面与巡检类识别；关闭思考 |
-| 实时 ASR | `qwen3-asr-flash-realtime-2026-02-10` | 按住说话。发音点读仍用标准 TTS，不改生成式合成 |
+| 实时 ASR | `qwen3-asr-flash-realtime` | 按住说话。北京业务空间不接受 2026-02-10 快照，会在会话中途断开。发音点读仍用标准 TTS |
 
 JSON 组件和帧分析请求都带 `enable_thinking: false`。思考会占用 `max_tokens`，并可能把思维链写进给孩子的内容。`decision-model-preview` 仍不接入：它走 `/systemone`，预览版内容安全也可能直接拒绝作业文本。
 
