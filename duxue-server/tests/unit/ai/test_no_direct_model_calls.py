@@ -8,7 +8,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-APP = Path(__file__).resolve().parents[3] / "app"
+ROOT = Path(__file__).resolve().parents[3]
+APP = ROOT / "app"
+EVALS = ROOT / "evals"
 ALLOWED = {
     "infrastructure/ai/components.py",
     "infrastructure/ai/client.py",  # the shared client factory itself
@@ -26,3 +28,12 @@ def test_no_module_calls_the_provider_sdk_directly():
         if "chat.completions" in text or "dashscope_client(" in text:
             offenders.append(rel)
     assert not offenders, f"call models through components.invoke_json_component: {offenders}"
+
+
+def test_offline_evaluation_also_goes_through_the_registry():
+    """evals/ may pick a spec or a model name, but never talks to the provider itself."""
+    offenders = [
+        path.relative_to(ROOT).as_posix() for path in EVALS.rglob("*.py")
+        if "chat.completions" in path.read_text() or "dashscope_client(" in path.read_text()
+    ]
+    assert not offenders, f"evals must call components.invoke_json_component: {offenders}"

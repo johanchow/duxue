@@ -97,6 +97,7 @@ def test_invoke_sends_static_prompt_as_system_and_uses_spec(spans):
     call = client.calls[0]
     assert call["model"] == spec.model
     assert call["temperature"] == spec.temperature and call["max_tokens"] == spec.max_tokens
+    assert call["extra_body"] == {"enable_thinking": False}
     assert call["messages"][0] == {"role": "system", "content": spec.prompt.text}
     assert call["messages"][1] == {"role": "user", "content": "hi"}
     assert spans["span"]["component_id"] == "companion.intent"
@@ -216,13 +217,13 @@ def test_model_assignment_matrix():
         c.component_id: (c.model, c.accepts_images) for c in COMPONENTS.all()
     }
     assert matrix == {
-        "tutoring.turn": ("qwen3-vl-plus", True),
+        "tutoring.turn": ("qwen3.7-plus-2026-05-26", True),
         "tutoring.leak-judge": ("qwen-plus", False),
         "companion.intent": ("qwen-flash", False),
-        "planning.reply": ("qwen3-vl-flash", True),
-        "reflection.advice": ("qwen-plus", False),
-        "planning.intake": ("qwen3-vl-plus", True),
-        "task.intake": ("qwen3-vl-plus", True),
+        "planning.reply": ("qwen3.8-flash", True),
+        "reflection.advice": ("qwen3.7-plus-2026-05-26", False),
+        "planning.intake": ("qwen3.7-plus-2026-05-26", True),
+        "task.intake": ("qwen3.7-plus-2026-05-26", True),
     }
     # The judge must not share a model with the generator it audits.
     assert COMPONENTS.get("tutoring.leak-judge").model != COMPONENTS.get("tutoring.turn").model

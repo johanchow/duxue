@@ -145,7 +145,7 @@ class FramePrediction(Base):
     behavior_label: Mapped[str] = mapped_column(String(100))
     confidence: Mapped[float] = mapped_column(Float)
     source: Mapped[str] = mapped_column(String(20), default="api")
-    model_version: Mapped[str] = mapped_column(String(100), default="qwen3-vl-flash")
+    model_version: Mapped[str] = mapped_column(String(100), default="qwen3-vl-flash-2026-01-22")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 

@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-import json
-
 from fastapi import HTTPException
-from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.application.commands.memory import SqlAlchemyMemoryFacade
@@ -15,21 +12,15 @@ from app.application.workflows.pronunciation_guidance import (
     project_lesson,
 )
 from app.application.workflows.teaching_skills import history_candidates
-from app.application.workflows.tutor_tools import (
-    MAX_MODEL_CALLS,
-    MAX_TOOL_CALLS,
-    TutorToolbox,
-)
+from app.application.workflows.tutor_loop import call_tutor_model, vet_candidate
+from app.application.workflows.tutor_tools import TutorToolbox
 from app.application.workflows.tutor_turn import (
     FALLBACK_TEXT,
     REMINDER,
     SAFE_TEXT,
     LeakJudgePort,
     TutorModelPort,
-    TutorTurnCandidate,
-    check_authority,
-    format_schema_error,
-    schema_error_diagnostic,
+    build_tutor_instruction,
 )
 from app.contexts.companion.domain.policy import PolicyRegistry
 from app.contexts.tutoring.domain.tutor_permit import (
@@ -39,12 +30,8 @@ from app.contexts.tutoring.domain.tutor_permit import (
     TutorPermitPolicy,
 )
 from app.infrastructure.ai import components
-from app.infrastructure.ai.model_gateway import ModelGatewayError
 from app.infrastructure.messaging.outbox import publish_learning_fact
-from app.infrastructure.observability.telemetry import (
-    record_llm_fallback,
-    record_tutor_candidate_rejection,
-)
+from app.infrastructure.observability.telemetry import record_llm_fallback
 from app.infrastructure.persistence.models import (
     StudySession,
     StudySessionInterval,
@@ -177,55 +164,13 @@ class TutoringWorkflow:
         return task.title if task is not None else None
 
     def _call_model(self, envelope, instruction, window, images, tools: TutorToolbox):
-        """有界循环：模型要工具就执行，直到返回候选。
-
-        至多 MAX_TOOL_CALLS 次工具、MAX_MODEL_CALLS 次主调用（含结构重试）。
-        返回候选或 None。
-        """
-        repair: str | None = None
-        observations: list[dict] = []
-        tool_calls = 0
-        for _ in range(MAX_MODEL_CALLS):
-            try:
-                raw = self._model().complete(
-                    envelope=envelope, instruction=instruction, recent_utterances=window,
-                    current_images=images, repair_error=repair, observations=observations,
-                )
-            except ModelGatewayError as error:
-                # json.loads() lives in the provider adapter.  An empty string
-                # or malformed JSON gets here before Pydantic can issue its
-                # usual repair request, but it deserves the same one retry.
-                if str(error) == "invalid_model_candidate" and repair is None:
-                    record_tutor_candidate_rejection(
-                        error_type="invalid_json", field="root", retrying=True,
-                    )
-                    repair = "返回的内容不是有效 JSON 对象；只返回一个符合 tutor-turn.v1 的 JSON 对象。"
-                    continue
-                record_llm_fallback(operation="tutor_turn", reason=str(error))
-                return None
-            except Exception as error:  # noqa: BLE001 - provider failures must fall back safely.
-                record_llm_fallback(operation="tutor_turn", reason=str(error))
-                return None
-            if isinstance(raw, dict) and "tool" in raw:
-                name = str(raw.get("tool"))
-                if tool_calls >= MAX_TOOL_CALLS:
-                    observations.append({"tool": name, "status": "budget_exhausted"})
-                else:
-                    tool_calls += 1
-                    observations.append(tools.run(name, raw.get("args")))
-                continue
-            try:
-                return TutorTurnCandidate.model_validate(raw)
-            except (ValidationError, ValueError) as error:
-                error_type, field = schema_error_diagnostic(error)
-                record_tutor_candidate_rejection(
-                    error_type=error_type, field=field, retrying=repair is None,
-                )
-                if repair is not None:  # 结构错误只重试一次
-                    break
-                repair = format_schema_error(error)
-        record_llm_fallback(operation="tutor_turn", reason="invalid_model_candidate")
-        return None
+        """有界循环由 tutor_loop 提供（评测共用）。返回候选或 None。"""
+        try:
+            model = self._model()
+        except Exception as error:  # noqa: BLE001 - provider failures must fall back safely.
+            record_llm_fallback(operation="tutor_turn", reason=str(error))
+            return None
+        return call_tutor_model(model, envelope, instruction, window, images, tools).candidate
 
     def _turn(self, invocation: RunInvocation) -> WorkflowOutcome:
         turn = invocation.turn
@@ -302,12 +247,10 @@ class TutoringWorkflow:
             )
         window, images = self._media(invocation)
         candidates = history_candidates(window)
-        instruction = json.dumps({
-            "student_said": content,
-            "permit": permit.as_context(),
-            "history_candidates": candidates,
-            "expected_act": "pronounce" if turn.get("tutoring_intent") == "pronunciation" else None,
-        }, ensure_ascii=False)
+        instruction = build_tutor_instruction(
+            content=content, permit=permit, history_candidates=candidates,
+            tutoring_intent=turn.get("tutoring_intent"),
+        )
         tools = TutorToolbox(
             self.db, tutoring_session_id=tutor.id if tutor else None, problem=problem_row,
             task_title=task_title, task_active=task_active, window=window,
@@ -315,26 +258,13 @@ class TutoringWorkflow:
         candidate = self._call_model(envelope.model_dump(), instruction, window, images, tools)
         verdict = None
         if candidate is not None:
-            # A clarification says the referenced source is not yet confirmed.
-            # Its accompanying lesson must never be projected, but the safe
-            # clarification itself is still useful to the Ward.
-            if candidate.act == "clarify" and candidate.lesson is not None:
-                candidate = candidate.model_copy(update={"lesson": None})
-            verdict = check_authority(
-                candidate, permit, has_open_problem=problem_row is not None,
-                authorized_history_refs=frozenset(tools.authorized_refs),
-                has_work_input=bool(content.strip() or images),
+            vetting = vet_candidate(
+                candidate, permit=permit, has_open_problem=problem_row is not None,
+                authorized_refs=frozenset(tools.authorized_refs),
+                has_work_input=bool(content.strip() or images), leak_judge=self._judge(),
+                task_title=task_title, problem_summary=problem_row.summary if problem_row else content,
             )
-            if not verdict.ok:
-                record_llm_fallback(operation="tutor_turn", reason=verdict.reason)
-            elif verdict.needs_leak_check:
-                judged = self._judge().leaks(
-                    text=f"{candidate.content}\n{candidate.follow_up_question or ''}",
-                    task_title=task_title, problem_summary=problem_row.summary if problem_row else content,
-                )
-                if judged is not False:  # True 泄露；None 判定失败，同样 fail-closed
-                    verdict = None
-                    record_llm_fallback(operation="tutor_turn", reason="leak_check_failed" if judged is None else "leak_detected")
+            candidate, verdict = vetting.candidate, vetting.verdict
         failed = candidate is None or verdict is None or not verdict.ok
         safety = not failed and (
             candidate.question_kind == "safety" or self._safety().blocks_output(text=candidate.content)

@@ -27,7 +27,7 @@ def _request(frame: Frame, extra_prompt: str = "") -> dict:
         "body": {"model": settings.vlm_model, "messages": [{"role": "user", "content": [
             {"type": "image_url", "image_url": {"url": _image_data(frame)}},
             {"type": "text", "text": STRUCTURED_PROMPT + ("\n额外观察：" + extra_prompt if extra_prompt else "")},
-        ]}], "max_tokens": 300, "temperature": 0},
+        ]}], "max_tokens": 300, "temperature": 0, "enable_thinking": False},
     }
 
 

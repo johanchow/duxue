@@ -114,15 +114,16 @@ flowchart LR
 
 | 组件 | 模型 | 理由 |
 | --- | --- | --- |
-| `tutoring.turn` | `qwen3-vl-plus` | 读手写题与判断思路，准确性最高；protected |
-| `tutoring.leak-judge` | `qwen-plus`（纯文本） | 只审文本；与主调用不同型号以保持审核独立；protected |
-| `companion.intent` | `qwen-flash`（纯文本） | 四选一、60 token，延迟最敏感；判错回退 `unclear`；不再发送图片 |
-| `planning.reply` | `qwen3-vl-flash` | 短回复，窗口里可能带图 |
-| `reflection.advice` | `qwen-plus`（纯文本） | 会后生成，重语气与文字质量；不发送图片 |
-| `planning.intake` / `task.intake` | `qwen3-vl-plus`，60s 超时 | 读图加多条硬规则的结构化提取，准确性优先 |
-| 帧分析 VLM（未迁移） | `qwen3-vl-flash`（批处理） | 调用量最大，成本主导，准确性靠分类层与时序平滑兜底，不建议升级 |
+| `tutoring.turn` | `qwen3.7-plus-2026-05-26` | 看图、守教学契约、写结构化动作；关闭思考。protected |
+| `tutoring.leak-judge` | `qwen-plus`（纯文本） | 只审文本；与主调用不同型号。决策模型更合适，但协议和预览状态未接入。protected |
+| `companion.intent` | `qwen-flash`（纯文本） | 四选一、60 token；判错回退 `unclear`。决策模型更合适，但要另接 `/systemone` |
+| `planning.reply` | `qwen3.8-flash` | 短回复，窗口里可能带图，孩子在等；关闭思考 |
+| `reflection.advice` | `qwen3.7-plus-2026-05-26`（纯文本） | 会后生成，重语气与文字质量；不发送图片；关闭思考 |
+| `planning.intake` / `task.intake` | `qwen3.7-plus-2026-05-26`，60s 超时 | 读图加多条硬规则的结构化提取；关闭思考 |
+| 帧分析 VLM（未迁移） | `qwen3-vl-flash-2026-01-22` | 调用量最大；该快照加强了桌面与巡检类识别；关闭思考 |
+| 实时 ASR | `qwen3-asr-flash-realtime` | 按住说话。北京业务空间不接受 2026-02-10 快照，会在会话中途断开。发音点读仍用标准 TTS |
 
-后续候选（未采用，需先并排评测）：百炼已提供原生多模态的 qwen3.7 / 3.8 代际（如 `qwen3.8-flash`、`qwen3.7-plus`），以及面向路由与审核的决策模型 `decision-model-preview`（预览版、纯文本、`/systemone` 协议，需要新的调用形态）。切换任何模型前，protected 组件必须过回归，路由和 Judge 应以红队/回放样本比较准确率、召回率与延迟。
+JSON 组件和帧分析请求都带 `enable_thinking: false`。思考会占用 `max_tokens`，并可能把思维链写进给孩子的内容。`decision-model-preview` 仍不接入：它走 `/systemone`，预览版内容安全也可能直接拒绝作业文本。
 
 ### 4.2.2 Prompt 版本锁
 
@@ -188,7 +189,7 @@ class ComponentSpec:
 {
   "component_id": "tutoring.turn",
   "component_version": "v1",
-  "model": "qwen3-vl-flash",
+  "model": "qwen3.7-plus-2026-05-26",
   "model_source": "registry",
   "operation": "tutor_turn",
   "result": "success"
@@ -219,6 +220,10 @@ class ComponentSpec:
 
 离线评测用于阻止明显退化，不单独宣称学习效果提升；孩子的真实学习和参与效果需要在合规前提下通过线上指标或人工研究验证。
 
+### 7.1 离线评测
+
+数据集构造、重放判分、指标与阈值、运行方式见独立设计 [`design-offline-eval.md`](design-offline-eval.md)（实现在 `duxue-server/evals/`）。本文只约束：评测只做冒烟、不宣称学习效果；候选只能是评测进程内的具名 variant，采用须走上面的发布路径；评测同样不得绕过组件注册表直连提供商。
+
 ## 八、迁移状态与后续
 
 | 现有调用 | 目标 Component | 状态 |
@@ -230,7 +235,7 @@ class ComponentSpec:
 | 答疑流式输出 | — | 待设计：非 JSON 流式形态 |
 | 记忆洞察、Guardian 报告叙事 | `memory.*`、`guardian.*` | 尚无 LLM 调用，出现时必须先注册 |
 
-已知缺口（有意未做）：Judge 与 Generator 目前同用默认模型，未强制不同源；成本换算与按 Ward/会话归集；provider 级回退链；原文审计通道的留存与审批设计；离线回归的数据集来源与通过阈值。
+已知缺口（有意未做）：泄露判断与意图路由尚未接入决策模型（协议不同，预览版未过红队）；成本换算与按 Ward/会话归集；provider 级回退链；原文审计通道的留存与审批设计；离线评测的自动硬门槛（待 confirmed 集足够大，见 [design-offline-eval.md](design-offline-eval.md) §九）。
 
 ## 九、验收条件
 

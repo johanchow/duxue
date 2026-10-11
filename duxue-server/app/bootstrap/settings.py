@@ -62,7 +62,7 @@ class Settings:
     oss_access_key_secret: str = os.getenv("OSS_ACCESS_KEY_SECRET", "")
     dashscope_api_key: str = os.getenv("VLM_API_KEY") or os.getenv("DASHSCOPE_API_KEY", "")
     dashscope_base_url: str = os.getenv("VLM_BATCH_BASE_URL") or os.getenv("VLM_API_BASE_URL") or os.getenv("DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
-    vlm_model: str = os.getenv("VLM_MODEL_NAME") or os.getenv("VLM_MODEL", "qwen3-vl-flash")
+    vlm_model: str = os.getenv("VLM_MODEL_NAME") or os.getenv("VLM_MODEL", "qwen3-vl-flash-2026-01-22")
     # Model names, prompts and generation parameters live in
     # app/infrastructure/ai/components.py.  This is only the emergency override for
     # non-protected components: JSON like {"planning.intake": "model-name"}.

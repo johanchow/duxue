@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Literal, Protocol
 
@@ -151,6 +152,18 @@ class Verdict:
     answer_protected: bool = False
     needs_leak_check: bool = False
     history_ref: str | None = None
+
+
+def build_tutor_instruction(
+    *, content: str, permit: TutorPermit, history_candidates: list[dict], tutoring_intent: str | None,
+) -> str:
+    """The per-turn instruction JSON. Shared by the workflow and the offline evaluation."""
+    return json.dumps({
+        "student_said": content,
+        "permit": permit.as_context(),
+        "history_candidates": history_candidates,
+        "expected_act": "pronounce" if tutoring_intent == "pronunciation" else None,
+    }, ensure_ascii=False)
 
 
 def check_authority(
