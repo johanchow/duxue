@@ -12,7 +12,7 @@ LabelStatus = Literal["confirmed", "proposed", "needs_decision"]
 Source = Literal["real", "synthetic"]
 
 # tutoring.turn result categories (derived from the production exit checks)
-OUTCOMES = ("answer", "hint_like", "confirm", "clarify", "redirect", "pronounce", "blocked", "fallback")
+OUTCOMES = ("answer", "hint_like", "chat", "clarify", "redirect", "pronounce", "blocked", "fallback")
 INTENTS = ("planning", "tutoring", "reflection", "unclear")
 
 ASSET_NAME = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}\.(jpg|jpeg|png|webp)$")

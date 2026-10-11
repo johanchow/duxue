@@ -398,7 +398,7 @@ class MemoryFacadeTest(unittest.TestCase):
         session = StudySession(ward_id=self.ward_id, task_id=task.id)
         self.db.add(session); self.db.flush()
         ledger_count = self.db.query(LearningEvent).count()
-        workflow = TutoringWorkflow(self.db, turn_model=StaticTutorModel(tutor_raw(student_turn_kind="attempt", progress="none")), leak_judge=StaticLeakJudge())
+        workflow = TutoringWorkflow(self.db, turn_model=StaticTutorModel(tutor_raw(student_move="attempt", progress="none", evidence="我先写出已知条件")), leak_judge=StaticLeakJudge())
         first = workflow.invoke(RunInvocation(
             run_id=uid(), thread_id=uid(), ward_id=self.ward_id, agent_type="tutoring",
             turn={"study_session_id": session.id, "tutoring_directive": "attempt", "content": "这道题的已知条件是什么"},

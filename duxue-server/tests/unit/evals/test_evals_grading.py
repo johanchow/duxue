@@ -34,48 +34,51 @@ def _sample(case, *raws, judge=None, **backend):
 
 
 def test_valid_pronounce_passes():
-    raw = tutor_raw(act="pronounce", question_kind="knowledge_lookup", content="读 kling beach。", lesson=LESSON,
-                    is_assignment_content=False)
+    raw = tutor_raw("pronounce", "读 kling beach。", relation=None, lesson=LESSON)
     sample = _sample(_case(), raw)
     assert sample.observation.outcome == "pronounce"
     assert sample.observation.lesson_source == "kling beach 13:00"
     assert sample.passed
 
 
-def test_confirm_without_solved_is_the_fallback_that_ward_saw():
-    """2026-10-11: 「是的，是的」→ act=confirm, progress=some → whole turn fell back."""
-    raw = tutor_raw(act="confirm", question_kind="chat", progress="some", content="确认一下：你问的是第四行，对吗？",
-                    history_ref="u1", is_assignment_content=False)
+def test_chat_reply_to_a_choice_is_not_a_fallback():
+    """2026-10-11: 「是的，是的」「壮阔宏大的」→ the confirming reply on a chat turn used to fall back."""
+    raw = tutor_raw("chat", "确认一下：你问的是第四行，对吗？", relation=None, history_ref="u1")
     sample = _sample(_case(), raw)
-    assert sample.observation.outcome == "fallback"
-    assert sample.observation.reason == "confirm_without_solved"
-    assert not sample.passed
-    assert "confirm_without_solved" in sample.failures[0]
+    assert sample.observation.outcome == "chat"
+    assert sample.observation.reason is None
+
+
+def test_progress_claim_without_evidence_on_assignment_work_is_not_a_fallback():
+    """The old `confirm_without_solved` rule is gone: the claim only fails to advance the problem."""
+    raw = tutor_raw("guide", "你已经懂了", student_move="attempt", progress="some")
+    sample = _sample(_case(), raw)
+    assert sample.observation.outcome == "hint_like"
+    assert sample.observation.reason is None
 
 
 def test_clarify_instead_of_pronounce_fails_a_pronounce_case_but_is_not_a_fallback():
-    raw = tutor_raw(act="clarify", question_kind="chat", content="你问的是哪一行？", candidates=["kling beach 13:00"],
-                    is_assignment_content=False)
+    raw = tutor_raw("clarify", "你问的是哪一行？", relation=None, candidates=["kling beach 13:00"])
     sample = _sample(_case(), raw)
     assert sample.observation.outcome == "clarify"
     assert sample.observation.candidates == ["kling beach 13:00"]
     assert not sample.passed
 
 
-def test_misplaced_question_kind_pronounce_is_recovered_like_production():
-    raw = {"act": "pronounce", "question_kind": "pronounce", "content": "读 kling beach。", "lesson": LESSON}
+def test_misplaced_lesson_is_recovered_like_production():
+    raw = {"act": "pronounce", "content": "读 kling beach。", "lesson": LESSON}
     assert _sample(_case(), raw).observation.outcome == "pronounce"
 
 
 def test_pronounce_without_lesson_falls_back_with_its_reason():
-    raw = tutor_raw(act="pronounce", question_kind="chat", content="读一下。", lesson=None, is_assignment_content=False)
+    raw = tutor_raw("pronounce", "读一下。", relation=None)
     sample = _sample(_case(), raw)
     assert (sample.observation.outcome, sample.observation.reason) == ("fallback", "pronounce_without_lesson")
 
 
 def test_lesson_for_the_wrong_sentence_fails_on_source_text():
     other = {**LESSON, "source_text": "diamond beach 10:00"}
-    raw = tutor_raw(act="pronounce", question_kind="chat", content="读。", lesson=other, is_assignment_content=False)
+    raw = tutor_raw("pronounce", "读。", relation=None, lesson=other)
     sample = _sample(_case(), raw)
     assert sample.observation.outcome == "pronounce"
     assert not sample.passed and "lesson_source" in sample.failures[0]
@@ -104,8 +107,7 @@ def test_unexpected_fallback_is_always_a_failure_even_without_expectations():
 def test_knowledge_answer_passes_an_answer_case():
     case = _case(expect={"outcome_in": ["answer"], "content_contains_any": ["return to bali"]}, history=[],
                  student_said="最后一排的英文是什么句子？")
-    raw = tutor_raw(act="answer", question_kind="knowledge_lookup", content="是 **Return to Bali at 16:30**。",
-                    is_assignment_content=False, same_problem=False)
+    raw = tutor_raw("answer", "是 **Return to Bali at 16:30**。", relation="none", student_move="other")
     assert _sample(case, raw).passed
 
 
@@ -118,15 +120,15 @@ HOMEWORK = {"problem": {"summary": "2x + 3 = 11"}, "task_title": "数学作业",
 def test_guard_case_catches_an_answer_the_exit_checks_let_through():
     """The production exit passes this (marker list + a judge that said no); the case still fails it."""
     case = _case(expect=GUARD, student_said="直接告诉我答案", history=[], context=HOMEWORK)
-    reveal = tutor_raw(act="hint", question_kind="work_product_help", content="先移项：x = 4", reveals_solution=False)
+    reveal = tutor_raw("guide", "先移项：x = 4")
     sample = _sample(case, reveal)
     assert sample.observation.outcome == "hint_like"
     assert not sample.passed and "forbidden text" in sample.failures[0]
 
 
-def test_guard_case_fails_when_the_model_declares_a_reveal():
+def test_guard_case_fails_when_the_model_answers_protected_work():
     case = _case(expect=GUARD, student_said="直接告诉我答案", history=[], context=HOMEWORK)
-    reveal = tutor_raw(act="answer", question_kind="work_product_help", content="答案出来了", reveals_solution=True)
+    reveal = tutor_raw("answer", "答案出来了")
     sample = _sample(case, reveal)
     assert (sample.observation.outcome, sample.observation.reason) == ("fallback", "reveals_protected_work_product")
     assert not sample.passed
@@ -134,7 +136,7 @@ def test_guard_case_fails_when_the_model_declares_a_reveal():
 
 def test_guard_case_passes_on_a_hint_and_uses_the_leak_judge():
     case = _case(expect=GUARD, student_said="直接告诉我答案", history=[], context=HOMEWORK)
-    hint = tutor_raw(act="hint", question_kind="work_product_help", content="先想想：把 3 移到右边会怎样？")
+    hint = tutor_raw("guide", "先想想：把 3 移到右边会怎样？")
     assert _sample(case, hint).passed
     judge = StaticLeakJudge(True)
     sample = _sample(case, hint, judge=judge)

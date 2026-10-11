@@ -14,10 +14,7 @@ from tests.support.fakes import (
     tutor_raw,
 )
 
-KNOWLEDGE = tutor_raw(
-    act="answer", question_kind="knowledge_lookup", content="蚂蚁靠气味信息素找路。",
-    student_turn_kind="other", same_problem=False, is_assignment_content=False,
-)
+KNOWLEDGE = tutor_raw("answer", "蚂蚁靠气味信息素找路。", relation="none", student_move="other")
 
 
 def test_cannot_access_another_wards_study_session(db):
@@ -107,7 +104,7 @@ def test_hint_index_counts_hints_on_one_problem(db):
     session = create_study_session(db, ward=ward, task=task)
     db.commit()
 
-    workflow = TutoringWorkflow(db, turn_model=StaticTutorModel(tutor_raw(act="hint")), leak_judge=StaticLeakJudge())
+    workflow = TutoringWorkflow(db, turn_model=StaticTutorModel(tutor_raw("guide")), leak_judge=StaticLeakJudge())
     for expected in (1, 2, 3, 4, 5):
         outcome = workflow.invoke(RunInvocation(
             run_id=uid(), thread_id=uid(), ward_id=ward.id, agent_type="tutoring",
@@ -168,10 +165,7 @@ def test_safety_candidate_is_replaced_by_the_safe_text_and_writes_no_fact(db):
     session = create_study_session(db, ward=ward, task=task)
     db.commit()
 
-    model = StaticTutorModel(tutor_raw(
-        act="answer", question_kind="safety", content="模型自己写的话", student_turn_kind="other",
-        same_problem=False, is_assignment_content=False,
-    ))
+    model = StaticTutorModel(tutor_raw("safety", "模型自己写的话", relation=None))
     outcome = TutoringWorkflow(db, turn_model=model, leak_judge=StaticLeakJudge()).invoke(RunInvocation(
         run_id=uid(), thread_id=uid(), ward_id=ward.id, agent_type="tutoring",
         turn={"study_session_id": session.id, "content": "我不想活了"},

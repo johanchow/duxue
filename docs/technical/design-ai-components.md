@@ -166,7 +166,7 @@ class ComponentSpec:
 
 | Component | 风险 | 调用点 | 保留的调用方边界 |
 | --- | --- | --- | --- |
-| `tutoring.turn@v1` | protected | 答疑主调用 | `TutorTurnCandidate`、结构恢复与三道出口检查 |
+| `tutoring.turn@v4` | protected | 答疑主调用 | `TutorTurnCandidate`、结构恢复与三道出口检查 |
 | `tutoring.leak-judge@v1` | protected | 作业答案泄露审核 | `None` 由 Workflow fail-closed |
 | `companion.intent@v1` | standard | 场景路由提议 | 非法或失败映射为 `unclear` |
 | `planning.reply@v1` / `reflection.advice@v1` | standard | `QwenAgentModelGateway.generate` | `AgentTextCandidate` 校验，失败走确定性降级 |

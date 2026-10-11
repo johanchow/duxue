@@ -1,4 +1,4 @@
-"""tutor-turn.v1：模型候选契约与出口检查。
+"""tutor-turn.v2：模型候选契约与出口检查。
 
 候选是不可信的提议。每轮必经三道检查：结构、越权与一致性、泄露。
 任一不通过，调用方回退固定话术，不写事实，不推进题目记录。
@@ -27,12 +27,16 @@ from app.application.workflows.pronunciation_guidance import (
 from app.contexts.study.domain.execution import ANSWER_LEAK_MARKERS
 from app.contexts.tutoring.domain.tutor_permit import TutorPermit
 
-CONTRACT_ID = "tutor-turn.v1"
+CONTRACT_ID = "tutor-turn.v2"
 
-Act = Literal["answer", "probe", "hint", "confirm", "example", "clarify", "redirect", "pronounce"]
-QuestionKind = Literal["knowledge_lookup", "work_product_help", "chat", "safety"]
-StudentTurnKind = Literal["attempt", "ask_hint", "ask_answer", "off_topic", "other"]
+Act = Literal["answer", "guide", "chat", "clarify", "redirect", "pronounce", "safety"]
+Relation = Literal["none", "same", "new"]
+StudentMove = Literal["attempt", "request_hint", "request_answer", "other"]
+Progress = Literal["none", "some", "submitted"]
 
+# `answer` and `guide` are the acts that can reach the Ward's work product, so the
+# model must say whether the turn touches it.  Every other act defaults to "none".
+_WORK_ACTS = frozenset({"answer", "guide"})
 _LESSON_KEYS = ("source_text", "locale", "introduction", "reading_guide", "notes")
 
 SAFE_TEXT = "这件事需要先告诉身边信任的大人。我们先停一下，等你准备好了再继续学习。"
@@ -40,74 +44,166 @@ FALLBACK_TEXT = "我这次没能整理出回答。把你的想法或要问的那
 REMINDER = "先回到正在进行的任务，这个问题可以稍后再问。"
 
 
+def _blank_is_absent(value):
+    """Models often emit "" for unused optional fields. That is unset, not a value."""
+    if isinstance(value, str) and not value.strip():
+        return None
+    return value
+
+
+class WorkAssessment(BaseModel):
+    """The model's self-report about the Ward's work product.
+
+    Only ``relation`` can widen or narrow answer protection, so it is the one field
+    that is required (and only for acts that can reveal an answer).  The
+    rest only feed ``TutorPermitPolicy.advance()``: an unknown value is "not
+    reported", never a reason to replace a safe reply.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+    relation: Relation | None = None
+    student_move: StudentMove = "other"
+    progress: Progress | None = None
+    evidence: str | None = None
+    next_subgoal: str | None = None
+
+    @field_validator("relation", mode="before")
+    @classmethod
+    def _relation(cls, value):
+        # An unknown value is "not reported".  For act=answer|guide that is a
+        # structure error (repaired once); it is never guessed.
+        return value if value in Relation.__args__ else None
+
+    @field_validator("student_move", mode="before")
+    @classmethod
+    def _student_move(cls, value):
+        return value if value in StudentMove.__args__ else "other"
+
+    @field_validator("progress", mode="before")
+    @classmethod
+    def _progress(cls, value):
+        return value if value in Progress.__args__ else None
+
+    @field_validator("evidence", "next_subgoal", mode="before")
+    @classmethod
+    def _text(cls, value):
+        value = _blank_is_absent(value)
+        return value[:500] if isinstance(value, str) else None
+
+
+class ClarifyPayload(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    candidates: list[str] = Field(default_factory=list)
+
+    @field_validator("candidates", mode="before")
+    @classmethod
+    def _candidates(cls, value):
+        if not isinstance(value, list):
+            return []
+        # Models copy the {"ref", "text"} shape of history_candidates.  Show the
+        # text, never the repr of a dict; anything else unusable is dropped.
+        items = [item.get("text") if isinstance(item, dict) else item for item in value]
+        return [item.strip()[:300] for item in items if isinstance(item, str) and item.strip()][:8]
+
+
+class PronouncePayload(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    lesson: LessonBody
+
+
 class TutorTurnCandidate(BaseModel):
+    """tutor-turn.v2.  Required: ``act`` and ``content``.  Everything else is optional
+    and lives in the sub-object that belongs to one act, so no field can contradict
+    another.  A sub-object that does not belong to the act is dropped before
+    validation (see ``shape_by_act``)."""
+
     # Provider-only fields must not make a safe child-facing reply fail. Unknown
     # fields are discarded and never reach domain state or persistence.
     model_config = ConfigDict(extra="ignore")
     act: Act
-    question_kind: QuestionKind
     content: str = Field(min_length=1, max_length=1200)
     follow_up_question: str | None = Field(default=None, max_length=300)
-    candidates: list[str] = Field(default_factory=list, max_length=8)
-    student_turn_kind: StudentTurnKind = "other"
-    progress: Literal["none", "some", "solved"] | None = None
-    # An omitted relationship to an existing open problem must fail closed.
-    same_problem: bool = True
-    is_assignment_content: bool = False
-    reveals_solution: bool = False
-    subgoal_evidence: str | None = Field(default=None, max_length=500)
-    next_subgoal: str | None = Field(default=None, max_length=300)
     history_ref: str | None = None
-    lesson: LessonBody | None = None
+    work: WorkAssessment | None = None
+    clarify: ClarifyPayload | None = None
+    pronounce: PronouncePayload | None = None
 
-    @field_validator("follow_up_question", "subgoal_evidence", "next_subgoal", "history_ref", mode="before")
+    @field_validator("follow_up_question", "history_ref", mode="before")
     @classmethod
     def blank_optional_text_is_absent(cls, value):
-        """Models often emit "" for unused optional fields. That is unset, not a value."""
-        if isinstance(value, str) and not value.strip():
-            return None
-        return value
+        return _blank_is_absent(value)
 
     @model_validator(mode="before")
     @classmethod
-    def normalize_pronounce_shape(cls, value):
-        """Discard harmless misplaced metadata before validating the child-facing core.
+    def shape_by_act(cls, value):
+        """Keep only what the act can use.
 
-        This normalizes only the unprojected lesson on ``clarify``.  In
-        particular, an invalid ``question_kind`` on an answer is deliberately
-        *not* repaired: guessing there could weaken work-product protection.
+        Dropping is safe because a dropped field is never projected: ``lesson`` is
+        shown only for ``pronounce`` and ``candidates`` only for ``clarify``.  The
+        one repair is the exact misplacement models make for a lesson: its fields
+        at the top level, or ``lesson`` outside ``pronounce``; likewise ``candidates``
+        for ``clarify``.  A missing ``work.relation`` on an act that can reveal an
+        answer is deliberately *not* repaired.
         """
         if not isinstance(value, dict):
             return value
         value = dict(value)
         act = value.get("act")
+        if act == "pronounce":
+            payload = value.get("pronounce")
+            if not isinstance(payload, dict) or not isinstance(payload.get("lesson"), dict):
+                lesson = value.get("lesson")
+                if not isinstance(lesson, dict):
+                    lesson = {key: value[key] for key in _LESSON_KEYS if key in value}
+                if lesson.get("source_text"):
+                    value["pronounce"] = {"lesson": lesson}
+        else:
+            value.pop("pronounce", None)
         if act == "clarify":
-            # A clarification says the referenced source has not been
-            # confirmed.  lesson is never projected for it, so it is safe to
-            # discard before its own fields are validated.
-            value.pop("lesson", None)
-            for key in _LESSON_KEYS:
-                value.pop(key, None)
-
-        # "pronounce" is an act, never a question_kind.  Repair this exact
-        # misplaced token only for acts that cannot reveal an answer.
-        if value.get("question_kind") == "pronounce" and act in {"pronounce", "clarify"}:
-            value["question_kind"] = "chat"
-
-        if act != "pronounce":
-            return value
-
-        kind = value.get("question_kind")
-        if kind is None or (isinstance(kind, str) and not kind.strip()):
-            value["question_kind"] = "chat"
-        lesson = value.get("lesson")
-        if not isinstance(lesson, dict):
-            lifted = {key: value[key] for key in _LESSON_KEYS if key in value}
-            if lifted.get("source_text"):
-                value["lesson"] = lifted
-        for key in _LESSON_KEYS:
+            if not isinstance(value.get("clarify"), dict) and isinstance(value.get("candidates"), list):
+                value["clarify"] = {"candidates": value["candidates"]}
+        else:
+            value.pop("clarify", None)
+        if not isinstance(value.get("work"), dict):
+            value.pop("work", None)
+        for key in ("lesson", *_LESSON_KEYS, "candidates"):
             value.pop(key, None)
         return value
+
+    @model_validator(mode="after")
+    def work_relation_for_answer_acts(self):
+        if self.act in _WORK_ACTS and (self.work is None or self.work.relation is None):
+            raise ValueError("work.relation is required for act=answer|guide")
+        return self
+
+    # ---- derived views: one place that knows the nested layout -------------
+    @property
+    def relation(self) -> Relation:
+        return (self.work.relation if self.work else None) or "none"
+
+    @property
+    def student_move(self) -> StudentMove:
+        return self.work.student_move if self.work else "other"
+
+    @property
+    def progress(self) -> Progress | None:
+        return self.work.progress if self.work else None
+
+    @property
+    def subgoal_evidence(self) -> str | None:
+        return self.work.evidence if self.work else None
+
+    @property
+    def next_subgoal(self) -> str | None:
+        return self.work.next_subgoal[:300] if self.work and self.work.next_subgoal else None
+
+    @property
+    def lesson(self) -> LessonBody | None:
+        return self.pronounce.lesson if self.pronounce else None
+
+    @property
+    def candidates(self) -> list[str]:
+        return self.clarify.candidates if self.clarify else []
 
 
 class TutorModelPort(Protocol):
@@ -170,21 +266,14 @@ def check_authority(
     candidate: TutorTurnCandidate, permit: TutorPermit, *, has_open_problem: bool,
     authorized_history_refs: frozenset[str], has_work_input: bool,
 ) -> Verdict:
-    """检查 2：越权与一致性。只收紧，不放松。"""
+    """检查 2：越权与一致性。只收紧，不放松。
+
+    只有会让孩子看到不该看的内容的情形才拒绝（答案保护、发音卡不可用）。
+    与展示无关的字段不一致已经在候选解析时丢弃或降级，不会走到这里。
+    """
     act = candidate.act
-    if candidate.question_kind == "safety":
+    if act == "safety":
         return Verdict(True)
-    if candidate.lesson is not None and act != "pronounce":
-        return Verdict(False, "lesson_without_pronounce")
-    if candidate.candidates and act != "clarify":
-        return Verdict(False, "candidates_without_clarify")
-    # Progress/evidence only affect `advance()`, which already ignores them for
-    # non-attempt turns. A stray annotation is not an answer-leak risk and must
-    # not replace an otherwise safe reply with the generic fallback.
-    if candidate.next_subgoal is not None and candidate.question_kind != "work_product_help":
-        return Verdict(False, "subgoal_without_work_product")
-    if act == "confirm" and candidate.progress != "solved":
-        return Verdict(False, "confirm_without_solved")
     if act == "pronounce":
         if candidate.lesson is None:
             return Verdict(False, "pronounce_without_lesson")
@@ -200,24 +289,21 @@ def check_authority(
     if act == "clarify":
         return Verdict(True)
 
-    work_product = (
-        candidate.question_kind == "work_product_help"
-        or candidate.is_assignment_content
-        or (has_open_problem and candidate.same_problem and candidate.question_kind != "chat")
-    )
-    # A newly recognised work-product question starts protected.  A model label
-    # can never turn an existing protected problem into an unprotected one.
+    # `relation` is required for answer/guide, so the model has to say whether this
+    # turn touches the Ward's work product.  "new" or "same" is protected work; a
+    # label can never turn an existing protected problem into an unprotected one,
+    # because only an explicit "none" leaves the work product.
+    relation = candidate.relation
+    work_product = relation in {"same", "new"}
     answer_protected = work_product and (
-        not has_open_problem or not candidate.same_problem or permit.answer_protected
+        not has_open_problem or relation == "new" or permit.answer_protected
     )
-    reveals = candidate.reveals_solution or act == "answer"
-    if answer_protected and reveals:
+    if answer_protected and act == "answer":
         return Verdict(False, "reveals_protected_work_product")
     if answer_protected and any(marker in candidate.content for marker in ANSWER_LEAK_MARKERS):
         return Verdict(False, "answer_marker")
-    needs_leak = answer_protected
     ref = candidate.history_ref if candidate.history_ref in authorized_history_refs else None
     return Verdict(
         True, effective_work_product=work_product, answer_protected=answer_protected,
-        needs_leak_check=needs_leak, history_ref=ref,
+        needs_leak_check=answer_protected, history_ref=ref,
     )

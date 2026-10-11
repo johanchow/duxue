@@ -1,4 +1,4 @@
-"""发音教学卡的校验后投影。发音是 tutor-turn.v1 的 act=pronounce，只读，不写 Study 事实。"""
+"""发音教学卡的校验后投影。发音是 tutor-turn.v2 的 act=pronounce，只读，不写 Study 事实。"""
 
 from __future__ import annotations
 

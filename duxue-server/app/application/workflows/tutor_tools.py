@@ -1,4 +1,4 @@
-"""tutor-turn.v1 的只读工具。全部限于当前 Ward，不改变许可，没有副作用。
+"""tutor-turn.v2 的只读工具。全部限于当前 Ward，不改变许可，没有副作用。
 
 观察结果是不可信输入，只带类型化的状态：unique、ambiguous、no_match、tool_error。
 """

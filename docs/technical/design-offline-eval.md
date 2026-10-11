@@ -189,13 +189,13 @@ JSONL，一行一条，位于 `duxue-server/evals/data/`（按组件分文件：
 | 类别 | 来源 |
 | --- | --- |
 | `answer` | 候选 `act=answer` 且通过出口 |
-| `hint_like` | `probe` / `hint` / `example` |
-| `confirm` | `act=confirm` 且通过（即 `progress=solved`） |
+| `hint_like` | `act=guide` 且通过出口 |
+| `chat` | `act=chat` 且通过出口 |
 | `clarify` | `act=clarify`（`candidates` 一并记录） |
 | `redirect` | `act=redirect` |
 | `pronounce` | `act=pronounce`，记录 `lesson.source_text` |
-| `blocked` | `question_kind=safety` |
-| `fallback` | 无候选（提供商错误、`invalid_model_candidate`）或出口检查拒绝；附 `reason`，如 `confirm_without_solved`、`lesson_without_pronounce`、`candidates_without_clarify`、`reveals_protected_work_product`、`leak_detected` |
+| `blocked` | `act=safety` |
+| `fallback` | 无候选（提供商错误、`invalid_model_candidate`）或出口检查拒绝；附 `reason`，如 `pronounce_without_lesson`、`lesson_markup`、`segment_not_in_source`、`reveals_protected_work_product`、`answer_marker`、`leak_detected`；元数据不一致（旧的 `confirm_without_solved`、`lesson_without_pronounce`、`candidates_without_clarify`）不再产生 fallback |
 
 `fallback` 意味着学生会看到固定的 `FALLBACK_TEXT`。意图组件的结果类别是标签本身（`planning` / `tutoring` / `reflection` / `unclear`）。
 
@@ -251,7 +251,7 @@ LLM judge 有自己的假阳/假阴率；论文也承认连自家的 Math Error 
 - `--variant <V>`：具名 prompt 变换。现有 `baseline` 与 `drop-no-guess-clause`（去掉窗口规则里"不要自己补一个对象"这句，用于验证它是否促使模型在指代明显时仍选择澄清）。变换目标文本已变化时会显式报错，防止静默失效。
 - 原则：**一次只改一个变量**；variant 必须能被单测证明只改了预期的那一处；它们不碰注册表、不读 `AI_MODEL_OVERRIDES`。
 - 采用某个候选，必须按 [AI Component §七](design-ai-components.md) 的发布路径，做成显式、版本化的组件变更（提升版本、更新 prompt 摘要锁、补回归）。
-- 需要契约改动才能做的实验（重命名 `confirm`、把 `act` 后置、`pending_clarification` + `resolution` 字段）不属于 variant，应先落成具名候选实现，再用同一数据集对比。
+- 需要契约改动才能做的实验（把 `act` 后置、`pending_clarification` + `resolution` 字段；`confirm` 已在 `tutor-turn.v2` 去掉）不属于 variant，应先落成具名候选实现，再用同一数据集对比。
 
 ## 九、运行与发布流程
 
@@ -271,7 +271,7 @@ python -m evals compare var/evals/<A>.json var/evals/<B>.json
 
 **CI**：只跑无网络部分（数据集校验、判分、Runner、报告、export 的单测）。真实模型评测**不进 pytest/CI**——`conftest` 已全局禁止外部模型调用。
 
-**通过阈值（v1）**：不设自动硬门槛。下列改动发布前必须人工跑一次并留存结果：换模型、改 `tutoring.turn` / `companion.intent` 的 prompt、改 `tutor-turn.v1` 契约或出口检查。要求：`confirmed` 集稳定通过的 Case 数不低于上次基线，fallback 率不升，guard 不退化；落在区间内的变化一律按噪声处理。待 `confirmed` 集足够大后再收紧为自动门槛，不为小数据集固化百分比。
+**通过阈值（v1）**：不设自动硬门槛。下列改动发布前必须人工跑一次并留存结果：换模型、改 `tutoring.turn` / `companion.intent` 的 prompt、改 `tutor-turn.v2` 契约或出口检查。要求：`confirmed` 集稳定通过的 Case 数不低于上次基线，fallback 率不升，guard 不退化；落在区间内的变化一律按噪声处理。待 `confirmed` 集足够大后再收紧为自动门槛，不为小数据集固化百分比。
 
 ## 十、局限与风险
 
@@ -293,14 +293,14 @@ python -m evals compare var/evals/<A>.json var/evals/<B>.json
 | 测试 | 覆盖 |
 | --- | --- |
 | `test_evals_dataset.py` | 已入库数据集合法；三条线程与 guard 均在；AI 标注不得 confirmed；confirmed 规则；PII 检测与脱敏；窗口长度；哈希稳定；CLI `validate` |
-| `test_evals_grading.py` | 用 `StaticTutorModel` 重现真实故障与正常形态：`confirm_without_solved`、澄清代替发音、`question_kind:"pronounce"` 恢复、缺 `lesson`、provider 错误、结构重试后回退、guard 与泄露判官、意图错误可见 |
+| `test_evals_grading.py` | 用 `StaticTutorModel` 重现真实故障与正常形态：闲聊接话不再回退、`progress` 无证据只是不推进、澄清代替发音、lesson 错位归位、缺 `lesson`、provider 错误、结构重试后回退、guard 与泄露判官、意图错误可见 |
 | `test_evals_runner_report.py` | 采样聚合、flaky/always-fail 区分、guardrail、状态分组、小数据集提示、缺图 `skipped`、图片以 data URL 送入、指令与生产一致、variant 隔离与失效报错 |
 | `test_evals_export.py` | 决策点切分、窗口 ≤8、图片资源名、flag 规则、`task_active` 推断、脱敏、仅图片不成 Case、资产内容哈希、按线程读库 |
 | `tests/unit/ai/test_no_direct_model_calls.py` | `evals/` 同样不得直连提供商 |
 
 验收：
 
-- 评测中 `confirm` + `progress≠solved` 得到 `fallback(confirm_without_solved)`，与生产一致。
+- 评测中对受保护作业题的 `act=answer` 得到 `fallback(reveals_protected_work_product)`，与生产一致；闲聊轮和只带无证据 `progress` 的 `guide` 不回退。
 - `validate` 在无密钥环境可运行；`run` 缺密钥时报明确错误。
 - 数据集无 PII、无 `data:` URL、无存储路径；`confirmed` 均有 `reviewed_by`。
 - 既有答疑、组件与架构测试保持通过。
@@ -308,7 +308,7 @@ python -m evals compare var/evals/<A>.json var/evals/<B>.json
 ## 十二、后续（未做）
 
 - 人工复核首批标注，提升 `confirmed` 比例。
-- 用同一数据集做契约级单变量实验：`confirm` 语义拆分、`act` 后置、`pending_clarification` + `resolution`。
+- 用同一数据集做契约级单变量实验：`act` 后置、`pending_clarification` + `resolution`（`confirm` 语义拆分已随 `tutor-turn.v2` 落地）。
 - 有状态的多步重放（引入 pending 状态后）。
 - 判官型指标与校准集（泄露细判、认知参与度）。
 - `confirmed` 集足够大后，把 §九 的阈值收紧为自动门槛。

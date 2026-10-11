@@ -30,15 +30,26 @@ class FakeModelGateway:
         return self.candidate
 
 
-def tutor_raw(**fields) -> dict:
-    """A valid tutor-turn.v1 candidate; override only what a test cares about."""
-    base = {
-        "act": "hint", "question_kind": "work_product_help", "content": "先说说已知条件是什么？",
-        "follow_up_question": None, "candidates": [], "student_turn_kind": "ask_hint",
-        "progress": None, "same_problem": True, "is_assignment_content": True,
-        "reveals_solution": False, "history_ref": None, "lesson": None,
-    }
-    return {**base, **fields}
+def tutor_raw(act: str = "guide", content: str = "先说说已知条件是什么？", *, relation: str | None = "same",
+              student_move: str = "request_hint", progress: str | None = None, evidence: str | None = None,
+              next_subgoal: str | None = None, lesson: dict | None = None, candidates: list | None = None,
+              **extra) -> dict:
+    """A valid tutor-turn.v2 candidate; override only what a test cares about.
+
+    ``relation=None`` omits ``work`` entirely.  ``extra`` is merged at the top level.
+    """
+    raw: dict = {"act": act, "content": content}
+    if relation is not None:
+        work = {"relation": relation, "student_move": student_move}
+        for key, value in (("progress", progress), ("evidence", evidence), ("next_subgoal", next_subgoal)):
+            if value is not None:
+                work[key] = value
+        raw["work"] = work
+    if lesson is not None:
+        raw["pronounce"] = {"lesson": lesson}
+    if candidates:
+        raw["clarify"] = {"candidates": candidates}
+    return {**raw, **extra}
 
 
 class StaticTutorModel:

@@ -7,8 +7,9 @@ from evals.schema import EvalCase
 from tests.support.fakes import StaticLeakJudge, StaticTutorModel, tutor_raw
 
 LESSON = {"source_text": "shoe", "locale": "en-US", "introduction": "读 shoe。", "reading_guide": "sh 发 /ʃ/。", "notes": []}
-GOOD = tutor_raw(act="pronounce", question_kind="chat", content="读 shoe。", lesson=LESSON, is_assignment_content=False)
-BAD = tutor_raw(act="confirm", question_kind="chat", progress="some", content="确认一下？", is_assignment_content=False)
+GOOD = tutor_raw("pronounce", "读 shoe。", relation=None, lesson=LESSON)
+# Still rejected: giving the answer to the Ward's own work product.
+BAD = tutor_raw("answer", "答案是 5")
 
 
 def _case(case_id="turn-test-00", status="proposed", tags=("pronounce",), **fields) -> EvalCase:
@@ -53,7 +54,7 @@ def test_flaky_and_always_failing_cases_are_told_apart():
 def test_guardrail_counts_fallbacks_and_names_the_reason():
     summary = report.summarize(_run([_case()], BAD, samples=3))
     assert summary["guardrail"]["fallback_rate"]["k"] == 3
-    assert summary["guardrail"]["fallback_reasons"] == {"confirm_without_solved": 3}
+    assert summary["guardrail"]["fallback_reasons"] == {"reveals_protected_work_product": 3}
 
 
 def test_confirmed_and_proposed_are_reported_apart_and_needs_decision_is_not_scored():
@@ -113,7 +114,7 @@ def test_instruction_is_the_production_one():
 
 def test_results_serialise_without_losing_failure_reasons():
     rows = report.to_json(_run([_case()], BAD, samples=1))
-    assert rows[0]["samples"][0]["reason"] == "confirm_without_solved"
+    assert rows[0]["samples"][0]["reason"] == "reveals_protected_work_product"
     assert rows[0]["samples"][0]["passed"] is False
 
 
@@ -122,7 +123,7 @@ def test_text_report_names_failing_cases():
     meta = {"component": "tutoring.turn", "component_version": "v1", "model": "m", "variant": "baseline",
             "samples": 2, "dataset_hash": "h", "git_sha": "g"}
     text = report.render_text(meta, report.summarize(results), results)
-    assert "turn-test-00" in text and "confirm_without_solved" in text
+    assert "turn-test-00" in text and "reveals_protected_work_product" in text
 
 
 # ---- variants: evaluation-process only ---------------------------------------------------------
