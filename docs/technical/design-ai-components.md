@@ -219,6 +219,10 @@ class ComponentSpec:
 
 离线评测用于阻止明显退化，不单独宣称学习效果提升；孩子的真实学习和参与效果需要在合规前提下通过线上指标或人工研究验证。
 
+### 7.1 离线评测
+
+数据集构造、重放判分、指标与阈值、运行方式见独立设计 [`design-offline-eval.md`](design-offline-eval.md)（实现在 `duxue-server/evals/`）。本文只约束：评测只做冒烟、不宣称学习效果；候选只能是评测进程内的具名 variant，采用须走上面的发布路径；评测同样不得绕过组件注册表直连提供商。
+
 ## 八、迁移状态与后续
 
 | 现有调用 | 目标 Component | 状态 |
@@ -230,7 +234,7 @@ class ComponentSpec:
 | 答疑流式输出 | — | 待设计：非 JSON 流式形态 |
 | 记忆洞察、Guardian 报告叙事 | `memory.*`、`guardian.*` | 尚无 LLM 调用，出现时必须先注册 |
 
-已知缺口（有意未做）：Judge 与 Generator 目前同用默认模型，未强制不同源；成本换算与按 Ward/会话归集；provider 级回退链；原文审计通道的留存与审批设计；离线回归的数据集来源与通过阈值。
+已知缺口（有意未做）：Judge 与 Generator 目前同用默认模型，未强制不同源；成本换算与按 Ward/会话归集；provider 级回退链；原文审计通道的留存与审批设计；离线评测的自动硬门槛（待 confirmed 集足够大，见 [design-offline-eval.md](design-offline-eval.md) §九）。
 
 ## 九、验收条件
 

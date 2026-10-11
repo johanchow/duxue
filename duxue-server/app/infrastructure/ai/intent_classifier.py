@@ -29,14 +29,14 @@ def parse_intent_payload(raw: str) -> IntentProposal:
 
 def complete_intent(
     *, content: str, focus_agent_type: str | None, recent_utterances: list[dict] | None = None,
-    current_images: list[str | None] | None = None,
+    current_images: list[str | None] | None = None, spec=None, settings_obj=None,
 ) -> str:
     user = user_content(
         {"content": content, "focus_agent_type": focus_agent_type},
         recent_utterances, current_images,
     )
     payload = components.invoke_json_component(
-        spec=components.COMPONENTS.get("companion.intent"), user=user,
+        spec=spec or components.COMPONENTS.get("companion.intent"), user=user, settings_obj=settings_obj,
     )
     return json.dumps(payload, ensure_ascii=False)
 

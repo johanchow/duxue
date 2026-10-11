@@ -13,6 +13,13 @@ from app.infrastructure.ai.utterance_window import user_content
 
 
 class QwenTutorTurnGateway:
+    """``spec`` / ``settings_obj`` exist for the offline evaluation to try a named candidate
+    in its own process; production always uses the registered component."""
+
+    def __init__(self, spec=None, settings_obj=None):
+        self._spec = spec
+        self._settings = settings_obj
+
     def complete(
         self, *, envelope: dict, instruction: str, recent_utterances: list[dict] | None = None,
         current_images: list[str | None] | None = None, repair_error: str | None = None,
@@ -25,17 +32,21 @@ class QwenTutorTurnGateway:
             payload["repair_error"] = repair_error
         user = user_content(payload, recent_utterances, list(current_images or []))
         return components.invoke_json_component(
-            spec=components.COMPONENTS.get("tutoring.turn"), user=user,
+            spec=self._spec or components.COMPONENTS.get("tutoring.turn"), user=user,
+            settings_obj=self._settings,
         )
 
 
 class QwenLeakJudge:
+    def __init__(self, settings_obj=None):
+        self._settings = settings_obj  # offline evaluation only; production passes nothing
+
     def leaks(self, *, text: str, task_title: str | None, problem_summary: str | None) -> bool | None:
         body = {"task_title": task_title, "problem": problem_summary, "reply": text}
         try:
             payload = components.invoke_json_component(
                 spec=components.COMPONENTS.get("tutoring.leak-judge"),
-                user=json.dumps(body, ensure_ascii=False),
+                user=json.dumps(body, ensure_ascii=False), settings_obj=self._settings,
             )
         except ModelGatewayError:
             return None
