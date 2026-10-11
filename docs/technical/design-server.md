@@ -326,7 +326,7 @@ erDiagram
         uuid ward_id FK
         string behavior_label "study | stray | away | unknown"
         float confidence "置信度 (0.0~1.0)"
-        string model_version "如 qwen3-vl-flash / duxue-vl-v2"
+        string model_version "如 qwen3-vl-flash-2026-01-22 / duxue-vl-v2"
         string source "api | local"
         timestamp created_at
     }

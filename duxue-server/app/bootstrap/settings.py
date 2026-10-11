@@ -62,7 +62,7 @@ class Settings:
     oss_access_key_secret: str = os.getenv("OSS_ACCESS_KEY_SECRET", "")
     dashscope_api_key: str = os.getenv("VLM_API_KEY") or os.getenv("DASHSCOPE_API_KEY", "")
     dashscope_base_url: str = os.getenv("VLM_BATCH_BASE_URL") or os.getenv("VLM_API_BASE_URL") or os.getenv("DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
-    vlm_model: str = os.getenv("VLM_MODEL_NAME") or os.getenv("VLM_MODEL", "qwen3-vl-flash")
+    vlm_model: str = os.getenv("VLM_MODEL_NAME") or os.getenv("VLM_MODEL", "qwen3-vl-flash-2026-01-22")
     # Model names, prompts and generation parameters live in
     # app/infrastructure/ai/components.py.  This is only the emergency override for
     # non-protected components: JSON like {"planning.intake": "model-name"}.
@@ -75,7 +75,7 @@ class Settings:
     # Real-time ASR is optional at startup so existing non-voice deployments
     # remain available until the provider workspace has been configured.
     asr_api_key: str = os.getenv("ASR_API_KEY") or os.getenv("VLM_API_KEY") or os.getenv("DASHSCOPE_API_KEY", "")
-    asr_model: str = os.getenv("ASR_MODEL", "qwen3-asr-flash-realtime")
+    asr_model: str = os.getenv("ASR_MODEL", "qwen3-asr-flash-realtime-2026-02-10")
     asr_workspace_id: str = os.getenv("ASR_WORKSPACE_ID", "")
     asr_websocket_url: str = os.getenv("ASR_WEBSOCKET_URL", "")
     asr_max_record_seconds: int = _integer("ASR_MAX_RECORD_SECONDS", "60")

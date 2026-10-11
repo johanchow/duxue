@@ -27,13 +27,12 @@ from app.infrastructure.ai.errors import ModelGatewayError
 from app.infrastructure.ai.prompts import PROMPTS, DynamicPrompt, PromptTemplate
 from app.infrastructure.observability.telemetry import model_call_span, record_model_response
 
-# Model tiers (see docs/technical/design-ai-components.md §4.3).  Names are
-# DashScope model ids; the platform also offers a newer qwen3.7/3.8 generation that
-# is natively multimodal and is a candidate for a later side-by-side evaluation.
-VL_FLASH = "qwen3-vl-flash"   # vision, fast/cheap: window-aware replies
-VL_PLUS = "qwen3-vl-plus"     # vision, accuracy first: tutoring turn, intake extraction
-TEXT_FLASH = "qwen-flash"     # text only, fastest: routing
-TEXT_PLUS = "qwen-plus"       # text only, balanced: independent judge, advice
+# DashScope model ids (see docs/technical/design-ai-components.md §4.2.3).
+# Thinking is turned off at the call: these calls return JSON on a latency budget.
+PLUS = "qwen3.7-plus-2026-05-26"  # vision + instruction following: tutoring, intake, advice
+REPLY_FLASH = "qwen3.8-flash"     # short multimodal replies on the wait path
+TEXT_FLASH = "qwen-flash"         # closed routing; a decision model needs another protocol
+TEXT_PLUS = "qwen-plus"           # leak judge; must stay a different model from PLUS
 
 RiskTier = Literal["protected", "standard"]
 AgentLabel = Literal["planning", "tutoring", "reflection"]
@@ -94,7 +93,7 @@ COMPONENTS = ComponentRegistry(
     # --- protected: child-safety path -------------------------------------
     ComponentSpec(
         component_id="tutoring.turn", version="v1", operation="tutor_turn",
-        agent_label="tutoring", risk_tier="protected", model=VL_PLUS,
+        agent_label="tutoring", risk_tier="protected", model=PLUS,
         prompt=PROMPTS["tutoring.turn.system.v1"],
         input_contract="tutor-turn.v1", output_contract="tutor-turn-candidate.v1",
         max_tokens=900, temperature=0.2,
@@ -118,14 +117,14 @@ COMPONENTS = ComponentRegistry(
     ),
     ComponentSpec(
         component_id="planning.reply", version="v1", operation="agent_text",
-        agent_label="planning", risk_tier="standard", model=VL_FLASH,
+        agent_label="planning", risk_tier="standard", model=REPLY_FLASH,
         prompt=PROMPTS["companion.agent-text.system.v1"],
         input_contract="agent-text-input.v1", output_contract="agent-text-candidate.v1",
         max_tokens=450, temperature=0.2,
     ),
     ComponentSpec(
         component_id="reflection.advice", version="v1", operation="agent_text",
-        agent_label="reflection", risk_tier="standard", model=TEXT_PLUS,
+        agent_label="reflection", risk_tier="standard", model=PLUS,
         prompt=PROMPTS["companion.agent-text.system.v1"],
         input_contract="agent-text-input.v1", output_contract="agent-text-candidate.v1",
         max_tokens=450, temperature=0.2,
@@ -133,7 +132,7 @@ COMPONENTS = ComponentRegistry(
     ),
     ComponentSpec(
         component_id="planning.intake", version="v1", operation="plan_intake",
-        agent_label="planning", risk_tier="standard", model=VL_PLUS,
+        agent_label="planning", risk_tier="standard", model=PLUS,
         prompt=PROMPTS["planning.intake.prompt.v1"],
         input_contract="plan-intake-input.v1", output_contract="plan-intake-result.v1",
         max_tokens=1600, temperature=0, requires_agent_switch=False,
@@ -141,7 +140,7 @@ COMPONENTS = ComponentRegistry(
     ),
     ComponentSpec(
         component_id="task.intake", version="v1", operation="task_intake",
-        agent_label="planning", risk_tier="standard", model=VL_PLUS,
+        agent_label="planning", risk_tier="standard", model=PLUS,
         prompt=PROMPTS["task.intake.prompt.v1"],
         input_contract="task-intake-input.v1", output_contract="task-intake-result.v1",
         max_tokens=1600, temperature=0, requires_agent_switch=False,
@@ -226,6 +225,7 @@ def invoke_json_component(*, spec: ComponentSpec, user, client=None, settings_ob
                 temperature=spec.temperature,
                 max_tokens=spec.max_tokens,
                 response_format={"type": "json_object"},
+                extra_body={"enable_thinking": False},
             )
             usage = response.usage
             telemetry["provider_request_id"] = getattr(response, "id", None)

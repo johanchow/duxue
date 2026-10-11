@@ -111,7 +111,7 @@ def analyze_and_generate(
         prediction.behavior_label = label
         prediction.confidence = confidence
         prediction.source = "api" if frame.id in supplied_results else "local"
-        prediction.model_version = "qwen3-vl-flash" if frame.id in supplied_results else "local-deterministic-v1"
+        prediction.model_version = settings.vlm_model if frame.id in supplied_results else "local-deterministic-v1"
         points.append(Point(frame.id, frame.captured_at, label, confidence, frame.study_session_id))
 
     segments = build_segments(smooth(points), settings.capture_interval_seconds)
