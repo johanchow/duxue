@@ -92,10 +92,10 @@ class ComponentRegistry:
 COMPONENTS = ComponentRegistry(
     # --- protected: child-safety path -------------------------------------
     ComponentSpec(
-        component_id="tutoring.turn", version="v1", operation="tutor_turn",
+        component_id="tutoring.turn", version="v4", operation="tutor_turn",
         agent_label="tutoring", risk_tier="protected", model=PLUS,
-        prompt=PROMPTS["tutoring.turn.system.v1"],
-        input_contract="tutor-turn.v1", output_contract="tutor-turn-candidate.v1",
+        prompt=PROMPTS["tutoring.turn.system.v4"],
+        input_contract="tutor-turn.v2", output_contract="tutor-turn-candidate.v2",
         max_tokens=900, temperature=0.2,
     ),
     ComponentSpec(

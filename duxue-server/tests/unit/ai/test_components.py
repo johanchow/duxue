@@ -61,8 +61,8 @@ def test_registry_lists_every_call_with_stable_identity():
         "planning.reply", "reflection.advice", "planning.intake", "task.intake",
     }
     for spec in COMPONENTS.all():
-        assert spec.version == "v1" and spec.model and spec.input_contract and spec.output_contract
-        assert spec.prompt.id.endswith(".v1")
+        assert spec.version.startswith("v") and spec.model and spec.input_contract and spec.output_contract
+        assert spec.prompt.id.rsplit(".", 1)[1].startswith("v")
 
 
 def test_child_safety_components_are_protected_and_not_overridable():

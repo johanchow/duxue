@@ -10,7 +10,7 @@ from dataclasses import dataclass, replace
 from typing import Literal
 
 ProblemStatus = Literal["open", "submitted", "abandoned"]
-HINT_ACTS = frozenset({"probe", "hint", "example"})
+HINT_ACTS = frozenset({"guide"})
 
 
 @dataclass(frozen=True)
@@ -52,7 +52,7 @@ class ProblemAssessment:
     """Only an already validated work-product turn may reach this value object."""
 
     effective_work_product: bool
-    student_turn_kind: str
+    student_move: str
     progress: str | None
     same_problem: bool
     act: str
@@ -82,10 +82,11 @@ class TutorPermitPolicy:
         if problem is None or problem.status != "open" or not assessment.same_problem:
             problem = ProblemState()
         state = problem
-        if assessment.act in HINT_ACTS:
+        # A turn that receives the Ward's submission is not a hint.
+        if assessment.act in HINT_ACTS and assessment.progress != "submitted":
             state = replace(state, hints_given=state.hints_given + 1)
         evidence = (assessment.subgoal_evidence or "").strip() or None
-        if assessment.student_turn_kind != "attempt" or not assessment.counts_as_attempt or evidence is None:
+        if assessment.student_move != "attempt" or not assessment.counts_as_attempt or evidence is None:
             return state
 
         state = replace(
@@ -93,8 +94,8 @@ class TutorPermitPolicy:
             substantive_attempts=state.substantive_attempts + 1,
             evidence_summary=evidence[:500],
         )
-        # "solved" is a submitted student proposal, never a correctness verdict.
-        if assessment.progress == "solved":
+        # "submitted" is a student proposal, never a correctness verdict.
+        if assessment.progress == "submitted":
             return replace(state, status="submitted", active_subgoal=None)
         next_subgoal = (assessment.next_subgoal or "").strip() or None
         if next_subgoal is not None:

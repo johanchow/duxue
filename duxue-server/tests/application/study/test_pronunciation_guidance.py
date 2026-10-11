@@ -37,8 +37,7 @@ def _invocation(ward_id: str, content: str, *, attachments: list[str] | None = N
 
 def _pronounce(text: str = "apple", *, segment: str | None = "apple") -> dict:
     return tutor_raw(
-        act="pronounce", question_kind="knowledge_lookup", content="先听这个词。",
-        student_turn_kind="other", same_problem=False, is_assignment_content=False,
+        "pronounce", "先听这个词。", relation=None,
         lesson={
             "source_text": text, "locale": "en-US", "introduction": "先听这个词。",
             "reading_guide": "a 轻读，重音在最前面。",
@@ -80,10 +79,7 @@ def test_pronounce_is_not_leak_checked_and_ui_hint_does_not_skip_the_model(db):
     ward = create_ward(db)
     db.commit()
     judge = StaticLeakJudge(True)
-    model = StaticTutorModel(tutor_raw(
-        act="answer", question_kind="knowledge_lookup", content="apple 是苹果。", student_turn_kind="other",
-        same_problem=False, is_assignment_content=False,
-    ))
+    model = StaticTutorModel(tutor_raw("answer", "apple 是苹果。", relation="none", student_move="other"))
     outcome = TutoringWorkflow(db, turn_model=model, leak_judge=judge).invoke(_invocation(ward.id, "apple 是什么意思"))
     assert len(model.calls) == 1
     assert "apple 是苹果" in outcome.next_interaction["content"]
@@ -114,9 +110,7 @@ def test_clarify_keeps_a_non_empty_choice_set(db):
     ward = create_ward(db)
     db.commit()
     outcome = _present(db, _invocation(ward.id, "这张图怎么读"), tutor_raw(
-        act="clarify", question_kind="knowledge_lookup", content="你想读哪一句？",
-        candidates=["I like apples.", "I like oranges."], student_turn_kind="other",
-        same_problem=False, is_assignment_content=False,
+        "clarify", "你想读哪一句？", relation=None, candidates=["I like apples.", "I like oranges."],
     ))
     text = outcome.next_interaction["content"]
     assert outcome.next_interaction["kind"] == "clarify"
@@ -130,8 +124,7 @@ def test_clarify_without_candidates_asks_to_reshoot(db):
     ward = create_ward(db)
     db.commit()
     outcome = _present(db, _invocation(ward.id, "这张图怎么读"), tutor_raw(
-        act="clarify", question_kind="knowledge_lookup", content="我没看清，请裁剪或重拍，也可以直接输入文字。",
-        student_turn_kind="other", same_problem=False, is_assignment_content=False,
+        "clarify", "我没看清，请裁剪或重拍，也可以直接输入文字。", relation=None,
     ))
     assert outcome.next_interaction["status"] == "needs_input"
     assert "重拍" in outcome.next_interaction["content"]
@@ -224,12 +217,13 @@ def test_clarify_with_a_stray_lesson_keeps_the_clarification(db):
     assert db.query(PronunciationLesson).count() == 0
 
 
-def test_lesson_on_an_answer_act_is_still_rejected(db):
+def test_lesson_on_an_answer_act_is_dropped_and_never_projected(db):
     ward = create_ward(db)
     db.commit()
-    raw = {**_pronounce(), "act": "answer"}
+    raw = {**_pronounce(), "act": "answer", "work": {"relation": "none"}}
     outcome = _present(db, _invocation(ward.id, "apple"), raw)
-    assert outcome.next_interaction["model_fallback"] is True
+    assert outcome.next_interaction["model_fallback"] is False
+    assert "kind" not in outcome.next_interaction or outcome.next_interaction["kind"] != "pronunciation_lesson"
     assert db.query(PronunciationLesson).count() == 0
 
 
@@ -237,7 +231,7 @@ def test_url_in_a_lesson_is_rejected(db):
     ward = create_ward(db)
     db.commit()
     raw = _pronounce("apple")
-    raw["lesson"]["reading_guide"] = "见 https://example.com"
+    raw["pronounce"]["lesson"]["reading_guide"] = "见 https://example.com"
     outcome = _present(db, _invocation(ward.id, "apple"), raw)
     assert outcome.next_interaction["model_fallback"] is True
     assert db.query(PronunciationLesson).count() == 0

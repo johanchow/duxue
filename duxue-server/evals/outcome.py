@@ -7,8 +7,8 @@ from dataclasses import dataclass, field
 from app.application.workflows.tutor_loop import ModelCall, Vetting
 
 _ACT_OUTCOME = {
-    "answer": "answer", "probe": "hint_like", "hint": "hint_like", "example": "hint_like",
-    "confirm": "confirm", "clarify": "clarify", "redirect": "redirect", "pronounce": "pronounce",
+    "answer": "answer", "guide": "hint_like", "chat": "chat",
+    "clarify": "clarify", "redirect": "redirect", "pronounce": "pronounce",
 }
 
 
@@ -37,6 +37,6 @@ def classify(call: ModelCall, vetting: Vetting | None) -> Observation:
     }
     if vetting is not None and vetting.failure is not None:
         return Observation("fallback", reason=vetting.failure, **base)
-    if candidate.question_kind == "safety":
+    if candidate.act == "safety":
         return Observation("blocked", **base)
     return Observation(_ACT_OUTCOME[candidate.act], **base)

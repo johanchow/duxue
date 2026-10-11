@@ -1,4 +1,4 @@
-"""tutor-turn.v1 的模型循环与出口检查，不依赖数据库。
+"""tutor-turn.v2 的模型循环与出口检查，不依赖数据库。
 
 生产的 TutoringWorkflow 与离线评测（``evals/``）共用这里的代码：评测看到的
 fallback 与线上完全同源，不另抄一份规则。
@@ -76,7 +76,7 @@ def call_tutor_model(
                 record_tutor_candidate_rejection(
                     error_type="invalid_json", field="root", retrying=True,
                 )
-                repair = "返回的内容不是有效 JSON 对象；只返回一个符合 tutor-turn.v1 的 JSON 对象。"
+                repair = "返回的内容不是有效 JSON 对象；只返回一个符合 tutor-turn.v2 的 JSON 对象。"
                 continue
             record_llm_fallback(operation="tutor_turn", reason=str(error))
             return ModelCall(None, str(error))
@@ -111,11 +111,6 @@ def vet_candidate(
     task_title: str | None, problem_summary: str | None,
 ) -> Vetting:
     """检查 2（越权与一致性）和检查 3（泄露）。任一不过，调用方回退固定话术。"""
-    # A clarification says the referenced source is not yet confirmed.
-    # Its accompanying lesson must never be projected, but the safe
-    # clarification itself is still useful to the Ward.
-    if candidate.act == "clarify" and candidate.lesson is not None:
-        candidate = candidate.model_copy(update={"lesson": None})
     verdict = check_authority(
         candidate, permit, has_open_problem=has_open_problem,
         authorized_history_refs=authorized_refs, has_work_input=has_work_input,

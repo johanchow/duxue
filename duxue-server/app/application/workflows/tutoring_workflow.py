@@ -24,7 +24,6 @@ from app.application.workflows.tutor_turn import (
 )
 from app.contexts.companion.domain.policy import PolicyRegistry
 from app.contexts.tutoring.domain.tutor_permit import (
-    HINT_ACTS,
     ProblemAssessment,
     ProblemState,
     TutorPermitPolicy,
@@ -62,7 +61,7 @@ def _store(row: TutoringProblem, state: ProblemState) -> None:
 
 
 class TutoringWorkflow:
-    """tutor-turn.v1：模型驱动一轮，代码守住入口许可和出口检查。"""
+    """tutor-turn.v2：模型驱动一轮，代码守住入口许可和出口检查。"""
 
     def __init__(
         self, db: Session, turn_model: TutorModelPort | None = None, leak_judge: LeakJudgePort | None = None,
@@ -267,7 +266,7 @@ class TutoringWorkflow:
             candidate, verdict = vetting.candidate, vetting.verdict
         failed = candidate is None or verdict is None or not verdict.ok
         safety = not failed and (
-            candidate.question_kind == "safety" or self._safety().blocks_output(text=candidate.content)
+            candidate.act == "safety" or self._safety().blocks_output(text=candidate.content)
         )
         # 发音和澄清是只读展示：不打开会话，不写消息、事实或题目记录。
         if not failed and not safety and candidate.act == "pronounce":
@@ -320,19 +319,19 @@ class TutoringWorkflow:
         self.db.add(message)
         self.db.flush()
         payload = {"tutoring_session_id": tutor.id, "study_session_id": session.id}
-        if work and candidate.student_turn_kind == "attempt":
+        if work and candidate.student_move == "attempt":
             publish_learning_fact(
                 self.db, ward_id=session.ward_id, event_type="tutoring.attempt_recorded",
                 source_type="tutoring_message", source_id=ward_msg.id, source="ward", visibility="ward",
                 payload={**payload, "directive": directive},
             )
-        if work and candidate.act in HINT_ACTS:
+        if work and hint_index is not None:
             publish_learning_fact(
                 self.db, ward_id=session.ward_id, event_type="tutoring.hint_given",
                 source_type="tutoring_message", source_id=message.id, source="system",
                 payload={**payload, "hint_index": hint_index},
             )
-        if candidate.question_kind == "knowledge_lookup" and candidate.act not in {"clarify", "redirect", "pronounce"} and not work:
+        if candidate.act in {"answer", "guide"} and not work:
             publish_learning_fact(
                 self.db, ward_id=session.ward_id, event_type="tutoring.curiosity_observed",
                 source_type="tutoring_message", source_id=ward_msg.id, source="ward", visibility="ward", payload=payload,
@@ -353,24 +352,26 @@ class TutoringWorkflow:
 
         同一个 Ward Turn 的重放不重复计数：记录已处理过本 turn 时原样返回。
         """
-        if row is not None and candidate.same_problem and row.last_turn_id == invocation.turn_id:
+        new_problem = candidate.relation == "new"
+        if row is not None and not new_problem and row.last_turn_id == invocation.turn_id:
             return row.status, None
-        if row is None or not candidate.same_problem:
+        if row is None or new_problem:
             if row is not None:
                 row.status = "abandoned"
             row = TutoringProblem(tutoring_session_id=tutor.id, summary=summary[:500])
             self.db.add(row)
             self.db.flush()
         assessment = ProblemAssessment(
-            effective_work_product=True, student_turn_kind=candidate.student_turn_kind,
+            effective_work_product=True, student_move=candidate.student_move,
             progress=candidate.progress, same_problem=True, act=candidate.act,
             counts_as_attempt=has_work_input, subgoal_evidence=candidate.subgoal_evidence,
             next_subgoal=candidate.next_subgoal,
         )
-        new = TutorPermitPolicy.advance(_state(row), assessment)
+        before = _state(row)
+        new = TutorPermitPolicy.advance(before, assessment)
         _store(row, new)
         row.last_turn_id = invocation.turn_id
-        return row.status, (new.hints_given if candidate.act in HINT_ACTS else None)
+        return row.status, (new.hints_given if new.hints_given > before.hints_given else None)
 
     def _reply(self, invocation, tutor, refs, envelope, *, text, blocked, permit, problem_status):
         self.db.add(TutoringMessage(tutoring_session_id=tutor.id, role="assistant", content=text, safety_blocked=blocked))
