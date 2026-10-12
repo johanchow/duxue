@@ -7,7 +7,7 @@
 - 边界：组件机制不替代领域代码。ACL、`TutorPermitPolicy`、答案保护、独立安全审核、输出 Validator、Companion Run fence、事实/Outbox、事务与删除策略不属于 `ComponentSpec`。
 - 后续：只有出现真实灰度需求，才另立设计评估具名候选版本与 shadow；不预设通用 override 或 A/B 平台。
 
-正式设计见 [`docs/technical/design-ai-components.md`](../../docs/technical/design-ai-components.md)。
+正式设计见 [`docs/technical/infra-ai-components.md`](../../docs/technical/infra-ai-components.md)。
 
 ## Phase 2（2026-10-11）
 
@@ -19,6 +19,6 @@
 
 ## 模型分配（2026-10-11）
 
-- 依据与矩阵见 `design-ai-components.md` §4.2.3，`test_model_assignment_matrix` 锁定。纯文本组件由 Gateway 把图片 part 换成占位文字（`accepts_images=False`），避免提供商拒绝。
+- 依据与矩阵见 `infra-ai-components.md` §4.2.3，`test_model_assignment_matrix` 锁定。纯文本组件由 Gateway 把图片 part 换成占位文字（`accepts_images=False`），避免提供商拒绝。
 - 未验证：账号上的实际可用性、延迟、单价；答疑 vl-plus 的首字延迟是否仍满足 P90<1.2s（当前非流式，本就不满足，需流式后复测）。
 - 候选：qwen3.7/3.8 原生多模态代际；决策模型 `decision-model-preview`（路由/Judge，需新增 `decision` 调用形态与红队集）。

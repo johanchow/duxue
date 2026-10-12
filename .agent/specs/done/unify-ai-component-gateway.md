@@ -16,7 +16,7 @@ status: done
 - [x] Gateway 通过同一 `invoke()` 路径执行 P0 组件，统一记录组件 ID/版本、模型、token、耗时、provider request ID、结构错误与 fallback 所需错误分类；不将儿童原文、图片 data URL、密钥或 CoT 写入普通 trace/log。
 - [x] `companion.intent`、`tutoring.turn`、`tutoring.leak_judge` 三个现有调用点迁移到组件注册表，既有的输出契约、受保护场景 fail-closed 和 fallback 行为不变。
 - [x] 为上述三个组件增加无网络离线回归测试，覆盖组件身份/版本、结构化成功结果与非法输出/提供商失败的既有保守行为。
-- [x] `docs/technical/design-ai-components.md` 收敛为两阶段方案：第一阶段是类型化 Gateway；只有出现真实灰度需求才考虑具名候选版本，且不承诺通用 override。
+- [x] `docs/technical/infra-ai-components.md` 收敛为两阶段方案：第一阶段是类型化 Gateway；只有出现真实灰度需求才考虑具名候选版本，且不承诺通用 override。
 - [x] Phase 2：Registry 成为全部文本类 LLM 调用的唯一总表；`ComponentSpec` 含默认 `model`、`risk_tier`、prompt 引用、输入/输出契约；prompt 正文集中在 `prompts.py`，带摘要版本锁。
 - [x] `tutoring.turn` / `tutoring.leak-judge` 为 `protected`，不可被环境变量覆盖；`AI_MODEL_OVERRIDES` 仅按组件覆盖 `standard` 模型名，非法值启动即失败，Trace 带 `model_source`。
 - [x] `QwenAgentModelGateway`、`task_intake`、`plan_intake` 迁入 Registry；防绕过测试保证 `app/` 内只有 `components.py`/`client.py` 与待迁的 VLM `inference.py` 直连 SDK。
@@ -25,7 +25,7 @@ status: done
 ## 实现计划（Gate 1：填完等人确认，不许自转）
 
 - 影响文件：
-  1. `docs/technical/design-ai-components.md`：移除 YAML、签名包、通用 override 与可替换 Workflow，改为 Python Registry / 两阶段演进。
+  1. `docs/technical/infra-ai-components.md`：移除 YAML、签名包、通用 override 与可替换 Workflow，改为 Python Registry / 两阶段演进。
   2. `duxue-server/app/infrastructure/ai/components.py`（新增）：定义 `ComponentSpec`、P0 组件 Registry 与只读查询接口。
   3. `duxue-server/app/infrastructure/ai/model_gateway.py`、`tutor_turn_model.py`、`intent_classifier.py`：收敛直接模型调用到共享 invoke helper，同时保持调用方的特定输出类型和结构恢复语义。
   4. `duxue-server/app/infrastructure/observability/telemetry.py`：按现有安全审计约束为组件标识补充低基数 trace 属性（仅在现有 API 足以支持时修改）。

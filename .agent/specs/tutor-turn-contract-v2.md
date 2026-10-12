@@ -9,7 +9,7 @@ status: in-progress
 ## 做什么 / 为什么
 把答疑模型契约 `tutor-turn.v1`（14 个扁平字段、多处自述信号重叠）收敛为 v2：顶层只有 `act` + `content`，其余按用途放进可选子对象。出口检查分成「安全拒绝」与「元数据规范化」两类，后者不再整轮回退。
 
-动机：note 114 / 115 / 119 反复出现同一故障——与安全无关的字段不一致（`confirm` 无 `solved`、`lesson`/`candidates` 与 act 不匹配、错位 `question_kind`）把本可展示的回答换成固定兜底话术。事实源见 `docs/technical/domain-tutoring.md`，本 spec 完成后同步其契约章节与 `design-offline-eval.md`。
+动机：note 114 / 115 / 119 反复出现同一故障——与安全无关的字段不一致（`confirm` 无 `solved`、`lesson`/`candidates` 与 act 不匹配、错位 `question_kind`）把本可展示的回答换成固定兜底话术。事实源见 `docs/technical/domain-tutoring.md`，本 spec 完成后同步其契约章节与 `eval-offline.md`。
 
 ## 目标契约（草案）
 ```json
@@ -38,7 +38,7 @@ status: in-progress
 - [x] `submitted` 不会在文案或事实里被当作"正确"；提示词不再出现"确认正确"。
 - [x] 计数语义不变：`HINT_ACTS` 改为 `guide` 后，`hints_given`、`tutoring.hint_given`、`curiosity_observed`、`hint_index` 行为与旧 `probe/hint/example` 一致；`act` 对外字段变化已确认无前端消费（`duxue-app` 未读取 `act`）。
 - [x] 离线评测：`evals/outcome.py` 的 outcome 映射、数据集与判分改到 v2，K=5 跑 16 个 proposed 用例，通过率不低于 119 后的 70/80，且 fallback 原因里不再有规范化类 reason；结果与局限记入 note。
-- [x] 提示词升版（`tutoring.turn.system.v3`、组件版本、摘要锁同步），`domain-tutoring.md`、`design-offline-eval.md`、`design-ai-components.md` 与代码同一 commit。
+- [x] 提示词升版（`tutoring.turn.system.v3`、组件版本、摘要锁同步），`domain-tutoring.md`、`eval-offline.md`、`infra-ai-components.md` 与代码同一 commit。
 - [x] 服务端相关测试全绿，`git diff --check` 通过。
 
 ## 实现计划（Gate 1：填完等人确认，不许自转）

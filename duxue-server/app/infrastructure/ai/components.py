@@ -27,7 +27,7 @@ from app.infrastructure.ai.errors import ModelGatewayError
 from app.infrastructure.ai.prompts import PROMPTS, DynamicPrompt, PromptTemplate
 from app.infrastructure.observability.telemetry import model_call_span, record_model_response
 
-# DashScope model ids (see docs/technical/design-ai-components.md §4.2.3).
+# DashScope model ids (see docs/technical/infra-ai-components.md §4.2.3).
 # Thinking is turned off at the call: these calls return JSON on a latency budget.
 PLUS = "qwen3.7-plus-2026-05-26"  # vision + instruction following: tutoring, intake, advice
 REPLY_FLASH = "qwen3.8-flash"     # short multimodal replies on the wait path
