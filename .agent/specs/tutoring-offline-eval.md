@@ -9,7 +9,7 @@ status: draft
 ## 做什么 / 为什么
 给答疑链路（`tutoring.turn`，顺带 `companion.intent`）搭一套**离线评测**，并把 2026-10-10/11 调试的三条真实对话做成首批数据集。
 
-动机：这几次故障（"这个/第四句/是的" 发音失败、`confirm` 触发整轮 fallback、打雷问题被固定澄清）都是改一处 prompt 或契约就可能复发或换个地方出现的行为问题，现在没有任何东西能在上线前把它们挡住；`design-ai-components.md` §八也把「离线回归的数据集来源与通过阈值」列为已知缺口。
+动机：这几次故障（"这个/第四句/是的" 发音失败、`confirm` 触发整轮 fallback、打雷问题被固定澄清）都是改一处 prompt 或契约就可能复发或换个地方出现的行为问题，现在没有任何东西能在上线前把它们挡住；`infra-ai-components.md` §八也把「离线回归的数据集来源与通过阈值」列为已知缺口。
 
 原则取自 `zzz/`（Khanmigo AIED 2026 论文），落到本仓库的对应关系：
 
@@ -32,7 +32,7 @@ status: draft
 - [x] **runner**：`python -m evals run [--component C] --samples K [--model M] [--variant V]`，每 case 采样 K 次（默认 5），输出每 case 通过数、总体通过率及 Wilson 区间、按 tag 与按结果类别的分布、guardrail 与延迟；结果 JSON 写 `var/evals/`，含 component@version、模型、prompt 摘要、数据集哈希、git sha。离线无 key 时给清楚报错，不静默通过。
 - [x] **export**：`python -m evals export --thread <id> ...` 从 `companion_messages` 生成待复核候选（含自动 flag 与脱敏），输出到 `var/evals/candidates/`（不入库）；复核后手工并入 `evals/data/`。
 - [x] **CI 内可跑的测试全绿且不联网**：数据集校验（schema、id 唯一、confirmed 必须有 `reviewed_by` 和期望、无 PII、无 data URL）、判分单测（用 `StaticTutorModel` 重现真实故障形态：`confirm` fallback、`question_kind:"pronounce"`、缺 `lesson`、clarify、合法 pronounce）、runner 聚合与 Wilson 区间、export 的 flag/脱敏、缺图 skipped。生产相关既有测试保持绿。
-- [x] **文档**：新增独立设计 `docs/technical/design-offline-eval.md`（数据集来源、构造流程、通过阈值），`design-ai-components.md` §7.1 只留链接并更新 §八缺口；`.agent/notes/117-tutoring-offline-eval.md` 记决策与坑。
+- [x] **文档**：新增独立设计 `docs/technical/eval-offline.md`（数据集来源、构造流程、通过阈值），`infra-ai-components.md` §7.1 只留链接并更新 §八缺口；`.agent/notes/117-tutoring-offline-eval.md` 记决策与坑。
 
 ## 实现计划（Gate 1：填完等人确认，不许自转）
 - 影响文件：

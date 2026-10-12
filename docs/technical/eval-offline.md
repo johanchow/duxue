@@ -2,7 +2,7 @@
 
 > 状态：v1 已实现（`duxue-server/evals/`），首批数据集 30 条均为 `proposed`，待人工复核 · 版本：v1.0  
 > 范围：对 AI Component（首批为 `tutoring.turn`、`companion.intent`）的离线回放、判分、报告与数据集治理。  
-> 关联：[AI Component 设计](design-ai-components.md) · [Tutoring Domain](domain-tutoring.md) · [Companion 编排](domain-companion.md) · 决策笔记 `.agent/notes/117-tutoring-offline-eval.md`
+> 关联：[AI Component 设计](infra-ai-components.md) · [Tutoring Domain](domain-tutoring.md) · [Companion 编排](domain-companion.md) · 决策笔记 `.agent/notes/117-tutoring-offline-eval.md`
 
 ## 一、目标与非目标
 
@@ -19,7 +19,7 @@
 
 - **不做 hill climbing。** 离线通过率不是优化目标，不用它排名模型或证明"变好了"。
 - **不测学习效果。** 下一题正确率、认知投入依赖学生后续真实行为，离线算不出来；这些需要在合规前提下由线上指标或人工研究验证。
-- 不做线上 A/B、分流、通用 override 或 `evaluation_profile` 配置协议（与 [AI Component §七](design-ai-components.md) 一致）。
+- 不做线上 A/B、分流、通用 override 或 `evaluation_profile` 配置协议（与 [AI Component §七](infra-ai-components.md) 一致）。
 - v1 不引入 LLM judge（见 §六.4）。
 - 不把评测结果当作安全放行依据：`TutorPermitPolicy`、出口检查、独立安全审核仍是唯一裁决者。
 
@@ -250,7 +250,7 @@ LLM judge 有自己的假阳/假阴率；论文也承认连自家的 Math Error 
 - `--model <M>`：仅评测进程内替换模型名（`dataclasses.replace(spec)`）。
 - `--variant <V>`：具名 prompt 变换。现有 `baseline` 与 `drop-no-guess-clause`（去掉窗口规则里"不要自己补一个对象"这句，用于验证它是否促使模型在指代明显时仍选择澄清）。变换目标文本已变化时会显式报错，防止静默失效。
 - 原则：**一次只改一个变量**；variant 必须能被单测证明只改了预期的那一处；它们不碰注册表、不读 `AI_MODEL_OVERRIDES`。
-- 采用某个候选，必须按 [AI Component §七](design-ai-components.md) 的发布路径，做成显式、版本化的组件变更（提升版本、更新 prompt 摘要锁、补回归）。
+- 采用某个候选，必须按 [AI Component §七](infra-ai-components.md) 的发布路径，做成显式、版本化的组件变更（提升版本、更新 prompt 摘要锁、补回归）。
 - 需要契约改动才能做的实验（把 `act` 后置、`pending_clarification` + `resolution` 字段；`confirm` 已在 `tutor-turn.v2` 去掉）不属于 variant，应先落成具名候选实现，再用同一数据集对比。
 
 ## 九、运行与发布流程

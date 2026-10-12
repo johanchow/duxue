@@ -78,7 +78,8 @@ duxue/                          # 项目根目录
 | 计划与排程 Domain 设计 | [`docs/technical/domain-planning.md`](docs/technical/domain-planning.md) | 已知任务池、计划草稿、Ward 确认与固定协商 Graph |
 | 学习执行 Domain 设计 | [`docs/technical/domain-study.md`](docs/technical/domain-study.md) | StudySession 计时与完成、到点开始邀请 StartCue |
 | 辅导答疑 Domain 设计 | [`docs/technical/domain-tutoring.md`](docs/technical/domain-tutoring.md) | 答案状态红线、TutoringTurnLoop、发音 act、教学事实与答疑会话结算 |
-| 答疑离线评测设计 | [`docs/technical/design-offline-eval.md`](docs/technical/design-offline-eval.md) | 冒烟式离线评测、与生产同源的重放判分、数据集构造与复核、三级指标与不确定性、variant 与发布阈值 |
+| 答疑离线评测设计 | [`docs/technical/eval-offline.md`](docs/technical/eval-offline.md) | 冒烟式离线评测、与生产同源的重放判分、数据集构造与复核、三级指标与不确定性、variant 与发布阈值 |
+| 答疑表达设计（逻辑 + 配图） | [`docs/technical/domain-tutoring-presentation.md`](docs/technical/domain-tutoring-presentation.md) | 回答形状（按 act 的结构与长度不变量）、结构化 `visual` 配图（原生渲染、门禁与红线）、提示词预算、评测与分期（草案，未实现） |
 | 评估与复盘 Domain 设计 | [`docs/technical/domain-evaluation.md`](docs/technical/domain-evaluation.md) | 即时自评、证据版本化复盘、报告与行动采纳 |
 | 孩子理解与记忆 Domain 设计 | [`docs/technical/domain-memory.md`](docs/technical/domain-memory.md) | 事实事件账本、Signal/Claim、三层记忆与表映射、更新/衰减、答疑情境记忆与数据删除边界 |
 | VLM 分析指南 | [`duxue-server/docs/qwen3vl-student-behavior-guide.md`](duxue-server/docs/qwen3vl-student-behavior-guide.md) | Qwen3-VL 行为分析 Prompt 设计与字段定义 |
