@@ -14,6 +14,7 @@ from app.application.workflows.pronunciation_guidance import (
 from app.application.workflows.teaching_skills import history_candidates
 from app.application.workflows.tutor_loop import call_tutor_model, vet_candidate
 from app.application.workflows.tutor_tools import TutorToolbox
+from app.application.workflows.tutor_visual import describe
 from app.application.workflows.tutor_turn import (
     FALLBACK_TEXT,
     REMINDER,
@@ -30,7 +31,7 @@ from app.contexts.tutoring.domain.tutor_permit import (
 )
 from app.infrastructure.ai import components
 from app.infrastructure.messaging.outbox import publish_learning_fact
-from app.infrastructure.observability.telemetry import record_llm_fallback
+from app.infrastructure.observability.telemetry import record_llm_fallback, record_tutor_turn_result
 from app.infrastructure.persistence.models import (
     StudySession,
     StudySessionInterval,
@@ -256,6 +257,9 @@ class TutoringWorkflow:
         )
         candidate = self._call_model(envelope.model_dump(), instruction, window, images, tools)
         verdict = None
+        visual = None
+        failure = "no_candidate"
+        vetting = None
         if candidate is not None:
             vetting = vet_candidate(
                 candidate, permit=permit, has_open_problem=problem_row is not None,
@@ -263,19 +267,30 @@ class TutoringWorkflow:
                 has_work_input=bool(content.strip() or images), leak_judge=self._judge(),
                 task_title=task_title, problem_summary=problem_row.summary if problem_row else content,
             )
-            candidate, verdict = vetting.candidate, vetting.verdict
+            candidate, verdict, visual = vetting.candidate, vetting.verdict, vetting.visual
+            failure = vetting.failure
         failed = candidate is None or verdict is None or not verdict.ok
+        # 独立输出安全审核看孩子将看到的全部文字：正文与图里的每个字。
         safety = not failed and (
-            candidate.act == "safety" or self._safety().blocks_output(text=candidate.content)
+            candidate.act == "safety" or self._safety().blocks_output(
+                text=candidate.content if visual is None else f"{candidate.content}\n{describe(visual)}",
+            )
         )
         # 发音和澄清是只读展示：不打开会话，不写消息、事实或题目记录。
         if not failed and not safety and candidate.act == "pronounce":
             outcome = project_lesson(self.db, invocation, candidate.lesson)
             outcome.context_snapshot = envelope.trace_snapshot()
+            record_tutor_turn_result(
+                act=candidate.act, relation=candidate.relation, outcome="shown", reason=None,
+                shown=candidate.content,
+            )
             return outcome
         if not failed and not safety and candidate.act == "clarify":
             text = candidate.content
             listed = "\n".join(f"{i}. {item}" for i, item in enumerate(candidate.candidates, start=1))
+            record_tutor_turn_result(
+                act=candidate.act, relation=candidate.relation, outcome="shown", reason=None, shown=text,
+            )
             interaction = build_interaction(
                 invocation=invocation, kind="clarify", text=f"{text}\n{listed}" if listed else text,
                 actions=[{"name": "reply", "label": "回复", "command": "clarify_reply", "enabled": True}],
@@ -290,11 +305,19 @@ class TutoringWorkflow:
         refs = [f"tutoring_session:{tutor.id}"]
         ward_msg = self._ward_message(tutor, content)
         if failed:
+            record_tutor_turn_result(
+                act=candidate.act if candidate else None, relation=candidate.relation if candidate else None,
+                outcome="fallback", reason=failure or "exit_check", shown=FALLBACK_TEXT,
+                shape_flags=vetting.shape_flags if vetting else None,
+            )
             return self._reply(
                 invocation, tutor, refs, envelope, text=FALLBACK_TEXT, blocked=False,
                 permit=permit, problem_status=problem_row.status if problem_row else None,
             )
         if safety:
+            record_tutor_turn_result(
+                act=candidate.act, relation=candidate.relation, outcome="blocked", reason="safety", shown=SAFE_TEXT,
+            )
             return self._reply(
                 invocation, tutor, refs, envelope, text=SAFE_TEXT, blocked=True,
                 permit=permit, problem_status=problem_row.status if problem_row else None,
@@ -336,14 +359,26 @@ class TutoringWorkflow:
                 self.db, ward_id=session.ward_id, event_type="tutoring.curiosity_observed",
                 source_type="tutoring_message", source_id=ward_msg.id, source="ward", visibility="ward", payload=payload,
             )
+        record_tutor_turn_result(
+            act=candidate.act, relation=candidate.relation, outcome="shown", reason=None, shown=text,
+            visual_kind=visual.kind if visual else None, visual_dropped=vetting.visual_dropped if vetting else None,
+            shape_flags=vetting.shape_flags if vetting else None,
+        )
+        next_interaction = {
+            "status": "needs_input", "content": text, "act": candidate.act,
+            "hint_index": hint_index, "problem_status": problem_status,
+            "answer_protected": answer_protected if problem_status is None else problem_status == "open", "safety_blocked": False,
+            "return_to_task": remind, "model": components.model_for("tutoring.turn"), "model_fallback": False,
+        }
+        if visual is not None:
+            # 只有通过全部检查的图才投影；kind 由 Application 决定，模型从不返回 kind。
+            next_interaction.update(build_interaction(
+                invocation=invocation, kind="text_visual", text=text,
+                visual=visual.model_dump(exclude_none=True),
+            ))
         return WorkflowOutcome(
             run_status="waiting_for_ward", outcome_type="waiting", context_refs=refs,
-            next_interaction={
-                "status": "needs_input", "content": text, "act": candidate.act,
-                "hint_index": hint_index, "problem_status": problem_status,
-                "answer_protected": answer_protected if problem_status is None else problem_status == "open", "safety_blocked": False,
-                "return_to_task": remind, "model": components.model_for("tutoring.turn"), "model_fallback": False,
-            },
+            next_interaction=next_interaction,
             context_snapshot=envelope.trace_snapshot(),
         )
 

@@ -14,6 +14,7 @@ import '../shared/voice_composer.dart';
 import 'home_task_card.dart';
 import 'pronunciation_player.dart';
 import 'start_cue_card.dart';
+import 'visual_block.dart';
 import 'task_status_dialogs.dart';
 
 int chatImageCachePixels(double logicalPixels, double devicePixelRatio) {
@@ -194,6 +195,8 @@ class _WardDayPageState extends ConsumerState<WardDayPage> with WidgetsBindingOb
   int? planDraftVersion;
   String? failedPlanText;
   Map<String, dynamic>? pronunciationLesson;
+  // 最近一轮答疑的配图（只在当前这一轮展示；历史回看只有文字）。
+  Map<String, dynamic>? tutoringVisual;
   SpeechPlayback? _speechPlayback;
   bool planSending = false;
   bool planListOpen = false;
@@ -852,6 +855,10 @@ class _WardDayPageState extends ConsumerState<WardDayPage> with WidgetsBindingOb
                 ])
               ]))
         ],
+        if (tutoringVisual != null) ...[
+          const SizedBox(height: 10),
+          VisualBlock(visual: tutoringVisual!),
+        ],
         if (pronunciationLesson != null) ...[
           const SizedBox(height: 14),
           PronunciationLessonCard(
@@ -1409,7 +1416,10 @@ class _WardDayPageState extends ConsumerState<WardDayPage> with WidgetsBindingOb
         for (final image in stagedImages)
           if (image.key != null) image.key!,
       ]);
-    setState(() => planSending = true);
+    setState(() {
+      planSending = true;
+      tutoringVisual = null; // 上一轮的图属于上一轮的回答，不留到这一轮
+    });
     try {
       final result = await ref.read(apiProvider).companionTurn(
           content: text,
@@ -1451,6 +1461,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage> with WidgetsBindingOb
         stagedImages.clear();
         planAttachments.clear();
         pronunciationLesson = lesson;
+        tutoringVisual = visualFromInteraction(interaction);
         planFeedback = ((interaction['parts'] as List? ?? const []).isNotEmpty)
             ? Map<String, dynamic>.from(
                 (interaction['parts'] as List).first as Map)['text'] as String?

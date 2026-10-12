@@ -36,6 +36,9 @@ class _NeverLeaks:
     def leaks(self, **_kwargs) -> bool:
         return False
 
+    def visual_leaks(self, **_kwargs) -> bool:
+        return False
+
 
 @dataclass
 class Backends:

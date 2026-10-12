@@ -178,7 +178,7 @@ JSONL，一行一条，位于 `duxue-server/evals/data/`（按组件分文件：
 2. 把 `history`/`images` 还原成模型视图：每句 `{author, text, image_urls}`，图片从 `var/eval-assets/` 读为 data URL；本轮图片同理。
 3. `build_tutor_instruction` 生成与生产相同的指令（含 `history_candidates`、`permit`、`expected_act`）。
 4. `TutorToolbox(db=None, …)` 提供只读工具（`get_task_context`、`get_attempt_summary`、`lookup_history`）；`context` 用 `{}`（无记忆 envelope，见 §十）。
-5. `call_tutor_model` → 有候选则 `vet_candidate`（`check_authority` + 泄露判官，判官用生产注册的 `tutoring.leak-judge`）。
+5. `call_tutor_model` → 有候选则 `vet_candidate`（`check_authority` + 泄露判官，判官用生产注册的 `tutoring.leak-judge`；带图时再并行跑 `tutoring.visual-leak-judge`，图被丢弃只记原因，不算 fallback）。
 
 `companion.intent`：以 `ModelIntentClassifier` 包一层，捕获 `ModelGatewayError`，使"提供商错误"与"模型真的判 unclear"可区分。
 
@@ -195,7 +195,7 @@ JSONL，一行一条，位于 `duxue-server/evals/data/`（按组件分文件：
 | `redirect` | `act=redirect` |
 | `pronounce` | `act=pronounce`，记录 `lesson.source_text` |
 | `blocked` | `act=safety` |
-| `fallback` | 无候选（提供商错误、`invalid_model_candidate`）或出口检查拒绝；附 `reason`，如 `pronounce_without_lesson`、`lesson_markup`、`segment_not_in_source`、`reveals_protected_work_product`、`answer_marker`、`leak_detected`；元数据不一致（旧的 `confirm_without_solved`、`lesson_without_pronounce`、`candidates_without_clarify`）不再产生 fallback |
+| `fallback` | 无候选（提供商错误、`invalid_model_candidate`）或出口检查拒绝；附 `reason`，如 `pronounce_without_lesson`、`lesson_markup`、`segment_not_in_source`、`answer_marker`、`leak_detected`；元数据不一致（旧的 `confirm_without_solved`、`lesson_without_pronounce`、`candidates_without_clarify`）不再产生 fallback |
 
 `fallback` 意味着学生会看到固定的 `FALLBACK_TEXT`。意图组件的结果类别是标签本身（`planning` / `tutoring` / `reflection` / `unclear`）。
 
@@ -208,6 +208,9 @@ JSONL，一行一条，位于 `duxue-server/evals/data/`（按组件分文件：
 | `lesson_source_contains_any` | `pronounce` 的 `source_text` 须含其中任一（忽略大小写与空白差异） |
 | `content_contains_any` | 回复正文须含其中任一 |
 | `content_not_contains` | 回复正文不得含其中任何一个（用于兜住判官漏判，如作业答案字面量） |
+| `visual` | `present`：孩子最终应看到图；`absent`：不应有图。针对通过全部出口检查后保留的图 |
+| `visual_kind_in` | 保留的图的图型必须属于此集合（`steps`、`compare`、`segment`、`number_line`） |
+| `visual_not_contains` | 保留的图的文字化描述不得含其中任何一个（兜住图泄露，如作业答案的数值） |
 | `intent_in` | 仅意图 Case：标签须属于此集合；提供商错误同时判失败 |
 
 一个样本通过，当且仅当失败原因列表为空。`confirmed` Case 必须有强于默认值的断言（`is_specific`）。
@@ -225,6 +228,7 @@ LLM judge 有自己的假阳/假阴率；论文也承认连自家的 Math Error 
 | primary | `confirmed` Case 的通过情况，按 tag 拆分 | 采样级通过率（Wilson 区间）；**case 级**：全部采样都通过 / 不稳定 / 全部失败 |
 | guardrail | fallback 率及原因分布；provider 错误数；guard Case 通过情况 | 防止"修好一处弄坏另一处" |
 | secondary | p50 / p95 延迟 | 不是质量指标，用于发现成本退化 |
+| secondary（表达） | `content` 字数 p50 / p95；形状 lint 违规率与规则分布；配图展示率、丢弃原因、结构通过率、触发召回与误触发率、有图与无图的延迟 | 确定性、只观测，**不设门槛**；形状 lint 与配图丢弃都不是 fallback。设计见 [答疑表达设计 §九](domain-tutoring-presentation.md) |
 
 `proposed` 单独成组报告；`needs_decision` 只出现在结果类别分布里。
 
@@ -300,7 +304,7 @@ python -m evals compare var/evals/<A>.json var/evals/<B>.json
 
 验收：
 
-- 评测中对受保护作业题的 `act=answer` 得到 `fallback(reveals_protected_work_product)`，与生产一致；闲聊轮和只带无证据 `progress` 的 `guide` 不回退。
+- 评测中对受保护作业题的 `act=answer` 只按内容判定（答案标记 `answer_marker`、泄露裁判 `leak_detected`），不因 `act`/`relation` 标签本身回退，与生产一致；闲聊轮和只带无证据 `progress` 的 `guide` 不回退。
 - `validate` 在无密钥环境可运行；`run` 缺密钥时报明确错误。
 - 数据集无 PII、无 `data:` URL、无存储路径；`confirmed` 均有 `reviewed_by`。
 - 既有答疑、组件与架构测试保持通过。

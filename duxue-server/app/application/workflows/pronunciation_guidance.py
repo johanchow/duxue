@@ -66,8 +66,10 @@ def _object_ref(row: PronunciationLesson) -> dict:
     }
 
 
-def build_interaction(*, invocation: RunInvocation, kind: str, text: str, actions: list[dict] | None = None, row: PronunciationLesson | None = None) -> dict:
+def build_interaction(*, invocation: RunInvocation, kind: str, text: str, actions: list[dict] | None = None, row: PronunciationLesson | None = None, visual: dict | None = None) -> dict:
     parts: list[dict] = [{"type": "text", "text": text}]
+    if visual is not None:  # 只读展示，体积有限，内联在 part 里（不像发音卡那样二次拉取）
+        parts.append({"type": "visual", "visual": visual})
     object_ref = _object_ref(row) if row is not None else None
     if object_ref is not None:
         parts.append({"type": "object_ref", "object_ref": object_ref})

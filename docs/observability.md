@@ -260,9 +260,9 @@ Server 端 OTEL SDK 完整支持通过环境变量配置，无需改动代码：
 
 ### 7.1.1 Agent 数据边界
 
-Agent span / OTLP log event 只包含运行关联 ID、模型、结果、时延、token 用量（供应商返回时）以及输入/输出的长度和 SHA-256 摘要；容器 stdout 也输出携带 trace/span ID 的 JSON 日志。不得将原始儿童输入、模型原文、完整 ContextEnvelope、图像 data URL、Authorization 或 API Key 写入 Grafana。
+Agent span / OTLP log event 包含运行关联 ID、模型、结果、时延、token 用量（供应商返回时）、**Ward 本轮问话文本**（`input.text`，上限 2000 字，邮箱与大陆手机号已遮蔽）以及输入/输出的长度和 SHA-256 摘要；答疑轮另有 `tutor.turn.result` 事件（`act`、`relation`、结果 `shown|fallback|blocked`、失败原因、配图丢弃原因、形状告警，不含展示文本）。容器 stdout 也输出携带 trace/span ID 的 JSON 日志。问话进入 Grafana 是为审计与评测取样，Loki 的访问权限与留存按儿童数据处理。不得将模型原文、完整 ContextEnvelope、图像 data URL、Authorization 或 API Key 写入 Grafana。
 
-模型原文写在独立文件，不进 stdout、普通应用日志或 Loki。非生产环境默认写入 `duxue-server/var/agent-llm-audit.jsonl`；生产环境只有同时设置 `AGENT_DEBUG_AUDIT_ENABLED=true` 和 `AGENT_DEBUG_AUDIT_PATH` 才写入，路径必须是加密挂载、访问受控且有短留存清理的目录。`AGENT_DEBUG_AUDIT_ENABLED=false` 在任何环境都关闭。每一行带与 stdout 摘要相同的 `trace_id`、`span_id`、操作名、长度和 SHA-256，`content` 是完整模型原文，只替换常见邮箱和中国大陆手机号。
+模型原文写在独立文件，不进 stdout、普通应用日志或 Loki。非生产环境默认写入 `duxue-server/var/agent-llm-audit.jsonl`；生产环境只有同时设置 `AGENT_DEBUG_AUDIT_ENABLED=true` 和 `AGENT_DEBUG_AUDIT_PATH` 才写入，路径必须是加密挂载、访问受控且有短留存清理的目录。`AGENT_DEBUG_AUDIT_ENABLED=false` 在任何环境都关闭。每一行带与 stdout 相同的 `trace_id`、`span_id`，`kind` 区分三类记录：`input`（Ward 问话，元数据含 run/thread id）、`output`（模型原文，含操作名、长度和 SHA-256）、`turn_result`（孩子最终看到的文本，元数据为 act、relation、结果、失败原因、配图丢弃原因）。按 `trace_id` 连接即得“问—模型—展示”完整一轮，可直接用于抽取评测用例。`content` 只替换常见邮箱和中国大陆手机号。
 
 ### 7.2 duxue-cam（Android Build Config）
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from app.application.workflows.tutor_loop import ModelCall, Vetting
+from app.application.workflows.tutor_visual import describe
 
 _ACT_OUTCOME = {
     "answer": "answer", "guide": "hint_like", "chat": "chat",
@@ -23,6 +24,11 @@ class Observation:
     lesson_source: str | None = None
     candidates: list[str] = field(default_factory=list)
     error: str | None = None
+    # 孩子最终看到的图（通过全部检查）；被丢弃时只有原因。形状 lint 只是观测。
+    visual_kind: str | None = None
+    visual_text: str | None = None
+    visual_dropped: str | None = None
+    shape_flags: list[str] = field(default_factory=list)
 
 
 def classify(call: ModelCall, vetting: Vetting | None) -> Observation:
@@ -35,8 +41,15 @@ def classify(call: ModelCall, vetting: Vetting | None) -> Observation:
         "lesson_source": candidate.lesson.source_text if candidate.lesson else None,
         "candidates": list(candidate.candidates),
     }
+    flags = list(vetting.shape_flags) if vetting is not None else []
     if vetting is not None and vetting.failure is not None:
-        return Observation("fallback", reason=vetting.failure, **base)
+        return Observation("fallback", reason=vetting.failure, shape_flags=flags, **base)
     if candidate.act == "safety":
         return Observation("blocked", **base)
-    return Observation(_ACT_OUTCOME[candidate.act], **base)
+    visual = vetting.visual if vetting is not None else candidate.visual
+    dropped = vetting.visual_dropped if vetting is not None else candidate.visual_dropped
+    return Observation(
+        _ACT_OUTCOME[candidate.act], visual_kind=visual.kind if visual else None,
+        visual_text=describe(visual) if visual else None, visual_dropped=dropped,
+        shape_flags=flags, **base,
+    )

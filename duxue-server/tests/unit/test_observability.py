@@ -22,18 +22,58 @@ def test_telemetry_is_disabled_without_an_otlp_endpoint(monkeypatch):
     assert configure_observability(component="api") is False
 
 
-def test_default_agent_audit_logs_only_a_summary(caplog, monkeypatch):
+def test_agent_input_log_carries_the_question_with_contact_details_masked(caplog, monkeypatch):
+    """孩子的问话进入 Grafana/Loki 以便审计；手机号和邮箱先遮蔽，长度与摘要仍保留。"""
     monkeypatch.setenv("AGENT_DEBUG_AUDIT_ENABLED", "false")
-    raw = "孩子的私密提问：手机号 13800138000，邮箱 kid@example.com"
+    raw = "自转和公转有什么区别？手机号 13800138000，邮箱 kid@example.com"
     with caplog.at_level("INFO", logger="duxue.agent.audit"):
         record_agent_input(agent_type="tutoring", run_id="run-1", thread_id="thread-1", content=raw)
 
-    messages = "\n".join(record.getMessage() for record in caplog.records)
     metadata = "\n".join(str(getattr(record, "telemetry", {})) for record in caplog.records)
-    assert raw not in messages
-    assert raw not in metadata
-    assert "input.sha256" in metadata
-    assert "input.length" in metadata
+    assert "自转和公转有什么区别？" in metadata
+    assert "13800138000" not in metadata and "kid@example.com" not in metadata
+    assert "[phone]" in metadata and "[email]" in metadata
+    assert "input.sha256" in metadata and "input.length" in metadata
+
+
+def test_agent_input_text_is_capped_in_grafana(caplog, monkeypatch):
+    monkeypatch.setenv("AGENT_DEBUG_AUDIT_ENABLED", "false")
+    with caplog.at_level("INFO", logger="duxue.agent.audit"):
+        record_agent_input(agent_type="tutoring", run_id=None, thread_id=None, content="问" * 5000)
+    telemetry = caplog.records[-1].telemetry
+    assert len(telemetry["input.text"]) == 2000 and telemetry["input.length"] == 5000
+
+
+def test_audit_file_joins_input_model_output_and_result_by_trace_id(tmp_path, monkeypatch):
+    from opentelemetry import trace
+    from opentelemetry.sdk.trace import TracerProvider
+
+    from app.infrastructure.observability.telemetry import record_tutor_turn_result
+
+    path = tmp_path / "audit.jsonl"
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.delenv("AGENT_DEBUG_AUDIT_ENABLED", raising=False)
+    monkeypatch.setenv("AGENT_DEBUG_AUDIT_PATH", str(path))
+    monkeypatch.delenv("OTEL_SDK_DISABLED", raising=False)
+    tracer = TracerProvider().get_tracer("test")
+    with tracer.start_as_current_span("turn") as span:
+        record_agent_input(agent_type="tutoring", run_id="run-1", thread_id="t-1", content="自转和公转有什么区别？")
+        record_model_response(agent_type="tutoring", model="m", content='{"act":"answer"}', operation="tutor_turn")
+        record_tutor_turn_result(
+            act="answer", relation="new", outcome="shown", reason=None, shown="自转管昼夜。",
+            visual_dropped="visual_invalid", shape_flags=["too_long"],
+        )
+        trace_id = format(span.get_span_context().trace_id, "032x")
+
+    rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    assert [row["kind"] for row in rows] == ["input", "output", "turn_result"]
+    assert {row["trace_id"] for row in rows} == {trace_id}
+    assert rows[0]["content"] == "自转和公转有什么区别？" and rows[0]["metadata"]["agent.run_id"] == "run-1"
+    assert rows[2]["content"] == "自转管昼夜。"
+    assert rows[2]["metadata"] == {
+        "tutor.act": "answer", "tutor.relation": "new", "tutor.outcome": "shown",
+        "tutor.visual.dropped": "visual_invalid", "tutor.shape.flags": "too_long",
+    }
 
 
 def test_tutor_candidate_rejection_records_only_low_cardinality_diagnostics(caplog):

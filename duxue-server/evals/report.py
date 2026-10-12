@@ -53,6 +53,43 @@ def _group(results: list[CaseResult]) -> dict:
     }
 
 
+def _expression(ran: list[CaseResult]) -> dict:
+    """Shape and diagram metrics. Deterministic, observation only: none of them gates a release.
+
+    Over samples whose words were shown (a fallback replaces the words, so it has no shape to judge).
+    """
+    shown = [
+        (r, s) for r in ran if r.case.component == "tutoring.turn" for s in r.samples
+        if s.observation.outcome != "fallback" and s.observation.content
+    ]
+    lengths = [len(s.observation.content) for _, s in shown]
+    flagged = [s for _, s in shown if s.observation.shape_flags]
+    with_visual = [s for _, s in shown if s.observation.visual_kind]
+    dropped = [s for _, s in shown if s.observation.visual_dropped]
+    wanted = [s for r, s in shown if r.case.expect.visual == "present"]
+    unwanted = [s for r, s in shown if r.case.expect.visual == "absent"]
+    return {
+        "content_chars_p50": _percentile([float(n) for n in lengths], 0.5),
+        "content_chars_p95": _percentile([float(n) for n in lengths], 0.95),
+        "shape_lint": {
+            "rate": _rate(len(flagged), len(shown)),
+            "flags": dict(Counter(f for s in flagged for f in s.observation.shape_flags).most_common()),
+        },
+        "visual": {
+            "shown": _rate(len(with_visual), len(shown)),
+            "dropped_reasons": dict(Counter(s.observation.visual_dropped for s in dropped).most_common()),
+            # Of the diagrams the model proposed, how many survived the exit checks.
+            "structure_pass": _rate(len(with_visual), len(with_visual) + len(dropped)),
+            "recall": _rate(sum(1 for s in wanted if s.observation.visual_kind), len(wanted)),
+            "false_positive": _rate(sum(1 for s in unwanted if s.observation.visual_kind), len(unwanted)),
+            "latency_ms_p50_with": _percentile([s.latency_ms for s in with_visual], 0.5),
+            "latency_ms_p50_without": _percentile(
+                [s.latency_ms for _, s in shown if not s.observation.visual_kind], 0.5,
+            ),
+        },
+    }
+
+
 def summarize(results: list[CaseResult]) -> dict:
     """Primary: confirmed cases (gating). ``proposed`` is reported apart until a human confirms it.
     Guardrail: fallback rate over every ran sample. Secondary: latency."""
@@ -80,6 +117,7 @@ def summarize(results: list[CaseResult]) -> dict:
     summary["secondary"] = {
         "latency_ms_p50": _percentile([s.latency_ms for s in samples], 0.5),
         "latency_ms_p95": _percentile([s.latency_ms for s in samples], 0.95),
+        **_expression(ran),
     }
     summary["outcomes"] = {
         r.case.id: dict(Counter(s.observation.outcome for s in r.samples).most_common()) for r in ran
@@ -107,6 +145,8 @@ def to_json(results: list[CaseResult]) -> list[dict]:
                 {"outcome": s.observation.outcome, "act": s.observation.act, "reason": s.observation.reason,
                  "error": s.observation.error, "passed": s.passed, "failures": s.failures,
                  "latency_ms": s.latency_ms, "content": s.observation.content,
+                 "visual_kind": s.observation.visual_kind, "visual_text": s.observation.visual_text,
+                 "visual_dropped": s.observation.visual_dropped, "shape_flags": s.observation.shape_flags,
                  "lesson_source": s.observation.lesson_source, "candidates": s.observation.candidates}
                 for s in r.samples
             ],
@@ -142,6 +182,15 @@ def render_text(meta: dict, summary: dict, results: list[CaseResult]) -> str:
     lines.append(f"-- guardrail  fallback rate {_fmt(guard['fallback_rate'])}  reasons={guard['fallback_reasons']}  "
                  f"provider_errors={guard['provider_errors']}")
     lines.append(f"-- latency    p50={summary['secondary']['latency_ms_p50']}ms  p95={summary['secondary']['latency_ms_p95']}ms")
+    sec = summary["secondary"]
+    if "visual" in sec and sec["visual"]["shown"]["n"]:
+        vis = sec["visual"]
+        lines.append(f"-- shape      content p50={sec['content_chars_p50']} p95={sec['content_chars_p95']} chars  "
+                     f"lint {_fmt(sec['shape_lint']['rate'])}  flags={sec['shape_lint']['flags']}")
+        lines.append(f"-- visual     shown {_fmt(vis['shown'])}  structure-pass {_fmt(vis['structure_pass'])}  "
+                     f"dropped={vis['dropped_reasons']}")
+        lines.append(f"              recall {_fmt(vis['recall'])}  false-positive {_fmt(vis['false_positive'])}  "
+                     f"latency p50 with={vis['latency_ms_p50_with']}ms without={vis['latency_ms_p50_without']}ms")
     failing = [r for r in results if r.status == "ran" and r.samples and not all(s.passed for s in r.samples)]
     if failing:
         lines.append("-- cases with failures")

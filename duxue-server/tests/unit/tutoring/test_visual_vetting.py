@@ -1,0 +1,86 @@
+"""图的出口检查：文字泄露仍整轮回退，图的任何问题只丢图。"""
+
+import pytest
+
+from app.application.workflows.tutor_loop import vet_candidate
+from app.application.workflows.tutor_turn import TutorTurnCandidate
+from app.contexts.study.domain.execution import ANSWER_LEAK_MARKERS
+from app.contexts.tutoring.domain.tutor_permit import AttemptSummary, TutorPermit
+from tests.support.fakes import StaticLeakJudge, StaticVisualLeakJudge, tutor_raw
+from tests.unit.tutoring.test_tutor_visual import SEGMENT, STEPS
+
+PROTECTED = TutorPermit(True, AttemptSummary())
+OPEN = TutorPermit(False, AttemptSummary())
+
+
+def vet(raw, judge, *, permit=PROTECTED, open_problem=True):
+    return vet_candidate(
+        TutorTurnCandidate.model_validate(raw), permit=permit, has_open_problem=open_problem,
+        authorized_refs=frozenset(), has_work_input=True, leak_judge=judge,
+        task_title="应用题", problem_summary="小明有3份，小红有5份，一共几份",
+    )
+
+
+def homework(**extra):
+    return tutor_raw("guide", "先看看谁多谁少？", relation="same", visual=SEGMENT, **extra)
+
+
+def test_homework_turn_keeps_a_diagram_that_both_judges_accept():
+    judge = StaticVisualLeakJudge()
+    result = vet(homework(), judge)
+    assert result.failure is None and result.visual is not None and result.visual_dropped is None
+    assert judge.calls == 1 and len(judge.visual_texts) == 1
+    assert "合计未知" in judge.visual_texts[0]  # the judge sees unknown markers, not a guess
+
+
+@pytest.mark.parametrize("visual_result", [True, None, RuntimeError("boom")])
+def test_a_bad_diagram_verdict_drops_only_the_diagram(visual_result):
+    result = vet(homework(), StaticVisualLeakJudge(visual_result=visual_result))
+    assert result.failure is None  # the words are still shown
+    assert result.verdict is not None and result.verdict.ok
+    assert result.visual is None
+    assert result.visual_dropped == ("visual_leak_detected" if visual_result is True else "visual_leak_check_failed")
+
+
+@pytest.mark.parametrize("text_result,reason", [(True, "leak_detected"), (None, "leak_check_failed")])
+def test_a_text_leak_still_falls_back_the_whole_turn(text_result, reason):
+    result = vet(homework(), StaticVisualLeakJudge(result=text_result, visual_result=False))
+    assert result.failure == reason and result.verdict is None
+
+
+def test_a_judge_without_visual_support_fails_closed_for_the_diagram_only():
+    result = vet(homework(), StaticLeakJudge(False))
+    assert result.failure is None and result.visual is None
+    assert result.visual_dropped == "visual_leak_check_failed"
+
+
+def test_answer_marker_in_a_protected_diagram_drops_it_without_asking_the_judge():
+    marker_visual = {**SEGMENT, "alt": f"{ANSWER_LEAK_MARKERS[0]} 8"}
+    judge = StaticVisualLeakJudge()
+    result = vet(tutor_raw("guide", "先看看谁多谁少？", relation="same", visual=marker_visual), judge)
+    assert result.failure is None and result.visual is None
+    assert result.visual_dropped == "visual_answer_marker"
+    assert judge.visual_texts == []
+
+
+def test_unprotected_knowledge_turn_needs_no_leak_judge_for_its_diagram():
+    judge = StaticVisualLeakJudge(result=True, visual_result=True)  # would fail if consulted
+    raw = tutor_raw("answer", "水会先蒸发再凝结。", relation="none", visual=STEPS)
+    result = vet(raw, judge, permit=OPEN, open_problem=False)
+    assert result.failure is None and result.visual is not None
+    assert judge.calls == 0 and judge.visual_texts == []
+
+
+def test_invalid_diagram_is_dropped_and_reported_without_calling_the_judge():
+    raw = tutor_raw("guide", "先看看谁多谁少？", relation="same", visual={**SEGMENT, "bars": []})
+    judge = StaticVisualLeakJudge()
+    result = vet(raw, judge)
+    assert result.failure is None and result.visual is None
+    assert result.visual_dropped == "visual_invalid"
+    assert judge.calls == 1 and judge.visual_texts == []
+
+
+def test_a_non_protected_homework_relation_none_turn_is_not_checked_even_with_a_diagram():
+    raw = tutor_raw("answer", "这个词是 in advance。", relation="none", visual=STEPS)
+    result = vet(raw, StaticVisualLeakJudge(True, True), permit=PROTECTED, open_problem=True)
+    assert result.failure is None and result.visual is not None

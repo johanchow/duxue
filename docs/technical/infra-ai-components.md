@@ -91,7 +91,7 @@ flowchart LR
 | 字段 | 说明 |
 | --- | --- |
 | `model` | 默认模型名，写在 Registry 中、随代码评审。密钥与端点不属于 Spec。 |
-| `risk_tier` | `protected`（儿童安全链路：`tutoring.turn`、`tutoring.leak-judge`）或 `standard`。`protected` 不允许任何覆盖。 |
+| `risk_tier` | `protected`（儿童安全链路：`tutoring.turn`、`tutoring.leak-judge`、`tutoring.visual-leak-judge`）或 `standard`。`protected` 不允许任何覆盖。 |
 | `prompt` | 对 `prompts.py` 中 `PromptTemplate`（静态系统提示）或 `DynamicPrompt`（`module:function` 的运行时渲染器）的引用，不是裸字符串。 |
 | `input_contract` / `output_contract` | 调用方 Pydantic / JSON 解析边界的名称与版本。 |
 | `max_tokens` / `temperature` / `timeout_seconds` | 非安全生成参数；`timeout_seconds` 缺省用全局 `AGENT_MODEL_TIMEOUT_SECONDS`。 |
@@ -115,6 +115,7 @@ flowchart LR
 | 组件 | 模型 | 理由 |
 | --- | --- | --- |
 | `tutoring.turn` | `qwen3.7-plus-2026-05-26` | 看图、守教学契约、写结构化动作；关闭思考。protected |
+| `tutoring.visual-leak-judge` | `qwen-plus`（纯文本） | 只审配图的文字化描述（`describe(visual)`）；独立提示词，与文字判官并行；判泄露、超时、结果非法一律只丢图。protected |
 | `tutoring.leak-judge` | `qwen-plus`（纯文本） | 只审文本；与主调用不同型号。决策模型更合适，但协议和预览状态未接入。protected |
 | `companion.intent` | `qwen-flash`（纯文本） | 四选一、60 token；判错回退 `unclear`。决策模型更合适，但要另接 `/systemone` |
 | `planning.reply` | `qwen3.8-flash` | 短回复，窗口里可能带图，孩子在等；关闭思考 |
@@ -166,8 +167,9 @@ class ComponentSpec:
 
 | Component | 风险 | 调用点 | 保留的调用方边界 |
 | --- | --- | --- | --- |
-| `tutoring.turn@v4` | protected | 答疑主调用 | `TutorTurnCandidate`、结构恢复与三道出口检查 |
+| `tutoring.turn@v5` | protected | 答疑主调用（回答形状 + 可选 `visual`） | `TutorTurnCandidate`、结构恢复与三道出口检查 |
 | `tutoring.leak-judge@v1` | protected | 作业答案泄露审核 | `None` 由 Workflow fail-closed |
+| `tutoring.visual-leak-judge@v1` | protected | 配图是否替孩子完成了作业 | `None`、超时、异常都只丢弃 `visual`，不整轮回退 |
 | `companion.intent@v1` | standard | 场景路由提议 | 非法或失败映射为 `unclear` |
 | `planning.reply@v1` / `reflection.advice@v1` | standard | `QwenAgentModelGateway.generate` | `AgentTextCandidate` 校验，失败走确定性降级 |
 | `planning.intake@v1` | standard | 当天计划草稿提取 | `PlanIntakeResult` 校验，失败映射为用户提示 |
@@ -228,7 +230,7 @@ class ComponentSpec:
 
 | 现有调用 | 目标 Component | 状态 |
 | --- | --- | --- |
-| 答疑主调用、泄露 Judge、场景路由 | `tutoring.turn` / `tutoring.leak-judge` / `companion.intent` | 已迁移 |
+| 答疑主调用、泄露 Judge、场景路由 | `tutoring.turn` / `tutoring.leak-judge` / `tutoring.visual-leak-judge` / `companion.intent` | 已迁移 |
 | `QwenAgentModelGateway.generate` | `planning.reply` / `reflection.advice` | 已迁移 |
 | 任务 / 计划 intake | `task.intake` / `planning.intake` | 已迁移（应用层不再直接依赖 SDK） |
 | `DashscopeInference` 帧分析 | `behavior.frame-analysis` | 待迁：批处理 + 实时 + 200–400 帧并发，需要并发度与成本约束的独立设计 |

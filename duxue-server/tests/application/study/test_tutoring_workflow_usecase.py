@@ -100,8 +100,20 @@ def test_protected_problem_never_accepts_a_revealed_solution(db):
     _ask(db, workflow, session, "4")
     reveal = tutor_raw("answer", "先消元得到 x=2，再代入。", student_move="request_answer")
     workflow.turn_model = StaticTutorModel(reveal)
+    workflow.leak_judge = StaticLeakJudge(True)  # the content decides, not the labels
     rejected = _ask(db, workflow, session, "讲给我听")
     assert rejected.next_interaction["model_fallback"] is True
+
+
+def test_a_knowledge_question_mislabelled_as_new_work_is_answered_and_opens_no_problem(db):
+    """线上：「自转和公转」被标成 act=answer + relation=new，曾整轮回退，孩子只看到兜底话术。"""
+    _, session = _setup(db)
+    raw = tutor_raw("answer", "自转管昼夜，公转管四季。", relation="new", student_move="request_answer")
+    workflow, _ = _workflow(db, raw)
+    outcome = _ask(db, workflow, session, "自转和公转有什么区别")
+    assert outcome.next_interaction["model_fallback"] is False
+    assert outcome.next_interaction["content"].startswith("自转管昼夜")
+    assert db.query(TutoringProblem).count() == 0  # the next turn is not locked by a phantom problem
 
 
 def test_asking_for_the_answer_without_attempts_never_unlocks(db):

@@ -57,7 +57,7 @@ def spans(monkeypatch):
 def test_registry_lists_every_call_with_stable_identity():
     ids = {spec.component_id for spec in COMPONENTS.all()}
     assert ids == {
-        "tutoring.turn", "tutoring.leak-judge", "companion.intent",
+        "tutoring.turn", "tutoring.leak-judge", "tutoring.visual-leak-judge", "companion.intent",
         "planning.reply", "reflection.advice", "planning.intake", "task.intake",
     }
     for spec in COMPONENTS.all():
@@ -66,7 +66,7 @@ def test_registry_lists_every_call_with_stable_identity():
 
 
 def test_child_safety_components_are_protected_and_not_overridable():
-    for component_id in ("tutoring.turn", "tutoring.leak-judge"):
+    for component_id in ("tutoring.turn", "tutoring.leak-judge", "tutoring.visual-leak-judge"):
         spec = COMPONENTS.get(component_id)
         assert spec.risk_tier == "protected" and not spec.overridable
     assert COMPONENTS.get("planning.intake").overridable
@@ -219,6 +219,7 @@ def test_model_assignment_matrix():
     assert matrix == {
         "tutoring.turn": ("qwen3.7-plus-2026-05-26", True),
         "tutoring.leak-judge": ("qwen-plus", False),
+        "tutoring.visual-leak-judge": ("qwen-plus", False),
         "companion.intent": ("qwen-flash", False),
         "planning.reply": ("qwen3.8-flash", True),
         "reflection.advice": ("qwen3.7-plus-2026-05-26", False),
@@ -226,7 +227,8 @@ def test_model_assignment_matrix():
         "task.intake": ("qwen3.7-plus-2026-05-26", True),
     }
     # The judge must not share a model with the generator it audits.
-    assert COMPONENTS.get("tutoring.leak-judge").model != COMPONENTS.get("tutoring.turn").model
+    for judge in ("tutoring.leak-judge", "tutoring.visual-leak-judge"):
+        assert COMPONENTS.get(judge).model != COMPONENTS.get("tutoring.turn").model
 
 
 def test_text_only_components_never_send_image_parts(spans):

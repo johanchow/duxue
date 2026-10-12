@@ -147,6 +147,33 @@ class _WardHomeApi extends ApiClient {
         },
       };
     }
+    if (content.contains('水循环')) {
+      return {
+        'thread_id': threadId ?? 'thread-1',
+        'thread_version': (expectedThreadVersion ?? 0) + 2,
+        'interaction': {
+          'protocol': 'companion-interaction.v1',
+          'kind': 'text_visual',
+          'content': '水先蒸发，再凝结，最后降下来。',
+          'parts': [
+            {'type': 'text', 'text': '水先蒸发，再凝结，最后降下来。'},
+            {
+              'type': 'visual',
+              'visual': {
+                'kind': 'steps',
+                'alt': '水循环三步',
+                'steps': [
+                  {'label': '蒸发'},
+                  {'label': '凝结'},
+                  {'label': '降水'},
+                ],
+              },
+            },
+          ],
+          'actions': [],
+        },
+      };
+    }
     if (structuredCommand != null) {
       return {
         'thread_id': threadId ?? 'thread-1',
@@ -740,6 +767,33 @@ void main() {
     expect(api.speechRates, [0.75]);
     expect(playback.played, isNotEmpty);
     expect(find.text('正在播放'), findsOneWidget);
+  });
+
+  testWidgets('a text_visual answer draws the diagram and the next send clears it',
+      (tester) async {
+    FlutterSecureStoragePlatform.instance =
+        TestFlutterSecureStoragePlatform({});
+    final api = _WardHomeApi();
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiProvider.overrideWithValue(api)],
+      child: MaterialApp(home: WardDayPage(wardId: 'ward-1')),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), '水循环是怎么回事');
+    await tester.pump();
+    await tester.tap(find.byTooltip('发送'));
+    await tester.pumpAndSettle();
+    final block = find.byKey(const ValueKey('visual-block'), skipOffstage: false);
+    expect(block, findsOneWidget);
+    expect(find.text('蒸发', skipOffstage: false), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), '谢谢');
+    await tester.pump();
+    await tester.tap(find.byTooltip('发送'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('visual-block'), skipOffstage: false),
+        findsNothing);
   });
 
   testWidgets('a picked chat image stays as a thumbnail until send',

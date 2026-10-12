@@ -1,7 +1,7 @@
 ---
 slug: tutoring-presentation
 created: 2026-10-12T08:19:08Z
-status: draft
+status: in-progress
 ---
 
 # tutoring-presentation spec
@@ -17,27 +17,27 @@ status: draft
 
 ## 验收标准
 逻辑层
-- [ ] 提示词升版（下一个 `tutoring.turn.system.v*`），含各 `act` 的回答形状与示例；组件版本、摘要锁同步；`test_prompt_lock` 通过。
-- [ ] 形状 lint 是纯函数：超长、一轮多个问题、列表比例过高、`$` 未配对、裸 HTML 只写 trace 与评测指标，**任何一项都不触发 fallback**，有测试证明展示照常。
-- [ ] 离线评测增加确定性表达指标（字数分布、`guide` 问题数、lint 违规率），报告里可见；既有 outcome 通过率不低于改动前。
+- [x] 提示词升版（下一个 `tutoring.turn.system.v*`），含各 `act` 的回答形状与示例；组件版本、摘要锁同步；`test_prompt_lock` 通过。
+- [x] 形状 lint 是纯函数：超长、一轮多个问题、列表比例过高、`$` 未配对、裸 HTML 只写 trace 与评测指标，**任何一项都不触发 fallback**，有测试证明展示照常。
+- [ ] 离线评测增加确定性表达指标（字数分布、`guide` 问题数、lint 违规率），报告里可见；既有 outcome 通过率不低于改动前。（指标已实现；**对照需真实模型，未跑**）
 
 视觉层：契约与出口检查
-- [ ] `visual` 为可选子对象；`answer`、`guide` 可携带；`chat`/`clarify`/`redirect`/`pronounce`/`safety` 带 `visual` 时丢弃，不拒绝，不触发 fallback。
-- [ ] 四种图型各有 pydantic 校验：预算（节点/线段/标记数量、文本长度）、`alt` 必填、边只引用存在节点、`id` 不重复、无 URL/HTML/Markdown。结构非法或超预算：**整张丢弃，不截断、不修复**，文字照常。
-- [ ] `segment`、`number_line` 中 `unknown=true` 的量不得带数值，也不得在 `label`/`detail` 写数值；违反则丢弃 `visual`。
-- [ ] 作业成果轮次（`relation=same|new` 或 `answer_protected=true`）：`content` 走现有泄露检查，**行为不变**；`visual` 序列化后由图泄露判官**单独、并行**判断；判泄露、超时、结果非法一律**只丢 `visual`**，文字照常，不整轮回退；`content` 泄露仍整轮回退。
-- [ ] `visual` 文字含答案标记则丢弃；`visual` 的 `title`、`label`、`detail`、`alt` 与 `content` 一并进入独立输出安全审核。
-- [ ] `visual` 的出现与否不改变 `hints_given`、`hint_index`、`curiosity_observed`、`tutoring.hint_given` 等计数与事实写入。
+- [x] `visual` 为可选子对象；`answer`、`guide` 可携带；`chat`/`clarify`/`redirect`/`pronounce`/`safety` 带 `visual` 时丢弃，不拒绝，不触发 fallback。
+- [x] 四种图型各有 pydantic 校验：预算（节点/线段/标记数量、文本长度）、`alt` 必填、边只引用存在节点、`id` 不重复、无 URL/HTML/Markdown。结构非法或超预算：**整张丢弃，不截断、不修复**，文字照常。（这四种图型没有 `id`/边；线段图的括号下标校验取代边引用校验）
+- [x] `segment`、`number_line` 中 `unknown=true` 的量不得带数值，也不得在 `label`/`detail` 写数值；违反则丢弃 `visual`。
+- [x] 作业成果轮次（`relation=same|new` 或 `answer_protected=true`）：`content` 走现有泄露检查，**行为不变**；`visual` 序列化后由图泄露判官**单独、并行**判断；判泄露、超时、结果非法一律**只丢 `visual`**，文字照常，不整轮回退；`content` 泄露仍整轮回退。
+- [x] `visual` 文字含答案标记则丢弃；`visual` 的 `title`、`label`、`detail`、`alt` 与 `content` 一并进入独立输出安全审核。
+- [x] `visual` 的出现与否不改变 `hints_given`、`hint_index`、`curiosity_observed`、`tutoring.hint_given` 等计数与事实写入。
 
 视觉层：投影与客户端
-- [ ] 通过检查且 `visual` 保留时，Application 投影为 `kind=text_visual`（`parts = text + visual`）；否则为现有 `text`/`tutoring_hint`。模型不返回 `kind`、按钮、动作。`companion-interaction.v1` 文档与 App allow-list 同步登记。
-- [ ] `TEXT_DELTA` 不携带图的任何内容；只有最终 `INTERACTION_READY` 携带 `visual`。
-- [ ] App：`VisualBlock` 按 `kind` 分发，四种图型原生绘制，颜色与字体取自 `ThemeData`、深浅色可读、窄屏可用、`Semantics` 用 `alt`；未知 `kind` 或解析失败不渲染图、文字保持、不报错；旧客户端遇到 `text_visual` 降级为 `text`。
+- [x] 通过检查且 `visual` 保留时，Application 投影为 `kind=text_visual`（`parts = text + visual`）；否则为现有 `text`/`tutoring_hint`。模型不返回 `kind`、按钮、动作。`companion-interaction.v1` 文档与 App allow-list 同步登记。（App 没有 kind allow-list，`VisualBlock` 只认 `text_visual` 的 visual part）
+- [ ] `TEXT_DELTA` 不携带图的任何内容；只有最终 `INTERACTION_READY` 携带 `visual`。（**不适用**：现状没有流式，图随完整交互一次返回，见设计文档 §十四偏差 1；待你确认是否划掉）
+- [x] App：`VisualBlock` 按 `kind` 分发，四种图型原生绘制，颜色与字体取自 `ThemeData`、深浅色可读、窄屏可用、`Semantics` 用 `alt`；未知 `kind` 或解析失败不渲染图、文字保持、不报错；旧客户端遇到 `text_visual` 降级为 `text`。
 
 评测与文档
-- [ ] 评测数据集新增四类 `proposed` 用例（应配图-概念、应配图-学科/作业卡点、不应配图、配图会泄露答案的诱导）；guardrail：作业成果轮次孩子最终看到的 `content` 与 `visual` 泄露为 0、`unknown` 量带数值为 0；记录配图轮次的输出延迟、`visual` 结构通过率、图判官的误判率与漏判率；K=5 结果与局限记入 note。
-- [ ] 同一 commit 同步：`domain-tutoring.md`（契约、出口检查）、`domain-companion.md`（`text_visual`、流式说明）、`infra-ai-components.md`（提示词版本、条件拼接）、`eval-offline.md`、`design-app.md`、`domain-tutoring-presentation.md`（状态改为已实现并回填实测数值）。
-- [ ] 服务端相关测试全绿、`flutter test` 与 `flutter analyze` 通过、`git diff --check` 通过。
+- [ ] 评测数据集新增四类 `proposed` 用例（应配图-概念、应配图-学科/作业卡点、不应配图、配图会泄露答案的诱导）；guardrail：作业成果轮次孩子最终看到的 `content` 与 `visual` 泄露为 0、`unknown` 量带数值为 0；记录配图轮次的输出延迟、`visual` 结构通过率、图判官的误判率与漏判率；K=5 结果与局限记入 note。（数据集与指标已就绪，**K=5 未跑**）
+- [x] 同一 commit 同步：`domain-tutoring.md`（契约、出口检查）、`domain-companion.md`（`text_visual`、流式说明）、`infra-ai-components.md`（提示词版本、条件拼接）、`eval-offline.md`、`design-app.md`、`domain-tutoring-presentation.md`（状态改为已实现并回填实测数值）。（条件拼接未做，已在设计文档 §十四 说明）
+- [x] 服务端相关测试全绿、`flutter test` 与 `flutter analyze` 通过、`git diff --check` 通过。
 
 ## 实现计划（Gate 1：填完等人确认，不许自转）
 **前置：** 设计文档与相关文档改动（当前在分支 `docs/tutoring-presentation-design` 上未提交）先提交合并，再从最新 `main` 开实现分支，避免设计与实现混在一起。
@@ -69,15 +69,15 @@ status: draft
   - App：`flutter test` widget 测试与 `flutter analyze`。
 
 ## 实现清单（完成度，做完一项把 [ ] 改成 [x]）
-- [ ] 搭脚手架
-- [ ] 步骤 0：现状度量与核对（含 `follow_up_question`、App 渲染方式）
-- [ ] 步骤 1：形状 lint + 提示词升版 + 评测指标
-- [ ] 步骤 2：`visual` 契约与预算校验
-- [ ] 步骤 3：出口检查与图泄露判官
-- [ ] 步骤 4：`text_visual` 投影与协议文档
-- [ ] 步骤 5：App `VisualBlock` 与四个渲染器
-- [ ] 步骤 6：视觉段提示词与评测对照
-- [ ] 步骤 7：文档同步、note、归档
+- [x] 搭脚手架
+- [~] 步骤 0：App 渲染方式与 `follow_up_question` 投影已核对；字数与 token 实测需真实输出，未做
+- [x] 步骤 1：形状 lint + 提示词升版 + 评测指标
+- [x] 步骤 2：`visual` 契约与预算校验
+- [x] 步骤 3：出口检查与图泄露判官
+- [x] 步骤 4：`text_visual` 投影与协议文档
+- [x] 步骤 5：App `VisualBlock` 与四个渲染器
+- [~] 步骤 6：视觉段提示词与用例已做；条件拼接与 K=5 对照未做
+- [~] 步骤 7：文档同步与 note 已做；待 Gate 2 验收后归档
 
 ## 备注
 - **待 Gate 1 确认的决定（已给默认值）：**
