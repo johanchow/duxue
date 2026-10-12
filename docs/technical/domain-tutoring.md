@@ -8,6 +8,15 @@
 
 Context Map 与分层图只在 [ddd-overview.md](ddd-overview.md) 维护。`StudySession`、`StartCue` 与学习计时只在 [domain-study.md](domain-study.md) 维护。Thread/Run、Harness 驱动、`WorkflowInteractionView` 和 SSE 只在 [domain-companion.md](domain-companion.md) 维护。Episode、Signal 与 Profile 只在 [domain-memory.md](domain-memory.md) 维护。物理表、留存和删除只在 [design-server.md](design-server.md) 维护。
 
+## 设计原则：教学优先
+
+产品层原则见 [陪伴 PRD §1.2 第 7 条](../product/prd-companion.md)，这里只写对技术设计的约束：
+
+1. 设计答疑能力时，文档先写“好老师会怎么做”，再写“当前技术能做到的部分”和“差距”。差距要显式记录，不能被技术方案悄悄吞掉。
+2. 代码只对**安全不变量**行使否决权：作业答案保护、内容安全、孩子端稳定。要否决一个教学做法，必须指出触发的是哪条不变量。
+3. 是否使用某种教学工具（例如配图），由模型按教学需要判断；不得用 `act`、`work.relation` 等内部分类作为“不该用”的理由。这些分类只用来决定**需要做哪种安全检查**。
+4. 表达层的具体设计见 [答疑表达设计](domain-tutoring-presentation.md)。
+
 ## 一、边界与语言
 
 本 Context 拥有 `TutoringSession`、已验证的 Ward 尝试、实际提示、理解确认、好奇心观察和答疑会话关闭事实。它不拥有 `StudySession` 与 `StartCue`（见 [Study](domain-study.md)），不拥有 Thread/Run、长期画像、稳定 Signal、已确认日程，也不拥有帧或摄像行为结论。

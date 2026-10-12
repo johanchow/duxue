@@ -13,10 +13,10 @@
 - **业务诉求**：学生与家长共用一个应用安装包，冷启动根据身份意图分流，登录后在同一 App 内严格隔离界面与权限；
 - **技术实现**：基于 `go_router` 的 `StatefulShellRoute` 配合 Riverpod 动态状态机，实现 Ward 5 个 Tab（首页/计划/AI伙伴/成长/我的）与 Guardian 5 个 Tab（孩子/洞察/传递/行动/我的）的按需加载与上下文物理隔离。
 
-### 2. 沉浸伴学与 4 级启发流式交互（Companion & Tutoring）
+### 2. 沉浸伴学与启发式流式交互（Companion & Tutoring）
 - **流式体验**：基于 `Server-Sent Events (SSE)` 实现大模型启发答疑的增量流式打字机输出；
 - **排版支持**：集成 Markdown 与 LaTeX 数学公式渲染（`flutter_math_fork`），保证数理公式无缝排版且无界面抖动；
-- **安全护栏**：毫秒级响应后端的防作弊拦截指令，动态受控于 L1~L4 阶梯提示。
+- **安全护栏**：毫秒级响应后端的防作弊拦截指令，由后端的答案保护规则裁决，客户端不维护固定的提示等级。
 
 ### 3. 盲评锁闭与双轨对比手绘渲染（Dual-Track Timeline Engine）
 - **自评锁闭**：完成今日任务后，前端强制锁闭 AI 客观行为数据，仅展示轻量 30 秒盲评卡片；
@@ -160,7 +160,7 @@ FUNCTION routerRedirectGuard(authState, targetPath):
                   │          SSEClient (流式事件拦截)          │
                   ├───────────────────────────────────────────┤
                   │ 1. event: "delta" ──▶ 增量追加 Markdown    │
-                  │ 2. event: "level" ──▶ 切换 L1~L4 启发阶梯  │
+                  │ 2. event: "interaction"▶ 刷新当前交互/动作 │
                   │ 3. event: "blocked"─▶ 触发作弊拦截 UI 态   │
                   │ 4. event: "done" ──▶ 结束流式并持久化缓存  │
                   └───────────────────────────────────────────┘
@@ -363,7 +363,7 @@ graph TD
 | `currentWardNotifierProvider` | `Notifier<Ward?>` | 无 | Guardian 模式下当前激活的学生实体 |
 | `guardianDailyReportProvider` | `FutureProvider` | `wardId`, `date` | 按日期缓存拉取双轨复盘报告，自评提交后自动失效更新 |
 | `deviceHeartbeatStreamProvider`| `StreamProvider` | `wardId` | 每 60 秒轮询设备在线、电量与单调时钟状态，异常时发红点提示 |
-| `tutoringStreamProvider` | `StreamNotifier` | `sessionId` | 伴学问答 SSE 流式打字机控制器与 L1~L4 阶梯状态 |
+| `tutoringStreamProvider` | `StreamNotifier` | `sessionId` | 伴学问答 SSE 流式打字机控制器与当前交互状态 |
 
 ---
 
