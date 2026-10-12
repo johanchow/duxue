@@ -1,4 +1,4 @@
-"""tutor-turn.v2 的模型循环与出口检查，不依赖数据库。
+"""tutor-turn.v3 的模型循环与出口检查，不依赖数据库。
 
 生产的 TutoringWorkflow 与离线评测（``evals/``）共用这里的代码：评测看到的
 fallback 与线上完全同源，不另抄一份规则。
@@ -89,7 +89,7 @@ def call_tutor_model(
                 record_tutor_candidate_rejection(
                     error_type="invalid_json", field="root", retrying=True,
                 )
-                repair = "返回的内容不是有效 JSON 对象；只返回一个符合 tutor-turn.v2 的 JSON 对象。"
+                repair = "返回的内容不是有效 JSON 对象；只返回一个符合 tutor-turn.v3 的 JSON 对象。"
                 continue
             record_llm_fallback(operation="tutor_turn", reason=str(error))
             return ModelCall(None, str(error))
@@ -129,8 +129,24 @@ def _check_visual_leak(leak_judge: LeakJudgePort, text: str, task_title, problem
         return None
 
 
+# 判官只在回复本身像“一个单独的事实”时才被告知 depth：长回复不可能只是一个事实，
+# 即使模型声明 atomic/recall 也按原标准审，避免用标签包装一段完整讲解。
+FACT_REPLY_MAX_CHARS = 200
+
+
+def _fact_depth(candidate: TutorTurnCandidate) -> str | None:
+    """作业里的 atomic/recall，或非作业的一次性查询（`topic=atomic_lookup`，同样是单个事实）。"""
+    if len(candidate.content) > FACT_REPLY_MAX_CHARS:
+        return None
+    if candidate.depth in {"atomic", "recall"}:
+        return candidate.depth
+    if candidate.topic == "atomic_lookup":
+        return "atomic"
+    return None
+
+
 def vet_candidate(
-    candidate: TutorTurnCandidate, *, permit: TutorPermit, has_open_problem: bool,
+    candidate: TutorTurnCandidate, *, permit: TutorPermit,
     authorized_refs: frozenset[str], has_work_input: bool, leak_judge: LeakJudgePort,
     task_title: str | None, problem_summary: str | None,
 ) -> Vetting:
@@ -140,7 +156,7 @@ def vet_candidate(
     不适用、非法、含答案标记、被图判官判为泄露（含超时、结果非法）一律只丢图，文字照常。
     """
     verdict = check_authority(
-        candidate, permit, has_open_problem=has_open_problem,
+        candidate, permit,
         authorized_history_refs=authorized_refs, has_work_input=has_work_input,
     )
     if not verdict.ok:
@@ -161,13 +177,17 @@ def vet_candidate(
     text_leaks: bool | None = False
     if verdict.needs_leak_check:
         reply = f"{candidate.content}\n{candidate.follow_up_question or ''}"
+        depth = _fact_depth(candidate)
         if visual_text is None:
-            text_leaks = leak_judge.leaks(text=reply, task_title=task_title, problem_summary=problem_summary)
+            text_leaks = leak_judge.leaks(
+                text=reply, task_title=task_title, problem_summary=problem_summary, depth=depth,
+            )
         else:
             # 文字判官与图判官互不依赖，并行发出，只有"作业成果轮次且带图"才多这一次调用。
             with ThreadPoolExecutor(max_workers=2) as pool:
                 text_future = pool.submit(
                     leak_judge.leaks, text=reply, task_title=task_title, problem_summary=problem_summary,
+                    depth=depth,
                 )
                 visual_future = pool.submit(
                     _check_visual_leak, leak_judge, visual_text, task_title, problem_summary,

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 from app.contexts.tutoring.domain.tutor_permit import (
     ProblemAssessment,
     ProblemState,
@@ -53,7 +55,11 @@ def test_full_student_proposal_is_submitted_not_marked_correct():
         _turn(progress="submitted", evidence="先移项再除以 2，所以 x=3"),
     )
     assert state.status == "submitted"
-    assert TutorPermitPolicy.permit(state).answer_protected is False
+    # 提交只是孩子的提议：不等于允许披露答案，披露由代码策略（disclosure）独占。
+    assert TutorPermitPolicy.permit(state).answer_protected is True
+    released = replace(state, disclosure="released")
+    assert TutorPermitPolicy.permit(released).answer_protected is False
+    assert TutorPermitPolicy.permit(replace(state, status="abandoned")).answer_protected is False
 
 
 def test_different_problem_starts_open_with_empty_progress():

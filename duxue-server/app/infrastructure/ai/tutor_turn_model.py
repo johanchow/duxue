@@ -1,4 +1,4 @@
-"""tutor-turn.v2 的模型适配器：主调用与泄露检查。
+"""tutor-turn.v3 的模型适配器：主调用与泄露检查。
 
 主调用每次都带窗口图片和本轮图片。适配器只返回原始 JSON，结构校验在 Application。
 """
@@ -25,7 +25,7 @@ class QwenTutorTurnGateway:
         current_images: list[str | None] | None = None, repair_error: str | None = None,
         observations: list[dict] | None = None,
     ) -> dict:
-        payload: dict = {"contract": "tutor-turn.v2", "instruction": instruction, "context": envelope}
+        payload: dict = {"contract": "tutor-turn.v3", "instruction": instruction, "context": envelope}
         if observations:
             payload["observations"] = observations
         if repair_error:
@@ -41,10 +41,13 @@ class QwenLeakJudge:
     def __init__(self, settings_obj=None):
         self._settings = settings_obj  # offline evaluation only; production passes nothing
 
-    def leaks(self, *, text: str, task_title: str | None, problem_summary: str | None) -> bool | None:
-        return self._judge(
-            "tutoring.leak-judge", {"task_title": task_title, "problem": problem_summary, "reply": text},
-        )
+    def leaks(
+        self, *, text: str, task_title: str | None, problem_summary: str | None, depth: str | None = None,
+    ) -> bool | None:
+        body = {"task_title": task_title, "problem": problem_summary, "reply": text}
+        if depth:
+            body["depth"] = depth
+        return self._judge("tutoring.leak-judge", body)
 
     def visual_leaks(self, *, text: str, task_title: str | None, problem_summary: str | None) -> bool | None:
         """``text`` 是 ``describe(visual)``。独立的提示词与组件，不与文字判官共用。"""

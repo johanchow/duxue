@@ -13,9 +13,9 @@ PROTECTED = TutorPermit(True, AttemptSummary())
 OPEN = TutorPermit(False, AttemptSummary())
 
 
-def vet(raw, judge, *, permit=PROTECTED, open_problem=True):
+def vet(raw, judge, *, permit=PROTECTED):
     return vet_candidate(
-        TutorTurnCandidate.model_validate(raw), permit=permit, has_open_problem=open_problem,
+        TutorTurnCandidate.model_validate(raw), permit=permit,
         authorized_refs=frozenset(), has_work_input=True, leak_judge=judge,
         task_title="应用题", problem_summary="小明有3份，小红有5份，一共几份",
     )
@@ -66,7 +66,7 @@ def test_answer_marker_in_a_protected_diagram_drops_it_without_asking_the_judge(
 def test_unprotected_knowledge_turn_needs_no_leak_judge_for_its_diagram():
     judge = StaticVisualLeakJudge(result=True, visual_result=True)  # would fail if consulted
     raw = tutor_raw("answer", "水会先蒸发再凝结。", relation="none", visual=STEPS)
-    result = vet(raw, judge, permit=OPEN, open_problem=False)
+    result = vet(raw, judge, permit=OPEN)
     assert result.failure is None and result.visual is not None
     assert judge.calls == 0 and judge.visual_texts == []
 
@@ -80,7 +80,32 @@ def test_invalid_diagram_is_dropped_and_reported_without_calling_the_judge():
     assert judge.calls == 1 and judge.visual_texts == []
 
 
-def test_a_non_protected_homework_relation_none_turn_is_not_checked_even_with_a_diagram():
+def test_relation_none_on_a_protected_problem_is_still_checked_even_with_a_diagram():
     raw = tutor_raw("answer", "这个词是 in advance。", relation="none", visual=STEPS)
-    result = vet(raw, StaticVisualLeakJudge(True, True), permit=PROTECTED, open_problem=True)
+    result = vet(raw, StaticVisualLeakJudge(True, True), permit=PROTECTED)
+    assert result.failure == "leak_detected"
+
+
+def test_relation_none_without_a_protected_problem_is_not_checked_even_with_a_diagram():
+    raw = tutor_raw("answer", "这个词是 in advance。", relation="none", visual=STEPS)
+    result = vet(raw, StaticVisualLeakJudge(True, True), permit=OPEN)
     assert result.failure is None and result.visual is not None
+
+
+def test_the_judge_is_told_the_depth_only_for_a_short_single_fact():
+    from app.application.workflows.tutor_loop import FACT_REPLY_MAX_CHARS
+
+    def depths(raw):
+        judge = StaticLeakJudge()
+        vet(raw, judge)
+        return judge.depths
+
+    assert depths(tutor_raw("answer", "beach。", relation="same", depth="recall")) == ["recall"]
+    assert depths(tutor_raw("answer", "斜边是最长的边。", relation="same", depth="atomic")) == ["atomic"]
+    assert depths(tutor_raw("answer", "x" * (FACT_REPLY_MAX_CHARS + 1), relation="same", depth="atomic")) == [None]
+    # 非作业的一次性查询同样是单个事实；好奇心和模糊的 topic 不算
+    assert depths(tutor_raw("answer", "beach。", relation="none", topic="atomic_lookup")) == ["atomic"]
+    assert depths(tutor_raw("answer", "beach。", relation="none")) == ["atomic"]
+    assert depths(tutor_raw("answer", "因为散射。", relation="none", topic="spontaneous_curiosity")) == [None]
+    assert depths(tutor_raw("guide", "先看看谁多？", relation="same", depth="reasoning")) == [None]
+    assert depths(tutor_raw("guide", "先看看谁多？", relation="same")) == [None]

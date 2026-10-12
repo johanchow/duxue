@@ -113,7 +113,7 @@ def _observe_tutor(case: EvalCase, backends: Backends, window: list[dict], image
     vetting = None
     if call.candidate is not None:
         vetting = vet_candidate(
-            call.candidate, permit=permit, has_open_problem=problem is not None,
+            call.candidate, permit=permit,
             authorized_refs=frozenset(tools.authorized_refs),
             has_work_input=bool(case.student_said.strip() or images),
             leak_judge=backends.leak_judge or _NeverLeaks(),

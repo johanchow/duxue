@@ -31,20 +31,28 @@ class FakeModelGateway:
 
 
 def tutor_raw(act: str = "guide", content: str = "先说说已知条件是什么？", *, relation: str | None = "same",
+              topic: str | None = None, depth: str | None = None,
               student_move: str = "request_hint", progress: str | None = None, evidence: str | None = None,
               next_subgoal: str | None = None, lesson: dict | None = None, candidates: list | None = None,
               **extra) -> dict:
-    """A valid tutor-turn.v2 candidate; override only what a test cares about.
+    """A valid tutor-turn.v3 candidate; override only what a test cares about.
 
-    ``relation=None`` omits ``work`` entirely.  ``extra`` is merged at the top level.
+    ``relation`` picks the ``turn`` branch: ``same``/``new`` → ``work``; ``none`` → ``non_work``
+    (with ``topic`` when given); ``None`` omits ``turn``.  ``extra`` is merged at the top level.
     """
     raw: dict = {"act": act, "content": content}
-    if relation is not None:
-        work = {"relation": relation, "student_move": student_move}
+    if relation in {"same", "new"}:
+        turn = {"type": "work", "relation": relation, "student_move": student_move}
+        if depth:
+            turn["depth"] = depth
         for key, value in (("progress", progress), ("evidence", evidence), ("next_subgoal", next_subgoal)):
             if value is not None:
-                work[key] = value
-        raw["work"] = work
+                turn[key] = value
+        raw["turn"] = turn
+    elif relation == "none":
+        raw["turn"] = {"type": "non_work", **({"topic": topic} if topic else {})}
+    elif relation is not None:
+        raw["turn"] = {"type": "work", "relation": relation}
     if lesson is not None:
         raw["pronounce"] = {"lesson": lesson}
     if candidates:
@@ -77,9 +85,12 @@ class StaticLeakJudge:
     def __init__(self, result: bool | None = False):
         self.result = result
         self.calls = 0
+        self.depths: list[str | None] = []
 
-    def leaks(self, *, text: str, task_title: str | None, problem_summary: str | None) -> bool | None:
+    def leaks(self, *, text: str, task_title: str | None, problem_summary: str | None,
+              depth: str | None = None) -> bool | None:
         self.calls += 1
+        self.depths.append(depth)
         return self.result
 
 

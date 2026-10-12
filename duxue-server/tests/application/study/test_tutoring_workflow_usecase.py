@@ -203,9 +203,28 @@ def test_knowledge_question_is_answered_directly_without_leak_check_or_problem(d
     outcome = _ask(db, workflow, session, "这张图是哪个 App 拍的")
     assert judge.calls == 0
     assert db.query(TutoringProblem).count() == 0
-    assert "tutoring.curiosity_observed" in _events(db)
+    # 一次性查询不写好奇心事实；好奇心只来自模型明确声明的 topic
+    assert "tutoring.curiosity_observed" not in _events(db)
     assert "tutoring.hint_given" not in _events(db)
     assert outcome.next_interaction["model_fallback"] is False
+
+
+def test_curiosity_fact_comes_from_the_declared_topic_not_from_being_non_work(db):
+    _, session = _setup(db, "英语阅读")
+    raw = tutor_raw("answer", "因为太阳光被空气散射。", relation="none", topic="spontaneous_curiosity")
+    workflow, _ = _workflow(db, raw)
+    _ask(db, workflow, session, "天为什么是蓝的")
+    assert "tutoring.curiosity_observed" in _events(db)
+    assert db.query(TutoringProblem).count() == 0
+
+
+def test_an_unknown_topic_is_a_lookup_and_writes_no_fact(db):
+    _, session = _setup(db, "英语阅读")
+    raw = tutor_raw("answer", "海滩。", relation="none")
+    raw["turn"]["topic"] = "wondering"
+    workflow, _ = _workflow(db, raw)
+    _ask(db, workflow, session, "beach 是什么意思")
+    assert "tutoring.curiosity_observed" not in _events(db)
 
 
 def test_non_attempt_progress_is_ignored_instead_of_replacing_a_safe_reply(db):
@@ -224,7 +243,7 @@ def test_candidate_with_omitted_safe_metadata_and_extra_field_is_accepted(db):
     raw = {
         "act": "answer",
         "content": "beach 的意思是海滩。",
-        "work": {"relation": "none"},
+        "turn": {"type": "non_work"},
         "provider_debug": "unused",
     }
     workflow, model = _workflow(db, raw)
@@ -242,6 +261,51 @@ def test_open_problem_tightens_a_mislabeled_followup(db):
     workflow.turn_model = StaticTutorModel(mislabeled)
     outcome = _ask(db, workflow, session, "那答案呢")
     assert outcome.next_interaction["model_fallback"] is True
+
+
+def test_relation_none_does_not_switch_off_the_leak_check_on_an_open_problem(db):
+    """模型把"这题答案是什么"标成 none，也必须过泄露裁判。"""
+    _, session = _setup(db)
+    workflow, _ = _workflow(db, ATTEMPT)
+    _ask(db, workflow, session, "我觉得是 3")
+    workflow.turn_model = StaticTutorModel(tutor_raw("answer", "把 x 单独留在左边就得到结果了。", relation="none"))
+    workflow.leak_judge = StaticLeakJudge(True)
+    outcome = _ask(db, workflow, session, "那答案呢")
+    assert outcome.next_interaction["model_fallback"] is True
+
+
+def test_a_submitted_problem_stays_protected_until_code_releases_it(db):
+    """"孩子交了"不等于允许披露：提交后追问答案仍受保护。"""
+    _, session = _setup(db)
+    submitted = tutor_raw(
+        "guide", "你的思路我看到了。", relation="same", student_move="attempt", progress="submitted",
+        evidence="先移项再除以 2，所以 x=3",
+    )
+    workflow, _ = _workflow(db, submitted)
+    outcome = _ask(db, workflow, session, "x=3")
+    assert outcome.next_interaction["problem_status"] == "submitted"
+    assert outcome.next_interaction["answer_protected"] is True
+    workflow.turn_model = StaticTutorModel(tutor_raw("answer", "标准做法是先移项。", relation="none"))
+    workflow.leak_judge = StaticLeakJudge(True)
+    assert _ask(db, workflow, session, "标准答案是什么").next_interaction["model_fallback"] is True
+
+
+def test_a_single_fact_inside_homework_is_answered_directly_unless_it_is_the_answer(db):
+    """作业里的原子/回忆提问直接答，不推进题目；但裁判判定它就是本题答案时仍不能说出来。"""
+    _, session = _setup(db)
+    workflow, _ = _workflow(db, ATTEMPT)
+    _ask(db, workflow, session, "我觉得是 3")
+    problem = db.query(TutoringProblem).one()
+    before = (problem.status, problem.substantive_attempts, problem.hints_given)
+    fact = tutor_raw("answer", "斜边是直角三角形里最长的边。", relation="same", depth="atomic")
+    workflow.turn_model = StaticTutorModel(fact)
+    shown = _ask(db, workflow, session, "斜边是什么")
+    assert shown.next_interaction["model_fallback"] is False and "斜边" in shown.next_interaction["content"]
+    db.refresh(problem)
+    assert (problem.status, problem.substantive_attempts, problem.hints_given) == before
+    workflow.leak_judge = StaticLeakJudge(True)
+    blocked = _ask(db, workflow, session, "空格里填什么")
+    assert blocked.next_interaction["model_fallback"] is True
 
 
 def test_history_ref_outside_the_candidates_is_dropped_not_rejected(db):
