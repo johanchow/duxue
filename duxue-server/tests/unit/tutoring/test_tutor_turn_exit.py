@@ -134,10 +134,15 @@ def test_unknown_metadata_values_are_not_reported_instead_of_failing():
     assert _verdict(raw).ok
 
 
-def test_answer_on_protected_work_is_rejected_and_guide_is_not():
+def test_answer_on_protected_work_is_judged_on_its_content_not_rejected_for_its_labels():
+    """红线只是不把作业答案交给孩子：act=answer 加 relation=same|new 走泄露检查，不因标签矛盾整轮回退。"""
     protected = TutorPermit(True, AttemptSummary())
-    answer = tutor_raw("answer", "x = 3", relation="same")
-    assert _verdict(answer, permit=protected, has_open_problem=True).reason == "reveals_protected_work_product"
+    answer = tutor_raw("answer", "自转是地球绕地轴转。", relation="same")
+    verdict = _verdict(answer, permit=protected, has_open_problem=True)
+    assert verdict.ok and verdict.answer_protected and verdict.needs_leak_check
+    assert not verdict.effective_work_product  # an answer never opens or advances a problem record
+    marker = tutor_raw("answer", "最终答案是 3", relation="same")
+    assert _verdict(marker, permit=protected, has_open_problem=True).reason == "answer_marker"
     guide = tutor_raw("guide", "先移项。", relation="same")
     verdict = _verdict(guide, permit=protected, has_open_problem=True)
     assert verdict.ok and verdict.answer_protected and verdict.needs_leak_check
@@ -153,7 +158,8 @@ def test_explicit_none_is_the_only_way_off_an_open_problem():
 def test_a_new_work_product_question_starts_protected_without_an_open_problem():
     verdict = _verdict(tutor_raw("guide", "先读题。", relation="new"))
     assert verdict.answer_protected and verdict.effective_work_product
-    assert _verdict(tutor_raw("answer", "x=3", relation="new")).reason == "reveals_protected_work_product"
+    answer = _verdict(tutor_raw("answer", "地球绕太阳转。", relation="new"))
+    assert answer.ok and answer.answer_protected and answer.needs_leak_check and not answer.effective_work_product
 
 
 def test_clarify_candidates_copied_as_ref_text_objects_show_their_text():

@@ -83,6 +83,21 @@ class StaticLeakJudge:
         return self.result
 
 
+class StaticVisualLeakJudge(StaticLeakJudge):
+    """A text judge that can also judge a diagram.  ``visual_result`` may be an exception to raise."""
+
+    def __init__(self, result: bool | None = False, visual_result: bool | None | Exception = False):
+        super().__init__(result)
+        self.visual_result = visual_result
+        self.visual_texts: list[str] = []
+
+    def visual_leaks(self, *, text: str, task_title: str | None, problem_summary: str | None) -> bool | None:
+        self.visual_texts.append(text)
+        if isinstance(self.visual_result, Exception):
+            raise self.visual_result
+        return self.visual_result
+
+
 class StaticSafetyScreening:
     def __init__(self, *, input_blocked: bool = False, output_blocked: bool = False):
         self.input_blocked = input_blocked

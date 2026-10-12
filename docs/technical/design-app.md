@@ -166,6 +166,14 @@ FUNCTION routerRedirectGuard(authState, targetPath):
                   └───────────────────────────────────────────┘
 ```
 
+#### 1.1 答疑配图 `VisualBlock`
+- **来源**：交互 `kind=text_visual` 的 `visual` part（见 [Companion 交互协议](domain-companion.md#52-companion-interaction-protocol)）；服务端只给语义（有哪些对象、什么关系或数量），布局与绘制全在客户端，不接收坐标、样式或可执行内容。
+- **图型**：`steps`、`compare`、`segment`（线段图）、`number_line`（数轴），位于 `lib/features/visual_block.dart`；颜色与字体取自 `ThemeData`，窄屏、深色、系统字号放大可用。
+- **不信任输入**：先解析成纯 Dart 数据并复核预算（节点数、文字长度、未知量不带数值）；未知 `kind`、结构或预算不对就**整张不画**，文字照常展示，不报错、不弹窗。旧客户端遇到 `text_visual` 按协议降级为 `text`。
+- **无障碍**：`Semantics` 标签为 `alt`，`steps` 另按顺序线性化朗读。
+- **生命周期**：图属于最近一轮的回答，随下一次发送清除；首期不写入消息 journal，历史回看只有文字。
+- **与流式的关系**：当前伴学对话是一次请求返回完整交互，图随该交互一次性出现。若将来改为 SSE，`delta` 事件不得携带图的任何内容，只有最终 `interaction` 事件携带 `visual`。
+
 #### 2. 流式 Markdown + LaTeX 混排渲染机制
 - **双解析器语法扩展**：在 Markdown 解析管线中挂载自定义 LaTeX Inline (`$...$`) 与 Block (`$$...$$`) 语法解析器；
 - **局部 AST 缓存**：流式打字期间仅重绘增量文本节点，避免整段公式频繁重构导致的界面重排闪烁；

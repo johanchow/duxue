@@ -42,10 +42,20 @@ class QwenLeakJudge:
         self._settings = settings_obj  # offline evaluation only; production passes nothing
 
     def leaks(self, *, text: str, task_title: str | None, problem_summary: str | None) -> bool | None:
-        body = {"task_title": task_title, "problem": problem_summary, "reply": text}
+        return self._judge(
+            "tutoring.leak-judge", {"task_title": task_title, "problem": problem_summary, "reply": text},
+        )
+
+    def visual_leaks(self, *, text: str, task_title: str | None, problem_summary: str | None) -> bool | None:
+        """``text`` 是 ``describe(visual)``。独立的提示词与组件，不与文字判官共用。"""
+        return self._judge(
+            "tutoring.visual-leak-judge", {"task_title": task_title, "problem": problem_summary, "visual": text},
+        )
+
+    def _judge(self, component_id: str, body: dict) -> bool | None:
         try:
             payload = components.invoke_json_component(
-                spec=components.COMPONENTS.get("tutoring.leak-judge"),
+                spec=components.COMPONENTS.get(component_id),
                 user=json.dumps(body, ensure_ascii=False), settings_obj=self._settings,
             )
         except ModelGatewayError:

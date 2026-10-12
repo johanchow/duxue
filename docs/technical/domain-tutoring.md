@@ -391,6 +391,7 @@ class TutorTurnCandidate(BaseModel):
     work: WorkAssessment | None = None
     clarify: ClarifyPayload | None = None              # {candidates: list[str]}，仅 clarify
     pronounce: PronouncePayload | None = None          # {lesson}，仅 pronounce，见 4.6
+    visual: Visual | None = None                       # 可选配图，仅 answer|guide；非法或不适用时整张丢弃，不拒绝候选
 ```
 
 `act` 取值互斥：`answer` 直接回答知识问题；`guide` 帮孩子做自己的作业（追问、提示、例子，或回应孩子提交的解答）；`chat` 闲聊或接孩子对上一轮选项的回答；`clarify`、`redirect`、`pronounce`、`safety` 各一种。没有“确认”这个 act：`submitted` 是孩子的提交，模型不能断言对错，对它的回应是 `guide`。
@@ -402,6 +403,7 @@ class TutorTurnCandidate(BaseModel):
 | `work` 的其余字段 | 模型自述，只决定 `advance()` 是否推进；未知值按“未报告”，不拒绝 | 记录对当前小目标的证据 |
 | `history_ref` | 必须来自本轮 `lookup_history` 返回的授权候选，否则按无引用，不拒绝整轮 | 接上历史 |
 | `pronounce.lesson` | 仅 `act=pronounce` 保留，缺失则拒绝；其他 `act` 带 `pronounce` 时丢弃 | 发音卡 |
+| `visual` | 关闭词汇表（`steps`、`compare`、`segment`、`number_line`）；结构非法、超预算、`unknown` 量带数值、`act` 不适用都**只丢图**，不拒绝候选。作业成果轮次再经图泄露判官，判泄露、超时或结果非法同样只丢图 | 解释性配图，设计与取舍见 [答疑表达设计](domain-tutoring-presentation.md) |
 
 结构恢复只做两件事：丢弃不属于该 `act` 的子对象；把常见的错位（发音字段摊在最外层、`candidates` 摊在最外层）归位。不得生成或替换面向孩子的内容、lesson、作业状态或许可。
 
@@ -409,7 +411,7 @@ class TutorTurnCandidate(BaseModel):
 
 | `act` | 投影的 `kind` |
 |---|---|
-| `answer`、`guide`、`chat` | 按作业成果处理时是 `tutoring_hint`，其余是 `text` |
+| `answer`、`guide`、`chat` | 按作业成果处理时是 `tutoring_hint`，其余是 `text`；带通过全部检查的 `visual` 时为 `text_visual`（`parts = text + visual`），否则图被丢弃，文字照常 |
 | `clarify` | `clarify` + `reply`；`candidates` 非空时是选择，为空时是明确的补充要求 |
 | `redirect` | `text`，并带回任务动作 |
 | `pronounce` | `pronunciation_lesson` |
@@ -425,7 +427,7 @@ Application 在本轮不是作业成果、且 `StudySessionQuery` 返回活动�
 | 检查 | 逻辑 | 目的 | 不通过 |
 |---|---|---|---|
 | 1 结构校验 | Pydantic 校验 `act`、`content`，以及 `answer`/`guide` 的 `work.relation`；多余字段和不属于该 `act` 的子对象丢弃，元数据的未知值按“未报告” | 保证后面的代码可以放心使用候选 | 把校验错误附在同一次调用里重试一次；仍不合法则回退 |
-| 2 越权与一致性 | 只拦会让孩子看到不该看的内容的情形：按作业成果处理（`relation=same|new`）且 `answer_protected=true` 时，`act=answer` 或正文含答案标记一律拒绝；`act=pronounce` 必须有合法 `lesson`（`locale`、`segment` 合法，无标记/URL）；`act=safety` 由代码换成安全话术。元数据之间的不一致（`progress` 无证据、`next_subgoal` 出现在非作业轮）不拒绝，只是不推进题目 | 确定性地拦住越权和泄露，不让与展示无关的字段矛盾替换一个安全的回答 | 直接回退，不重试 |
+| 2 越权与一致性 | 只拦会让孩子看到不该看的内容的情形：按作业成果处理（`relation=same|new`）且 `answer_protected=true` 时，正文含答案标记拒绝，并强制过泄露裁判（红线只看内容是否给出答案，不看 `act`/`relation` 标签；`act=answer` 不开启、放弃或推进题目记录）；`act=pronounce` 必须有合法 `lesson`（`locale`、`segment` 合法，无标记/URL）；`act=safety` 由代码换成安全话术。元数据之间的不一致（`progress` 无证据、`next_subgoal` 出现在非作业轮）不拒绝，只是不推进题目 | 确定性地拦住越权和泄露，不让与展示无关的字段矛盾替换一个安全的回答 | 直接回退，不重试 |
 | 3 泄露检查 | 只在按作业成果处理时触发。独立的一次结构化调用，只回答「正文是否给出了这道作业的最终答案、待填内容或完整解法」。现有的关键词只作兜底 | 拦住模型自述「没泄露」而实际泄露的情况（概率性） | `answer_protected=true` 时判定泄露、调用超时或结果非法都按泄露处理，回退（fail-closed） |
 
 任一检查失败的结果都一样：返回固定话术，记录 `model_fallback`，不写 Fact，不推进 `ProblemRecord`，不用反问掩盖失败。只有检查 1 允许重试一次，因为它的失败通常是格式问题。
@@ -609,7 +611,7 @@ checkpoint、Trace 和 Ward 可见 journal 的存储属于 Companion。Tutoring 
 Given 作业题的 ProblemRecord 为 open，且孩子还没有任何尝试
 When 孩子说“直接告诉我答案”
 Then 本轮 TutorPermit.answer_protected 为 true
-And 出口检查拒绝 act=answer 的候选，泄露检查拒绝给出答案的 guide
+And 答案标记检查或泄露裁判拒绝给出答案的候选（含 act=answer 与 guide）
 And 孩子得到固定话术或追问，不写 Fact，不推进 ProblemRecord
 
 Given 同一题目为 open，孩子给出第一次实质性尝试

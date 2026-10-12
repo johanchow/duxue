@@ -24,6 +24,12 @@ from app.application.workflows.pronunciation_guidance import (
     forbidden_text,
     normalized,
 )
+from app.application.workflows.tutor_visual import (
+    VISUAL_ACTS,
+    VISUAL_ADAPTER,
+    Visual,
+    drop_reason,
+)
 from app.contexts.study.domain.execution import ANSWER_LEAK_MARKERS
 from app.contexts.tutoring.domain.tutor_permit import TutorPermit
 
@@ -127,6 +133,9 @@ class TutorTurnCandidate(BaseModel):
     work: WorkAssessment | None = None
     clarify: ClarifyPayload | None = None
     pronounce: PronouncePayload | None = None
+    # 配图是可选的展示增强：非法或不适用时整张丢弃并记下原因，绝不让候选整体失败。
+    visual: Visual | None = None
+    visual_dropped: str | None = Field(default=None, exclude=True)
 
     @field_validator("follow_up_question", "history_ref", mode="before")
     @classmethod
@@ -166,6 +175,16 @@ class TutorTurnCandidate(BaseModel):
             value.pop("clarify", None)
         if not isinstance(value.get("work"), dict):
             value.pop("work", None)
+        value.pop("visual_dropped", None)  # 只由这里写，模型自报的无效
+        raw_visual = value.pop("visual", None)
+        if raw_visual not in (None, "", {}, []):
+            if act not in VISUAL_ACTS:
+                value["visual_dropped"] = "visual_not_applicable"
+            else:
+                try:
+                    value["visual"] = VISUAL_ADAPTER.validate_python(raw_visual)
+                except ValidationError as error:
+                    value["visual_dropped"] = drop_reason(error)
         for key in ("lesson", *_LESSON_KEYS, "candidates"):
             value.pop(key, None)
         return value
@@ -289,19 +308,24 @@ def check_authority(
     if act == "clarify":
         return Verdict(True)
 
-    # `relation` is required for answer/guide, so the model has to say whether this
-    # turn touches the Ward's work product.  "new" or "same" is protected work; a
-    # label can never turn an existing protected problem into an unprotected one,
-    # because only an explicit "none" leaves the work product.
+    # `relation` is the model's own report of whether this turn touches the Ward's work
+    # product.  It only decides *how closely we look*, never whether a reply may be shown:
+    # the one red line is that the Ward is not handed the finished homework.  So a protected
+    # turn is judged on its content (answer marker, leak judge, fail-closed), not rejected
+    # because its labels look contradictory (e.g. act=answer with relation=new on what is
+    # really a knowledge question).  A label can still never loosen an existing protected
+    # problem: only an explicit "none" leaves the work product.
     relation = candidate.relation
-    work_product = relation in {"same", "new"}
-    answer_protected = work_product and (
+    claims_work = relation in {"same", "new"}
+    answer_protected = claims_work and (
         not has_open_problem or relation == "new" or permit.answer_protected
     )
-    if answer_protected and act == "answer":
-        return Verdict(False, "reveals_protected_work_product")
     if answer_protected and any(marker in candidate.content for marker in ANSWER_LEAK_MARKERS):
         return Verdict(False, "answer_marker")
+    # An `answer` is a direct reply to a question, not the child's attempt at a problem, so it
+    # never opens, abandons or advances a problem record (a mislabelled knowledge question must
+    # not lock the next turn).  It is still leak-checked when it claims to touch the work.
+    work_product = claims_work and act != "answer"
     ref = candidate.history_ref if candidate.history_ref in authorized_history_refs else None
     return Verdict(
         True, effective_work_product=work_product, answer_protected=answer_protected,

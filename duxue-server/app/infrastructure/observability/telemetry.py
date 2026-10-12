@@ -225,12 +225,45 @@ def _span_event(name: str, attributes: dict[str, Any]) -> None:
         span.add_event(name, attributes=attributes)
 
 
+_INPUT_TEXT_LIMIT = 2000
+
+
+def _scrub(value: str) -> str:
+    return _PHONE.sub("[phone]", _EMAIL.sub("[email]", value))
+
+
 def record_agent_input(*, agent_type: str, run_id: str | None, thread_id: str | None, content: str) -> None:
+    """Record the Ward's sentence.
+
+    The text itself goes to Grafana (span event and the stdout JSON log that Loki ingests) and to the
+    local audit file, so a trace can be read as a question and an answer.  Emails and mainland phone
+    numbers are masked first; the text is capped.  Images are never recorded.
+    """
     summary = _summary(content)
     attrs = _attrs(**{"agent.type": agent_type, "agent.run_id": run_id, "agent.thread_id": thread_id, "input.length": summary["length"]})
-    _span_event("agent.turn.received", attrs)
-    _audit_logger.info("agent.turn.received", extra={"telemetry": {**attrs, "input.sha256": summary["sha256"]}})
+    shown = {**attrs, "input.text": _scrub(content)[:_INPUT_TEXT_LIMIT]}
+    _span_event("agent.turn.received", shown)
+    _audit_logger.info("agent.turn.received", extra={"telemetry": {**shown, "input.sha256": summary["sha256"]}})
     _write_debug_audit("input", {**attrs, "input": summary}, content)
+
+
+def record_tutor_turn_result(
+    *, act: str | None, relation: str | None, outcome: str, reason: str | None, shown: str,
+    visual_kind: str | None = None, visual_dropped: str | None = None, shape_flags: list[str] | None = None,
+) -> None:
+    """What the Ward actually saw and why: the join between the question and the model's labels.
+
+    ``outcome`` is ``shown`` | ``fallback`` | ``blocked``; ``reason`` is the failed exit check, if any.
+    The shown text goes only to the local audit file; Grafana gets the categories.
+    """
+    attrs = _attrs(**{
+        "tutor.act": act, "tutor.relation": relation, "tutor.outcome": outcome, "tutor.reason": reason,
+        "tutor.visual.kind": visual_kind, "tutor.visual.dropped": visual_dropped,
+        "tutor.shape.flags": ",".join(shape_flags or []) or None,
+    })
+    _span_event("tutor.turn.result", attrs)
+    _audit_logger.info("tutor.turn.result", extra={"telemetry": attrs})
+    _write_debug_audit("turn_result", attrs, shown)
 
 
 def record_agent_route(*, target: str, mode: str, reason: str) -> None:
@@ -427,6 +460,16 @@ def record_tutor_candidate_rejection(*, error_type: str, field: str, retrying: b
     _audit_logger.warning("tutor.candidate.rejected", extra={"telemetry": attrs})
 
 
+def record_tutor_visual_dropped(*, reason: str) -> None:
+    """A dropped `visual` is not a failure: the words are shown. Only the category is recorded."""
+    _span_event("tutor.visual.dropped", {"tutor.visual.reason": reason})
+
+
+def record_tutor_shape_lint(*, act: str, flags: list[str]) -> None:
+    """Shape lint only observes; it never changes what the Ward sees."""
+    _span_event("tutor.shape.lint", {"tutor.act": act, "tutor.shape.flags": ",".join(flags)})
+
+
 def record_vlm_frames(*, count: int, mode: str) -> None:
     _vlm_frames.add(count, attributes={"vlm.mode": mode})
 
@@ -482,7 +525,7 @@ def _llm_original_sink() -> Path | None:
 def _write_debug_audit(kind: str, metadata: dict[str, Any], value: str) -> None:
     """Append the original model text to the local audit file, correlated by trace id."""
     target = _llm_original_sink()
-    if target is None or kind != "output":
+    if target is None:
         return
     span_context = trace.get_current_span().get_span_context()
     record = {

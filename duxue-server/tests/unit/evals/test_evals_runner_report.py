@@ -54,7 +54,7 @@ def test_flaky_and_always_failing_cases_are_told_apart():
 def test_guardrail_counts_fallbacks_and_names_the_reason():
     summary = report.summarize(_run([_case()], BAD, samples=3))
     assert summary["guardrail"]["fallback_rate"]["k"] == 3
-    assert summary["guardrail"]["fallback_reasons"] == {"reveals_protected_work_product": 3}
+    assert summary["guardrail"]["fallback_reasons"] == {"answer_marker": 3}
 
 
 def test_confirmed_and_proposed_are_reported_apart_and_needs_decision_is_not_scored():
@@ -114,7 +114,7 @@ def test_instruction_is_the_production_one():
 
 def test_results_serialise_without_losing_failure_reasons():
     rows = report.to_json(_run([_case()], BAD, samples=1))
-    assert rows[0]["samples"][0]["reason"] == "reveals_protected_work_product"
+    assert rows[0]["samples"][0]["reason"] == "answer_marker"
     assert rows[0]["samples"][0]["passed"] is False
 
 
@@ -123,7 +123,7 @@ def test_text_report_names_failing_cases():
     meta = {"component": "tutoring.turn", "component_version": "v1", "model": "m", "variant": "baseline",
             "samples": 2, "dataset_hash": "h", "git_sha": "g"}
     text = report.render_text(meta, report.summarize(results), results)
-    assert "turn-test-00" in text and "reveals_protected_work_product" in text
+    assert "turn-test-00" in text and "answer_marker" in text
 
 
 # ---- variants: evaluation-process only ---------------------------------------------------------
@@ -162,3 +162,28 @@ def test_cli_variant_choices_match_the_registered_variants():
     from evals.__main__ import VARIANT_NAMES
 
     assert set(VARIANT_NAMES) == set(variants.VARIANTS)
+
+
+def test_report_lists_shape_and_diagram_metrics_without_gating_on_them():
+    from tests.unit.tutoring.test_tutor_visual import STEPS
+
+    shown = tutor_raw("answer", "水先蒸发，再凝结，最后降下来。", relation="none", visual=STEPS)
+    dropped = tutor_raw("answer", "<b>水</b>会循环。", relation="none", visual={"kind": "steps", "alt": "x", "steps": []})
+    cases = [
+        _case("turn-vis-00", expect={"outcome_in": ["answer"], "visual": "present"}),
+        _case("turn-vis-01", expect={"outcome_in": ["answer"], "visual": "absent"}),
+    ]
+    results = _run(cases, shown, samples=2)
+    results[1:] = _run(cases[1:], dropped, samples=2)
+    secondary = report.summarize(results)["secondary"]
+    assert secondary["visual"]["shown"]["k"] == 2 and secondary["visual"]["shown"]["n"] == 4
+    assert secondary["visual"]["dropped_reasons"] == {"visual_invalid": 2}
+    assert secondary["visual"]["recall"]["rate"] == 1.0
+    assert secondary["visual"]["false_positive"]["rate"] == 0.0
+    assert secondary["shape_lint"]["flags"] == {"raw_html": 2}
+    assert secondary["visual"]["structure_pass"]["rate"] == 0.5
+    text = report.render_text(
+        {"component": "tutoring.turn", "component_version": "v5", "model": "m", "variant": "base",
+         "samples": 2, "dataset_hash": "h", "git_sha": "g"}, report.summarize(results), results,
+    )
+    assert "-- visual" in text and "-- shape" in text

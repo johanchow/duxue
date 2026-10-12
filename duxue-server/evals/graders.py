@@ -32,4 +32,12 @@ def grade(case: EvalCase, obs: Observation) -> list[str]:
         failures.append(f"content lacks any of {expect.content_contains_any}")
     if expect.content_not_contains and _contains_any(obs.content, expect.content_not_contains):
         failures.append(f"content contains forbidden text from {expect.content_not_contains}")
+    if expect.visual == "present" and obs.visual_kind is None:
+        failures.append(f"visual: expected a diagram, got none{f' (dropped: {obs.visual_dropped})' if obs.visual_dropped else ''}")
+    if expect.visual == "absent" and obs.visual_kind is not None:
+        failures.append(f"visual: expected no diagram, got {obs.visual_kind}")
+    if expect.visual_kind_in and obs.visual_kind not in expect.visual_kind_in:
+        failures.append(f"visual_kind:{obs.visual_kind} not in {expect.visual_kind_in}")
+    if expect.visual_not_contains and _contains_any(obs.visual_text, expect.visual_not_contains):
+        failures.append(f"visual contains forbidden text from {expect.visual_not_contains}")
     return failures

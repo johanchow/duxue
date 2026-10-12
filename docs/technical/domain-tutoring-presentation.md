@@ -1,6 +1,6 @@
 # 读学系统 — 答疑表达设计：有逻辑、图文并茂
 
-> 状态：草案 v0.1，**未实现**，数字均为待校准的假设 · 范围：`tutoring.turn` 面向孩子的 `content` 的结构（逻辑性）与可选配图（视觉化）。
+> 状态：v0.2，**首期已实现**（逻辑层 + `steps`/`compare`/`segment`/`number_line`），实现状态与偏差见 [§十四](#十四实现状态与偏差)；其中的数字仍是待校准的假设 · 范围：`tutoring.turn` 面向孩子的 `content` 的结构（逻辑性）与可选配图（视觉化）。
 >
 > 关联：[Tutoring Domain](domain-tutoring.md)（契约 `tutor-turn.v2`、出口检查） · [Companion 交互协议](domain-companion.md#52-companion-interaction-protocol) · [AI Component](infra-ai-components.md) · [答疑离线评测](eval-offline.md) · [App 端设计](design-app.md)
 >
@@ -397,3 +397,30 @@ Then  只记录，回答照常展示，不触发 fallback
 - [infra-ai-components.md](infra-ai-components.md)：提示词版本、条件拼接。
 - [eval-offline.md](eval-offline.md)：新增指标与用例类别。
 - [design-app.md](design-app.md)：`VisualBlock` 与降级规则。
+
+## 十四、实现状态与偏差
+
+首期按 spec `tutoring-presentation`（`.agent/specs/`）落地。下面只写与上文设计**不同或尚未做**的地方，其余按上文实现。
+
+**已实现**
+
+- 逻辑层：`tutoring.turn.system.v5` 含"回答形状"段；`tutor_shape.lint_shape` 只观测（trace 事件 `tutor.shape.lint` 与离线指标），不触发 fallback。长度上限（`answer` 400、`guide` 250、`chat`/`redirect`/`pronounce` 120、`clarify` 200 字）是**初始假设**，待 §十 第 0 步用真实输出校准。
+- 契约：`tutor_visual.py` 的 `visual`（四种图型）与预算；结构非法、超预算、`unknown` 带数值、`act` 不适用，一律丢图，原因类别写入 trace 事件 `tutor.visual.dropped`。`geometry`、`layers`、`relation` 不在词汇表内，模型给出也只会被当作非法图丢弃。
+- 出口检查：新增独立组件 `tutoring.visual-leak-judge@v1`（待定项 8 选"新增独立提示词"，仍只交 `problem_summary`，不交原题）；与文字判官并行；判泄露、超时、结果非法、异常、判官不支持图，都只丢图。独立输出安全审核读取 `content` 与 `describe(visual)`。
+- 投影：`kind=text_visual`，`parts = text + visual`（内联）；模型不返回 `kind`、按钮、动作。
+- App：`VisualBlock` 四个渲染器、降级、无障碍、窄屏与深色测试。
+
+**与设计的偏差（及原因）**
+
+1. **没有 TEXT_DELTA / INTERACTION_READY 流式时序。** 设计里的 §5.6 以 SSE 为前提，现状伴学对话是一次请求返回完整交互（`outcome.next_interaction`），图随该交互一次性出现，天然没有半张图。若将来改成流式，约束不变：增量事件不携带图。
+2. **投影不是"在 `text` / `tutoring_hint` 之间选"。** 实现里答疑轮次的 `next_interaction` 原本就没有 `kind`/`parts`（只有 `content`、`act` 等字段）；带图时才合并 `build_interaction(kind="text_visual")` 的信封，无图的轮次保持原样，没有顺手重构。
+3. **视觉段落没有做条件拼接，始终在系统提示里。** 条件拼接需要用真实输出验证"哪些轮次不会用图"，现在没有数据；先保持静态前缀（也利于提示缓存）。实测的静态增量：`tutoring.turn` 系统提示从 2,462 字符增至 3,806 字符（+1,344，约 +55%）。是否按轮次拆段，等离线评测得出配图触发分布后再决定。
+4. **"孩子明确要求画图"的提示信号未做。** 目前完全由模型判断；评测里 `visual-leak` 类用例观察被诱导的情形。
+5. **`visual` 不写入 journal。** 待定项 1 选"首期不写"：历史回看只有文字。
+6. **用了新的 `kind` 而不是扩展 `part` 的使用方式。** 待定项 2：`text_visual`；`InteractionPart` 增加 `type=visual`。
+
+**尚未做 / 需要你运行**
+
+- **真实模型的 K=5 对照评测尚未运行**（需要本机密钥与费用）。数据集已加四类共 8 条 `proposed` 用例（`turn-visual-*`）。建议顺序：先在 `main`（v4 提示词、无 `visual`）上跑一次基线，再在本分支（v5）上跑，两次都用同一数据集哈希；用 `python -m evals run --component tutoring.turn --tag visual` 看配图召回、误触发、丢弃原因与延迟，用全量跑看既有 outcome 与 fallback 原因分布是否退化。
+- §十 第 0 步的现状度量、第 1.5 步教研盘点、人工评审（§九）都需要真实数据或人，不由本次实现代替。
+- 第二期图型 `geometry`、`layers`、`relation`。

@@ -491,6 +491,7 @@ App 按 `kind` 选择组件；业务数字一律用 `object_ref` 再拉一次目
 | ------------------- | ----------------- | ---------------------- | ----------------------------------------------- | ----------------------------------- |
 | `text`              | 普通说明、追问、安全降级文案    | `text`                 | 无，或仅继续输入                                        | 无                                   |
 | `text_media`        | 图文提示（当前仅图片；视频未开放） | `text` + `media_ref`   | 无                                               | 无                                   |
+| `text_visual`       | 文字 + 一张只读配图（`steps`、`compare`、`segment`、`number_line`；由 Application 在图通过全部检查后投影） | `text` + `visual`（内联，不用 `object_ref`） | 无                                               | 无                                   |
 | `clarify`           | 单一必要问题、发音原文确认或候选选择 | `text`                 | `reply`                                         | 无或当前 Workflow 等待点                    |
 | `plan_confirm_list` | 全部未完成任务：耗时、开始、结束  | `text` + `object_ref`  | `confirm`（仅 `confirm_enabled`）、`edit`、`discard` | [PlanDraftView](domain-planning.md) |
 | `tutoring_hint`     | 启发式提示卡 + 阶梯       | `text`（Markdown/LaTeX） | `understood`、`more_hint`、`close`                | TutoringInteractionView             |
@@ -519,9 +520,10 @@ class MediaRef(BaseModel):
     content_type: str
 
 class InteractionPart(BaseModel):
-    type: Literal["text", "media_ref", "object_ref"]
+    type: Literal["text", "media_ref", "object_ref", "visual"]
     text: str | None = None           # type=text；tutoring 允许 markdown+latex
     media: MediaRef | None = None
+    visual: dict | None = None        # type=visual；关闭词汇表，契约见 domain-tutoring-presentation.md §五
     object_ref: ObjectRef | None = None
 
 class AllowedAction(BaseModel):
@@ -546,7 +548,7 @@ class AllowedAction(BaseModel):
 class WorkflowInteractionView(BaseModel):
     protocol: Literal["companion-interaction.v1"]
     kind: Literal[
-        "text", "text_media", "clarify", "plan_confirm_list",
+        "text", "text_media", "text_visual", "clarify", "plan_confirm_list",
         "tutoring_hint", "pronunciation_lesson", "self_review",
         "achievement", "start_cue", "failure",
     ]

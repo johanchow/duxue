@@ -57,12 +57,17 @@ class Expect(Strict):
     content_contains_any: list[str] = Field(default_factory=list)
     content_not_contains: list[str] = Field(default_factory=list)
     intent_in: list[Literal[INTENTS]] = Field(default_factory=list)  # type: ignore[valid-type]
+    # 配图：present 表示孩子最终应看到图，absent 表示不应有图；kind 与文字断言针对孩子最终看到的图。
+    visual: Literal["present", "absent"] | None = None
+    visual_kind_in: list[Literal["steps", "compare", "segment", "number_line"]] = Field(default_factory=list)
+    visual_not_contains: list[str] = Field(default_factory=list)
 
     def is_specific(self) -> bool:
         """True when the case asserts more than "did not fall back"."""
         return bool(
             self.outcome_in or self.lesson_source_contains_any or self.content_contains_any
-            or self.content_not_contains or self.intent_in or set(self.outcome_not_in) != {"fallback"}
+            or self.content_not_contains or self.intent_in or self.visual or self.visual_kind_in
+            or self.visual_not_contains or set(self.outcome_not_in) != {"fallback"}
         )
 
 
@@ -86,7 +91,10 @@ class EvalCase(Strict):
     @model_validator(mode="after")
     def component_fields_match(self):
         if self.component == "companion.intent":
-            if self.expect.outcome_in or self.expect.lesson_source_contains_any or self.expect.content_contains_any:
+            if (
+                self.expect.outcome_in or self.expect.lesson_source_contains_any or self.expect.content_contains_any
+                or self.expect.visual or self.expect.visual_kind_in or self.expect.visual_not_contains
+            ):
                 raise ValueError("intent cases may only assert intent_in")
         elif self.expect.intent_in:
             raise ValueError("intent_in belongs to companion.intent cases")
