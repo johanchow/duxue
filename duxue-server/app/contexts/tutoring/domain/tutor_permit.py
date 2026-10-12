@@ -10,6 +10,11 @@ from dataclasses import dataclass, replace
 from typing import Literal
 
 ProblemStatus = Literal["open", "submitted", "abandoned"]
+# "Disclosure" is a separate state from "submission".  `submitted` records that the Ward handed in
+# a proposal (the model's report, never a verdict).  Whether the answer may be shown is owned by this
+# policy alone and is `protected` until a code rule releases it; no model field can do that.
+Disclosure = Literal["protected", "released"]
+PROTECTED_STATUSES = frozenset({"open", "submitted"})
 HINT_ACTS = frozenset({"guide"})
 
 
@@ -20,6 +25,7 @@ class ProblemState:
     substantive_attempts: int = 0
     hints_given: int = 0
     evidence_summary: str | None = None
+    disclosure: Disclosure = "protected"
 
 
 @dataclass(frozen=True)
@@ -67,7 +73,7 @@ class TutorPermitPolicy:
         if problem is None:
             return TutorPermit(False, AttemptSummary())
         return TutorPermit(
-            answer_protected=problem.status == "open",
+            answer_protected=problem.status in PROTECTED_STATUSES and problem.disclosure == "protected",
             active_subgoal=problem.active_subgoal if problem.status == "open" else None,
             attempt_summary=AttemptSummary(
                 problem.substantive_attempts, problem.hints_given, problem.evidence_summary,

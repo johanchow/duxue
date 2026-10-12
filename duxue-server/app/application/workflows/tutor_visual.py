@@ -1,4 +1,4 @@
-"""tutor-turn.v2 的可选配图 `visual`：关闭词汇表、结构校验与文字化。
+"""tutor-turn.v3 的可选配图 `visual`：关闭词汇表、结构校验与文字化。
 
 模型只表达"有哪些对象、什么关系或数量"，不给坐标、样式或任何可执行内容；布局与绘制由客户端完成。
 设计与取舍见 docs/technical/domain-tutoring-presentation.md §五。

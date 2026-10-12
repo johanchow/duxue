@@ -25,6 +25,7 @@ from app.application.workflows.tutor_turn import (
 )
 from app.contexts.companion.domain.policy import PolicyRegistry
 from app.contexts.tutoring.domain.tutor_permit import (
+    PROTECTED_STATUSES,
     ProblemAssessment,
     ProblemState,
     TutorPermitPolicy,
@@ -62,7 +63,7 @@ def _store(row: TutoringProblem, state: ProblemState) -> None:
 
 
 class TutoringWorkflow:
-    """tutor-turn.v2：模型驱动一轮，代码守住入口许可和出口检查。"""
+    """tutor-turn.v3：模型驱动一轮，代码守住入口许可和出口检查。"""
 
     def __init__(
         self, db: Session, turn_model: TutorModelPort | None = None, leak_judge: LeakJudgePort | None = None,
@@ -152,9 +153,16 @@ class TutoringWorkflow:
         return session, tutor
 
     def _open_problem(self, tutor: TutoringSession) -> TutoringProblem | None:
+        """The latest problem whose answer is still protected: `open`, or `submitted`.
+
+        A submission is the Ward's proposal, not permission to show the answer, so it stays
+        in force until a code policy releases it (see ``tutor_permit.Disclosure``)."""
         return (
             self.db.query(TutoringProblem)
-            .filter_by(tutoring_session_id=tutor.id, status="open")
+            .filter(
+                TutoringProblem.tutoring_session_id == tutor.id,
+                TutoringProblem.status.in_(sorted(PROTECTED_STATUSES)),
+            )
             .order_by(TutoringProblem.created_at.desc())
             .first()
         )
@@ -262,7 +270,7 @@ class TutoringWorkflow:
         vetting = None
         if candidate is not None:
             vetting = vet_candidate(
-                candidate, permit=permit, has_open_problem=problem_row is not None,
+                candidate, permit=permit,
                 authorized_refs=frozenset(tools.authorized_refs),
                 has_work_input=bool(content.strip() or images), leak_judge=self._judge(),
                 task_title=task_title, problem_summary=problem_row.summary if problem_row else content,
@@ -281,7 +289,7 @@ class TutoringWorkflow:
             outcome = project_lesson(self.db, invocation, candidate.lesson)
             outcome.context_snapshot = envelope.trace_snapshot()
             record_tutor_turn_result(
-                act=candidate.act, relation=candidate.relation, outcome="shown", reason=None,
+                act=candidate.act, relation=candidate.relation, topic=candidate.topic, depth=candidate.depth, outcome="shown", reason=None,
                 shown=candidate.content,
             )
             return outcome
@@ -289,7 +297,7 @@ class TutoringWorkflow:
             text = candidate.content
             listed = "\n".join(f"{i}. {item}" for i, item in enumerate(candidate.candidates, start=1))
             record_tutor_turn_result(
-                act=candidate.act, relation=candidate.relation, outcome="shown", reason=None, shown=text,
+                act=candidate.act, relation=candidate.relation, topic=candidate.topic, depth=candidate.depth, outcome="shown", reason=None, shown=text,
             )
             interaction = build_interaction(
                 invocation=invocation, kind="clarify", text=f"{text}\n{listed}" if listed else text,
@@ -354,20 +362,20 @@ class TutoringWorkflow:
                 source_type="tutoring_message", source_id=message.id, source="system",
                 payload={**payload, "hint_index": hint_index},
             )
-        if candidate.act in {"answer", "guide"} and not work:
+        if candidate.topic == "spontaneous_curiosity":
             publish_learning_fact(
                 self.db, ward_id=session.ward_id, event_type="tutoring.curiosity_observed",
                 source_type="tutoring_message", source_id=ward_msg.id, source="ward", visibility="ward", payload=payload,
             )
         record_tutor_turn_result(
-            act=candidate.act, relation=candidate.relation, outcome="shown", reason=None, shown=text,
+            act=candidate.act, relation=candidate.relation, topic=candidate.topic, depth=candidate.depth, outcome="shown", reason=None, shown=text,
             visual_kind=visual.kind if visual else None, visual_dropped=vetting.visual_dropped if vetting else None,
             shape_flags=vetting.shape_flags if vetting else None,
         )
         next_interaction = {
             "status": "needs_input", "content": text, "act": candidate.act,
             "hint_index": hint_index, "problem_status": problem_status,
-            "answer_protected": answer_protected if problem_status is None else problem_status == "open", "safety_blocked": False,
+            "answer_protected": answer_protected if problem_status is None else problem_status in PROTECTED_STATUSES, "safety_blocked": False,
             "return_to_task": remind, "model": components.model_for("tutoring.turn"), "model_fallback": False,
         }
         if visual is not None:

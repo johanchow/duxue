@@ -248,7 +248,7 @@ def record_agent_input(*, agent_type: str, run_id: str | None, thread_id: str | 
 
 
 def record_tutor_turn_result(
-    *, act: str | None, relation: str | None, outcome: str, reason: str | None, shown: str,
+    *, act: str | None, relation: str | None, topic: str | None = None, depth: str | None = None, outcome: str, reason: str | None, shown: str,
     visual_kind: str | None = None, visual_dropped: str | None = None, shape_flags: list[str] | None = None,
 ) -> None:
     """What the Ward actually saw and why: the join between the question and the model's labels.
@@ -257,7 +257,7 @@ def record_tutor_turn_result(
     The shown text goes only to the local audit file; Grafana gets the categories.
     """
     attrs = _attrs(**{
-        "tutor.act": act, "tutor.relation": relation, "tutor.outcome": outcome, "tutor.reason": reason,
+        "tutor.act": act, "tutor.relation": relation, "tutor.topic": topic, "tutor.depth": depth, "tutor.outcome": outcome, "tutor.reason": reason,
         "tutor.visual.kind": visual_kind, "tutor.visual.dropped": visual_dropped,
         "tutor.shape.flags": ",".join(shape_flags or []) or None,
     })

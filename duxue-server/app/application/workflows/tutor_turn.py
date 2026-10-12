@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Literal, Protocol
+from typing import Annotated, Literal, Protocol
 
 from pydantic import (
     BaseModel,
@@ -33,15 +33,21 @@ from app.application.workflows.tutor_visual import (
 from app.contexts.study.domain.execution import ANSWER_LEAK_MARKERS
 from app.contexts.tutoring.domain.tutor_permit import TutorPermit
 
-CONTRACT_ID = "tutor-turn.v2"
+CONTRACT_ID = "tutor-turn.v3"
 
 Act = Literal["answer", "guide", "chat", "clarify", "redirect", "pronounce", "safety"]
 Relation = Literal["none", "same", "new"]
+WorkRelation = Literal["same", "new"]
+Topic = Literal["atomic_lookup", "spontaneous_curiosity", "chat"]
+# How much of the Ward's own reasoning the ask carries.  atomic: a one-off lookup (a word's meaning,
+# a character's reading, what is in the picture).  recall: something to remember (a spelling, a
+# formula, a fact).  reasoning: needs derivation steps.  Unknown or missing is the most protective.
+Depth = Literal["atomic", "recall", "reasoning"]
 StudentMove = Literal["attempt", "request_hint", "request_answer", "other"]
 Progress = Literal["none", "some", "submitted"]
 
 # `answer` and `guide` are the acts that can reach the Ward's work product, so the
-# model must say whether the turn touches it.  Every other act defaults to "none".
+# model must say whether the turn touches it (``turn``).  Every other act has no ``turn``.
 _WORK_ACTS = frozenset({"answer", "guide"})
 _LESSON_KEYS = ("source_text", "locale", "introduction", "reading_guide", "notes")
 
@@ -57,28 +63,28 @@ def _blank_is_absent(value):
     return value
 
 
-class WorkAssessment(BaseModel):
-    """The model's self-report about the Ward's work product.
+class WorkTurn(BaseModel):
+    """The turn is about the Ward's own work product (homework, exercise, composition).
 
-    Only ``relation`` can widen or narrow answer protection, so it is the one field
-    that is required (and only for acts that can reveal an answer).  The
-    rest only feed ``TutorPermitPolicy.advance()``: an unknown value is "not
-    reported", never a reason to replace a safe reply.
+    ``act`` is the business type, so ``guide`` ⇔ this branch.  Only ``relation`` is required:
+    it says whether the turn continues the current problem or starts a new one.  The rest only
+    feeds ``TutorPermitPolicy.advance()``: an unknown value is "not reported", never a reason
+    to replace a safe reply.  Protection never depends on this branch (it is owned by the permit).
     """
 
     model_config = ConfigDict(extra="ignore")
-    relation: Relation | None = None
+    type: Literal["work"] = "work"
+    relation: WorkRelation
+    depth: Depth = "reasoning"
     student_move: StudentMove = "other"
     progress: Progress | None = None
     evidence: str | None = None
     next_subgoal: str | None = None
 
-    @field_validator("relation", mode="before")
+    @field_validator("depth", mode="before")
     @classmethod
-    def _relation(cls, value):
-        # An unknown value is "not reported".  For act=answer|guide that is a
-        # structure error (repaired once); it is never guessed.
-        return value if value in Relation.__args__ else None
+    def _depth(cls, value):
+        return value if value in Depth.__args__ else "reasoning"
 
     @field_validator("student_move", mode="before")
     @classmethod
@@ -95,6 +101,24 @@ class WorkAssessment(BaseModel):
     def _text(cls, value):
         value = _blank_is_absent(value)
         return value[:500] if isinstance(value, str) else None
+
+
+class NonWorkTurn(BaseModel):
+    """Not the Ward's work product.  ``topic`` separates a one-off lookup (a word, a translation,
+    what is in the picture: no fact is written) from curiosity the Ward raised on their own
+    (a ``curiosity_observed`` fact).  An unknown topic is a lookup: it must never invent a fact."""
+
+    model_config = ConfigDict(extra="ignore")
+    type: Literal["non_work"] = "non_work"
+    topic: Topic = "atomic_lookup"
+
+    @field_validator("topic", mode="before")
+    @classmethod
+    def _topic(cls, value):
+        return value if value in {"atomic_lookup", "spontaneous_curiosity"} else "atomic_lookup"
+
+
+Turn = Annotated[WorkTurn | NonWorkTurn, Field(discriminator="type")]
 
 
 class ClarifyPayload(BaseModel):
@@ -118,9 +142,10 @@ class PronouncePayload(BaseModel):
 
 
 class TutorTurnCandidate(BaseModel):
-    """tutor-turn.v2.  Required: ``act`` and ``content``.  Everything else is optional
+    """tutor-turn.v3.  Required: ``act`` and ``content``.  Everything else is optional
     and lives in the sub-object that belongs to one act, so no field can contradict
-    another.  A sub-object that does not belong to the act is dropped before
+    another.  ``turn`` is a discriminated union (``work`` | ``non_work``) required for
+    ``answer`` and ``guide``.  A sub-object that does not belong to the act is dropped before
     validation (see ``shape_by_act``)."""
 
     # Provider-only fields must not make a safe child-facing reply fail. Unknown
@@ -130,7 +155,7 @@ class TutorTurnCandidate(BaseModel):
     content: str = Field(min_length=1, max_length=1200)
     follow_up_question: str | None = Field(default=None, max_length=300)
     history_ref: str | None = None
-    work: WorkAssessment | None = None
+    turn: Turn | None = None
     clarify: ClarifyPayload | None = None
     pronounce: PronouncePayload | None = None
     # 配图是可选的展示增强：非法或不适用时整张丢弃并记下原因，绝不让候选整体失败。
@@ -173,8 +198,16 @@ class TutorTurnCandidate(BaseModel):
                 value["clarify"] = {"candidates": value["candidates"]}
         else:
             value.pop("clarify", None)
-        if not isinstance(value.get("work"), dict):
-            value.pop("work", None)
+        turn = value.get("turn")
+        if act in _WORK_ACTS and isinstance(turn, dict):
+            if "type" not in turn:
+                # The branch is unambiguous from its own fields; anything else is left to fail.
+                if "relation" in turn:
+                    value["turn"] = {**turn, "type": "work"}
+                elif "topic" in turn:
+                    value["turn"] = {**turn, "type": "non_work"}
+        else:
+            value.pop("turn", None)
         value.pop("visual_dropped", None)  # 只由这里写，模型自报的无效
         raw_visual = value.pop("visual", None)
         if raw_visual not in (None, "", {}, []):
@@ -190,15 +223,31 @@ class TutorTurnCandidate(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def work_relation_for_answer_acts(self):
-        if self.act in _WORK_ACTS and (self.work is None or self.work.relation is None):
-            raise ValueError("work.relation is required for act=answer|guide")
+    def turn_matches_act(self):
+        if self.act in _WORK_ACTS and self.turn is None:
+            raise ValueError("turn is required for act=answer|guide")
+        if self.act == "guide" and not isinstance(self.turn, WorkTurn):
+            raise ValueError("act=guide needs turn.type=work (guide is help with the Ward's own work)")
         return self
 
     # ---- derived views: one place that knows the nested layout -------------
     @property
+    def work(self) -> WorkTurn | None:
+        return self.turn if isinstance(self.turn, WorkTurn) else None
+
+    @property
     def relation(self) -> Relation:
-        return (self.work.relation if self.work else None) or "none"
+        return self.turn.relation if isinstance(self.turn, WorkTurn) else "none"
+
+    @property
+    def depth(self) -> Depth | None:
+        return self.turn.depth if isinstance(self.turn, WorkTurn) else None
+
+    @property
+    def topic(self) -> Topic | None:
+        if isinstance(self.turn, NonWorkTurn):
+            return self.turn.topic
+        return "chat" if self.act == "chat" else None
 
     @property
     def student_move(self) -> StudentMove:
@@ -235,8 +284,13 @@ class TutorModelPort(Protocol):
 
 
 class LeakJudgePort(Protocol):
-    def leaks(self, *, text: str, task_title: str | None, problem_summary: str | None) -> bool | None:
-        """True 泄露；False 未泄露；None 判定失败（按泄露处理）。"""
+    def leaks(
+        self, *, text: str, task_title: str | None, problem_summary: str | None, depth: str | None = None,
+    ) -> bool | None:
+        """True 泄露；False 未泄露；None 判定失败（按泄露处理）。
+
+        ``depth`` 只在回复是短小的单个事实且模型声明 atomic/recall 时才传；判官据此允许
+        “恰好是空格内容的单个事实”，但推理或计算的结果无论标签如何都算泄露。"""
 
 
 def format_schema_error(error: Exception) -> str:
@@ -282,7 +336,7 @@ def build_tutor_instruction(
 
 
 def check_authority(
-    candidate: TutorTurnCandidate, permit: TutorPermit, *, has_open_problem: bool,
+    candidate: TutorTurnCandidate, permit: TutorPermit, *,
     authorized_history_refs: frozenset[str], has_work_input: bool,
 ) -> Verdict:
     """检查 2：越权与一致性。只收紧，不放松。
@@ -308,18 +362,15 @@ def check_authority(
     if act == "clarify":
         return Verdict(True)
 
-    # `relation` is the model's own report of whether this turn touches the Ward's work
-    # product.  It only decides *how closely we look*, never whether a reply may be shown:
-    # the one red line is that the Ward is not handed the finished homework.  So a protected
-    # turn is judged on its content (answer marker, leak judge, fail-closed), not rejected
-    # because its labels look contradictory (e.g. act=answer with relation=new on what is
-    # really a knowledge question).  A label can still never loosen an existing protected
-    # problem: only an explicit "none" leaves the work product.
+    # Protection is owned by the permit (code policy), not by the model.  While a problem is
+    # protected, every answer/guide is checked on its content (answer marker, leak judge,
+    # fail-closed) whatever `relation` says; `relation=none` can only keep a turn from advancing
+    # the problem record, never switch the check off.  A turn that claims work on a problem with
+    # no protection yet (same/new) starts out protected.  The Ward is never handed the finished
+    # homework; labels that merely look contradictory are not a reason to replace a safe reply.
     relation = candidate.relation
     claims_work = relation in {"same", "new"}
-    answer_protected = claims_work and (
-        not has_open_problem or relation == "new" or permit.answer_protected
-    )
+    answer_protected = permit.answer_protected or claims_work
     if answer_protected and any(marker in candidate.content for marker in ANSWER_LEAK_MARKERS):
         return Verdict(False, "answer_marker")
     # An `answer` is a direct reply to a question, not the child's attempt at a problem, so it

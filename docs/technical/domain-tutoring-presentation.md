@@ -2,11 +2,11 @@
 
 > 状态：v0.2，**首期已实现**（逻辑层 + `steps`/`compare`/`segment`/`number_line`），实现状态与偏差见 [§十四](#十四实现状态与偏差)；其中的数字仍是待校准的假设 · 范围：`tutoring.turn` 面向孩子的 `content` 的结构（逻辑性）与可选配图（视觉化）。
 >
-> 关联：[Tutoring Domain](domain-tutoring.md)（契约 `tutor-turn.v2`、出口检查） · [Companion 交互协议](domain-companion.md#52-companion-interaction-protocol) · [AI Component](infra-ai-components.md) · [答疑离线评测](eval-offline.md) · [App 端设计](design-app.md)
+> 关联：[Tutoring Domain](domain-tutoring.md)（契约 `tutor-turn.v3`、出口检查） · [Companion 交互协议](domain-companion.md#52-companion-interaction-protocol) · [AI Component](infra-ai-components.md) · [答疑离线评测](eval-offline.md) · [App 端设计](design-app.md)
 >
 > 单一事实源：契约字段、出口检查、交互 `kind` 仍以上述文档为准。本文只写表达层的设计；实现落地时，把契约与协议的变更同步回它们，本文只保留设计理由与验收。
 >
-> **设计前提：教学优先**（见 [陪伴 PRD §1.2 第 7 条](../product/prd-companion.md)、[Tutoring 设计原则](domain-tutoring.md#设计原则教学优先)）。本文先写“好老师会怎么讲、会不会借助图”，再写技术如何承接。是否配图由教学需要决定，不由 `act` 或 `work.relation` 决定；代码只在**安全不变量**上否决。
+> **设计前提：教学优先**（见 [陪伴 PRD §1.2 第 7 条](../product/prd-companion.md)、[Tutoring 设计原则](domain-tutoring.md#设计原则教学优先)）。本文先写“好老师会怎么讲、会不会借助图”，再写技术如何承接。是否配图由教学需要决定，不由 `act` 或 `turn` 决定；代码只在**安全不变量**上否决。
 
 ## 一、目标与非目标
 
@@ -156,7 +156,7 @@ class VisualPayload(BaseModel):
 
 ### 5.3 何时配图（触发策略）
 
-**判断标准：站在老师的角度，用图是否比纯文字更有助于这个孩子理解当前的问题。** 与回合的 `act`、`work.relation` 无关：好老师给孩子讲应用题，会先画线段图帮他审题；讲"水循环"，会画流程；孩子问词义，就不需要图。
+**判断标准：站在老师的角度，用图是否比纯文字更有助于这个孩子理解当前的问题。** 与回合的 `act`、`turn` 无关：好老师给孩子讲应用题，会先画线段图帮他审题；讲"水循环"，会画流程；孩子问词义，就不需要图。
 
 **谁来判断：在同一次主调用里由主模型提议；代码只在安全不变量上否决，不增加额外的 LLM 调用。**
 
@@ -180,14 +180,14 @@ class VisualPayload(BaseModel):
 
 ### 5.4 红线与门禁（代码执行，不依赖模型自觉）
 
-门禁只管**安全不变量**，不管教学判断。`act`、`work.relation` 在这里只决定"要做哪种检查"，不决定"能不能配图"。
+门禁只管**安全不变量**，不管教学判断。`act`、`turn` 在这里只决定"要做哪种检查"，不决定"能不能配图"。
 
 | 条件 | 处理 |
 | --- | --- |
 | `act` 没有可承载图的正文（`chat`/`clarify`/`redirect`/`pronounce`/`safety`） | 丢弃 `visual`（结构原因） |
 | 结构非法、超预算 | 丢弃 `visual`，文字照常 |
 | 学科图的**结构不变量**（确定性，schema 层）：`unknown=true` 的量、点、区间、角或长度**不得带数值**，也不得在 `label`/`detail` 里写出数值 | 违反则丢弃 `visual`，文字照常。这是挡住"图上直接标出答案"最便宜、最可靠的一道，不依赖模型 |
-| **按作业成果处理**（`relation=same\|new`，或 `answer_protected=true`）：**文字**（`content`）是否给出最终答案、待填内容或完整解法 | 现有泄露检查，**不变**：判定泄露、超时或结果非法都按泄露处理（fail-closed），整轮回退 |
+| **按作业成果处理**（`turn.type=work`，或 `answer_protected=true`）：**文字**（`content`）是否给出最终答案、待填内容或完整解法 | 现有泄露检查，**不变**：判定泄露、超时或结果非法都按泄露处理（fail-closed），整轮回退 |
 | 同上：**图**（`visual`）是否给出最终答案、待填内容或完整解法 | **与文字分开判断**，见下方"图的泄露判断"。判定泄露、超时或结果非法，一律**只丢弃 `visual`**，文字照常展示 |
 | `visual` 的文字含答案标记 | 丢弃 `visual`（沿用现有关键词兜底） |
 | 独立输出安全审核 | `visual` 的 `title`、`label`、`detail`、`alt` **与 `content` 一并送审**；不通过则整轮按现有规则处理 |
@@ -200,7 +200,7 @@ class VisualPayload(BaseModel):
 - **能力边界：** `problem_summary` 是摘要而非原题，判官对"图是否已构成完整解法"的识别能力有限，这是评测要专门验证的点（§九），不假设它可靠。判官不稳定时的退路是只允许画"条件图"（只画题面已知量，未知量标 `unknown`），而不是回到禁止作业轮次配图。
 - **不做"数值必须出自题面"的确定性检查：** 线段图里的"3 份"可能来自题面的"3 倍"，字面上不在题面里，这类检查会误杀合法的图；`problem_summary` 也不是原文，没有可对照的权威来源。已知量是否正确、是否越过条件，交判官判断，并作为人工复核样例持续观察。
 
-模型的 `relation=none` 自述仍只会收紧：判断为与作业无关的轮次不做答案泄露检查，但安全审核照常。
+保护归 permit：有受保护的题时，模型把本轮声明为 `non_work` 也照常做答案泄露检查；没有受保护的题且声明 `non_work` 的轮次不做，安全审核照常。
 
 这样一来：好老师会用的图（包括作业辅导中的线段图、数轴、几何条件图）都可以出现；图本身不可能成为作业答案的旁路，也不会绕过安全审核。**这条红线管图的内容，不管回合类型。**
 
@@ -270,7 +270,7 @@ sequenceDiagram
 
     W->>C: 孩子的问题（知识问题，或作业卡点）
     C->>G: 上下文 + 提示词（含视觉段落）
-    G-->>C: finish_turn：act=answer|guide, content, work.relation, visual
+    G-->>C: finish_turn：act=answer|guide, content, turn, visual
     C->>X: 结构 → 越权 → 泄露（作业成果轮次：content 与 visual 并行分别判）→ visual 门禁 → 安全审核
     alt 通过
         X-->>P: visual 保留
@@ -323,15 +323,15 @@ sequenceDiagram
 
 ```text
 Given 孩子问知识问题，没有进行中的作业题
-When  模型返回 act=answer、work.relation=none，附合法的 steps 图
+When  模型返回 act=answer、turn.type=non_work，附合法的 steps 图
 Then  出口检查通过，投影为 text_visual，图与文字一起展示
 
 Given 孩子正在做作业题，同时问了一个与作业无关的知识问题
-When  模型返回 act=answer、work.relation=none，附合法的 visual
+When  模型返回 act=answer、turn.type=non_work，附合法的 visual
 Then  不做答案泄露检查，visual 与文字一起展示（安全审核照常）
 
 Given 孩子在做应用题卡在审题，当前 answer_protected=true
-When  模型返回 act=guide、work.relation=same，附 segment 线段图：已知量取自题面，未知量标 unknown
+When  模型返回 act=guide、turn.type=work、relation=same，附 segment 线段图：已知量取自题面，未知量标 unknown
 Then  文字泄露检查与图泄露检查（并行、分别判定）都通过，图与文字一起展示；不影响 hints_given 等计数与事实写入
 
 Given 同上场景
@@ -404,7 +404,7 @@ Then  只记录，回答照常展示，不触发 fallback
 
 **已实现**
 
-- 逻辑层：`tutoring.turn.system.v5` 含"回答形状"段；`tutor_shape.lint_shape` 只观测（trace 事件 `tutor.shape.lint` 与离线指标），不触发 fallback。长度上限（`answer` 400、`guide` 250、`chat`/`redirect`/`pronounce` 120、`clarify` 200 字）是**初始假设**，待 §十 第 0 步用真实输出校准。
+- 逻辑层：`tutoring.turn.system.v7` 含"回答形状"段；`tutor_shape.lint_shape` 只观测（trace 事件 `tutor.shape.lint` 与离线指标），不触发 fallback。长度上限（`answer` 400、`guide` 250、`chat`/`redirect`/`pronounce` 120、`clarify` 200 字）是**初始假设**，待 §十 第 0 步用真实输出校准。
 - 契约：`tutor_visual.py` 的 `visual`（四种图型）与预算；结构非法、超预算、`unknown` 带数值、`act` 不适用，一律丢图，原因类别写入 trace 事件 `tutor.visual.dropped`。`geometry`、`layers`、`relation` 不在词汇表内，模型给出也只会被当作非法图丢弃。
 - 出口检查：新增独立组件 `tutoring.visual-leak-judge@v1`（待定项 8 选"新增独立提示词"，仍只交 `problem_summary`，不交原题）；与文字判官并行；判泄露、超时、结果非法、异常、判官不支持图，都只丢图。独立输出安全审核读取 `content` 与 `describe(visual)`。
 - 投影：`kind=text_visual`，`parts = text + visual`（内联）；模型不返回 `kind`、按钮、动作。

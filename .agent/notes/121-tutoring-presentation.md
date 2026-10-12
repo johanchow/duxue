@@ -26,3 +26,37 @@
 - 红线只有一条：不直接给答案。`check_authority` 不再因“受保护题 + `act=answer`”整轮回退，改为答案标记 + 泄露裁判（fail-closed）按内容判定；`act=answer` 永远不开启/放弃/推进题目记录。原因：首次真实回合里模型把知识问题标成 `answer + relation=new`，整轮被固定话术替换，而内容本身无害。
 - Grafana 现在记录孩子问话（`input.text`，遮蔽邮箱/手机号，上限 2000 字）；本地审计文件新增 `input`、`turn_result` 两类行，与 `output` 用 `trace_id` 连接。`tutor.turn.result` 事件给出 act/relation/结果/失败原因/配图丢弃原因。Loki 权限与留存按儿童数据处理（见 `docs/observability.md`）。
 - 坑：测试里要看到真实 trace_id 需要 `OTEL_SDK_DISABLED` 未设置，否则 span 无效、`trace_id` 为空串。
+
+## 追加修复：保护归代码，提交 ≠ 披露
+- 漏洞：上一版 `check_authority` 以 `relation in {same,new}` 决定是否检查，模型标 `none` 就绕过标记检查和泄露裁判。现改为 `permit.answer_protected or claims_work`，与 `relation` 无关；`has_open_problem` 参数删除。
+- `submitted` 原来直接解锁（permit 只看 `status==open`，且 `_open_problem` 只取 open 行）。现在 `ProblemState.disclosure`（protected/released）与 `status` 分开，`PROTECTED_STATUSES={open,submitted}`，工作流取最近的 open/submitted 行。`released` 目前没有任何代码路径设置（披露策略待产品决定），所以提交后答案一直受保护，对应“只能帮核查、不断言答对”。
+- 影响：提交后孩子追问答案会过泄露裁判；`disclosure` 暂未持久化（没有放行路径，无需列）。
+- 遗留：v3 契约（`work|non_work` 判别联合、`topic`）仍未做。
+
+## 追加：契约升到 tutor-turn.v3（提示词 v6，组件 tutoring.turn@v6）
+- `work`（WorkAssessment）改为 `turn`，`work | non_work` 判别联合：只有 `work` 分支带 relation（只剩 same|new，必填）/student_move/progress/evidence/next_subgoal；`non_work` 带 `topic`（atomic_lookup | spontaneous_curiosity，未知按 atomic_lookup）。
+- `act` 是业务类型：`guide` ⇔ work 分支（缺失或非 work 是结构错误，重试一次）；`answer` 配 non_work。**但 `answer` 带 work 分支不拒绝**：把新作业题误标成 answer 的情形，若强制改成 non_work 会放掉泄露检查，所以保留“声称作业 ⇒ 受保护但不推进题目”。
+- 好奇心事实只由 `topic=spontaneous_curiosity` 触发，不再从“不是作业”推导；atomic_lookup 不写事实。
+- `turn` 缺 `type` 时，仅凭自己的字段（有 relation→work，有 topic→non_work）推断；其他一律不猜。`relation=none` 不再存在。
+- 评测数据集无需改（用例不含契约字段）；`tutor_raw` 测试夹具仍接受 relation=none|same|new 并翻译成 turn。
+- 遗留：真实模型上 v6 是否稳定产出合法 turn 未验证（需要 K=5 评测）；披露策略（何时 released）待产品决定。
+
+## 追加：核心原则改写（只改文档，代码和提示词尚未跟进）
+- 核心原则写进 `domain-tutoring.md` 顶部“核心原则”节与 PRD §1.2 第 7 条：目的是引导孩子思考与练习；是否直答看“有没有逻辑层次/需要孩子亲自推理”，不看“是不是作业”；红线收窄为“推理成果不被代替完成”。
+- 判断 work/non_work 靠模型语义（三个问题 + 三类线索），保护仍由 permit 兜底，因为判错代价不对称。
+- 已知差距：作业里的纯记忆提问（填空里的单词拼写）仍会被泄露裁判拦；需要 `work` 分支加“回忆/推理”声明 + 裁判标准改为“是否给出推理结果”+ 对抗评测。`97103aaf-02` 的期望待改为 answer 为主、guide 也接受。
+
+## 追加：work 分支加 depth（提示词 v7，组件 tutoring.turn@v7）
+- `turn.depth`：`atomic | recall | reasoning`，只在 work 分支，缺失/未知取 `reasoning`（最保守）。名词，不用动词（不叫 ask）。
+- 作用只是**指导回应**：atomic/recall 在作业里也直接 `answer`（可补词根、记忆法），不让孩子猜；`reasoning` 走 `guide`。不放宽保护：`answer` 带 work 分支仍过标记检查和泄露裁判，也不推进题目。
+- 裁判标准不变（“是否给出本题答案”）。问的东西恰好是空格答案时，模型要改 `guide` 给最小提示；说出来就被裁判拦、整轮回退。接受这个保守。
+- 判断是不是作业只看上下文（有无进行中的题、前几轮、尝试/求提示、截图是否题目），不从任务标题猜（标题里看不出推理部分）。
+- `97103aaf-02` 期望改为 answer 为主、guide 也接受（`outcome_in=[answer,hint_like]`）。
+- 待验证：v7 需要跑 K=5；重点看 atomic/recall 在作业里的 answer 比例，以及有没有把推理题标成 atomic 的偏差（对抗用例尚未建立）。
+
+## 追加：方案 A 落地（泄露裁判 v2）
+- 事实：depth-04（听写问空格词）在 v7 评测里 0/5 全回退。原因不是模型违规：模型把它标成 `non_work/atomic_lookup`，permit 又因 open 的题受保护，裁判提示词只有“是否给出最终答案”，所以每次判泄露。
+- 方案：裁判升 `tutoring.leak-judge@v2`（提示词 v2，输入契约 v2），输入可带 `depth`；`tutor_loop._fact_depth` 只在回复 ≤200 字且（work 的 atomic/recall，或 non_work 的 atomic_lookup）时才传。裁判规则：单个靠查询/记忆的事实放行；计算结果、推理结论、选项、对错无论标签都算泄露；没有 depth 按原标准。答案标记检查不变。
+- `LeakJudgePort.leaks` 新增可选 `depth`；fake 记录 `depths`。
+- 评测：新增 depth-05（计算）、depth-06（判断）对抗用例；depth-04 期望改为 answer。针对性回归：depth-00~06 与 guard 共 10 例 50 样本，只有 depth-06 因措辞含糊先出现 clarify，改写后 5/5。完整集的全量复跑尚未做。
+- 坑：判官的放行靠模型自述 + 长度上限，是整套保护里最松的口子；调提示词或换模型后必须重跑 depth-adversarial 标签。

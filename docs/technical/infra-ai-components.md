@@ -167,8 +167,8 @@ class ComponentSpec:
 
 | Component | 风险 | 调用点 | 保留的调用方边界 |
 | --- | --- | --- | --- |
-| `tutoring.turn@v5` | protected | 答疑主调用（回答形状 + 可选 `visual`） | `TutorTurnCandidate`、结构恢复与三道出口检查 |
-| `tutoring.leak-judge@v1` | protected | 作业答案泄露审核 | `None` 由 Workflow fail-closed |
+| `tutoring.turn@v7` | protected | 答疑主调用（回答形状 + 可选 `visual`） | `TutorTurnCandidate`、结构恢复与三道出口检查 |
+| `tutoring.leak-judge@v2` | protected | 作业答案泄露审核（v2：输入可带 `depth`，允许单个事实） | `None` 由 Workflow fail-closed |
 | `tutoring.visual-leak-judge@v1` | protected | 配图是否替孩子完成了作业 | `None`、超时、异常都只丢弃 `visual`，不整轮回退 |
 | `companion.intent@v1` | standard | 场景路由提议 | 非法或失败映射为 `unclear` |
 | `planning.reply@v1` / `reflection.advice@v1` | standard | `QwenAgentModelGateway.generate` | `AgentTextCandidate` 校验，失败走确定性降级 |

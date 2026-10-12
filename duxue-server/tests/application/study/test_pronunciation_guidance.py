@@ -220,7 +220,7 @@ def test_clarify_with_a_stray_lesson_keeps_the_clarification(db):
 def test_lesson_on_an_answer_act_is_dropped_and_never_projected(db):
     ward = create_ward(db)
     db.commit()
-    raw = {**_pronounce(), "act": "answer", "work": {"relation": "none"}}
+    raw = {**_pronounce(), "act": "answer", "turn": {"type": "non_work"}}
     outcome = _present(db, _invocation(ward.id, "apple"), raw)
     assert outcome.next_interaction["model_fallback"] is False
     assert "kind" not in outcome.next_interaction or outcome.next_interaction["kind"] != "pronunciation_lesson"

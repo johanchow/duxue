@@ -255,7 +255,7 @@ LLM judge 有自己的假阳/假阴率；论文也承认连自家的 Math Error 
 - `--variant <V>`：具名 prompt 变换。现有 `baseline` 与 `drop-no-guess-clause`（去掉窗口规则里"不要自己补一个对象"这句，用于验证它是否促使模型在指代明显时仍选择澄清）。变换目标文本已变化时会显式报错，防止静默失效。
 - 原则：**一次只改一个变量**；variant 必须能被单测证明只改了预期的那一处；它们不碰注册表、不读 `AI_MODEL_OVERRIDES`。
 - 采用某个候选，必须按 [AI Component §七](infra-ai-components.md) 的发布路径，做成显式、版本化的组件变更（提升版本、更新 prompt 摘要锁、补回归）。
-- 需要契约改动才能做的实验（把 `act` 后置、`pending_clarification` + `resolution` 字段；`confirm` 已在 `tutor-turn.v2` 去掉）不属于 variant，应先落成具名候选实现，再用同一数据集对比。
+- 需要契约改动才能做的实验（把 `act` 后置、`pending_clarification` + `resolution` 字段；`confirm` 已在 `tutor-turn.v3` 去掉）不属于 variant，应先落成具名候选实现，再用同一数据集对比。
 
 ## 九、运行与发布流程
 
@@ -275,7 +275,7 @@ python -m evals compare var/evals/<A>.json var/evals/<B>.json
 
 **CI**：只跑无网络部分（数据集校验、判分、Runner、报告、export 的单测）。真实模型评测**不进 pytest/CI**——`conftest` 已全局禁止外部模型调用。
 
-**通过阈值（v1）**：不设自动硬门槛。下列改动发布前必须人工跑一次并留存结果：换模型、改 `tutoring.turn` / `companion.intent` 的 prompt、改 `tutor-turn.v2` 契约或出口检查。要求：`confirmed` 集稳定通过的 Case 数不低于上次基线，fallback 率不升，guard 不退化；落在区间内的变化一律按噪声处理。待 `confirmed` 集足够大后再收紧为自动门槛，不为小数据集固化百分比。
+**通过阈值（v1）**：不设自动硬门槛。下列改动发布前必须人工跑一次并留存结果：换模型、改 `tutoring.turn` / `companion.intent` 的 prompt、改 `tutor-turn.v3` 契约或出口检查。要求：`confirmed` 集稳定通过的 Case 数不低于上次基线，fallback 率不升，guard 不退化；落在区间内的变化一律按噪声处理。待 `confirmed` 集足够大后再收紧为自动门槛，不为小数据集固化百分比。
 
 ## 十、局限与风险
 
@@ -304,7 +304,7 @@ python -m evals compare var/evals/<A>.json var/evals/<B>.json
 
 验收：
 
-- 评测中对受保护作业题的 `act=answer` 只按内容判定（答案标记 `answer_marker`、泄露裁判 `leak_detected`），不因 `act`/`relation` 标签本身回退，与生产一致；闲聊轮和只带无证据 `progress` 的 `guide` 不回退。
+- 评测中对受保护作业题的 `act=answer` 只按内容判定（答案标记 `answer_marker`、泄露裁判 `leak_detected`），不因 `act`/`turn` 标签本身回退，与生产一致；闲聊轮和只带无证据 `progress` 的 `guide` 不回退。
 - `validate` 在无密钥环境可运行；`run` 缺密钥时报明确错误。
 - 数据集无 PII、无 `data:` URL、无存储路径；`confirmed` 均有 `reviewed_by`。
 - 既有答疑、组件与架构测试保持通过。
@@ -312,7 +312,7 @@ python -m evals compare var/evals/<A>.json var/evals/<B>.json
 ## 十二、后续（未做）
 
 - 人工复核首批标注，提升 `confirmed` 比例。
-- 用同一数据集做契约级单变量实验：`act` 后置、`pending_clarification` + `resolution`（`confirm` 语义拆分已随 `tutor-turn.v2` 落地）。
+- 用同一数据集做契约级单变量实验：`act` 后置、`pending_clarification` + `resolution`（`confirm` 语义拆分已随 `tutor-turn.v3` 落地）。
 - 有状态的多步重放（引入 pending 状态后）。
 - 判官型指标与校准集（泄露细判、认知参与度）。
 - `confirmed` 集足够大后，把 §九 的阈值收紧为自动门槛。
