@@ -132,7 +132,7 @@ def _check_visual_leak(leak_judge: LeakJudgePort, text: str, task_title, problem
 
 
 # 单个事实的确定性放行上限（字）。超过就不可能"只是一个事实"，交判官按严格标准审。
-FACT_REPLY_MAX_CHARS = 40
+FACT_REPLY_MAX_CHARS = 120
 # 判官看到本答疑会话最近这么多道题：`relation=new` 放弃的题不受保护，但孩子随后追问它的答案时，
 # 判官必须还能认出来。
 JUDGE_RECENT_PROBLEMS = 3

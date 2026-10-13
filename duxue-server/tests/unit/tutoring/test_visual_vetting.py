@@ -110,7 +110,7 @@ def test_a_short_single_fact_passes_the_gate_without_asking_the_judge():
     ("这句话是错的。", "judgement"),
     ("√", "judgement"),
     ("所以是质数。", "inference"),
-    ("海" * 41, "too_long"),
+    ("海" * 121, "too_long"),
 ])
 def test_the_gate_sends_results_disguised_as_facts_to_the_judge(content, reason):
     """depth-adversarial：计算结果、选项、对错、推理结论，无论标签都交判官按严格标准审。"""
@@ -128,8 +128,8 @@ def test_the_gate_needs_a_fact_label_on_an_answer():
     def gate(raw):
         return fact_gate(TutorTurnCandidate.model_validate(raw))
 
-    assert FACT_REPLY_MAX_CHARS == 40
-    assert gate(tutor_raw("answer", "海" * 40, relation="same", depth="atomic")) is None
+    assert FACT_REPLY_MAX_CHARS == 120
+    assert gate(tutor_raw("answer", "海" * 120, relation="same", depth="atomic")) is None
     assert gate(tutor_raw("guide", "beach。", relation="same", depth="atomic")) == "not_answer"
     assert gate(tutor_raw("answer", "beach。", relation="same")) == "not_fact"  # missing depth is reasoning
     assert gate(tutor_raw("answer", "因为散射。", relation="none", topic="spontaneous_curiosity")) == "not_fact"
