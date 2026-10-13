@@ -6,7 +6,6 @@ fallback 与线上完全同源，不另抄一份规则。
 
 from __future__ import annotations
 
-import re
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
@@ -140,16 +139,6 @@ JUDGE_RECENT_PROBLEMS = 3
 LEAK_RETRY_REASONS = frozenset({"answer_marker", "leak_detected"})
 LEAK_REPAIR = "泄露：上一版回复给出了这道作业的答案，孩子不能看到。"
 
-# 模型最常把这几类推理结果谎称成"记住的事实"（见评测 depth-adversarial）。
-# 命中任一条就不放行；宁可多问一次判官，不可误放。
-_FACT_BLOCKERS = (
-    ("digit", re.compile(r"[0-9０-９]")),
-    ("math", re.compile(r"[=＝+＋×÷*＊<>＜＞≤≥≈%％]")),
-    ("option", re.compile(r"(?<![A-Za-z])[A-D](?![A-Za-z])|选项|选择")),
-    ("judgement", re.compile(r"[√✓✗✔✘]|正确|错误|不对|对的|错的|是对|是错")),
-    ("inference", re.compile(r"所以|因此|因为|可得|得出|推出|算出|等于|结果")),
-)
-
 
 def judge_problem_summary(recent_problems: list[str], student_said: str) -> str | None:
     """泄露判官的 ``problem``：最近几道题（新的在前）加孩子本轮的话。生产与评测共用。"""
@@ -163,18 +152,13 @@ def judge_problem_summary(recent_problems: list[str], student_said: str) -> str 
 def fact_gate(candidate: TutorTurnCandidate) -> str | None:
     """单个事实的确定性放行。返回 None 表示放行（不问文字判官），否则返回不放行的原因。
 
-    放行要同时满足：`answer`；模型声明单个事实（work 的 atomic/recall，或 non_work 的
-    atomic_lookup）；正文很短；且不像计算结果、选项、对错或推理结论。标签只是必要条件，
-    代码规则才是放行依据；答案标记检查在此之前已经照跑。"""
-    if candidate.act != "answer":
-        return "not_answer"
+    放行不看 ``act``。模型声明了单个事实（work 的 atomic/recall，或 non_work 的
+    atomic_lookup）且正文不超过 ``FACT_REPLY_MAX_CHARS`` 就放行。不按关键词或数字拦截。
+    答案标记检查在此之前已经照跑。"""
     if candidate.depth not in {"atomic", "recall"} and candidate.topic != "atomic_lookup":
         return "not_fact"
     if len(candidate.content) > FACT_REPLY_MAX_CHARS:
         return "too_long"
-    for reason, pattern in _FACT_BLOCKERS:
-        if pattern.search(candidate.content):
-            return reason
     return None
 
 
@@ -210,8 +194,7 @@ def vet_candidate(
     visual_leaks: bool | None = False
     if verdict.needs_leak_check:
         gate = fact_gate(candidate)
-        if candidate.act == "answer":
-            record_tutor_fact_gate(outcome=gate or "passed")
+        record_tutor_fact_gate(outcome=gate or "passed")
         judge_text = gate is not None
         jobs = {}
         # 文字判官与图判官互不依赖，并行发出。

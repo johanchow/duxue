@@ -167,7 +167,7 @@ class ComponentSpec:
 
 | Component | 风险 | 调用点 | 保留的调用方边界 |
 | --- | --- | --- | --- |
-| `tutoring.turn@v10` | protected | 答疑主调用（契约 `tutor-turn.v4`：回答形状 + 可选 `visual`；v10：“泄露：”重试改用 `guide`，单个事实回答不超过 120 字） | `TutorTurnCandidate`、结构恢复与三道出口检查 |
+| `tutoring.turn@v11` | protected | 答疑主调用（契约 `tutor-turn.v4`：回答形状 + 可选 `visual`；v11：只有孩子明说是作业/试卷，或图片里有作业本、试卷、印好的题目、答题空格、分数，才标 `work`；事实放行不看 `act`） | `TutorTurnCandidate`、结构恢复与三道出口检查 |
 | `tutoring.leak-judge@v4` | protected | 作业答案泄露审核（v3：`problem` 可列出本会话最近几道题和孩子本轮的话；v4：不再接收 `depth`，只按严格标准审，单个事实由代码事实闸门放行） | `None` 由 Workflow fail-closed |
 | `tutoring.visual-leak-judge@v2` | protected | 配图是否替孩子完成了作业（v2：`problem` 同文字判官，可列多道题） | `None`、超时、异常都只丢弃 `visual`，不整轮回退 |
 | `companion.intent@v1` | standard | 场景路由提议 | 非法或失败映射为 `unclear` |

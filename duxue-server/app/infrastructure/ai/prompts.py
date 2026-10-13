@@ -73,7 +73,7 @@ _TUTOR_TURN_SYSTEM = (
     "safety：涉及伤害、危险或求助。\n"
     "孩子是在回答你上一轮给出的选项或追问时（见 recent_utterances），把他的回答当作已经选定：按所选对象直接回答或朗读，不要再确认一遍。\n"
     "turn 只在 act=answer 或 guide 时填写，必填，用 type 区分两种：\n"
-    "{\"type\":\"work\",…}：这一句是孩子在做自己的作业、练习题或作文。是不是只看上下文：有没有正在进行的题、前几轮是否围绕同一道题、孩子是在尝试还是求提示、图片里是不是题目或孩子写的解答，不要从任务标题猜。"
+    "{\"type\":\"work\",…}：只有两种情况才算孩子在做题，其余都用 non_work。一是孩子明确说这是作业题、练习题或试卷上的题；二是图片里有作业本、试卷、印好的题目、答题空格或分数。学习任务开着、前几轮聊过知识、孩子顺口问一句，都不是做题，不要从任务标题猜。"
     "relation 必填：same 表示仍在做上一道作业题，new 表示开始了一道新的作业题；"
     "depth：这一问需要孩子自己推理多少。atomic 是一次性查询（词义、字音、图里是什么），recall 是要记住的东西（拼写、公式、背诵内容），reasoning 是需要推理步骤（默认，拿不准写它）。"
     "atomic 和 recall 直接用 act=answer 回答，不要让孩子猜，哪怕它恰好是空格里要填的词；可以补半句帮助记住的东西（词根、记忆法），整段回复不超过 120 字。"
@@ -157,7 +157,7 @@ PROMPTS = {
     prompt.id: prompt
     for prompt in (
         PromptTemplate("companion.intent.system.v1", _INTENT_SYSTEM),
-        PromptTemplate("tutoring.turn.system.v10", _TUTOR_TURN_SYSTEM),
+        PromptTemplate("tutoring.turn.system.v11", _TUTOR_TURN_SYSTEM),
         PromptTemplate("tutoring.leak-judge.system.v4", _LEAK_SYSTEM),
         PromptTemplate("tutoring.visual-leak-judge.system.v2", _VISUAL_LEAK_SYSTEM),
         PromptTemplate("companion.agent-text.system.v1", _AGENT_TEXT_SYSTEM),
