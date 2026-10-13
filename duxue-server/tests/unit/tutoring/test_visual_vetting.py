@@ -80,7 +80,10 @@ def test_invalid_diagram_is_dropped_and_reported_without_calling_the_judge():
 
 
 def test_relation_none_on_a_protected_problem_is_still_checked_even_with_a_diagram():
-    raw = tutor_raw("answer", "先把 3 移到右边再看。", relation="none", visual=STEPS)
+    """非事实的回答在受保护的题上仍交判官；单个事实才跳过文字判官。"""
+    raw = tutor_raw(
+        "answer", "先把 3 移到右边再看。", relation="none", topic="spontaneous_curiosity", visual=STEPS,
+    )
     result = vet(raw, StaticVisualLeakJudge(True, True), permit=PROTECTED)
     assert result.failure == "leak_detected"
 
@@ -103,23 +106,19 @@ def test_a_short_single_fact_passes_the_gate_without_asking_the_judge():
         assert vet(raw, judge).failure is None and judge.calls == 0, raw
 
 
-@pytest.mark.parametrize("content, reason", [
-    ("得数是 391。", "digit"),
-    ("x＝y＋z", "math"),
-    ("选 B。", "option"),
-    ("这句话是错的。", "judgement"),
-    ("√", "judgement"),
-    ("所以是质数。", "inference"),
-    ("海" * 121, "too_long"),
-])
-def test_the_gate_sends_results_disguised_as_facts_to_the_judge(content, reason):
-    """depth-adversarial：计算结果、选项、对错、推理结论，无论标签都交判官按严格标准审。"""
+def test_the_gate_does_not_use_keywords_or_digits():
+    """放行不看关键词和数字。短的计算结果、选项、对错、带“所以”的事实都放行；超长才交判官。"""
     from app.application.workflows.tutor_loop import fact_gate
 
-    raw = tutor_raw("answer", content, relation="same", depth="recall")
-    assert fact_gate(TutorTurnCandidate.model_validate(raw)) == reason
+    for content in ("得数是 391。", "x＝y＋z", "选 B。", "这句话是错的。", "√", "所以是质数。"):
+        raw = tutor_raw("answer", content, relation="same", depth="recall")
+        assert fact_gate(TutorTurnCandidate.model_validate(raw)) is None
+        judge = StaticLeakJudge(True)
+        assert vet(raw, judge).failure is None and judge.calls == 0
+    long = tutor_raw("answer", "海" * 121, relation="same", depth="recall")
+    assert fact_gate(TutorTurnCandidate.model_validate(long)) == "too_long"
     judge = StaticLeakJudge(True)
-    assert vet(raw, judge).failure == "leak_detected" and judge.calls == 1
+    assert vet(long, judge).failure == "leak_detected" and judge.calls == 1
 
 
 def test_the_gate_needs_a_fact_label_on_an_answer():
@@ -130,11 +129,11 @@ def test_the_gate_needs_a_fact_label_on_an_answer():
 
     assert FACT_REPLY_MAX_CHARS == 120
     assert gate(tutor_raw("answer", "海" * 120, relation="same", depth="atomic")) is None
-    assert gate(tutor_raw("guide", "beach。", relation="same", depth="atomic")) == "not_answer"
+    assert gate(tutor_raw("guide", "beach。", relation="same", depth="atomic")) is None
     assert gate(tutor_raw("answer", "beach。", relation="same")) == "not_fact"  # missing depth is reasoning
     assert gate(tutor_raw("answer", "因为散射。", relation="none", topic="spontaneous_curiosity")) == "not_fact"
     clarify = {"act": "clarify", "content": "哪一个？", "clarify": {"candidates": ["beach"]}}
-    assert gate(clarify) == "not_answer"
+    assert gate(clarify) == "not_fact"
 
 
 def test_a_gated_fact_with_a_diagram_still_has_the_diagram_judged():
