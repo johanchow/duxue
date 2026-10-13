@@ -308,12 +308,6 @@ def test_a_single_fact_inside_homework_is_answered_directly_unless_it_is_the_ans
     assert blocked.next_interaction["model_fallback"] is True
 
 
-def test_history_ref_outside_the_candidates_is_dropped_not_rejected(db):
-    _, session = _setup(db)
-    workflow, _ = _workflow(db, tutor_raw("guide", history_ref="u99"))
-    assert _ask(db, workflow, session).next_interaction["model_fallback"] is False
-
-
 def test_a_task_session_gets_the_reminder_after_a_knowledge_answer(db):
     _, session = _setup(db, "英语的典范故事阅读")
     workflow, _ = _workflow(db, KNOWLEDGE)
@@ -427,13 +421,77 @@ def test_unknown_tool_is_a_typed_error_observation(db):
     assert outcome.next_interaction["model_fallback"] is False
 
 
-def test_history_ref_from_lookup_history_is_authorized(db):
+def test_lookup_history_finds_an_earlier_ward_message(db):
     _, session = _setup(db)
     workflow, _ = _workflow(db, ATTEMPT)
     _ask(db, workflow, session, "我觉得是 3 因为 y 等于 1")
     workflow.turn_model = model = StaticTutorModel(
-        {"tool": "lookup_history", "args": {"query": "y 等于"}}, tutor_raw("guide", history_ref="u0"),
+        {"tool": "lookup_history", "args": {"query": "y 等于"}}, tutor_raw("guide"),
     )
     _ask(db, workflow, session, "再提示一下")
     obs = model.calls[1]["observations"][0]
     assert obs["status"] == "unique" and obs["matches"][0]["ref"].startswith("m:")
+
+
+def test_the_leak_judge_still_sees_a_problem_abandoned_by_relation_new(db):
+    """relation=new 放弃了旧题；孩子随后追问旧题答案时，判官必须还能对照旧题。"""
+    _, session = _setup(db)
+    judge = StaticLeakJudge(False)
+    workflow, _ = _workflow(db, ATTEMPT, judge=judge)
+    _ask(db, workflow, session, "小明有3份小红有5份一共几份")
+    workflow.turn_model = StaticTutorModel(tutor_raw("guide", "这道新题先读题。", relation="new"))
+    _ask(db, workflow, session, "换一题：3x=9")
+    assert [row.status for row in db.query(TutoringProblem).order_by(TutoringProblem.created_at)] == ["abandoned", "open"]
+    workflow.turn_model = StaticTutorModel(tutor_raw("answer", "一共 8 份。", relation="none"))
+    _ask(db, workflow, session, "上一题答案是多少")
+    problem = judge.problems[-1]
+    assert "小明有3份小红有5份一共几份" in problem and "换一题：3x=9" in problem
+    assert "孩子本轮说：上一题答案是多少" in problem
+
+
+def test_an_attempt_without_evidence_records_no_attempt_fact(db):
+    """事实与计数同源：没有证据的 attempt 不计实质尝试，也不发 attempt_recorded。"""
+    _, session = _setup(db)
+    workflow, _ = _workflow(db, tutor_raw("guide", "你是怎么想的？", student_move="attempt", progress="some"))
+    _ask(db, workflow, session, "我觉得是 3")
+    assert db.query(TutoringProblem).one().substantive_attempts == 0
+    assert "tutoring.attempt_recorded" not in _events(db)
+
+
+def test_a_replayed_attempt_turn_does_not_record_the_attempt_twice(db):
+    _, session = _setup(db)
+    workflow, _ = _workflow(db, ATTEMPT)
+    turn = {"study_session_id": session.id, "content": "我觉得是 3", "tutoring_directive": "ask"}
+    invocation = RunInvocation(run_id=uid(), thread_id=uid(), ward_id=session.ward_id, agent_type="tutoring", turn=turn)
+    workflow.invoke(invocation)
+    workflow.invoke(invocation)
+    db.commit()
+    assert _events(db).count("tutoring.attempt_recorded") == 1
+
+
+def test_a_hint_request_with_a_stray_submitted_progress_still_counts_as_a_hint(db):
+    _, session = _setup(db)
+    raw = tutor_raw("guide", "先读题。", student_move="request_hint", progress="submitted", evidence="x=3")
+    workflow, _ = _workflow(db, raw)
+    outcome = _ask(db, workflow, session, "给点提示")
+    problem = db.query(TutoringProblem).one()
+    assert outcome.next_interaction["hint_index"] == 1
+    assert problem.status == "open" and problem.substantive_attempts == 0
+
+
+def test_a_redirect_does_not_get_a_second_reminder(db):
+    _, session = _setup(db, "英语的典范故事阅读")
+    workflow, _ = _workflow(db, tutor_raw("redirect", "我们先把这篇故事读完，游戏的事等会儿再聊。", relation=None))
+    content = _ask(db, workflow, session, "我们来玩游戏吧").next_interaction["content"]
+    assert "先回到正在进行的任务" not in content
+
+
+def test_a_clarify_on_a_protected_problem_cannot_carry_the_answer(db):
+    _, session = _setup(db)
+    workflow, _ = _workflow(db, ATTEMPT)
+    _ask(db, workflow, session, "我觉得是 3")
+    workflow.turn_model = StaticTutorModel(tutor_raw("clarify", "你问的是哪个？", relation=None, candidates=["x 等于 2", "y 等于 1"]))
+    workflow.leak_judge = StaticLeakJudge(True)
+    outcome = _ask(db, workflow, session, "哪个是答案")
+    assert outcome.next_interaction["model_fallback"] is True
+    assert "x 等于 2" not in outcome.next_interaction["content"]

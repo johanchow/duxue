@@ -1,7 +1,7 @@
 ---
 slug: tutor-turn-contract-v2
 created: 2026-10-11T12:05:50Z
-status: in-progress
+status: done
 ---
 
 # tutor-turn-contract-v2 spec
@@ -71,3 +71,4 @@ status: in-progress
 - 步骤 1 可独立发布，风险最低，建议先做；步骤 2–5 是破坏性契约变更，需 Gate 1 确认后再动。
 - 已定：`guide` 不保留 probe/hint/example 区分；`redirect` 保留，与 `chat` 并列。
 - 一次做完 1–5（项目未上线）。
+- 后续：契约已演进到 `tutor-turn.v3`（`turn` 判别联合 + `depth`，见 note 121）与 `tutor-turn.v4`（见 `done/tutor-turn-contract-hardening.md`、note 122）；本文件的目标契约草案只作历史。

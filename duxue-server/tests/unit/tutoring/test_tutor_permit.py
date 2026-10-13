@@ -9,10 +9,10 @@ from app.contexts.tutoring.domain.tutor_permit import (
 )
 
 
-def _turn(kind="attempt", progress=None, act="guide", work=True, same=True, counts=True, evidence=None, next_subgoal=None):
+def _turn(kind="attempt", progress=None, act="guide", work=True, counts=True, evidence=None, next_subgoal=None):
     return ProblemAssessment(
         effective_work_product=work, student_move=kind, progress=progress,
-        same_problem=same, act=act, counts_as_attempt=counts,
+        act=act, counts_as_attempt=counts,
         subgoal_evidence=evidence, next_subgoal=next_subgoal,
     )
 
@@ -62,11 +62,12 @@ def test_full_student_proposal_is_submitted_not_marked_correct():
     assert TutorPermitPolicy.permit(replace(state, status="abandoned")).answer_protected is False
 
 
-def test_different_problem_starts_open_with_empty_progress():
-    prior = ProblemState(active_subgoal="旧题", substantive_attempts=3, hints_given=2)
-    state = TutorPermitPolicy.advance(prior, _turn(kind="request_hint", same=False))
+def test_a_turn_after_a_submission_starts_a_fresh_open_problem():
+    prior = ProblemState(status="submitted", substantive_attempts=3, hints_given=2)
+    state = TutorPermitPolicy.advance(prior, _turn(kind="request_hint"))
     assert state.status == "open"
     assert state.substantive_attempts == 0
+    assert state.hints_given == 1
     assert state.active_subgoal is None
 
 

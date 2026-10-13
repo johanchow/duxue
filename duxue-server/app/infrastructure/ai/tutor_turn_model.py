@@ -1,4 +1,4 @@
-"""tutor-turn.v3 的模型适配器：主调用与泄露检查。
+"""tutor-turn.v4 的模型适配器：主调用与泄露检查。
 
 主调用每次都带窗口图片和本轮图片。适配器只返回原始 JSON，结构校验在 Application。
 """
@@ -25,7 +25,7 @@ class QwenTutorTurnGateway:
         current_images: list[str | None] | None = None, repair_error: str | None = None,
         observations: list[dict] | None = None,
     ) -> dict:
-        payload: dict = {"contract": "tutor-turn.v3", "instruction": instruction, "context": envelope}
+        payload: dict = {"contract": "tutor-turn.v4", "instruction": instruction, "context": envelope}
         if observations:
             payload["observations"] = observations
         if repair_error:

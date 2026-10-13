@@ -1,4 +1,4 @@
-"""tutor-turn.v2：模型候选契约与出口检查。
+"""tutor-turn.v4：模型候选契约与出口检查。
 
 候选是不可信的提议。每轮必经三道检查：结构、越权与一致性、泄露。
 任一不通过，调用方回退固定话术，不写事实，不推进题目记录。
@@ -33,12 +33,12 @@ from app.application.workflows.tutor_visual import (
 from app.contexts.study.domain.execution import ANSWER_LEAK_MARKERS
 from app.contexts.tutoring.domain.tutor_permit import TutorPermit
 
-CONTRACT_ID = "tutor-turn.v3"
+CONTRACT_ID = "tutor-turn.v4"
 
 Act = Literal["answer", "guide", "chat", "clarify", "redirect", "pronounce", "safety"]
 Relation = Literal["none", "same", "new"]
 WorkRelation = Literal["same", "new"]
-Topic = Literal["atomic_lookup", "spontaneous_curiosity", "chat"]
+Topic = Literal["atomic_lookup", "spontaneous_curiosity"]
 # How much of the Ward's own reasoning the ask carries.  atomic: a one-off lookup (a word's meaning,
 # a character's reading, what is in the picture).  recall: something to remember (a spelling, a
 # formula, a fact).  reasoning: needs derivation steps.  Unknown or missing is the most protective.
@@ -102,6 +102,15 @@ class WorkTurn(BaseModel):
         value = _blank_is_absent(value)
         return value[:500] if isinstance(value, str) else None
 
+    @model_validator(mode="after")
+    def _attempt_owns_progress(self):
+        # progress and evidence describe the Ward's own attempt; on any other move they are noise
+        # that would otherwise suppress the hint count or look like a submission.
+        if self.student_move != "attempt":
+            self.progress = None
+            self.evidence = None
+        return self
+
 
 class NonWorkTurn(BaseModel):
     """Not the Ward's work product.  ``topic`` separates a one-off lookup (a word, a translation,
@@ -115,7 +124,7 @@ class NonWorkTurn(BaseModel):
     @field_validator("topic", mode="before")
     @classmethod
     def _topic(cls, value):
-        return value if value in {"atomic_lookup", "spontaneous_curiosity"} else "atomic_lookup"
+        return value if value in Topic.__args__ else "atomic_lookup"
 
 
 Turn = Annotated[WorkTurn | NonWorkTurn, Field(discriminator="type")]
@@ -142,30 +151,24 @@ class PronouncePayload(BaseModel):
 
 
 class TutorTurnCandidate(BaseModel):
-    """tutor-turn.v3.  Required: ``act`` and ``content``.  Everything else is optional
+    """tutor-turn.v4.  Required: ``act`` and ``content``.  Everything else is optional
     and lives in the sub-object that belongs to one act, so no field can contradict
     another.  ``turn`` is a discriminated union (``work`` | ``non_work``) required for
     ``answer`` and ``guide``.  A sub-object that does not belong to the act is dropped before
-    validation (see ``shape_by_act``)."""
+    validation (see ``shape_by_act``).  ``content`` is the whole child-facing text: there is
+    no separate follow-up field to disagree with it."""
 
     # Provider-only fields must not make a safe child-facing reply fail. Unknown
     # fields are discarded and never reach domain state or persistence.
     model_config = ConfigDict(extra="ignore")
     act: Act
     content: str = Field(min_length=1, max_length=1200)
-    follow_up_question: str | None = Field(default=None, max_length=300)
-    history_ref: str | None = None
     turn: Turn | None = None
     clarify: ClarifyPayload | None = None
     pronounce: PronouncePayload | None = None
     # 配图是可选的展示增强：非法或不适用时整张丢弃并记下原因，绝不让候选整体失败。
     visual: Visual | None = None
     visual_dropped: str | None = Field(default=None, exclude=True)
-
-    @field_validator("follow_up_question", "history_ref", mode="before")
-    @classmethod
-    def blank_optional_text_is_absent(cls, value):
-        return _blank_is_absent(value)
 
     @model_validator(mode="before")
     @classmethod
@@ -244,7 +247,7 @@ class TutorTurnCandidate(BaseModel):
         return self.turn.depth if isinstance(self.turn, WorkTurn) else None
 
     @property
-    def topic(self) -> Topic | None:
+    def topic(self) -> Topic | Literal["chat"] | None:
         if isinstance(self.turn, NonWorkTurn):
             return self.turn.topic
         return "chat" if self.act == "chat" else None
@@ -272,6 +275,11 @@ class TutorTurnCandidate(BaseModel):
     @property
     def candidates(self) -> list[str]:
         return self.clarify.candidates if self.clarify else []
+
+    @property
+    def shown_text(self) -> str:
+        """Every word of the reply the Ward will read (the lesson card is checked on its own)."""
+        return "\n".join([self.content, *self.candidates])
 
 
 class TutorModelPort(Protocol):
@@ -320,7 +328,6 @@ class Verdict:
     effective_work_product: bool = False
     answer_protected: bool = False
     needs_leak_check: bool = False
-    history_ref: str | None = None
 
 
 def build_tutor_instruction(
@@ -335,10 +342,7 @@ def build_tutor_instruction(
     }, ensure_ascii=False)
 
 
-def check_authority(
-    candidate: TutorTurnCandidate, permit: TutorPermit, *,
-    authorized_history_refs: frozenset[str], has_work_input: bool,
-) -> Verdict:
+def check_authority(candidate: TutorTurnCandidate, permit: TutorPermit) -> Verdict:
     """检查 2：越权与一致性。只收紧，不放松。
 
     只有会让孩子看到不该看的内容的情形才拒绝（答案保护、发音卡不可用）。
@@ -360,7 +364,13 @@ def check_authority(
             return Verdict(False, "segment_not_in_source")
         return Verdict(True)
     if act == "clarify":
-        return Verdict(True)
+        # The candidates are shown to the Ward as well, so on a protected problem they are
+        # held to the same content check as any other reply.
+        if not permit.answer_protected:
+            return Verdict(True)
+        if any(marker in candidate.shown_text for marker in ANSWER_LEAK_MARKERS):
+            return Verdict(False, "answer_marker")
+        return Verdict(True, answer_protected=True, needs_leak_check=True)
 
     # Protection is owned by the permit (code policy), not by the model.  While a problem is
     # protected, every answer/guide is checked on its content (answer marker, leak judge,
@@ -377,8 +387,7 @@ def check_authority(
     # never opens, abandons or advances a problem record (a mislabelled knowledge question must
     # not lock the next turn).  It is still leak-checked when it claims to touch the work.
     work_product = claims_work and act != "answer"
-    ref = candidate.history_ref if candidate.history_ref in authorized_history_refs else None
     return Verdict(
         True, effective_work_product=work_product, answer_protected=answer_protected,
-        needs_leak_check=answer_protected, history_ref=ref,
+        needs_leak_check=answer_protected,
     )

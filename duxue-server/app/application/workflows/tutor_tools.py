@@ -1,4 +1,4 @@
-"""tutor-turn.v2 的只读工具。全部限于当前 Ward，不改变许可，没有副作用。
+"""tutor-turn.v4 的只读工具。全部限于当前 Ward，不改变许可，没有副作用。
 
 观察结果是不可信输入，只带类型化的状态：unique、ambiguous、no_match、tool_error。
 """
@@ -27,7 +27,6 @@ class TutorToolbox:
         self.task_title = task_title
         self.task_active = task_active
         self.window = window
-        self.authorized_refs: set[str] = {item["ref"] for item in history_candidates(window)}
 
     def run(self, name: str, args: dict | None) -> dict:
         args = args if isinstance(args, dict) else {}
@@ -77,5 +76,4 @@ class TutorToolbox:
         hits = hits[:_HISTORY_LIMIT]
         if not hits:
             return {"status": "no_match"}
-        self.authorized_refs.update(hit["ref"] for hit in hits)
         return {"status": "unique" if len(hits) == 1 else "ambiguous", "matches": hits}

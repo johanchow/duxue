@@ -16,7 +16,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from app.application.workflows.teaching_skills import history_candidates
-from app.application.workflows.tutor_loop import call_tutor_model, vet_candidate
+from app.application.workflows.tutor_loop import call_tutor_model, judge_problem_summary, vet_candidate
 from app.application.workflows.tutor_tools import TutorToolbox
 from app.application.workflows.tutor_turn import build_tutor_instruction
 from app.contexts.tutoring.domain.tutor_permit import ProblemState, TutorPermitPolicy
@@ -114,11 +114,11 @@ def _observe_tutor(case: EvalCase, backends: Backends, window: list[dict], image
     if call.candidate is not None:
         vetting = vet_candidate(
             call.candidate, permit=permit,
-            authorized_refs=frozenset(tools.authorized_refs),
-            has_work_input=bool(case.student_said.strip() or images),
             leak_judge=backends.leak_judge or _NeverLeaks(),
             task_title=context.task_title,
-            problem_summary=(problem.summary if problem else None) or case.student_said,
+            problem_summary=judge_problem_summary(
+                [problem.summary] if problem and problem.summary else [], case.student_said,
+            ),
         )
     return classify(call, vetting)
 

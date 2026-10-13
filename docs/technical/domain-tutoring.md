@@ -1,6 +1,6 @@
 # 读学系统 — Tutoring Domain Design
 
-> 状态：讨论稿 · 版本：v3.2（目标设计；契约升为 `tutor-turn.v3`，由 v3.0 的 `domain-study.md` 拆出，实现迁移进度与兼容边界见 [§1.2](#12-现状与迁移边界)）
+> 状态：讨论稿 · 版本：v3.3（目标设计；契约升为 `tutor-turn.v4`，由 v3.0 的 `domain-study.md` 拆出，实现迁移进度与兼容边界见 [§1.2](#12-现状与迁移边界)）
 >
 > 范围：启发式答疑、发音辅导、任务进行中的题外提问回任务提醒、过程事实，以及一次 Ward 输入内的 `TutoringTurnLoop`。
 >
@@ -52,8 +52,8 @@ Context Map 与分层图只在 [ddd-overview.md](ddd-overview.md) 维护。`Stud
 | `ProblemRecord` | `TutoringSession` 内一道作业题的运行记录：题目状态、当前最小教学目标、必要计数 | 题目正文、模型对「懂没懂」的判断 |
 | `ProblemStatus` | `open`（受保护）、`submitted`（孩子已提交完整思路/答案）、`abandoned` | 模型自行宣布的正确性 |
 | `TutorPermit` | 每轮调用模型前由代码算出的答疑许可：题目是否受保护、当前小目标和必要摘要 | 可被替换的提示词片段 |
-| `QuestionKind` | 模型随回复声明的本轮所问：`knowledge_lookup`（含原子知识直答）、`work_product_help`、`chat`、`safety` | 仅因处于作业会话就把原子知识改判为作业成果 |
-| `StudentTurnKind` | 模型对孩子这句话的标注：`attempt`、`ask_hint`、`ask_answer`、`off_topic`、`other` | 已验证事实（要经代码校验和计数后才算） |
+| `turn` | 模型随 `answer`/`guide` 声明的本轮所问：`work`（孩子自己的作业，带 `relation`、`depth` 等）或 `non_work`（带 `topic`） | 仅因处于作业会话就把原子知识改判为作业成果；答案保护的依据 |
+| `StudentMove` | 模型对孩子这句话的标注（`turn.student_move`）：`attempt`、`request_hint`、`request_answer`、`other`；只有 `attempt` 参与计数，其余只进观测 | 已验证事实（要经代码校验和计数后才算） |
 | `TutorTurnCandidate` | 模型经 `finish_turn` 返回的结构化候选，见 [§4.1](#41-模型候选与-finish_turn) | 交互信封、已写入的事实 |
 | `TutorWorkingState` | 答疑 Run 的 checkpoint | Aggregate、长期记忆、完整 transcript |
 | `TutoringTurnLoop` | 一次 Ward 输入内由 LLM 驱动、代码守住入口与出口的有界循环 | 跨回合的教学状态机，也不是第二个 Agent |
@@ -208,7 +208,7 @@ classDiagram
 
 ### 2.3 `TutorPermitPolicy`
 
-`TutorPermitPolicy` 取代 v2.7 的 `HintingPolicy`。它是 Tutoring 的无状态领域服务，也是题目状态和答案保护的唯一裁决。它不调用模型，不写 Repository，不解释开放文本，也不能被替换成一段提示词。可调整的是提示里的教学做法（`tutor-turn.v3`）。
+`TutorPermitPolicy` 取代 v2.7 的 `HintingPolicy`。它是 Tutoring 的无状态领域服务，也是题目状态和答案保护的唯一裁决。它不调用模型，不写 Repository，不解释开放文本，也不能被替换成一段提示词。可调整的是提示里的教学做法（`tutor-turn.v4`）。
 
 它只有两个纯函数：
 
@@ -255,7 +255,7 @@ stateDiagram-v2
 |---|---|---|
 | 每轮工具调用上限 | 3 | 见 [§4.3](#43-工具) |
 
-教学做法不写进策略，而是写进版本化的 `tutor-turn.v3`：苏格拉底式的做法按题目实际推理链和孩子的回答诊断，不固定步数；每轮只提出一个能由孩子完成的下一步；看不清图就说看不清，不编造；`answer_protected=true` 时可以追问、提示、给类似题的例子，不说本题最终答案，也不断言孩子的答案正确。`TutorPermit` 在提示里是数据，不是可被改写的自然语言规则。
+教学做法不写进策略，而是写进版本化的 `tutor-turn.v4`：苏格拉底式的做法按题目实际推理链和孩子的回答诊断，不固定步数；每轮只提出一个能由孩子完成的下一步；看不清图就说看不清，不编造；`answer_protected=true` 时可以追问、提示、给类似题的例子，不说本题最终答案，也不断言孩子的答案正确。`TutorPermit` 在提示里是数据，不是可被改写的自然语言规则。
 
 口头回任务由 Application 根据 `StudySessionQuery` 返回的活动任务决定，不进入 `TutorPermit`。到点仍未开始的邀请由 [Study](domain-study.md#22-startcue) 的 `StartCuePolicy` 决定，二者不合并。
 
@@ -317,9 +317,9 @@ sequenceDiagram
 
 | 本轮已校验的结果 | 写入 |
 |---|---|
-| 按作业成果处理，且 `student_move=attempt` | `tutoring.attempt_recorded`；推进尝试数并记录当前小目标的有效证据；孩子提出完整思路/答案时进入 `submitted` |
+| 按作业成果处理，`student_move=attempt` 且带 `evidence`（尝试数实际增加） | `tutoring.attempt_recorded`；推进尝试数并记录当前小目标的有效证据；孩子提出完整思路/答案时进入 `submitted`。没有证据的 `attempt` 不计数，也不发事实 |
 | 按作业成果处理，且 `act=guide`、`progress` 不是 `submitted` | `tutoring.hint_given`；`hints_given += 1` |
-| 不按作业成果处理，且 `act` 是 `answer` 或 `guide` | `tutoring.curiosity_observed` |
+| `turn.type=non_work` 且 `topic=spontaneous_curiosity` | `tutoring.curiosity_observed`（`atomic_lookup` 不写事实） |
 | `chat`、`safety`、`pronounce`、`clarify`、`redirect`、回退固定话术 | 不写事实，不推进 `ProblemRecord` |
 
 同一轮可以写多条事实（例如一次尝试加一次提示），各自以本轮消息为来源去重。
@@ -385,7 +385,7 @@ flowchart TD
 
 ### 4.1 模型候选与 `finish_turn`
 
-模型在循环中只能返回工具请求或 `finish_turn`。`finish_turn` 由模型经 `ModelGateway` 返回，不由 Coordinator 代写。候选是不可信的提议，契约版本为 `tutor-turn.v3`。必填只有 `act` 和 `content`；其余字段放进只属于某个 `act` 的子对象，不适用于当前 `act` 的子对象在解析时丢弃，不拒绝：
+模型在循环中只能返回工具请求或 `finish_turn`。`finish_turn` 由模型经 `ModelGateway` 返回，不由 Coordinator 代写。候选是不可信的提议，契约版本为 `tutor-turn.v4`。必填只有 `act` 和 `content`，`content` 是孩子看到的全部文字（追问也写在里面，没有单独的追问字段）；其余字段放进只属于某个 `act` 的子对象，不适用于当前 `act` 的子对象在解析时丢弃，不拒绝：
 
 ```python
 class WorkTurn(BaseModel):                             # 孩子自己的作业成果；只有这个分支带作业字段
@@ -393,9 +393,9 @@ class WorkTurn(BaseModel):                             # 孩子自己的作业�
     relation: Literal["same", "new"]                   # 必填：仍是上一道题 / 新的一道题
     depth: Literal["atomic", "recall", "reasoning"] = "reasoning"   # 这一问需要孩子自己推理多少；缺失或未知取最保守的 reasoning
     student_move: Literal["attempt", "request_hint", "request_answer", "other"] = "other"
-    progress: Literal["none", "some", "submitted"] | None = None    # 仅 attempt；submitted 不表示正确
-    evidence: str | None = None                        # 本轮孩子对当前目标的有效产出摘要
-    next_subgoal: str | None = None                    # 过程题下一轮唯一目标
+    progress: Literal["none", "some", "submitted"] | None = None    # 仅 attempt，其他 move 解析时置空；submitted 不表示正确
+    evidence: str | None = None                        # 仅 attempt：本轮孩子对当前目标的有效产出摘要
+    next_subgoal: str | None = None                    # content 里所提问题的目标，即下一轮唯一目标
 
 class NonWorkTurn(BaseModel):                          # 不是作业成果
     type: Literal["non_work"]
@@ -407,8 +407,6 @@ class TutorTurnCandidate(BaseModel):
     model_config = ConfigDict(extra="ignore")          # 多余字段丢弃，不进入领域状态
     act: Literal["answer", "guide", "chat", "clarify", "redirect", "pronounce", "safety"]
     content: str = Field(min_length=1, max_length=1200)   # Markdown / LaTeX
-    follow_up_question: str | None = Field(default=None, max_length=300)
-    history_ref: str | None = None
     turn: Turn | None = None                           # answer|guide 必填；guide 必须是 work 分支；其他 act 丢弃
     clarify: ClarifyPayload | None = None              # {candidates: list[str]}，仅 clarify
     pronounce: PronouncePayload | None = None          # {lesson}，仅 pronounce，见 4.6
@@ -421,10 +419,9 @@ class TutorTurnCandidate(BaseModel):
 |---|---|---|
 | `act` | 出口检查核对是否在许可内 | 决定交互类型 |
 | `turn.type` / `turn.relation` | 模型自述；`answer`/`guide` 缺失或非法、`guide` 非 `work` 分支时走一次结构重试。**不决定答案保护**，只决定是否推进题目、是否换题 | 作业 vs 非作业；续题 vs 新题 |
-| `turn.depth` | 只有 `work` 分支携带，`atomic`（一次性查询）／`recall`（要记住的）／`reasoning`（需要推理，默认）。**只指导怎么回应，不放宽保护**：`atomic`/`recall` 可直接 `answer`（不推进题目），泄露检查照常 | 作业里的单个事实不必让孩子猜 |
-| `turn` 其余字段 | 只有 `work` 分支携带；模型自述，只决定 `advance()` 是否推进；未知值按“未报告”，不拒绝 | 记录对当前小目标的证据 |
+| `turn.depth` | 只有 `work` 分支携带，`atomic`（一次性查询）／`recall`（要记住的）／`reasoning`（需要推理，默认）。**只指导怎么回应，不放宽保护**：`atomic`/`recall` 可直接 `answer`（不推进题目），泄露检查照常。只有 `act=answer` 时才告诉判官 `depth`；`guide` 自称 `atomic` 是标签矛盾，按原标准审；`answer` 配 `reasoning` 不拒绝，记 shape flag `answer_on_reasoning` | 作业里的单个事实不必让孩子猜 |
+| `turn` 其余字段 | 只有 `work` 分支携带；模型自述，只决定 `advance()` 是否推进；未知值按“未报告”，不拒绝。`progress`、`evidence` 只属于 `student_move=attempt`，其他 move 上解析时置空（否则一个误填的 `submitted` 会吞掉提示计数）；`student_move` 进 `tutor.turn.result` 观测 | 记录对当前小目标的证据 |
 | `turn.topic` | 只有 `non_work` 分支携带；`spontaneous_curiosity` 才写好奇心事实 | 区分一次性查询与自发好奇 |
-| `history_ref` | 必须来自本轮 `lookup_history` 返回的授权候选，否则按无引用，不拒绝整轮 | 接上历史 |
 | `pronounce.lesson` | 仅 `act=pronounce` 保留，缺失则拒绝；其他 `act` 带 `pronounce` 时丢弃 | 发音卡 |
 | `visual` | 关闭词汇表（`steps`、`compare`、`segment`、`number_line`）；结构非法、超预算、`unknown` 量带数值、`act` 不适用都**只丢图**，不拒绝候选。作业成果轮次再经图泄露判官，判泄露、超时或结果非法同样只丢图 | 解释性配图，设计与取舍见 [答疑表达设计](domain-tutoring-presentation.md) |
 
@@ -441,7 +438,7 @@ class TutorTurnCandidate(BaseModel):
 
 `kind` 和动作必须能投影为 [Companion Interaction Protocol](domain-companion.md#52-companion-interaction-protocol) 的 `WorkflowInteractionView`。图片只接受已授权 `media_ref`，由 Application 附加。视频和正文中的任意 URL 不成为可播放或可跳转媒体。
 
-Application 在本轮不是作业成果、且 `StudySessionQuery` 返回活动任务时，投影必须包含回任务动作，并核对正文有提醒句，没有就补上规定句子。该动作的 `command` 须登记在 `companion-interaction.v1` 后才能启用；Tutoring 不私自增加 `kind`。回任务不关闭 `StudySession` 或 `TutoringSession`。
+Application 在本轮不是作业成果、且 `StudySessionQuery` 返回活动任务时，投影必须包含回任务动作，并核对正文有提醒句，没有就补上规定句子；`act=redirect` 的正文本身就是带回任务，不再补句。该动作的 `command` 须登记在 `companion-interaction.v1` 后才能启用；Tutoring 不私自增加 `kind`。回任务不关闭 `StudySession` 或 `TutoringSession`。
 
 ### 4.2 出口检查
 
@@ -450,8 +447,8 @@ Application 在本轮不是作业成果、且 `StudySessionQuery` 返回活动�
 | 检查 | 逻辑 | 目的 | 不通过 |
 |---|---|---|---|
 | 1 结构校验 | Pydantic 校验 `act`、`content`，以及 `answer`/`guide` 的 `turn`；多余字段和不属于该 `act` 的子对象丢弃，元数据的未知值按“未报告” | 保证后面的代码可以放心使用候选 | 把校验错误附在同一次调用里重试一次；仍不合法则回退 |
-| 2 越权与一致性 | 只拦会让孩子看到不该看的内容的情形：`answer_protected=true`（来自 permit）时，所有 `answer`/`guide` 一律正文含答案标记拒绝并强制过泄露裁判，**与 `turn` 声明无关**：`non_work` 只能让本轮不推进题目，不能关闭保护；没有受保护的题时，声称作业成果（`turn.type=work`）的轮次也按受保护处理。`act=answer` 不开启、放弃或推进题目记录；`act=pronounce` 必须有合法 `lesson`（`locale`、`segment` 合法，无标记/URL）；`act=safety` 由代码换成安全话术。元数据之间的不一致（`progress` 无证据、`next_subgoal` 出现在非作业轮）不拒绝，只是不推进题目 | 确定性地拦住越权和泄露，不让与展示无关的字段矛盾替换一个安全的回答 | 直接回退，不重试 |
-| 3 泄露检查 | 在 `answer_protected` 成立时触发（见检查 2）。独立的一次结构化调用，只回答「正文是否给出了这道作业的最终答案、待填内容或完整解法」。现有的关键词只作兜底 | 拦住模型自述「没泄露」而实际泄露的情况（概率性） | `answer_protected=true` 时判定泄露、调用超时或结果非法都按泄露处理，回退（fail-closed） |
+| 2 越权与一致性 | 只拦会让孩子看到不该看的内容的情形：`answer_protected=true`（来自 permit）时，所有 `answer`/`guide` 一律正文含答案标记拒绝并强制过泄露裁判，**与 `turn` 声明无关**：`non_work` 只能让本轮不推进题目，不能关闭保护；没有受保护的题时，声称作业成果（`turn.type=work`）的轮次也按受保护处理。`act=answer` 不开启、放弃或推进题目记录；`act=pronounce` 必须有合法 `lesson`（`locale`、`segment` 合法，无标记/URL）；`act=safety` 由代码换成安全话术；`act=clarify` 在 `answer_protected=true` 时，正文连同 `candidates` 同样做答案标记检查并过泄露裁判（候选也给孩子看）。元数据之间的不一致（`progress` 无证据、`next_subgoal` 出现在非作业轮）不拒绝，只是不推进题目 | 确定性地拦住越权和泄露，不让与展示无关的字段矛盾替换一个安全的回答 | 直接回退，不重试 |
+| 3 泄露检查 | 在 `answer_protected` 成立时触发（见检查 2）。独立的一次结构化调用，只回答「正文是否给出了这道作业的最终答案、待填内容或完整解法」。裁判看到的 `problem` 是本答疑会话最近 3 道题的摘要（新的在前，含被 `relation=new` 放弃的题）加孩子本轮的话，生产与离线评测共用 `judge_problem_summary()`；放弃的题不受保护，但孩子随后追问它的答案时裁判仍认得出。现有的关键词只作兜底 | 拦住模型自述「没泄露」而实际泄露的情况（概率性） | `answer_protected=true` 时判定泄露、调用超时或结果非法都按泄露处理，回退（fail-closed） |
 
 任一检查失败的结果都一样：返回固定话术，记录 `model_fallback`，不写 Fact，不推进 `ProblemRecord`，不用反问掩盖失败。只有检查 1 允许重试一次，因为它的失败通常是格式问题。
 
@@ -516,7 +513,7 @@ Application 在本轮不是作业成果、且 `StudySessionQuery` 返回活动�
 
 ### 4.6 pronunciation act（只读）
 
-发音不是单独的分支，也不是另一个 capability profile。它是 `tutor-turn.v3` 里的一种 `act=pronounce`。同一次主调用里，模型已经拿到最近原句和其中已授权图片，所以「前面那张图上的这句怎么读」这样的指代，和答疑共用同一份上下文，不再单独组装第二遍。它不新增 `PronunciationPolicy`、目标抽取器、专属 Agent 或独立入口。
+发音不是单独的分支，也不是另一个 capability profile。它是 `tutor-turn.v4` 里的一种 `act=pronounce`。同一次主调用里，模型已经拿到最近原句和其中已授权图片，所以「前面那张图上的这句怎么读」这样的指代，和答疑共用同一份上下文，不再单独组装第二遍。它不新增 `PronunciationPolicy`、目标抽取器、专属 Agent 或独立入口。
 
 已授权图片以视觉内容进入这次调用：Application 先用对象存储路径核对附件属于当前 Ward，通过后读取图片字节，放进多模态消息的 `image_url`，内容是 `data:<mime>;base64,...`。路径只用于授权和读取，不写进文本。未授权图片不读取、不发送；对外 HTTP URL 不作为图像载体。窗口规则与图片读取失败的处理见 Companion 的窗口规则。
 
@@ -578,7 +575,7 @@ sequenceDiagram
 |---|---|---|
 | `Ward` | Actor | 提供文字、图片和必要澄清 |
 | `CompanionCoordinator` | Process Manager | 维持 Run 预算和回复权，不拥有发音领域状态 |
-| `ModelGateway` | Infrastructure | 执行 `tutor-turn.v3` 并返回结构化候选 |
+| `ModelGateway` | Infrastructure | 执行 `tutor-turn.v4` 并返回结构化候选 |
 | 出口检查 | Application 校验逻辑 | 授权、Schema、provenance 与安全校验 |
 | 教学卡投影 | Read Model / Projection | 为 Ward 提供只读教学卡 |
 
@@ -614,7 +611,7 @@ sequenceDiagram
 | `TutoringSessionRepository` | SQLAlchemy | 用例本地短事务；版本冲突返回 `conflict` |
 | `LearningFactPublisher` | Tutoring Outbox | 来源四元组去重；死信与补投见 Memory |
 | `AttachmentQuery` / `LearningMaterialQuery` | 授权检索适配器 | 超时、ACL 拒绝映射为工具 observation |
-| `ModelGatewayPort` | 现有多模态/文本模型 Adapter | 执行版本化的 `tutor-turn.v3`，每次调用都带窗口图片和本轮图片，返回结构化候选；受 Run deadline 与通用重试政策约束 |
+| `ModelGatewayPort` | 现有多模态/文本模型 Adapter | 执行版本化的 `tutor-turn.v4`，每次调用都带窗口图片和本轮图片，返回结构化候选；受 Run deadline 与通用重试政策约束 |
 | `LeakJudgePort` | 模型 Gateway 的一次结构化调用 | 只回答是否泄露；超时或结果非法按泄露处理（fail-closed）；与主调用分开计量 |
 | `ToolGateway` | 只读工具适配器 | 每轮至多 3 次；没有实现返回 `tool_error`；全部限于当前 Ward 的授权范围 |
 | `PronunciationLessonProjectionPort` | Read Model Adapter | 以 `run_id + turn_id + attempt` 幂等投影；物理存储和清理见 design-server |
@@ -710,9 +707,13 @@ Given 泄露检查调用超时或返回非法结果
 When 本轮是受答案保护的作业成果
 Then 按泄露处理，回退固定话术（fail-closed）
 
-Given 候选的 history_ref 不在本轮授权候选集内
-When 出口检查
-Then 该引用按 none 处理，不拒绝整轮，也不编造“你上次学过”
+Given 当前有 open 的 ProblemRecord
+When 模型返回 act=clarify，候选里写出了本题答案
+Then 答案标记检查或泄露裁判拒绝该候选，回退固定话术
+
+Given 模型以 relation=new 放弃了上一道题
+When 孩子随后追问上一道题的答案
+Then 泄露裁判的 problem 里仍有上一道题的摘要
 
 Given 同一个 command_id 因重试被处理两次
 When ApplyTutorTurn 提交

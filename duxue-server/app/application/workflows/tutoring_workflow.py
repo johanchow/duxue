@@ -12,7 +12,12 @@ from app.application.workflows.pronunciation_guidance import (
     project_lesson,
 )
 from app.application.workflows.teaching_skills import history_candidates
-from app.application.workflows.tutor_loop import call_tutor_model, vet_candidate
+from app.application.workflows.tutor_loop import (
+    JUDGE_RECENT_PROBLEMS,
+    call_tutor_model,
+    judge_problem_summary,
+    vet_candidate,
+)
 from app.application.workflows.tutor_tools import TutorToolbox
 from app.application.workflows.tutor_visual import describe
 from app.application.workflows.tutor_turn import (
@@ -63,7 +68,7 @@ def _store(row: TutoringProblem, state: ProblemState) -> None:
 
 
 class TutoringWorkflow:
-    """tutor-turn.v3：模型驱动一轮，代码守住入口许可和出口检查。"""
+    """tutor-turn.v4：模型驱动一轮，代码守住入口许可和出口检查。"""
 
     def __init__(
         self, db: Session, turn_model: TutorModelPort | None = None, leak_judge: LeakJudgePort | None = None,
@@ -166,6 +171,20 @@ class TutoringWorkflow:
             .order_by(TutoringProblem.created_at.desc())
             .first()
         )
+
+    def _recent_problem_summaries(self, tutor: TutoringSession | None) -> list[str]:
+        """Newest first, whatever the status: the leak judge must still recognise a problem
+        the model labelled as abandoned with `relation=new`."""
+        if tutor is None:
+            return []
+        rows = (
+            self.db.query(TutoringProblem.summary)
+            .filter(TutoringProblem.tutoring_session_id == tutor.id)
+            .order_by(TutoringProblem.created_at.desc())
+            .limit(JUDGE_RECENT_PROBLEMS)
+            .all()
+        )
+        return [row.summary for row in rows if row.summary]
 
     def _task_title(self, task_id: str | None) -> str | None:
         task = self.db.get(Task, task_id) if task_id else None
@@ -270,10 +289,8 @@ class TutoringWorkflow:
         vetting = None
         if candidate is not None:
             vetting = vet_candidate(
-                candidate, permit=permit,
-                authorized_refs=frozenset(tools.authorized_refs),
-                has_work_input=bool(content.strip() or images), leak_judge=self._judge(),
-                task_title=task_title, problem_summary=problem_row.summary if problem_row else content,
+                candidate, permit=permit, leak_judge=self._judge(), task_title=task_title,
+                problem_summary=judge_problem_summary(self._recent_problem_summaries(tutor), content),
             )
             candidate, verdict, visual = vetting.candidate, vetting.verdict, vetting.visual
             failure = vetting.failure
@@ -331,18 +348,18 @@ class TutoringWorkflow:
                 permit=permit, problem_status=problem_row.status if problem_row else None,
             )
         text = candidate.content
-        if candidate.follow_up_question and candidate.follow_up_question not in text:
-            text = f"{text.rstrip()}\n{candidate.follow_up_question}"
         work = verdict.effective_work_product
-        remind = task_active and not work
+        # A redirect already takes the Ward back to the task; a second reminder would repeat it.
+        remind = task_active and not work and candidate.act != "redirect"
         if remind and REMINDER not in text:
             text = f"{text.rstrip()}\n{REMINDER}"
 
         problem_status = problem_row.status if problem_row else None
         answer_protected = permit.answer_protected
         hint_index = None
+        attempted = False
         if work:
-            problem_status, hint_index = self._apply_problem(
+            problem_status, hint_index, attempted = self._apply_problem(
                 tutor, problem_row, candidate, verdict, invocation, has_work_input=bool(content.strip() or images),
                 summary=content,
             )
@@ -350,7 +367,7 @@ class TutoringWorkflow:
         self.db.add(message)
         self.db.flush()
         payload = {"tutoring_session_id": tutor.id, "study_session_id": session.id}
-        if work and candidate.student_move == "attempt":
+        if attempted:
             publish_learning_fact(
                 self.db, ward_id=session.ward_id, event_type="tutoring.attempt_recorded",
                 source_type="tutoring_message", source_id=ward_msg.id, source="ward", visibility="ward",
@@ -368,7 +385,9 @@ class TutoringWorkflow:
                 source_type="tutoring_message", source_id=ward_msg.id, source="ward", visibility="ward", payload=payload,
             )
         record_tutor_turn_result(
-            act=candidate.act, relation=candidate.relation, topic=candidate.topic, depth=candidate.depth, outcome="shown", reason=None, shown=text,
+            act=candidate.act, relation=candidate.relation, topic=candidate.topic, depth=candidate.depth,
+            student_move=candidate.work.student_move if candidate.work else None,
+            outcome="shown", reason=None, shown=text,
             visual_kind=visual.kind if visual else None, visual_dropped=vetting.visual_dropped if vetting else None,
             shape_flags=vetting.shape_flags if vetting else None,
         )
@@ -391,13 +410,13 @@ class TutoringWorkflow:
         )
 
     def _apply_problem(self, tutor, row, candidate, verdict, invocation, *, has_work_input, summary):
-        """按 `TutorPermitPolicy.advance()` 推进题目记录。返回（题目状态，本轮提示序号）。
+        """按 `TutorPermitPolicy.advance()` 推进题目记录。返回（题目状态，本轮提示序号，是否计了一次实质尝试）。
 
         同一个 Ward Turn 的重放不重复计数：记录已处理过本 turn 时原样返回。
         """
         new_problem = candidate.relation == "new"
         if row is not None and not new_problem and row.last_turn_id == invocation.turn_id:
-            return row.status, None
+            return row.status, None, False
         if row is None or new_problem:
             if row is not None:
                 row.status = "abandoned"
@@ -406,7 +425,7 @@ class TutoringWorkflow:
             self.db.flush()
         assessment = ProblemAssessment(
             effective_work_product=True, student_move=candidate.student_move,
-            progress=candidate.progress, same_problem=True, act=candidate.act,
+            progress=candidate.progress, act=candidate.act,
             counts_as_attempt=has_work_input, subgoal_evidence=candidate.subgoal_evidence,
             next_subgoal=candidate.next_subgoal,
         )
@@ -414,7 +433,8 @@ class TutoringWorkflow:
         new = TutorPermitPolicy.advance(before, assessment)
         _store(row, new)
         row.last_turn_id = invocation.turn_id
-        return row.status, (new.hints_given if new.hints_given > before.hints_given else None)
+        hint_index = new.hints_given if new.hints_given > before.hints_given else None
+        return row.status, hint_index, new.substantive_attempts > before.substantive_attempts
 
     def _reply(self, invocation, tutor, refs, envelope, *, text, blocked, permit, problem_status):
         self.db.add(TutoringMessage(tutoring_session_id=tutor.id, role="assistant", content=text, safety_blocked=blocked))

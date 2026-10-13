@@ -1,4 +1,4 @@
-"""tutor-turn.v3 的模型循环与出口检查，不依赖数据库。
+"""tutor-turn.v4 的模型循环与出口检查，不依赖数据库。
 
 生产的 TutoringWorkflow 与离线评测（``evals/``）共用这里的代码：评测看到的
 fallback 与线上完全同源，不另抄一份规则。
@@ -89,7 +89,7 @@ def call_tutor_model(
                 record_tutor_candidate_rejection(
                     error_type="invalid_json", field="root", retrying=True,
                 )
-                repair = "返回的内容不是有效 JSON 对象；只返回一个符合 tutor-turn.v3 的 JSON 对象。"
+                repair = "返回的内容不是有效 JSON 对象；只返回一个符合 tutor-turn.v4 的 JSON 对象。"
                 continue
             record_llm_fallback(operation="tutor_turn", reason=str(error))
             return ModelCall(None, str(error))
@@ -132,11 +132,25 @@ def _check_visual_leak(leak_judge: LeakJudgePort, text: str, task_title, problem
 # 判官只在回复本身像“一个单独的事实”时才被告知 depth：长回复不可能只是一个事实，
 # 即使模型声明 atomic/recall 也按原标准审，避免用标签包装一段完整讲解。
 FACT_REPLY_MAX_CHARS = 200
+# 判官看到本答疑会话最近这么多道题：`relation=new` 放弃的题不受保护，但孩子随后追问它的答案时，
+# 判官必须还能认出来。
+JUDGE_RECENT_PROBLEMS = 3
+
+
+def judge_problem_summary(recent_problems: list[str], student_said: str) -> str | None:
+    """泄露判官的 ``problem``：最近几道题（新的在前）加孩子本轮的话。生产与评测共用。"""
+    problems = [item.strip() for item in recent_problems if item and item.strip()][:JUDGE_RECENT_PROBLEMS]
+    lines = [f"第{index}题：{item}" for index, item in enumerate(problems, start=1)]
+    if student_said.strip() and student_said.strip() not in problems:
+        lines.append(f"孩子本轮说：{student_said.strip()}")
+    return "\n".join(lines) or None
 
 
 def _fact_depth(candidate: TutorTurnCandidate) -> str | None:
-    """作业里的 atomic/recall，或非作业的一次性查询（`topic=atomic_lookup`，同样是单个事实）。"""
-    if len(candidate.content) > FACT_REPLY_MAX_CHARS:
+    """`answer` 里的单个事实：作业里的 atomic/recall，或非作业的一次性查询（`topic=atomic_lookup`）。
+
+    只有 `answer` 才可能是"直接给一个事实"；`guide` 自称 atomic 是标签矛盾，按原标准审。"""
+    if candidate.act != "answer" or len(candidate.content) > FACT_REPLY_MAX_CHARS:
         return None
     if candidate.depth in {"atomic", "recall"}:
         return candidate.depth
@@ -146,24 +160,23 @@ def _fact_depth(candidate: TutorTurnCandidate) -> str | None:
 
 
 def vet_candidate(
-    candidate: TutorTurnCandidate, *, permit: TutorPermit,
-    authorized_refs: frozenset[str], has_work_input: bool, leak_judge: LeakJudgePort,
+    candidate: TutorTurnCandidate, *, permit: TutorPermit, leak_judge: LeakJudgePort,
     task_title: str | None, problem_summary: str | None,
 ) -> Vetting:
     """检查 2（越权与一致性）和检查 3（泄露）。
 
-    文字（``content``）任一不过，调用方回退固定话术。图（``visual``）单独判断：
+    文字（``content``，澄清时连同候选）任一不过，调用方回退固定话术。图（``visual``）单独判断：
     不适用、非法、含答案标记、被图判官判为泄露（含超时、结果非法）一律只丢图，文字照常。
     """
-    verdict = check_authority(
-        candidate, permit,
-        authorized_history_refs=authorized_refs, has_work_input=has_work_input,
-    )
+    verdict = check_authority(candidate, permit)
     if not verdict.ok:
         record_llm_fallback(operation="tutor_turn", reason=verdict.reason)
         return Vetting(candidate, verdict, verdict.reason)
 
-    flags = lint_shape(candidate.act, candidate.content, candidate.follow_up_question)
+    flags = lint_shape(candidate.act, candidate.content)
+    if candidate.act == "answer" and candidate.depth == "reasoning":
+        # 提示词要求推理题用 guide；不拒绝（泄露检查照跑），只留观测。
+        flags.append("answer_on_reasoning")
     if flags:
         record_tutor_shape_lint(act=candidate.act, flags=flags)
 
@@ -176,7 +189,7 @@ def vet_candidate(
 
     text_leaks: bool | None = False
     if verdict.needs_leak_check:
-        reply = f"{candidate.content}\n{candidate.follow_up_question or ''}"
+        reply = candidate.shown_text
         depth = _fact_depth(candidate)
         if visual_text is None:
             text_leaks = leak_judge.leaks(

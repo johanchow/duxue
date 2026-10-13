@@ -10,3 +10,5 @@
 | [implement-companion-messages.md](implement-companion-messages.md) | 2026-09-15 |
 | [split-study-tutoring-domain.md](split-study-tutoring-domain.md) | 2026-10-10 |
 | [unify-ai-component-gateway.md](unify-ai-component-gateway.md) | 2026-10-11 |
+| [tutor-turn-contract-hardening.md](tutor-turn-contract-hardening.md) | 2026-10-13 |
+| [tutor-turn-contract-v2.md](tutor-turn-contract-v2.md) | 2026-10-13 |

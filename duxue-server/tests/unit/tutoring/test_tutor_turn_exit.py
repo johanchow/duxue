@@ -18,18 +18,14 @@ LESSON = {
 
 
 def _verdict(raw: dict, *, permit=PERMIT):
-    return check_authority(
-        TutorTurnCandidate.model_validate(raw), permit,
-        authorized_history_refs=frozenset({"u0"}), has_work_input=True,
-    )
+    return check_authority(TutorTurnCandidate.model_validate(raw), permit)
 
 
 def test_blank_optional_fields_are_absent_and_do_not_fail_a_knowledge_reply():
     """空字符串不是小目标。知识问答不能因此整轮回退。"""
     raw = tutor_raw(
         "answer", "提前用英语是 *in advance*。", relation="none", student_move="request_answer",
-        progress="none", evidence="", next_subgoal="   ", history_ref="u0",
-        follow_up_question="现在我们继续完成正在进行的任务，需要我帮你回顾一下吗？",
+        progress="none", evidence="", next_subgoal="   ",
     )
     candidate = TutorTurnCandidate.model_validate(raw)
     assert candidate.next_subgoal is None
@@ -37,7 +33,6 @@ def test_blank_optional_fields_are_absent_and_do_not_fail_a_knowledge_reply():
     verdict = _verdict(raw)
     assert verdict.ok
     assert verdict.effective_work_product is False
-    assert verdict.history_ref == "u0"
 
 
 def test_a_next_subgoal_outside_work_is_ignored_not_rejected():
@@ -238,3 +233,43 @@ def test_a_direct_answer_to_a_single_fact_inside_homework_is_still_checked_and_n
         assert not verdict.effective_work_product
     marker = tutor_raw("answer", "最终答案是 beach", relation="same", depth="recall")
     assert _verdict(marker, permit=protected).reason == "answer_marker"
+
+
+def test_fields_removed_in_v4_are_ignored_and_never_reach_the_ward():
+    """content 是孩子看到的全部文字：模型仍返回 follow_up_question/history_ref 时丢弃，不拒绝。"""
+    raw = tutor_raw("answer", "海滩。", relation="none", follow_up_question="还想知道什么？", history_ref="u0")
+    candidate = TutorTurnCandidate.model_validate(raw)
+    assert candidate.shown_text == "海滩。"
+    assert not hasattr(candidate, "follow_up_question") and not hasattr(candidate, "history_ref")
+    assert _verdict(raw).ok
+
+
+def test_progress_and_evidence_belong_to_an_attempt_only():
+    hint = TutorTurnCandidate.model_validate(
+        tutor_raw("guide", "先读题。", student_move="request_hint", progress="submitted", evidence="x=3"))
+    assert hint.progress is None and hint.subgoal_evidence is None
+    attempt = TutorTurnCandidate.model_validate(
+        tutor_raw("guide", "你算出来了，再检查一下？", student_move="attempt", progress="submitted", evidence="x=3"))
+    assert attempt.progress == "submitted" and attempt.subgoal_evidence == "x=3"
+
+
+def test_chat_is_not_a_topic_the_model_can_write():
+    candidate = TutorTurnCandidate.model_validate(
+        {"act": "answer", "content": "因为散射。", "turn": {"type": "non_work", "topic": "chat"}})
+    assert candidate.topic == "atomic_lookup"
+
+
+def test_clarify_on_a_protected_problem_is_held_to_the_content_check():
+    """候选也给孩子看：题目受保护时，澄清不能成为不经泄露检查的出口。"""
+    protected = TutorPermit(True, AttemptSummary())
+    plain = {"act": "clarify", "content": "你问的是哪一题？", "clarify": {"candidates": ["第一题", "第二题"]}}
+    verdict = _verdict(plain, permit=protected)
+    assert verdict.ok and verdict.answer_protected and verdict.needs_leak_check
+    assert not verdict.effective_work_product
+    leaked = {"act": "clarify", "content": "你问的是哪一题？", "clarify": {"candidates": ["第一题，最终答案是 3", "第二题"]}}
+    assert _verdict(leaked, permit=protected).reason == "answer_marker"
+
+
+def test_clarify_without_a_protected_problem_is_not_checked():
+    verdict = _verdict({"act": "clarify", "content": "是哪一句？", "clarify": {"candidates": ["最终答案是 3"]}})
+    assert verdict.ok and not verdict.needs_leak_check

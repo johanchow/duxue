@@ -60,7 +60,7 @@ def test_audit_file_joins_input_model_output_and_result_by_trace_id(tmp_path, mo
         record_agent_input(agent_type="tutoring", run_id="run-1", thread_id="t-1", content="自转和公转有什么区别？")
         record_model_response(agent_type="tutoring", model="m", content='{"act":"answer"}', operation="tutor_turn")
         record_tutor_turn_result(
-            act="answer", relation="new", outcome="shown", reason=None, shown="自转管昼夜。",
+            act="answer", relation="new", student_move="request_answer", outcome="shown", reason=None, shown="自转管昼夜。",
             visual_dropped="visual_invalid", shape_flags=["too_long"],
         )
         trace_id = format(span.get_span_context().trace_id, "032x")
@@ -71,7 +71,7 @@ def test_audit_file_joins_input_model_output_and_result_by_trace_id(tmp_path, mo
     assert rows[0]["content"] == "自转和公转有什么区别？" and rows[0]["metadata"]["agent.run_id"] == "run-1"
     assert rows[2]["content"] == "自转管昼夜。"
     assert rows[2]["metadata"] == {
-        "tutor.act": "answer", "tutor.relation": "new", "tutor.outcome": "shown",
+        "tutor.act": "answer", "tutor.relation": "new", "tutor.student_move": "request_answer", "tutor.outcome": "shown",
         "tutor.visual.dropped": "visual_invalid", "tutor.shape.flags": "too_long",
     }
 

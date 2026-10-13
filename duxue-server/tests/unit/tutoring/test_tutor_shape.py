@@ -5,22 +5,17 @@ def test_a_well_shaped_guide_has_no_flags():
     assert lint_shape("guide", "你已经找到了总数。那每份有几个呢？") == []
 
 
-def test_too_long_uses_the_act_limit_and_counts_the_follow_up_when_it_is_shown():
+def test_too_long_uses_the_act_limit():
     assert lint_shape("chat", "好" * (MAX_CHARS["chat"] + 1)) == ["too_long"]
     long_answer = "好" * (MAX_CHARS["answer"] - 5)
     assert lint_shape("answer", long_answer) == []
-    assert "too_long" in lint_shape("answer", long_answer, follow_up_question="你还想知道什么呢？")
+    assert "too_long" in lint_shape("answer", long_answer + "你还想知道什么呢？")
     assert lint_shape("safety", "好" * 5000) == []  # no limit for acts not in the table
-
-
-def test_follow_up_already_inside_content_is_not_counted_twice():
-    text = "先想想已知条件。你能说出来吗？"
-    assert lint_shape("guide", text, follow_up_question="你能说出来吗？") == []
 
 
 def test_guide_with_two_questions_is_flagged_but_answer_may_ask_one():
     assert lint_shape("guide", "已知什么？要求什么？") == ["multi_question"]
-    assert lint_shape("guide", "已知什么？", follow_up_question="要求什么?") == ["multi_question"]
+    assert lint_shape("guide", "先想想已知条件。你能说出来吗？") == []
     assert "multi_question" not in lint_shape("answer", "这是 in advance。你还有别的问题吗？")
 
 

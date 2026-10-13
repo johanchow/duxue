@@ -15,8 +15,7 @@ OPEN = TutorPermit(False, AttemptSummary())
 
 def vet(raw, judge, *, permit=PROTECTED):
     return vet_candidate(
-        TutorTurnCandidate.model_validate(raw), permit=permit,
-        authorized_refs=frozenset(), has_work_input=True, leak_judge=judge,
+        TutorTurnCandidate.model_validate(raw), permit=permit, leak_judge=judge,
         task_title="应用题", problem_summary="小明有3份，小红有5份，一共几份",
     )
 
@@ -109,3 +108,33 @@ def test_the_judge_is_told_the_depth_only_for_a_short_single_fact():
     assert depths(tutor_raw("answer", "因为散射。", relation="none", topic="spontaneous_curiosity")) == [None]
     assert depths(tutor_raw("guide", "先看看谁多？", relation="same", depth="reasoning")) == [None]
     assert depths(tutor_raw("guide", "先看看谁多？", relation="same")) == [None]
+    # guide 自称单个事实是标签矛盾：不放宽判官
+    assert depths(tutor_raw("guide", "beach。", relation="same", depth="atomic")) == [None]
+
+
+def test_answer_on_a_reasoning_problem_is_observed_not_rejected():
+    result = vet(tutor_raw("answer", "先算总份数。", relation="same", depth="reasoning"), StaticLeakJudge())
+    assert result.failure is None and "answer_on_reasoning" in result.shape_flags
+    assert "answer_on_reasoning" not in vet(tutor_raw("guide", "先看看谁多？"), StaticLeakJudge()).shape_flags
+
+
+def test_the_judge_reads_clarify_candidates_on_a_protected_problem():
+    raw = {"act": "clarify", "content": "你问的是哪一个？", "clarify": {"candidates": ["一共 8 份", "小红多"]}}
+    judge = StaticLeakJudge()
+    assert vet(raw, judge).failure is None
+    assert judge.texts == ["你问的是哪一个？\n一共 8 份\n小红多"]
+    assert vet(raw, StaticLeakJudge(True)).failure == "leak_detected"
+    assert vet(raw, StaticLeakJudge(None)).failure == "leak_check_failed"
+
+
+def test_judge_problem_summary_lists_recent_problems_and_this_turn():
+    from app.application.workflows.tutor_loop import JUDGE_RECENT_PROBLEMS, judge_problem_summary
+
+    assert judge_problem_summary([], "  ") is None
+    assert judge_problem_summary([], "beach 什么意思") == "孩子本轮说：beach 什么意思"
+    summary = judge_problem_summary(["新题：3+5", "旧题：小明有3份"], "上一题答案是多少")
+    assert summary == "第1题：新题：3+5\n第2题：旧题：小明有3份\n孩子本轮说：上一题答案是多少"
+    # 本轮的话就是最新那道题的摘要时不重复
+    assert judge_problem_summary(["3+5=?"], "3+5=?") == "第1题：3+5=?"
+    many = judge_problem_summary([f"题{i}" for i in range(10)], "")
+    assert many.count("题：") == JUDGE_RECENT_PROBLEMS
