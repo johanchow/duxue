@@ -41,13 +41,10 @@ class QwenLeakJudge:
     def __init__(self, settings_obj=None):
         self._settings = settings_obj  # offline evaluation only; production passes nothing
 
-    def leaks(
-        self, *, text: str, task_title: str | None, problem_summary: str | None, depth: str | None = None,
-    ) -> bool | None:
-        body = {"task_title": task_title, "problem": problem_summary, "reply": text}
-        if depth:
-            body["depth"] = depth
-        return self._judge("tutoring.leak-judge", body)
+    def leaks(self, *, text: str, task_title: str | None, problem_summary: str | None) -> bool | None:
+        return self._judge(
+            "tutoring.leak-judge", {"task_title": task_title, "problem": problem_summary, "reply": text},
+        )
 
     def visual_leaks(self, *, text: str, task_title: str | None, problem_summary: str | None) -> bool | None:
         """``text`` 是 ``describe(visual)``。独立的提示词与组件，不与文字判官共用。"""

@@ -292,13 +292,10 @@ class TutorModelPort(Protocol):
 
 
 class LeakJudgePort(Protocol):
-    def leaks(
-        self, *, text: str, task_title: str | None, problem_summary: str | None, depth: str | None = None,
-    ) -> bool | None:
+    def leaks(self, *, text: str, task_title: str | None, problem_summary: str | None) -> bool | None:
         """True 泄露；False 未泄露；None 判定失败（按泄露处理）。
 
-        ``depth`` 只在回复是短小的单个事实且模型声明 atomic/recall 时才传；判官据此允许
-        “恰好是空格内容的单个事实”，但推理或计算的结果无论标签如何都算泄露。"""
+        判官只按严格标准审；单个事实在问判官之前已由 ``tutor_loop.fact_gate`` 确定性放行。"""
 
 
 def format_schema_error(error: Exception) -> str:

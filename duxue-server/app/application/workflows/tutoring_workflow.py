@@ -14,9 +14,9 @@ from app.application.workflows.pronunciation_guidance import (
 from app.application.workflows.teaching_skills import history_candidates
 from app.application.workflows.tutor_loop import (
     JUDGE_RECENT_PROBLEMS,
-    call_tutor_model,
+    TurnResult,
     judge_problem_summary,
-    vet_candidate,
+    run_tutor_turn,
 )
 from app.application.workflows.tutor_tools import TutorToolbox
 from app.application.workflows.tutor_visual import describe
@@ -190,14 +190,16 @@ class TutoringWorkflow:
         task = self.db.get(Task, task_id) if task_id else None
         return task.title if task is not None else None
 
-    def _call_model(self, envelope, instruction, window, images, tools: TutorToolbox):
-        """有界循环由 tutor_loop 提供（评测共用）。返回候选或 None。"""
+    def _run_model(self, envelope, instruction, window, images, tools: TutorToolbox, **checks) -> TurnResult | None:
+        """有界循环、出口检查与泄露后的一次重试由 tutor_loop 提供（评测共用）。"""
         try:
             model = self._model()
         except Exception as error:  # noqa: BLE001 - provider failures must fall back safely.
             record_llm_fallback(operation="tutor_turn", reason=str(error))
             return None
-        return call_tutor_model(model, envelope, instruction, window, images, tools).candidate
+        return run_tutor_turn(
+            model, envelope, instruction, window, images, tools, leak_judge=self._judge(), **checks,
+        )
 
     def _turn(self, invocation: RunInvocation) -> WorkflowOutcome:
         turn = invocation.turn
@@ -282,16 +284,15 @@ class TutoringWorkflow:
             self.db, tutoring_session_id=tutor.id if tutor else None, problem=problem_row,
             task_title=task_title, task_active=task_active, window=window,
         )
-        candidate = self._call_model(envelope.model_dump(), instruction, window, images, tools)
-        verdict = None
-        visual = None
+        result = self._run_model(
+            envelope.model_dump(), instruction, window, images, tools, permit=permit, task_title=task_title,
+            problem_summary=judge_problem_summary(self._recent_problem_summaries(tutor), content),
+        )
+        candidate = verdict = visual = None
         failure = "no_candidate"
-        vetting = None
-        if candidate is not None:
-            vetting = vet_candidate(
-                candidate, permit=permit, leak_judge=self._judge(), task_title=task_title,
-                problem_summary=judge_problem_summary(self._recent_problem_summaries(tutor), content),
-            )
+        vetting = result.vetting if result else None
+        leak_retried = bool(result and result.leak_retried)
+        if vetting is not None:
             candidate, verdict, visual = vetting.candidate, vetting.verdict, vetting.visual
             failure = vetting.failure
         failed = candidate is None or verdict is None or not verdict.ok
@@ -332,7 +333,7 @@ class TutoringWorkflow:
         if failed:
             record_tutor_turn_result(
                 act=candidate.act if candidate else None, relation=candidate.relation if candidate else None,
-                outcome="fallback", reason=failure or "exit_check", shown=FALLBACK_TEXT,
+                leak_retried=leak_retried, outcome="fallback", reason=failure or "exit_check", shown=FALLBACK_TEXT,
                 shape_flags=vetting.shape_flags if vetting else None,
             )
             return self._reply(
@@ -386,7 +387,7 @@ class TutoringWorkflow:
             )
         record_tutor_turn_result(
             act=candidate.act, relation=candidate.relation, topic=candidate.topic, depth=candidate.depth,
-            student_move=candidate.work.student_move if candidate.work else None,
+            student_move=candidate.work.student_move if candidate.work else None, leak_retried=leak_retried,
             outcome="shown", reason=None, shown=text,
             visual_kind=visual.kind if visual else None, visual_dropped=vetting.visual_dropped if vetting else None,
             shape_flags=vetting.shape_flags if vetting else None,

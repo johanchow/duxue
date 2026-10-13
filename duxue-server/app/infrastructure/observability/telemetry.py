@@ -249,7 +249,7 @@ def record_agent_input(*, agent_type: str, run_id: str | None, thread_id: str | 
 
 def record_tutor_turn_result(
     *, act: str | None, relation: str | None, topic: str | None = None, depth: str | None = None,
-    student_move: str | None = None, outcome: str, reason: str | None, shown: str,
+    student_move: str | None = None, leak_retried: bool = False, outcome: str, reason: str | None, shown: str,
     visual_kind: str | None = None, visual_dropped: str | None = None, shape_flags: list[str] | None = None,
 ) -> None:
     """What the Ward actually saw and why: the join between the question and the model's labels.
@@ -259,7 +259,8 @@ def record_tutor_turn_result(
     """
     attrs = _attrs(**{
         "tutor.act": act, "tutor.relation": relation, "tutor.topic": topic, "tutor.depth": depth,
-        "tutor.student_move": student_move, "tutor.outcome": outcome, "tutor.reason": reason,
+        "tutor.student_move": student_move, "tutor.leak_retried": leak_retried or None,
+        "tutor.outcome": outcome, "tutor.reason": reason,
         "tutor.visual.kind": visual_kind, "tutor.visual.dropped": visual_dropped,
         "tutor.shape.flags": ",".join(shape_flags or []) or None,
     })
@@ -470,6 +471,16 @@ def record_tutor_visual_dropped(*, reason: str) -> None:
 def record_tutor_shape_lint(*, act: str, flags: list[str]) -> None:
     """Shape lint only observes; it never changes what the Ward sees."""
     _span_event("tutor.shape.lint", {"tutor.act": act, "tutor.shape.flags": ",".join(flags)})
+
+
+def record_tutor_fact_gate(*, outcome: str) -> None:
+    """``passed`` skipped the text leak judge; anything else is the rule that sent it to the judge."""
+    _span_event("tutor.fact_gate", {"tutor.fact_gate.outcome": outcome})
+
+
+def record_tutor_leak_retry(*, reason: str) -> None:
+    """The first reply gave the answer away and the model was asked once for a hint instead."""
+    _span_event("tutor.leak.retry", {"tutor.leak.reason": reason})
 
 
 def record_vlm_frames(*, count: int, mode: str) -> None:

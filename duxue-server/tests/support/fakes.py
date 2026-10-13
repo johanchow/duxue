@@ -85,14 +85,11 @@ class StaticLeakJudge:
     def __init__(self, result: bool | None = False):
         self.result = result
         self.calls = 0
-        self.depths: list[str | None] = []
         self.texts: list[str] = []
         self.problems: list[str | None] = []
 
-    def leaks(self, *, text: str, task_title: str | None, problem_summary: str | None,
-              depth: str | None = None) -> bool | None:
+    def leaks(self, *, text: str, task_title: str | None, problem_summary: str | None) -> bool | None:
         self.calls += 1
-        self.depths.append(depth)
         self.texts.append(text)
         self.problems.append(problem_summary)
         return self.result

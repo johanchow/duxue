@@ -12,3 +12,4 @@
 | [unify-ai-component-gateway.md](unify-ai-component-gateway.md) | 2026-10-11 |
 | [tutor-turn-contract-hardening.md](tutor-turn-contract-hardening.md) | 2026-10-13 |
 | [tutor-turn-contract-v2.md](tutor-turn-contract-v2.md) | 2026-10-13 |
+| [leak-gate-deterministic-fact.md](leak-gate-deterministic-fact.md) | 2026-10-13 |

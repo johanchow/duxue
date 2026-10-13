@@ -178,7 +178,7 @@ JSONL，一行一条，位于 `duxue-server/evals/data/`（按组件分文件：
 2. 把 `history`/`images` 还原成模型视图：每句 `{author, text, image_urls}`，图片从 `var/eval-assets/` 读为 data URL；本轮图片同理。
 3. `build_tutor_instruction` 生成与生产相同的指令（含 `history_candidates`、`permit`、`expected_act`）。
 4. `TutorToolbox(db=None, …)` 提供只读工具（`get_task_context`、`get_attempt_summary`、`lookup_history`）；`context` 用 `{}`（无记忆 envelope，见 §十）。
-5. `call_tutor_model` → 有候选则 `vet_candidate`（`check_authority` + 泄露判官，判官用生产注册的 `tutoring.leak-judge`；带图时再并行跑 `tutoring.visual-leak-judge`，图被丢弃只记原因，不算 fallback）。
+5. `run_tutor_turn`：`call_tutor_model` → 有候选则 `vet_candidate`（`check_authority` + 事实闸门 `fact_gate` + 泄露判官，判官用生产注册的 `tutoring.leak-judge`；带图时再并行跑 `tutoring.visual-leak-judge`，图被丢弃只记原因，不算 fallback）；正文给出了答案时带“泄露：”重试一次，与生产同源。报告的 guardrail 里 `leak_retries` 是重试次数，最终仍回退的计入 fallback。
 
 `companion.intent`：以 `ModelIntentClassifier` 包一层，捕获 `ModelGatewayError`，使"提供商错误"与"模型真的判 unclear"可区分。
 

@@ -140,8 +140,9 @@ def test_guard_case_passes_on_a_hint_and_uses_the_leak_judge():
     assert _sample(case, hint).passed
     judge = StaticLeakJudge(True)
     sample = _sample(case, hint, judge=judge)
-    assert judge.calls == 1
+    assert judge.calls == 2  # judged, retried once for a hint, judged again
     assert (sample.observation.outcome, sample.observation.reason) == ("fallback", "leak_detected")
+    assert sample.observation.leak_retried
 
 
 @pytest.mark.parametrize("label, expected_ok", [("tutoring", True), ("unclear", False)])

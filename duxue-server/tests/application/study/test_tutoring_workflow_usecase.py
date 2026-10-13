@@ -285,13 +285,13 @@ def test_a_submitted_problem_stays_protected_until_code_releases_it(db):
     outcome = _ask(db, workflow, session, "x=3")
     assert outcome.next_interaction["problem_status"] == "submitted"
     assert outcome.next_interaction["answer_protected"] is True
-    workflow.turn_model = StaticTutorModel(tutor_raw("answer", "标准做法是先移项。", relation="none"))
+    workflow.turn_model = StaticTutorModel(tutor_raw("answer", "先移项再除以 2 就是答案。", relation="none"))
     workflow.leak_judge = StaticLeakJudge(True)
     assert _ask(db, workflow, session, "标准答案是什么").next_interaction["model_fallback"] is True
 
 
 def test_a_single_fact_inside_homework_is_answered_directly_unless_it_is_the_answer(db):
-    """作业里的原子/回忆提问直接答，不推进题目；但裁判判定它就是本题答案时仍不能说出来。"""
+    """作业里的原子/回忆提问直接答，不推进题目；谎称成事实的计算结果仍交裁判，判定是答案时不能说出来。"""
     _, session = _setup(db)
     workflow, _ = _workflow(db, ATTEMPT)
     _ask(db, workflow, session, "我觉得是 3")
@@ -304,6 +304,9 @@ def test_a_single_fact_inside_homework_is_answered_directly_unless_it_is_the_ans
     db.refresh(problem)
     assert (problem.status, problem.substantive_attempts, problem.hints_given) == before
     workflow.leak_judge = StaticLeakJudge(True)
+    still_a_fact = _ask(db, workflow, session, "斜边是哪条")
+    assert still_a_fact.next_interaction["model_fallback"] is False  # the gate, not the judge, decides a fact
+    workflow.turn_model = StaticTutorModel(tutor_raw("answer", "斜边是 5。", relation="same", depth="atomic"))
     blocked = _ask(db, workflow, session, "空格里填什么")
     assert blocked.next_interaction["model_fallback"] is True
 
@@ -495,3 +498,24 @@ def test_a_clarify_on_a_protected_problem_cannot_carry_the_answer(db):
     outcome = _ask(db, workflow, session, "哪个是答案")
     assert outcome.next_interaction["model_fallback"] is True
     assert "x 等于 2" not in outcome.next_interaction["content"]
+
+
+def test_a_dictation_word_is_answered_and_a_leaked_result_becomes_a_hint(db):
+    """听写里问空格的词：确定性放行（判官即使会拦也不问）；谎称成事实的得数被拦后重试成提示，不是兜底话术。"""
+    _, session = _setup(db, "英语听写")
+    workflow, _ = _workflow(db, ATTEMPT)
+    _ask(db, workflow, session, "我写的是 beech")
+    workflow.leak_judge = StaticLeakJudge(True)
+    workflow.turn_model = StaticTutorModel(tutor_raw("answer", "海滩是 beach。", relation="same", depth="recall"))
+    word = _ask(db, workflow, session, "海滩的英文怎么写")
+    assert word.next_interaction["model_fallback"] is False and "beach" in word.next_interaction["content"]
+    assert workflow.leak_judge.calls == 0
+    hint = tutor_raw("guide", "先想想：17 乘 20 是多少？")
+    workflow.turn_model = model = StaticTutorModel(tutor_raw("answer", "17×23=391。", relation="same", depth="recall"), hint)
+    workflow.leak_judge = judge = type("LeaksOn391", (StaticLeakJudge,), {
+        "leaks": lambda self, **kw: StaticLeakJudge.leaks(self, **kw) or "391" in kw["text"],
+    })()
+    shown = _ask(db, workflow, session, "直接告诉我得数")
+    assert shown.next_interaction["model_fallback"] is False
+    assert shown.next_interaction["content"].startswith("先想想") and "391" not in shown.next_interaction["content"]
+    assert model.calls[1]["repair_error"].startswith("泄露：") and judge.calls == 2

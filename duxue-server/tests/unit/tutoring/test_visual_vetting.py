@@ -80,7 +80,7 @@ def test_invalid_diagram_is_dropped_and_reported_without_calling_the_judge():
 
 
 def test_relation_none_on_a_protected_problem_is_still_checked_even_with_a_diagram():
-    raw = tutor_raw("answer", "这个词是 in advance。", relation="none", visual=STEPS)
+    raw = tutor_raw("answer", "先把 3 移到右边再看。", relation="none", visual=STEPS)
     result = vet(raw, StaticVisualLeakJudge(True, True), permit=PROTECTED)
     assert result.failure == "leak_detected"
 
@@ -91,25 +91,58 @@ def test_relation_none_without_a_protected_problem_is_not_checked_even_with_a_di
     assert result.failure is None and result.visual is not None
 
 
-def test_the_judge_is_told_the_depth_only_for_a_short_single_fact():
-    from app.application.workflows.tutor_loop import FACT_REPLY_MAX_CHARS
+def test_a_short_single_fact_passes_the_gate_without_asking_the_judge():
+    """单个事实由代码确定性放行：判官就算会判泄露也不再被问到。"""
+    for raw in (
+        tutor_raw("answer", "beach。", relation="same", depth="recall"),
+        tutor_raw("answer", "斜边是最长的边。", relation="same", depth="atomic"),
+        tutor_raw("answer", "beach 是海滩。", relation="none", topic="atomic_lookup"),
+        tutor_raw("answer", "beach 是海滩。", relation="none"),  # unknown topic is a lookup
+    ):
+        judge = StaticLeakJudge(True)
+        assert vet(raw, judge).failure is None and judge.calls == 0, raw
 
-    def depths(raw):
-        judge = StaticLeakJudge()
-        vet(raw, judge)
-        return judge.depths
 
-    assert depths(tutor_raw("answer", "beach。", relation="same", depth="recall")) == ["recall"]
-    assert depths(tutor_raw("answer", "斜边是最长的边。", relation="same", depth="atomic")) == ["atomic"]
-    assert depths(tutor_raw("answer", "x" * (FACT_REPLY_MAX_CHARS + 1), relation="same", depth="atomic")) == [None]
-    # 非作业的一次性查询同样是单个事实；好奇心和模糊的 topic 不算
-    assert depths(tutor_raw("answer", "beach。", relation="none", topic="atomic_lookup")) == ["atomic"]
-    assert depths(tutor_raw("answer", "beach。", relation="none")) == ["atomic"]
-    assert depths(tutor_raw("answer", "因为散射。", relation="none", topic="spontaneous_curiosity")) == [None]
-    assert depths(tutor_raw("guide", "先看看谁多？", relation="same", depth="reasoning")) == [None]
-    assert depths(tutor_raw("guide", "先看看谁多？", relation="same")) == [None]
-    # guide 自称单个事实是标签矛盾：不放宽判官
-    assert depths(tutor_raw("guide", "beach。", relation="same", depth="atomic")) == [None]
+@pytest.mark.parametrize("content, reason", [
+    ("得数是 391。", "digit"),
+    ("x＝y＋z", "math"),
+    ("选 B。", "option"),
+    ("这句话是错的。", "judgement"),
+    ("√", "judgement"),
+    ("所以是质数。", "inference"),
+    ("海" * 41, "too_long"),
+])
+def test_the_gate_sends_results_disguised_as_facts_to_the_judge(content, reason):
+    """depth-adversarial：计算结果、选项、对错、推理结论，无论标签都交判官按严格标准审。"""
+    from app.application.workflows.tutor_loop import fact_gate
+
+    raw = tutor_raw("answer", content, relation="same", depth="recall")
+    assert fact_gate(TutorTurnCandidate.model_validate(raw)) == reason
+    judge = StaticLeakJudge(True)
+    assert vet(raw, judge).failure == "leak_detected" and judge.calls == 1
+
+
+def test_the_gate_needs_a_fact_label_on_an_answer():
+    from app.application.workflows.tutor_loop import FACT_REPLY_MAX_CHARS, fact_gate
+
+    def gate(raw):
+        return fact_gate(TutorTurnCandidate.model_validate(raw))
+
+    assert FACT_REPLY_MAX_CHARS == 40
+    assert gate(tutor_raw("answer", "海" * 40, relation="same", depth="atomic")) is None
+    assert gate(tutor_raw("guide", "beach。", relation="same", depth="atomic")) == "not_answer"
+    assert gate(tutor_raw("answer", "beach。", relation="same")) == "not_fact"  # missing depth is reasoning
+    assert gate(tutor_raw("answer", "因为散射。", relation="none", topic="spontaneous_curiosity")) == "not_fact"
+    clarify = {"act": "clarify", "content": "哪一个？", "clarify": {"candidates": ["beach"]}}
+    assert gate(clarify) == "not_answer"
+
+
+def test_a_gated_fact_with_a_diagram_still_has_the_diagram_judged():
+    raw = tutor_raw("answer", "beach 是海滩。", relation="none", visual=STEPS)
+    judge = StaticVisualLeakJudge(True, True)
+    result = vet(raw, judge)
+    assert result.failure is None and result.visual is None and result.visual_dropped == "visual_leak_detected"
+    assert judge.calls == 0 and len(judge.visual_texts) == 1
 
 
 def test_answer_on_a_reasoning_problem_is_observed_not_rejected():
@@ -128,7 +161,10 @@ def test_the_judge_reads_clarify_candidates_on_a_protected_problem():
 
 
 def test_judge_problem_summary_lists_recent_problems_and_this_turn():
-    from app.application.workflows.tutor_loop import JUDGE_RECENT_PROBLEMS, judge_problem_summary
+    from app.application.workflows.tutor_loop import (
+        JUDGE_RECENT_PROBLEMS,
+        judge_problem_summary,
+    )
 
     assert judge_problem_summary([], "  ") is None
     assert judge_problem_summary([], "beach 什么意思") == "孩子本轮说：beach 什么意思"
