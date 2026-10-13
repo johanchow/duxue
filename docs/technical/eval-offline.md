@@ -178,7 +178,7 @@ JSONL，一行一条，位于 `duxue-server/evals/data/`（按组件分文件：
 2. 把 `history`/`images` 还原成模型视图：每句 `{author, text, image_urls}`，图片从 `var/eval-assets/` 读为 data URL；本轮图片同理。
 3. `build_tutor_instruction` 生成与生产相同的指令（含 `history_candidates`、`permit`、`expected_act`）。
 4. `TutorToolbox(db=None, …)` 提供只读工具（`get_task_context`、`get_attempt_summary`、`lookup_history`）；`context` 用 `{}`（无记忆 envelope，见 §十）。
-5. `call_tutor_model` → 有候选则 `vet_candidate`（`check_authority` + 泄露判官，判官用生产注册的 `tutoring.leak-judge`；带图时再并行跑 `tutoring.visual-leak-judge`，图被丢弃只记原因，不算 fallback）。
+5. `run_tutor_turn`：`call_tutor_model` → 有候选则 `vet_candidate`（`check_authority` + 事实闸门 `fact_gate` + 泄露判官，判官用生产注册的 `tutoring.leak-judge`；带图时再并行跑 `tutoring.visual-leak-judge`，图被丢弃只记原因，不算 fallback）；正文给出了答案时带“泄露：”重试一次，与生产同源。报告的 guardrail 里 `leak_retries` 是重试次数，最终仍回退的计入 fallback。
 
 `companion.intent`：以 `ModelIntentClassifier` 包一层，捕获 `ModelGatewayError`，使"提供商错误"与"模型真的判 unclear"可区分。
 
@@ -275,7 +275,7 @@ python -m evals compare var/evals/<A>.json var/evals/<B>.json
 
 **CI**：只跑无网络部分（数据集校验、判分、Runner、报告、export 的单测）。真实模型评测**不进 pytest/CI**——`conftest` 已全局禁止外部模型调用。
 
-**通过阈值（v1）**：不设自动硬门槛。下列改动发布前必须人工跑一次并留存结果：换模型、改 `tutoring.turn` / `companion.intent` 的 prompt、改 `tutor-turn.v3` 契约或出口检查。要求：`confirmed` 集稳定通过的 Case 数不低于上次基线，fallback 率不升，guard 不退化；落在区间内的变化一律按噪声处理。待 `confirmed` 集足够大后再收紧为自动门槛，不为小数据集固化百分比。
+**通过阈值（v1）**：不设自动硬门槛。下列改动发布前必须人工跑一次并留存结果：换模型、改 `tutoring.turn` / `companion.intent` 的 prompt、改 `tutor-turn` 契约或出口检查。要求：`confirmed` 集稳定通过的 Case 数不低于上次基线，fallback 率不升，guard 不退化；落在区间内的变化一律按噪声处理。待 `confirmed` 集足够大后再收紧为自动门槛，不为小数据集固化百分比。
 
 ## 十、局限与风险
 

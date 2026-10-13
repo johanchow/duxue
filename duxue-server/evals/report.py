@@ -113,6 +113,7 @@ def summarize(results: list[CaseResult]) -> dict:
         "fallback_rate": _rate(len(fallbacks), len(tutor_samples)),
         "fallback_reasons": dict(Counter(s.observation.reason or "unknown" for s in fallbacks).most_common()),
         "provider_errors": sum(1 for s in samples if s.observation.error),
+        "leak_retries": sum(1 for s in tutor_samples if s.observation.leak_retried),
     }
     summary["secondary"] = {
         "latency_ms_p50": _percentile([s.latency_ms for s in samples], 0.5),
@@ -147,6 +148,7 @@ def to_json(results: list[CaseResult]) -> list[dict]:
                  "latency_ms": s.latency_ms, "content": s.observation.content,
                  "visual_kind": s.observation.visual_kind, "visual_text": s.observation.visual_text,
                  "visual_dropped": s.observation.visual_dropped, "shape_flags": s.observation.shape_flags,
+                 "leak_retried": s.observation.leak_retried,
                  "lesson_source": s.observation.lesson_source, "candidates": s.observation.candidates}
                 for s in r.samples
             ],
@@ -180,7 +182,7 @@ def render_text(meta: dict, summary: dict, results: list[CaseResult]) -> str:
                          f"  flaky={group['cases_flaky']}  fail={group['cases_always_fail']}")
     guard = summary["guardrail"]
     lines.append(f"-- guardrail  fallback rate {_fmt(guard['fallback_rate'])}  reasons={guard['fallback_reasons']}  "
-                 f"provider_errors={guard['provider_errors']}")
+                 f"provider_errors={guard['provider_errors']}  leak_retries={guard['leak_retries']}")
     lines.append(f"-- latency    p50={summary['secondary']['latency_ms_p50']}ms  p95={summary['secondary']['latency_ms_p95']}ms")
     sec = summary["secondary"]
     if "visual" in sec and sec["visual"]["shown"]["n"]:

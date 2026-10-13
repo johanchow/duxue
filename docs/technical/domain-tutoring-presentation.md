@@ -2,7 +2,7 @@
 
 > 状态：v0.2，**首期已实现**（逻辑层 + `steps`/`compare`/`segment`/`number_line`），实现状态与偏差见 [§十四](#十四实现状态与偏差)；其中的数字仍是待校准的假设 · 范围：`tutoring.turn` 面向孩子的 `content` 的结构（逻辑性）与可选配图（视觉化）。
 >
-> 关联：[Tutoring Domain](domain-tutoring.md)（契约 `tutor-turn.v3`、出口检查） · [Companion 交互协议](domain-companion.md#52-companion-interaction-protocol) · [AI Component](infra-ai-components.md) · [答疑离线评测](eval-offline.md) · [App 端设计](design-app.md)
+> 关联：[Tutoring Domain](domain-tutoring.md)（契约 `tutor-turn.v4`、出口检查） · [Companion 交互协议](domain-companion.md#52-companion-interaction-protocol) · [AI Component](infra-ai-components.md) · [答疑离线评测](eval-offline.md) · [App 端设计](design-app.md)
 >
 > 单一事实源：契约字段、出口检查、交互 `kind` 仍以上述文档为准。本文只写表达层的设计；实现落地时，把契约与协议的变更同步回它们，本文只保留设计理由与验收。
 >
@@ -93,7 +93,7 @@ flowchart LR
 2. **确定性 lint**：对 `content` 做只读检查（§七），结果进 trace 与评测，不触发 fallback。
 3. **评测**：用确定性指标度量，见 §九。
 
-`follow_up_question` 字段与正文的关系需要先核对现有投影方式：形状里的"追问"应出现在哪里，避免孩子看到两个问题。这是待确认项（§十二）。
+追问写在 `content` 里：`tutor-turn.v4` 去掉了 `follow_up_question`，孩子不会看到正文和追问字段各带一个问题。
 
 ## 五、视觉层：结构化配图
 
@@ -383,7 +383,7 @@ Then  只记录，回答照常展示，不触发 fallback
 
 1. `visual` 是否写入 `CompanionMessage` journal（影响历史回看是否保留图）；若不写，需明确"历史里只有文字"。
 2. 新 `kind` 命名与是否用 `part` 扩展代替新 `kind`（`text_visual` 与现有 `text_media` 对应）。
-3. `follow_up_question` 与正文追问的现有投影方式，避免孩子看到两个问题。
+3. ~~`follow_up_question` 与正文追问的投影方式~~：已随 `tutor-turn.v4` 去掉该字段，追问只在 `content` 里。
 4. 年级分层的形状阈值，是否需要按年级分层，取决于 §十 第 0 步的统计。
 5. `relation` 图的布局实现（自研简单布局或引入库）；`geometry` 的"约束到布局"如何实现与验证。
 6. 形状 lint 是否需要对严重项做确定性清洗。

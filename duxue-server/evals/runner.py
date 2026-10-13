@@ -16,7 +16,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from app.application.workflows.teaching_skills import history_candidates
-from app.application.workflows.tutor_loop import call_tutor_model, vet_candidate
+from app.application.workflows.tutor_loop import judge_problem_summary, run_tutor_turn
 from app.application.workflows.tutor_tools import TutorToolbox
 from app.application.workflows.tutor_turn import build_tutor_instruction
 from app.contexts.tutoring.domain.tutor_permit import ProblemState, TutorPermitPolicy
@@ -109,18 +109,14 @@ def _observe_tutor(case: EvalCase, backends: Backends, window: list[dict], image
         problem=SimpleNamespace(**problem.model_dump()) if problem else None,
         task_title=context.task_title, task_active=context.task_active, window=window,
     )
-    call = call_tutor_model(backends.tutor_model, {}, instruction, window, images, tools)
-    vetting = None
-    if call.candidate is not None:
-        vetting = vet_candidate(
-            call.candidate, permit=permit,
-            authorized_refs=frozenset(tools.authorized_refs),
-            has_work_input=bool(case.student_said.strip() or images),
-            leak_judge=backends.leak_judge or _NeverLeaks(),
-            task_title=context.task_title,
-            problem_summary=(problem.summary if problem else None) or case.student_said,
-        )
-    return classify(call, vetting)
+    result = run_tutor_turn(
+        backends.tutor_model, {}, instruction, window, images, tools, permit=permit,
+        leak_judge=backends.leak_judge or _NeverLeaks(), task_title=context.task_title,
+        problem_summary=judge_problem_summary(
+            [problem.summary] if problem and problem.summary else [], case.student_said,
+        ),
+    )
+    return classify(result.call, result.vetting, leak_retried=result.leak_retried)
 
 
 def _observe_intent(case: EvalCase, backends: Backends, window: list[dict], images: list) -> Observation:

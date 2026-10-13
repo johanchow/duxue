@@ -20,14 +20,13 @@ _HTML = re.compile(r"<\s*/?[a-zA-Z!][^>]*>")
 _ESCAPED_DOLLAR = re.compile(r"\\\$")
 
 
-def lint_shape(act: str, content: str, follow_up_question: str | None = None) -> list[str]:
+def lint_shape(act: str, content: str) -> list[str]:
     """返回触发的规则名；空列表表示形状没有问题。规则名是稳定的低基数标签。"""
     flags: list[str] = []
-    shown = content if not follow_up_question or follow_up_question in content else f"{content}\n{follow_up_question}"
     limit = MAX_CHARS.get(act)
-    if limit is not None and len(shown) > limit:
+    if limit is not None and len(content) > limit:
         flags.append("too_long")
-    if act == "guide" and len(_QUESTION.findall(shown)) > 1:
+    if act == "guide" and len(_QUESTION.findall(content)) > 1:
         flags.append("multi_question")
     lines = [line for line in content.splitlines() if line.strip()]
     listed = sum(1 for line in lines if _LIST_LINE.match(line))

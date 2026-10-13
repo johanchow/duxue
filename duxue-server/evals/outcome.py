@@ -29,14 +29,17 @@ class Observation:
     visual_text: str | None = None
     visual_dropped: str | None = None
     shape_flags: list[str] = field(default_factory=list)
+    # 第一版说出了答案、已重试一次改成提示（最终结果仍以 outcome 为准）。
+    leak_retried: bool = False
 
 
-def classify(call: ModelCall, vetting: Vetting | None) -> Observation:
+def classify(call: ModelCall, vetting: Vetting | None, *, leak_retried: bool = False) -> Observation:
     """``fallback`` means the Ward would be shown FALLBACK_TEXT; ``reason`` says which check fired."""
     candidate = call.candidate
     if candidate is None:
-        return Observation("fallback", reason=call.failure or "no_candidate")
+        return Observation("fallback", reason=call.failure or "no_candidate", leak_retried=leak_retried)
     base = {
+        "leak_retried": leak_retried,
         "act": candidate.act, "content": candidate.content,
         "lesson_source": candidate.lesson.source_text if candidate.lesson else None,
         "candidates": list(candidate.candidates),

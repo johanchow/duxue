@@ -45,7 +45,8 @@ def test_samples_are_repeated_and_aggregated_per_case():
 
 
 def test_flaky_and_always_failing_cases_are_told_apart():
-    flaky = _run([_case("turn-flaky-00")], GOOD, BAD, GOOD, samples=3)  # last raw repeats; idx0=GOOD idx1=BAD idx2=GOOD
+    # last raw repeats; a BAD sample is retried once after the leak, so it takes two raws
+    flaky = _run([_case("turn-flaky-00")], GOOD, BAD, BAD, GOOD, samples=3)
     failing = _run([_case("turn-bad-00")], BAD, samples=3)
     group = report.summarize(flaky + failing)["primary"]["proposed"]["overall"]
     assert (group["cases_flaky"], group["cases_always_fail"], group["cases_stable_pass"]["k"]) == (1, 1, 0)

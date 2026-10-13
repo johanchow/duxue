@@ -55,12 +55,12 @@ class TutorPermit:
 
 @dataclass(frozen=True)
 class ProblemAssessment:
-    """Only an already validated work-product turn may reach this value object."""
+    """Only an already validated work-product turn on the current problem may reach this value
+    object.  Switching to a new problem is decided by the caller before ``advance()``."""
 
     effective_work_product: bool
     student_move: str
     progress: str | None
-    same_problem: bool
     act: str
     counts_as_attempt: bool
     subgoal_evidence: str | None = None
@@ -85,7 +85,7 @@ class TutorPermitPolicy:
         """Advance only from evidence; inability or a request never opens the answer."""
         if not assessment.effective_work_product:
             return problem
-        if problem is None or problem.status != "open" or not assessment.same_problem:
+        if problem is None or problem.status != "open":
             problem = ProblemState()
         state = problem
         # A turn that receives the Ward's submission is not a hint.
