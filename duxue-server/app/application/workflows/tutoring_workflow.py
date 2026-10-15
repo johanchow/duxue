@@ -7,6 +7,8 @@ from app.application.commands.memory import SqlAlchemyMemoryFacade
 from app.application.ports.companion import RunInvocation, WorkflowOutcome
 from app.application.ports.tutoring import SafetyScreeningPort
 from app.application.queries.context_builder import ContextBuilder
+from app.application.workflows.planning_adapter import planning_today
+from app.application.workflows.planning_domain_service import PlanningDomainService
 from app.application.workflows.pronunciation_guidance import (
     build_interaction,
     project_lesson,
@@ -127,6 +129,7 @@ class TutoringWorkflow:
             if session.ward_id != ward_id:
                 raise HTTPException(403, "study session does not belong to Ward")
             return session
+        PlanningDomainService(self.db).release_unfinished_tasks(ward_id, planning_today())
         return (
             self.db.query(StudySession)
             .filter(StudySession.ward_id == ward_id, StudySession.status.in_(("active", "paused")))
@@ -236,6 +239,21 @@ class TutoringWorkflow:
             raise HTTPException(409, "study session is no longer open for tutoring")
 
         content = turn.get("content", "")
+        if (
+            tutor is not None
+            and not invocation.resume_from_checkpoint
+            and not invocation.context_refs
+            and not turn.get("study_session_id")
+        ):
+            for stale_problem in (
+                self.db.query(TutoringProblem)
+                .filter(
+                    TutoringProblem.tutoring_session_id == tutor.id,
+                    TutoringProblem.status.in_(sorted(PROTECTED_STATUSES)),
+                )
+                .all()
+            ):
+                stale_problem.status = "abandoned"
         problem_row = self._open_problem(tutor) if tutor is not None else None
         permit = TutorPermitPolicy.permit(_state(problem_row))
         task_title = self._task_title(session.task_id if session else None)

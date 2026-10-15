@@ -35,3 +35,18 @@ def test_window_keeps_the_tail_of_one_oversized_utterance():
     assert kept[0]["leading_omitted"] is True
     assert kept[0]["text"] == original[-8:]
     assert "开头省略" not in kept[0]["text"]
+
+
+def test_window_strips_system_appended_return_to_task_reminder_from_companion_turns():
+    kept, omitted = select_recent_utterances([
+        {"turn_id": "1", "author": "ward", "text": "地球和太阳的区别"},
+        {
+            "turn_id": "1",
+            "author": "companion",
+            "text": "太阳是恒星，地球是行星。\n先回到正在进行的任务，这个问题可以稍后再问。",
+        },
+    ], exclude_turn_id=None)
+
+    assert omitted == 0
+    assert [item["text"] for item in kept] == ["地球和太阳的区别", "太阳是恒星，地球是行星。"]
+

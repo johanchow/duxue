@@ -17,6 +17,7 @@ from app.contexts.planning.domain.scheduling import (
     SchedulingService,
     TaskReferenceResolver,
     can_schedule,
+    local_plan_date,
 )
 from app.infrastructure.messaging.outbox import publish_learning_fact
 from app.infrastructure.persistence.models import (
@@ -24,7 +25,10 @@ from app.infrastructure.persistence.models import (
     OutboxEvent,
     PlanDraft,
     StudySession,
+    StudySessionInterval,
     Task,
+    TutoringProblem,
+    TutoringSession,
     Ward,
     now,
 )
@@ -305,10 +309,10 @@ class PlanningDomainService(PlanningOperations):
         return self.db.query(DailySchedule).filter_by(ward_id=ward_id, schedule_date=plan_date).populate_existing().one_or_none()
 
     def release_unfinished_tasks(self, ward_id: str, today: date) -> int:
-        """Return unfinished tasks from a past local day to today's pool.
+        """Return unfinished tasks from a past local day to today's pool and reset cross-day open sessions.
 
-        The old DailySchedule row stays as history. An open study session does
-        not keep the task pinned to that day.
+        The old DailySchedule row stays as history. Past-day active/paused StudySessions are
+        abandoned and detached so cross-day tasks return to an unscheduled, unstarted state.
         """
         self._lock_ward(ward_id)
         rows = (
@@ -321,11 +325,53 @@ class PlanningDomainService(PlanningOperations):
             )
             .all()
         )
+        released_task_ids = {task.id for task in rows}
         for task in rows:
             task.status = POOL
             task.schedule_id = None
             task.position = None
-        if rows:
+        open_sessions = (
+            self.db.query(StudySession)
+            .filter(
+                StudySession.ward_id == ward_id,
+                StudySession.status.in_(("active", "paused")),
+            )
+            .all()
+        )
+        stale_sessions = [
+            s for s in open_sessions
+            if local_plan_date(s.started_at) < today or (s.task_id and s.task_id in released_task_ids)
+        ]
+        current_time = now()
+        for session in stale_sessions:
+            for interval in (
+                self.db.query(StudySessionInterval)
+                .filter_by(study_session_id=session.id, ended_at=None)
+                .all()
+            ):
+                interval.ended_at = current_time
+                interval.end_reason = "abandoned"
+                interval.active_seconds = 0
+            tutor = self.db.query(TutoringSession).filter_by(study_session_id=session.id).one_or_none()
+            if tutor is not None:
+                for problem in (
+                    self.db.query(TutoringProblem)
+                    .filter(
+                        TutoringProblem.tutoring_session_id == tutor.id,
+                        TutoringProblem.status.in_(("open", "submitted")),
+                    )
+                    .all()
+                ):
+                    problem.status = "abandoned"
+                if tutor.status != "closed":
+                    tutor.status = "closed"
+                    tutor.closed_at = current_time
+            session.status = "abandoned"
+            session.ended_at = current_time
+            session.completion_reason = "day_rollover"
+            session.task_id = None
+            session.version += 1
+        if rows or stale_sessions:
             self.db.flush()
         return len(rows)
 

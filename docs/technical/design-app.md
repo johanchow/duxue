@@ -167,11 +167,11 @@ FUNCTION routerRedirectGuard(authState, targetPath):
 ```
 
 #### 1.1 答疑配图 `VisualBlock`
-- **来源**：交互 `kind=text_visual` 的 `visual` part（见 [Companion 交互协议](domain-companion.md#52-companion-interaction-protocol)）；服务端只给语义（有哪些对象、什么关系或数量），布局与绘制全在客户端，不接收坐标、样式或可执行内容。
-- **图型**：`steps`、`compare`、`segment`（线段图）、`number_line`（数轴），位于 `lib/features/visual_block.dart`；颜色与字体取自 `ThemeData`，窄屏、深色、系统字号放大可用。
-- **不信任输入**：先解析成纯 Dart 数据并复核预算（节点数、文字长度、未知量不带数值）；未知 `kind`、结构或预算不对就**整张不画**，文字照常展示，不报错、不弹窗。旧客户端遇到 `text_visual` 按协议降级为 `text`。
-- **无障碍**：`Semantics` 标签为 `alt`，`steps` 另按顺序线性化朗读。
-- **生命周期**：图属于最近一轮的回答，随下一次发送清除；首期不写入消息 journal，历史回看只有文字。
+- **来源**：交互 `kind=text_visual` 的 `visual` part（见 [Companion 交互协议](domain-companion.md#52-companion-interaction-protocol)）；采用两层渲染架构，不引入 WebView 或可执行脚本。
+- **图型**：第一层为 Flutter 原生结构化图 `steps`、`compare`、`segment`（线段图）、`number_line`（数轴）；第二层为 `flutter_svg` 渲染的受限静态矢量图 `svg`（固定 `viewBox="0 0 680 H"`，渲染前由 `materializeSvgTheme` 将语义色板与 `var(--color-*)` 摊平为当前明暗主题色值），均位于 `lib/features/visual_block.dart`；窄屏、深色、系统字号放大可用。
+- **不信任输入**：先解析成纯 Dart 数据并复核预算（节点数、文字长度、未知量不带数值、SVG 禁止 `<script>`/`<foreignObject>`/`<style>`/外链/事件属性）；未知 `kind`、结构或预算不对就**整张不画**，文字照常展示，不报错、不弹窗。旧客户端遇到 `text_visual` 按协议降级为 `text`。
+- **无障碍**：`Semantics` 标签为 `alt`，`steps` 另按顺序线性化朗读，`svg` 附加图内 `<text>` 顺序拼接文本供读屏。
+- **生命周期**：通过检查的 `visual` 随该轮 `CompanionMessage.interaction_ref` 写入消息 journal，在对应历史气泡内持久展示（进入新一轮对话或重新打开对话列表不会消失），但不会注入后续轮次传给大模型的对话上下文。
 - **与流式的关系**：当前伴学对话是一次请求返回完整交互，图随该交互一次性出现。若将来改为 SSE，`delta` 事件不得携带图的任何内容，只有最终 `interaction` 事件携带 `visual`。
 
 #### 2. 流式 Markdown + LaTeX 混排渲染机制

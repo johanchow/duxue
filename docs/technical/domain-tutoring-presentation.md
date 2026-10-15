@@ -122,37 +122,25 @@ class VisualEdge(BaseModel):
     label: str | None = None
 
 class VisualPayload(BaseModel):
-    kind: Literal["steps", "compare", "layers", "relation",
-                  "segment", "number_line", "geometry"]
+    kind: Literal["steps", "compare", "segment", "number_line", "svg"]
     title: str | None
     alt: str                      # 必填：一句话说清图的内容，同时供读屏
     # 各 kind 使用的字段不同，由 discriminated union 约束，下表为预算
 ```
 
-图型分两类。**通用概念图**表达概念之间的结构；**学科图**表达题目里的数量与几何关系。两类都是首期范围，具体先后见下方分期。
+图型分两层。**第一层（Flutter 原生结构化图）**：`steps`、`compare`、`segment`、`number_line`，模型只表达语义，布局与比例由客户端计算；**第二层（受限矢量图 `kind="svg"`）**：处理前四种放不下的平面几何与辅助线、电路/受力、树形/环路/网格/自由概念图，由模型直接输出固定画布的静态 SVG，经服务端本地确定性 XML 校验与客户端 `flutter_svg` 渲染（不引入 WebView）。
 
-通用概念图（预算为初始假设，随评测校准）：
+通用概念图与学科图（预算为初始假设，随评测校准）：
 
-| `kind` | 用途 | 数据形态 | 预算 |
-| --- | --- | --- | --- |
-| `steps` | 先后顺序、流程、过程变化 | 有序节点，线性 | 2–5 个节点 |
-| `compare` | X 和 Y 的区别 | 2–3 列，每列若干条属性 | ≤3 列、≤4 行，行标题可选 |
-| `layers` | 包含、层级、组成 | 嵌套节点 | ≤3 层，每层 ≤4 个节点 |
-| `relation` | 概念之间的关系、有分支的流程 | 节点 + 有向边 | ≤6 个节点、≤8 条边 |
+| `kind` | 层级 | 用途 | 数据形态 | 预算 / 约束 |
+| --- | --- | --- | --- | --- |
+| `steps` | 原生结构化 | 先后顺序、流程、过程变化 | 有序节点，线性 | 2–5 个节点 |
+| `compare` | 原生结构化 | X 和 Y 的区别 | 2–3 列，每列若干条属性 | ≤3 列、≤4 行，行标题可选 |
+| `segment` | 原生结构化 | 线段图：和差倍、分数、应用题的数量关系 | 若干条线段；每条有 `label`、份数或数值、可选括号（合计/差）；未知量标 `unknown=true`，不得带数值 | ≤4 条线段、≤2 个括号 |
+| `number_line` | 原生结构化 | 数轴：大小比较、负数、不等式、分数与小数位置 | 范围、刻度、若干标记点或区间；未知点标 `unknown=true`，不得带数值 | ≤8 个标记 |
+| `svg` | 受限矢量 (`flutter_svg`) | 平面几何图形与辅助线、电路/受力示意、树形/环路/自由概念图 | 静态 `<svg>` XML 字符串 | 固定 `viewBox="0 0 680 H"`（`40 <= H <= 1600`），标签白名单，禁止脚本/外链/事件属性/`<style>`，字号 ≥ 11px，作业题待求量标 `?` |
 
-学科图（K12 作业辅导的主要视觉需求；设计提议，待教研确认图型清单）：
-
-| `kind` | 用途 | 数据形态 | 预算 |
-| --- | --- | --- | --- |
-| `segment` | 线段图：和差倍、分数、应用题的数量关系 | 若干条线段；每条有 `label`、份数或数值、可选括号（合计/差）；未知量标 `unknown=true`，不得带数值 | ≤4 条线段、≤2 个括号 |
-| `number_line` | 数轴：大小比较、负数、不等式、分数与小数位置 | 范围、刻度、若干标记点或区间；未知点标 `unknown=true`，不得带数值 | ≤8 个标记 |
-| `geometry` | 几何图形与辅助线：三角形、四边形、圆、角 | 点、线段、圆、角及其标注；由客户端按约束求布局 | ≤8 个点、≤10 条线段/圆 |
-
-学科图的关键原则：**模型只表达"有哪些对象、什么数量关系"，不给像素坐标；比例、布局由客户端计算。** 几何的"约束到布局"是难点，需要在实现期用真实题目验证，验证不过的图型先退回文字，不阻塞其他图型。
-
-通用限制：`label` 与 `detail` 的字数上限、不含 URL、HTML、Markdown 标记；`alt` 必填；边只能引用存在的节点；节点 `id` 不重复。**超预算或结构非法时丢弃整张图，不截断、不猜测修复**，因为截断可能改变含义。
-
-分期：首期 `steps`、`compare`、`segment`、`number_line`（结构简单，且覆盖概念类与小学应用题两大需求）；第二期 `geometry`、`layers`、`relation`。数据趋势类沿用 App 已有的 `fl_chart`，不放进 `visual`。
+选型原则：**能用前四种结构化图型表达的优先用前四种；只有前四种放不下时才用 `svg`。** 通用限制：`label` 与 `detail` 的字数上限、不含 URL、HTML、Markdown 标记；`alt` 必填；`svg` 经本地 XML 解析提取全部 `<title>`/`<desc>`/`<text>`/`<tspan>` 文本，与前四种图统一走答案泄露门禁与输出安全审核。**超预算或结构非法时丢弃整张图，不截断、不猜测修复**（仅对 SVG 连接线缺失 `fill="none"` 和 `viewBox` 高度偏小做确定性几何补齐）。数据趋势类沿用 App 已有的 `fl_chart`，不放进 `visual`。
 
 ### 5.3 何时配图（触发策略）
 
@@ -404,11 +392,11 @@ Then  只记录，回答照常展示，不触发 fallback
 
 **已实现**
 
-- 逻辑层：`tutoring.turn.system.v7` 含"回答形状"段；`tutor_shape.lint_shape` 只观测（trace 事件 `tutor.shape.lint` 与离线指标），不触发 fallback。长度上限（`answer` 400、`guide` 250、`chat`/`redirect`/`pronounce` 120、`clarify` 200 字）是**初始假设**，待 §十 第 0 步用真实输出校准。
-- 契约：`tutor_visual.py` 的 `visual`（四种图型）与预算；结构非法、超预算、`unknown` 带数值、`act` 不适用，一律丢图，原因类别写入 trace 事件 `tutor.visual.dropped`。`geometry`、`layers`、`relation` 不在词汇表内，模型给出也只会被当作非法图丢弃。
-- 出口检查：新增独立组件 `tutoring.visual-leak-judge@v1`（待定项 8 选"新增独立提示词"，仍只交 `problem_summary`，不交原题）；与文字判官并行；判泄露、超时、结果非法、异常、判官不支持图，都只丢图。独立输出安全审核读取 `content` 与 `describe(visual)`。
+- 逻辑层：`tutoring.turn.system.v12` 含"回答形状"段；`tutor_shape.lint_shape` 只观测（trace 事件 `tutor.shape.lint` 与离线指标），不触发 fallback。长度上限（`answer` 400、`guide` 250、`chat`/`redirect`/`pronounce` 120、`clarify` 200 字）是**初始假设**，待 §十 第 0 步用真实输出校准。
+- 契约：`tutor_visual.py` 的 `visual`（两层共五种图型：第一层原生结构化 `steps`、`compare`、`segment`、`number_line`；第二层受限矢量 `svg`）与预算；结构非法、超预算、`unknown` 带数值、SVG 违反白名单/画布规范、`act` 不适用，一律丢图，原因类别写入 trace 事件 `tutor.visual.dropped`。原先规划的 `geometry`、`layers`、`relation` 统一由受限 `svg` 承载，不再单独拆出几何约束求解器。
+- 出口检查：新增独立组件 `tutoring.visual-leak-judge@v1`（待定项 8 选"新增独立提示词"，仍只交 `problem_summary`，不交原题）；`describe(visual)` 对结构化图和 `svg`（提取全部 `<title>`/`<desc>`/`<text>`/`<tspan>` 可见文本）生成统一文本摘要，经关键词答案标记检查、并行图泄露判官及独立输出安全审核；判泄露、超时、结果非法、异常、判官不支持图，都只丢图。
 - 投影：`kind=text_visual`，`parts = text + visual`（内联）；模型不返回 `kind`、按钮、动作。
-- App：`VisualBlock` 四个渲染器、降级、无障碍、窄屏与深色测试。
+- App：`VisualBlock` 五个渲染器（含 `flutter_svg` 驱动的 `_SvgView` 与明暗色板 CSS 变量摊平 `materializeSvgTheme`）、降级、无障碍、窄屏与深色测试。
 
 **与设计的偏差（及原因）**
 
@@ -416,7 +404,7 @@ Then  只记录，回答照常展示，不触发 fallback
 2. **投影不是"在 `text` / `tutoring_hint` 之间选"。** 实现里答疑轮次的 `next_interaction` 原本就没有 `kind`/`parts`（只有 `content`、`act` 等字段）；带图时才合并 `build_interaction(kind="text_visual")` 的信封，无图的轮次保持原样，没有顺手重构。
 3. **视觉段落没有做条件拼接，始终在系统提示里。** 条件拼接需要用真实输出验证"哪些轮次不会用图"，现在没有数据；先保持静态前缀（也利于提示缓存）。实测的静态增量：`tutoring.turn` 系统提示从 2,462 字符增至 3,806 字符（+1,344，约 +55%）。是否按轮次拆段，等离线评测得出配图触发分布后再决定。
 4. **"孩子明确要求画图"的提示信号未做。** 目前完全由模型判断；评测里 `visual-leak` 类用例观察被诱导的情形。
-5. **`visual` 不写入 journal。** 待定项 1 选"首期不写"：历史回看只有文字。
+5. **`visual` 写入 `CompanionMessage.interaction_ref` 并在历史气泡内保留。** 解决待定项 1：通过全部检查的 `visual` 以 `{"kind": "text_visual", "parts": [{"type": "visual", "visual": ...}]}` 存入 `CompanionMessage.interaction_ref`，App 在对应消息气泡内持久渲染（进入新一轮对话不清除）；`run_transcript.py` 构造下一轮模型上下文时只读 `content` 与 `attachment_refs`，不把 `interaction_ref` 传给模型。
 6. **用了新的 `kind` 而不是扩展 `part` 的使用方式。** 待定项 2：`text_visual`；`InteractionPart` 增加 `type=visual`。
 
 **尚未做 / 需要你运行**

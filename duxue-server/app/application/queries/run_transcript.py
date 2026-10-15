@@ -16,11 +16,20 @@ from collections.abc import Callable
 
 from sqlalchemy.orm import Session
 
+from app.application.workflows.tutor_turn import REMINDER
 from app.infrastructure.persistence.models import CompanionMessage
 
 MAX_UTTERANCES = 8
 MAX_UTTERANCE_CHARS = 2400
 MAX_WINDOW_IMAGES = 8
+_SYSTEM_REMINDER_SUFFIX = f"\n{REMINDER}"
+
+
+def _strip_system_reminder(author: str | None, text: str | None) -> str:
+    content = text or ""
+    if author == "companion" and content.endswith(_SYSTEM_REMINDER_SUFFIX):
+        return content[: -len(_SYSTEM_REMINDER_SUFFIX)]
+    return content
 
 
 def ward_media_prefix(ward_id: str) -> str:
@@ -41,7 +50,8 @@ def select_recent_utterances(
     counts. Returns ``(kept, omitted_count)``.
     """
     eligible = [
-        row for row in rows
+        {**row, "text": _strip_system_reminder(row.get("author"), row.get("text"))}
+        for row in rows
         if row.get("turn_id") != exclude_turn_id
         and ((row.get("text") or "").strip() or row.get("attachment_refs"))
     ]
@@ -71,7 +81,7 @@ def recent_thread_utterances(
         {
             "turn_id": row.turn_id,
             "author": row.author_type,
-            "text": row.content,
+            "text": _strip_system_reminder(row.author_type, row.content),
             "attachment_refs": list(row.attachment_refs or []),
         }
         for row in rows

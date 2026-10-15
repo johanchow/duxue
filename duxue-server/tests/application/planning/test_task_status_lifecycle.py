@@ -125,3 +125,34 @@ def test_listing_assignments_releases_past_tasks_into_the_pool(client, db):
     assert task.status == "pool"
     assert task.schedule_id is None
     assert db.get(DailySchedule, schedule.id).status == "confirmed"
+
+
+def test_cross_day_sessions_reset_to_unstarted_and_task_can_be_deleted(client, db):
+    from datetime import datetime, timezone
+
+    ward = create_ward(db, display_name="小宇", session_version=1)
+    past_dt = datetime(2026, 9, 27, 7, 48, tzinfo=timezone.utc)
+    task = create_task(db, ward=ward, title="英语的典范故事阅读", status="pool")
+    session = StudySession(
+        ward_id=ward.id, task_id=task.id, status="paused",
+        started_at=past_dt, last_activity_at=past_dt, active_seconds=333,
+    )
+    db.add(session)
+    db.flush()
+    db.add(StudySessionInterval(study_session_id=session.id, started_at=past_dt))
+    db.commit()
+
+    listed = client.get(f"/wards/{ward.id}/assignments", headers=_headers(ward))
+    assert listed.status_code == 200
+    item = next(row for row in listed.json() if row["id"] == task.id)
+    assert item["status"] == "pool"
+    assert item["session"] is None
+
+    db.refresh(session)
+    assert session.status == "abandoned"
+    assert session.task_id is None
+
+    deleted = client.delete(f"/wards/{ward.id}/assignments/{task.id}", headers=_headers(ward))
+    assert deleted.status_code == 204
+    assert db.get(Task, task.id) is None
+

@@ -520,3 +520,72 @@ def test_a_dictation_word_is_answered_without_asking_the_judge(db):
     product = _ask(db, workflow, session, "直接告诉我得数")
     assert product.next_interaction["model_fallback"] is False and "391" in product.next_interaction["content"]
     assert workflow.leak_judge.calls == 0
+
+
+def test_cross_day_paused_session_and_stale_problem_do_not_hijack_new_turn(db):
+    from datetime import datetime, timezone
+
+    ward = create_ward(db)
+    past_dt = datetime(2026, 9, 27, 7, 48, tzinfo=timezone.utc)
+    task = create_task(db, ward=ward, title="英语的典范故事阅读", status="pool")
+    stale_session = StudySession(
+        ward_id=ward.id, task_id=task.id, status="paused",
+        started_at=past_dt, last_activity_at=past_dt,
+    )
+    db.add(stale_session)
+    db.flush()
+    stale_tutor = TutoringSession(
+        ward_id=ward.id, study_session_id=stale_session.id, status="active",
+    )
+    db.add(stale_tutor)
+    db.flush()
+    stale_problem = TutoringProblem(
+        tutoring_session_id=stale_tutor.id, status="open",
+        hints_given=1, summary="为什么不画一个图",
+    )
+    db.add(stale_problem)
+    db.commit()
+
+    raw = tutor_raw("answer", "太阳是恒星，地球是行星。", relation="none", topic="atomic_lookup")
+    workflow, model = _workflow(db, raw)
+    outcome = workflow.invoke(RunInvocation(
+        run_id=uid(), thread_id=uid(), ward_id=ward.id, agent_type="tutoring",
+        turn={"content": "为我说明一下地球和太阳的区别", "tutoring_directive": "ask"},
+    ))
+    db.commit()
+
+    assert '"answer_protected": false' in model.calls[0]["instruction"]
+    assert outcome.next_interaction["return_to_task"] is False
+    assert "先回到正在进行的任务" not in outcome.next_interaction["content"]
+    db.refresh(stale_session)
+    db.refresh(stale_problem)
+    assert stale_session.status == "abandoned"
+    assert stale_problem.status == "abandoned"
+
+
+def test_new_run_without_checkpoint_abandons_leftover_open_problem_on_reused_session(db):
+    ward = create_ward(db)
+    session = create_study_session(db, ward=ward, task=None)
+    tutor = TutoringSession(ward_id=ward.id, study_session_id=session.id, status="active")
+    db.add(tutor)
+    db.flush()
+    leftover = TutoringProblem(
+        tutoring_session_id=tutor.id, status="open", hints_given=1, summary="旧对话遗留的题目",
+    )
+    db.add(leftover)
+    db.commit()
+
+    raw = tutor_raw("answer", "太阳表面温度约 5500℃。", relation="none", topic="atomic_lookup")
+    workflow, model = _workflow(db, raw)
+    outcome = workflow.invoke(RunInvocation(
+        run_id=uid(), thread_id=uid(), ward_id=ward.id, agent_type="tutoring",
+        turn={"content": "来一些更全面详细对比", "tutoring_directive": "ask"},
+        context_refs=[], resume_from_checkpoint=False,
+    ))
+    db.commit()
+
+    assert '"answer_protected": false' in model.calls[0]["instruction"]
+    assert outcome.next_interaction["answer_protected"] is False
+    db.refresh(leftover)
+    assert leftover.status == "abandoned"
+

@@ -55,6 +55,17 @@ const numberLine = {
     {'label': 'x', 'unknown': true},
   ],
 };
+const svgVisual = {
+  'kind': 'svg',
+  'alt': '直角三角形两直角边为 3 和 4，斜边未知',
+  'title': '直角三角形',
+  'svg': '<svg viewBox="0 0 680 180" width="100%" role="img">'
+      '<polygon points="220,140 220,40 380,140" fill="#E6F1FB" stroke="#185FA5" stroke-width="1.5"/>'
+      '<text x="200" y="95" font-size="13" fill="var(--color-text-primary)">3</text>'
+      '<text x="300" y="160" font-size="13" fill="#0C447C">4</text>'
+      '<text x="315" y="82" font-size="13" fill="#A32D2D">?</text>'
+      '</svg>',
+};
 
 Future<void> pump(WidgetTester tester, Map<String, dynamic> visual,
     {Size size = const Size(360, 640),
@@ -106,11 +117,58 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('svg renders with flutter_svg and materializes theme tokens', (tester) async {
+    await pump(tester, svgVisual);
+    expect(find.byKey(const ValueKey('visual-block')), findsOneWidget);
+    expect(find.byKey(const ValueKey('svg-visual-view')), findsOneWidget);
+    expect(find.text('直角三角形'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    final light = materializeSvgTheme(svgVisual['svg'] as String, Brightness.light);
+    expect(light, contains('#1A1A18'));
+    expect(light, contains('#E6F1FB'));
+
+    final dark = materializeSvgTheme(svgVisual['svg'] as String, Brightness.dark);
+    expect(dark, contains('#F2F1ED'));
+    expect(dark, contains('#0C447C'));
+    expect(dark, contains('#B5D4F4'));
+
+    final commentedSvg = {
+      ...svgVisual,
+      'svg': '<!-- Background -->${svgVisual['svg']}',
+    };
+    expect(VisualData.tryParse(commentedSvg), isNotNull);
+    expect(
+      VisualData.tryParse({
+        ...compare,
+        'columns': [
+          {'title': '反射 (Reflection)', 'items': ['光碰到物体表面弹回', '入射角等于反射角']},
+          {'title': '折射 (Refraction)', 'items': ['光进入另一种介质发生偏折', '传播速度改变导致方向变化']},
+        ],
+      }),
+      isNotNull,
+    );
+
+    final inequalitySvg = {
+      'kind': 'svg',
+      'alt': '光的折射过程（折射角 r < 入射角 i）',
+      'title': '光的折射过程',
+      'svg': '<svg viewBox="0 0 680 300" width="100%" role="img">'
+          '<rect x="0" y="0" width="680" height="150" fill="#F9FAFB"/>'
+          '<text x="500" y="250" font-size="14" fill="#0C447C">折射角 r < 入射角 i</text>'
+          '</svg>',
+    };
+    await pump(tester, inequalitySvg);
+    expect(find.byKey(const ValueKey('visual-block')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   for (final entry in {
     'steps': steps,
     'compare': compare,
     'segment': segment,
-    'number_line': numberLine
+    'number_line': numberLine,
+    'svg': svgVisual,
   }.entries) {
     testWidgets('${entry.key} works on a narrow screen in dark mode with large text',
         (tester) async {
@@ -143,7 +201,7 @@ void main() {
       'one step': {...steps, 'steps': [{'label': '只有一步'}]},
       'six steps': {...steps, 'steps': [for (var i = 0; i < 6; i++) {'label': '步$i'}]},
       'steps not a list': {...steps, 'steps': 'x'},
-      'too-long label': {...steps, 'steps': [{'label': 'x' * 30}, {'label': 'y'}]},
+      'too-long label': {...steps, 'steps': [{'label': 'x' * 121}, {'label': 'y'}]},
       'misaligned compare': {
         ...compare,
         'columns': [
@@ -181,6 +239,22 @@ void main() {
         'marks': [
           {'unknown': true, 'at': 2}
         ]
+      },
+      'svg with wrong viewBox width': {
+        ...svgVisual,
+        'svg': (svgVisual['svg'] as String).replaceAll('0 0 680 180', '0 0 500 180'),
+      },
+      'svg with script tag': {
+        ...svgVisual,
+        'svg': (svgVisual['svg'] as String).replaceAll('</svg>', '<script>x()</script></svg>'),
+      },
+      'svg with onclick handler': {
+        ...svgVisual,
+        'svg': (svgVisual['svg'] as String).replaceAll('<polygon ', '<polygon onclick="x()" '),
+      },
+      'svg without shapes': {
+        ...svgVisual,
+        'svg': '<svg viewBox="0 0 680 120"><title>空图</title></svg>',
       },
     };
     for (final entry in bad.entries) {

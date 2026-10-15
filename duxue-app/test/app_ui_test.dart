@@ -239,12 +239,36 @@ class _WardHomeApi extends ApiClient {
   Future<Map<String, dynamic>> companionMessages(String threadId) async => {
         'thread_version': 1,
         'messages': [
-          for (final turn in turns)
+          for (final turn in turns) ...[
             {
               'author_type': 'ward',
               'content': turn.content,
               'attachment_refs': turn.attachmentKeys,
             },
+            if (turn.content.contains('水循环'))
+              {
+                'author_type': 'companion',
+                'content': '水先蒸发，再凝结，最后降下来。',
+                'attachment_refs': const <String>[],
+                'interaction_ref': {
+                  'kind': 'text_visual',
+                  'parts': [
+                    {
+                      'type': 'visual',
+                      'visual': {
+                        'kind': 'steps',
+                        'alt': '水循环三步',
+                        'steps': [
+                          {'label': '蒸发'},
+                          {'label': '凝结'},
+                          {'label': '降水'},
+                        ],
+                      },
+                    },
+                  ],
+                },
+              },
+          ],
         ],
       };
 
@@ -769,7 +793,7 @@ void main() {
     expect(find.text('正在播放'), findsOneWidget);
   });
 
-  testWidgets('a text_visual answer draws the diagram and the next send clears it',
+  testWidgets('a text_visual answer draws the diagram in the bubble and keeps it on subsequent turns',
       (tester) async {
     FlutterSecureStoragePlatform.instance =
         TestFlutterSecureStoragePlatform({});
@@ -793,7 +817,8 @@ void main() {
     await tester.tap(find.byTooltip('发送'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('visual-block'), skipOffstage: false),
-        findsNothing);
+        findsOneWidget);
+    expect(find.text('蒸发', skipOffstage: false), findsOneWidget);
   });
 
   testWidgets('a picked chat image stays as a thumbnail until send',
