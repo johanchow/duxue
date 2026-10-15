@@ -423,7 +423,7 @@ class TutorTurnCandidate(BaseModel):
 | `turn` 其余字段 | 只有 `work` 分支携带；模型自述，只决定 `advance()` 是否推进；未知值按“未报告”，不拒绝。`progress`、`evidence` 只属于 `student_move=attempt`，其他 move 上解析时置空（否则一个误填的 `submitted` 会吞掉提示计数）；`student_move` 进 `tutor.turn.result` 观测 | 记录对当前小目标的证据 |
 | `turn.topic` | 只有 `non_work` 分支携带；`spontaneous_curiosity` 才写好奇心事实 | 区分一次性查询与自发好奇 |
 | `pronounce.lesson` | 仅 `act=pronounce` 保留，缺失则拒绝；其他 `act` 带 `pronounce` 时丢弃 | 发音卡 |
-| `visual` | 关闭词汇表（`steps`、`compare`、`segment`、`number_line`）；结构非法、超预算、`unknown` 量带数值、`act` 不适用都**只丢图**，不拒绝候选。作业成果轮次再经图泄露判官，判泄露、超时或结果非法同样只丢图 | 解释性配图，设计与取舍见 [答疑表达设计](domain-tutoring-presentation.md) |
+| `visual` | 关闭词汇表（`steps`、`compare`、`segment`、`number_line`、`svg`）；结构非法、超预算、`unknown` 量带数值、SVG 违反白名单/画布约束、`act` 不适用都**只丢图**，不拒绝候选。作业成果轮次统一经 `describe(visual)` 提取图内文字（含 SVG 全部 `<text>`/`<tspan>`）送关键词答案标记检查与图泄露判官，判泄露、超时或结果非法同样只丢图 | 解释性配图，设计与取舍见 [答疑表达设计](domain-tutoring-presentation.md) |
 
 结构恢复只做两件事：丢弃不属于该 `act` 的子对象；把常见的错位（发音字段摊在最外层、`candidates` 摊在最外层）归位。不得生成或替换面向孩子的内容、lesson、作业状态或许可。
 

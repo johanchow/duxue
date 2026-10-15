@@ -59,7 +59,7 @@ class Expect(Strict):
     intent_in: list[Literal[INTENTS]] = Field(default_factory=list)  # type: ignore[valid-type]
     # 配图：present 表示孩子最终应看到图，absent 表示不应有图；kind 与文字断言针对孩子最终看到的图。
     visual: Literal["present", "absent"] | None = None
-    visual_kind_in: list[Literal["steps", "compare", "segment", "number_line"]] = Field(default_factory=list)
+    visual_kind_in: list[Literal["steps", "compare", "segment", "number_line", "svg"]] = Field(default_factory=list)
     visual_not_contains: list[str] = Field(default_factory=list)
 
     def is_specific(self) -> bool:

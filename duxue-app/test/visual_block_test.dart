@@ -55,6 +55,17 @@ const numberLine = {
     {'label': 'x', 'unknown': true},
   ],
 };
+const svgVisual = {
+  'kind': 'svg',
+  'alt': '直角三角形两直角边为 3 和 4，斜边未知',
+  'title': '直角三角形',
+  'svg': '<svg viewBox="0 0 680 180" width="100%" role="img">'
+      '<polygon points="220,140 220,40 380,140" fill="#E6F1FB" stroke="#185FA5" stroke-width="1.5"/>'
+      '<text x="200" y="95" font-size="13" fill="var(--color-text-primary)">3</text>'
+      '<text x="300" y="160" font-size="13" fill="#0C447C">4</text>'
+      '<text x="315" y="82" font-size="13" fill="#A32D2D">?</text>'
+      '</svg>',
+};
 
 Future<void> pump(WidgetTester tester, Map<String, dynamic> visual,
     {Size size = const Size(360, 640),
@@ -106,11 +117,29 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('svg renders with flutter_svg and materializes theme tokens', (tester) async {
+    await pump(tester, svgVisual);
+    expect(find.byKey(const ValueKey('visual-block')), findsOneWidget);
+    expect(find.byKey(const ValueKey('svg-visual-view')), findsOneWidget);
+    expect(find.text('直角三角形'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    final light = materializeSvgTheme(svgVisual['svg'] as String, Brightness.light);
+    expect(light, contains('#1A1A18'));
+    expect(light, contains('#E6F1FB'));
+
+    final dark = materializeSvgTheme(svgVisual['svg'] as String, Brightness.dark);
+    expect(dark, contains('#F2F1ED'));
+    expect(dark, contains('#0C447C'));
+    expect(dark, contains('#B5D4F4'));
+  });
+
   for (final entry in {
     'steps': steps,
     'compare': compare,
     'segment': segment,
-    'number_line': numberLine
+    'number_line': numberLine,
+    'svg': svgVisual,
   }.entries) {
     testWidgets('${entry.key} works on a narrow screen in dark mode with large text',
         (tester) async {
@@ -181,6 +210,22 @@ void main() {
         'marks': [
           {'unknown': true, 'at': 2}
         ]
+      },
+      'svg with wrong viewBox width': {
+        ...svgVisual,
+        'svg': (svgVisual['svg'] as String).replaceAll('0 0 680 180', '0 0 500 180'),
+      },
+      'svg with script tag': {
+        ...svgVisual,
+        'svg': (svgVisual['svg'] as String).replaceAll('</svg>', '<script>x()</script></svg>'),
+      },
+      'svg with onclick handler': {
+        ...svgVisual,
+        'svg': (svgVisual['svg'] as String).replaceAll('<polygon ', '<polygon onclick="x()" '),
+      },
+      'svg without shapes': {
+        ...svgVisual,
+        'svg': '<svg viewBox="0 0 680 120"><title>空图</title></svg>',
       },
     };
     for (final entry in bad.entries) {

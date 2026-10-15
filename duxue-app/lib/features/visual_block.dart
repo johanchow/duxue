@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 /// 答疑配图：服务端只给语义（有哪些对象、什么关系或数量），布局与绘制全在这里。
 ///
@@ -55,6 +56,7 @@ class VisualBlock extends StatelessWidget {
               CompareData d => _CompareView(d),
               SegmentData d => _SegmentView(d),
               NumberLineData d => _NumberLineView(d),
+              SvgData d => _SvgView(d),
             },
           ]),
         ),
@@ -97,6 +99,7 @@ sealed class VisualData {
         'compare' => CompareData.tryParse(raw, alt, title),
         'segment' => SegmentData.tryParse(raw, alt, title),
         'number_line' => NumberLineData.tryParse(raw, alt, title),
+        'svg' => SvgData.tryParse(raw, alt, title),
         _ => null, // 词汇表之外：降级为只有文字
       };
     } catch (_) {
@@ -305,6 +308,173 @@ class NumberLineData extends VisualData {
     return NumberLineData(lo, hi, step, marks, alt: alt, title: title);
   }
 }
+
+class SvgData extends VisualData {
+  const SvgData(this.svg, this.height, this.texts,
+      {required super.alt, super.title});
+  final String svg;
+  final double height;
+  final List<String> texts;
+
+  static const double canvasWidth = 680.0;
+  static const int maxChars = 16000;
+
+  static final RegExp _forbidden = RegExp(
+    r'<!(?:DOCTYPE|ENTITY)|<\?xml|<(?:/?\s*(?:html|head|body|script|style|foreignObject|iframe|form|image|a)\b)'
+    r'|<!--|/\*|position\s*:\s*fixed|\b(?:localStorage|sessionStorage|javascript:|data:)\b|https?:|www\.'
+    r'|\bon[a-z]+\s*=|\b(?:href|src)\s*=',
+    caseSensitive: false,
+  );
+  static final RegExp _viewBox = RegExp(
+    r'''viewBox\s*=\s*["']\s*0(?:\.0+)?\s+0(?:\.0+)?\s+680(?:\.0+)?\s+([0-9]+(?:\.[0-9]+)?)\s*["']''',
+  );
+  static final RegExp _shapeTag = RegExp(
+    r'<\s*(?:rect|circle|ellipse|line|polyline|polygon|path)\b',
+    caseSensitive: false,
+  );
+  static final RegExp _textTag = RegExp(
+    r'<(?:text|title|desc)\b[^>]*>(.*?)</(?:text|title|desc)>',
+    caseSensitive: false,
+    dotAll: true,
+  );
+  static final RegExp _stripTags = RegExp(r'<[^>]+>');
+
+  @override
+  String get semanticLabel => [alt, ...texts].join('。');
+
+  static SvgData? tryParse(
+      Map<String, dynamic> raw, String alt, String? title) {
+    final svgObj = raw['svg'];
+    if (svgObj is! String) return null;
+    final code = svgObj.trim();
+    if (code.length < 20 || code.length > maxChars) return null;
+    if (_forbidden.hasMatch(code)) return null;
+    final lower = code.toLowerCase();
+    if (!lower.startsWith('<svg') || !lower.endsWith('</svg>')) return null;
+    if (RegExp(r'<svg[\s>]', caseSensitive: false).allMatches(code).length != 1) {
+      return null;
+    }
+    if (!_shapeTag.hasMatch(code)) return null;
+
+    final vbMatch = _viewBox.firstMatch(code);
+    if (vbMatch == null) return null;
+    final h = double.tryParse(vbMatch.group(1)!);
+    if (h == null || h < 40 || h > 1600) return null;
+
+    final texts = <String>[];
+    for (final m in _textTag.allMatches(code)) {
+      final cleaned = m
+          .group(1)!
+          .replaceAll(_stripTags, ' ')
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
+      if (cleaned.isNotEmpty &&
+          cleaned != alt &&
+          cleaned != title &&
+          (texts.isEmpty || texts.last != cleaned)) {
+        texts.add(cleaned);
+      }
+    }
+    return SvgData(code, h, texts, alt: alt, title: title);
+  }
+}
+
+/// 将 SVG 中的宿主 CSS 变量（`var(--color-*)`）、`context-stroke` 以及浅色色阶摊平为当前明暗主题下的十六进制颜色。
+String materializeSvgTheme(String svg, Brightness brightness) {
+  final isDark = brightness == Brightness.dark;
+  final vars = isDark ? _darkVars : _lightVars;
+  var out = svg.replaceAllMapped(
+    RegExp(r'var\(\s*--color-([a-z-]+)\s*\)'),
+    (m) => vars[m.group(1)] ?? (isDark ? '#F2F1ED' : '#1A1A18'),
+  );
+  out = out.replaceAll('context-stroke', isDark ? '#B4B2A9' : '#888780');
+  if (isDark) {
+    out = out.replaceAllMapped(
+      RegExp(r'#[0-9A-Fa-f]{6}\b'),
+      (m) => _darkPaletteRemap[m.group(0)!.toUpperCase()] ?? m.group(0)!,
+    );
+  }
+  return out;
+}
+
+const Map<String, String> _lightVars = {
+  'background-primary': '#FFFFFF',
+  'background-secondary': '#F7F7F5',
+  'background-tertiary': '#EFEEEA',
+  'background-info': '#E6F1FB',
+  'background-danger': '#FCEBEB',
+  'background-success': '#E1F5EE',
+  'background-warning': '#FAEEDA',
+  'text-primary': '#1A1A18',
+  'text-secondary': '#5F5E5A',
+  'text-tertiary': '#8A8983',
+  'text-info': '#185FA5',
+  'text-danger': '#A32D2D',
+  'text-success': '#0F6E56',
+  'text-warning': '#854F0B',
+  'border-tertiary': '#D3D1C7',
+  'border-secondary': '#B4B2A9',
+  'border-primary': '#888780',
+  'border-info': '#85B7EB',
+  'border-danger': '#F09595',
+  'border-success': '#5DCAA5',
+  'border-warning': '#EF9F27',
+};
+
+const Map<String, String> _darkVars = {
+  'background-primary': '#1C1C1A',
+  'background-secondary': '#262624',
+  'background-tertiary': '#333330',
+  'background-info': '#0C447C',
+  'background-danger': '#501313',
+  'background-success': '#04342C',
+  'background-warning': '#412402',
+  'text-primary': '#F2F1ED',
+  'text-secondary': '#B4B2A9',
+  'text-tertiary': '#888780',
+  'text-info': '#B5D4F4',
+  'text-danger': '#F7C1C1',
+  'text-success': '#9FE1CB',
+  'text-warning': '#FAC775',
+  'border-tertiary': '#444441',
+  'border-secondary': '#5F5E5A',
+  'border-primary': '#888780',
+  'border-info': '#378ADD',
+  'border-danger': '#E24B4A',
+  'border-success': '#1D9E75',
+  'border-warning': '#BA7517',
+};
+
+// 深色模式下将 9 色系 50 浅底色 / 800 深字色自动翻转为 800 深底色 / 100 浅字色（见 draw-02-how.md 色板规则）
+const Map<String, String> _darkPaletteRemap = {
+  // 50 fills -> 800 fills
+  '#EEEDFE': '#3C3489',
+  '#E1F5EE': '#085041',
+  '#FAECE7': '#712B13',
+  '#FBEAF0': '#72243E',
+  '#F1EFE8': '#444441',
+  '#E6F1FB': '#0C447C',
+  '#EAF3DE': '#27500A',
+  '#FAEEDA': '#633806',
+  '#FCEBEB': '#791F1F',
+  // 800/900 text -> 100 light text
+  '#3C3489': '#CECBF6',
+  '#26215C': '#CECBF6',
+  '#085041': '#9FE1CB',
+  '#04342C': '#9FE1CB',
+  '#712B13': '#F5C4B3',
+  '#4A1B0C': '#F5C4B3',
+  '#72243E': '#F4C0D1',
+  '#4B1528': '#F4C0D1',
+  '#0C447C': '#B5D4F4',
+  '#042C53': '#B5D4F4',
+  '#27500A': '#C0DD97',
+  '#173404': '#C0DD97',
+  '#633806': '#FAC775',
+  '#412402': '#FAC775',
+  '#791F1F': '#F7C1C1',
+  '#501313': '#F7C1C1',
+};
 
 // ---- 绘制 -----------------------------------------------------------------------------------
 
@@ -622,4 +792,35 @@ class _NumberLinePainter extends CustomPainter {
   @override
   bool shouldRepaint(_NumberLinePainter old) =>
       old.data != data || old.axis != axis || old.accent != accent || old.scaler != scaler;
+}
+
+class _SvgView extends StatelessWidget {
+  const _SvgView(this.data);
+  final SvgData data;
+
+  static const double _maxDisplayHeight = 560.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final brightness = Theme.of(context).brightness;
+    final themed = materializeSvgTheme(data.svg, brightness);
+    return LayoutBuilder(builder: (context, constraints) {
+      final width = constraints.maxWidth.isFinite && constraints.maxWidth > 0
+          ? constraints.maxWidth
+          : SvgData.canvasWidth;
+      final naturalHeight = width * (data.height / SvgData.canvasWidth);
+      final height = naturalHeight.clamp(40.0, _maxDisplayHeight);
+      return SizedBox(
+        key: const ValueKey('svg-visual-view'),
+        width: width,
+        height: height,
+        child: SvgPicture.string(
+          themed,
+          width: width,
+          height: height,
+          fit: BoxFit.contain,
+        ),
+      );
+    });
+  }
 }

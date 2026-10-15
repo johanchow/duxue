@@ -111,20 +111,25 @@ _TUTOR_TURN_SYSTEM = (
     "chat、redirect 一两句话；clarify 一句说明加候选。\n"
     "配图（可选字段 visual）：只有图比文字更能帮孩子看清时才附，每轮最多一张，拿不准就不附。"
     "词义、一句话能说清的、闲聊都不附。只有 act=answer 或 guide 才能有 visual。"
-    "visual 只写有哪些内容、什么关系，不写坐标、颜色、HTML、SVG、链接或 Markdown，所有文字都是短的纯文本；"
-    "alt 必填，用一句话说清图的内容。kind 只能是下面四种，其他图不附，只用文字：\n"
+    "alt 必填，用一句话说清图的内容。kind 只能是下面五种（优先用前四种结构化图，它们不写坐标、颜色、HTML、链接或 Markdown；前四种无法表达的几何、层级包含、分支关系或原理示意图才用 svg）：\n"
     "steps 先后过程，2 到 5 步：{\"kind\":\"steps\",\"alt\":…,\"steps\":[{\"label\":…,\"detail\":…}]}；\n"
     "compare 对比，2 到 3 列，每列条数相同：{\"kind\":\"compare\",\"alt\":…,\"columns\":[{\"title\":…,\"items\":[…]}],\"row_labels\":[…]}；\n"
     "segment 线段图，表示数量关系：{\"kind\":\"segment\",\"alt\":…,\"bars\":[{\"label\":…,\"segments\":[{\"label\":…,\"value\":份数或数量,\"unknown\":true或false}]}],"
     "\"brackets\":[{\"bar\":第几条线段（从 0 数）,\"label\":…,\"value\":…,\"unknown\":…}]}；\n"
     "number_line 数轴，最多 20 格：{\"kind\":\"number_line\",\"alt\":…,\"min\":…,\"max\":…,\"step\":…,"
-    "\"marks\":[{\"label\":…,\"at\":…} 或 {\"label\":…,\"start\":…,\"end\":…,\"start_closed\":…,\"end_closed\":…}]}。\n"
-    "作业题里的图只画题面已有的条件和关系；待求的量一律 unknown=true，并且不写任何数值或数字（label 里也不能有数字），"
-    "不要画出求解结果或答案。数轴上的未知标记不给位置。"
+    "\"marks\":[{\"label\":…,\"at\":…} 或 {\"label\":…,\"start\":…,\"end\":…,\"start_closed\":…,\"end_closed\":…}]}；\n"
+    "svg 受限矢量图（几何图形、结构层级、原理示意）：{\"kind\":\"svg\",\"alt\":…,\"title\":…,\"svg\":\"<svg viewBox=\\\"0 0 680 H\\\" width=\\\"100%\\\" role=\\\"img\\\">…</svg>\"}。"
+    "svg 的 viewBox 宽度固定为 680，H=最底元素y+20（40..1600），安全区 x=40..640；只用 rect/circle/ellipse/line/polyline/polygon/path/text/g/defs/marker，"
+    "禁止 script/style/foreignObject/image/外链/事件属性；连接线 path/polyline 必须写 fill=\"none\"；字号 ≥11px，形状显式写 fill（如 #E6F1FB 配描边 #185FA5 和文字 #0C447C，或用 var(--color-text-primary)）。\n"
+    "作业题里的图只画题面已有的条件和关系：前四种图里待求的量一律 unknown=true 且不写任何数值或数字（label 里也不能有数字），数轴未知标记不给位置；"
+    "svg 图里待求的边、角或数量一律标“?”，不要画出求解结果或答案。"
     "例如 {\"act\":\"guide\",\"content\":\"先看看小明和小红谁的份数多？\",\"turn\":{\"type\":\"work\",\"relation\":\"same\",\"student_move\":\"request_hint\"},"
     "\"visual\":{\"kind\":\"segment\",\"alt\":\"小明 3 份，小红 5 份，合计未知\","
     "\"bars\":[{\"label\":\"小明\",\"segments\":[{\"value\":3}]},{\"label\":\"小红\",\"segments\":[{\"value\":5}]}],"
-    "\"brackets\":[{\"bar\":1,\"label\":\"合计\",\"unknown\":true}]}}。"
+    "\"brackets\":[{\"bar\":1,\"label\":\"合计\",\"unknown\":true}]}}；"
+    "例如 {\"act\":\"guide\",\"content\":\"观察直角三角形的两条直角边，斜边怎么求？\",\"turn\":{\"type\":\"work\",\"relation\":\"same\",\"student_move\":\"request_hint\"},"
+    "\"visual\":{\"kind\":\"svg\",\"alt\":\"直角三角形两直角边为 3 和 4，斜边未知\","
+    "\"svg\":\"<svg viewBox=\\\"0 0 680 180\\\" width=\\\"100%\\\" role=\\\"img\\\"><polygon points=\\\"220,140 220,40 380,140\\\" fill=\\\"#E6F1FB\\\" stroke=\\\"#185FA5\\\" stroke-width=\\\"1.5\\\"/><rect x=\\\"220\\\" y=\\\"126\\\" width=\\\"14\\\" height=\\\"14\\\" fill=\\\"none\\\" stroke=\\\"#185FA5\\\" stroke-width=\\\"1\\\"/><text x=\\\"200\\\" y=\\\"95\\\" font-size=\\\"13\\\" fill=\\\"#0C447C\\\" text-anchor=\\\"end\\\">3</text><text x=\\\"300\\\" y=\\\"160\\\" font-size=\\\"13\\\" fill=\\\"#0C447C\\\" text-anchor=\\\"middle\\\">4</text><text x=\\\"315\\\" y=\\\"82\\\" font-size=\\\"13\\\" fill=\\\"#A32D2D\\\">?</text></svg>\"}}。"
     + WINDOW_RULE
 )
 
@@ -157,7 +162,7 @@ PROMPTS = {
     prompt.id: prompt
     for prompt in (
         PromptTemplate("companion.intent.system.v1", _INTENT_SYSTEM),
-        PromptTemplate("tutoring.turn.system.v11", _TUTOR_TURN_SYSTEM),
+        PromptTemplate("tutoring.turn.system.v12", _TUTOR_TURN_SYSTEM),
         PromptTemplate("tutoring.leak-judge.system.v4", _LEAK_SYSTEM),
         PromptTemplate("tutoring.visual-leak-judge.system.v2", _VISUAL_LEAK_SYSTEM),
         PromptTemplate("companion.agent-text.system.v1", _AGENT_TEXT_SYSTEM),

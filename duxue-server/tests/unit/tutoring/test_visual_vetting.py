@@ -7,7 +7,7 @@ from app.application.workflows.tutor_turn import TutorTurnCandidate
 from app.contexts.study.domain.execution import ANSWER_LEAK_MARKERS
 from app.contexts.tutoring.domain.tutor_permit import AttemptSummary, TutorPermit
 from tests.support.fakes import StaticLeakJudge, StaticVisualLeakJudge, tutor_raw
-from tests.unit.tutoring.test_tutor_visual import SEGMENT, STEPS
+from tests.unit.tutoring.test_tutor_visual import SEGMENT, STEPS, SVG
 
 PROTECTED = TutorPermit(True, AttemptSummary())
 OPEN = TutorPermit(False, AttemptSummary())
@@ -173,3 +173,23 @@ def test_judge_problem_summary_lists_recent_problems_and_this_turn():
     assert judge_problem_summary(["3+5=?"], "3+5=?") == "第1题：3+5=?"
     many = judge_problem_summary([f"题{i}" for i in range(10)], "")
     assert many.count("题：") == JUDGE_RECENT_PROBLEMS
+
+
+def test_homework_turn_allows_svg_and_sends_inner_svg_text_to_visual_leak_judge():
+    judge = StaticVisualLeakJudge()
+    raw = tutor_raw("guide", "观察两条直角边。", relation="same", visual=SVG)
+    result = vet(raw, judge)
+    assert result.failure is None and result.visual is not None and result.visual.kind == "svg"
+    assert len(judge.visual_texts) == 1
+    assert "图内文字：直角三角形 | 3 | 4 | ?" in judge.visual_texts[0]
+
+    # 若 SVG 内部 <text> 含答案标记，同样在不调判官时直接丢图
+    leaked_svg = {
+        **SVG,
+        "svg": SVG["svg"].replace(">?<", f">{ANSWER_LEAK_MARKERS[0]} 5<"),
+    }
+    judge2 = StaticVisualLeakJudge()
+    dropped = vet(tutor_raw("guide", "观察两条直角边。", relation="same", visual=leaked_svg), judge2)
+    assert dropped.failure is None and dropped.visual is None
+    assert dropped.visual_dropped == "visual_answer_marker"
+    assert judge2.visual_texts == []
