@@ -324,6 +324,13 @@ class SvgData extends VisualData {
   static const int maxChars = 16000;
 
   static final RegExp _xmlComment = RegExp(r'<!--[\s\S]*?-->');
+  static final RegExp _textBody = RegExp(
+    r'(<(?:text|tspan|title|desc)\b[^>]*>)([\s\S]*?)(</(?:text|tspan|title|desc)>)',
+    caseSensitive: false,
+  );
+  static final RegExp _rawAmp = RegExp(
+    r'&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);)',
+  );
   static final RegExp _forbidden = RegExp(
     r'<!(?:DOCTYPE|ENTITY)|<\?xml|<(?:/?\s*(?:html|head|body|script|style|foreignObject|iframe|form|image|a)\b)'
     r'|/\*|position\s*:\s*fixed|\b(?:localStorage|sessionStorage|javascript:|data:)\b|https?:|www\.'
@@ -347,11 +354,24 @@ class SvgData extends VisualData {
   @override
   String get semanticLabel => [alt, ...texts].join('。');
 
+  static String _escapeTextNodes(String input) =>
+      input.replaceAllMapped(_textBody, (match) {
+        final open = match.group(1)!;
+        final body = match.group(2)!;
+        final close = match.group(3)!;
+        if (body.toLowerCase().contains('<tspan')) return match.group(0)!;
+        final escaped = body
+            .replaceAll(_rawAmp, '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;');
+        return '$open$escaped$close';
+      });
+
   static SvgData? tryParse(
       Map<String, dynamic> raw, String alt, String? title) {
     final svgObj = raw['svg'];
     if (svgObj is! String) return null;
-    final code = svgObj.replaceAll(_xmlComment, '').trim();
+    final code = _escapeTextNodes(svgObj.replaceAll(_xmlComment, '').trim());
     if (code.length < 20 || code.length > maxChars) return null;
     if (_forbidden.hasMatch(code)) return null;
     final lower = code.toLowerCase();

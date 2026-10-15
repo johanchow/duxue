@@ -25,7 +25,7 @@ from pydantic import (
 )
 
 # 纯文本：不含 URL、HTML、Markdown 与 LaTeX 标记，不换行。
-_BAD_TEXT = re.compile(r"[`$\\\n\r]|https?:|www\.|\]\(|!\[|<\s*/?[a-zA-Z!]|^\s*#")
+_BAD_TEXT = re.compile(r"[`$\\\n\r]|https?:|www\.|\]\(|!\[|<\s*/?[a-zA-Z][a-zA-Z0-9]*\b[^>]*>|^\s*#")
 _BOUND = 1_000_000
 
 
@@ -208,6 +208,8 @@ _SVG_ALLOWED_TAGS = frozenset({
 })
 _SVG_SHAPE_TAGS = frozenset({"rect", "circle", "ellipse", "line", "polyline", "polygon", "path"})
 _SVG_XML_COMMENT = re.compile(r"<!--[\s\S]*?-->")
+_SVG_TEXT_BODY = re.compile(r"(<(?:text|tspan|title|desc)\b[^>]*>)([\s\S]*?)(</(?:text|tspan|title|desc)>)", re.I)
+_SVG_RAW_AMP = re.compile(r"&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);)")
 _SVG_FORBIDDEN_RAW = re.compile(
     r"<!(?:DOCTYPE|ENTITY)|<\?xml|<(?:/?\s*(?:html|head|body|script|style|foreignObject|iframe|form|image|a)\b)"
     r"|/\*|position\s*:\s*fixed|\b(?:localStorage|sessionStorage|javascript:|data:)\b|https?:|www\.",
@@ -240,8 +242,20 @@ def _check_font_size(raw: str, unit: str | None) -> None:
         raise ValueError(f"svg font-size {size}{unit_norm} is below {SVG_MIN_FONT_SIZE}px")
 
 
+def _escape_svg_text_nodes(code: str) -> str:
+    """模型常在 `<text>` 内直接写 `r < i` 或 `A & B`，未转义会导致 XML 解析失败；仅对文本节点内容转义 `<`/`>`/`&`。"""
+    def _fix(match: re.Match[str]) -> str:
+        open_tag, body, close_tag = match.group(1), match.group(2), match.group(3)
+        if "<tspan" in body.lower():
+            return match.group(0)
+        escaped = _SVG_RAW_AMP.sub("&amp;", body).replace("<", "&lt;").replace(">", "&gt;")
+        return f"{open_tag}{escaped}{close_tag}"
+
+    return _SVG_TEXT_BODY.sub(_fix, code)
+
+
 def _validate_and_normalize_svg(raw_svg: str) -> str:
-    code = _SVG_XML_COMMENT.sub("", raw_svg).strip()
+    code = _escape_svg_text_nodes(_SVG_XML_COMMENT.sub("", raw_svg).strip())
     if len(code) > SVG_MAX_CHARS:
         raise ValueError("svg exceeds maximum character budget")
     if _SVG_FORBIDDEN_RAW.search(code):
@@ -358,7 +372,7 @@ def _validate_and_normalize_svg(raw_svg: str) -> str:
 def extract_svg_texts(raw_svg: str) -> list[str]:
     """按文档顺序提取 SVG 内 `<title>`、`<desc>`、`<text>`（含嵌套 `<tspan>`）的可见文本。"""
     try:
-        root = ElementTree.fromstring(raw_svg)
+        root = ElementTree.fromstring(_escape_svg_text_nodes(_SVG_XML_COMMENT.sub("", raw_svg).strip()))
     except ElementTree.ParseError:
         return []
     texts: list[str] = []

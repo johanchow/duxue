@@ -201,6 +201,26 @@ def test_bilingual_compare_titles_and_svg_with_xml_comments_are_kept():
     assert "<!--" not in c2.visual.svg
 
 
+def test_svg_with_unescaped_inequality_in_text_is_kept():
+    refraction_svg = {
+        "kind": "svg",
+        "alt": "光从空气斜射入水中的折射过程示意图（折射角 r < 入射角 i）",
+        "title": "光的折射过程",
+        "svg": (
+            '<svg viewBox="0 0 680 300" width="100%" role="img">'
+            '<!-- Air and Water Backgrounds -->'
+            '<rect x="0" y="0" width="680" height="150" fill="#F9FAFB"/>'
+            '<rect x="0" y="150" width="680" height="150" fill="#E6F1FB"/>'
+            '<line x1="0" y1="150" x2="680" y2="150" stroke="#3B82F6" stroke-width="2"/>'
+            '<text x="500" y="250" font-size="14" fill="#0C447C">折射角 r < 入射角 i</text>'
+            '</svg>'
+        ),
+    }
+    c = cand(refraction_svg, act="answer", relation="none")
+    assert c.visual is not None and c.visual_dropped is None
+    assert "折射角 r < 入射角 i" in describe(c.visual)
+
+
 def test_every_json_example_in_the_tutor_prompt_is_a_valid_candidate():
     """提示词里的示例是模型照抄的样板，必须通过契约，且图示例必须真的保留图。"""
     import json

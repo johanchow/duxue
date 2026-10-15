@@ -148,6 +148,19 @@ void main() {
       }),
       isNotNull,
     );
+
+    final inequalitySvg = {
+      'kind': 'svg',
+      'alt': '光的折射过程（折射角 r < 入射角 i）',
+      'title': '光的折射过程',
+      'svg': '<svg viewBox="0 0 680 300" width="100%" role="img">'
+          '<rect x="0" y="0" width="680" height="150" fill="#F9FAFB"/>'
+          '<text x="500" y="250" font-size="14" fill="#0C447C">折射角 r < 入射角 i</text>'
+          '</svg>',
+    };
+    await pump(tester, inequalitySvg);
+    expect(find.byKey(const ValueKey('visual-block')), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   for (final entry in {
