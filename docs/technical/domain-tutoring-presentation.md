@@ -404,7 +404,7 @@ Then  只记录，回答照常展示，不触发 fallback
 2. **投影不是"在 `text` / `tutoring_hint` 之间选"。** 实现里答疑轮次的 `next_interaction` 原本就没有 `kind`/`parts`（只有 `content`、`act` 等字段）；带图时才合并 `build_interaction(kind="text_visual")` 的信封，无图的轮次保持原样，没有顺手重构。
 3. **视觉段落没有做条件拼接，始终在系统提示里。** 条件拼接需要用真实输出验证"哪些轮次不会用图"，现在没有数据；先保持静态前缀（也利于提示缓存）。实测的静态增量：`tutoring.turn` 系统提示从 2,462 字符增至 3,806 字符（+1,344，约 +55%）。是否按轮次拆段，等离线评测得出配图触发分布后再决定。
 4. **"孩子明确要求画图"的提示信号未做。** 目前完全由模型判断；评测里 `visual-leak` 类用例观察被诱导的情形。
-5. **`visual` 不写入 journal。** 待定项 1 选"首期不写"：历史回看只有文字。
+5. **`visual` 写入 `CompanionMessage.interaction_ref` 并在历史气泡内保留。** 解决待定项 1：通过全部检查的 `visual` 以 `{"kind": "text_visual", "parts": [{"type": "visual", "visual": ...}]}` 存入 `CompanionMessage.interaction_ref`，App 在对应消息气泡内持久渲染（进入新一轮对话不清除）；`run_transcript.py` 构造下一轮模型上下文时只读 `content` 与 `attachment_refs`，不把 `interaction_ref` 传给模型。
 6. **用了新的 `kind` 而不是扩展 `part` 的使用方式。** 待定项 2：`text_visual`；`InteractionPart` 增加 `type=visual`。
 
 **尚未做 / 需要你运行**

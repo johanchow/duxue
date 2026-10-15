@@ -178,6 +178,16 @@ class CompanionCoordinator:
             return "计划已经确认好了。"
         return None
 
+    @staticmethod
+    def _visible_interaction_ref(outcome: WorkflowOutcome) -> dict | None:
+        payload = outcome.next_interaction or outcome.response or {}
+        if payload.get("kind") != "text_visual":
+            return None
+        for part in payload.get("parts") or []:
+            if isinstance(part, dict) and part.get("type") == "visual" and isinstance(part.get("visual"), dict):
+                return {"kind": "text_visual", "parts": [{"type": "visual", "visual": part["visual"]}]}
+        return None
+
     def handle(
         self, *, ward_id: str, content: str, thread_id: str | None,
         expected_thread_version: int | None, route_hint: str | None,
@@ -419,7 +429,7 @@ class CompanionCoordinator:
             self._write_transcript(
                 thread=thread, command_id=command_id, author_type="companion",
                 content=visible_content, thread_version=version, run=run, turn_id=turn_id,
-                attempt=attempt,
+                attempt=attempt, interaction_ref=self._visible_interaction_ref(outcome),
             )
         self.db.commit()
         self.db.expire_all()

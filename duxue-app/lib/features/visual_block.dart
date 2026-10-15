@@ -8,9 +8,13 @@ import 'package:flutter_svg/flutter_svg.dart';
 /// 契约与预算见 docs/technical/domain-tutoring-presentation.md §五。客户端不信任输入：
 /// 先解析成纯 Dart 数据，任何一处类型或预算不对就整张图不画，文字照常显示，不报错、不弹窗。
 
-/// 从 `companion-interaction.v1` 取出配图；不是 `text_visual` 或没有 visual part 时返回 null。
+/// 从 `companion-interaction.v1` 或 `CompanionMessage.interaction_ref` 取出配图；
+/// 不是 `text_visual` 或没有 visual 时返回 null。
 Map<String, dynamic>? visualFromInteraction(Map<String, dynamic> interaction) {
   if (interaction['kind'] != 'text_visual') return null;
+  if (interaction['visual'] is Map) {
+    return Map<String, dynamic>.from(interaction['visual'] as Map);
+  }
   final parts = interaction['parts'];
   if (parts is! List) return null;
   for (final part in parts) {

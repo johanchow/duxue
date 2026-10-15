@@ -288,3 +288,61 @@ def test_structured_plan_command_requires_the_server_issued_action(db):
                                   structured_command={"interaction_id": action_id, "command": "confirm_plan",
                                                       "payload": {"draft_id": draft.id, "expected_draft_version": draft.version}})
     assert accepted.run_status == "waiting_for_ward"
+
+
+def test_coordinator_persists_text_visual_in_companion_message_interaction_ref(db):
+    from app.application.queries.run_transcript import load_visible_utterances
+
+    ward = create_ward(db)
+    db.commit()
+
+    visual_payload = {
+        "kind": "steps",
+        "alt": "水循环三步",
+        "steps": [{"label": "蒸发"}, {"label": "凝结"}, {"label": "降水"}],
+    }
+    dispatcher = FakeWorkflowDispatcher(
+        WorkflowOutcome(
+            run_status="waiting_for_ward",
+            outcome_type="waiting",
+            next_interaction={
+                "protocol": "companion-interaction.v1",
+                "kind": "text_visual",
+                "content": "水先蒸发，再凝结，最后降下来。",
+                "parts": [
+                    {"type": "text", "text": "水先蒸发，再凝结，最后降下来。"},
+                    {"type": "visual", "visual": visual_payload},
+                ],
+                "actions": [],
+            },
+        )
+    )
+    coordinator = CompanionCoordinator(db, dispatcher=dispatcher, classifier=StaticIntentClassifier("tutoring"))
+    result = coordinator.handle(
+        ward_id=ward.id,
+        content="水循环是怎么回事",
+        thread_id=None,
+        expected_thread_version=0,
+        route_hint="tutoring",
+    )
+
+    messages = (
+        db.query(CompanionMessage)
+        .filter_by(thread_id=result.thread_id)
+        .order_by(CompanionMessage.thread_version)
+        .all()
+    )
+    assert len(messages) == 2
+    assert messages[0].author_type == "ward" and messages[0].interaction_ref is None
+    assert messages[1].author_type == "companion"
+    assert messages[1].interaction_ref == {
+        "kind": "text_visual",
+        "parts": [{"type": "visual", "visual": visual_payload}],
+    }
+    utterances = load_visible_utterances(
+        db, ward_id=ward.id, thread_id=result.thread_id, exclude_turn_id=None,
+    )
+    assert utterances == [
+        {"author": "ward", "text": "水循环是怎么回事"},
+        {"author": "companion", "text": "水先蒸发，再凝结，最后降下来。"},
+    ]

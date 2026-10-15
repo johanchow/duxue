@@ -21,3 +21,7 @@
 
 4. **客户端 `flutter_svg` 渲染前主题色摊平（`materializeSvgTheme`）**
    - `flutter_svg` 不支持宿主的运行时动态 CSS 变量。客户端在传给 `SvgPicture.string` 前，通过 `materializeSvgTheme(svg, brightness)` 将 `var(--color-text-*)`、`var(--color-background-*)`、`var(--color-border-*)`、`context-stroke` 以及 9 色语义色板的明暗色阶替换为当前主题的十六进制颜色，保证浅色和深色模式下均有足够对比度。
+
+5. **历史图形随 `CompanionMessage.interaction_ref` 持久保留在对应消息气泡内**
+   - 原设计将 `visual` 放在单槽位临时状态 `tutoringVisual`，进入新一轮对话即被清空，导致多轮分步引导（`act=guide`）时孩子失去上一轮的审题图参照，且图与消息气泡割裂。
+   - 改为：`CompanionCoordinator` 在写入 `author_type="companion"` 的 `CompanionMessage` 时，将通过检查的 `text_visual` 写入 `interaction_ref`；App 端 `_ChatBubble` 直接在对应消息气泡内渲染 `VisualBlock`，后续轮次继续保留。`run_transcript.py` 组装模型上下文时仅读 `content` 和 `attachment_refs`，不读取 `interaction_ref`，零额外 Token 开销。

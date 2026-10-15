@@ -195,8 +195,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage> with WidgetsBindingOb
   int? planDraftVersion;
   String? failedPlanText;
   Map<String, dynamic>? pronunciationLesson;
-  // 最近一轮答疑的配图（只在当前这一轮展示；历史回看只有文字）。
-  Map<String, dynamic>? tutoringVisual;
   SpeechPlayback? _speechPlayback;
   bool planSending = false;
   bool planListOpen = false;
@@ -802,7 +800,8 @@ class _WardDayPageState extends ConsumerState<WardDayPage> with WidgetsBindingOb
           _ChatBubble(
               label: message.label,
               text: message.content,
-              images: message.images),
+              images: message.images,
+              visual: message.visual),
         ],
         if (planSending) ...[
           const SizedBox(height: 14),
@@ -854,10 +853,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage> with WidgetsBindingOb
                           child: const Text('确认这个计划'))),
                 ])
               ]))
-        ],
-        if (tutoringVisual != null) ...[
-          const SizedBox(height: 10),
-          VisualBlock(visual: tutoringVisual!),
         ],
         if (pronunciationLesson != null) ...[
           const SizedBox(height: 14),
@@ -1418,7 +1413,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage> with WidgetsBindingOb
       ]);
     setState(() {
       planSending = true;
-      tutoringVisual = null; // 上一轮的图属于上一轮的回答，不留到这一轮
     });
     try {
       final result = await ref.read(apiProvider).companionTurn(
@@ -1461,7 +1455,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage> with WidgetsBindingOb
         stagedImages.clear();
         planAttachments.clear();
         pronunciationLesson = lesson;
-        tutoringVisual = visualFromInteraction(interaction);
         planFeedback = ((interaction['parts'] as List? ?? const []).isNotEmpty)
             ? Map<String, dynamic>.from(
                 (interaction['parts'] as List).first as Map)['text'] as String?
@@ -1594,13 +1587,19 @@ class _WardDayPageState extends ConsumerState<WardDayPage> with WidgetsBindingOb
           final item = Map<String, dynamic>.from(message as Map);
           final refs = (item['attachment_refs'] as List? ?? const [])
               .whereType<String>();
+          final interactionRef = item['interaction_ref'] is Map
+              ? Map<String, dynamic>.from(item['interaction_ref'] as Map)
+              : null;
           return _ChatLine(
               label: item['author_type'] == 'ward' ? '我' : '读学 AI',
               content: item['content'] as String,
               images: [
                 for (final ref in refs)
                   if (rememberedImages[ref] != null) rememberedImages[ref]!,
-              ]);
+              ],
+              visual: interactionRef == null
+                  ? null
+                  : visualFromInteraction(interactionRef));
         }));
     });
     if (version != null && companionThreadId != null) {
@@ -1710,19 +1709,29 @@ class _HomeOverlay extends StatelessWidget {
 }
 
 class _ChatLine {
-  const _ChatLine(
-      {required this.label, required this.content, this.images = const []});
+  const _ChatLine({
+    required this.label,
+    required this.content,
+    this.images = const [],
+    this.visual,
+  });
   final String label;
   final String content;
   final List<Uint8List> images;
+  final Map<String, dynamic>? visual;
 }
 
 class _ChatBubble extends StatelessWidget {
-  const _ChatBubble(
-      {required this.label, required this.text, this.images = const []});
+  const _ChatBubble({
+    required this.label,
+    required this.text,
+    this.images = const [],
+    this.visual,
+  });
   final String label;
   final String text;
   final List<Uint8List> images;
+  final Map<String, dynamic>? visual;
 
   @override
   Widget build(BuildContext context) {
@@ -1730,7 +1739,7 @@ class _ChatBubble extends StatelessWidget {
     return Align(
         alignment: isWard ? Alignment.centerRight : Alignment.centerLeft,
         child: Container(
-            constraints: const BoxConstraints(maxWidth: 300),
+            constraints: BoxConstraints(maxWidth: visual != null ? 340 : 300),
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
                 color:
@@ -1769,6 +1778,10 @@ class _ChatBubble extends StatelessWidget {
                   !(images.isNotEmpty && text == '请看这张图片。')) ...[
                 const SizedBox(height: 4),
                 Text(text),
+              ],
+              if (visual != null) ...[
+                const SizedBox(height: 8),
+                VisualBlock(visual: visual!),
               ],
             ])));
   }
