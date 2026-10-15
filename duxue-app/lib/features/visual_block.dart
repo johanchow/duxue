@@ -71,7 +71,7 @@ class VisualBlock extends StatelessWidget {
 
 // ---- 解析：预算与服务端一致，超出即整张不画 ------------------------------------------------
 
-String? _str(Object? v, {int max = 40}) =>
+String? _str(Object? v, {int max = 120}) =>
     v is String && v.trim().isNotEmpty && v.length <= max ? v.trim() : null;
 
 double? _num(Object? v) => v is num && v.isFinite ? v.toDouble() : null;
@@ -95,9 +95,9 @@ sealed class VisualData {
 
   static VisualData? tryParse(Map<String, dynamic> raw) {
     try {
-      final alt = _str(raw['alt'], max: 120);
+      final alt = _str(raw['alt']);
       if (alt == null) return null;
-      final title = _str(raw['title'], max: 20);
+      final title = _str(raw['title']);
       return switch (raw['kind']) {
         'steps' => StepsData.tryParse(raw, alt, title),
         'compare' => CompareData.tryParse(raw, alt, title),
@@ -128,7 +128,7 @@ class StepsData extends VisualData {
     if (items == null) return null;
     final steps = <({String label, String? detail})>[];
     for (final item in items) {
-      final label = _str(item['label'], max: 24);
+      final label = _str(item['label']);
       if (label == null) return null;
       steps.add((label: label, detail: _str(item['detail'])));
     }
@@ -158,12 +158,12 @@ class CompareData extends VisualData {
     final titles = <String>[];
     final columns = <List<String>>[];
     for (final col in cols) {
-      final t = _str(col['title'], max: 12);
+      final t = _str(col['title']);
       final items = col['items'];
       if (t == null || items is! List || items.isEmpty || items.length > 4) {
         return null;
       }
-      final texts = [for (final i in items) _str(i, max: 24)];
+      final texts = [for (final i in items) _str(i)];
       if (texts.contains(null)) return null;
       titles.add(t);
       columns.add(texts.cast<String>());
@@ -175,7 +175,7 @@ class CompareData extends VisualData {
       if (rawLabels is! List || rawLabels.length != columns.first.length) {
         return null;
       }
-      final parsed = [for (final l in rawLabels) _str(l, max: 12)];
+      final parsed = [for (final l in rawLabels) _str(l)];
       if (parsed.contains(null)) return null;
       labels = parsed.cast<String>();
     }
@@ -217,7 +217,7 @@ class SegmentData extends VisualData {
     if (rawBars == null) return null;
     final bars = <SegmentBar>[];
     for (final bar in rawBars) {
-      final label = _str(bar['label'], max: 12);
+      final label = _str(bar['label']);
       final segs = _maps(bar['segments'], 1, 6);
       if (label == null || segs == null) return null;
       final parts = <SegmentPart>[];
@@ -228,7 +228,7 @@ class SegmentData extends VisualData {
         if (unknown && (seg['value'] != null)) return null;
         if (value != null && value < 0) return null;
         parts.add(SegmentPart(
-            label: _str(seg['label'], max: 12), value: value, unknown: unknown));
+            label: _str(seg['label']), value: value, unknown: unknown));
       }
       bars.add(SegmentBar(label, parts));
     }
@@ -241,7 +241,7 @@ class SegmentData extends VisualData {
       if (index is! int || index < 0 || index >= bars.length) return null;
       if (unknown && b['value'] != null) return null;
       brackets.add(SegmentBracket(
-          index, _str(b['label'], max: 12), _num(b['value']), unknown));
+          index, _str(b['label']), _num(b['value']), unknown));
     }
     return SegmentData(bars, brackets, alt: alt, title: title);
   }
@@ -292,7 +292,7 @@ class NumberLineData extends VisualData {
       final end = _num(m['end']);
       if (unknown) {
         if (at != null || start != null || end != null) return null;
-        marks.add(NumberMark(label: _str(m['label'], max: 10), unknown: true));
+        marks.add(NumberMark(label: _str(m['label']), unknown: true));
         continue;
       }
       final isPoint = at != null;
@@ -302,7 +302,7 @@ class NumberLineData extends VisualData {
       if (values.any((v) => v < lo || v > hi)) return null;
       if (isInterval && start >= end) return null;
       marks.add(NumberMark(
-          label: _str(m['label'], max: 10),
+          label: _str(m['label']),
           at: at,
           start: start,
           end: end,
@@ -323,9 +323,10 @@ class SvgData extends VisualData {
   static const double canvasWidth = 680.0;
   static const int maxChars = 16000;
 
+  static final RegExp _xmlComment = RegExp(r'<!--[\s\S]*?-->');
   static final RegExp _forbidden = RegExp(
     r'<!(?:DOCTYPE|ENTITY)|<\?xml|<(?:/?\s*(?:html|head|body|script|style|foreignObject|iframe|form|image|a)\b)'
-    r'|<!--|/\*|position\s*:\s*fixed|\b(?:localStorage|sessionStorage|javascript:|data:)\b|https?:|www\.'
+    r'|/\*|position\s*:\s*fixed|\b(?:localStorage|sessionStorage|javascript:|data:)\b|https?:|www\.'
     r'|\bon[a-z]+\s*=|\b(?:href|src)\s*=',
     caseSensitive: false,
   );
@@ -350,7 +351,7 @@ class SvgData extends VisualData {
       Map<String, dynamic> raw, String alt, String? title) {
     final svgObj = raw['svg'];
     if (svgObj is! String) return null;
-    final code = svgObj.trim();
+    final code = svgObj.replaceAll(_xmlComment, '').trim();
     if (code.length < 20 || code.length > maxChars) return null;
     if (_forbidden.hasMatch(code)) return null;
     final lower = code.toLowerCase();

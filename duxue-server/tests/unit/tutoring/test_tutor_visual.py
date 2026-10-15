@@ -91,7 +91,7 @@ def mutated(base, mutate):
     mutated(STEPS, lambda v: v.update(steps=v["steps"][:1])),                                  # < 2
     mutated(STEPS, lambda v: v.update(steps=[{"label": f"步{i}"} for i in range(6)])),          # > 5
     mutated(STEPS, lambda v: v.update(alt="")),                                                # alt required
-    mutated(STEPS, lambda v: v["steps"][0].update(label="x" * 25)),                            # too long
+    mutated(STEPS, lambda v: v["steps"][0].update(label="x" * 121)),                           # too long (> 120)
     mutated(STEPS, lambda v: v["steps"][0].update(label="看 https://a.cn")),                    # url
     mutated(STEPS, lambda v: v["steps"][0].update(label="**蒸发**x<br>")),                      # html
     mutated(STEPS, lambda v: v["steps"][0].update(label="$x^2$")),                             # latex
@@ -168,6 +168,37 @@ def test_svg_normalizes_connector_fill_and_viewbox_height_and_extracts_texts():
     assert normalized.count('fill="none"') >= 3
     desc = describe(candidate.visual)
     assert "图内文字：直角边 3 | 斜边 ?" in desc
+
+
+def test_bilingual_compare_titles_and_svg_with_xml_comments_are_kept():
+    compare_with_en = {
+        "kind": "compare",
+        "alt": "对比光的反射和折射原理",
+        "columns": [
+            {"title": "反射 (Reflection)", "items": ["光碰到物体表面弹回", "入射角等于反射角", "例子：照镜子、水面倒影"]},
+            {"title": "折射 (Refraction)", "items": ["光进入另一种介质发生偏折", "传播速度改变导致方向变化", "例子：筷子在水里变弯、透镜成像"]},
+        ],
+        "row_labels": ["现象", "原理", "生活实例"],
+    }
+    svg_with_comments = {
+        "kind": "svg",
+        "alt": "光的反射和折射原理示意图",
+        "title": "光的反射与折射",
+        "svg": (
+            '<svg viewBox="0 0 680 300" width="100%" role="img">'
+            '<!-- Background -->'
+            '<rect x="0" y="0" width="680" height="300" fill="#F9FAFB"/>'
+            '<!-- Interface Line -->'
+            '<line x1="40" y1="150" x2="640" y2="150" stroke="#9CA3AF" stroke-width="2"/>'
+            '<text x="180" y="50" font-size="14" fill="#0C447C">反射 (Reflection)</text>'
+            '</svg>'
+        ),
+    }
+    c1 = cand(compare_with_en, act="answer", relation="none")
+    c2 = cand(svg_with_comments, act="answer", relation="none")
+    assert c1.visual is not None and c1.visual_dropped is None
+    assert c2.visual is not None and c2.visual_dropped is None
+    assert "<!--" not in c2.visual.svg
 
 
 def test_every_json_example_in_the_tutor_prompt_is_a_valid_candidate():

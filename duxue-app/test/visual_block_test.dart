@@ -132,6 +132,22 @@ void main() {
     expect(dark, contains('#F2F1ED'));
     expect(dark, contains('#0C447C'));
     expect(dark, contains('#B5D4F4'));
+
+    final commentedSvg = {
+      ...svgVisual,
+      'svg': '<!-- Background -->${svgVisual['svg']}',
+    };
+    expect(VisualData.tryParse(commentedSvg), isNotNull);
+    expect(
+      VisualData.tryParse({
+        ...compare,
+        'columns': [
+          {'title': '反射 (Reflection)', 'items': ['光碰到物体表面弹回', '入射角等于反射角']},
+          {'title': '折射 (Refraction)', 'items': ['光进入另一种介质发生偏折', '传播速度改变导致方向变化']},
+        ],
+      }),
+      isNotNull,
+    );
   });
 
   for (final entry in {
@@ -172,7 +188,7 @@ void main() {
       'one step': {...steps, 'steps': [{'label': '只有一步'}]},
       'six steps': {...steps, 'steps': [for (var i = 0; i < 6; i++) {'label': '步$i'}]},
       'steps not a list': {...steps, 'steps': 'x'},
-      'too-long label': {...steps, 'steps': [{'label': 'x' * 30}, {'label': 'y'}]},
+      'too-long label': {...steps, 'steps': [{'label': 'x' * 121}, {'label': 'y'}]},
       'misaligned compare': {
         ...compare,
         'columns': [

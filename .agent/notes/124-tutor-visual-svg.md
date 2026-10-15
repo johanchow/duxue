@@ -25,3 +25,9 @@
 5. **历史图形随 `CompanionMessage.interaction_ref` 持久保留在对应消息气泡内**
    - 原设计将 `visual` 放在单槽位临时状态 `tutoringVisual`，进入新一轮对话即被清空，导致多轮分步引导（`act=guide`）时孩子失去上一轮的审题图参照，且图与消息气泡割裂。
    - 改为：`CompanionCoordinator` 在写入 `author_type="companion"` 的 `CompanionMessage` 时，将通过检查的 `text_visual` 写入 `interaction_ref`；App 端 `_ChatBubble` 直接在对应消息气泡内渲染 `VisualBlock`，后续轮次继续保留。`run_transcript.py` 组装模型上下文时仅读 `content` 和 `attachment_refs`，不读取 `interaction_ref`，零额外 Token 开销。
+
+6. **真实问答踩坑修复：去掉窄字数误杀、自动剥离 SVG XML 注释、明确主动触发与正文独立可读**
+   - 线上审计日志发现模型生成 `"反射 (Reflection)"`（15 字符）和带 `<!-- Background -->` 分区注释的 SVG 时均被判为 `visual_invalid` 丢弃：
+     1. 去掉 `ShortText(12)` / `Text(24)` / `Detail(40)` 的窄字数硬卡，服务端与客户端统一放宽为 `120` 字符防滥用上限，交由 Flutter 组件自动换行；
+     2. 服务端 `_validate_and_normalize_svg` 与客户端 `SvgData.tryParse` 先自动剥离 `<!-- ... -->` XML 注释，不再因注释拒绝整张 SVG；
+     3. 提示词明确列出主动配图触发场景（光路/受力/电路、生物地理循环、几何、概念对比、流程、数量关系、孩子要求画图），并要求 `content` 独立可读（不写“这张图展示了/如图所示/看左图右图”等强依赖图的指代词）。

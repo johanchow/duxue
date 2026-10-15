@@ -41,9 +41,9 @@ def _text(limit: int):
     ]
 
 
-Text = _text(24)
-ShortText = _text(12)
-Detail = _text(40)
+Text = _text(120)
+ShortText = _text(120)
+Detail = _text(120)
 Number = Annotated[float, Field(ge=-_BOUND, le=_BOUND, allow_inf_nan=False)]
 
 
@@ -59,7 +59,7 @@ def _unknown_has_no_value(unknown: bool, *, numbers: tuple, texts: tuple) -> Non
 
 class _Base(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    title: _text(20) | None = None
+    title: _text(120) | None = None
     alt: _text(120)
 
 
@@ -207,9 +207,10 @@ _SVG_ALLOWED_TAGS = frozenset({
     "linearGradient", "stop",
 })
 _SVG_SHAPE_TAGS = frozenset({"rect", "circle", "ellipse", "line", "polyline", "polygon", "path"})
+_SVG_XML_COMMENT = re.compile(r"<!--[\s\S]*?-->")
 _SVG_FORBIDDEN_RAW = re.compile(
     r"<!(?:DOCTYPE|ENTITY)|<\?xml|<(?:/?\s*(?:html|head|body|script|style|foreignObject|iframe|form|image|a)\b)"
-    r"|<!--|/\*|position\s*:\s*fixed|\b(?:localStorage|sessionStorage|javascript:|data:)\b|https?:|www\.",
+    r"|/\*|position\s*:\s*fixed|\b(?:localStorage|sessionStorage|javascript:|data:)\b|https?:|www\.",
     re.I,
 )
 _SVG_URL_REF = re.compile(r"url\(([^)]*)\)", re.I)
@@ -240,7 +241,7 @@ def _check_font_size(raw: str, unit: str | None) -> None:
 
 
 def _validate_and_normalize_svg(raw_svg: str) -> str:
-    code = raw_svg.strip()
+    code = _SVG_XML_COMMENT.sub("", raw_svg).strip()
     if len(code) > SVG_MAX_CHARS:
         raise ValueError("svg exceeds maximum character budget")
     if _SVG_FORBIDDEN_RAW.search(code):
