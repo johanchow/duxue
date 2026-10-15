@@ -112,7 +112,7 @@ flowchart LR
 | `completed` | 这项任务已经完成 | `CompleteTask` 消费带 `task_id` 的 `StudySessionCompleted.v1` 后调用 `complete()`。无任务的答疑完成不会发布该事件，也不能把别的任务标完成。重复投递保持 `completed` | 无。新的一天不回到任务池 | 否 | 是 |
 | `cancelled` | 明确放弃，记录保留 | Ward 明确取消，且任务已有学习记录或已开始执行、不能物理删除时，`cancel()` | 无 | 否 | 是 |
 
-本地日以 `Asia/Shanghai` 的 `plan_date` 为准。`ReleaseUnfinishedTasks` 由本地日切换触发，对「状态为 `scheduled`、所绑日程日期早于今天、且不是 `completed` / `cancelled`」的任务调用 `unschedule()`。昨天的 `DailySchedule` 保留为历史，不把原来的时间槽搬到今天。进行中的 `StudySession` 不阻止这次释放；会话仍按自己的状态继续，任务回到当天任务池后可以被今天重新安排。Study 不直接修改 `Task`。
+本地日以 `Asia/Shanghai` 的 `plan_date` 为准。`ReleaseUnfinishedTasks` 由本地日切换触发，对「状态为 `scheduled`、所绑日程日期早于今天、且不是 `completed` / `cancelled`」的任务调用 `unschedule()`，同时将往日遗留的 `active` / `paused` `StudySession`（及其未关闭的 `TutoringSession` / `TutoringProblem`）标记为 `abandoned` 并解除与待办任务的绑定，使跨天未完成的任务统一重置为未排期（`pool`）且未进行（既不是进行中，也不是暂停）的状态。昨天的 `DailySchedule` 保留为历史，不把原来的时间槽搬到今天。Study 不直接修改 `Task`。
 
 ```mermaid
 stateDiagram-v2
