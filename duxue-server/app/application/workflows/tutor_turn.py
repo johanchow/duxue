@@ -169,6 +169,7 @@ class TutorTurnCandidate(BaseModel):
     # 配图是可选的展示增强：非法或不适用时整张丢弃并记下原因，绝不让候选整体失败。
     visual: Visual | None = None
     visual_dropped: str | None = Field(default=None, exclude=True)
+    visual_error: str | None = Field(default=None, exclude=True)
 
     @model_validator(mode="before")
     @classmethod
@@ -212,6 +213,7 @@ class TutorTurnCandidate(BaseModel):
         else:
             value.pop("turn", None)
         value.pop("visual_dropped", None)  # 只由这里写，模型自报的无效
+        value.pop("visual_error", None)
         raw_visual = value.pop("visual", None)
         if raw_visual not in (None, "", {}, []):
             if act not in VISUAL_ACTS:
@@ -221,6 +223,7 @@ class TutorTurnCandidate(BaseModel):
                     value["visual"] = VISUAL_ADAPTER.validate_python(raw_visual)
                 except ValidationError as error:
                     value["visual_dropped"] = drop_reason(error)
+                    value["visual_error"] = format_schema_error(error)
         for key in ("lesson", *_LESSON_KEYS, "candidates"):
             value.pop(key, None)
         return value

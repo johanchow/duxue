@@ -234,7 +234,6 @@ def test_every_json_example_in_the_tutor_prompt_is_a_valid_candidate():
         found.append(example)
         start = end
     assert any("visual" in example for example in found)
-    assert any(example.get("visual", {}).get("kind") == "svg" for example in found)
     for example in found:
         candidate = TutorTurnCandidate.model_validate(example)
         assert candidate.visual_dropped is None
@@ -247,5 +246,33 @@ def test_the_prompt_offers_exactly_the_kinds_the_contract_accepts():
     text = PROMPTS["tutoring.turn.system.v12"].text
     for kind in ("steps", "compare", "segment", "number_line", "svg"):
         assert f'"kind":"{kind}"' in text
+    assert "widget_guidelines" in text
     for later in ("geometry", "layers"):
         assert f'"kind":"{later}' not in text
+
+
+def test_widget_guidelines_tool_and_visual_repair_in_call_tutor_model():
+    """模型可先调 widget_guidelines 拿完整 SVG 规范；若首次 SVG 违反语法（如 viewBox 宽度错），
+    call_tutor_model 会把具体 visual 错误通过 repair_error 喂回模型重修一次，修不好也保底保留文字。"""
+    from app.application.workflows.tutor_loop import call_tutor_model
+    from app.application.workflows.tutor_tools import SVG_WIDGET_GUIDELINES, TutorToolbox
+    from tests.support.fakes import StaticTutorModel
+
+    tools = TutorToolbox(
+        None, tutoring_session_id=None, problem=None, task_title=None, task_active=False, window=[],
+    )
+    bad_svg = {**SVG, "svg": SVG["svg"].replace("0 0 680 180", "0 0 500 180")}
+    model = StaticTutorModel(
+        {"tool": "widget_guidelines", "args": {}},
+        tutor_raw("answer", "这是折射光路。", relation="none", visual=bad_svg),
+        tutor_raw("answer", "这是折射光路。", relation="none", visual=SVG),
+    )
+    res = call_tutor_model(model, {}, "{}", [], [], tools)
+    assert len(model.calls) == 3
+    obs = model.calls[1]["observations"][0]
+    assert obs["tool"] == "widget_guidelines" and obs["guidelines"] == SVG_WIDGET_GUIDELINES
+    assert "visual 校验未通过" in (model.calls[2]["repair_error"] or "")
+    assert "680" in (model.calls[2]["repair_error"] or "")
+    assert res.candidate is not None and res.candidate.visual is not None
+    assert res.candidate.visual_dropped is None
+

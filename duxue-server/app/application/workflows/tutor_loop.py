@@ -79,6 +79,7 @@ def call_tutor_model(
     repair: str | None = repair_error
     observations: list[dict] = []
     tool_calls = 0
+    best_candidate: TutorTurnCandidate | None = None
     for _ in range(MAX_MODEL_CALLS):
         try:
             raw = model.complete(
@@ -95,8 +96,12 @@ def call_tutor_model(
                 )
                 repair = "返回的内容不是有效 JSON 对象；只返回一个符合 tutor-turn.v4 的 JSON 对象。"
                 continue
+            if best_candidate is not None:
+                return ModelCall(best_candidate)
             return ModelCall(None, str(error))
         except Exception as error:  # noqa: BLE001 - provider failures must fall back safely.
+            if best_candidate is not None:
+                return ModelCall(best_candidate)
             return ModelCall(None, str(error))
         if isinstance(raw, dict) and "tool" in raw:
             name = str(raw.get("tool"))
@@ -107,7 +112,7 @@ def call_tutor_model(
                 observations.append(tools.run(name, raw.get("args")))
             continue
         try:
-            return ModelCall(TutorTurnCandidate.model_validate(raw))
+            candidate = TutorTurnCandidate.model_validate(raw)
         except (ValidationError, ValueError) as error:
             error_type, field = schema_error_diagnostic(error)
             record_tutor_candidate_rejection(
@@ -116,6 +121,18 @@ def call_tutor_model(
             if repair is not None:  # 结构错误只重试一次
                 break
             repair = format_schema_error(error)
+            continue
+        if (
+            candidate.visual_dropped == "visual_invalid"
+            and candidate.visual_error
+            and repair is None
+        ):
+            best_candidate = candidate
+            repair = f"visual 校验未通过（{candidate.visual_error}）；请保持 act、content、turn 不变，只修正 visual。"
+            continue
+        return ModelCall(candidate)
+    if best_candidate is not None:
+        return ModelCall(best_candidate)
     return ModelCall(None, INVALID_CANDIDATE)
 
 
