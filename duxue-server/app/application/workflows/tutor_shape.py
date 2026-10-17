@@ -16,8 +16,41 @@ MAX_CHARS: dict[str, int] = {
 
 _QUESTION = re.compile(r"[？?]")
 _LIST_LINE = re.compile(r"^\s*(?:[-*•]|\d+[.、)）])\s+\S")
+_BULLET_LINE = re.compile(r"^\s*[-*•]\s+\S")
+_BR_TAG = re.compile(r"<\s*br\s*/?\s*>", re.IGNORECASE)
 _HTML = re.compile(r"<\s*/?[a-zA-Z!][^>]*>")
+_CODE_BLOCK = re.compile(r"```[\s\S]*?```|`[^`\n]+`")
 _ESCAPED_DOLLAR = re.compile(r"\\\$")
+
+
+def _has_unpaired_delim(text: str, open_tok: str, close_tok: str) -> bool:
+    depth = 0
+    i = 0
+    while i < len(text):
+        if text.startswith(open_tok, i):
+            depth += 1
+            i += len(open_tok)
+        elif text.startswith(close_tok, i):
+            if depth == 0:
+                return True
+            depth -= 1
+            i += len(close_tok)
+        else:
+            i += 1
+    return depth != 0
+
+
+def _has_unpaired_math(content: str) -> bool:
+    cleaned = _ESCAPED_DOLLAR.sub("", _CODE_BLOCK.sub("", content))
+    if _has_unpaired_delim(cleaned, r"\(", r"\)"):
+        return True
+    if _has_unpaired_delim(cleaned, r"\[", r"\]"):
+        return True
+    parts = cleaned.split("$$")
+    if len(parts) % 2 == 0:
+        return True
+    outside_display = "".join(parts[0::2])
+    return outside_display.count("$") % 2 == 1
 
 
 def lint_shape(act: str, content: str) -> list[str]:
@@ -29,11 +62,12 @@ def lint_shape(act: str, content: str) -> list[str]:
     if act == "guide" and len(_QUESTION.findall(content)) > 1:
         flags.append("multi_question")
     lines = [line for line in content.splitlines() if line.strip()]
-    listed = sum(1 for line in lines if _LIST_LINE.match(line))
+    list_pattern = _BULLET_LINE if act == "answer" else _LIST_LINE
+    listed = sum(1 for line in lines if list_pattern.match(line))
     if listed >= 3 and listed * 2 >= len(lines):
         flags.append("list_heavy")
-    if len(_ESCAPED_DOLLAR.sub("", content).split("$")) % 2 == 0:
+    if _has_unpaired_math(content):
         flags.append("unpaired_dollar")
-    if _HTML.search(content):
+    if _HTML.search(_BR_TAG.sub("", content)):
         flags.append("raw_html")
     return flags

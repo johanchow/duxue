@@ -418,6 +418,7 @@ class TutorTurnCandidate(BaseModel):
 | 字段 | 谁信任 | 用途 |
 |---|---|---|
 | `act` | 出口检查核对是否在许可内 | 决定交互类型 |
+| `content` | 必填，1–1200 字 UTF-8 Markdown + TeX 字符串。算式、分式、根号、方程直接用 `$...$` / `$$...$$`（兼容 `\(...\)` / `\[...\]`）写在 `content` 中，客户端由 `ChatMarkdownBody` + `flutter_math_fork` 原生渲染，不为单个算式调 `visual` 或 WebView；链接与 Markdown 内联图片仅按纯文本展示，不拉取外图、不跳转外链 | 面向孩子的正文与追问 |
 | `turn.type` / `turn.relation` | 模型自述；`answer`/`guide` 缺失或非法、`guide` 非 `work` 分支时走一次结构重试。**不决定答案保护**，只决定是否推进题目、是否换题 | 作业 vs 非作业；续题 vs 新题 |
 | `turn.depth` | 只有 `work` 分支携带，`atomic`（一次性查询）／`recall`（要记住的）／`reasoning`（需要推理，默认）。`atomic`/`recall` 可直接回答（不推进题目）。事实闸门不看 `act`：声明了 `atomic`/`recall` 且正文不超过 120 字就确定性放行；`reasoning` 或缺失按严格标准审。`answer` 配 `reasoning` 不拒绝，记 shape flag `answer_on_reasoning` | 作业里的单个事实不必让孩子猜 |
 | `turn` 其余字段 | 只有 `work` 分支携带；模型自述，只决定 `advance()` 是否推进；未知值按“未报告”，不拒绝。`progress`、`evidence` 只属于 `student_move=attempt`，其他 move 上解析时置空（否则一个误填的 `submitted` 会吞掉提示计数）；`student_move` 进 `tutor.turn.result` 观测 | 记录对当前小目标的证据 |
