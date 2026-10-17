@@ -72,13 +72,17 @@ flowchart LR
 - 面向孩子的口吻，句子短；因果、先后用连贯的句子表达，不用圆点列表拆碎。只有真正并列的 3 个以上同类项才用列表。
 - 不用标题层级；不出现"如上所述"这类指代（孩子可能只看这一屏）。
 - 一轮只推进一件事。
+- **正文 Markdown 与 TeX 公式契约**：
+  - **正文与配图双轨分工**：算式、分式（`\frac{a}{b}`）、根号（`\sqrt{}`）、多步对齐（`aligned`）与方程组（`cases`）一律作为 UTF-8 Markdown + TeX 字符串写在 `content` 内，客户端用 `flutter_math_fork`（`Math.tex`）原生渲染，**不为单个算式生成 `visual` 配图，也不引入 WebView**；
+  - **公式分隔符**：行内公式用 `$...$`（单行闭合、首尾不留空白，兼容 `\(...\)`），独立公式用 `$$...$$`（兼容 `\[...\]`）；金额写“100 元”不写 `$100`，不用 Unicode 假公式或字符画；
+  - **客户端容错与安全红线**：App 端 `ChatMarkdownBody`（`lib/shared/chat_markdown.dart`）支持单换行 `\n` 保真换行、`<br>`/`<br/>` 换行、严格双波浪线 `~~` 删除线（避免数学区间 `1~10` 被误划掉）、宽松 `**粗体**`（兼容尾部空格与中文全角标点边界），标题压平为仅加粗，公式解析异常回退显示源码；**严禁外链跳转与外部图片加载**（`[text](url)` 与 `![alt](url)` 一律仅展示纯文本）。
 
 ### 4.2 按 `act` 的形状
 
 | `act` | 形状（期望） | 不变量 |
 | --- | --- | --- |
-| `answer` | 结论 → 一句原因 → 一个贴近生活的例子 →（可选）一个追问 | 先结论，不反问、不让孩子先猜（与现有规则一致） |
-| `guide` | 复述或回应孩子刚才的想法 → **一个**最小问题或一个提示 | 问题与 `work.next_subgoal` 一致；不列完整步骤；不给最终答案 |
+| `answer` | 单句查询直接一两句答清；原理/为什么/过程类：一句话结论（`**粗体**` 标核心概念）→ 换行拆成 2–4 个带 `**小步名**` 的编号小步说明 →（可选）一句总结或生活例子 | 先结论，不反问、不让孩子先猜；有逻辑分步的内容拆成多小步说明，不揉成一整段纯文本 |
+| `guide` | 复述或回应孩子刚才的想法 → **一个**最小问题或一个提示 | 问题与 `work.next_subgoal` 一致；不替孩子列完整步骤；不给最终答案 |
 | `chat` | 1–2 句自然回应 | 不排版 |
 | `clarify` | 一句说明为什么要确认 → 候选或补充要求 | 同一对象最多问一次（既有规则） |
 | `redirect` | 一句温和的话 | 回任务提醒由系统补（既有规则） |
@@ -392,11 +396,11 @@ Then  只记录，回答照常展示，不触发 fallback
 
 **已实现**
 
-- 逻辑层：`tutoring.turn.system.v12` 含"回答形状"段；`tutor_shape.lint_shape` 只观测（trace 事件 `tutor.shape.lint` 与离线指标），不触发 fallback。长度上限（`answer` 400、`guide` 250、`chat`/`redirect`/`pronounce` 120、`clarify` 200 字）是**初始假设**，待 §十 第 0 步用真实输出校准。
+- 逻辑层：`tutoring.turn.system.v13` 含"回答形状"与"正文公式/Markdown 书写规范"段；`tutor_shape.lint_shape` 只观测（trace 事件 `tutor.shape.lint` 与离线指标），不触发 fallback（`<br>`/`<br/>` 放行不记 `raw_html`；`unpaired_dollar` 忽略代码块并覆盖 `$`、`$$`、`\(...\)`、`\[...\]` 配对检查）。长度上限（`answer` 400、`guide` 250、`chat`/`redirect`/`pronounce` 120、`clarify` 200 字）是**初始假设**，待 §十 第 0 步用真实输出校准。
 - 契约：`tutor_visual.py` 的 `visual`（两层共五种图型：第一层原生结构化 `steps`、`compare`、`segment`、`number_line`；第二层受限矢量 `svg`）与预算；结构非法、超预算、`unknown` 带数值、SVG 违反白名单/画布规范、`act` 不适用，一律丢图，原因类别写入 trace 事件 `tutor.visual.dropped`。原先规划的 `geometry`、`layers`、`relation` 统一由受限 `svg` 承载，不再单独拆出几何约束求解器。
 - 出口检查：新增独立组件 `tutoring.visual-leak-judge@v1`（待定项 8 选"新增独立提示词"，仍只交 `problem_summary`，不交原题）；`describe(visual)` 对结构化图和 `svg`（提取全部 `<title>`/`<desc>`/`<text>`/`<tspan>` 可见文本）生成统一文本摘要，经关键词答案标记检查、并行图泄露判官及独立输出安全审核；判泄露、超时、结果非法、异常、判官不支持图，都只丢图。
 - 投影：`kind=text_visual`，`parts = text + visual`（内联）；模型不返回 `kind`、按钮、动作。
-- App：`VisualBlock` 五个渲染器（含 `flutter_svg` 驱动的 `_SvgView` 与明暗色板 CSS 变量摊平 `materializeSvgTheme`）、降级、无障碍、窄屏与深色测试。
+- App：正文由 `ChatMarkdownBody`（`lib/shared/chat_markdown.dart`，基于 `markdown` + `flutter_math_fork`）渲染 GFM、4 项容错扩展与行内/块级 TeX 公式（禁外链与外图）；配图由 `VisualBlock` 五个渲染器（含 `flutter_svg` 驱动的 `_SvgView` 与明暗色板 CSS 变量摊平 `materializeSvgTheme`）渲染，覆盖降级、无障碍、窄屏与深色测试。
 
 **与设计的偏差（及原因）**
 

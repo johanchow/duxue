@@ -2,7 +2,7 @@
 
 > 版本：v3.0  
 > 适用平台：iOS & Android (Flutter 3.x)  
-> 核心技术栈：Flutter 3.x · Dart 3.x · Riverpod 2.x (CodeGen) · go_router · Dio · fl_chart · flutter_secure_storage · flutter_markdown · flutter_math_fork  
+> 核心技术栈：Flutter 3.x · Dart 3.x · Riverpod 2.x (CodeGen) · go_router · Dio · fl_chart · flutter_secure_storage · markdown · flutter_math_fork · flutter_svg
 > 系统定位：读学系统的统一多端用户交互界面，支持 **Ward（学生模式）** 与 **Guardian（家长模式）** 严格隔离的双角色平滑切换。
 
 ---
@@ -42,7 +42,7 @@
 | **安全存储** | `flutter_secure_storage` | 9.0+ | iOS Keychain 与 Android Keystore 系统级加密存储 Access/Refresh Token |
 | **轻量键值存储**| `shared_preferences` | 2.2+ | 用户偏好（角色记忆、离线草稿、主题设置） |
 | **图表可视化** | `fl_chart` | 0.68+ | 开源 MIT 协议，绘制自主度趋势、专注占比与成长雷达图 |
-| **公式与文本** | `flutter_markdown` + `flutter_math_fork` | 最新版 | 伴学答疑中 Markdown 文本与 LaTeX 复杂公式（KaTeX 解析）无缝排版 |
+| **公式与文本** | `markdown` + `flutter_math_fork` | `^7.2.2` / `^0.7.3` | 伴学答疑 `ChatMarkdownBody` 中 GFM 文本、4 项生成式容错扩展与 LaTeX 公式（KaTeX 解析）无缝安全排版 |
 | **二维码生成** | `pretty_qr_code` | 3.3+ | 生成设备绑定码与家庭共管邀请码，支持中心嵌入 App Logo |
 | **图片缓存** | `cached_network_image` | 3.3+ | 题目抓拍与头像的二级磁盘/内存缓存，避免重复网络流量 |
 
@@ -174,10 +174,11 @@ FUNCTION routerRedirectGuard(authState, targetPath):
 - **生命周期**：通过检查的 `visual` 随该轮 `CompanionMessage.interaction_ref` 写入消息 journal，在对应历史气泡内持久展示（进入新一轮对话或重新打开对话列表不会消失），但不会注入后续轮次传给大模型的对话上下文。
 - **与流式的关系**：当前伴学对话是一次请求返回完整交互，图随该交互一次性出现。若将来改为 SSE，`delta` 事件不得携带图的任何内容，只有最终 `interaction` 事件携带 `visual`。
 
-#### 2. 流式 Markdown + LaTeX 混排渲染机制
-- **双解析器语法扩展**：在 Markdown 解析管线中挂载自定义 LaTeX Inline (`$...$`) 与 Block (`$$...$$`) 语法解析器；
-- **局部 AST 缓存**：流式打字期间仅重绘增量文本节点，避免整段公式频繁重构导致的界面重排闪烁；
-- **公式回退降级**：当 KaTeX 解析异常时，自动安全回退为等宽纯文本源码展示，杜绝界面崩溃。
+#### 2. 正文 Markdown + LaTeX 混排渲染机制（`ChatMarkdownBody`）
+- **双轨渲染与解析管线**：位于 `lib/shared/chat_markdown.dart`，基于纯 Dart `package:markdown` AST 与 `flutter_math_fork`（`Math.tex`）原生渲染正文与公式，无需引入 WebView；
+- **公式语法与横向滚动**：支持行内 `$...$`（单行、闭合、首尾无多余空白）与 `\(...\)`（`MathStyle.text` + `WidgetSpan`），以及块级 `$$...$$` 与 `\[...\]`（`MathStyle.display` + 横向 `SingleChildScrollView`）；
+- **4 项生成式容错扩展**：单换行 `\n` 保真换行（`softLineBreak`）、`<br>`/`<br/>` 转换行、严格双波浪线 `~~` 删除线（避免数学区间 `1~10` 被误划掉）、宽松 `**粗体**`（兼容尾部空格与中文全角标点边界）；标题层级压平为仅加粗，紧凑管道表格支持横向滚动；
+- **公式回退与未成年人安全红线**：未闭合围栏或 KaTeX 解析异常时通过 `onErrorFallback` 自动回退为纯文本源码展示，杜绝界面崩溃或空白；禁用外链跳转与外部图片加载（`[text](url)` 与 `![alt](url)` 一律仅渲染纯文本）。
 
 ---
 

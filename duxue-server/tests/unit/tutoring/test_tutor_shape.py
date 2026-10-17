@@ -23,14 +23,24 @@ def test_list_heavy_needs_three_items_and_half_of_the_lines():
     items = "\n".join(f"- 第{i}点" for i in range(3))
     assert lint_shape("answer", items) == ["list_heavy"]
     assert lint_shape("answer", f"总的来说有三点。\n{items}\n先看第一点。\n再看第二点。\n最后。") == []
+    numbered_steps = "结论：**水循环**分三步：\n1. **蒸发**：水变水蒸气\n2. **凝结**：高空聚成云\n3. **降水**：落回地面"
+    assert lint_shape("answer", numbered_steps) == []
+    assert lint_shape("guide", "1. 第一步\n2. 第二步\n3. 第三步") == ["list_heavy"]
 
 
-def test_unpaired_dollar_ignores_escaped_dollars_and_paired_math():
+def test_unpaired_dollar_ignores_escaped_dollars_code_blocks_and_checks_all_math_delims():
     assert lint_shape("answer", "算式是 $x+1") == ["unpaired_dollar"]
     assert lint_shape("answer", "算式是 $x+1$。") == []
     assert lint_shape("answer", r"这个本子 \$5 一本。") == []
+    assert lint_shape("answer", "代码里写 `$x+1` 或 ```\n$y\n``` 不触发未配对") == []
+    assert lint_shape("answer", "块级 $$\\frac{a}{b} = c$$ 和行内 $x=1$ 都配对。") == []
+    assert lint_shape("answer", "未闭合块级 $$x+1") == ["unpaired_dollar"]
+    assert lint_shape("answer", r"括号公式 \(a+b\) 与 \[c+d\] 正常。") == []
+    assert lint_shape("answer", r"未闭合 \(a+b") == ["unpaired_dollar"]
+    assert lint_shape("answer", r"未闭合 \[a+b") == ["unpaired_dollar"]
 
 
-def test_raw_html_is_flagged_but_comparison_signs_are_not():
-    assert lint_shape("answer", "换行用 <br> 不好") == ["raw_html"]
+def test_raw_html_is_flagged_but_br_and_comparison_signs_are_allowed():
+    assert lint_shape("answer", "第一行<br>第二行<br/>第三行<BR />第四行") == []
+    assert lint_shape("answer", "换行用 <div> 不好") == ["raw_html"]
     assert lint_shape("answer", "因为 3 < 5，所以左边小。") == []

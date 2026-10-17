@@ -10,6 +10,7 @@ import '../core/cue_notifications.dart';
 import '../core/speech_playback.dart';
 import '../providers.dart';
 import '../shared/app_ui.dart';
+import '../shared/chat_markdown.dart';
 import '../shared/voice_composer.dart';
 import 'home_task_card.dart';
 import 'pronunciation_player.dart';
@@ -1777,7 +1778,7 @@ class _ChatBubble extends StatelessWidget {
               if (text.isNotEmpty &&
                   !(images.isNotEmpty && text == '请看这张图片。')) ...[
                 const SizedBox(height: 4),
-                Text(text),
+                ChatMarkdownBody(text: text),
               ],
               if (visual != null) ...[
                 const SizedBox(height: 8),
