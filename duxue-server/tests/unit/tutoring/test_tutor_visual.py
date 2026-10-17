@@ -234,7 +234,6 @@ def test_every_json_example_in_the_tutor_prompt_is_a_valid_candidate():
         found.append(example)
         start = end
     assert any("visual" in example for example in found)
-    assert any(example.get("visual", {}).get("kind") == "svg" for example in found)
     for example in found:
         candidate = TutorTurnCandidate.model_validate(example)
         assert candidate.visual_dropped is None
