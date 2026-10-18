@@ -154,6 +154,24 @@ class _WardHomeApi extends ApiClient {
         },
       };
     }
+    if (content == 'start also') {
+      return {
+        'thread_id': threadId ?? 'thread-1',
+        'thread_version': (expectedThreadVersion ?? 0) + 2,
+        'interaction': {
+          'protocol': 'companion-interaction.v1',
+          'kind': 'pronunciation_lesson',
+          'content': 'start 是开始，also 是也。',
+          'parts': [
+            {'type': 'text', 'text': 'start 是开始，also 是也。'},
+          ],
+          'object_ref': {
+            'context': 'study',
+            'object_id': 'lesson-multi',
+          },
+        },
+      };
+    }
     if (content.contains('水循环')) {
       return {
         'thread_id': threadId ?? 'thread-1',
@@ -227,14 +245,42 @@ class _WardHomeApi extends ApiClient {
   Future<Map<String, dynamic>> currentStartCue() async => {'status': 'none'};
 
   @override
-  Future<Map<String, dynamic>> pronunciationLesson(String lessonRef) async => {
-        'id': lessonRef,
-        'source_text': 'apple',
-        'locale': 'en-US',
-        'introduction': '先听这个词。',
-        'speech_ref': lessonRef,
-        'supported_rates': [0.5, 0.75, 1.0],
-      };
+  Future<Map<String, dynamic>> pronunciationLesson(String lessonRef) async =>
+      lessonRef == 'lesson-multi'
+          ? {
+              'id': lessonRef,
+              'source_text': 'start',
+              'locale': 'en-US',
+              'introduction': 'start（开始）',
+              'speech_ref': lessonRef,
+              'supported_rates': [0.5, 0.75, 1.0],
+              'lessons': [
+                {
+                  'lesson_ref': lessonRef,
+                  'source_text': 'start',
+                  'locale': 'en-US',
+                  'introduction': 'start（开始）',
+                  'speech_ref': lessonRef,
+                  'supported_rates': [0.5, 0.75, 1.0],
+                },
+                {
+                  'lesson_ref': '$lessonRef:1',
+                  'source_text': 'also',
+                  'locale': 'en-US',
+                  'introduction': 'also（也）',
+                  'speech_ref': '$lessonRef:1',
+                  'supported_rates': [0.5, 0.75, 1.0],
+                },
+              ],
+            }
+          : {
+              'id': lessonRef,
+              'source_text': 'apple',
+              'locale': 'en-US',
+              'introduction': '先听这个词。',
+              'speech_ref': lessonRef,
+              'supported_rates': [0.5, 0.75, 1.0],
+            };
 
   @override
   Future<Uint8List> pronunciationSpeech(String lessonRef, double rate) async {
@@ -837,6 +883,37 @@ void main() {
     expect(api.speechRates, [0.75]);
     expect(playback.played, isNotEmpty);
     expect(find.text('正在播放'), findsOneWidget);
+  });
+
+  testWidgets('multi-word pronunciation renders multiple cards',
+      (tester) async {
+    FlutterSecureStoragePlatform.instance =
+        TestFlutterSecureStoragePlatform({});
+    final api = _WardHomeApi();
+    final playback = _FakePlayback();
+    final voice = _FakeVoice()..finalText = 'start also';
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiProvider.overrideWithValue(api)],
+      child: MaterialApp(
+          home: WardDayPage(
+              wardId: 'ward-1',
+              speechPlayback: () => playback,
+              voiceFactory: (
+                      {required baseUrl,
+                      required tokens,
+                      required telemetry}) =>
+                  voice)),
+    ));
+    await tester.pumpAndSettle();
+
+    final gesture = await tester
+        .startGesture(tester.getCenter(find.text('说出你的任何想法、问题、安排')));
+    await tester.pump(const Duration(milliseconds: 600));
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(find.text('start（开始）', skipOffstage: false), findsOneWidget);
+    expect(find.text('also（也）', skipOffstage: false), findsOneWidget);
   });
 
   testWidgets(

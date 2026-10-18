@@ -41,7 +41,7 @@ def classify(call: ModelCall, vetting: Vetting | None, *, leak_retried: bool = F
     base = {
         "leak_retried": leak_retried,
         "act": candidate.act, "content": candidate.content,
-        "lesson_source": candidate.lesson.source_text if candidate.lesson else None,
+        "lesson_source": " ".join(item.source_text for item in candidate.lessons) if candidate.lessons else None,
         "candidates": list(candidate.candidates),
     }
     flags = list(vetting.shape_flags) if vetting is not None else []

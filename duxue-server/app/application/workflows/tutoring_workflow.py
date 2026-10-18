@@ -322,7 +322,10 @@ class TutoringWorkflow:
         )
         # 发音和澄清是只读展示：不打开会话，不写消息、事实或题目记录。
         if not failed and not safety and candidate.act == "pronounce":
-            outcome = project_lesson(self.db, invocation, candidate.lesson)
+            outcome = project_lesson(
+                self.db, invocation, candidate.lesson,
+                lessons=candidate.lessons, content=candidate.content,
+            )
             outcome.context_snapshot = envelope.trace_snapshot()
             record_tutor_turn_result(
                 act=candidate.act, relation=candidate.relation, topic=candidate.topic, depth=candidate.depth, outcome="shown", reason=None,

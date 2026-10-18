@@ -301,3 +301,57 @@ def test_playback_rates_match_aliyun_speech_rate():
     assert playback_speech_rate(0.5) == -500
     assert playback_speech_rate(0.75) == -167
     assert playback_speech_rate(1.0) == 0
+
+
+def test_pronounce_preserves_meaning_content_and_projects_multiple_lessons(db):
+    ward = create_ward(db)
+    db.commit()
+    raw = {
+        "act": "pronounce",
+        "content": "这两个单词的意思分别是：\n- **start**：开始\n- **also**：也、同样",
+        "pronounce": {
+            "lessons": [
+                {
+                    "source_text": "start", "locale": "en-US", "introduction": "start（开始）",
+                    "reading_guide": "st 发 /st/，ar 发 /ɑːr/。",
+                    "notes": [{"segment": "start", "kind": "stress", "explanation": "单音节重读。"}],
+                },
+                {
+                    "source_text": "also", "locale": "en-GB", "introduction": "also（也）",
+                    "reading_guide": "al 发 /ɔːl/，so 发 /səʊ/。",
+                    "notes": [{"segment": "al", "kind": "stress", "explanation": "重音在第一音节。"}],
+                },
+            ],
+        },
+    }
+    outcome = _present(db, _invocation(ward.id, "start 和 also 什么意思？怎么读？"), raw)
+    db.commit()
+    interaction = outcome.next_interaction
+    assert interaction["kind"] == "pronunciation_lesson"
+    assert "start" in interaction["content"] and "开始" in interaction["content"]
+    assert interaction["parts"][0]["text"] == interaction["content"]
+    lessons = interaction["lessons"]
+    assert [item["source_text"] for item in lessons] == ["start", "also"]
+    assert lessons[0]["speech_ref"] == interaction["lesson"]["lesson_ref"]
+    assert lessons[1]["speech_ref"] == f"{interaction['lesson']['lesson_ref']}:1"
+
+    spoken: list[tuple[str, str]] = []
+
+    def transport(method, url, token, payload):
+        if method == "GET":
+            body = json.dumps({"Token": {"Id": "token-1", "ExpireTime": 4_000_000_000}}).encode()
+            return 200, "application/json", body
+        spoken.append((payload["text"], payload["voice"]))
+        return 200, "audio/mpeg", b"ID3-mp3"
+
+    query = PronunciationLessonQuery(db, AliyunSpeechSynthesizer(
+        transport=transport, clock=lambda: 1_000, appkey="test-appkey", access_key_id="ak", access_key_secret="secret",
+    ))
+    primary_view = query.get(ward_id=ward.id, lesson_ref=lessons[0]["lesson_ref"])
+    assert [item["source_text"] for item in primary_view["lessons"]] == ["start", "also"]
+    assert query.speak(ward_id=ward.id, lesson_ref=lessons[0]["speech_ref"], rate=1.0) == b"ID3-mp3"
+    assert query.speak(ward_id=ward.id, lesson_ref=lessons[1]["speech_ref"], rate=1.0) == b"ID3-mp3"
+    assert spoken == [("start", "betty"), ("also", "emily")]
+    with pytest.raises(HTTPException) as out_of_range:
+        query.get(ward_id=ward.id, lesson_ref=f"{lessons[0]['lesson_ref']}:2")
+    assert out_of_range.value.status_code == 404

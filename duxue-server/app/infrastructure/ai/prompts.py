@@ -69,13 +69,13 @@ _TUTOR_TURN_SYSTEM = (
     "chat：闲聊、接话，或孩子在回答你上一轮给出的选项或追问；\n"
     "clarify：真的对不上对象时才用，同一个对象最多问一次；\n"
     "redirect：孩子要做的事和学习无关时，温和地带回任务。知识问题和发音问题不是离题，哪怕正在做作业也直接回答或朗读，回任务的提醒由系统补；\n"
-    "pronounce：孩子要听怎么读；\n"
+    "pronounce：孩子问外语单词或句子怎么读、怎么念、发音是什么（哪怕同时问了“什么意思”或一次问多个词怎么读，都一律选 pronounce，不要选 answer 只写音标）；\n"
     "safety：涉及伤害、危险或求助。\n"
     "孩子是在回答你上一轮给出的选项或追问时（见 recent_utterances），把他的回答当作已经选定：按所选对象直接回答或朗读，不要再确认一遍。\n"
     "turn 只在 act=answer 或 guide 时填写，必填，用 type 区分两种：\n"
     "{\"type\":\"work\",…}：只有两种情况才算孩子在做题，其余都用 non_work。一是孩子明确说这是作业题、练习题或试卷上的题；二是图片里有作业本、试卷、印好的题目、答题空格或分数。学习任务开着、前几轮聊过知识、孩子顺口问一句，都不是做题，不要从任务标题猜。"
     "relation 必填：same 表示仍在做上一道作业题，new 表示开始了一道新的作业题；"
-    "depth：这一问需要孩子自己推理多少。atomic 是一次性查询（词义、字音、图里是什么），recall 是要记住的东西（拼写、公式、背诵内容），reasoning 是需要推理步骤（默认，拿不准写它）。"
+    "depth：这一问需要孩子自己推理多少。atomic 是一次性查询（词义、汉字读音、图里是什么），recall 是要记住的东西（拼写、公式、背诵内容），reasoning 是需要推理步骤（默认，拿不准写它）。"
     "atomic 和 recall 直接用 act=answer 回答，不要让孩子猜，哪怕它恰好是空格里要填的词；可以补半句帮助记住的东西（词根、记忆法），整段回复不超过 120 字。"
     "但计算结果、推理结论、选择题的选项、判断题的对错不是事实，不能写成 atomic 或 recall，它们是 reasoning，一律用 act=guide；"
     "student_move：attempt 是孩子给出了自己的解答或想法，request_hint 要提示，request_answer 要答案，other；"
@@ -88,13 +88,16 @@ _TUTOR_TURN_SYSTEM = (
     "唯一红线：推理成果不被代替完成。permit.answer_protected 为 true 时，对作业题只能追问、提示或给类似题的例子，"
     "不说本题的最终答案、完整解法、待填内容或选择项。孩子卡住、重复尝试或要求答案都不改变这条规则。"
     "除此之外都是教学做法：作业题按孩子的回答诊断下一步，不固定步数；看不清图就说看不清，不要编造。\n"
-    "act=pronounce 时必须有 pronounce.lesson 嵌套对象：source_text 只写要朗读的外语原文，"
-    "locale 只能是 en-US 或 en-GB，introduction、reading_guide、notes（最多5条）。每条 note 必须有 kind、explanation，"
-    "kind 只能是 stress、linking、weak_form、reduction、intonation；segment 必须出自 source_text。"
-    "此时 content 写一句简短导语。不要把 source_text、locale 等放在最外层。"
-    "例如 {\"act\":\"pronounce\",\"content\":\"shoe 读作 /ʃuː/。\","
-    "\"pronounce\":{\"lesson\":{\"source_text\":\"shoe\",\"locale\":\"en-US\",\"introduction\":\"我们来读 shoe。\","
-    "\"reading_guide\":\"sh 发 /ʃ/，oe 发长音 /uː/。\",\"notes\":[{\"kind\":\"stress\",\"segment\":\"shoe\",\"explanation\":\"重音在这一个音节。\"}]}}}。"
+    "act=pronounce 时，若孩子同时问了词义或拼写，先在 content 里把中文意思答清楚，否则写一句简短导语；"
+    "必须有 pronounce 嵌套对象：单个词或句子填 pronounce.lesson，多个词或句子（最多8个）填 pronounce.lessons 列表。"
+    "每个 lesson 含 source_text（只写要朗读的外语原文）、locale（只能是 en-US 或 en-GB）、introduction、reading_guide、notes（最多5条）。"
+    "每条 note 必须有 kind、explanation，kind 只能是 stress、linking、weak_form、reduction、intonation；segment 必须出自该条 source_text。不要把 source_text、locale 等放在最外层。"
+    "例如 {\"act\":\"pronounce\",\"content\":\"**shoe** 是“鞋子”的意思，读作 /ʃuː/。\","
+    "\"pronounce\":{\"lesson\":{\"source_text\":\"shoe\",\"locale\":\"en-US\",\"introduction\":\"shoe（鞋子）\","
+    "\"reading_guide\":\"sh 发 /ʃ/，oe 发长音 /uː/。\",\"notes\":[{\"kind\":\"stress\",\"segment\":\"shoe\",\"explanation\":\"单音节词，重音在整词上。\"}]}}}；"
+    "例如 {\"act\":\"pronounce\",\"content\":\"这两个词的意思是：\\n- **start**：开始\\n- **also**：也、同样\","
+    "\"pronounce\":{\"lessons\":[{\"source_text\":\"start\",\"locale\":\"en-US\",\"introduction\":\"start（开始）\",\"reading_guide\":\"st 发 /st/，ar 发 /ɑːr/。\",\"notes\":[{\"kind\":\"stress\",\"segment\":\"start\",\"explanation\":\"单音节词。\"}]},"
+    "{\"source_text\":\"also\",\"locale\":\"en-US\",\"introduction\":\"also（也）\",\"reading_guide\":\"al 发 /ɔːl/，so 发 /soʊ/。\",\"notes\":[{\"kind\":\"stress\",\"segment\":\"al\",\"explanation\":\"重音在第一音节 al。\"}]}]}}。"
     "其他 act 不要填 pronounce。\n"
     "act=clarify 用于对象不明：有可选对象时放在 clarify.candidates，没有时在 content 里请孩子补充或重拍。\n"
     "例如 {\"act\":\"guide\",\"content\":\"先说说已知条件是什么？\",\"turn\":{\"type\":\"work\",\"relation\":\"same\",\"student_move\":\"request_hint\"}}；{\"act\":\"answer\",\"content\":\"beach 是海滩。\",\"turn\":{\"type\":\"non_work\",\"topic\":\"atomic_lookup\"}}；{\"act\":\"answer\",\"content\":\"斜边是直角三角形里最长的那条边，对着直角。\",\"turn\":{\"type\":\"work\",\"relation\":\"same\",\"depth\":\"atomic\"}}。\n"
@@ -165,7 +168,7 @@ PROMPTS = {
     prompt.id: prompt
     for prompt in (
         PromptTemplate("companion.intent.system.v1", _INTENT_SYSTEM),
-        PromptTemplate("tutoring.turn.system.v13", _TUTOR_TURN_SYSTEM),
+        PromptTemplate("tutoring.turn.system.v14", _TUTOR_TURN_SYSTEM),
         PromptTemplate("tutoring.leak-judge.system.v4", _LEAK_SYSTEM),
         PromptTemplate("tutoring.visual-leak-judge.system.v2", _VISUAL_LEAK_SYSTEM),
         PromptTemplate("companion.agent-text.system.v1", _AGENT_TEXT_SYSTEM),
