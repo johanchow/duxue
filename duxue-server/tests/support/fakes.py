@@ -33,7 +33,8 @@ class FakeModelGateway:
 def tutor_raw(act: str = "guide", content: str = "先说说已知条件是什么？", *, relation: str | None = "same",
               topic: str | None = None, depth: str | None = None,
               student_move: str = "request_hint", progress: str | None = None, evidence: str | None = None,
-              next_subgoal: str | None = None, lesson: dict | None = None, candidates: list | None = None,
+              next_subgoal: str | None = None, lesson: dict | None = None,
+              lessons: list[dict] | None = None, candidates: list | None = None,
               **extra) -> dict:
     """A valid tutor-turn.v4 candidate; override only what a test cares about.
 
@@ -53,7 +54,9 @@ def tutor_raw(act: str = "guide", content: str = "先说说已知条件是什么
         raw["turn"] = {"type": "non_work", **({"topic": topic} if topic else {})}
     elif relation is not None:
         raw["turn"] = {"type": "work", "relation": relation}
-    if lesson is not None:
+    if lessons is not None:
+        raw["pronounce"] = {"lessons": lessons}
+    elif lesson is not None:
         raw["pronounce"] = {"lesson": lesson}
     if candidates:
         raw["clarify"] = {"candidates": candidates}

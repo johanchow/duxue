@@ -34,18 +34,45 @@ class LessonBody(BaseModel):
     notes: list[PronunciationNote] = Field(default_factory=list, max_length=5)
 
 
-def lesson_view(row: PronunciationLesson) -> dict:
-    return {
-        "lesson_ref": row.id,
+def unpack_lesson_items(row: PronunciationLesson) -> list[dict]:
+    raw_notes = row.notes or []
+    if raw_notes and isinstance(raw_notes[0], dict) and "_item" in raw_notes[0]:
+        return [
+            entry["_item"]
+            for entry in raw_notes
+            if isinstance(entry, dict) and isinstance(entry.get("_item"), dict)
+        ]
+    return [{
         "source_text": row.source_text,
         "locale": row.locale,
         "introduction": row.introduction,
         "reading_guide": row.reading_guide,
-        "notes": row.notes,
-        "speech_ref": row.speech_ref,
+        "notes": raw_notes,
+    }]
+
+
+def _item_view(row: PronunciationLesson, item: dict, index: int) -> dict:
+    ref = row.id if index == 0 else f"{row.id}:{index}"
+    speech_ref = row.speech_ref if index == 0 else f"{row.speech_ref}:{index}"
+    return {
+        "lesson_ref": ref,
+        "source_text": item["source_text"],
+        "locale": item["locale"],
+        "introduction": item["introduction"],
+        "reading_guide": item["reading_guide"],
+        "notes": item["notes"],
+        "speech_ref": speech_ref,
         "supported_rates": row.supported_rates,
         "version": row.version,
     }
+
+
+def lesson_view(row: PronunciationLesson, *, index: int = 0) -> dict:
+    items = unpack_lesson_items(row)
+    view = _item_view(row, items[index], index)
+    if index == 0:
+        view["lessons"] = [_item_view(row, item, idx) for idx, item in enumerate(items)]
+    return view
 
 
 def normalized(text: str) -> str:
@@ -88,15 +115,39 @@ def build_interaction(*, invocation: RunInvocation, kind: str, text: str, action
 
 
 
-def project_lesson(db: Session, invocation: RunInvocation, lesson: LessonBody) -> WorkflowOutcome:
-    notes = [note.model_dump() for note in lesson.notes]
-    digest = hashlib.sha256(json.dumps({
-        "source_text": lesson.source_text,
-        "locale": lesson.locale,
-        "introduction": lesson.introduction,
-        "reading_guide": lesson.reading_guide,
-        "notes": notes,
-    }, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+def project_lesson(
+    db: Session,
+    invocation: RunInvocation,
+    lesson: LessonBody,
+    *,
+    lessons: list[LessonBody] | None = None,
+    content: str | None = None,
+) -> WorkflowOutcome:
+    items = list(lessons) if lessons else [lesson]
+    first = items[0]
+    if len(items) == 1:
+        notes = [note.model_dump() for note in first.notes]
+        digest_payload: dict = {
+            "source_text": first.source_text,
+            "locale": first.locale,
+            "introduction": first.introduction,
+            "reading_guide": first.reading_guide,
+            "notes": notes,
+        }
+    else:
+        serialized = [
+            {
+                "source_text": item.source_text,
+                "locale": item.locale,
+                "introduction": item.introduction,
+                "reading_guide": item.reading_guide,
+                "notes": [note.model_dump() for note in item.notes],
+            }
+            for item in items
+        ]
+        notes = [{"_item": entry} for entry in serialized]
+        digest_payload = {"lessons": serialized}
+    digest = hashlib.sha256(json.dumps(digest_payload, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
     existing = db.query(PronunciationLesson).filter_by(
         run_id=invocation.run_id, turn_id=invocation.turn_id, attempt=invocation.attempt,
     ).one_or_none()
@@ -108,19 +159,21 @@ def project_lesson(db: Session, invocation: RunInvocation, lesson: LessonBody) -
         row = PronunciationLesson(
             id=uid(), ward_id=invocation.ward_id, thread_id=invocation.thread_id,
             run_id=invocation.run_id, turn_id=invocation.turn_id, attempt=invocation.attempt,
-            source_text=lesson.source_text, locale=lesson.locale,
-            introduction=lesson.introduction, reading_guide=lesson.reading_guide,
+            source_text=first.source_text, locale=first.locale,
+            introduction=first.introduction, reading_guide=first.reading_guide,
             notes=notes, speech_ref="", supported_rates=list(SUPPORTED_RATES),
             payload_digest=digest, version=1,
         )
         row.speech_ref = row.id
         db.add(row)
         db.flush()
+    text = (content or "").strip() or first.introduction
     interaction = build_interaction(
-        invocation=invocation, kind="pronunciation_lesson", text=lesson.introduction, row=row,
+        invocation=invocation, kind="pronunciation_lesson", text=text, row=row,
     )
+    primary = lesson_view(row)
     return WorkflowOutcome(
         run_status="waiting_for_ward", outcome_type="response",
         context_refs=[f"pronunciation_lesson:{row.id}"],
-        next_interaction={**interaction, "status": "success", "lesson": lesson_view(row)},
+        next_interaction={**interaction, "status": "success", "lesson": primary, "lessons": primary["lessons"]},
     )

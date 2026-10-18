@@ -5,7 +5,11 @@ from __future__ import annotations
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.application.workflows.pronunciation_guidance import SUPPORTED_RATES, lesson_view
+from app.application.workflows.pronunciation_guidance import (
+    SUPPORTED_RATES,
+    lesson_view,
+    unpack_lesson_items,
+)
 from app.infrastructure.ai.aliyun_tts import AliyunSpeechSynthesizer, SpeechSynthesisError
 from app.infrastructure.persistence.models import PronunciationLesson
 
@@ -23,21 +27,29 @@ class PronunciationLessonQuery:
         self.synthesizer = synthesizer or AliyunSpeechSynthesizer()
 
     def get(self, *, ward_id: str, lesson_ref: str) -> dict:
-        row = self._owned(ward_id, lesson_ref)
-        return lesson_view(row)
+        row, index = self._owned(ward_id, lesson_ref)
+        return lesson_view(row, index=index)
 
     def speak(self, *, ward_id: str, lesson_ref: str, rate: float) -> bytes:
-        row = self._owned(ward_id, lesson_ref)
+        row, index = self._owned(ward_id, lesson_ref)
+        item = lesson_view(row, index=index)
         playback = canonical_rate(rate)
         if playback is None:
             raise HTTPException(400, "unsupported speech rate")
         try:
-            return self.synthesizer.synthesize(text=row.source_text, locale=row.locale, rate=playback)
+            return self.synthesizer.synthesize(text=item["source_text"], locale=item["locale"], rate=playback)
         except SpeechSynthesisError as error:
             raise HTTPException(503, {"code": "tts_error", "reason": error.code}) from error
 
-    def _owned(self, ward_id: str, lesson_ref: str) -> PronunciationLesson:
-        row = self.db.get(PronunciationLesson, lesson_ref)
-        if row is None or row.ward_id != ward_id or row.speech_ref != lesson_ref:
+    def _owned(self, ward_id: str, lesson_ref: str) -> tuple[PronunciationLesson, int]:
+        base_ref, sep, raw_index = lesson_ref.partition(":")
+        if sep and not raw_index.isdigit():
             raise HTTPException(404, "pronunciation lesson not found")
-        return row
+        index = int(raw_index) if sep else 0
+        row = self.db.get(PronunciationLesson, base_ref)
+        if row is None or row.ward_id != ward_id or row.speech_ref != base_ref:
+            raise HTTPException(404, "pronunciation lesson not found")
+        items = unpack_lesson_items(row)
+        if index < 0 or index >= len(items):
+            raise HTTPException(404, "pronunciation lesson not found")
+        return row, index

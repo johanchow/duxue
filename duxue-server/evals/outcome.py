@@ -22,6 +22,7 @@ class Observation:
     reason: str | None = None
     content: str | None = None
     lesson_source: str | None = None
+    lesson_sources: list[str] = field(default_factory=list)
     candidates: list[str] = field(default_factory=list)
     error: str | None = None
     # 孩子最终看到的图（通过全部检查）；被丢弃时只有原因。形状 lint 只是观测。
@@ -41,7 +42,8 @@ def classify(call: ModelCall, vetting: Vetting | None, *, leak_retried: bool = F
     base = {
         "leak_retried": leak_retried,
         "act": candidate.act, "content": candidate.content,
-        "lesson_source": candidate.lesson.source_text if candidate.lesson else None,
+        "lesson_source": " ".join(item.source_text for item in candidate.lessons) if candidate.lessons else None,
+        "lesson_sources": [item.source_text for item in candidate.lessons],
         "candidates": list(candidate.candidates),
     }
     flags = list(vetting.shape_flags) if vetting is not None else []

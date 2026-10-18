@@ -54,6 +54,8 @@ class Expect(Strict):
     outcome_in: list[Literal[OUTCOMES]] = Field(default_factory=list)  # type: ignore[valid-type]
     outcome_not_in: list[Literal[OUTCOMES]] = Field(default_factory=lambda: ["fallback"])  # type: ignore[valid-type]
     lesson_source_contains_any: list[str] = Field(default_factory=list)
+    lesson_source_contains_all: list[str] = Field(default_factory=list)
+    min_lessons: int | None = Field(default=None, ge=1)
     content_contains_any: list[str] = Field(default_factory=list)
     content_not_contains: list[str] = Field(default_factory=list)
     intent_in: list[Literal[INTENTS]] = Field(default_factory=list)  # type: ignore[valid-type]
@@ -65,7 +67,8 @@ class Expect(Strict):
     def is_specific(self) -> bool:
         """True when the case asserts more than "did not fall back"."""
         return bool(
-            self.outcome_in or self.lesson_source_contains_any or self.content_contains_any
+            self.outcome_in or self.lesson_source_contains_any or self.lesson_source_contains_all
+            or self.min_lessons is not None or self.content_contains_any
             or self.content_not_contains or self.intent_in or self.visual or self.visual_kind_in
             or self.visual_not_contains or set(self.outcome_not_in) != {"fallback"}
         )
@@ -92,7 +95,9 @@ class EvalCase(Strict):
     def component_fields_match(self):
         if self.component == "companion.intent":
             if (
-                self.expect.outcome_in or self.expect.lesson_source_contains_any or self.expect.content_contains_any
+                self.expect.outcome_in or self.expect.lesson_source_contains_any
+                or self.expect.lesson_source_contains_all or self.expect.min_lessons is not None
+                or self.expect.content_contains_any
                 or self.expect.visual or self.expect.visual_kind_in or self.expect.visual_not_contains
             ):
                 raise ValueError("intent cases may only assert intent_in")

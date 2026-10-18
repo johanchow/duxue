@@ -147,7 +147,29 @@ class ClarifyPayload(BaseModel):
 
 class PronouncePayload(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    lesson: LessonBody
+    lessons: list[LessonBody] = Field(min_length=1, max_length=8)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_lessons(cls, value):
+        if not isinstance(value, dict):
+            return value
+        value = dict(value)
+        raw_lessons = value.get("lessons")
+        raw_lesson = value.get("lesson")
+        if isinstance(raw_lessons, list) and raw_lessons:
+            items = list(raw_lessons)
+        elif isinstance(raw_lesson, dict):
+            items = [raw_lesson]
+        else:
+            flat = {key: value[key] for key in _LESSON_KEYS if key in value}
+            items = [flat] if flat.get("source_text") else []
+        value["lessons"] = items
+        return value
+
+    @property
+    def lesson(self) -> LessonBody:
+        return self.lessons[0]
 
 
 class TutorTurnCandidate(BaseModel):
@@ -189,12 +211,21 @@ class TutorTurnCandidate(BaseModel):
         act = value.get("act")
         if act == "pronounce":
             payload = value.get("pronounce")
-            if not isinstance(payload, dict) or not isinstance(payload.get("lesson"), dict):
-                lesson = value.get("lesson")
-                if not isinstance(lesson, dict):
-                    lesson = {key: value[key] for key in _LESSON_KEYS if key in value}
-                if lesson.get("source_text"):
-                    value["pronounce"] = {"lesson": lesson}
+            has_nested = isinstance(payload, dict) and (
+                isinstance(payload.get("lesson"), dict)
+                or (isinstance(payload.get("lessons"), list) and bool(payload.get("lessons")))
+                or bool(payload.get("source_text"))
+            )
+            if not has_nested:
+                top_lessons = value.get("lessons")
+                if isinstance(top_lessons, list) and top_lessons:
+                    value["pronounce"] = {"lessons": top_lessons}
+                else:
+                    lesson = value.get("lesson")
+                    if not isinstance(lesson, dict):
+                        lesson = {key: value[key] for key in _LESSON_KEYS if key in value}
+                    if lesson.get("source_text"):
+                        value["pronounce"] = {"lesson": lesson}
         else:
             value.pop("pronounce", None)
         if act == "clarify":
@@ -224,7 +255,7 @@ class TutorTurnCandidate(BaseModel):
                 except ValidationError as error:
                     value["visual_dropped"] = drop_reason(error)
                     value["visual_error"] = format_schema_error(error)
-        for key in ("lesson", *_LESSON_KEYS, "candidates"):
+        for key in ("lesson", "lessons", *_LESSON_KEYS, "candidates"):
             value.pop(key, None)
         return value
 
@@ -274,6 +305,10 @@ class TutorTurnCandidate(BaseModel):
     @property
     def lesson(self) -> LessonBody | None:
         return self.pronounce.lesson if self.pronounce else None
+
+    @property
+    def lessons(self) -> list[LessonBody]:
+        return list(self.pronounce.lessons) if self.pronounce else []
 
     @property
     def candidates(self) -> list[str]:
@@ -352,16 +387,17 @@ def check_authority(candidate: TutorTurnCandidate, permit: TutorPermit) -> Verdi
     if act == "safety":
         return Verdict(True)
     if act == "pronounce":
-        if candidate.lesson is None:
+        if not candidate.lessons:
             return Verdict(False, "pronounce_without_lesson")
-        lesson_text = [candidate.lesson.source_text, candidate.lesson.introduction, candidate.lesson.reading_guide]
-        for note in candidate.lesson.notes:
-            lesson_text.extend([note.explanation, note.segment or ""])
-        if any(forbidden_text(chunk) for chunk in lesson_text):
-            return Verdict(False, "lesson_markup")
-        source = normalized(candidate.lesson.source_text)
-        if any(note.segment and normalized(note.segment) not in source for note in candidate.lesson.notes):
-            return Verdict(False, "segment_not_in_source")
+        for lesson in candidate.lessons:
+            lesson_text = [lesson.source_text, lesson.introduction, lesson.reading_guide]
+            for note in lesson.notes:
+                lesson_text.extend([note.explanation, note.segment or ""])
+            if any(forbidden_text(chunk) for chunk in lesson_text):
+                return Verdict(False, "lesson_markup")
+            source = normalized(lesson.source_text)
+            if any(note.segment and normalized(note.segment) not in source for note in lesson.notes):
+                return Verdict(False, "segment_not_in_source")
         return Verdict(True)
     if act == "clarify":
         # The candidates are shown to the Ward as well, so on a protected problem they are

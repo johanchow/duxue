@@ -211,7 +211,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   String? planDraftId;
   int? planDraftVersion;
   String? failedPlanText;
-  Map<String, dynamic>? pronunciationLesson;
+  List<Map<String, dynamic>> pronunciationLessons = const [];
   SpeechPlayback? _speechPlayback;
   bool planSending = false;
   bool planListOpen = false;
@@ -851,10 +851,11 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
                 ])
               ]))
         ],
-        if (pronunciationLesson != null) ...[
+        for (final item in pronunciationLessons) ...[
           const SizedBox(height: 14),
           PronunciationLessonCard(
-            lesson: pronunciationLesson!,
+            key: ValueKey(item['speech_ref'] ?? item['source_text']),
+            lesson: item,
             loadSpeech: (speechRef, rate) =>
                 ref.read(apiProvider).pronunciationSpeech(speechRef, rate),
             playback: _playback(),
@@ -1450,7 +1451,13 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         failedPlanText = null;
         stagedImages.clear();
         planAttachments.clear();
-        pronunciationLesson = lesson;
+        final rawLessons = lesson?['lessons'] ?? interaction['lessons'];
+        pronunciationLessons = rawLessons is List && rawLessons.isNotEmpty
+            ? [
+                for (final item in rawLessons)
+                  if (item is Map) Map<String, dynamic>.from(item),
+              ]
+            : (lesson != null ? [lesson] : const []);
         planFeedback = ((interaction['parts'] as List? ?? const []).isNotEmpty)
             ? Map<String, dynamic>.from(
                 (interaction['parts'] as List).first as Map)['text'] as String?

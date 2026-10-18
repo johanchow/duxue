@@ -75,6 +75,27 @@ def test_pronounce_without_a_lesson_is_rejected():
     assert verdict.reason == "pronounce_without_lesson"
 
 
+def test_pronounce_supports_multiple_lessons_and_checks_each_item():
+    second = {
+        "source_text": "also", "locale": "en-US",
+        "introduction": "also（也）", "reading_guide": "al 发 /ɔːl/，so 发 /soʊ/。",
+        "notes": [{"kind": "stress", "segment": "al", "explanation": "重音在第一音节。"}],
+    }
+    raw = {
+        "act": "pronounce",
+        "content": "这两个词的意思是：in advance（提前）、also（也）。",
+        "pronounce": {"lessons": [LESSON, second]},
+    }
+    candidate = TutorTurnCandidate.model_validate(raw)
+    assert [item.source_text for item in candidate.lessons] == ["in advance", "also"]
+    assert candidate.lesson.source_text == "in advance"
+    assert _verdict(raw).ok
+
+    bad_second = {**second, "notes": [{"kind": "stress", "segment": "missing", "explanation": "不在原文里。"}]}
+    bad_raw = {**raw, "pronounce": {"lessons": [LESSON, bad_second]}}
+    assert _verdict(bad_raw).reason == "segment_not_in_source"
+
+
 def test_clarify_discards_a_malformed_stray_lesson():
     """不明指代时，坏掉的发音卡不能吞掉仍可安全展示的澄清。"""
     raw = {

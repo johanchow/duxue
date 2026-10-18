@@ -11,7 +11,7 @@ import re
 
 # 初始假设（字数）。act 不在表里不检查长度。
 MAX_CHARS: dict[str, int] = {
-    "answer": 400, "guide": 250, "chat": 120, "clarify": 200, "redirect": 120, "pronounce": 120,
+    "answer": 400, "guide": 250, "chat": 120, "clarify": 200, "redirect": 120, "pronounce": 400,
 }
 
 _QUESTION = re.compile(r"[？?]")
