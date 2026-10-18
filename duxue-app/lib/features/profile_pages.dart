@@ -35,9 +35,11 @@ class ProfileListPage extends ConsumerWidget {
             Card(
               child: RadioListTile<String?>(
                 value: null,
+                // ignore: deprecated_member_use
                 groupValue: profileId,
                 title: const Text('系统默认规则'),
                 subtitle: const Text('学习、走神/玩耍、离开'),
+                // ignore: deprecated_member_use
                 onChanged: (_) => _assign(ref, null),
               ),
             ),
@@ -45,6 +47,7 @@ class ProfileListPage extends ConsumerWidget {
               (profile) => Card(
                 child: RadioListTile<String?>(
                   value: profile.id,
+                  // ignore: deprecated_member_use
                   groupValue: profileId,
                   title: Text(profile.name),
                   subtitle: Text(
@@ -64,6 +67,7 @@ class ProfileListPage extends ConsumerWidget {
                       ),
                     ),
                   ),
+                  // ignore: deprecated_member_use
                   onChanged: (_) => _assign(ref, profile.id),
                 ),
               ),
@@ -415,6 +419,7 @@ class _LabelEditorState extends ConsumerState<LabelEditor> {
             SizedBox(
               width: 126,
               child: DropdownButtonFormField<String>(
+                // ignore: deprecated_member_use
                 value: _fields.containsKey(row.field)
                     ? row.field
                     : _fields.keys.first,
