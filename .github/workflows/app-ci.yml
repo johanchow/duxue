@@ -1,6 +1,7 @@
 name: Guardian App CI
 
 on:
+  workflow_call:
   pull_request:
     paths:
       - "duxue-app/**"
