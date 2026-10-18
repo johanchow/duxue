@@ -2,11 +2,14 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:duxue_app/core/api_client.dart';
+import 'package:duxue_app/core/models.dart';
 import 'package:duxue_app/core/token_storage.dart';
 import 'package:duxue_app/core/voice_transcription_service.dart';
 import 'package:duxue_app/core/speech_playback.dart';
 import 'package:duxue_app/core/telemetry.dart';
 import 'package:duxue_app/features/day_story_pages.dart';
+import 'package:duxue_app/features/login_page.dart';
+import 'package:duxue_app/features/ward_pages.dart';
 import 'package:duxue_app/providers.dart';
 import 'package:duxue_app/shared/voice_composer.dart';
 import 'package:flutter/material.dart';
@@ -14,6 +17,7 @@ import 'package:flutter_secure_storage/test/test_flutter_secure_storage_platform
 import 'package:flutter_secure_storage_platform_interface/flutter_secure_storage_platform_interface.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 
 class _FakePlayback implements SpeechPlayback {
   final played = <Uint8List>[];
@@ -45,6 +49,9 @@ class _WardHomeApi extends ApiClient {
   String? finishedSessionId;
   final deleted = <String>[];
   final turns = <({String content, List<String> attachmentKeys})>[];
+
+  @override
+  Future<void> ensureValidAccess() async {}
 
   @override
   Future<void> deleteAssignment(String wardId, String assignmentId) async {
@@ -130,7 +137,7 @@ class _WardHomeApi extends ApiClient {
       content: content,
       attachmentKeys: List<String>.from(attachmentKeys),
     ));
-    if (tutoringIntent == 'pronunciation') {
+    if (tutoringIntent == 'pronunciation' || content == 'apple') {
       return {
         'thread_id': threadId ?? 'thread-1',
         'thread_version': (expectedThreadVersion ?? 0) + 2,
@@ -276,6 +283,38 @@ class _WardHomeApi extends ApiClient {
   Future<String> uploadCompanionAttachment(
           Uint8List bytes, String extension) async =>
       'ward/ward-1/companion/test.$extension';
+
+  final storedWards = <Ward>[];
+  String? boundCode;
+  String? invitedWardId;
+
+  @override
+  Future<List<Ward>> wards() async => List<Ward>.from(storedWards);
+
+  @override
+  Future<Ward> createWard(String name, String gradeStage) async {
+    final created = Ward(
+      id: 'ward-new',
+      displayName: name,
+      gradeStage: gradeStage,
+      notes: null,
+      analysisProfileId: null,
+    );
+    storedWards.add(created);
+    return created;
+  }
+
+  @override
+  Future<Map<String, dynamic>> wardInvite(String wardId) async {
+    invitedWardId = wardId;
+    return {'ward_id': wardId, 'invite_code': '654321'};
+  }
+
+  @override
+  Future<String> bindWard(String code) async {
+    boundCode = code;
+    return 'ward-1';
+  }
 }
 
 const _tinyPng = <int>[
@@ -478,6 +517,7 @@ class _FakeVoice implements VoiceTranscription {
   var committed = false;
   String? failOnStartWith;
   var commitProducesFinal = true;
+  String finalText = '今天整理错题';
 
   @override
   Future<void> start(
@@ -497,7 +537,7 @@ class _FakeVoice implements VoiceTranscription {
   @override
   Future<void> commit() async {
     committed = true;
-    if (commitProducesFinal) onFinal('今天整理错题');
+    if (commitProducesFinal) onFinal(finalText);
   }
 
   @override
@@ -760,21 +800,27 @@ void main() {
         TestFlutterSecureStoragePlatform({});
     final api = _WardHomeApi();
     final playback = _FakePlayback();
+    final voice = _FakeVoice()..finalText = 'apple';
     await tester.pumpWidget(ProviderScope(
       overrides: [apiProvider.overrideWithValue(api)],
       child: MaterialApp(
           home: WardDayPage(
-              wardId: 'ward-1', speechPlayback: () => playback)),
+              wardId: 'ward-1',
+              speechPlayback: () => playback,
+              voiceFactory: (
+                      {required baseUrl,
+                      required tokens,
+                      required telemetry}) =>
+                  voice)),
     ));
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.byType(TextField), 'apple');
-    await tester.pump();
-    await tester.tap(find.byTooltip('读出发音'));
+    final gesture = await tester
+        .startGesture(tester.getCenter(find.text('说出你的任何想法、问题、安排')));
+    await tester.pump(const Duration(milliseconds: 600));
+    await gesture.up();
     await tester.pumpAndSettle();
 
-    expect(api.lastRouteHint, 'tutoring');
-    expect(api.lastTutoringIntent, 'pronunciation');
     expect(api.turns.single.content, 'apple');
     expect(find.text('apple'), findsWidgets);
     expect(playback.played, isEmpty);
@@ -793,28 +839,41 @@ void main() {
     expect(find.text('正在播放'), findsOneWidget);
   });
 
-  testWidgets('a text_visual answer draws the diagram in the bubble and keeps it on subsequent turns',
+  testWidgets(
+      'a text_visual answer draws the diagram in the bubble and keeps it on subsequent turns',
       (tester) async {
     FlutterSecureStoragePlatform.instance =
         TestFlutterSecureStoragePlatform({});
     final api = _WardHomeApi();
+    final voice = _FakeVoice()..finalText = '水循环是怎么回事';
     await tester.pumpWidget(ProviderScope(
       overrides: [apiProvider.overrideWithValue(api)],
-      child: MaterialApp(home: WardDayPage(wardId: 'ward-1')),
+      child: MaterialApp(
+          home: WardDayPage(
+              wardId: 'ward-1',
+              voiceFactory: (
+                      {required baseUrl,
+                      required tokens,
+                      required telemetry}) =>
+                  voice)),
     ));
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.byType(TextField), '水循环是怎么回事');
-    await tester.pump();
-    await tester.tap(find.byTooltip('发送'));
+    var gesture = await tester
+        .startGesture(tester.getCenter(find.text('说出你的任何想法、问题、安排')));
+    await tester.pump(const Duration(milliseconds: 600));
+    await gesture.up();
     await tester.pumpAndSettle();
-    final block = find.byKey(const ValueKey('visual-block'), skipOffstage: false);
+    final block =
+        find.byKey(const ValueKey('visual-block'), skipOffstage: false);
     expect(block, findsOneWidget);
     expect(find.text('蒸发', skipOffstage: false), findsOneWidget);
 
-    await tester.enterText(find.byType(TextField), '谢谢');
-    await tester.pump();
-    await tester.tap(find.byTooltip('发送'));
+    voice.finalText = '谢谢';
+    gesture = await tester
+        .startGesture(tester.getCenter(find.text('说出你的任何想法、问题、安排')));
+    await tester.pump(const Duration(milliseconds: 600));
+    await gesture.up();
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('visual-block'), skipOffstage: false),
         findsOneWidget);
@@ -836,7 +895,7 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('图片'));
+    await tester.tap(find.text('拍照'));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('staged-image-strip')), findsOneWidget);
@@ -853,25 +912,33 @@ void main() {
     expect(find.text('请看这张图片。'), findsNothing);
   });
 
-  testWidgets('typed text is sent together with the staged image',
+  testWidgets('spoken text is sent together with the staged image',
       (tester) async {
     FlutterSecureStoragePlatform.instance =
         TestFlutterSecureStoragePlatform({});
     final api = _WardHomeApi();
+    final voice = _FakeVoice()..finalText = '把这页作业排到今晚';
     await tester.pumpWidget(ProviderScope(
       overrides: [apiProvider.overrideWithValue(api)],
       child: MaterialApp(
           home: WardDayPage(
               wardId: 'ward-1',
+              voiceFactory: (
+                      {required baseUrl,
+                      required tokens,
+                      required telemetry}) =>
+                  voice,
               pickChatImage: () async => PickedChatImage(
                   bytes: Uint8List.fromList(_tinyPng), extension: 'png'))),
     ));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('图片'));
+    await tester.tap(find.text('拍照'));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField), '把这页作业排到今晚');
-    await tester.tap(find.byTooltip('发送'));
+    final gesture = await tester
+        .startGesture(tester.getCenter(find.text('说出你的任何想法、问题、安排')));
+    await tester.pump(const Duration(milliseconds: 600));
+    await gesture.up();
     await tester.pumpAndSettle();
 
     expect(api.turns.single.content, '把这页作业排到今晚');
@@ -892,7 +959,7 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('图片'));
+    await tester.tap(find.text('拍照'));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('移除图片'));
     await tester.pumpAndSettle();
@@ -929,7 +996,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 600));
     await gesture.up();
     await tester.pumpAndSettle();
-    await tester.tap(find.text('图片'));
+    await tester.tap(find.text('拍照'));
 
     expect(transcript, '今天整理错题');
     expect(imagePressed, isTrue);
@@ -1021,5 +1088,71 @@ void main() {
     expect(find.text('松开发送'), findsNothing);
     expect(find.text('voice transcription is temporarily unavailable'),
         findsOneWidget);
+  });
+
+  testWidgets(
+      'login page binds ward directly in place when 6-digit code is entered',
+      (tester) async {
+    FlutterSecureStoragePlatform.instance =
+        TestFlutterSecureStoragePlatform({});
+    final api = _WardHomeApi();
+    final router = GoRouter(
+      initialLocation: '/login',
+      routes: [
+        GoRoute(path: '/login', builder: (_, __) => const LoginPage()),
+        GoRoute(
+          path: '/ward-day/:id',
+          builder: (_, state) =>
+              WardDayPage(wardId: state.pathParameters['id']!),
+        ),
+      ],
+    );
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiProvider.overrideWithValue(api)],
+      child: MaterialApp.router(routerConfig: router),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('我是孩子'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('ward-bind-code-input')), findsOneWidget);
+    await tester.enterText(
+        find.byKey(const Key('ward-bind-code-input')), '123456');
+    await tester.pumpAndSettle();
+
+    expect(api.boundCode, '123456');
+    expect(find.text('晚上好，小读'), findsOneWidget);
+  });
+
+  testWidgets(
+      'guardian empty state focuses on creating a ward and immediately pops up the 6-digit binding code',
+      (tester) async {
+    final api = _WardHomeApi();
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiProvider.overrideWithValue(api)],
+      child: const MaterialApp(home: WardListPage()),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('传递作业、通知或留言'), findsNothing);
+    expect(find.text('还没有孩子档案'), findsOneWidget);
+    expect(find.text('新增孩子档案'), findsOneWidget);
+
+    await tester.tap(find.text('新增孩子档案'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '小宇');
+    await tester.tap(find.text('创建并进入'));
+    await tester.pumpAndSettle();
+
+    expect(api.invitedWardId, 'ward-new');
+    expect(find.text('小宇 · 学生 App 绑定码'), findsOneWidget);
+    expect(find.text('654321'), findsOneWidget);
+
+    await tester.tap(find.text('完成'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('传递作业、通知或留言'), findsOneWidget);
+    expect(find.text('获取绑定码'), findsOneWidget);
   });
 }

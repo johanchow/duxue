@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../providers.dart';
+import 'day_story_pages.dart' show wardBindFailureMessage;
 
 class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key});
@@ -16,14 +17,17 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   final email = TextEditingController();
   final password = TextEditingController();
   final name = TextEditingController();
+  final bindingCode = TextEditingController();
   bool registering = false;
   bool wardMode = false;
+  bool bindingLoading = false;
 
   @override
   void dispose() {
     email.dispose();
     password.dispose();
     name.dispose();
+    bindingCode.dispose();
     super.dispose();
   }
 
@@ -61,13 +65,38 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                   ),
                   const SizedBox(height: 24),
                   if (wardMode) ...[
-                    const Text('用家长提供的绑定码进入自己的学习空间。',
+                    const Text('用家长提供的 6 位绑定码进入自己的学习空间。',
                         textAlign: TextAlign.center),
                     const SizedBox(height: 16),
+                    TextField(
+                      key: const Key('ward-bind-code-input'),
+                      controller: bindingCode,
+                      enabled: !bindingLoading,
+                      keyboardType: TextInputType.number,
+                      textInputAction: TextInputAction.done,
+                      maxLength: 6,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 22,
+                        letterSpacing: 6,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      decoration: const InputDecoration(
+                        labelText: '家长提供的 6 位绑定码',
+                        hintText: '输入 6 位数字自动进入',
+                      ),
+                      onChanged: (value) {
+                        if (value.trim().length == 6 && !bindingLoading) {
+                          _bindWard();
+                        }
+                      },
+                      onSubmitted: (_) => _bindWard(),
+                    ),
+                    const SizedBox(height: 12),
                     FilledButton.icon(
-                      onPressed: () => context.go('/ward-bind'),
+                      onPressed: bindingLoading ? null : _bindWard,
                       icon: const Icon(Icons.vpn_key_outlined),
-                      label: const Text('输入绑定码进入'),
+                      label: Text(bindingLoading ? '绑定中…' : '绑定并进入'),
                     ),
                   ] else ...[
                     if (registering)
@@ -148,6 +177,30 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       return '请输入有效的邮箱地址';
     }
     return null;
+  }
+
+  Future<void> _bindWard() async {
+    final code = bindingCode.text.trim();
+    if (code.length != 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请输入 6 位绑定码')),
+      );
+      return;
+    }
+    setState(() => bindingLoading = true);
+    try {
+      final id = await ref.read(apiProvider).bindWard(code);
+      if (!mounted) return;
+      ref.read(authProvider.notifier).enterWard(id);
+      context.go('/ward-day/$id');
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(wardBindFailureMessage(error))),
+      );
+    } finally {
+      if (mounted) setState(() => bindingLoading = false);
+    }
   }
 
   Future<void> _submit() async {

@@ -269,8 +269,8 @@ class _VoiceComposerState extends State<VoiceComposer> {
                 child: const Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.image_outlined, size: 20),
-                      Text('图片', style: TextStyle(fontSize: 11)),
+                      Icon(Icons.camera_alt_outlined, size: 20),
+                      Text('拍照', style: TextStyle(fontSize: 11)),
                     ]))),
       ]);
 }

@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import '../core/cue_notifications.dart';
 import '../core/speech_playback.dart';
+import '../core/voice_transcription_service.dart';
 import '../providers.dart';
 import '../shared/app_ui.dart';
 import '../shared/chat_markdown.dart';
@@ -17,6 +18,8 @@ import 'pronunciation_player.dart';
 import 'start_cue_card.dart';
 import 'visual_block.dart';
 import 'task_status_dialogs.dart';
+
+const ImageSource defaultChatImageSource = ImageSource.camera;
 
 int chatImageCachePixels(double logicalPixels, double devicePixelRatio) {
   final pixels = (logicalPixels * devicePixelRatio).ceil();
@@ -51,9 +54,18 @@ class _WardBindPageState extends ConsumerState<WardBindPage> {
           child: Column(children: [
             TextField(
                 controller: code,
+                enabled: !loading,
                 keyboardType: TextInputType.number,
+                textInputAction: TextInputAction.done,
                 maxLength: 6,
-                decoration: const InputDecoration(labelText: '家长提供的 6 位绑定码')),
+                decoration: const InputDecoration(
+                    labelText: '家长提供的 6 位绑定码', hintText: '输入 6 位数字自动进入'),
+                onChanged: (value) {
+                  if (value.trim().length == 6 && !loading) {
+                    _bind();
+                  }
+                },
+                onSubmitted: (_) => _bind()),
             const SizedBox(height: 20),
             FilledButton(
                 onPressed: loading ? null : _bind,
@@ -163,19 +175,24 @@ class WardDayPage extends ConsumerStatefulWidget {
     super.key,
     this.pickChatImage,
     this.speechPlayback,
+    this.voiceFactory = VoiceTranscriptionService.new,
   });
   final String wardId;
 
-  /// Gallery picker. Tests supply bytes directly; production uses the camera roll.
+  /// Camera capture. Tests supply bytes directly; production uses the camera.
   final Future<PickedChatImage?> Function()? pickChatImage;
 
   /// 播放器。测试注入替身；正式环境用设备播放与系统朗读。
   final SpeechPlayback Function()? speechPlayback;
+
+  /// 语音转写替身注入。
+  final VoiceTranscriptionFactory voiceFactory;
   @override
   ConsumerState<WardDayPage> createState() => _WardDayPageState();
 }
 
-class _WardDayPageState extends ConsumerState<WardDayPage> with WidgetsBindingObserver {
+class _WardDayPageState extends ConsumerState<WardDayPage>
+    with WidgetsBindingObserver {
   List<dynamic> tasks = [];
   Map<String, dynamic>? plan, insight, profile, startCue;
   String? session;
@@ -183,7 +200,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage> with WidgetsBindingOb
   final watch = Stopwatch();
   final planAttachments = <String>[];
   final stagedImages = <_StagedImage>[];
-  final draftText = TextEditingController();
   List<Map<String, dynamic>> planDraft = [];
   final planMessages = <_ChatLine>[];
   final rememberedImages = <String, Uint8List>{};
@@ -209,12 +225,10 @@ class _WardDayPageState extends ConsumerState<WardDayPage> with WidgetsBindingOb
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    draftText.addListener(() {
-      if (mounted) setState(() {});
-    });
     _load();
     _restoreCompanionThread();
-    cueRefresh = Timer.periodic(const Duration(minutes: 1), (_) => _refreshCue());
+    cueRefresh =
+        Timer.periodic(const Duration(minutes: 1), (_) => _refreshCue());
   }
 
   SpeechPlayback _playback() =>
@@ -225,7 +239,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage> with WidgetsBindingOb
     WidgetsBinding.instance.removeObserver(this);
     timer?.cancel();
     cueRefresh?.cancel();
-    draftText.dispose();
     _speechPlayback?.dispose();
     super.dispose();
   }
@@ -278,7 +291,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage> with WidgetsBindingOb
     return Stack(children: [
       ListView(
           padding: EdgeInsets.fromLTRB(
-              16, 14, 16, stagedImages.isNotEmpty ? 292 : 220),
+              16, 14, 16, stagedImages.isNotEmpty ? 228 : 156),
           children: [
             _homeGreeting(context),
             if (startCue?['status'] == 'presented')
@@ -289,7 +302,8 @@ class _WardDayPageState extends ConsumerState<WardDayPage> with WidgetsBindingOb
                     Map<String, dynamic>.from(task as Map),
                 ],
                 actions: [
-                  for (final action in (startCue?['actions'] as List?) ?? const [])
+                  for (final action
+                      in (startCue?['actions'] as List?) ?? const [])
                     Map<String, dynamic>.from(action as Map),
                 ],
                 onCommand: _actOnStartCue,
@@ -531,55 +545,37 @@ class _WardDayPageState extends ConsumerState<WardDayPage> with WidgetsBindingOb
     if (stagedImages.any((image) => image.key == null && !image.failed)) {
       return false;
     }
-    return draftText.text.trim().isNotEmpty ||
-        stagedImages.any((image) => image.key != null);
+    return stagedImages.any((image) => image.key != null);
   }
 
   Widget _chatEntry() => AppCard(
-      padding: const EdgeInsets.fromLTRB(12, 8, 8, 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         if (stagedImages.isNotEmpty) ...[
-          _stagedImageStrip(),
+          Row(children: [
+            Expanded(child: _stagedImageStrip()),
+            const SizedBox(width: 8),
+            IconButton(
+                tooltip: '发送',
+                onPressed: _canSendDraft ? () => _sendDraft() : null,
+                style: IconButton.styleFrom(
+                    backgroundColor: _canSendDraft
+                        ? const Color(0xff0f766e)
+                        : const Color(0xffe2e8f0),
+                    foregroundColor:
+                        _canSendDraft ? Colors.white : const Color(0xff94a3b8),
+                    disabledBackgroundColor: const Color(0xffe2e8f0),
+                    minimumSize: const Size(36, 36),
+                    padding: EdgeInsets.zero),
+                icon: const Icon(Icons.arrow_upward, size: 18)),
+          ]),
           const SizedBox(height: 8),
         ],
-        Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-          Expanded(
-              child: TextField(
-                  controller: draftText,
-                  enabled: !planSending,
-                  minLines: 1,
-                  maxLines: 4,
-                  textInputAction: TextInputAction.newline,
-                  decoration: const InputDecoration(
-                      hintText: '补充一句，或直接发送图片',
-                      border: InputBorder.none,
-                      isDense: true,
-                      contentPadding:
-                          EdgeInsets.symmetric(horizontal: 4, vertical: 10)))),
-          IconButton(
-              tooltip: '读出发音',
-              onPressed: !planSending && draftText.text.trim().isNotEmpty
-                  ? () => _sendDraft(pronunciation: true)
-                  : null,
-              icon: const Icon(Icons.volume_up_outlined, size: 20)),
-          IconButton(
-              tooltip: '发送',
-              onPressed: _canSendDraft ? () => _sendDraft() : null,
-              style: IconButton.styleFrom(
-                  backgroundColor: _canSendDraft
-                      ? const Color(0xff0f766e)
-                      : const Color(0xffe2e8f0),
-                  foregroundColor:
-                      _canSendDraft ? Colors.white : const Color(0xff94a3b8),
-                  disabledBackgroundColor: const Color(0xffe2e8f0),
-                  minimumSize: const Size(36, 36),
-                  padding: EdgeInsets.zero),
-              icon: const Icon(Icons.arrow_upward, size: 18)),
-        ]),
         VoiceComposer(
             baseUrl: apiBaseUrl,
             tokens: ref.read(tokenStorageProvider),
             telemetry: ref.read(telemetryProvider),
+            voiceFactory: widget.voiceFactory,
             holdToTalkText: '说出你的任何想法、问题、安排',
             helperText: '按住说话',
             enabled: !planSending,
@@ -781,7 +777,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage> with WidgetsBindingOb
   Widget _planChatOverlay() => _HomeOverlay(
       title: '读学',
       subtitle: '你先说；我记录并检查冲突，确认后才生效。',
-      bottomInset: stagedImages.isNotEmpty ? 230 : 148,
+      bottomInset: stagedImages.isNotEmpty ? 164 : 92,
       onClose: () => setState(() => planChatOpen = false),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Container(
@@ -859,9 +855,8 @@ class _WardDayPageState extends ConsumerState<WardDayPage> with WidgetsBindingOb
           const SizedBox(height: 14),
           PronunciationLessonCard(
             lesson: pronunciationLesson!,
-            loadSpeech: (speechRef, rate) => ref
-                .read(apiProvider)
-                .pronunciationSpeech(speechRef, rate),
+            loadSpeech: (speechRef, rate) =>
+                ref.read(apiProvider).pronunciationSpeech(speechRef, rate),
             playback: _playback(),
           ),
         ],
@@ -899,7 +894,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage> with WidgetsBindingOb
       showMessage(context, '图片还在上传，请稍候再发送');
       return;
     }
-    final text = (spoken ?? draftText.text).trim();
+    final text = (spoken ?? '').trim();
     final hasImage = stagedImages.any((image) => image.key != null);
     if (text.isEmpty && !hasImage) {
       if (stagedImages.any((image) => image.failed)) {
@@ -915,7 +910,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage> with WidgetsBindingOb
     _openPlanChat();
     setState(() => planMessages
         .add(_ChatLine(label: '我', content: content, images: images)));
-    if (spoken == null) draftText.clear();
     await _submitPlanInput(content, pronunciation: pronunciation);
   }
 
@@ -1363,7 +1357,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage> with WidgetsBindingOb
 
   Future<PickedChatImage?> _defaultPickChatImage() async {
     final image = await ImagePicker().pickImage(
-      source: ImageSource.gallery,
+      source: defaultChatImageSource,
       imageQuality: 85,
       maxWidth: 1600,
       maxHeight: 1600,
@@ -1404,7 +1398,8 @@ class _WardDayPageState extends ConsumerState<WardDayPage> with WidgetsBindingOb
     }
   }
 
-  Future<void> _submitPlanInput(String text, {bool pronunciation = false}) async {
+  Future<void> _submitPlanInput(String text,
+      {bool pronunciation = false}) async {
     if (planSending) return;
     planAttachments
       ..clear()
