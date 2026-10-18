@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../shared/app_ui.dart';
 
@@ -183,7 +182,8 @@ class StartTaskDialog extends StatelessWidget {
               borderRadius: BorderRadius.circular(10),
             ),
           ),
-          child: const Text('确认开始', style: TextStyle(fontWeight: FontWeight.w600)),
+          child:
+              const Text('确认开始', style: TextStyle(fontWeight: FontWeight.w600)),
         ),
       ],
     );
@@ -242,7 +242,8 @@ class ActiveTaskDialog extends StatelessWidget {
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.av_timer_rounded, size: 18, color: _tealBrand),
+                  const Icon(Icons.av_timer_rounded,
+                      size: 18, color: _tealBrand),
                   const SizedBox(width: 6),
                   Text(
                     '已累计 $durationLabel',
@@ -289,7 +290,8 @@ class ActiveTaskDialog extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           ),
           icon: const Icon(Icons.pause_rounded, size: 18),
-          label: const Text('暂停', style: TextStyle(fontWeight: FontWeight.w600)),
+          label:
+              const Text('暂停', style: TextStyle(fontWeight: FontWeight.w600)),
         ),
         FilledButton.icon(
           onPressed: onFinish,
@@ -302,7 +304,8 @@ class ActiveTaskDialog extends StatelessWidget {
             ),
           ),
           icon: const Icon(Icons.check_circle_outline_rounded, size: 18),
-          label: const Text('完成任务', style: TextStyle(fontWeight: FontWeight.w600)),
+          label:
+              const Text('完成任务', style: TextStyle(fontWeight: FontWeight.w600)),
         ),
       ],
     );
@@ -350,7 +353,8 @@ class PausedTaskDialog extends StatelessWidget {
             details: details,
             extraContent: Row(
               children: [
-                const Icon(Icons.history_rounded, size: 16, color: _orangePause),
+                const Icon(Icons.history_rounded,
+                    size: 16, color: _orangePause),
                 const SizedBox(width: 4),
                 Text(
                   '已累计学习 $durationLabel（进度已保留）',
@@ -401,7 +405,8 @@ class PausedTaskDialog extends StatelessWidget {
               borderRadius: BorderRadius.circular(10),
             ),
           ),
-          child: const Text('确认继续', style: TextStyle(fontWeight: FontWeight.w600)),
+          child:
+              const Text('确认继续', style: TextStyle(fontWeight: FontWeight.w600)),
         ),
       ],
     );
@@ -483,7 +488,8 @@ class FinishTaskConfirmDialog extends StatelessWidget {
               borderRadius: BorderRadius.circular(10),
             ),
           ),
-          child: const Text('确认完成', style: TextStyle(fontWeight: FontWeight.w600)),
+          child:
+              const Text('确认完成', style: TextStyle(fontWeight: FontWeight.w600)),
         ),
       ],
     );

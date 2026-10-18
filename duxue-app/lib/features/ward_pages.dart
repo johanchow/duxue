@@ -162,6 +162,7 @@ class _WardListPageState extends ConsumerState<WardListPage> {
                       decoration: const InputDecoration(labelText: '孩子显示名称')),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
+                      // ignore: deprecated_member_use
                       value: grade,
                       decoration: const InputDecoration(labelText: '学段'),
                       items: const [
