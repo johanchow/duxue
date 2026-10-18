@@ -8,13 +8,14 @@
 | `server-deploy.yml` | Server 相关 `main` 推送或手动触发 | 推送 GHCR 镜像、远端迁移、启动 API/Worker/Beat、健康检查 |
 | `cam-ci.yml` | Cam 相关 PR | Kotlin 单测、Lint、Debug APK |
 | `cam-release.yml` | Cam 相关 `main` 推送、`cam-v*` Tag 或手动触发 | 签名 Release APK、更新正式下载包；Tag 额外创建 GitHub Release |
-| `app-ci.yml` | Guardian 相关 PR | Flutter 静态检查与测试 |
+| `app-ci.yml` | Guardian 相关 PR，或被 `app-release.yml` 调用 | Flutter 静态检查与测试 |
+| `app-release.yml` | Guardian 相关 `main` 推送或手动触发 | 签名 Release APK，挂到该次 Actions 的 Artifacts |
 
-Guardian 的商店构建继续由 Codemagic 负责；当前仓库未提交 `duxue-app/android` 和 `duxue-app/ios` 原生工程，故不能安全地配置 AAB/IPA 自动发布。先在开发机确认应用标识后生成并提交这些工程：
+Guardian 的 Android 开发包由 `app-release.yml` 打出。iOS 与 Play 商店 AAB 仍由 Codemagic 负责；当前仓库未提交 `duxue-app/ios`，故不能配置 IPA。先在开发机确认应用标识后生成并提交该工程：
 
 ```bash
 cd duxue-app
-flutter create --platforms=android,ios --org <你的反向域名组织标识> .
+flutter create --platforms=ios --org <你的反向域名组织标识> .
 ```
 
 生成后，配置 Android keystore、Apple Developer / App Store Connect 和 Google Play Service Account，再启用 Codemagic 的正式发布 workflow。不要把这些凭据、`.env.prod` 或原生签名文件提交到 Git。
@@ -76,4 +77,17 @@ https://$DEPLOY_SERVER_HOST/api/health
 
 `DEPLOY_SERVER_USER` / `DEPLOY_SERVER_PORT` 已写死在 `cam-release.yml`。
 
-三端 CI 仅在 PR 阶段运行。Server 与 Cam 的相关改动合并到 `main` 后直接部署到 `production`，不会再次运行 CI。Cam 的 `cam-v*` Tag 额外创建带版本 APK 的 GitHub Release，便于回退。开发和测试仅在本地进行，不设远端 staging。
+### Guardian APK
+
+合进 `main` 且改动碰到 `duxue-app/**` 时自动签名打包；也可在 Actions 里对 `main` 手动 Run workflow。APK 只挂在该次运行的 Artifacts，不上传到 ECS。包内 API 地址固定为 `https://duxuelai.xyz/api`。
+
+| Secret | 用途 |
+|---|---|
+| `APP_KEYSTORE_BASE64` | `duxue-app.keystore` 的 Base64 |
+| `APP_KEYSTORE_PASSWORD` | 密钥库口令 |
+| `APP_KEY_ALIAS` | 别名，当前为 `duxue-app` |
+| `APP_KEY_PASSWORD` | 密钥口令 |
+
+本地没有 `KEYSTORE_FILE` 时，release 构建仍用 debug 签名，方便 `flutter run --release`。
+
+三端 CI 仅在 PR 阶段运行。Server 与 Cam 的相关改动合并到 `main` 后直接部署到 `production`，不会再次运行 CI。Guardian 相关改动合并到 `main` 后打签名 APK。Cam 的 `cam-v*` Tag 额外创建带版本 APK 的 GitHub Release，便于回退。开发和测试仅在本地进行，不设远端 staging。

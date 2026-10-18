@@ -5,6 +5,9 @@ __pycache__/
 *.pyo
 *.pyd
 *.pem
+*.keystore
+*.jks
+*.pwd
 .DS_Store
 
 # 环境变量：通配所有 .env*，只放行模板文件。

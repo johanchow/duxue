@@ -28,8 +28,15 @@ _TABLES_CHILD_FIRST = (
 def upgrade() -> None:
     # This revision is only for the explicitly authorized, empty target DB.
     # Tables are removed in dependency order; no DROP ... CASCADE is used.
+    # Revision 08 may already have create_all()'d the current ORM (tables added
+    # after this file was written, e.g. tutoring_problems). Drop metadata
+    # tables first so leftover FKs do not block the hardcoded list.
     bind = op.get_bind()
     existing = set(inspect(bind).get_table_names())
+    for table in reversed(Base.metadata.sorted_tables):
+        if table.name in existing and table.name != "alembic_version":
+            op.drop_table(table.name)
+            existing.discard(table.name)
     for table in _TABLES_CHILD_FIRST:
         if table in existing:
             op.drop_table(table)
