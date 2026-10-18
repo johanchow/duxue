@@ -17,3 +17,4 @@
     - `project_lesson` 使用 `candidate.content` 作为气泡正文（回退 `first.introduction`），使聊天气泡展示完整词义。
     - 多词复用同一行 `pronunciation_lessons`（免数据库迁移），首条 `speech_ref` 为 `{id}`，后续为 `{id}:{index}`；`PronunciationLessonQuery.get/speak` 解析 `{id}:{index}` 并按对应词条合成语音。
   - **App 端（`day_story_pages.dart`）**：从 `lesson['lessons']`（兼容单卡 `lesson`）渲染 1~N 张 `PronunciationLessonCard`，每张独立点读与调速。
+  - **离线评测（`evals/`）**：`Expect` 新增 `lesson_source_contains_all` 与 `min_lessons` 断言，`Observation` 记录 `lesson_sources` 列表；在 `evals/data/tutoring_turn.jsonl` 新增会话 `4d43c20f` 的多词/单词「怎么读？什么意思？」回归用例（`turn-4d43c20f-00`、`turn-4d43c20f-01`）。

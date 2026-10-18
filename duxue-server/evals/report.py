@@ -149,7 +149,8 @@ def to_json(results: list[CaseResult]) -> list[dict]:
                  "visual_kind": s.observation.visual_kind, "visual_text": s.observation.visual_text,
                  "visual_dropped": s.observation.visual_dropped, "shape_flags": s.observation.shape_flags,
                  "leak_retried": s.observation.leak_retried,
-                 "lesson_source": s.observation.lesson_source, "candidates": s.observation.candidates}
+                 "lesson_source": s.observation.lesson_source, "lesson_sources": s.observation.lesson_sources,
+                 "candidates": s.observation.candidates}
                 for s in r.samples
             ],
         }

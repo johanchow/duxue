@@ -48,7 +48,10 @@ def _strings(case: EvalCase) -> list[str]:
     if case.context.problem:
         out += [case.context.problem.summary or "", case.context.problem.evidence_summary or ""]
     expect = case.expect
-    out += expect.lesson_source_contains_any + expect.content_contains_any + expect.content_not_contains
+    out += (
+        expect.lesson_source_contains_any + expect.lesson_source_contains_all
+        + expect.content_contains_any + expect.content_not_contains
+    )
     return out
 
 

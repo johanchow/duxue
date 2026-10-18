@@ -24,7 +24,7 @@ def test_committed_dataset_is_valid_and_not_empty():
 def test_dataset_covers_the_three_debugged_conversations_and_the_guard_seeds():
     cases = dataset.load_cases()
     conversations = {c.conversation_id for c in cases}
-    assert {"ab8f80d3", "97103aaf", "b48b70b3", "synthetic"} <= conversations
+    assert {"ab8f80d3", "97103aaf", "b48b70b3", "4d43c20f", "synthetic"} <= conversations
     assert {c.component for c in cases} == {"tutoring.turn", "companion.intent"}
     assert sum("guard" in c.tags for c in cases) <= 6
     assert all(c.source == "synthetic" for c in cases if "guard" in c.tags)

@@ -84,6 +84,52 @@ def test_lesson_for_the_wrong_sentence_fails_on_source_text():
     assert not sample.passed and "lesson_source" in sample.failures[0]
 
 
+def test_multi_word_pronounce_and_meaning_case_grades_text_and_multiple_lessons():
+    """2026-10-18 (4d43c20f): 「always 和 often 怎么读？什么意思？」必须同时返回词义正文和两张读音卡。"""
+    case = _case(
+        history=[],
+        student_said="always 和 often 怎么读？什么意思？",
+        expect={
+            "outcome_in": ["pronounce"],
+            "outcome_not_in": ["fallback", "answer"],
+            "lesson_source_contains_all": ["always", "often"],
+            "min_lessons": 2,
+            "content_contains_any": ["总是", "一直", "经常", "常常"],
+        },
+    )
+    always_lesson = {**LESSON, "source_text": "always", "introduction": "我们来读 always。", "reading_guide": "/ˈɔːlweɪz/"}
+    often_lesson = {**LESSON, "source_text": "often", "introduction": "再来读 often。", "reading_guide": "/ˈɒfn/"}
+
+    good = tutor_raw(
+        "pronounce",
+        "always 是“总是”的意思，often 是“经常”的意思，我们来听听怎么读。",
+        relation=None,
+        lessons=[always_lesson, often_lesson],
+    )
+    passed_sample = _sample(case, good)
+    assert passed_sample.passed
+    assert passed_sample.observation.outcome == "pronounce"
+    assert passed_sample.observation.lesson_sources == ["always", "often"]
+
+    # 仅返回文字音标（act=answer）应判失败
+    only_text = tutor_raw("answer", "always 读作 /ˈɔːlweɪz/（总是），often 读作 /ˈɒfn/（经常）。", relation="none", topic="atomic_lookup")
+    failed_answer = _sample(case, only_text)
+    assert not failed_answer.passed
+    assert any("outcome:answer" in f for f in failed_answer.failures)
+
+    # 只给了一张读音卡（缺 often）应判失败
+    single_card = tutor_raw(
+        "pronounce",
+        "always 是“总是”，often 是“经常”。",
+        relation=None,
+        lesson=always_lesson,
+    )
+    failed_single = _sample(case, single_card)
+    assert not failed_single.passed
+    assert any("lacks ['often']" in f for f in failed_single.failures)
+    assert any("lessons: expected >=2, got 1" in f for f in failed_single.failures)
+
+
 def test_provider_error_is_a_fallback_with_a_category_not_content():
     class Failing:
         def complete(self, **_):

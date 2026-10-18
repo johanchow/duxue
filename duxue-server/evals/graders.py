@@ -26,8 +26,16 @@ def grade(case: EvalCase, obs: Observation) -> list[str]:
         failures.append(f"outcome:{obs.outcome}{f'({obs.reason})' if obs.reason else ''} not in {expect.outcome_in}")
     elif obs.outcome in expect.outcome_not_in:
         failures.append(f"outcome:{obs.outcome}{f'({obs.reason})' if obs.reason else ''} is forbidden")
-    if expect.lesson_source_contains_any and not _contains_any(obs.lesson_source, expect.lesson_source_contains_any):
-        failures.append(f"lesson_source {obs.lesson_source!r} lacks any of {expect.lesson_source_contains_any}")
+    haystack_lessons = " ".join(obs.lesson_sources) if obs.lesson_sources else obs.lesson_source
+    if expect.lesson_source_contains_any and not _contains_any(haystack_lessons, expect.lesson_source_contains_any):
+        failures.append(f"lesson_source {haystack_lessons!r} lacks any of {expect.lesson_source_contains_any}")
+    if expect.lesson_source_contains_all:
+        missing = [needle for needle in expect.lesson_source_contains_all if not _contains_any(haystack_lessons, [needle])]
+        if missing:
+            failures.append(f"lesson_source {haystack_lessons!r} lacks {missing}")
+    lesson_count = len(obs.lesson_sources) or (1 if obs.lesson_source else 0)
+    if expect.min_lessons is not None and lesson_count < expect.min_lessons:
+        failures.append(f"lessons: expected >={expect.min_lessons}, got {lesson_count}")
     if expect.content_contains_any and not _contains_any(obs.content, expect.content_contains_any):
         failures.append(f"content lacks any of {expect.content_contains_any}")
     if expect.content_not_contains and _contains_any(obs.content, expect.content_not_contains):

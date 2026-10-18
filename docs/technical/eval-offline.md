@@ -206,6 +206,8 @@ JSONL，一行一条，位于 `duxue-server/evals/data/`（按组件分文件：
 | `outcome_in` | 结果类别必须属于此集合（空则不限） |
 | `outcome_not_in` | 默认 `["fallback"]`：**意外 fallback 永远是失败**，除非 Case 明确允许 |
 | `lesson_source_contains_any` | `pronounce` 的 `source_text` 须含其中任一（忽略大小写与空白差异） |
+| `lesson_source_contains_all` | `pronounce` 的全部发音卡 `source_text` 须包含其中每一项（用于校验多词发音卡完整性） |
+| `min_lessons` | `pronounce` 返回的发音卡数量至少为 `min_lessons` |
 | `content_contains_any` | 回复正文须含其中任一 |
 | `content_not_contains` | 回复正文不得含其中任何一个（用于兜住判官漏判，如作业答案字面量） |
 | `visual` | `present`：孩子最终应看到图；`absent`：不应有图。针对通过全部出口检查后保留的图 |
