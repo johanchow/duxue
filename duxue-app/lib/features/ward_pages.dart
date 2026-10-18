@@ -66,23 +66,42 @@ class _WardListPageState extends ConsumerState<WardListPage> {
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(child: Text('加载孩子档案失败：$e')),
       data: (items) => ListView(padding: const EdgeInsets.all(16), children: [
-        FilledButton.icon(
-            onPressed: () => _transfer(items),
-            icon: const Icon(Icons.add),
-            label: const Text('传递作业、通知或留言')),
-        const SectionLabel('我的孩子'),
-        if (items.isEmpty)
-          const AppCard(
+        if (items.isNotEmpty) ...[
+          FilledButton.icon(
+              onPressed: () => _transfer(items),
+              icon: const Icon(Icons.add),
+              label: const Text('传递作业、通知或留言')),
+          const SectionLabel('我的孩子'),
+          ...items.map((ward) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _wardCard(ward))),
+          OutlinedButton.icon(
+              onPressed: _create,
+              icon: const Icon(Icons.add),
+              label: const Text('新增孩子档案')),
+        ] else ...[
+          const SectionLabel('我的孩子'),
+          AppCard(
               child: Padding(
-                  padding: EdgeInsets.all(24),
-                  child: Center(child: Text('还没有孩子档案，创建后即可传递任务和绑定读学Eye。')))),
-        ...items.map((ward) => Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: _wardCard(ward))),
-        OutlinedButton.icon(
-            onPressed: _create,
-            icon: const Icon(Icons.add),
-            label: const Text('新增孩子档案')),
+                  padding: const EdgeInsets.all(24),
+                  child: Column(children: [
+                    const Icon(Icons.child_care_outlined,
+                        size: 44, color: Color(0xff0f766e)),
+                    const SizedBox(height: 12),
+                    const Text('还没有孩子档案',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w700, fontSize: 16)),
+                    const SizedBox(height: 6),
+                    const Text('创建档案后会自动生成 6 位绑定码，让孩子在学习设备上直接输入进入。',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.blueGrey, fontSize: 13)),
+                    const SizedBox(height: 16),
+                    FilledButton.icon(
+                        onPressed: _create,
+                        icon: const Icon(Icons.add),
+                        label: const Text('新增孩子档案')),
+                  ]))),
+        ],
       ]),
     );
   }
@@ -107,7 +126,21 @@ class _WardListPageState extends ConsumerState<WardListPage> {
             const Icon(Icons.chevron_right)
           ]),
           const SizedBox(height: 12),
-          const StatusPill(text: '读学Eye 状态将在详情查看', color: Colors.green),
+          Row(children: [
+            const Expanded(
+              child: StatusPill(text: '读学Eye 状态将在详情查看', color: Colors.green),
+            ),
+            TextButton.icon(
+              onPressed: () => showWardAppInviteDialog(
+                context,
+                ref,
+                ward.id,
+                wardName: ward.displayName,
+              ),
+              icon: const Icon(Icons.vpn_key_outlined, size: 16),
+              label: const Text('获取绑定码'),
+            ),
+          ]),
         ]),
       );
 
@@ -178,8 +211,16 @@ class _WardListPageState extends ConsumerState<WardListPage> {
                 ]))));
     if (name?.trim().isEmpty ?? true) return;
     try {
-      await ref.read(apiProvider).createWard(name!.trim(), grade);
+      final ward = await ref.read(apiProvider).createWard(name!.trim(), grade);
       ref.invalidate(wardsProvider);
+      if (mounted) {
+        await showWardAppInviteDialog(
+          context,
+          ref,
+          ward.id,
+          wardName: ward.displayName,
+        );
+      }
     } catch (e) {
       if (mounted) showMessage(context, '创建失败：$e');
     }
@@ -669,27 +710,14 @@ class _WardDetailPageState extends ConsumerState<WardDetailPage> {
   }
 
   Future<void> _wardAppInvite() async {
-    try {
-      final invite = await ref.read(apiProvider).wardInvite(widget.wardId);
-      if (!mounted) return;
-      await showDialog<void>(
-          context: context,
-          builder: (context) => AlertDialog(
-                  title: const Text('学生 App 绑定码'),
-                  content: Column(mainAxisSize: MainAxisSize.min, children: [
-                    SelectableText(invite['invite_code'] as String,
-                        style: Theme.of(context).textTheme.headlineMedium),
-                    const SizedBox(height: 10),
-                    const Text('请在新学生 App 输入此 6 位码。首次绑定与换机相同；成功后旧设备会立即退出。'),
-                  ]),
-                  actions: [
-                    TextButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text('完成'))
-                  ]));
-    } catch (error) {
-      if (mounted) showMessage(context, '生成学生 App 绑定码失败：$error');
-    }
+    final wards = ref.read(wardsProvider).valueOrNull ?? const <Ward>[];
+    final ward = wards.where((item) => item.id == widget.wardId).firstOrNull;
+    await showWardAppInviteDialog(
+      context,
+      ref,
+      widget.wardId,
+      wardName: ward?.displayName,
+    );
   }
 
   Future<void> _invite() async {
@@ -720,5 +748,38 @@ class _WardDetailPageState extends ConsumerState<WardDetailPage> {
     } catch (e) {
       if (mounted) showMessage(context, '生成邀请码失败：$e');
     }
+  }
+}
+
+Future<void> showWardAppInviteDialog(
+  BuildContext context,
+  WidgetRef ref,
+  String wardId, {
+  String? wardName,
+}) async {
+  try {
+    final invite = await ref.read(apiProvider).wardInvite(wardId);
+    if (!context.mounted) return;
+    final title = wardName == null || wardName.trim().isEmpty
+        ? '学生 App 绑定码'
+        : '${wardName.trim()} · 学生 App 绑定码';
+    await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+                title: Text(title),
+                content: Column(mainAxisSize: MainAxisSize.min, children: [
+                  SelectableText(invite['invite_code'] as String,
+                      style: Theme.of(dialogContext).textTheme.headlineMedium),
+                  const SizedBox(height: 10),
+                  const Text(
+                      '请在孩子的手机或平板上打开「读学」，选择【我是孩子】并输入此 6 位码（10 分钟内有效；换机后旧设备会自动退出）。'),
+                ]),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(dialogContext),
+                      child: const Text('完成'))
+                ]));
+  } catch (error) {
+    if (context.mounted) showMessage(context, '生成学生 App 绑定码失败：$error');
   }
 }

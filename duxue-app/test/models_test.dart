@@ -4,10 +4,15 @@ import 'package:duxue_app/core/voice_transcription_service.dart';
 import 'package:duxue_app/main.dart' show appRedirect;
 import 'package:duxue_app/providers.dart' show AppSession;
 import 'package:duxue_app/features/day_story_pages.dart'
-    show chatImageCachePixels, wardBindFailureMessage;
+    show chatImageCachePixels, defaultChatImageSource, wardBindFailureMessage;
 import 'package:duxue_app/features/home_task_card.dart';
+import 'package:image_picker/image_picker.dart';
 
 void main() {
+  test('chat image capture uses camera directly instead of system gallery', () {
+    expect(defaultChatImageSource, ImageSource.camera);
+  });
+
   test('chat thumbnails decode at display size instead of full photo size', () {
     expect(chatImageCachePixels(56, 3), 168);
     expect(chatImageCachePixels(72, 2), 144);
@@ -43,7 +48,9 @@ void main() {
     );
   });
 
-  test('home task card reads arrangement from the task and progress from the session', () {
+  test(
+      'home task card reads arrangement from the task and progress from the session',
+      () {
     expect(
       homeTaskCardLabel(homeTaskCardKind({'status': 'pool', 'session': null})),
       '未排期',
