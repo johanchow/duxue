@@ -1,6 +1,5 @@
 plugins {
     id("com.android.application")
-    id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
@@ -9,17 +8,13 @@ android {
     namespace = "com.duxue.app"
     // flutter_tts compiles against Android SDK 36.
     compileSdk = 36
-    // Native Flutter plugins (including record_android) require NDK 27.
-    ndkVersion = "27.0.12077973"
+    // Plugins such as record_android and flutter_tts require NDK 28.2.
+    ndkVersion = "28.2.13676358"
 
     compileOptions {
         isCoreLibraryDesugaringEnabled = true
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
-    }
-
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_11.toString()
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     defaultConfig {
@@ -46,6 +41,10 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Keep local debug installs beside the signed release app.
+            applicationIdSuffix = ".debug"
+        }
         release {
             // CI sets KEYSTORE_FILE. Local release builds keep the debug key
             // so `flutter run --release` works without the upload keystore.
@@ -55,6 +54,12 @@ android {
                 signingConfigs.getByName("release")
             }
         }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
 }
 
