@@ -346,3 +346,69 @@ def test_coordinator_persists_text_visual_in_companion_message_interaction_ref(d
         {"author": "ward", "text": "水循环是怎么回事"},
         {"author": "companion", "text": "水先蒸发，再凝结，最后降下来。"},
     ]
+
+
+def test_companion_messages_supports_current_thread_lookup_cursor_pagination_and_previous_thread_link(db):
+    from datetime import timedelta
+    from app.api.v1.common import Principal, now
+    from app.api.v1.companion import companion_messages, current_companion_messages
+
+    ward = create_ward(db)
+    db.commit()
+
+    coordinator = CompanionCoordinator(db, dispatcher=FakeWorkflowDispatcher(), classifier=StaticIntentClassifier("tutoring"))
+    first_thread_res = coordinator.handle(
+        ward_id=ward.id,
+        content="旧会话问题1",
+        thread_id=None,
+        expected_thread_version=0,
+        route_hint="tutoring",
+    )
+    old_thread = db.get(ConversationThread, first_thread_res.thread_id)
+    old_thread.created_at = now() - timedelta(hours=2)
+    db.flush()
+
+    second_thread_res = coordinator.handle(
+        ward_id=ward.id,
+        content="新会话问题1",
+        thread_id=None,
+        expected_thread_version=0,
+        route_hint="tutoring",
+    )
+    second_thread_res = coordinator.handle(
+        ward_id=ward.id,
+        content="新会话问题2",
+        thread_id=second_thread_res.thread_id,
+        expected_thread_version=second_thread_res.thread_version,
+        route_hint="tutoring",
+    )
+
+    principal = Principal(role="ward", user_id=ward.id)
+    current_page = current_companion_messages(before_thread_version=None, limit=2, principal=principal, db=db)
+    assert current_page["thread_id"] == second_thread_res.thread_id
+    assert current_page["thread_version"] == second_thread_res.thread_version
+    assert [m["content"] for m in current_page["messages"]] == ["新会话问题2", "请回答"]
+    assert current_page["next_before_thread_version"] == 3
+    assert current_page["previous_thread_id"] is None
+
+    older_page = companion_messages(
+        second_thread_res.thread_id,
+        before_thread_version=current_page["next_before_thread_version"],
+        limit=2,
+        principal=principal,
+        db=db,
+    )
+    assert [m["content"] for m in older_page["messages"]] == ["新会话问题1", "请回答"]
+    assert older_page["next_before_thread_version"] is None
+    assert older_page["previous_thread_id"] == first_thread_res.thread_id
+
+    prev_thread_page = companion_messages(
+        older_page["previous_thread_id"],
+        before_thread_version=None,
+        limit=2,
+        principal=principal,
+        db=db,
+    )
+    assert [m["content"] for m in prev_thread_page["messages"]] == ["旧会话问题1", "请回答"]
+    assert prev_thread_page["next_before_thread_version"] is None
+    assert prev_thread_page["previous_thread_id"] is None

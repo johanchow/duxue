@@ -202,9 +202,15 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   final stagedImages = <_StagedImage>[];
   List<Map<String, dynamic>> planDraft = [];
   final planMessages = <_ChatLine>[];
+  final historyMessages = <_ChatLine>[];
   final rememberedImages = <String, Uint8List>{};
+  final ScrollController _chatScrollController = ScrollController();
   String? companionThreadId;
   int? companionThreadVersion;
+  int? nextBeforeThreadVersion;
+  String? previousThreadId;
+  String? historyCursorThreadId;
+  bool loadingOlderMessages = false;
   String? planFeedback;
   String? planInteractionKind;
   Map<String, dynamic>? planConfirmAction;
@@ -225,6 +231,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _chatScrollController.addListener(_onChatScroll);
     _load();
     _restoreCompanionThread();
     cueRefresh =
@@ -237,6 +244,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _chatScrollController.dispose();
     timer?.cancel();
     cueRefresh?.cancel();
     _speechPlayback?.dispose();
@@ -774,39 +782,78 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     return null;
   }
 
-  Widget _planChatOverlay() => _HomeOverlay(
-      title: '读学',
-      subtitle: '你先说；我记录并检查冲突，确认后才生效。',
-      bottomInset: stagedImages.isNotEmpty ? 164 : 92,
-      onClose: () => setState(() => planChatOpen = false),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-                color: const Color(0xfff0fdfa),
-                borderRadius: BorderRadius.circular(12)),
-            child: Text(_chatContext(),
-                style:
-                    const TextStyle(fontSize: 12, color: Color(0xff0f766e)))),
-        const SizedBox(height: 14),
-        const _ChatBubble(
+  bool get _hasOlderHistory =>
+      nextBeforeThreadVersion != null || previousThreadId != null;
+
+  Widget _planChatOverlay() {
+    final canReviewDraft = planInteractionKind == 'plan_confirm_list' &&
+        planConfirmAction != null &&
+        planDraft.isNotEmpty;
+    final items = <Widget>[
+      Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+              color: const Color(0xfff0fdfa),
+              borderRadius: BorderRadius.circular(12)),
+          child: Text(_chatContext(),
+              style: const TextStyle(fontSize: 12, color: Color(0xff0f766e)))),
+      if (loadingOlderMessages)
+        const Padding(
+          padding: EdgeInsets.only(top: 10),
+          child: Center(
+              child: SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2))),
+        )
+      else if (_hasOlderHistory)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Center(
+            child: TextButton.icon(
+              key: const Key('load-older-messages-button'),
+              onPressed: _loadOlderMessages,
+              icon: const Icon(Icons.history, size: 16),
+              label: const Text('上滑或点击查看更早对话',
+                  style: TextStyle(fontSize: 12)),
+            ),
+          ),
+        ),
+      const Padding(
+        padding: EdgeInsets.only(top: 14),
+        child: _ChatBubble(
             label: '读学 AI', text: '我不会替你排今天。你说想怎么安排，我帮你记下来，并检查有没有冲突。'),
-        for (final message in planMessages) ...[
-          const SizedBox(height: 10),
-          _ChatBubble(
+      ),
+      for (final message in historyMessages)
+        Padding(
+          padding: const EdgeInsets.only(top: 10),
+          child: _ChatBubble(
+              key: message.id != null ? ValueKey('msg-${message.id}') : null,
               label: message.label,
               text: message.content,
               images: message.images,
               visual: message.visual),
-        ],
-        if (planSending) ...[
-          const SizedBox(height: 14),
-          const Center(child: CircularProgressIndicator()),
-        ],
-        if (failedPlanText != null) ...[
-          const SizedBox(height: 10),
-          Row(children: [
+        ),
+      for (final message in planMessages)
+        Padding(
+          padding: const EdgeInsets.only(top: 10),
+          child: _ChatBubble(
+              key: message.id != null ? ValueKey('msg-${message.id}') : null,
+              label: message.label,
+              text: message.content,
+              images: message.images,
+              visual: message.visual),
+        ),
+      if (planSending)
+        const Padding(
+          padding: EdgeInsets.only(top: 14),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      if (failedPlanText != null)
+        Padding(
+          padding: const EdgeInsets.only(top: 10),
+          child: Row(children: [
             const Expanded(
                 child: Text('这条消息暂未送达。',
                     style: TextStyle(fontSize: 12, color: Colors.redAccent))),
@@ -816,12 +863,11 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
                     : () => _submitPlanInput(failedPlanText!),
                 child: const Text('重试')),
           ]),
-        ],
-        if (planInteractionKind == 'plan_confirm_list' &&
-            planConfirmAction != null &&
-            planDraft.isNotEmpty) ...[
-          const SizedBox(height: 14),
-          AppCard(
+        ),
+      if (canReviewDraft)
+        Padding(
+          padding: const EdgeInsets.only(top: 14),
+          child: AppCard(
               child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -849,30 +895,52 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
                               : _confirmPlanDraft,
                           child: const Text('确认这个计划'))),
                 ])
-              ]))
-        ],
-        for (final item in pronunciationLessons) ...[
-          const SizedBox(height: 14),
-          PronunciationLessonCard(
+              ])),
+        ),
+      for (final item in pronunciationLessons)
+        Padding(
+          padding: const EdgeInsets.only(top: 14),
+          child: PronunciationLessonCard(
             key: ValueKey(item['speech_ref'] ?? item['source_text']),
             lesson: item,
             loadSpeech: (speechRef, rate) =>
                 ref.read(apiProvider).pronunciationSpeech(speechRef, rate),
             playback: _playback(),
           ),
-        ],
-      ]));
+        ),
+    ];
+
+    return _HomeOverlay(
+      title: '读学',
+      subtitle: '你先说；我记录并检查冲突，确认后才生效。',
+      bottomInset: stagedImages.isNotEmpty ? 164 : 92,
+      onClose: () => setState(() => planChatOpen = false),
+      child: ListView.builder(
+        key: const Key('companion-chat-list'),
+        controller: _chatScrollController,
+        padding: const EdgeInsets.all(16),
+        itemCount: items.length,
+        itemBuilder: (context, index) => items[index],
+      ),
+    );
+  }
 
   void _openPlanList() => setState(() {
         planChatOpen = false;
         planListOpen = true;
       });
 
-  void _openPlanChat([String? subject]) => setState(() {
-        planListOpen = false;
-        chatSubject = subject;
-        planChatOpen = true;
-      });
+  void _openPlanChat([String? subject]) {
+    final wasOpen = planChatOpen;
+    setState(() {
+      planListOpen = false;
+      chatSubject = subject;
+      planChatOpen = true;
+    });
+    if (!wasOpen) {
+      _scrollToChatBottom();
+    }
+  }
 
   String _chatContext() {
     if (chatSubject != null) return '语境：关于「${chatSubject!}」——按住下方再说。';
@@ -911,7 +979,9 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     _openPlanChat();
     setState(() => planMessages
         .add(_ChatLine(label: '我', content: content, images: images)));
+    _scrollToChatBottom();
     await _submitPlanInput(content, pronunciation: pronunciation);
+    _scrollToChatBottom();
   }
 
   Widget _growth(BuildContext context) =>
@@ -1575,35 +1645,153 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     }
   }
 
+  _ChatLine _parseChatLine(Object? raw) {
+    final item = Map<String, dynamic>.from(raw as Map);
+    final refs =
+        (item['attachment_refs'] as List? ?? const []).whereType<String>();
+    final interactionRef = item['interaction_ref'] is Map
+        ? Map<String, dynamic>.from(item['interaction_ref'] as Map)
+        : null;
+    final id = item['id'] as String? ??
+        (item['thread_id'] != null && item['thread_version'] != null
+            ? '${item['thread_id']}:${item['thread_version']}'
+            : null);
+    return _ChatLine(
+        id: id,
+        label: item['author_type'] == 'ward' ? '我' : '读学 AI',
+        content: item['content'] as String,
+        images: [
+          for (final ref in refs)
+            if (rememberedImages[ref] != null) rememberedImages[ref]!,
+        ],
+        visual: interactionRef == null
+            ? null
+            : visualFromInteraction(interactionRef));
+  }
+
+  void _scrollToChatBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_chatScrollController.hasClients) return;
+      final position = _chatScrollController.position;
+      if (position.maxScrollExtent > 0) {
+        _chatScrollController.jumpTo(position.maxScrollExtent);
+      }
+    });
+  }
+
+      // Only auto-load on scroll after the user has scrolled away from the top
+      // and then scrolls back up near the top; prevents auto-fetching every page
+      // immediately when the list first renders at pixels == 0.
+      bool _userScrolledAwayFromTop = false;
+      void _onChatScroll() {
+        if (!planChatOpen ||
+            loadingOlderMessages ||
+            !_hasOlderHistory ||
+            !_chatScrollController.hasClients) {
+          return;
+        }
+        final position = _chatScrollController.position;
+        if (position.pixels > 80) {
+          _userScrolledAwayFromTop = true;
+        } else if (_userScrolledAwayFromTop &&
+            position.pixels <= 32 &&
+            position.maxScrollExtent > 0) {
+          _userScrolledAwayFromTop = false;
+          _loadOlderMessages();
+        }
+      }
+
+  Future<void> _loadOlderMessages() async {
+    if (loadingOlderMessages || !_hasOlderHistory) return;
+    final targetThreadId = nextBeforeThreadVersion != null
+        ? (historyCursorThreadId ?? companionThreadId)
+        : previousThreadId;
+    final beforeVersion = nextBeforeThreadVersion;
+    if (targetThreadId == null) return;
+
+    final hadClients = _chatScrollController.hasClients;
+    final oldMaxExtent =
+        hadClients ? _chatScrollController.position.maxScrollExtent : 0.0;
+    final oldPixels =
+        hadClients ? _chatScrollController.position.pixels : 0.0;
+
+    setState(() => loadingOlderMessages = true);
+    try {
+      final page = await ref.read(apiProvider).companionMessages(
+            targetThreadId,
+            beforeThreadVersion: beforeVersion,
+          );
+      if (!mounted) return;
+      final rawMessages = page['messages'] as List? ?? const [];
+      final olderLines = rawMessages.map(_parseChatLine).toList();
+      final existingIds = <String>{
+        for (final m in historyMessages)
+          if (m.id != null) m.id!,
+        for (final m in planMessages)
+          if (m.id != null) m.id!,
+      };
+      final deduped = [
+        for (final line in olderLines)
+          if (line.id == null || !existingIds.contains(line.id)) line,
+      ];
+      setState(() {
+        historyMessages.insertAll(0, deduped);
+        historyCursorThreadId = targetThreadId;
+        nextBeforeThreadVersion = page['next_before_thread_version'] as int?;
+        previousThreadId = page['previous_thread_id'] as String?;
+      });
+      if (hadClients && deduped.isNotEmpty) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || !_chatScrollController.hasClients) return;
+          final newMaxExtent = _chatScrollController.position.maxScrollExtent;
+          final delta = newMaxExtent - oldMaxExtent;
+          if (delta > 0) {
+            _chatScrollController.jumpTo(oldPixels + delta);
+          }
+        });
+      }
+    } catch (_) {
+      // Ignore transient network errors when paginating history.
+    } finally {
+      if (mounted) setState(() => loadingOlderMessages = false);
+    }
+  }
+
   Future<void> _refreshTranscript() async {
-    if (companionThreadId == null) return;
-    final transcript =
-        await ref.read(apiProvider).companionMessages(companionThreadId!);
+    final Map<String, dynamic> transcript;
+    if (companionThreadId != null) {
+      transcript =
+          await ref.read(apiProvider).companionMessages(companionThreadId!);
+    } else {
+      transcript = await ref.read(apiProvider).currentCompanionMessages();
+    }
+    final resolvedThreadId =
+        (transcript['thread_id'] as String?) ?? companionThreadId;
     final version = transcript['thread_version'] as int?;
     final messages = transcript['messages'] as List? ?? const [];
     if (!mounted) return;
+    final latestLines = messages.map(_parseChatLine).toList();
+    final latestIds = <String>{
+      for (final m in latestLines)
+        if (m.id != null) m.id!,
+    };
     setState(() {
+      if (resolvedThreadId != null) {
+        companionThreadId = resolvedThreadId;
+      }
       companionThreadVersion = version;
+      if (historyMessages.isEmpty) {
+        historyCursorThreadId = resolvedThreadId;
+        nextBeforeThreadVersion =
+            transcript['next_before_thread_version'] as int?;
+        previousThreadId = transcript['previous_thread_id'] as String?;
+      } else {
+        historyMessages
+            .removeWhere((m) => m.id != null && latestIds.contains(m.id));
+      }
       planMessages
         ..clear()
-        ..addAll(messages.map((message) {
-          final item = Map<String, dynamic>.from(message as Map);
-          final refs = (item['attachment_refs'] as List? ?? const [])
-              .whereType<String>();
-          final interactionRef = item['interaction_ref'] is Map
-              ? Map<String, dynamic>.from(item['interaction_ref'] as Map)
-              : null;
-          return _ChatLine(
-              label: item['author_type'] == 'ward' ? '我' : '读学 AI',
-              content: item['content'] as String,
-              images: [
-                for (final ref in refs)
-                  if (rememberedImages[ref] != null) rememberedImages[ref]!,
-              ],
-              visual: interactionRef == null
-                  ? null
-                  : visualFromInteraction(interactionRef));
-        }));
+        ..addAll(latestLines);
     });
     if (version != null && companionThreadId != null) {
       await ref
@@ -1616,17 +1804,23 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     final tokens = ref.read(tokenStorageProvider);
     final threadId = await tokens.companionThreadId;
     final version = await tokens.companionThreadVersion;
-    if (threadId == null || version == null || !mounted) return;
-    companionThreadId = threadId;
-    companionThreadVersion = version;
+    if (!mounted) return;
+    if (threadId != null && version != null) {
+      companionThreadId = threadId;
+      companionThreadVersion = version;
+    }
     try {
       await _refreshTranscript();
-    } catch (_) {
-      // A deleted/expired Thread is non-fatal; the next Ward turn starts fresh.
-      if (mounted) {
+    } on DioException catch (error) {
+      if (error.response?.statusCode == 404 && mounted) {
         companionThreadId = null;
         companionThreadVersion = null;
+        try {
+          await _refreshTranscript();
+        } catch (_) {}
       }
+    } catch (_) {
+      // Keep local companionThreadId on transient errors so history is not lost.
     }
   }
 
@@ -1704,20 +1898,19 @@ class _HomeOverlay extends StatelessWidget {
                                       icon: const Icon(Icons.close)),
                                 ])),
                         const Divider(height: 1),
-                        Expanded(
-                            child: SingleChildScrollView(
-                                padding: const EdgeInsets.all(16),
-                                child: child)),
+                        Expanded(child: child),
                       ]))))));
 }
 
 class _ChatLine {
   const _ChatLine({
+    this.id,
     required this.label,
     required this.content,
     this.images = const [],
     this.visual,
   });
+  final String? id;
   final String label;
   final String content;
   final List<Uint8List> images;
@@ -1726,6 +1919,7 @@ class _ChatLine {
 
 class _ChatBubble extends StatelessWidget {
   const _ChatBubble({
+    super.key,
     required this.label,
     required this.text,
     this.images = const [],

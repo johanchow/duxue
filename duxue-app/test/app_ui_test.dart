@@ -288,42 +288,80 @@ class _WardHomeApi extends ApiClient {
     return Uint8List.fromList([9, 9, 9]);
   }
 
+  Map<String, dynamic>? currentTranscriptOverride;
+  final Map<String, Map<String, dynamic>> threadTranscriptOverrides = {};
+  final List<({String threadId, int? beforeThreadVersion, int limit})>
+      transcriptCalls = [];
+
   @override
-  Future<Map<String, dynamic>> companionMessages(String threadId) async => {
-        'thread_version': 1,
-        'messages': [
-          for (final turn in turns) ...[
+  Future<Map<String, dynamic>> currentCompanionMessages({
+    int? beforeThreadVersion,
+    int limit = 50,
+  }) async {
+    if (currentTranscriptOverride != null) {
+      return currentTranscriptOverride!;
+    }
+    return {
+      'thread_id': null,
+      'thread_version': 0,
+      'messages': const <Map<String, dynamic>>[],
+      'next_before_thread_version': null,
+      'previous_thread_id': null,
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>> companionMessages(
+    String threadId, {
+    int? beforeThreadVersion,
+    int limit = 50,
+  }) async {
+    transcriptCalls.add((
+      threadId: threadId,
+      beforeThreadVersion: beforeThreadVersion,
+      limit: limit,
+    ));
+    final key = '$threadId:${beforeThreadVersion ?? "latest"}';
+    if (threadTranscriptOverrides.containsKey(key)) {
+      return threadTranscriptOverrides[key]!;
+    }
+    return {
+      'thread_id': threadId,
+      'thread_version': 1,
+      'messages': [
+        for (final turn in turns) ...[
+          {
+            'author_type': 'ward',
+            'content': turn.content,
+            'attachment_refs': turn.attachmentKeys,
+          },
+          if (turn.content.contains('水循环'))
             {
-              'author_type': 'ward',
-              'content': turn.content,
-              'attachment_refs': turn.attachmentKeys,
-            },
-            if (turn.content.contains('水循环'))
-              {
-                'author_type': 'companion',
-                'content': '水先蒸发，再凝结，最后降下来。',
-                'attachment_refs': const <String>[],
-                'interaction_ref': {
-                  'kind': 'text_visual',
-                  'parts': [
-                    {
-                      'type': 'visual',
-                      'visual': {
-                        'kind': 'steps',
-                        'alt': '水循环三步',
-                        'steps': [
-                          {'label': '蒸发'},
-                          {'label': '凝结'},
-                          {'label': '降水'},
-                        ],
-                      },
+              'author_type': 'companion',
+              'content': '水先蒸发，再凝结，最后降下来。',
+              'attachment_refs': const <String>[],
+              'interaction_ref': {
+                'kind': 'text_visual',
+                'parts': [
+                  {
+                    'type': 'visual',
+                    'visual': {
+                      'kind': 'steps',
+                      'alt': '水循环三步',
+                      'steps': [
+                        {'label': '蒸发'},
+                        {'label': '凝结'},
+                        {'label': '降水'},
+                      ],
                     },
-                  ],
-                },
+                  },
+                ],
               },
-          ],
+            },
         ],
-      };
+      ],
+    };
+  }
 
   @override
   Future<String> uploadCompanionAttachment(
@@ -1231,5 +1269,115 @@ void main() {
 
     expect(find.text('传递作业、通知或留言'), findsOneWidget);
     expect(find.text('获取绑定码'), findsOneWidget);
+  });
+
+  testWidgets(
+      'ward home restores latest companion thread and loads older messages across pages and previous threads with virtualized ListView',
+      (tester) async {
+    FlutterSecureStoragePlatform.instance =
+        TestFlutterSecureStoragePlatform({});
+    final api = _WardHomeApi()
+      ..currentTranscriptOverride = {
+        'thread_id': 'thread-new',
+        'thread_version': 4,
+        'next_before_thread_version': 3,
+        'previous_thread_id': null,
+        'messages': [
+          {
+            'id': 'm-3',
+            'thread_id': 'thread-new',
+            'thread_version': 3,
+            'author_type': 'ward',
+            'content': '最新一轮提问',
+            'attachment_refs': const <String>[],
+          },
+          {
+            'id': 'm-4',
+            'thread_id': 'thread-new',
+            'thread_version': 4,
+            'author_type': 'companion',
+            'content': '最新一轮回答',
+            'attachment_refs': const <String>[],
+          },
+        ],
+      };
+    api.threadTranscriptOverrides['thread-new:3'] = {
+      'thread_id': 'thread-new',
+      'thread_version': 4,
+      'next_before_thread_version': null,
+      'previous_thread_id': 'thread-old',
+      'messages': [
+        {
+          'id': 'm-1',
+          'thread_id': 'thread-new',
+          'thread_version': 1,
+          'author_type': 'ward',
+          'content': '当前线程较早提问',
+          'attachment_refs': const <String>[],
+        },
+        {
+          'id': 'm-2',
+          'thread_id': 'thread-new',
+          'thread_version': 2,
+          'author_type': 'companion',
+          'content': '当前线程较早回答',
+          'attachment_refs': const <String>[],
+        },
+      ],
+    };
+    api.threadTranscriptOverrides['thread-old:latest'] = {
+      'thread_id': 'thread-old',
+      'thread_version': 2,
+      'next_before_thread_version': null,
+      'previous_thread_id': null,
+      'messages': [
+        {
+          'id': 'm-old-1',
+          'thread_id': 'thread-old',
+          'thread_version': 1,
+          'author_type': 'ward',
+          'content': '重绑前的历史提问',
+          'attachment_refs': const <String>[],
+        },
+        {
+          'id': 'm-old-2',
+          'thread_id': 'thread-old',
+          'thread_version': 2,
+          'author_type': 'companion',
+          'content': '重绑前的历史回答',
+          'attachment_refs': const <String>[],
+        },
+      ],
+    };
+
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiProvider.overrideWithValue(api)],
+      child: const MaterialApp(home: WardDayPage(wardId: 'ward-1')),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('说出你的任何想法、问题、安排'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('companion-chat-list')), findsOneWidget);
+    expect(find.text('最新一轮提问'), findsOneWidget);
+    expect(find.text('最新一轮回答'), findsOneWidget);
+    expect(find.byKey(const Key('load-older-messages-button')), findsOneWidget);
+
+    // Load older page within thread-new
+    await tester.tap(find.byKey(const Key('load-older-messages-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('当前线程较早提问'), findsOneWidget);
+    expect(find.text('当前线程较早回答'), findsOneWidget);
+
+    // Drag down to scroll back to the top; scrolling near the top triggers loading thread-old
+    await tester.drag(
+        find.byKey(const Key('companion-chat-list')), const Offset(0, 300));
+    await tester.pumpAndSettle();
+
+    expect(find.text('重绑前的历史提问'), findsOneWidget);
+    expect(find.text('重绑前的历史回答'), findsOneWidget);
+    expect(find.byKey(const Key('load-older-messages-button')), findsNothing);
   });
 }

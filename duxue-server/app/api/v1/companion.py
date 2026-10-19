@@ -61,6 +61,108 @@ def companion_attachment_upload_url(
     return {"upload_url": url, "oss_key": key, "expires_at": datetime.fromtimestamp(expires, timezone.utc), "headers": headers}
 
 
+def _serialize_message(row: CompanionMessage) -> dict:
+    return {
+        "id": row.id, "thread_id": row.thread_id, "run_id": row.run_id,
+        "turn_id": row.turn_id, "attempt": row.attempt, "command_id": row.command_id,
+        "thread_version": row.thread_version, "author_type": row.author_type,
+        "content": row.content, "attachment_refs": row.attachment_refs,
+        "interaction_ref": row.interaction_ref, "created_at": row.created_at,
+    }
+
+
+def _previous_thread_with_messages(db: Session, ward_id: str, current_thread: ConversationThread) -> ConversationThread | None:
+    candidates = (
+        db.query(ConversationThread)
+        .filter(
+            ConversationThread.ward_id == ward_id,
+            ConversationThread.id != current_thread.id,
+            ConversationThread.created_at <= current_thread.created_at,
+        )
+        .order_by(ConversationThread.created_at.desc(), ConversationThread.id.desc())
+        .all()
+    )
+    for item in candidates:
+        if item.created_at == current_thread.created_at and item.id >= current_thread.id:
+            continue
+        has_msg = (
+            db.query(CompanionMessage.id)
+            .filter_by(thread_id=item.id, ward_id=ward_id)
+            .first()
+        )
+        if has_msg is not None:
+            return item
+    return None
+
+
+def _thread_messages_payload(
+    db: Session,
+    *,
+    ward_id: str,
+    thread: ConversationThread,
+    before_thread_version: int | None,
+    limit: int,
+) -> dict:
+    query = db.query(CompanionMessage).filter_by(thread_id=thread.id, ward_id=ward_id)
+    if before_thread_version is not None:
+        query = query.filter(CompanionMessage.thread_version < before_thread_version)
+    rows = query.order_by(CompanionMessage.thread_version.desc()).limit(limit + 1).all()
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+    messages = [_serialize_message(row) for row in reversed(rows)]
+    next_before = rows[-1].thread_version if has_more and rows else None
+    previous_thread_id: str | None = None
+    if next_before is None:
+        prev = _previous_thread_with_messages(db, ward_id, thread)
+        if prev is not None:
+            previous_thread_id = prev.id
+    return {
+        "thread_id": thread.id,
+        "thread_version": thread.version,
+        "messages": messages,
+        "next_before_thread_version": next_before,
+        "previous_thread_id": previous_thread_id,
+    }
+
+
+@router.get("/companion/threads/current/messages")
+def current_companion_messages(
+    before_thread_version: int | None = Query(default=None, ge=1),
+    limit: int = Query(default=50, ge=1, le=100),
+    principal: Principal = Depends(current_ward),
+    db: Session = Depends(get_db),
+):
+    latest_msg = (
+        db.query(CompanionMessage)
+        .filter_by(ward_id=principal.user_id)
+        .order_by(CompanionMessage.created_at.desc(), CompanionMessage.thread_version.desc())
+        .first()
+    )
+    thread = db.get(ConversationThread, latest_msg.thread_id) if latest_msg is not None else None
+    if thread is None:
+        thread = (
+            db.query(ConversationThread)
+            .filter_by(ward_id=principal.user_id)
+            .order_by(ConversationThread.updated_at.desc(), ConversationThread.created_at.desc())
+            .first()
+        )
+    if thread is None:
+        return {
+            "thread_id": None,
+            "thread_version": 0,
+            "messages": [],
+            "next_before_thread_version": None,
+            "previous_thread_id": None,
+        }
+    return _thread_messages_payload(
+        db,
+        ward_id=principal.user_id,
+        thread=thread,
+        before_thread_version=before_thread_version,
+        limit=limit,
+    )
+
+
 @router.get("/companion/threads/{thread_id}/messages")
 def companion_messages(
     thread_id: str,
@@ -72,23 +174,13 @@ def companion_messages(
     thread = db.get(ConversationThread, thread_id)
     if thread is None or thread.ward_id != principal.user_id:
         raise HTTPException(404, "conversation thread not found")
-    query = db.query(CompanionMessage).filter_by(thread_id=thread_id, ward_id=principal.user_id)
-    if before_thread_version is not None:
-        query = query.filter(CompanionMessage.thread_version < before_thread_version)
-    rows = query.order_by(CompanionMessage.thread_version.desc()).limit(limit + 1).all()
-    has_more = len(rows) > limit
-    rows = rows[:limit]
-    messages = [{
-        "id": row.id, "thread_id": row.thread_id, "run_id": row.run_id,
-        "turn_id": row.turn_id, "attempt": row.attempt, "command_id": row.command_id,
-        "thread_version": row.thread_version, "author_type": row.author_type,
-        "content": row.content, "attachment_refs": row.attachment_refs,
-        "interaction_ref": row.interaction_ref, "created_at": row.created_at,
-    } for row in reversed(rows)]
-    return {
-        "thread_id": thread.id, "thread_version": thread.version, "messages": messages,
-        "next_before_thread_version": rows[-1].thread_version if has_more and rows else None,
-    }
+    return _thread_messages_payload(
+        db,
+        ward_id=principal.user_id,
+        thread=thread,
+        before_thread_version=before_thread_version,
+        limit=limit,
+    )
 
 @router.post("/companion/turn")
 def companion_turn(body: CompanionTurnRequest, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
