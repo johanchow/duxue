@@ -433,11 +433,11 @@ Workflow 必须声明版本化 `ContextSpec`：Memory 范围、近期会话窗�
 | Contract                 | 请求/结果语义                                                                                      | 授权、幂等与兼容                                                                               |
 | ------------------------ | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
 | `CompanionTurn`          | Ward 提交 `command_id`、Thread/version、文本或受验证 UI 动作与 route hint；结果关联 Thread、Run、Turn、当前版本和已校验交互 | `route_hint` 仅来自服务端验证 UI；相同 `command_id` 返回同一结果                                        |
-| `GetCompanionTranscript` | 按 Thread 和 `before_thread_version` 游标返回 Ward-facing messages、下一游标及当前 Thread 版本               | 仅 Thread 所属 Ward；不得一次读取无限历史；只读，不改 Aggregate                                            |
+| `GetCompanionTranscript` | 按 Thread（或 `current` 最近活跃 Thread）和 `before_thread_version` 游标返回 Ward-facing messages、下一游标 `next_before_thread_version`、前序历史线程 `previous_thread_id` 及当前 Thread 版本 | 仅 Thread 所属 Ward；不得一次读取无限历史；只读，不改 Aggregate                                            |
 | `WorkflowOutcome`        | 返回已校验的展示回复、下一步交互、Run 状态、恢复动作和脱敏失败信息                                                          | 仅当前 `run_id + turn_id + attempt + focus` 可追加 companion journal record；旧 Outcome 只审计不展示 |
 
 
-目标读取接口为 `GET /companion/threads/{thread_id}/messages?before_thread_version=&limit=`；客户端以
+目标读取接口为 `GET /companion/threads/{thread_id}/messages?before_thread_version=&limit=`（以及无本地 `thread_id` 时恢复最近对话的 `GET /companion/threads/current/messages`）；当单 Thread 游标到顶（`next_before_thread_version=null`）且该 Ward 存在更早的非空历史 Thread 时返回 `previous_thread_id`，供客户端无缝往前翻阅全部历史消息，而 LLM 上下文窗口始终由 `select_recent_utterances` 独立限制在当前 Thread 最近 8 条内。客户端以
 `command_id` 将乐观 Ward 气泡与服务端投影合并，重试同一命令不得产生重复气泡。当前实现仍用较宽松的
 `content`、`turn: dict` 和元数据响应；上述为目标契约，迁移必须保持兼容或显式版本化。
 `WorkflowFailure` 至少含稳定 `code`、面向 Trace 的脱敏 `detail`、`retriable` 与失败来源

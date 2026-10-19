@@ -442,9 +442,32 @@ class ApiClient {
   /// Keeps the server's thread version together with its transcript.  The
   /// version is the concurrency token for the next companion turn, so callers
   /// must not discard it while refreshing the visible messages.
-  Future<Map<String, dynamic>> companionMessages(String threadId) async =>
-      Map<String, dynamic>.from(
-          (await dio.get('/companion/threads/$threadId/messages')).data as Map);
+  Future<Map<String, dynamic>> companionMessages(
+    String threadId, {
+    int? beforeThreadVersion,
+    int limit = 50,
+  }) async =>
+      Map<String, dynamic>.from((await dio.get(
+              '/companion/threads/$threadId/messages',
+              queryParameters: {
+                if (beforeThreadVersion != null)
+                  'before_thread_version': beforeThreadVersion,
+                'limit': limit,
+              }))
+          .data as Map);
+
+  Future<Map<String, dynamic>> currentCompanionMessages({
+    int? beforeThreadVersion,
+    int limit = 50,
+  }) async =>
+      Map<String, dynamic>.from((await dio.get(
+              '/companion/threads/current/messages',
+              queryParameters: {
+                if (beforeThreadVersion != null)
+                  'before_thread_version': beforeThreadVersion,
+                'limit': limit,
+              }))
+          .data as Map);
 
   Future<String> uploadCompanionAttachment(
       Uint8List bytes, String extension) async {
