@@ -37,7 +37,8 @@ mkdir -p /home/duxue/duxue-server
 # 将 .env.prod 放到该目录（永远不要提交 Git）
 ```
 
-工作流只上传 `docker-compose.yml` 与镜像，**不会**覆盖 `.env.prod`。
+工作流上传 Compose 与镜像，**不会**覆盖 `.env.prod`；Grafana 与可选 Langfuse 的
+凭据都只保存在该文件中。
 
 SSH 使用 `StrictHostKeyChecking=no`（不要求配置 `DEPLOY_SERVER_KNOWN_HOSTS`）。适合当前单机、密钥登录的场景；换机或重装后一般也无需改 Secrets。
 

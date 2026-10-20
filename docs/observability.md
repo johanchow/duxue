@@ -7,6 +7,11 @@
 > 实施状态（2026-09-12）：服务端已接入标准 OTLP traces / metrics、FastAPI / SQLAlchemy / Celery / Redis / HTTPX 自动插桩，以及 Agent、LLM/VLM、采集与 Celery 的手工业务遥测。部署、dashboard 与告警模板见 [`ops/observability/`](../ops/observability/)。Flutter 与 Android 的 trace context 接入仍待单独实施。
 
 > 实施状态（2026-09-13）：Flutter App 已经通过已认证的 Server relay 上报安全的体验 telemetry；`service.name=duxue-app` 与 `service.name=duxue-server` 在 Grafana 中保持独立，且可由 W3C `trace_id` 串联。Android Cam 仍待接入。
+>
+> 实施状态（2026-10-20）：Server 继续直连 Grafana。可选 Langfuse Cloud 以服务端进程内的第二个
+> OTEL span processor 实现，默认关闭；只接收字段白名单后的 AI trace，不接收 logs、metrics、儿童
+> 原文、模型原文、图片或完整上下文。部署说明见
+> [`ops/observability/README.md`](../ops/observability/README.md)。
 
 ---
 
@@ -40,7 +45,7 @@ duxue-cam 定时抓拍上传（Android 长驻 Foreground Service）
 
 | 方案 | 工具组合 | 优势 | 劣势 |
 |------|---------|------|------|
-| **A. 纯 OpenTelemetry + Grafana** | OTEL SDK × 3 端 → Alloy → Loki / Tempo / Prometheus → Grafana | 三端统一标准；Traces/Logs/Metrics 在 Grafana 内互相跳转；无厂商锁定 | 移动端 OTEL SDK 较新，Logs 信号在 Android/Flutter 侧为实验阶段 |
+| **A. 纯 OpenTelemetry + Grafana** | OTEL SDK × 3 端 → Grafana OTLP → Loki / Tempo / Prometheus → Grafana | 三端统一标准；Traces/Logs/Metrics 在 Grafana 内互相跳转；无厂商锁定 | 移动端 OTEL SDK 较新，Logs 信号在 Android/Flutter 侧为实验阶段 |
 | **B. Sentry + Prometheus/Grafana** | Sentry SDK × 3 端（错误）+ OTEL/Prometheus（指标） | Crash 报告体验最好；移动端接入最简单 | 两套工具，日志与链路不在同一平台；Sentry 免费额度有限 |
 | **C. Firebase Crashlytics + 自定义** | Firebase × 移动端 + 自研埋点 | Google 生态，Android/Flutter 接入极简 | 仅覆盖移动端崩溃，无链路追踪，Server 端需另建体系 |
 
@@ -72,10 +77,11 @@ duxue-cam 定时抓拍上传（Android 长驻 Foreground Service）
 │  opentelemetry-sdk                     │                    │
 │  ── Traces / Metrics / Logs ───────────┘                   │
 └────────────────────────┬────────────────────────────────────┘
-                         │ OTLP（gRPC :4317 / HTTP :4318）
+                         │ OTLP（HTTPS）
                          ▼
                ┌─────────────────┐
-               │  Grafana Alloy  │  统一收集 & 路由
+               │ Grafana OTLP    │  统一收集 & 路由
+               │ Gateway / LGTM  │
                └────┬──────┬─────┘
                     │      │      │
               Traces│  Logs│  Metrics
@@ -258,7 +264,13 @@ Server 端 OTEL SDK 完整支持通过环境变量配置，无需改动代码：
 
 服务端不再需要用 `opentelemetry-instrument` 包裹启动命令：应用 bootstrap 会在检测到 `OTEL_EXPORTER_OTLP_ENDPOINT` 后初始化 exporter。测试或离线环境设置 `OTEL_SDK_DISABLED=true`；未配置 endpoint 时不会创建 exporter。`api`、`worker`、`beat` 通过 `OTEL_SERVICE_COMPONENT` 作为资源属性区分。
 
-### 7.1.1 Agent 数据边界
+### 7.1.1 可选 Langfuse（无额外进程）
+
+Langfuse 默认关闭。需要 AI trace 时，在同一份服务端环境文件配置 `LANGFUSE_ENABLED=true`、`LANGFUSE_PUBLIC_KEY`、`LANGFUSE_SECRET_KEY` 与区域对应的 `LANGFUSE_BASE_URL`。它作为同一 Python 进程中的第二个 OpenTelemetry span processor 工作；Grafana 仍使用已有的 OTLP exporter，因此不需要 Alloy、Compose override 或额外容器。
+
+Langfuse 导出采用严格 allow-list：只发送由 `model_call_span` 创建的 `llm.request`，其中仅有模型名、操作、组件版本、结果、时延、token 用量和供应商请求 ID。不得记录 prompt、completion、Ward 问话、图片、ContextEnvelope、异常原文、认证或 API key。由于 HTTP 根 span 被刻意排除，这些 generation 会在 Langfuse 中显示为顶层 trace；这是降低儿童数据外发面的有意取舍。
+
+### 7.1.2 Agent 数据边界
 
 Agent span / OTLP log event 包含运行关联 ID、模型、结果、时延、token 用量（供应商返回时）、**Ward 本轮问话文本**（`input.text`，上限 2000 字，邮箱与大陆手机号已遮蔽）以及输入/输出的长度和 SHA-256 摘要；答疑轮另有 `tutor.turn.result` 事件（`act`、`relation`、结果 `shown|fallback|blocked`、失败原因、配图丢弃原因、形状告警，不含展示文本）。容器 stdout 也输出携带 trace/span ID 的 JSON 日志。问话进入 Grafana 是为审计与评测取样，Loki 的访问权限与留存按儿童数据处理。不得将模型原文、完整 ContextEnvelope、图像 data URL、Authorization 或 API Key 写入 Grafana。
 

@@ -1,27 +1,69 @@
 # Duxue observability deployment
 
-The server exports OTLP/HTTP directly to the endpoint in its standard
-`OTEL_EXPORTER_OTLP_*` variables. This works with Grafana Cloud and with an
-authenticated private Grafana Alloy gateway; this repository intentionally
-does not contain any endpoint or credential.
+Production Compose keeps the Server's existing direct OTLP export to Grafana.
+Langfuse is an optional in-process span processor, not a gateway or a second
+container:
+
+```text
+api / worker / beat -- OTLP --> Grafana (traces, metrics, logs)
+                    \-- Langfuse SDK (approved AI traces only; optional)
+```
+
+This keeps local debugging and deployment unchanged: no collector service,
+port, Compose override, or second environment file is needed.
 
 ## Required deployment settings
 
-Set these values in the server's production environment (not Git):
+Set the following existing standard OTEL values in the deployment-only,
+owner-readable `.env.prod`:
 
 - `OTEL_SERVICE_NAME=duxue-server`
-- `OTEL_EXPORTER_OTLP_ENDPOINT`: Grafana Cloud gateway or private Alloy OTLP
-  base endpoint.
-- `OTEL_EXPORTER_OTLP_HEADERS`: the authorization header required by that
-  endpoint.
+- `OTEL_EXPORTER_OTLP_ENDPOINT`: Grafana Cloud OTLP base endpoint.
+- `OTEL_EXPORTER_OTLP_HEADERS`: the Grafana authorization header.
 - `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`
 - `OTEL_TRACES_SAMPLER=parentbased_traceidratio`
 - `OTEL_TRACES_SAMPLER_ARG=0.2` in production; use `1.0` temporarily when
   debugging a bounded incident.
 
-`api`, `worker`, and `beat` set `OTEL_SERVICE_COMPONENT` in Compose. Keep this
-dimension rather than creating distinct service names so cross-process views
-stay grouped under `duxue-server`.
+`api`, `worker`, and `beat` retain `OTEL_SERVICE_COMPONENT`; keep this dimension rather than
+creating distinct service names so cross-process views stay grouped under
+`duxue-server`.
+
+The normal production command needs only this one environment file:
+
+```bash
+ENV_FILE=.env.prod docker compose up -d
+```
+
+## Optional Langfuse Cloud fan-out
+
+Start the base deployment normally for Grafana only. To add Langfuse, create a
+Langfuse account and project, then generate a **project API key pair** in that
+project's settings. In the same deployment-only `.env.prod`, set:
+
+```bash
+LANGFUSE_ENABLED=true
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...
+LANGFUSE_BASE_URL=https://us.cloud.langfuse.com
+```
+
+Use the Langfuse region approved for your data residency requirements. The
+public key is an identifier, but the secret key is a credential; never put
+either in source code, the App, or CI logs.
+
+The Langfuse configuration sends no logs or metrics. It retains only the
+explicit `llm.request` span from `service.name=duxue-server`; then it applies
+an attribute allow-list. The only
+permitted model-call fields are component/version, model, model source,
+operation, duration, token counts, provider request ID and result status.
+Prompt text, Ward text, model output, image/data URLs, ContextEnvelope,
+Authorization and API keys are not in that allow-list. Do not add prompt or
+completion fields merely to improve the Langfuse UI.
+
+Langfuse is an observability aid, not a source of record or a permission to
+upload children’s conversations. Dataset import, annotation, or any approved
+sample export needs a separate child-data governance decision.
 
 ## Grafana import and alerts
 
