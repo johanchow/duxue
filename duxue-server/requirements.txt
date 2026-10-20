@@ -51,4 +51,6 @@ opentelemetry-instrumentation-sqlalchemy>=0.50b0
 opentelemetry-instrumentation-celery>=0.50b0
 opentelemetry-instrumentation-redis>=0.50b0
 opentelemetry-instrumentation-httpx>=0.50b0
+# Optional in-process LLM tracing. Disabled unless LANGFUSE_ENABLED=true.
+langfuse>=3.0.0
 structlog>=24.4.0

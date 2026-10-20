@@ -27,9 +27,14 @@ alembic upgrade head
 生产环境连接外部 RDS、Redis 与 OSS，不会在 Compose 内再创建同名依赖：
 
 ```bash
+# Grafana 与可选 Langfuse 均由 `.env.prod` 中的环境变量直接配置。
 ENV_FILE=.env.prod docker compose --profile tools run --rm migrate
 ENV_FILE=.env.prod docker compose up -d api worker beat
 ```
+
+如需启用 Langfuse Cloud，在 `.env.prod` 配置 `LANGFUSE_ENABLED=true`、项目 API key
+与区域 URL；不需要 Compose override 或额外容器。详细字段与数据边界见
+[`ops/observability/README.md`](../ops/observability/README.md)。
 
 生产环境还需把 Admin Web 的实际 HTTPS Origin 填入 `CORS_ALLOW_ORIGINS`；不要使用 `*`，因为 Guardian 的 JWT 请求需要受限的浏览器跨域策略。
 

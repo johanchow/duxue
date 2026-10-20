@@ -30,8 +30,23 @@ _EMAIL = re.compile(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}")
 _PHONE = re.compile(r"(?<!\d)1\d{10}(?!\d)")
 
 
-def _enabled() -> bool:
+def _grafana_enabled() -> bool:
     return bool(os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")) and os.getenv("OTEL_SDK_DISABLED", "false").lower() not in {"1", "true", "yes"}
+
+
+def _langfuse_enabled() -> bool:
+    """Whether the optional, in-process Langfuse exporter is configured."""
+    return (
+        os.getenv("LANGFUSE_ENABLED", "false").lower() in {"1", "true", "yes"}
+        and bool(os.getenv("LANGFUSE_PUBLIC_KEY"))
+        and bool(os.getenv("LANGFUSE_SECRET_KEY"))
+        and os.getenv("OTEL_SDK_DISABLED", "false").lower() not in {"1", "true", "yes"}
+    )
+
+
+def _should_export_to_langfuse(span: Any) -> bool:
+    """Allow only the deliberately payload-free model-call span into Langfuse."""
+    return span.name == "llm.request"
 
 
 def _component_resource(component: str):
@@ -70,11 +85,13 @@ class _JsonFormatter(logging.Formatter):
 def configure_observability(*, component: str, app=None, engine=None) -> bool:
     """Configure OTLP once per process; return false when export is disabled.
 
-    OTLP exporters read the standard ``OTEL_EXPORTER_OTLP_*`` variables, so
-    Grafana Cloud and Alloy require no source-code-specific credentials.
+    Grafana reads standard ``OTEL_EXPORTER_OTLP_*`` variables. Langfuse is an
+    optional second span processor and never receives OTLP logs or metrics.
     """
     global _configured
-    if not _enabled():
+    grafana_enabled = _grafana_enabled()
+    langfuse_enabled = _langfuse_enabled()
+    if not grafana_enabled and not langfuse_enabled:
         return False
     with _lock:
         if _configured:
@@ -92,16 +109,30 @@ def configure_observability(*, component: str, app=None, engine=None) -> bool:
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
         tracer_provider = TracerProvider(resource=resource)
-        tracer_provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+        if grafana_enabled:
+            tracer_provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
         trace.set_tracer_provider(tracer_provider)
-        metrics.set_meter_provider(MeterProvider(
-            metric_readers=[PeriodicExportingMetricReader(OTLPMetricExporter())], resource=resource,
-        ))
+        if langfuse_enabled:
+            # Langfuse registers on the already-configured global provider.
+            # Its callback is a strict allow-list; see _should_export_to_langfuse.
+            from langfuse import Langfuse
+            Langfuse(
+                public_key=os.environ["LANGFUSE_PUBLIC_KEY"],
+                secret_key=os.environ["LANGFUSE_SECRET_KEY"],
+                base_url=os.getenv("LANGFUSE_BASE_URL", "https://cloud.langfuse.com"),
+                should_export_span=_should_export_to_langfuse,
+            )
+        if grafana_enabled:
+            metrics.set_meter_provider(MeterProvider(
+                metric_readers=[PeriodicExportingMetricReader(OTLPMetricExporter())], resource=resource,
+            ))
         _register_runtime_gauges(component)
 
-        logger_provider = LoggerProvider(resource=resource)
-        logger_provider.add_log_record_processor(BatchLogRecordProcessor(OTLPLogExporter()))
-        _logs.set_logger_provider(logger_provider)
+        logger_provider = None
+        if grafana_enabled:
+            logger_provider = LoggerProvider(resource=resource)
+            logger_provider.add_log_record_processor(BatchLogRecordProcessor(OTLPLogExporter()))
+            _logs.set_logger_provider(logger_provider)
 
         # OTEL logs are still evolving in Python.  Keep stdout JSON as the
         # dependable container log path, with trace/span IDs for Loki derived
@@ -113,9 +144,10 @@ def configure_observability(*, component: str, app=None, engine=None) -> bool:
             handler.addFilter(_TraceContextFilter())
             handler.setFormatter(_JsonFormatter())
             root.addHandler(handler)
-            otel_handler = LoggingHandler(level=logging.NOTSET, logger_provider=logger_provider)
-            otel_handler._duxue_otel_logs = True  # type: ignore[attr-defined]
-            root.addHandler(otel_handler)
+            if logger_provider is not None:
+                otel_handler = LoggingHandler(level=logging.NOTSET, logger_provider=logger_provider)
+                otel_handler._duxue_otel_logs = True  # type: ignore[attr-defined]
+                root.addHandler(otel_handler)
             root.setLevel(os.getenv("LOG_LEVEL", "INFO").upper())
 
         _instrument(component=component, app=app, engine=engine)
@@ -376,6 +408,10 @@ def model_call_span(*, operation: str, model: str, agent_type: str | None = None
         "llm.operation": operation, "llm.model": model, "agent.type": agent_type,
         "ai.component_id": component_id, "ai.component_version": component_version,
         "ai.model_source": model_source,
+        # These are mapping keys, not prompt/completion payloads. The optional
+        # in-process Langfuse processor exports only this existing span.
+        "langfuse.observation.type": "generation",
+        "langfuse.observation.model.name": model,
     })
     with trace.get_tracer("duxue.model").start_as_current_span("llm.request", attributes=attrs) as span:
         result: dict[str, Any] = {"result": "success", "tokens_in": None, "tokens_out": None, "provider_request_id": None}
@@ -383,7 +419,8 @@ def model_call_span(*, operation: str, model: str, agent_type: str | None = None
             yield result
         except Exception as error:
             result["result"] = "error"
-            span.record_exception(error)
+            # Exception payloads can include a prompt or provider response.
+            span.set_attribute("error.type", type(error).__name__)
             span.set_status(trace.Status(trace.StatusCode.ERROR, type(error).__name__))
             raise
         finally:
@@ -398,6 +435,14 @@ def model_call_span(*, operation: str, model: str, agent_type: str | None = None
             for key in ("provider_request_id", "tokens_in", "tokens_out"):
                 if result[key] is not None:
                     span.set_attribute(f"llm.{key}", result[key])
+            if result["tokens_in"] is not None or result["tokens_out"] is not None:
+                span.set_attribute(
+                    "langfuse.observation.usage_details",
+                    json.dumps({
+                        "input": result["tokens_in"] or 0,
+                        "output": result["tokens_out"] or 0,
+                    }),
+                )
             span.set_attribute("llm.duration_ms", duration_ms)
 
 

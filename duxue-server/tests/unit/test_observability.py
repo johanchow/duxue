@@ -16,10 +16,67 @@ from app.infrastructure.observability.telemetry import (
 )
 
 
-def test_telemetry_is_disabled_without_an_otlp_endpoint(monkeypatch):
+def test_telemetry_is_disabled_without_an_otlp_endpoint_or_langfuse(monkeypatch):
     monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
     monkeypatch.delenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", raising=False)
+    monkeypatch.setenv("LANGFUSE_ENABLED", "false")
     assert configure_observability(component="api") is False
+
+
+def test_model_span_includes_only_safe_langfuse_generation_mapping(monkeypatch):
+    """The optional SDK exporter can classify a generation without prompt text."""
+    from contextlib import contextmanager
+
+    from app.infrastructure.observability import telemetry
+
+    class Span:
+        def __init__(self):
+            self.attributes = {}
+
+        def set_attribute(self, key, value):
+            self.attributes[key] = value
+
+        def record_exception(self, _error):
+            raise AssertionError("unexpected model error")
+
+        def set_status(self, _status):
+            raise AssertionError("unexpected model error")
+
+    captured = Span()
+
+    class Tracer:
+        @contextmanager
+        def start_as_current_span(self, _name, attributes):
+            captured.attributes.update(attributes)
+            yield captured
+
+    monkeypatch.setattr(telemetry.trace, "get_tracer", lambda _name: Tracer())
+    with telemetry.model_call_span(
+        operation="tutor_turn", model="qwen-test", agent_type="tutoring",
+        component_id="tutoring.turn", component_version="v1",
+    ) as result:
+        result["tokens_in"] = 12
+        result["tokens_out"] = 34
+
+    assert captured.attributes["langfuse.observation.type"] == "generation"
+    assert captured.attributes["langfuse.observation.model.name"] == "qwen-test"
+    assert json.loads(captured.attributes["langfuse.observation.usage_details"]) == {"input": 12, "output": 34}
+    assert "langfuse.observation.input" not in captured.attributes
+    assert "langfuse.observation.output" not in captured.attributes
+
+
+def test_langfuse_requires_an_explicit_enabled_flag_and_both_keys(monkeypatch):
+    from app.infrastructure.observability.telemetry import _langfuse_enabled
+
+    monkeypatch.setenv("LANGFUSE_ENABLED", "true")
+    monkeypatch.delenv("OTEL_SDK_DISABLED", raising=False)
+    monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
+    monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
+    assert _langfuse_enabled() is False
+
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-test")
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-test")
+    assert _langfuse_enabled() is True
 
 
 def test_agent_input_log_carries_the_question_with_contact_details_masked(caplog, monkeypatch):

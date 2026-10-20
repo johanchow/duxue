@@ -62,8 +62,11 @@ jobs:
         env:
           DEPLOY_SERVER_HOST: ${{ secrets.DEPLOY_SERVER_HOST }}
         run: |
-          scp $SSH_OPTS -P "$DEPLOY_SERVER_PORT" duxue-server/docker-compose.yml \
-            "$DEPLOY_SERVER_USER@$DEPLOY_SERVER_HOST:$DEPLOY_PATH/docker-compose.yml"
+          ssh $SSH_OPTS -p "$DEPLOY_SERVER_PORT" "$DEPLOY_SERVER_USER@$DEPLOY_SERVER_HOST" \
+            "mkdir -p '$DEPLOY_PATH'"
+          scp $SSH_OPTS -P "$DEPLOY_SERVER_PORT" \
+            duxue-server/docker-compose.yml \
+            "$DEPLOY_SERVER_USER@$DEPLOY_SERVER_HOST:$DEPLOY_PATH/"
       - name: Migrate and start services
         env:
           DEPLOY_SERVER_HOST: ${{ secrets.DEPLOY_SERVER_HOST }}
