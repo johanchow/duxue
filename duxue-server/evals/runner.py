@@ -114,6 +114,7 @@ def _observe_tutor(case: EvalCase, backends: Backends, window: list[dict], image
         leak_judge=backends.leak_judge or _NeverLeaks(), task_title=context.task_title,
         problem_summary=judge_problem_summary(
             [problem.summary] if problem and problem.summary else [], case.student_said,
+            recent_utterances=window,
         ),
     )
     return classify(result.call, result.vetting, leak_retried=result.leak_retried)

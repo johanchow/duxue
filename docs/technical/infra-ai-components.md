@@ -167,8 +167,8 @@ class ComponentSpec:
 
 | Component | 风险 | 调用点 | 保留的调用方边界 |
 | --- | --- | --- | --- |
-| `tutoring.turn@v13` | protected | 答疑主调用（契约 `tutor-turn.v4`：回答形状 + 正文公式/Markdown 规范 + 可选两层 `visual`；v13：明确行内 `$...$` / 块级 `$$...$$` 与 `\frac`、`\sqrt`、金额“100 元”等书写约定） | `TutorTurnCandidate`、结构恢复与三道出口检查 |
-| `tutoring.leak-judge@v4` | protected | 作业答案泄露审核（v3：`problem` 可列出本会话最近几道题和孩子本轮的话；v4：不再接收 `depth`，只按严格标准审，单个事实由代码事实闸门放行） | `None` 由 Workflow fail-closed |
+| `tutoring.turn@v16` | protected | 答疑主调用（契约 `tutor-turn.v4`：回答形状 + 正文公式/Markdown 规范 + 可选两层 `visual`；v16：所有 `guide` 轮次只推进一个由学生完成的动作，泄露重试按具体原因改写） | `TutorTurnCandidate`、结构恢复与三道出口检查 |
+| `tutoring.leak-judge@v6` | protected | 作业答案泄露审核（`problem` 包含有界的学生先前原话；v6：区分引用已有结果与替学生完成计算/核验，返回单个审核原因） | `None` 由 Workflow fail-closed；越界重试仍经完整出口检查 |
 | `tutoring.visual-leak-judge@v2` | protected | 配图是否替孩子完成了作业（v2：`problem` 同文字判官，可列多道题） | `None`、超时、异常都只丢弃 `visual`，不整轮回退 |
 | `companion.intent@v1` | standard | 场景路由提议 | 非法或失败映射为 `unclear` |
 | `planning.reply@v1` / `reflection.advice@v1` | standard | `QwenAgentModelGateway.generate` | `AgentTextCandidate` 校验，失败走确定性降级 |

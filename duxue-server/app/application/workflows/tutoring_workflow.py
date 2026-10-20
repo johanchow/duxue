@@ -304,7 +304,9 @@ class TutoringWorkflow:
         )
         result = self._run_model(
             envelope.model_dump(), instruction, window, images, tools, permit=permit, task_title=task_title,
-            problem_summary=judge_problem_summary(self._recent_problem_summaries(tutor), content),
+            problem_summary=judge_problem_summary(
+                self._recent_problem_summaries(tutor), content, recent_utterances=window,
+            ),
         )
         candidate = verdict = visual = None
         failure = "no_candidate"

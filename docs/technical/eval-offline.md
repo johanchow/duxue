@@ -209,7 +209,7 @@ Runner 顺序调用与生产单步相同的组件路径，把**实际展示的�
 2. 把 `history`/`images` 还原成模型视图：每句 `{author, text, image_urls}`，图片从 `var/eval-assets/` 读为 data URL；本轮图片同理。
 3. `build_tutor_instruction` 生成与生产相同的指令（含 `history_candidates`、`permit`、`expected_act`）。
 4. `TutorToolbox(db=None, …)` 提供只读工具（`get_task_context`、`get_attempt_summary`、`lookup_history`）；`context` 用 `{}`（无记忆 envelope，见 §十）。
-5. `run_tutor_turn`：`call_tutor_model` → 有候选则 `vet_candidate`（`check_authority` + 短事实分类 `fact_gate` 观测 + 泄露判官；受保护题目不再以模型自报 `atomic`/`recall` 跳过判官；带图时并行跑 `tutoring.visual-leak-judge`，图被丢弃只记原因，不算 fallback）；越界正文带“泄露：”重试一次，与生产同源。报告的 guardrail 里 `leak_retries` 是重试次数，最终仍回退的计入 fallback。
+5. `run_tutor_turn`：`call_tutor_model` → 有候选则 `vet_candidate`（`check_authority` + 短事实分类 `fact_gate` 观测 + 泄露判官；受保护题目不再以模型自报 `atomic`/`recall` 跳过判官；带图时并行跑 `tutoring.visual-leak-judge`，图被丢弃只记原因，不算 fallback）；审核题目摘要还包含窗口内有界的学生原话，与生产同源。越界正文带“泄露：”、审核原因和有界的被拒草稿重试一次，重试结果仍经完整出口检查。报告的 guardrail 里 `leak_retries` 是重试次数，最终仍回退的计入 fallback。
 
 `companion.intent`：以 `ModelIntentClassifier` 包一层，捕获 `ModelGatewayError`，使"提供商错误"与"模型真的判 unclear"可区分。
 

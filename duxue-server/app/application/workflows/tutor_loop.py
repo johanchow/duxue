@@ -6,6 +6,7 @@ fallback 与线上完全同源，不另抄一份规则。
 
 from __future__ import annotations
 
+import json
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
@@ -61,6 +62,7 @@ class Vetting:
     candidate: TutorTurnCandidate
     verdict: Verdict | None
     failure: str | None = None
+    leak_reason: str | None = None
     visual: Visual | None = None
     visual_dropped: str | None = None
     shape_flags: list[str] = field(default_factory=list)
@@ -152,18 +154,46 @@ FACT_REPLY_MAX_CHARS = 120
 # 判官看到本答疑会话最近这么多道题：`relation=new` 放弃的题不受保护，但孩子随后追问它的答案时，
 # 判官必须还能认出来。
 JUDGE_RECENT_PROBLEMS = 3
+JUDGE_RECENT_STUDENT_UTTERANCES = 3
 # 越过作业答案边界时重试一次；判官自身失败不重试。
 LEAK_RETRY_REASONS = frozenset({"answer_marker", "leak_detected"})
 LEAK_REPAIR = "泄露：上一版回复越过了作业答案边界；请按题型重写，不附和错误答案或确认可试探的选项。"
 
 
-def judge_problem_summary(recent_problems: list[str], student_said: str) -> str | None:
-    """泄露判官的 ``problem``：最近几道题（新的在前）加孩子本轮的话。生产与评测共用。"""
+def judge_problem_summary(
+    recent_problems: list[str], student_said: str, *, recent_utterances: list[dict] | None = None,
+) -> str | None:
+    """审核题目及有界学生证据；导师原话不当作学生已经提交的答案。"""
     problems = [item.strip() for item in recent_problems if item and item.strip()][:JUDGE_RECENT_PROBLEMS]
     lines = [f"第{index}题：{item}" for index, item in enumerate(problems, start=1)]
+    ward_texts = [str(item.get("text", "")).strip() for item in (recent_utterances or [])
+                  if item.get("author") == "ward" and str(item.get("text", "")).strip()]
+    lines.extend(f"学生先前说：{text[:300]}" for text in ward_texts[-JUDGE_RECENT_STUDENT_UTTERANCES:])
     if student_said.strip() and student_said.strip() not in problems:
         lines.append(f"孩子本轮说：{student_said.strip()}")
     return "\n".join(lines) or None
+
+
+LEAK_REASONS = frozenset({
+    "final_answer", "complete_solution", "choice_verdict", "incorrect_confirmation",
+    "premature_conclusion",
+})
+
+
+def _text_leak_result(result: bool | dict | None) -> tuple[bool | None, str | None]:
+    if isinstance(result, bool):
+        return result, None
+    if isinstance(result, dict) and isinstance(result.get("leaks"), bool):
+        reason = result.get("reason")
+        return result["leaks"], reason if result["leaks"] and isinstance(reason, str) and reason in LEAK_REASONS else None
+    return None, None
+
+
+def _leak_repair(vetting: Vetting) -> str:
+    """Bounded feedback for one retry. The rejected draft never reaches the child."""
+    reason = vetting.leak_reason or vetting.failure or "unspecified"
+    rejected = json.dumps(vetting.candidate.shown_text[:800], ensure_ascii=False)
+    return f"{LEAK_REPAIR}\n审核原因：{reason}。\n被拒草稿（只供改写，禁止照抄）：{rejected}"
 
 
 def fact_gate(candidate: TutorTurnCandidate) -> str | None:
@@ -227,14 +257,14 @@ def vet_candidate(
                 jobs["visual"] = pool.submit(
                     _check_visual_leak, leak_judge, visual_text, task_title, problem_summary,
                 )
-            text_leaks = jobs["text"].result() if "text" in jobs else False
+            text_leaks, leak_reason = _text_leak_result(jobs["text"].result()) if "text" in jobs else (False, None)
             visual_leaks = jobs["visual"].result() if "visual" in jobs else False
         if text_leaks is False and visual_leaks is not False:
             visual = None
             dropped = "visual_leak_check_failed" if visual_leaks is None else "visual_leak_detected"
     if text_leaks is not False:  # True 泄露；None 判定失败，同样 fail-closed
         reason = "leak_check_failed" if text_leaks is None else "leak_detected"
-        return Vetting(candidate, None, reason, shape_flags=flags)
+        return Vetting(candidate, None, reason, leak_reason=leak_reason, shape_flags=flags)
     if dropped:
         record_tutor_visual_dropped(reason=dropped)
     return Vetting(candidate, verdict, visual=visual, visual_dropped=dropped, shape_flags=flags)
@@ -273,7 +303,7 @@ def run_tutor_turn(
         retried = True
         record_tutor_leak_retry(reason=vetting.failure)
         retry = call_tutor_model(
-            model, envelope, instruction, window, images, tools, repair_error=LEAK_REPAIR,
+            model, envelope, instruction, window, images, tools, repair_error=_leak_repair(vetting),
         )
         if retry.candidate is not None:
             call, vetting = retry, vet(retry.candidate)

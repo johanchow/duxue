@@ -182,6 +182,20 @@ def test_judge_problem_summary_lists_recent_problems_and_this_turn():
     assert many.count("题：") == JUDGE_RECENT_PROBLEMS
 
 
+def test_judge_context_includes_bounded_prior_student_evidence_not_tutor_text():
+    from app.application.workflows.tutor_loop import judge_problem_summary
+
+    window = [
+        {"author": "ward", "text": "我算出 x=4。"},
+        {"author": "companion", "text": "你的答案是 4。"},
+        {"author": "ward", "text": "我用两边同时除以 2。"},
+    ]
+    summary = judge_problem_summary(["解 2x+3=11"], "怎么自己验？", recent_utterances=window)
+    assert "学生先前说：我算出 x=4。" in summary
+    assert "学生先前说：我用两边同时除以 2。" in summary
+    assert "你的答案是 4。" not in summary
+
+
 def test_homework_turn_allows_svg_and_sends_inner_svg_text_to_visual_leak_judge():
     judge = StaticVisualLeakJudge()
     raw = tutor_raw("guide", "观察两条直角边。", relation="same", visual=SVG)
