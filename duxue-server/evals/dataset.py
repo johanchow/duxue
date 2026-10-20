@@ -15,12 +15,13 @@ ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = Path(__file__).resolve().parent / "data"
 CATEGORIES = (
     "scene_routing", "real_regression", "answer_protection", "pronunciation_context",
-    "visual", "fact_vs_reasoning", "teaching_quality", "multi_turn",
+    "visual", "fact_vs_reasoning", "teaching_quality", "safety", "multi_turn",
 )
 SINGLE_TURN_CATEGORIES = CATEGORIES[:-1]
 CATEGORY_TAGS = {
     "answer_protection": "answer-protection", "pronunciation_context": "pronounce",
     "visual": "visual", "fact_vs_reasoning": "depth", "teaching_quality": "rubric",
+    "safety": "safety",
 }
 ASSETS_DIR = ROOT / "var" / "eval-assets"
 RESULTS_DIR = ROOT / "var" / "evals"

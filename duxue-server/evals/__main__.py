@@ -55,6 +55,11 @@ def cmd_validate(args) -> int:
         problems.extend(episodes.validate_episodes(multi))
     else:
         multi = []
+    if args.batch:
+        cases = [case for case in cases if case.review_batch == args.batch]
+        multi = [row for row in multi if row.review_batch == args.batch]
+        if not cases and not multi:
+            problems.append(f"no cases or episodes in review batch: {args.batch}")
     for problem in problems:
         print(f"! {problem}")
     by_status = {s: sum(c.label_status == s for c in cases) for s in ("confirmed", "proposed", "needs_decision")}
@@ -74,7 +79,8 @@ def cmd_run_episodes(args) -> int:
         print("\n".join(f"! {p}" for p in problems))
         return 1
     selected = [row for row in rows if row.label_status in args.status.split(",")
-                and (not args.case or row.id in args.case)]
+                and (not args.case or row.id in args.case)
+                and (not args.batch or row.review_batch == args.batch)]
     if not selected:
         print("没有符合筛选条件的 episode", file=sys.stderr)
         return 2
@@ -87,7 +93,7 @@ def cmd_run_episodes(args) -> int:
     out.write_text(json.dumps({
         "meta": {"component": "tutoring.turn", "component_version": spec.version, "model": spec.model,
                  "variant": args.variant, "git_sha": _git_sha(), "at": datetime.now(timezone.utc).isoformat(),
-                 "episodes_hash": episodes.episodes_hash(rows)},
+                 "episodes_hash": episodes.episodes_hash(rows), "review_batch": args.batch},
         "summary": summary,
         "episodes": [{"id": row.episode.id, "label_status": row.episode.label_status,
                       "samples": [{"passed": sample.passed, "status": sample.status,
@@ -123,6 +129,7 @@ def cmd_run(args) -> int:
         c for c in cases
         if c.component in components and c.label_status in args.status.split(",")
         and (not args.tag or args.tag in c.tags) and (not args.case or c.id in args.case)
+        and (not args.batch or c.review_batch == args.batch)
     ]
     if not selected:
         print("没有符合筛选条件的 case", file=sys.stderr)
@@ -151,6 +158,7 @@ def cmd_run(args) -> int:
             "variant": args.variant, "prompt_digest": spec.prompt.digest[:12] if hasattr(spec.prompt, "digest") else None,
             "samples": args.samples, "dataset_hash": dataset.dataset_hash(cases), "cases_run": len(subset),
             "category": args.category,
+            "review_batch": args.batch,
             "git_sha": _git_sha(), "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         }
         print(report.render_text(meta, summary, results))
@@ -203,6 +211,9 @@ def cmd_compare(args) -> int:
     if first["meta"]["dataset_hash"] != second["meta"]["dataset_hash"]:
         print("数据集哈希不同，两次结果不可比。", file=sys.stderr)
         return 2
+    if first["meta"].get("review_batch") != second["meta"].get("review_batch"):
+        print("复核批次不同，两次结果不可比。", file=sys.stderr)
+        return 2
     print(f"A: {first['meta']['variant']} {first['meta']['model']}   B: {second['meta']['variant']} {second['meta']['model']}")
     index = {c["id"]: c for c in second["cases"]}
     for case in first["cases"]:
@@ -223,6 +234,7 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("validate", help="校验数据集（无网络）")
     p.add_argument("--path")
     p.add_argument("--category", choices=dataset.SINGLE_TURN_CATEGORIES)
+    p.add_argument("--batch", help="仅统计指定人工复核批次，如 seed-v1")
     p.set_defaults(func=cmd_validate)
 
     p = sub.add_parser("run", help="用真实模型重放数据集（联网，不进 CI）")
@@ -235,6 +247,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--tag")
     p.add_argument("--case", action="append")
     p.add_argument("--category", choices=dataset.SINGLE_TURN_CATEGORIES)
+    p.add_argument("--batch", help="仅运行指定人工复核批次，如 seed-v1")
     p.add_argument("--min-pass", type=float, help="confirmed 全部采样都通过的 case 占比低于它则退出码 1")
     p.add_argument("--out")
     p.set_defaults(func=cmd_run)
@@ -245,6 +258,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--variant", default="baseline", choices=VARIANT_NAMES)
     p.add_argument("--status", default="confirmed,proposed,needs_decision")
     p.add_argument("--case", action="append")
+    p.add_argument("--batch", help="仅运行指定人工复核批次，如 seed-v1")
     p.add_argument("--out")
     p.set_defaults(func=cmd_run_episodes)
 

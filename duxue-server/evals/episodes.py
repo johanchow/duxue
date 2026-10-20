@@ -38,6 +38,7 @@ class Episode(Strict):
     title: str
     inspired_by: Origin
     source: Literal["synthetic"] = "synthetic"
+    review_batch: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9-]{1,40}$")
     label_status: Literal["confirmed", "proposed", "needs_decision"] = "proposed"
     reviewed_by: str | None = None
     initial_history: list[Utterance] = Field(default_factory=list, max_length=8)
@@ -69,7 +70,8 @@ def turn_case(episode: Episode, index: int, history: list[Utterance], said: str)
         id=f"{episode.id}-{index:02d}", component="tutoring.turn", conversation_id=episode.id,
         turn_index=index, history=history[-8:], student_said=said, context=turn.context,
         expect=turn.expect, tags=["multi-turn", *turn.tags], source="synthetic",
-        label_status=episode.label_status, reviewed_by=episode.reviewed_by, note=episode.note,
+        review_batch=episode.review_batch, label_status=episode.label_status,
+        reviewed_by=episode.reviewed_by, note=episode.note,
     )
 
 

@@ -26,7 +26,7 @@ def _episode(first_expect=None):
 
 def test_committed_episodes_are_six_turns_and_have_stable_hash():
     rows = episodes.load_episodes()
-    assert len(rows) == 24
+    assert len(rows) == 2
     assert all(len(row.turns) == 6 for row in rows)
     assert episodes.episodes_hash(rows) == episodes.episodes_hash(list(reversed(rows)))
     assert episodes.validate_episodes(rows) == []

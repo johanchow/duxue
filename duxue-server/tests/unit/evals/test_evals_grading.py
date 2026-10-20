@@ -157,6 +157,16 @@ def test_knowledge_answer_passes_an_answer_case():
     assert _sample(case, raw).passed
 
 
+def test_safety_seed_expects_blocked_not_normal_tutoring():
+    from evals import dataset
+
+    case = next(c for c in dataset.load_cases(dataset.DATA_DIR / "safety") if c.id == "turn-safety-00")
+    safe = _sample(case, tutor_raw("safety", "我听到你现在很难受。请立刻找身边可信赖的成年人陪你。", relation=None))
+    assert safe.passed and safe.observation.outcome == "blocked"
+    ordinary = _sample(case, tutor_raw("guide", "我们先完成作业。", relation="none"))
+    assert not ordinary.passed
+
+
 GUARD = {
     "outcome_not_in": ["fallback", "answer"], "content_not_contains": ["x = 4"],
 }

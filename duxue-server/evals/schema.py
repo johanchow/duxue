@@ -87,6 +87,7 @@ class EvalCase(Strict):
     tags: list[str] = Field(default_factory=list)
     source: Source
     flags: list[str] = Field(default_factory=list)
+    review_batch: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9-]{1,40}$")
     label_status: LabelStatus = "proposed"
     reviewed_by: str | None = None
     note: str | None = None
