@@ -295,7 +295,7 @@ def test_a_submitted_problem_stays_protected_until_code_releases_it(db):
 
 
 def test_a_single_fact_inside_homework_is_answered_directly_unless_it_is_the_answer(db):
-    """作业里的短事实直接答，不推进题目，也不因正文里有数字交给裁判。"""
+    """A protected fact can be answered after review, without advancing the problem."""
     _, session = _setup(db)
     workflow, _ = _workflow(db, ATTEMPT)
     _ask(db, workflow, session, "我觉得是 3")
@@ -307,13 +307,16 @@ def test_a_single_fact_inside_homework_is_answered_directly_unless_it_is_the_ans
     assert shown.next_interaction["model_fallback"] is False and "斜边" in shown.next_interaction["content"]
     db.refresh(problem)
     assert (problem.status, problem.substantive_attempts, problem.hints_given) == before
-    workflow.leak_judge = StaticLeakJudge(True)
+    workflow.leak_judge = StaticLeakJudge(False)
     still_a_fact = _ask(db, workflow, session, "斜边是哪条")
-    assert still_a_fact.next_interaction["model_fallback"] is False  # the gate, not the judge, decides a fact
+    assert still_a_fact.next_interaction["model_fallback"] is False
+    assert workflow.leak_judge.calls == 1
+    workflow.leak_judge = StaticLeakJudge(True)
     workflow.turn_model = StaticTutorModel(tutor_raw("answer", "斜边是 5。", relation="same", depth="atomic"))
     number = _ask(db, workflow, session, "空格里填什么")
-    assert number.next_interaction["model_fallback"] is False and "5" in number.next_interaction["content"]
-    assert workflow.leak_judge.calls == 0
+    assert number.next_interaction["model_fallback"] is True
+    assert "5" not in number.next_interaction["content"]
+    assert workflow.leak_judge.calls == 2  # initial reply and repair both reviewed
 
 
 def test_a_task_session_gets_the_reminder_after_a_knowledge_answer(db):
@@ -507,19 +510,22 @@ def test_a_clarify_on_a_protected_problem_cannot_carry_the_answer(db):
     assert "x 等于 2" not in outcome.next_interaction["content"]
 
 
-def test_a_dictation_word_is_answered_without_asking_the_judge(db):
-    """听写里问空格的词，以及标成事实的短得数，都由闸门放行，不问判官。"""
+def test_a_dictation_word_can_be_answered_but_a_calculation_result_is_reviewed(db):
+    """A fact remains answerable, while a mislabeled computation cannot bypass review."""
     _, session = _setup(db, "英语听写")
     workflow, _ = _workflow(db, ATTEMPT)
     _ask(db, workflow, session, "我写的是 beech")
-    workflow.leak_judge = StaticLeakJudge(True)
+    workflow.leak_judge = StaticLeakJudge(False)
     workflow.turn_model = StaticTutorModel(tutor_raw("answer", "海滩是 beach。", relation="same", depth="recall"))
     word = _ask(db, workflow, session, "海滩的英文怎么写")
     assert word.next_interaction["model_fallback"] is False and "beach" in word.next_interaction["content"]
+    assert workflow.leak_judge.calls == 1
+    workflow.leak_judge = StaticLeakJudge(True)
     workflow.turn_model = StaticTutorModel(tutor_raw("answer", "17×23=391。", relation="same", depth="recall"))
     product = _ask(db, workflow, session, "直接告诉我得数")
-    assert product.next_interaction["model_fallback"] is False and "391" in product.next_interaction["content"]
-    assert workflow.leak_judge.calls == 0
+    assert product.next_interaction["model_fallback"] is True
+    assert "391" not in product.next_interaction["content"]
+    assert workflow.leak_judge.calls == 2
 
 
 def test_cross_day_paused_session_and_stale_problem_do_not_hijack_new_turn(db):

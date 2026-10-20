@@ -519,12 +519,12 @@ def record_tutor_shape_lint(*, act: str, flags: list[str]) -> None:
 
 
 def record_tutor_fact_gate(*, outcome: str) -> None:
-    """``passed`` skipped the text leak judge; anything else is the rule that sent it to the judge."""
+    """Short-fact classification; protected text always reaches independent review."""
     _span_event("tutor.fact_gate", {"tutor.fact_gate.outcome": outcome})
 
 
 def record_tutor_leak_retry(*, reason: str) -> None:
-    """The first reply gave the answer away and the model was asked once for a hint instead."""
+    """The first reply crossed the answer boundary and the model was asked for a hint."""
     _span_event("tutor.leak.retry", {"tutor.leak.reason": reason})
 
 

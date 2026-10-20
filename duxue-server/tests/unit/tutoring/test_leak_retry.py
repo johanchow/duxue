@@ -77,3 +77,18 @@ def test_a_shown_reply_is_not_retried(monkeypatch):
     result, fallbacks = _run(model, StaticLeakJudge(False), monkeypatch)
     assert not result.leak_retried and result.vetting.failure is None
     assert len(model.calls) == 1 and fallbacks == []
+
+
+def test_verified_calculation_confirmation_can_pass_the_same_protected_exit():
+    model = StaticTutorModel(tutor_raw("guide", "你算出的 x=4 是正确的。"))
+    result, _ = _run(model, StaticLeakJudge(False))
+    assert result.vetting.failure is None
+    assert not result.leak_retried
+
+
+def test_choice_confirmation_still_retries_when_semantic_judge_rejects_it():
+    model = StaticTutorModel(tutor_raw("guide", "B 是对的。"), HINT)
+    result, _ = _run(model, LeaksWhen("B 是对的"))
+    assert result.leak_retried
+    assert result.vetting.failure is None
+    assert result.call.candidate.content == HINT["content"]

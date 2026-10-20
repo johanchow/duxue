@@ -147,14 +147,14 @@ def _check_visual_leak(leak_judge: LeakJudgePort, text: str, task_title, problem
         return None
 
 
-# 单个事实的确定性放行上限（字）。超过就不可能"只是一个事实"，交判官按严格标准审。
+# 短事实分类的长度上限（字）；受保护题目的正文无论分类结果都交独立审核。
 FACT_REPLY_MAX_CHARS = 120
 # 判官看到本答疑会话最近这么多道题：`relation=new` 放弃的题不受保护，但孩子随后追问它的答案时，
 # 判官必须还能认出来。
 JUDGE_RECENT_PROBLEMS = 3
-# 文字给出了答案时重试一次，请模型改成最小提示；判官自身失败不重试（重试也只会再问一次判官）。
+# 越过作业答案边界时重试一次；判官自身失败不重试。
 LEAK_RETRY_REASONS = frozenset({"answer_marker", "leak_detected"})
-LEAK_REPAIR = "泄露：上一版回复给出了这道作业的答案，孩子不能看到。"
+LEAK_REPAIR = "泄露：上一版回复越过了作业答案边界；请按题型重写，不附和错误答案或确认可试探的选项。"
 
 
 def judge_problem_summary(recent_problems: list[str], student_said: str) -> str | None:
@@ -167,11 +167,10 @@ def judge_problem_summary(recent_problems: list[str], student_said: str) -> str 
 
 
 def fact_gate(candidate: TutorTurnCandidate) -> str | None:
-    """单个事实的确定性放行。返回 None 表示放行（不问文字判官），否则返回不放行的原因。
+    """短事实分类，仅用于观测；返回 None 表示模型声明了短事实。
 
-    放行不看 ``act``。模型声明了单个事实（work 的 atomic/recall，或 non_work 的
-    atomic_lookup）且正文不超过 ``FACT_REPLY_MAX_CHARS`` 就放行。不按关键词或数字拦截。
-    答案标记检查在此之前已经照跑。"""
+    模型自报的 atomic/recall/atomic_lookup 不能作为跳过受保护题目审核的权限。
+    分类不看关键词或数字；答案标记检查在此之前已经照跑。"""
     if candidate.depth not in {"atomic", "recall"} and candidate.topic != "atomic_lookup":
         return "not_fact"
     if len(candidate.content) > FACT_REPLY_MAX_CHARS:
@@ -185,8 +184,8 @@ def vet_candidate(
 ) -> Vetting:
     """检查 2（越权与一致性）和检查 3（泄露）。只判断，不记录 fallback（由 ``run_tutor_turn`` 按最终结果记）。
 
-    文字（``content``，澄清时连同候选）任一不过，调用方回退固定话术。单个事实由 ``fact_gate``
-    确定性放行，其余交判官按严格标准审。图（``visual``）单独判断：不适用、非法、含答案标记、
+    文字（``content``，澄清时连同候选）任一不过，调用方回退固定话术。``fact_gate``
+    仅分类观测，受保护正文都交判官审。图（``visual``）单独判断：不适用、非法、含答案标记、
     被图判官判为泄露（含超时、结果非法）一律只丢图，文字照常。
     """
     verdict = check_authority(candidate, permit)
@@ -211,8 +210,11 @@ def vet_candidate(
     visual_leaks: bool | None = False
     if verdict.needs_leak_check:
         gate = fact_gate(candidate)
-        record_tutor_fact_gate(outcome=gate or "passed")
-        judge_text = gate is not None
+        record_tutor_fact_gate(outcome=gate or "short_fact_reviewed")
+        # The depth/topic labels come from the same model as the reply. A multiple-choice
+        # confirmation can be mislabeled as a short "fact", so those labels cannot bypass
+        # independent review while a problem is protected. Keep the classification metric.
+        judge_text = True
         jobs = {}
         # 文字判官与图判官互不依赖，并行发出。
         with ThreadPoolExecutor(max_workers=2) as pool:

@@ -17,14 +17,14 @@ def _case(**fields) -> EvalCase:
 
 def test_committed_dataset_is_valid_and_not_empty():
     cases = dataset.load_cases()
-    assert len(cases) == 57
+    assert len(cases) == 58
     assert dataset.validate(cases) == []
     assert dataset.validate_layout() == []
 
 
 def test_each_category_owns_its_cases_and_multi_turn_is_separate():
     expected = {
-        "scene_routing": 10, "real_regression": 17, "answer_protection": 6,
+        "scene_routing": 10, "real_regression": 17, "answer_protection": 7,
         "pronunciation_context": 3, "visual": 8, "fact_vs_reasoning": 9,
         "teaching_quality": 2, "safety": 2,
     }
@@ -158,6 +158,16 @@ def test_review_batch_covers_two_candidates_per_angle_without_confirming_them(ca
     assert all(e.label_status == "proposed" for e in selected_multi)
     assert main(["validate", "--batch", "seed-v1"]) == 0
     assert "16 cases + 2 episodes" in capsys.readouterr().out
+
+
+def test_answer_confirmation_cases_follow_the_problem_type_policy():
+    cases = {case.id: case for case in dataset.load_cases()}
+    assert cases["turn-protect-05"].expect.content_not_contains == []
+    assert cases["turn-protect-06"].review_batch is None
+    assert "multiple-choice" in cases["turn-protect-06"].tags
+    multi = {episode.id: episode for episode in episodes.load_episodes()}
+    assert multi["episode-socrateach-uncertain-correct"].turns[0].expect.content_not_contains == []
+    assert multi["episode-mathdial-balance"].turns[4].expect.content_not_contains == []
 
 
 def test_review_batch_is_optional_but_must_be_a_stable_slug():
