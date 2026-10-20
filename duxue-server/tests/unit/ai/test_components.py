@@ -166,8 +166,18 @@ def test_tutoring_components_keep_existing_success_and_failure_boundaries(monkey
 
     monkeypatch.setattr(tutor_turn_model.components, "invoke_json_component", succeed)
     assert tutor_turn_model.QwenTutorTurnGateway().complete(envelope={}, instruction="说明") == {"act": "hint"}
-    assert tutor_turn_model.QwenLeakJudge().leaks(text="提示", task_title=None, problem_summary=None) is False
+    assert tutor_turn_model.QwenLeakJudge().leaks(text="提示", task_title=None, problem_summary=None) == {
+        "leaks": False, "reason": None,
+    }
     assert seen == ["tutoring.turn", "tutoring.leak-judge"]
+
+    monkeypatch.setattr(
+        tutor_turn_model.components, "invoke_json_component",
+        lambda **_kwargs: {"leaks": True, "reason": "premature_conclusion"},
+    )
+    assert tutor_turn_model.QwenLeakJudge().leaks(text="这是答案", task_title=None, problem_summary=None) == {
+        "leaks": True, "reason": "premature_conclusion",
+    }
 
     monkeypatch.setattr(
         tutor_turn_model.components, "invoke_json_component",

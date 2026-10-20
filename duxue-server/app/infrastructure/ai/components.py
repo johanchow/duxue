@@ -92,18 +92,18 @@ class ComponentRegistry:
 COMPONENTS = ComponentRegistry(
     # --- protected: child-safety path -------------------------------------
     ComponentSpec(
-        component_id="tutoring.turn", version="v14", operation="tutor_turn",
+        component_id="tutoring.turn", version="v16", operation="tutor_turn",
         agent_label="tutoring", risk_tier="protected", model=PLUS,
-        prompt=PROMPTS["tutoring.turn.system.v14"],
+        prompt=PROMPTS["tutoring.turn.system.v16"],
         input_contract="tutor-turn.v4", output_contract="tutor-turn-candidate.v4",
         max_tokens=1100, temperature=0.2,
     ),
     ComponentSpec(
-        component_id="tutoring.leak-judge", version="v4", operation="tutor_leak_check",
+        component_id="tutoring.leak-judge", version="v6", operation="tutor_leak_check",
         agent_label="tutoring", risk_tier="protected", model=TEXT_PLUS,
-        prompt=PROMPTS["tutoring.leak-judge.system.v4"],
-        input_contract="leak-judge-input.v4", output_contract="leak-judge-verdict.v1",
-        max_tokens=40, temperature=0.2,
+        prompt=PROMPTS["tutoring.leak-judge.system.v6"],
+        input_contract="leak-judge-input.v5", output_contract="leak-judge-verdict.v2",
+        max_tokens=80, temperature=0,
         accepts_images=False,
     ),
     ComponentSpec(

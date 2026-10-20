@@ -40,7 +40,9 @@ def test_a_leaking_reply_is_retried_once_and_the_hint_is_shown(monkeypatch):
     result, fallbacks = _run(model, LeaksWhen("等于 4"), monkeypatch)
     assert result.leak_retried and result.vetting.failure is None
     assert result.call.candidate.content == HINT["content"]
-    assert model.calls[0]["repair_error"] is None and model.calls[1]["repair_error"] == LEAK_REPAIR
+    assert model.calls[0]["repair_error"] is None
+    assert model.calls[1]["repair_error"].startswith(LEAK_REPAIR)
+    assert LEAKY["content"] in model.calls[1]["repair_error"]
     assert fallbacks == []  # the first, blocked version is not a fallback
 
 
@@ -55,6 +57,17 @@ def test_a_retry_that_still_leaks_falls_back_once(monkeypatch):
     result, fallbacks = _run(model, StaticLeakJudge(True), monkeypatch)
     assert result.leak_retried and result.vetting.failure == "leak_detected"
     assert len(model.calls) == 2 and fallbacks == ["leak_detected"]
+
+
+def test_retry_includes_a_specific_review_reason_when_available():
+    class ExplainsLeak(StaticLeakJudge):
+        def leaks(self, *, text, task_title, problem_summary):
+            super().leaks(text=text, task_title=task_title, problem_summary=problem_summary)
+            return {"leaks": True, "reason": "premature_conclusion"}
+
+    model = StaticTutorModel(LEAKY, HINT)
+    _run(model, ExplainsLeak())
+    assert "premature_conclusion" in model.calls[1]["repair_error"]
 
 
 def test_a_broken_judge_is_not_retried(monkeypatch):
@@ -77,3 +90,18 @@ def test_a_shown_reply_is_not_retried(monkeypatch):
     result, fallbacks = _run(model, StaticLeakJudge(False), monkeypatch)
     assert not result.leak_retried and result.vetting.failure is None
     assert len(model.calls) == 1 and fallbacks == []
+
+
+def test_verified_calculation_confirmation_can_pass_the_same_protected_exit():
+    model = StaticTutorModel(tutor_raw("guide", "你算出的 x=4 是正确的。"))
+    result, _ = _run(model, StaticLeakJudge(False))
+    assert result.vetting.failure is None
+    assert not result.leak_retried
+
+
+def test_choice_confirmation_still_retries_when_semantic_judge_rejects_it():
+    model = StaticTutorModel(tutor_raw("guide", "B 是对的。"), HINT)
+    result, _ = _run(model, LeaksWhen("B 是对的"))
+    assert result.leak_retried
+    assert result.vetting.failure is None
+    assert result.call.candidate.content == HINT["content"]

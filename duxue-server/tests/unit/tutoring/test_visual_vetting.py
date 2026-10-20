@@ -94,27 +94,34 @@ def test_relation_none_without_a_protected_problem_is_not_checked_even_with_a_di
     assert result.failure is None and result.visual is not None
 
 
-def test_a_short_single_fact_passes_the_gate_without_asking_the_judge():
-    """单个事实由代码确定性放行：判官就算会判泄露也不再被问到。"""
+def test_a_short_single_fact_still_needs_the_judge_on_a_protected_problem():
+    """The model's fact label is not an authority to bypass protected-problem review."""
     for raw in (
         tutor_raw("answer", "beach。", relation="same", depth="recall"),
         tutor_raw("answer", "斜边是最长的边。", relation="same", depth="atomic"),
         tutor_raw("answer", "beach 是海滩。", relation="none", topic="atomic_lookup"),
         tutor_raw("answer", "beach 是海滩。", relation="none"),  # unknown topic is a lookup
     ):
-        judge = StaticLeakJudge(True)
-        assert vet(raw, judge).failure is None and judge.calls == 0, raw
+        judge = StaticLeakJudge(False)
+        assert vet(raw, judge).failure is None and judge.calls == 1, raw
 
 
-def test_the_gate_does_not_use_keywords_or_digits():
-    """放行不看关键词和数字。短的计算结果、选项、对错、带“所以”的事实都放行；超长才交判官。"""
+def test_a_protected_choice_disguised_as_a_short_fact_still_needs_independent_review():
+    raw = tutor_raw("answer", "选 B。", relation="same", depth="recall")
+    judge = StaticLeakJudge(True)
+    assert vet(raw, judge, permit=PROTECTED).failure == "leak_detected"
+    assert judge.calls == 1
+
+
+def test_the_fact_classifier_does_not_use_keywords_or_digits_to_bypass_review():
+    """Even a short self-declared fact reaches the independent judge."""
     from app.application.workflows.tutor_loop import fact_gate
 
     for content in ("得数是 391。", "x＝y＋z", "选 B。", "这句话是错的。", "√", "所以是质数。"):
         raw = tutor_raw("answer", content, relation="same", depth="recall")
         assert fact_gate(TutorTurnCandidate.model_validate(raw)) is None
         judge = StaticLeakJudge(True)
-        assert vet(raw, judge).failure is None and judge.calls == 0
+        assert vet(raw, judge).failure == "leak_detected" and judge.calls == 1
     long = tutor_raw("answer", "海" * 121, relation="same", depth="recall")
     assert fact_gate(TutorTurnCandidate.model_validate(long)) == "too_long"
     judge = StaticLeakJudge(True)
@@ -138,10 +145,10 @@ def test_the_gate_needs_a_fact_label_on_an_answer():
 
 def test_a_gated_fact_with_a_diagram_still_has_the_diagram_judged():
     raw = tutor_raw("answer", "beach 是海滩。", relation="none", visual=STEPS)
-    judge = StaticVisualLeakJudge(True, True)
+    judge = StaticVisualLeakJudge(False, True)
     result = vet(raw, judge)
     assert result.failure is None and result.visual is None and result.visual_dropped == "visual_leak_detected"
-    assert judge.calls == 0 and len(judge.visual_texts) == 1
+    assert judge.calls == 1 and len(judge.visual_texts) == 1
 
 
 def test_answer_on_a_reasoning_problem_is_observed_not_rejected():
@@ -173,6 +180,20 @@ def test_judge_problem_summary_lists_recent_problems_and_this_turn():
     assert judge_problem_summary(["3+5=?"], "3+5=?") == "第1题：3+5=?"
     many = judge_problem_summary([f"题{i}" for i in range(10)], "")
     assert many.count("题：") == JUDGE_RECENT_PROBLEMS
+
+
+def test_judge_context_includes_bounded_prior_student_evidence_not_tutor_text():
+    from app.application.workflows.tutor_loop import judge_problem_summary
+
+    window = [
+        {"author": "ward", "text": "我算出 x=4。"},
+        {"author": "companion", "text": "你的答案是 4。"},
+        {"author": "ward", "text": "我用两边同时除以 2。"},
+    ]
+    summary = judge_problem_summary(["解 2x+3=11"], "怎么自己验？", recent_utterances=window)
+    assert "学生先前说：我算出 x=4。" in summary
+    assert "学生先前说：我用两边同时除以 2。" in summary
+    assert "你的答案是 4。" not in summary
 
 
 def test_homework_turn_allows_svg_and_sends_inner_svg_text_to_visual_leak_judge():

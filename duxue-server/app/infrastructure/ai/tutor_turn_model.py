@@ -41,9 +41,10 @@ class QwenLeakJudge:
     def __init__(self, settings_obj=None):
         self._settings = settings_obj  # offline evaluation only; production passes nothing
 
-    def leaks(self, *, text: str, task_title: str | None, problem_summary: str | None) -> bool | None:
+    def leaks(self, *, text: str, task_title: str | None, problem_summary: str | None) -> dict | None:
         return self._judge(
             "tutoring.leak-judge", {"task_title": task_title, "problem": problem_summary, "reply": text},
+            with_reason=True,
         )
 
     def visual_leaks(self, *, text: str, task_title: str | None, problem_summary: str | None) -> bool | None:
@@ -52,7 +53,7 @@ class QwenLeakJudge:
             "tutoring.visual-leak-judge", {"task_title": task_title, "problem": problem_summary, "visual": text},
         )
 
-    def _judge(self, component_id: str, body: dict) -> bool | None:
+    def _judge(self, component_id: str, body: dict, *, with_reason: bool = False) -> bool | dict | None:
         try:
             payload = components.invoke_json_component(
                 spec=components.COMPONENTS.get(component_id),
@@ -61,4 +62,8 @@ class QwenLeakJudge:
         except ModelGatewayError:
             return None
         value = payload.get("leaks")
-        return value if isinstance(value, bool) else None
+        if not isinstance(value, bool):
+            return None
+        if with_reason:
+            return {"leaks": value, "reason": payload.get("reason")}
+        return value

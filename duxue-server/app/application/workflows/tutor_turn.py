@@ -330,10 +330,10 @@ class TutorModelPort(Protocol):
 
 
 class LeakJudgePort(Protocol):
-    def leaks(self, *, text: str, task_title: str | None, problem_summary: str | None) -> bool | None:
-        """True 泄露；False 未泄露；None 判定失败（按泄露处理）。
+    def leaks(self, *, text: str, task_title: str | None, problem_summary: str | None) -> bool | dict | None:
+        """布尔或带 ``leaks``/``reason`` 的结构化判定；None 按审核失败处理。
 
-        判官只按严格标准审；单个事实在问判官之前已由 ``tutor_loop.fact_gate`` 确定性放行。"""
+        受保护正文全部审核。布尔返回兼容既有端口适配器和测试桩。"""
 
 
 def format_schema_error(error: Exception) -> str:

@@ -11,8 +11,8 @@ from app.infrastructure.ai.prompts import PROMPTS
 
 LOCK = {
     "companion.intent.system.v1": "2c633f98032b7f540bd801c8a8b94c3af008cf252c9e35f26a7524caf7a84b31",
-    "tutoring.turn.system.v14": "b6c3fbac8df6ef3b97347b2e7b2085c965ac5560234413fc8e01b6a83ab75107",
-    "tutoring.leak-judge.system.v4": "8049e345e3538f4c3e3419656215cedc9997d233010e1c965dc98b71c707513c",
+    "tutoring.turn.system.v16": "c8f34a4ff238311fd10eab4dd9559e963acfe737f45e3889dac1f5ca431f8733",
+    "tutoring.leak-judge.system.v6": "7f4b7f8d6adeb1a87817bd51e770ad9e694bd6a1105e949b943b2de2de31237f",
     "tutoring.visual-leak-judge.system.v2": "96ddf112b00eaf5b5e0043b655fc2ac8b29abffedc44cc801603ffd09534c26a",
     "companion.agent-text.system.v1": "cc88ff1f58e1f35e2d6e13167f9cb036c02a8d5a7ba1ece86154111511e6f56d",
     "task.intake.prompt.v1": "10f41ef644ea775084ba3569a6a210575fedc41c619296168dd1902d51090a38",
