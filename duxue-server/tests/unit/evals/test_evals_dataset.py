@@ -2,7 +2,7 @@
 
 import pytest
 
-from evals import dataset
+from evals import dataset, episodes
 from evals.__main__ import main
 from evals.schema import EvalCase
 
@@ -17,8 +17,34 @@ def _case(**fields) -> EvalCase:
 
 def test_committed_dataset_is_valid_and_not_empty():
     cases = dataset.load_cases()
-    assert len(cases) >= 30
+    assert len(cases) == 90
     assert dataset.validate(cases) == []
+    assert dataset.validate_layout() == []
+
+
+def test_each_category_owns_its_cases_and_multi_turn_is_separate():
+    expected = {
+        "scene_routing": 12, "real_regression": 17, "answer_protection": 12,
+        "pronunciation_context": 3, "visual": 10, "fact_vs_reasoning": 12,
+        "teaching_quality": 24,
+    }
+    for category, count in expected.items():
+        assert len(dataset.load_cases(dataset.DATA_DIR / category)) == count
+    assert len(episodes.load_episodes()) == 24
+    assert all(row.label_status == "proposed" for row in episodes.load_episodes())
+    assert episodes.validate_episodes(episodes.load_episodes()) == []
+
+
+def test_layout_rejects_a_case_in_the_wrong_category(tmp_path):
+    for category in dataset.CATEGORIES:
+        (tmp_path / category).mkdir()
+        if category != "multi_turn":
+            (tmp_path / category / "cases.jsonl").write_text("", encoding="utf-8")
+        else:
+            (tmp_path / category / "episodes.jsonl").write_text("", encoding="utf-8")
+    (tmp_path / "scene_routing" / "cases.jsonl").write_text(_case().model_dump_json() + "\n", encoding="utf-8")
+    assert any("scene_routing requires companion.intent" in problem
+               for problem in dataset.validate_layout(tmp_path))
 
 
 def test_dataset_covers_the_three_debugged_conversations_and_the_guard_seeds():
@@ -28,6 +54,18 @@ def test_dataset_covers_the_three_debugged_conversations_and_the_guard_seeds():
     assert {c.component for c in cases} == {"tutoring.turn", "companion.intent"}
     assert sum("guard" in c.tags for c in cases) <= 6
     assert all(c.source == "synthetic" for c in cases if "guard" in c.tags)
+
+
+def test_rubric_slice_covers_several_teaching_angles():
+    cases = [c for c in dataset.load_cases() if "rubric" in c.tags]
+    angles = {tag for case in cases for tag in case.tags}
+    assert {
+        "mistake-id", "mistake-loc", "leak-implicit", "guidance", "actionable",
+        "socratic", "misdiagnosis", "prerequisite",
+    } <= angles
+    assert all(case.source == "synthetic" and case.label_status == "proposed" for case in cases)
+    assert all("guard" not in case.tags for case in cases)
+    assert all(case.expect.is_specific() for case in cases)
 
 
 def test_ai_written_labels_are_never_confirmed_without_a_human():

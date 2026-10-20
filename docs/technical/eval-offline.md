@@ -1,6 +1,6 @@
 # 读学系统 — 答疑离线评测设计
 
-> 状态：v1 已实现（`duxue-server/evals/`），首批数据集 30 条均为 `proposed`，待人工复核 · 版本：v1.0  
+> 状态：单步 90 条（85 `proposed`、5 `needs_decision`）+ 多轮 24 段（均 `proposed`）；0 条 `confirmed`，待人工复核 · 版本：v1.1
 > 范围：对 AI Component（首批为 `tutoring.turn`、`companion.intent`）的离线回放、判分、报告与数据集治理。  
 > 关联：[AI Component 设计](infra-ai-components.md) · [Tutoring Domain](domain-tutoring.md) · [Companion 编排](domain-companion.md) · 决策笔记 `.agent/notes/117-tutoring-offline-eval.md`
 
@@ -91,7 +91,20 @@ flowchart LR
 
 ### 5.1 记录：一个决策点
 
-JSONL，一行一条，位于 `duxue-server/evals/data/`（按组件分文件：`tutoring_turn.jsonl`、`intent.jsonl`）。
+JSONL，一行一条，位于 `duxue-server/evals/data/<类别>/`。每条单步用例只有一个主类别目录，交叉维度仍用 `tags`；`multi_turn/episodes.jsonl` 使用独立的会话 schema，不进入单步通过率。
+
+| 主类别目录 | 单步条数 | 主测问题 |
+| --- | ---: | --- |
+| `scene_routing/` | 12 | 场景意图与英文路由 |
+| `real_regression/` | 17 | 真实线程故障回归 |
+| `answer_protection/` | 12 | 作业答案、代做与越界诱导 |
+| `pronunciation_context/` | 3 | 发音与上下文指代 |
+| `visual/` | 10 | 图文展示与图中泄题 |
+| `fact_vs_reasoning/` | 12 | 事实直答和推理题保护 |
+| `teaching_quality/` | 24 | 单步错误诊断、可行动性、纠错适应 |
+| `multi_turn/` | 24 段 | 六轮内根据学生新证据调整引导 |
+
+现有 63 条的内容与 ID 原样迁移；新增 27 条单步和 24 段多轮均为自写 `proposed`。公开数据只借鉴教学维度和失败形态，不收录其原文。CoMTA 原文不得进入仓库。
 
 | 字段 | 含义 |
 | --- | --- |
@@ -111,7 +124,7 @@ JSONL，一行一条，位于 `duxue-server/evals/data/`（按组件分文件：
 | `reviewed_by` | 复核人；仅 `confirmed` 可有 |
 | `note` | 生产当时发生了什么、为什么这样标 |
 
-**重放是单步的**：历史固定为生产记录的原文（包括当时助手那句有问题的回复），不自由续跑。这样每个决策点独立、可重复，代价是测不出多轮自愈能力（§十）。
+单步重放的历史固定为记录原文；多轮会话则把本次模型实际回复送入下一轮窗口，详见 §5.7。
 
 ### 5.2 标注生命周期
 
@@ -145,7 +158,9 @@ JSONL，一行一条，位于 `duxue-server/evals/data/`（按组件分文件：
 
 ### 5.4 合成哨兵（guard）
 
-≤6 条 `source: synthetic` 的作业答案保护 Case（直接要答案、要完整解法、反复卡住、换说法套答案、发音夹带答案）。它们不是线上故障，只用于：改发音/澄清契约时，同时确认答案保护没有退化——对应论文中"优化一个指标容易误伤另一个"的教训。必须明确标注来源，不与真实 Case 混算。
+≤6 条带 `guard` 标签的作业答案保护 Case（直接要答案、要完整解法、反复卡住、换说法套答案、发音夹带答案）。它们不是线上故障，只用于：改发音/澄清契约时，同时确认答案保护没有退化——对应论文中"优化一个指标容易误伤另一个"的教训。必须明确标注来源，不与真实 Case 混算。
+
+另有一批 `rubric` 标签的合成 Case（`proposed`，不占 `guard` 名额）。场景结构借自 MRBench / BEA 的教学维度，以及 CoMTA、SocratDataset 里点名的失败形态；学生句和历史是按这些形态新写的中英对照场景，不收录公开数据集原文。断言仍是结果类别和终答字面量。`state`、参考教师回复、语气分写在 `note` 里，不参与判分。复核前不计入 primary。
 
 ### 5.5 隐私与资产
 
@@ -158,7 +173,7 @@ JSONL，一行一条，位于 `duxue-server/evals/data/`（按组件分文件：
 
 - 数据集会饱和：高通过率后区间宽到测不出提升，此时**不再往里堆会通过的 Case**，而是从新的线上故障补会失败的。
 - 数据集内容变化即 `dataset_hash` 变化；哈希不同的结果不可比较。
-- 首批数据集（30 条）：
+- 原首批数据集（30 条，已包含在 90 条中）：
 
   | 来源 | 内容 |
   | --- | --- |
@@ -167,6 +182,12 @@ JSONL，一行一条，位于 `duxue-server/evals/data/`（按组件分文件：
   | 线程 `b48b70b3`（3 条意图） | 打雷提问及两次追问（当时因意图调用 404 被固定澄清） |
   | 线程 `97103aaf`（7 条意图） | 同一线程的场景判定 |
   | synthetic（5 条） | 答案保护哨兵 |
+
+### 5.7 多轮会话
+
+`multi_turn/episodes.jsonl` 每行一段 6 轮会话，包含 `id`、`inspired_by`、`label_status`、`turns`；每轮给出学生原句、注入的题目上下文、具体 `expect`，可选 `student_on` 按前一轮导师的 `outcome` 选择后续学生句。24 段来源维度为 MathDial 8、SocraTeach 6、CoMTA 4、自写 6；所有文本都是新写的，不含公开数据原文。
+
+Runner 顺序调用与生产单步相同的组件路径，把**实际展示的导师回复**写入后续窗口（最多 8 句）；一轮失败即停止该次会话，避免继续喂入与回复不连贯的预写学生句。每段默认采样 3 次，报告逐段 `stable_pass`、`any_pass` 和失败轮次，与单步报告分开。当前学生输入由脚本及有限的 `student_on` 分支驱动，题目上下文按标注注入；这能检验连续回复与窗口一致性，**不等于完整生产 Aggregate 的状态迁移，也不能单靠字面断言证明教学质量**。教学递进、解释正确性和学生状态适应仍需人工复核；引入自动 judge 前须建立中文校准集。
 
 ## 六、重放与判分
 
@@ -265,7 +286,10 @@ LLM judge 有自己的假阳/假阴率；论文也承认连自家的 Math Error 
 
 ```
 python -m evals validate                                     # 校验数据集；无网络、无需密钥
+python -m evals validate --category teaching_quality         # 只校验一个单步类别
 python -m evals run --samples 5                              # 两个组件基线；联网
+python -m evals run --component tutoring.turn --category teaching_quality
+python -m evals run-episodes --samples 3                      # 多轮会话；联网
 python -m evals run --component tutoring.turn --tag pronounce
 python -m evals run --component tutoring.turn --model <M>
 python -m evals run --component tutoring.turn --variant drop-no-guess-clause
@@ -277,14 +301,18 @@ python -m evals compare var/evals/<A>.json var/evals/<B>.json
 
 **CI**：只跑无网络部分（数据集校验、判分、Runner、报告、export 的单测）。真实模型评测**不进 pytest/CI**——`conftest` 已全局禁止外部模型调用。
 
+**执行时机**：每次 PR 跑 CI 校验；修改答疑模型、prompt、契约、出口检查或路由时，合并前本机跑受影响类别与全部已确认用例；发布候选本机跑单步和多轮全量，模型提供商无代码更新时也定期复跑。多轮与单步分别比较同一数据集哈希的结果。
+
 **通过阈值（v1）**：不设自动硬门槛。下列改动发布前必须人工跑一次并留存结果：换模型、改 `tutoring.turn` / `companion.intent` 的 prompt、改 `tutor-turn` 契约或出口检查。要求：`confirmed` 集稳定通过的 Case 数不低于上次基线，fallback 率不升，guard 不退化；落在区间内的变化一律按噪声处理。待 `confirmed` 集足够大后再收紧为自动门槛，不为小数据集固化百分比。
+
+新增 51 个评测单元仍全是 `proposed`，不得用于发布放行。人工复核后，答案泄露、儿童安全、明显学科错误按单次失败人工排查；普通单步先以 5 次采样至少 4 次符合具体断言为候选标准，多轮先以 3 次至少 2 次整段通过为候选标准，并与上次基线比较。只有复核和基线足够稳定后才把这些候选标准设成自动门槛；阶段编号单调递增不是通过条件，困惑时退回更小目标可以是正确教学。
 
 ## 十、局限与风险
 
 | 局限 | 影响与缓解 |
 | --- | --- |
 | 数据集刻意偏向出过问题的点 | 通过率不代表线上正确率，不得外推 |
-| 单步重放，历史是生产记录原文 | 测不出多轮自愈；未来引入 pending 状态后需要有状态的重放 |
+| 单步重放，历史是生产记录原文 | 多轮会话覆盖连续窗口，但题目状态目前仍由标注注入；完整 Aggregate 迁移待生产级会话回放 |
 | `context` 无记忆 envelope | 若记忆明显影响答疑，给 Case 增加 `envelope` 字段 |
 | 样本相关、Case 数少 | 以 case 级计数为准，区间仅作参考 |
 | 标注者偏差（含 AI 初稿） | 只有人工复核后的 `confirmed` 才计入 primary |
@@ -315,6 +343,6 @@ python -m evals compare var/evals/<A>.json var/evals/<B>.json
 
 - 人工复核首批标注，提升 `confirmed` 比例。
 - 用同一数据集做契约级单变量实验：`act` 后置、`pending_clarification` + `resolution`（`confirm` 语义拆分已随 `tutor-turn.v3` 落地）。
-- 有状态的多步重放（引入 pending 状态后）。
-- 判官型指标与校准集（泄露细判、认知参与度）。
+- 完整生产 Aggregate 的有状态多步回放；当前多轮只重放组件及实际回复窗口。
+- 判官型指标与校准集（泄露细判、认知参与度）。`rubric` Case 的 `note` 已记下维度，判分仍不读这些维度。
 - `confirmed` 集足够大后，把 §九 的阈值收紧为自动门槛。
