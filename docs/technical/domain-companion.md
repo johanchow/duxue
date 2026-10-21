@@ -216,8 +216,8 @@ Repository/ORM 或创建多 Context 全局事务。
 
 自由文本的意图由一次无状态的结构化模型调用提议，不由关键词或正则解释。模型只返回
 `IntentProposal`：`intent` 取 `planning`、`tutoring`、`reflection`、`unclear` 之一。
-`reflection` 仅用于 Ward 明确要总结、复盘、反思或回忆自己今天的学习状态、内容或目标；
-提问、求解、理解知识或请举例属于 `tutoring`。当前 focus 只用于理解省略和指代，
+`reflection` 只用于 Ward 在讲自己做过的事情、感想、思考，或以后会怎样，以及明确说明要总结或复盘；
+提问、求解、理解知识、请举例，或询问自己最近问过什么，属于 `tutoring`。当前 focus 只用于理解省略和指代，
 本轮明确要做另一件事时应切换场景。延续当前场景时必须再次写出该场景名，
 不另设「无新意图」取值。它没有工具、没有写权限，
 也不能自行决定 `mode` 或创建 Run。`HandleCompanionTurn` 校验该提议属于这个闭集；非法 JSON、
