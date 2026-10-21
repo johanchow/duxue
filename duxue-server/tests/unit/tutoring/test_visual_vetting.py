@@ -96,6 +96,38 @@ def test_a_second_leaking_diagram_is_dropped_after_one_redraw():
     assert result.vetting.visual is None and result.vetting.visual_dropped == "visual_leak_detected"
 
 
+def test_tex_long_division_without_visual_is_regenerated_as_svg():
+    original = tutor_raw("guide", "先列竖式：$$\\enclose{longdiv}{660}$$", relation="same")
+    redrawn = tutor_raw("guide", "先列好 660 ÷ 130 的竖式框架。", relation="same", visual=SVG)
+    model = StaticTutorModel(original, redrawn)
+    tools = TutorToolbox(None, tutoring_session_id=None, problem=None, task_title=None, task_active=False, window=[])
+    result = run_tutor_turn(
+        model, {}, "{}", [], [], tools, permit=PROTECTED,
+        leak_judge=StaticVisualLeakJudge(),
+        task_title="数学作业", problem_summary="660 ÷ 130 的除法竖式",
+    )
+    assert len(model.calls) == 2
+    assert model.calls[1]["observations"][0]["tool"] == "widget_guidelines"
+    assert "TeX" in model.calls[1]["repair_error"]
+    assert result.vetting.failure is None and result.vetting.visual.kind == "svg"
+    assert r"\enclose{longdiv}" not in result.call.candidate.content
+
+
+def test_tex_long_division_uses_backup_if_first_redraw_still_has_no_svg():
+    original = tutor_raw("guide", "先列竖式：$$\\enclose{longdiv}{660}$$", relation="same")
+    model = StaticTutorModel(original, original)
+    backup = StaticTutorModel(tutor_raw("guide", "先看竖式框架。", relation="same", visual=SVG))
+    tools = TutorToolbox(None, tutoring_session_id=None, problem=None, task_title=None, task_active=False, window=[])
+    result = run_tutor_turn(
+        model, {}, "{}", [], [], tools, permit=PROTECTED,
+        leak_judge=StaticVisualLeakJudge(), backup_model=backup,
+        task_title="数学作业", problem_summary="660 ÷ 130 的除法竖式",
+    )
+    assert len(model.calls) == 2 and len(backup.calls) == 1
+    assert backup.calls[0]["observations"][0]["tool"] == "widget_guidelines"
+    assert result.vetting.visual.kind == "svg"
+
+
 @pytest.mark.parametrize("text_result,reason", [(True, "leak_detected"), (None, "leak_check_failed")])
 def test_a_text_leak_still_falls_back_the_whole_turn(text_result, reason):
     result = vet(homework(), StaticVisualLeakJudge(result=text_result, visual_result=False))

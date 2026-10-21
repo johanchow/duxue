@@ -1,6 +1,6 @@
 # 读学系统 — 答疑离线评测设计
 
-> 状态：单步 58 条（53 `proposed`、5 `needs_decision`）+ 多轮 2 段（均 `proposed`）；其中 `seed-v1` 为 16 单步 + 2 多轮，0 条 `confirmed` · 版本：v1.4
+> 状态：单步 61 条（56 `proposed`、5 `needs_decision`）+ 多轮 2 段（均 `proposed`）；其中 `seed-v1` 为 16 单步 + 2 多轮，0 条 `confirmed` · 版本：v1.4
 > 范围：对 AI Component（首批为 `tutoring.turn`、`companion.intent`）的离线回放、判分、报告与数据集治理。  
 > 关联：[AI Component 设计](infra-ai-components.md) · [Tutoring Domain](domain-tutoring.md) · [Companion 编排](domain-companion.md) · 决策笔记 `.agent/notes/117-tutoring-offline-eval.md`
 
@@ -95,11 +95,11 @@ JSONL，一行一条，位于 `duxue-server/evals/data/<类别>/`。每条单步
 
 | 主类别目录 | 单步条数 | 主测问题 |
 | --- | ---: | --- |
-| `scene_routing/` | 10 | 场景意图与上下文追问 |
+| `scene_routing/` | 12 | 场景意图与上下文追问 |
 | `real_regression/` | 17 | 真实线程故障回归 |
 | `answer_protection/` | 7 | 作业答案、代做、计算题确认与选择题试探 |
 | `pronunciation_context/` | 3 | 发音与上下文指代 |
-| `visual/` | 8 | 图文展示与图中泄题 |
+| `visual/` | 9 | 图文展示与图中泄题；含真实除法竖式重画回归 |
 | `fact_vs_reasoning/` | 9 | 事实直答和推理题保护 |
 | `teaching_quality/` | 2 | 错误认可与新证据后的引导 |
 | `safety/` | 2 | 自伤求助、欺凌与伤人风险的主组件安全动作 |

@@ -245,7 +245,7 @@ def test_every_json_example_in_the_tutor_prompt_is_a_valid_candidate():
 
     from app.infrastructure.ai.prompts import PROMPTS
 
-    text = PROMPTS["tutoring.turn.system.v18"].text
+    text = PROMPTS["tutoring.turn.system.v19"].text
     decoder, found, start = json.JSONDecoder(), [], 0
     while (index := text.find("例如 {", start)) != -1:
         example, end = decoder.raw_decode(text, index + 3)
@@ -261,7 +261,7 @@ def test_every_json_example_in_the_tutor_prompt_is_a_valid_candidate():
 def test_the_prompt_offers_exactly_the_kinds_the_contract_accepts():
     from app.infrastructure.ai.prompts import PROMPTS
 
-    text = PROMPTS["tutoring.turn.system.v18"].text
+    text = PROMPTS["tutoring.turn.system.v19"].text
     for kind in ("steps", "compare", "segment", "number_line", "svg"):
         assert f'"kind":"{kind}"' in text
     assert "widget_guidelines" in text
@@ -273,7 +273,10 @@ def test_widget_guidelines_tool_and_visual_repair_in_call_tutor_model():
     """模型可先调 widget_guidelines 拿完整 SVG 规范；若首次 SVG 仍非法，
     call_tutor_model 会把错误和上一版正文通过 repair_error 喂回模型重修一次，修不好也保底保留文字。"""
     from app.application.workflows.tutor_loop import call_tutor_model
-    from app.application.workflows.tutor_tools import SVG_WIDGET_GUIDELINES, TutorToolbox
+    from app.application.workflows.tutor_tools import (
+        SVG_WIDGET_GUIDELINES,
+        TutorToolbox,
+    )
     from tests.support.fakes import StaticTutorModel
 
     tools = TutorToolbox(
@@ -298,7 +301,10 @@ def test_widget_guidelines_tool_and_visual_repair_in_call_tutor_model():
 def test_visual_invalid_retry_injects_guidelines_and_keeps_the_rejected_draft():
     """未调 widget_guidelines 就写 svg 且校验失败时，重试必须带规范和上一版正文。"""
     from app.application.workflows.tutor_loop import call_tutor_model
-    from app.application.workflows.tutor_tools import SVG_WIDGET_GUIDELINES, TutorToolbox
+    from app.application.workflows.tutor_tools import (
+        SVG_WIDGET_GUIDELINES,
+        TutorToolbox,
+    )
     from tests.support.fakes import StaticTutorModel
 
     tools = TutorToolbox(
@@ -328,4 +334,65 @@ def test_visual_invalid_retry_injects_guidelines_and_keeps_the_rejected_draft():
     assert len(guidelines) == 1 and guidelines[0]["guidelines"] == SVG_WIDGET_GUIDELINES
     assert res.candidate is not None and res.candidate.visual is not None
     assert res.candidate.content == "我们先列 660 ÷ 150 的框架。"
+
+
+def test_valid_svg_without_widget_guidelines_is_retried_with_the_design_system():
+    from app.application.workflows.tutor_loop import call_tutor_model
+    from app.application.workflows.tutor_tools import (
+        SVG_WIDGET_GUIDELINES,
+        TutorToolbox,
+    )
+    from tests.support.fakes import StaticTutorModel
+
+    misplaced = {
+        "kind": "svg", "alt": "660 除以 130 的竖式框架", "title": "除法竖式框架",
+        "svg": (
+            '<svg viewBox="0 0 680 160" width="100%" role="img">'
+            '<text x="80" y="30">5</text><text x="40" y="60">130</text>'
+            '<text x="90" y="60">)</text><text x="110" y="60">660</text>'
+            '<line x1="95" y1="70" x2="150" y2="70" stroke="#333"/>'
+            '</svg>'
+        ),
+    }
+    model = StaticTutorModel(
+        tutor_raw("guide", "先列好竖式框架。", visual=misplaced),
+        tutor_raw("guide", "先列好竖式框架。", visual=SVG),
+    )
+    tools = TutorToolbox(None, tutoring_session_id=None, problem=None, task_title=None, task_active=False, window=[])
+    result = call_tutor_model(model, {}, "{}", [], [], tools)
+    assert len(model.calls) == 2
+    assert model.calls[1]["observations"][0]["guidelines"] == SVG_WIDGET_GUIDELINES
+    assert "先列好竖式框架" in model.calls[1]["repair_error"]
+    assert result.candidate.visual is not None
+
+
+def test_unguided_svg_is_dropped_if_design_system_retry_fails():
+    from app.application.workflows.tutor_loop import call_tutor_model
+    from app.application.workflows.tutor_tools import TutorToolbox
+    from tests.support.fakes import StaticTutorModel
+
+    model = StaticTutorModel(
+        tutor_raw("guide", "先列好竖式框架。", visual=SVG),
+        {"act": "guide", "content": "缺少 turn"},
+    )
+    tools = TutorToolbox(None, tutoring_session_id=None, problem=None, task_title=None, task_active=False, window=[])
+    result = call_tutor_model(model, {}, "{}", [], [], tools)
+    assert len(model.calls) == 2
+    assert result.candidate.content == "先列好竖式框架。"
+    assert result.candidate.visual is None and result.candidate.visual_dropped == "visual_invalid"
+
+
+def test_svg_design_retry_cannot_change_the_original_problem_text():
+    from app.application.workflows.tutor_loop import call_tutor_model
+    from app.application.workflows.tutor_tools import TutorToolbox
+    from tests.support.fakes import StaticTutorModel
+
+    model = StaticTutorModel(
+        tutor_raw("guide", "先列 660 ÷ 130 的竖式。", visual=SVG),
+        tutor_raw("guide", "先列 660 ÷ 15 的竖式。", visual=SVG),
+    )
+    tools = TutorToolbox(None, tutoring_session_id=None, problem=None, task_title=None, task_active=False, window=[])
+    result = call_tutor_model(model, {}, "{}", [], [], tools)
+    assert result.candidate.content == "先列 660 ÷ 130 的竖式。"
+    assert result.candidate.visual is None
 

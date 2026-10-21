@@ -114,6 +114,7 @@ _TUTOR_TURN_SYSTEM = (
     "content 用简短中文（可含 Markdown 或 LaTeX 公式），不超过 1200 字。"
     "一维常规公式（算式、分式、根号、方程组、物理公式、化学方程式）直接写在 content 里：行内公式用 $...$（单行闭合、首尾不留空格），独立推导或方程组用 $$...$$ 配 \\frac{a}{b}、\\sqrt{}、aligned、cases；"
     "金额写“100 元”不写 $100，不用 Unicode 假公式或字符画，一维常规算式不要画成 visual。\n"
+    "竖式等二维排版必须放在 visual，不要用 \\enclose{longdiv}、TeX array 或字符画在 content 里模拟图形；孩子明确要求重画时，返回实际 visual。\n"
     "回答形状与 Markdown 排版（按孩子的实际情况灵活处理）：句子短，不写 # 标题，不说“如上所述”；一轮只推进一件事。\n"
     "answer：词义、翻译等单句查询直接一两句话答清；若是解释“为什么、怎么形成、有什么区别”等原理或过程，不要揉成一整段纯文本——"
     "先用一句话给出核心结论（关键概念用 **粗体** 标出），再换行（\\n）把有逻辑分步、先后过程或多层原因拆成 2 到 4 个小步说明（如“1. **小步名**：简短说明”），末尾可补一句总结或贴近生活的例子；\n"
@@ -168,6 +169,7 @@ _VISUAL_LEAK_SYSTEM = (
     "（学生不需要再思考就能抄出结果）。"
     "作业图尽量只摆已知量和必要的关系或结构框架，可带少量过程描述；最终待求变量标为 ? 或未知，不算泄露。"
     "待求变量带有具体数值，或图里直接暴露求解结果，算泄露。"
+    "对于除法竖式，横线上方的商位也是待求变量；若孩子未算出商，图上不能提前填具体商数字。"
     "只返回 JSON：{\"leaks\": true 或 false}。"
 )
 
@@ -184,9 +186,9 @@ PROMPTS = {
     prompt.id: prompt
     for prompt in (
         PromptTemplate("companion.intent.system.v2", _INTENT_SYSTEM),
-        PromptTemplate("tutoring.turn.system.v18", _TUTOR_TURN_SYSTEM),
+        PromptTemplate("tutoring.turn.system.v19", _TUTOR_TURN_SYSTEM),
         PromptTemplate("tutoring.leak-judge.system.v6", _LEAK_SYSTEM),
-        PromptTemplate("tutoring.visual-leak-judge.system.v4", _VISUAL_LEAK_SYSTEM),
+        PromptTemplate("tutoring.visual-leak-judge.system.v5", _VISUAL_LEAK_SYSTEM),
         PromptTemplate("companion.agent-text.system.v1", _AGENT_TEXT_SYSTEM),
         DynamicPrompt("task.intake.prompt.v1", "app.application.commands.task_intake:_prompt"),
         DynamicPrompt("planning.intake.prompt.v1", "app.application.commands.plan_intake:_prompt"),

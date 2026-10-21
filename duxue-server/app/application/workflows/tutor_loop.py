@@ -52,13 +52,13 @@ def _ensure_widget_guidelines(observations: list[dict]) -> None:
     })
 
 
-def _visual_repair(candidate: TutorTurnCandidate, raw: dict) -> str:
+def _visual_repair(candidate: TutorTurnCandidate, raw: dict, *, reason: str | None = None) -> str:
     draft = {key: raw[key] for key in ("act", "content", "turn", "visual") if key in raw}
     rejected = json.dumps(draft, ensure_ascii=False)
     if len(rejected) > _VISUAL_REPAIR_DRAFT_MAX:
         rejected = rejected[:_VISUAL_REPAIR_DRAFT_MAX] + "…"
     return (
-        f"visual 校验未通过（{candidate.visual_error}）；请保持 act、content、turn 不变，只修正 visual。"
+        f"visual 校验未通过（{reason or candidate.visual_error}）；请保持 act、content、turn 不变，只修正 visual。"
         f"\n被拒草稿（只供改写 visual，禁止改动正文）：{rejected}"
     )
 
@@ -91,6 +91,7 @@ class Vetting:
 def call_tutor_model(
     model: TutorModelPort, envelope: dict, instruction: str, window: list[dict],
     images: list, tools: TutorToolbox, *, repair_error: str | None = None,
+    preload_svg_guidelines: bool = False,
 ) -> ModelCall:
     """有界循环：模型要工具就执行，直到返回候选。
 
@@ -100,6 +101,8 @@ def call_tutor_model(
     """
     repair: str | None = repair_error
     observations: list[dict] = []
+    if preload_svg_guidelines:
+        _ensure_widget_guidelines(observations)
     tool_calls = 0
     best_candidate: TutorTurnCandidate | None = None
     for _ in range(MAX_MODEL_CALLS):
@@ -154,6 +157,28 @@ def call_tutor_model(
                 _ensure_widget_guidelines(observations)
             repair = _visual_repair(candidate, raw)
             continue
+        if (
+            candidate.visual is not None
+            and candidate.visual.kind == "svg"
+            and not any(item.get("tool") == "widget_guidelines" for item in observations)
+        ):
+            # A syntactically valid SVG may still have the wrong diagram geometry.
+            # Require the design system before accepting a model-drawn vector.
+            best_candidate = candidate.model_copy(update={
+                "visual": None, "visual_dropped": "visual_invalid",
+                "visual_error": "svg generated without widget_guidelines",
+            })
+            if repair is not None:
+                return ModelCall(best_candidate)
+            _ensure_widget_guidelines(observations)
+            repair = _visual_repair(candidate, raw, reason="未先加载 widget_guidelines 中的绘图规范")
+            continue
+        if best_candidate is not None and (
+            candidate.act != best_candidate.act
+            or candidate.content != best_candidate.content
+            or candidate.turn != best_candidate.turn
+        ):
+            return ModelCall(best_candidate)
         return ModelCall(candidate)
     if best_candidate is not None:
         return ModelCall(best_candidate)
@@ -185,6 +210,12 @@ VISUAL_LEAK_REPAIR = (
     "最终待求量用 ?，不要直接暴露答案或替学生完成关键计算。"
     "保持 act、content、turn 原样，只修改 visual。"
 )
+MISSING_VISUAL_REPAIR = (
+    "上一版把二维竖式写成了 TeX 文字，没有返回 visual，App 无法显示该图形。"
+    "请使用已给的 widget_guidelines 返回 kind=svg 的 visual；保持 act、turn 与题目数字不变，"
+    "把 content 中的 TeX 竖式去掉，保留简短、可独立阅读的文字引导。商位用 ?。"
+)
+_TEXT_DIAGRAM_TEX = r"\enclose{longdiv}"
 
 
 def judge_problem_summary(
@@ -228,6 +259,13 @@ def _visual_leak_repair(vetting: Vetting) -> str:
     if len(rejected) > _VISUAL_REPAIR_DRAFT_MAX:
         rejected = rejected[:_VISUAL_REPAIR_DRAFT_MAX] + "…"
     return f"{VISUAL_LEAK_REPAIR}\n被拒草稿（只供重画，禁止照抄图中泄露内容）：{rejected}"
+
+
+def _missing_visual_repair(vetting: Vetting) -> str:
+    draft = json.dumps(vetting.candidate.model_dump(mode="json"), ensure_ascii=False)
+    if len(draft) > _VISUAL_REPAIR_DRAFT_MAX:
+        draft = draft[:_VISUAL_REPAIR_DRAFT_MAX] + "…"
+    return f"{MISSING_VISUAL_REPAIR}\n待修正草稿：{draft}"
 
 
 def fact_gate(candidate: TutorTurnCandidate) -> str | None:
@@ -364,6 +402,28 @@ def run_tutor_turn(
                 and redrawn.candidate.turn == vetting.candidate.turn
             ):
                 call, vetting = redraw, redrawn
+    if (
+        vetting.failure is None and vetting.visual is None
+        and _TEXT_DIAGRAM_TEX in vetting.candidate.content
+    ):
+        repair = _missing_visual_repair(vetting)
+        for retry_model in (model, backup_model):
+            if retry_model is None:
+                continue
+            redrawn_call = call_tutor_model(
+                retry_model, envelope, instruction, window, images, tools,
+                repair_error=repair, preload_svg_guidelines=True,
+            )
+            if redrawn_call.candidate is None:
+                continue
+            redrawn = vet(redrawn_call.candidate)
+            if (
+                redrawn.failure is None and redrawn.visual is not None
+                and redrawn.visual.kind == "svg"
+                and _TEXT_DIAGRAM_TEX not in redrawn.candidate.content
+            ):
+                call, vetting = redrawn_call, redrawn
+                break
     if vetting.failure is not None:
         record_llm_fallback(operation="tutor_turn", reason=vetting.failure)
     return TurnResult(call, vetting, retried)
