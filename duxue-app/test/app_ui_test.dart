@@ -1027,6 +1027,53 @@ void main() {
     expect(find.text('请看这张图片。'), findsNothing);
   });
 
+  testWidgets('ward messages sit on the right within two thirds and omit 我',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    FlutterSecureStoragePlatform.instance =
+        TestFlutterSecureStoragePlatform({});
+    final api = _WardHomeApi();
+    const spoken = '今晚先读十分钟课外书，然后再做两道数学题，看看时间够不够。';
+    final voice = _FakeVoice()..finalText = spoken;
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiProvider.overrideWithValue(api)],
+      child: MaterialApp(
+          home: WardDayPage(
+              wardId: 'ward-1',
+              voiceFactory: (
+                      {required baseUrl,
+                      required tokens,
+                      required telemetry}) =>
+                  voice)),
+    ));
+    await tester.pumpAndSettle();
+
+    final gesture = await tester
+        .startGesture(tester.getCenter(find.text('说出你的任何想法、问题、安排')));
+    await tester.pump(const Duration(milliseconds: 600));
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(find.text('我'), findsNothing);
+    expect(find.text('读学 AI'), findsWidgets);
+
+    final list = tester.getRect(find.byKey(const Key('companion-chat-list')));
+    final contentLeft = list.left + 16;
+    final contentRight = list.right - 16;
+    final contentWidth = contentRight - contentLeft;
+    final ward = tester.getRect(find.byKey(const ValueKey(
+        'chat-bubble-ward-今晚先读十分钟课外书，然后再做两道数学题，看看时间够不够。')));
+    final ai = tester.getRect(find.byKey(const ValueKey(
+        'chat-bubble-ai-我不会替你排今天。你说想怎么安排，我帮你记下来，并检查有没有冲突。')));
+
+    expect(ward.right, closeTo(contentRight, 1));
+    expect(ward.width, lessThanOrEqualTo(contentWidth * 2 / 3 + 1));
+    expect(ward.width, greaterThan(contentWidth * 0.5));
+    expect(ai.left, closeTo(contentLeft, 1));
+    expect(ai.width, greaterThan(contentWidth * 2 / 3));
+  });
+
   testWidgets('spoken text is sent together with the staged image',
       (tester) async {
     FlutterSecureStoragePlatform.instance =
