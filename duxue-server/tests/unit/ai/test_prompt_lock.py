@@ -10,7 +10,7 @@ from __future__ import annotations
 from app.infrastructure.ai.prompts import PROMPTS
 
 LOCK = {
-    "companion.intent.system.v2": "eebd7da59196039f358049a5ef39127783a68deb687a1403aa7a3320bd42d73e",
+    "companion.intent.system.v3": "0ad3d18b7752bba0111c422156087ef81e1cc93a4af77e56664f5f8cd3ab06b6",
     "tutoring.turn.system.v19": "c86ad4e9bf8c495d89a75e7eafe3992a1cdd555830b8dc5626bd8373fb9b7140",
     "tutoring.leak-judge.system.v6": "7f4b7f8d6adeb1a87817bd51e770ad9e694bd6a1105e949b943b2de2de31237f",
     "tutoring.visual-leak-judge.system.v5": "781d3deb79c00b75ea1903c226b05ec9b3de9fd71f0e42fc5a056cab61403c8c",

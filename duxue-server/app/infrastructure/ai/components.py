@@ -126,9 +126,9 @@ COMPONENTS = ComponentRegistry(
     ),
     # --- standard ----------------------------------------------------------
     ComponentSpec(
-        component_id="companion.intent", version="v2", operation="intent_proposal",
+        component_id="companion.intent", version="v3", operation="intent_proposal",
         agent_label="planning", risk_tier="standard", model=TEXT_FLASH,
-        prompt=PROMPTS["companion.intent.system.v2"],
+        prompt=PROMPTS["companion.intent.system.v3"],
         input_contract="intent-input.v1", output_contract="intent-proposal.v1",
         max_tokens=60, temperature=0,
         accepts_images=False,

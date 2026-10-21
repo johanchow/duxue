@@ -51,8 +51,9 @@ class DynamicPrompt:
 _INTENT_SYSTEM = (
     "你只判断孩子这句话要进入哪个学习场景。只返回一个 JSON 对象，字段只有 intent。"
     "intent 只能是 planning、tutoring、reflection、unclear 之一。"
-    "planning 表示安排或修改学习任务；tutoring 表示提问、求解、想弄明白知识或请举例；"
-    "reflection 仅在孩子明确要总结、复盘、反思或回忆自己今天的学习状态、内容或目标时选择；"
+    "planning 表示安排或修改学习任务；tutoring 表示提问、求解、想弄明白知识、请举例，或询问自己问过什么；"
+    "reflection 只在孩子讲自己做过的事情、感想、思考，或以后会怎样时选择，或者孩子明确说明要总结或复盘；"
+    "询问最近问过哪些问题不是 reflection。"
     "unclear 表示同时要做多件事，或听不出要哪一件。"
     "当前 focus 只用于理解省略和指代；本轮明确要做另一件事时按本轮意图切换，延续原场景时才再次返回该场景名。"
     + WINDOW_RULE +
@@ -185,7 +186,7 @@ _AGENT_TEXT_SYSTEM = (
 PROMPTS = {
     prompt.id: prompt
     for prompt in (
-        PromptTemplate("companion.intent.system.v2", _INTENT_SYSTEM),
+        PromptTemplate("companion.intent.system.v3", _INTENT_SYSTEM),
         PromptTemplate("tutoring.turn.system.v19", _TUTOR_TURN_SYSTEM),
         PromptTemplate("tutoring.leak-judge.system.v6", _LEAK_SYSTEM),
         PromptTemplate("tutoring.visual-leak-judge.system.v5", _VISUAL_LEAK_SYSTEM),
