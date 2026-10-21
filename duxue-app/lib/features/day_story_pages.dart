@@ -1933,10 +1933,14 @@ class _ChatBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isWard = label == '我';
-    return Align(
+    return LayoutBuilder(builder: (context, constraints) {
+      final maxWidth =
+          isWard ? constraints.maxWidth * 2 / 3 : constraints.maxWidth;
+      return Align(
         alignment: isWard ? Alignment.centerRight : Alignment.centerLeft,
         child: Container(
-            constraints: BoxConstraints(maxWidth: visual != null ? 340 : 300),
+            key: ValueKey('chat-bubble-${isWard ? 'ward' : 'ai'}-$text'),
+            constraints: BoxConstraints(maxWidth: maxWidth),
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
                 color:
@@ -1948,11 +1952,12 @@ class _ChatBubble extends StatelessWidget {
                 borderRadius: BorderRadius.circular(16)),
             child:
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(label,
-                  style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.blueGrey)),
+              if (!isWard)
+                Text(label,
+                    style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.blueGrey)),
               if (images.isNotEmpty) ...[
                 const SizedBox(height: 6),
                 Wrap(spacing: 6, runSpacing: 6, children: [
@@ -1981,6 +1986,7 @@ class _ChatBubble extends StatelessWidget {
                 VisualBlock(visual: visual!),
               ],
             ])));
+    });
   }
 }
 
