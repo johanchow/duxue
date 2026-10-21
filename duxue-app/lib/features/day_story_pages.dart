@@ -825,26 +825,8 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         child: _ChatBubble(
             label: '读学 AI', text: '我不会替你排今天。你说想怎么安排，我帮你记下来，并检查有没有冲突。'),
       ),
-      for (final message in historyMessages)
-        Padding(
-          padding: const EdgeInsets.only(top: 10),
-          child: _ChatBubble(
-              key: message.id != null ? ValueKey('msg-${message.id}') : null,
-              label: message.label,
-              text: message.content,
-              images: message.images,
-              visual: message.visual),
-        ),
-      for (final message in planMessages)
-        Padding(
-          padding: const EdgeInsets.only(top: 10),
-          child: _ChatBubble(
-              key: message.id != null ? ValueKey('msg-${message.id}') : null,
-              label: message.label,
-              text: message.content,
-              images: message.images,
-              visual: message.visual),
-        ),
+      for (final message in historyMessages) _chatMessage(message),
+      for (final message in planMessages) _chatMessage(message),
       if (planSending)
         const Padding(
           padding: EdgeInsets.only(top: 14),
@@ -897,17 +879,12 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
                 ])
               ])),
         ),
-      for (final item in pronunciationLessons)
-        Padding(
-          padding: const EdgeInsets.only(top: 14),
-          child: PronunciationLessonCard(
-            key: ValueKey(item['speech_ref'] ?? item['source_text']),
-            lesson: item,
-            loadSpeech: (speechRef, rate) =>
-                ref.read(apiProvider).pronunciationSpeech(speechRef, rate),
-            playback: _playback(),
+      if (!_messagesCarryPronunciation)
+        for (final item in pronunciationLessons)
+          Padding(
+            padding: const EdgeInsets.only(top: 14),
+            child: _pronunciationCard(item),
           ),
-        ),
     ];
 
     return _HomeOverlay(
@@ -977,8 +954,11 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         if (image.key != null) image.bytes,
     ];
     _openPlanChat();
-    setState(() => planMessages
-        .add(_ChatLine(label: '我', content: content, images: images)));
+    setState(() {
+      _anchorPronunciationLessons();
+      planMessages
+          .add(_ChatLine(label: '我', content: content, images: images));
+    });
     _scrollToChatBottom();
     await _submitPlanInput(content, pronunciation: pronunciation);
     _scrollToChatBottom();
@@ -1666,8 +1646,59 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         ],
         visual: interactionRef == null
             ? null
-            : visualFromInteraction(interactionRef));
+            : visualFromInteraction(interactionRef),
+        lessons: _lessonsFromInteraction(interactionRef));
   }
+
+  bool get _messagesCarryPronunciation =>
+      historyMessages.any((message) => message.lessons.isNotEmpty) ||
+      planMessages.any((message) => message.lessons.isNotEmpty);
+
+  void _anchorPronunciationLessons() {
+    if (pronunciationLessons.isEmpty) return;
+    final lessons = pronunciationLessons;
+    pronunciationLessons = const [];
+    for (final lines in [planMessages, historyMessages]) {
+      for (var index = lines.length - 1; index >= 0; index--) {
+        if (lines[index].label == '我') continue;
+        lines[index] = lines[index].copyWith(lessons: lessons);
+        return;
+      }
+    }
+    planMessages.add(
+        _ChatLine(label: '读学 AI', content: '', lessons: lessons));
+  }
+
+  Widget _pronunciationCard(Map<String, dynamic> lesson) =>
+      PronunciationLessonCard(
+        key: ValueKey(lesson['speech_ref'] ?? lesson['source_text']),
+        lesson: lesson,
+        loadSpeech: (speechRef, rate) =>
+            ref.read(apiProvider).pronunciationSpeech(speechRef, rate),
+        playback: _playback(),
+      );
+
+  Widget _chatMessage(_ChatLine message) => Padding(
+        padding: const EdgeInsets.only(top: 10),
+        child: Column(
+          crossAxisAlignment: message.label == '我'
+              ? CrossAxisAlignment.end
+              : CrossAxisAlignment.start,
+          children: [
+            _ChatBubble(
+                key: message.id != null ? ValueKey('msg-${message.id}') : null,
+                label: message.label,
+                text: message.content,
+                images: message.images,
+                visual: message.visual),
+            for (final lesson in message.lessons)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: _pronunciationCard(lesson),
+              ),
+          ],
+        ),
+      );
 
   void _scrollToChatBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1792,6 +1823,9 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
       planMessages
         ..clear()
         ..addAll(latestLines);
+      if (latestLines.any((message) => message.lessons.isNotEmpty)) {
+        pronunciationLessons = const [];
+      }
     });
     if (version != null && companionThreadId != null) {
       await ref
@@ -1909,12 +1943,36 @@ class _ChatLine {
     required this.content,
     this.images = const [],
     this.visual,
+    this.lessons = const [],
   });
   final String? id;
   final String label;
   final String content;
   final List<Uint8List> images;
   final Map<String, dynamic>? visual;
+  final List<Map<String, dynamic>> lessons;
+
+  _ChatLine copyWith({List<Map<String, dynamic>>? lessons}) => _ChatLine(
+        id: id,
+        label: label,
+        content: content,
+        images: images,
+        visual: visual,
+        lessons: lessons ?? this.lessons,
+      );
+}
+
+List<Map<String, dynamic>> _lessonsFromInteraction(
+    Map<String, dynamic>? interaction) {
+  if (interaction == null || interaction['kind'] != 'pronunciation_lesson') {
+    return const [];
+  }
+  final raw = interaction['lessons'];
+  if (raw is! List) return const [];
+  return [
+    for (final item in raw)
+      if (item is Map) Map<String, dynamic>.from(item),
+  ];
 }
 
 class _ChatBubble extends StatelessWidget {

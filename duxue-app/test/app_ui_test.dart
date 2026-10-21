@@ -335,6 +335,43 @@ class _WardHomeApi extends ApiClient {
             'content': turn.content,
             'attachment_refs': turn.attachmentKeys,
           },
+          if (turn.content == 'apple' || turn.content == 'start also')
+            {
+              'author_type': 'companion',
+              'content': turn.content == 'apple'
+                  ? '先听这个词。'
+                  : 'start 是开始，also 是也。',
+              'attachment_refs': const <String>[],
+              'interaction_ref': {
+                'kind': 'pronunciation_lesson',
+                'lessons': turn.content == 'apple'
+                    ? [
+                        {
+                          'source_text': 'apple',
+                          'locale': 'en-US',
+                          'introduction': '先听这个词。',
+                          'speech_ref': 'lesson-1',
+                          'supported_rates': [0.5, 0.75, 1.0],
+                        },
+                      ]
+                    : [
+                        {
+                          'source_text': 'start',
+                          'locale': 'en-US',
+                          'introduction': 'start（开始）',
+                          'speech_ref': 'lesson-multi',
+                          'supported_rates': [0.5, 0.75, 1.0],
+                        },
+                        {
+                          'source_text': 'also',
+                          'locale': 'en-US',
+                          'introduction': 'also（也）',
+                          'speech_ref': 'lesson-multi:1',
+                          'supported_rates': [0.5, 0.75, 1.0],
+                        },
+                      ],
+              },
+            },
           if (turn.content.contains('水循环'))
             {
               'author_type': 'companion',
@@ -952,6 +989,55 @@ void main() {
 
     expect(find.text('start（开始）', skipOffstage: false), findsOneWidget);
     expect(find.text('also（也）', skipOffstage: false), findsOneWidget);
+  });
+
+  testWidgets(
+      'a pronunciation card stays with its reply when a later message is sent',
+      (tester) async {
+    FlutterSecureStoragePlatform.instance =
+        TestFlutterSecureStoragePlatform({});
+    final api = _WardHomeApi();
+    final voice = _FakeVoice()..finalText = 'apple';
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiProvider.overrideWithValue(api)],
+      child: MaterialApp(
+          home: WardDayPage(
+              wardId: 'ward-1',
+              voiceFactory: (
+                      {required baseUrl,
+                      required tokens,
+                      required telemetry}) =>
+                  voice)),
+    ));
+    await tester.pumpAndSettle();
+
+    var gesture = await tester
+        .startGesture(tester.getCenter(find.text('说出你的任何想法、问题、安排')));
+    await tester.pump(const Duration(milliseconds: 600));
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    final asked = tester.getTopLeft(
+        find.byKey(const ValueKey('chat-bubble-ward-apple'),
+            skipOffstage: false));
+    final card =
+        tester.getTopLeft(find.text('播放', skipOffstage: false));
+    expect(card.dy, greaterThan(asked.dy));
+
+    voice.finalText = '谢谢';
+    gesture = await tester
+        .startGesture(tester.getCenter(find.text('说出你的任何想法、问题、安排')));
+    await tester.pump(const Duration(milliseconds: 600));
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(find.text('播放', skipOffstage: false), findsOneWidget);
+    final cardAfter =
+        tester.getTopLeft(find.text('播放', skipOffstage: false));
+    final later = tester.getTopLeft(find.byKey(
+        const ValueKey('chat-bubble-ward-谢谢'),
+        skipOffstage: false));
+    expect(cardAfter.dy, lessThan(later.dy));
   });
 
   testWidgets(

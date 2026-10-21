@@ -181,11 +181,16 @@ class CompanionCoordinator:
     @staticmethod
     def _visible_interaction_ref(outcome: WorkflowOutcome) -> dict | None:
         payload = outcome.next_interaction or outcome.response or {}
-        if payload.get("kind") != "text_visual":
+        kind = payload.get("kind")
+        if kind == "text_visual":
+            for part in payload.get("parts") or []:
+                if isinstance(part, dict) and part.get("type") == "visual" and isinstance(part.get("visual"), dict):
+                    return {"kind": "text_visual", "parts": [{"type": "visual", "visual": part["visual"]}]}
             return None
-        for part in payload.get("parts") or []:
-            if isinstance(part, dict) and part.get("type") == "visual" and isinstance(part.get("visual"), dict):
-                return {"kind": "text_visual", "parts": [{"type": "visual", "visual": part["visual"]}]}
+        if kind == "pronunciation_lesson":
+            lessons = payload.get("lessons")
+            if isinstance(lessons, list) and lessons and all(isinstance(item, dict) for item in lessons):
+                return {"kind": "pronunciation_lesson", "lessons": lessons}
         return None
 
     def handle(

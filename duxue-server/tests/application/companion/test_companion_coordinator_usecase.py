@@ -348,6 +348,53 @@ def test_coordinator_persists_text_visual_in_companion_message_interaction_ref(d
     ]
 
 
+def test_coordinator_persists_pronunciation_lessons_in_companion_message_interaction_ref(db):
+    ward = create_ward(db)
+    db.commit()
+    lessons = [{
+        "lesson_ref": "lesson-1",
+        "source_text": "apple",
+        "locale": "en-US",
+        "introduction": "apple（苹果）",
+        "reading_guide": "a 发 /æ/。",
+        "notes": [],
+        "speech_ref": "lesson-1",
+        "supported_rates": [0.5, 0.75, 1.0],
+        "version": 1,
+    }]
+    dispatcher = FakeWorkflowDispatcher(
+        WorkflowOutcome(
+            run_status="waiting_for_ward",
+            outcome_type="response",
+            next_interaction={
+                "protocol": "companion-interaction.v1",
+                "kind": "pronunciation_lesson",
+                "content": "apple 是苹果。",
+                "parts": [{"type": "text", "text": "apple 是苹果。"}],
+                "lessons": lessons,
+                "actions": [],
+            },
+        )
+    )
+    coordinator = CompanionCoordinator(db, dispatcher=dispatcher, classifier=StaticIntentClassifier("tutoring"))
+    result = coordinator.handle(
+        ward_id=ward.id,
+        content="apple 怎么读",
+        thread_id=None,
+        expected_thread_version=0,
+        route_hint="tutoring",
+    )
+
+    messages = (
+        db.query(CompanionMessage)
+        .filter_by(thread_id=result.thread_id)
+        .order_by(CompanionMessage.thread_version)
+        .all()
+    )
+    assert messages[1].author_type == "companion"
+    assert messages[1].interaction_ref == {"kind": "pronunciation_lesson", "lessons": lessons}
+
+
 def test_companion_messages_supports_current_thread_lookup_cursor_pagination_and_previous_thread_link(db):
     from datetime import timedelta
     from app.api.v1.common import Principal, now
