@@ -73,7 +73,7 @@ flowchart LR
 - 不用标题层级；不出现"如上所述"这类指代（孩子可能只看这一屏）。
 - 一轮只推进一件事。
 - **正文 Markdown 与 TeX 公式契约**：
-  - **正文与配图双轨分工**：算式、分式（`\frac{a}{b}`）、根号（`\sqrt{}`）、多步对齐（`aligned`）与方程组（`cases`）一律作为 UTF-8 Markdown + TeX 字符串写在 `content` 内，客户端用 `flutter_math_fork`（`Math.tex`）原生渲染，**不为单个算式生成 `visual` 配图，也不引入 WebView**；
+  - **正文与配图双轨分工**：一维常规公式（算式、分式 `\frac{a}{b}`、根号 `\sqrt{}`、多步对齐 `aligned`、方程组 `cases`、物理公式、化学方程式）一律作为 UTF-8 Markdown + TeX 字符串写在 `content` 内，客户端用 `flutter_math_fork`（`Math.tex`）原生渲染，**不为单个一维算式生成 `visual` 配图，也不引入 WebView**；需要二维空间对位、画线框或结构的演算式与结构式（如加减乘除竖式、受力/电路图、分子结构式）则走 `visual` 的 `kind="svg"`；
   - **公式分隔符**：行内公式用 `$...$`（单行闭合、首尾不留空白，兼容 `\(...\)`），独立公式用 `$$...$$`（兼容 `\[...\]`）；金额写“100 元”不写 `$100`，不用 Unicode 假公式或字符画；
   - **客户端容错与安全红线**：App 端 `ChatMarkdownBody`（`lib/shared/chat_markdown.dart`）支持单换行 `\n` 保真换行、`<br>`/`<br/>` 换行、严格双波浪线 `~~` 删除线（避免数学区间 `1~10` 被误划掉）、宽松 `**粗体**`（兼容尾部空格与中文全角标点边界），标题压平为仅加粗，公式解析异常回退显示源码；**严禁外链跳转与外部图片加载**（`[text](url)` 与 `![alt](url)` 一律仅展示纯文本）。
 
@@ -144,7 +144,7 @@ class VisualPayload(BaseModel):
 | `number_line` | 原生结构化 | 数轴：大小比较、负数、不等式、分数与小数位置 | 范围、刻度、若干标记点或区间；未知点标 `unknown=true`，不得带数值 | ≤8 个标记 |
 | `svg` | 受限矢量 (`flutter_svg`) | 平面几何图形与辅助线、电路/受力示意、树形/环路/自由概念图 | 静态 `<svg>` XML 字符串 | 固定 `viewBox="0 0 680 H"`（`40 <= H <= 1600`），标签白名单，禁止脚本/外链/事件属性/`<style>`，字号 ≥ 11px，作业题待求量标 `?` |
 
-选型原则：**能用前四种结构化图型表达的优先用前四种；只有前四种放不下时才用 `svg`。** 通用限制：`label` 与 `detail` 的字数上限、不含 URL、HTML、Markdown 标记；`alt` 必填；`svg` 经本地 XML 解析提取全部 `<title>`/`<desc>`/`<text>`/`<tspan>` 文本，与前四种图统一走答案泄露门禁与输出安全审核。**超预算或结构非法时丢弃整张图，不截断、不猜测修复**（仅对 SVG 连接线缺失 `fill="none"` 和 `viewBox` 高度偏小做确定性几何补齐）。数据趋势类沿用 App 已有的 `fl_chart`，不放进 `visual`。
+选型原则：**能用前四种结构化图型表达的优先用前四种；只有前四种放不下时才用 `svg`。** 通用限制：`label` 与 `detail` 的字数上限、不含 URL、HTML、Markdown 标记；`alt` 必填；`svg` 经本地 XML 解析提取全部 `<title>`/`<desc>`/`<text>`/`<tspan>` 文本，与前四种图统一走答案泄露门禁与输出安全审核。**超预算或结构非法时丢弃整张图，不截断、不猜测内容**；确定性清洗只剥离 XML 注释与 `<style>` 块、把 `viewBox` 改写为 `0 0 680 H`、给连接线补 `fill="none"`。数据趋势类沿用 App 已有的 `fl_chart`，不放进 `visual`。
 
 ### 5.3 何时配图（触发策略）
 
@@ -178,10 +178,9 @@ class VisualPayload(BaseModel):
 | --- | --- |
 | `act` 没有可承载图的正文（`chat`/`clarify`/`redirect`/`pronounce`/`safety`） | 丢弃 `visual`（结构原因） |
 | 结构非法、超预算 | 丢弃 `visual`，文字照常 |
-| 学科图的**结构不变量**（确定性，schema 层）：`unknown=true` 的量、点、区间、角或长度**不得带数值**，也不得在 `label`/`detail` 里写出数值 | 违反则丢弃 `visual`，文字照常。这是挡住"图上直接标出答案"最便宜、最可靠的一道，不依赖模型 |
+| 学科图的**结构不变量**（确定性，schema 层）：`unknown=true` 的量、点、区间**不得带数值字段**（`value`/`at`/`start`/`end`） | 违反则丢弃 `visual`，文字照常。`label` 文字不靠正则或数字扫描拦截，其语义是否泄题交图泄露判官裁决 |
 | **按作业成果处理**（`turn.type=work`，或 `answer_protected=true`）：**文字**（`content`）是否给出最终答案、待填内容或完整解法 | 现有泄露检查，**不变**：判定泄露、超时或结果非法都按泄露处理（fail-closed），整轮回退 |
 | 同上：**图**（`visual`）是否给出最终答案、待填内容或完整解法 | **与文字分开判断**，见下方"图的泄露判断"。判定泄露、超时或结果非法，一律**只丢弃 `visual`**，文字照常展示 |
-| `visual` 的文字含答案标记 | 丢弃 `visual`（沿用现有关键词兜底） |
 | 独立输出安全审核 | `visual` 的 `title`、`label`、`detail`、`alt` **与 `content` 一并送审**；不通过则整轮按现有规则处理 |
 
 **图的泄露判断：**
@@ -245,7 +244,7 @@ class VisualPayload(BaseModel):
 | 类别 | 项目 | 行为 |
 | --- | --- | --- |
 | 拒绝类（不变） | 作业答案保护、**对 `content` 的**泄露判官、独立输出安全审核 | 不通过则回退，不写事实 |
-| 规范化类（新增） | `visual` 不适用、超预算、结构非法、`unknown` 量带数值、含答案标记、**被图泄露判官判为泄露（含超时、结果非法）** | 丢弃 `visual`，文字照常展示，只记原因 |
+| 规范化类（新增） | `visual` 不适用、超预算、结构非法、`unknown` 量带数值字段、**被图泄露判官判为泄露（含超时、结果非法）** | 丢弃 `visual`，文字照常展示，只记原因 |
 | 规范化类（新增） | `content` 的形状 lint（超长、一轮多个问题、列表比例过高、`$` 未配对、裸 HTML） | **只记录，不回退**；严重的确定性清洗（如去掉裸 HTML）留待实现期决定 |
 
 形状 lint 绝不能成为新的 fallback 来源：这正是 note 114/115/119 反复出现的故障模式（与安全无关的不一致把可展示的回答换成固定话术）。
@@ -397,8 +396,8 @@ Then  只记录，回答照常展示，不触发 fallback
 **已实现**
 
 - 逻辑层：`tutoring.turn.system.v13` 含"回答形状"与"正文公式/Markdown 书写规范"段；`tutor_shape.lint_shape` 只观测（trace 事件 `tutor.shape.lint` 与离线指标），不触发 fallback（`<br>`/`<br/>` 放行不记 `raw_html`；`unpaired_dollar` 忽略代码块并覆盖 `$`、`$$`、`\(...\)`、`\[...\]` 配对检查）。长度上限（`answer` 400、`guide` 250、`chat`/`redirect`/`pronounce` 120、`clarify` 200 字）是**初始假设**，待 §十 第 0 步用真实输出校准。
-- 契约：`tutor_visual.py` 的 `visual`（两层共五种图型：第一层原生结构化 `steps`、`compare`、`segment`、`number_line`；第二层受限矢量 `svg`）与预算；结构非法、超预算、`unknown` 带数值、SVG 违反白名单/画布规范、`act` 不适用，一律丢图，原因类别写入 trace 事件 `tutor.visual.dropped`。原先规划的 `geometry`、`layers`、`relation` 统一由受限 `svg` 承载，不再单独拆出几何约束求解器。
-- 出口检查：新增独立组件 `tutoring.visual-leak-judge@v1`（待定项 8 选"新增独立提示词"，仍只交 `problem_summary`，不交原题）；`describe(visual)` 对结构化图和 `svg`（提取全部 `<title>`/`<desc>`/`<text>`/`<tspan>` 可见文本）生成统一文本摘要，经关键词答案标记检查、并行图泄露判官及独立输出安全审核；判泄露、超时、结果非法、异常、判官不支持图，都只丢图。
+- 契约：`tutor_visual.py` 的 `visual`（两层共五种图型：第一层原生结构化 `steps`、`compare`、`segment`、`number_line`；第二层受限矢量 `svg`）与预算；结构非法、超预算、`unknown` 带数值、SVG 违反白名单/画布规范、`act` 不适用，一律丢图，原因类别写入 trace 事件 `tutor.visual.dropped`。SVG 的确定性清洗剥离 XML 注释与 `<style>` 块，并把 `viewBox` 改写为 `0 0 680 H`。`visual_invalid` 重试会附上被拒草稿，并在未调过 `widget_guidelines` 时注入规范。原先规划的 `geometry`、`layers`、`relation` 统一由受限 `svg` 承载，不再单独拆出几何约束求解器。
+- 出口检查：独立组件 `tutoring.visual-leak-judge@v4` 仍只交 `problem_summary`；`describe(visual)` 对结构化图和 `svg`（提取全部 `<title>`/`<desc>`/`<text>`/`<tspan>` 可见文本）生成统一文本摘要。图泄露时重画一次并重新审核；重画未过、判官超时、结果非法、异常或不支持图，都只丢图。文字连续两次因同一泄露原因被拦时，改用受保护的备用组件 `tutoring.turn-backup@v1` 重试一次，仍经过完整出口检查。
 - 投影：`kind=text_visual`，`parts = text + visual`（内联）；模型不返回 `kind`、按钮、动作。
 - App：正文由 `ChatMarkdownBody`（`lib/shared/chat_markdown.dart`，基于 `markdown` + `flutter_math_fork`）渲染 GFM、4 项容错扩展与行内/块级 TeX 公式（禁外链与外图）；配图由 `VisualBlock` 五个渲染器（含 `flutter_svg` 驱动的 `_SvgView` 与明暗色板 CSS 变量摊平 `materializeSvgTheme`）渲染，覆盖降级、无障碍、窄屏与深色测试。
 

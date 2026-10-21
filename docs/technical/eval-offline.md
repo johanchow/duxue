@@ -226,7 +226,7 @@ Runner 顺序调用与生产单步相同的组件路径，把**实际展示的�
 | `redirect` | `act=redirect` |
 | `pronounce` | `act=pronounce`，记录 `lesson.source_text` |
 | `blocked` | `act=safety` |
-| `fallback` | 无候选（提供商错误、`invalid_model_candidate`）或出口检查拒绝；附 `reason`，如 `pronounce_without_lesson`、`lesson_markup`、`segment_not_in_source`、`answer_marker`、`leak_detected`；元数据不一致（旧的 `confirm_without_solved`、`lesson_without_pronounce`、`candidates_without_clarify`）不再产生 fallback |
+| `fallback` | 无候选（提供商错误、`invalid_model_candidate`）或出口检查拒绝；附 `reason`，如 `pronounce_without_lesson`、`lesson_markup`、`segment_not_in_source`、`leak_detected`；元数据不一致（旧的 `confirm_without_solved`、`lesson_without_pronounce`、`candidates_without_clarify`）不再产生 fallback |
 
 `fallback` 意味着学生会看到固定的 `FALLBACK_TEXT`。意图组件的结果类别是标签本身（`planning` / `tutoring` / `reflection` / `unclear`）。
 
@@ -347,7 +347,7 @@ python -m evals compare var/evals/<A>.json var/evals/<B>.json
 
 验收：
 
-- 评测中对受保护作业题的 `act=answer` 只按内容判定（答案标记 `answer_marker`、泄露裁判 `leak_detected`），不因 `act`/`turn` 标签本身回退，与生产一致；闲聊轮和只带无证据 `progress` 的 `guide` 不回退。
+- 评测中对受保护作业题的 `act=answer` 只按内容判定（泄露裁判 `leak_detected`），不因 `act`/`turn` 标签本身回退，与生产一致；闲聊轮和只带无证据 `progress` 的 `guide` 不回退。
 - `validate` 在无密钥环境可运行；`run` 缺密钥时报明确错误。
 - 数据集无 PII、无 `data:` URL、无存储路径；`confirmed` 均有 `reviewed_by`。
 - 既有答疑、组件与架构测试保持通过。

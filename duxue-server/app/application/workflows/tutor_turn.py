@@ -30,7 +30,6 @@ from app.application.workflows.tutor_visual import (
     Visual,
     drop_reason,
 )
-from app.contexts.study.domain.execution import ANSWER_LEAK_MARKERS
 from app.contexts.tutoring.domain.tutor_permit import TutorPermit
 
 CONTRACT_ID = "tutor-turn.v4"
@@ -404,12 +403,10 @@ def check_authority(candidate: TutorTurnCandidate, permit: TutorPermit) -> Verdi
         # held to the same content check as any other reply.
         if not permit.answer_protected:
             return Verdict(True)
-        if any(marker in candidate.shown_text for marker in ANSWER_LEAK_MARKERS):
-            return Verdict(False, "answer_marker")
         return Verdict(True, answer_protected=True, needs_leak_check=True)
 
     # Protection is owned by the permit (code policy), not by the model.  While a problem is
-    # protected, every answer/guide is checked on its content (answer marker, leak judge,
+    # protected, every answer/guide is checked on its content (leak judge,
     # fail-closed) whatever `relation` says; `relation=none` can only keep a turn from advancing
     # the problem record, never switch the check off.  A turn that claims work on a problem with
     # no protection yet (same/new) starts out protected.  The Ward is never handed the finished
@@ -417,8 +414,6 @@ def check_authority(candidate: TutorTurnCandidate, permit: TutorPermit) -> Verdi
     relation = candidate.relation
     claims_work = relation in {"same", "new"}
     answer_protected = permit.answer_protected or claims_work
-    if answer_protected and any(marker in candidate.content for marker in ANSWER_LEAK_MARKERS):
-        return Verdict(False, "answer_marker")
     # An `answer` is a direct reply to a question, not the child's attempt at a problem, so it
     # never opens, abandons or advances a problem record (a mislabelled knowledge question must
     # not lock the next turn).  It is still leak-checked when it claims to touch the work.

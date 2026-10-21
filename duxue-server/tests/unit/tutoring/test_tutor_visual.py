@@ -108,7 +108,6 @@ def mutated(base, mutate):
     mutated(NUMBER_LINE, lambda v: v.update(marks=[{"at": i} for i in range(9)])),             # > 8
     mutated(SVG, lambda v: v.update(svg="<!DOCTYPE svg>" + v["svg"])),                         # doctype
     mutated(SVG, lambda v: v.update(svg="<html>" + v["svg"] + "</html>")),                     # html wrapper
-    mutated(SVG, lambda v: v.update(svg=v["svg"].replace("0 0 680 180", "0 0 500 180"))),      # non-680 width
     mutated(SVG, lambda v: v.update(svg=v["svg"].replace("0 0 680 180", "0 0 680 20"))),       # height < 40
     mutated(SVG, lambda v: v.update(svg=v["svg"].replace("0 0 680 180", "0 0 680 2000"))),     # height > 1600
     mutated(SVG, lambda v: v.update(svg=v["svg"].replace("</svg>", "<script>alert(1)</script></svg>"))),
@@ -127,16 +126,20 @@ def test_invalid_or_over_budget_visuals_are_dropped_whole(bad):
 
 @pytest.mark.parametrize("bad", [
     mutated(SEGMENT, lambda v: v["bars"][0]["segments"].append({"unknown": True, "value": 7})),
-    mutated(SEGMENT, lambda v: v["bars"][0]["segments"].append({"unknown": True, "label": "共 12 个"})),
     mutated(SEGMENT, lambda v: v["brackets"][0].update(value=8)),
-    mutated(SEGMENT, lambda v: v["brackets"][0].update(label="合计8")),
     mutated(NUMBER_LINE, lambda v: v["marks"].append({"label": "x", "unknown": True, "at": 2})),
-    mutated(NUMBER_LINE, lambda v: v["marks"].append({"label": "x=2", "unknown": True})),
 ])
 def test_an_unknown_quantity_must_not_carry_a_number(bad):
     candidate = cand(bad)
     assert candidate.visual is None
     assert candidate.visual_dropped == "visual_unknown_value"
+
+
+def test_unknown_label_with_digits_is_kept_by_schema_for_semantic_judge():
+    """label 里的数字（如“第1段”“2倍”）不靠字符扫描误杀，语义泄露交由 visual-leak-judge 裁决。"""
+    seg = mutated(SEGMENT, lambda v: v["bars"][0]["segments"].append({"unknown": True, "label": "第1段"}))
+    candidate = cand(seg)
+    assert candidate.visual is not None and candidate.visual_dropped is None
 
 
 def test_unknown_marks_have_no_position_and_are_described_as_unknown():
@@ -145,6 +148,21 @@ def test_unknown_marks_have_no_position_and_are_described_as_unknown():
     assert "标记 x：位置未知" in text
     segment = describe(cand(SEGMENT).visual)
     assert "括号（线段 小红）：合计未知" in segment
+
+
+def test_svg_strips_style_and_rewrites_nonstandard_viewbox_width():
+    """模型常写 <style> 或非 680 宽 viewBox；确定性清洗后保留图，不整张丢弃。"""
+    raw = (
+        '<svg viewBox="0 0 300 180" width="100%" role="img">'
+        '<style>text{font-family:monospace;font-size:24px;fill:#333}</style>'
+        '<polygon points="220,140 220,40 380,140" fill="#E6F1FB" stroke="#185FA5" stroke-width="1.5"/>'
+        '<text x="200" y="95" font-size="13" fill="#0C447C">3</text>'
+        '</svg>'
+    )
+    candidate = cand({"kind": "svg", "alt": "直角三角形", "svg": raw})
+    assert candidate.visual is not None and candidate.visual_dropped is None
+    assert "<style" not in candidate.visual.svg.lower()
+    assert 'viewBox="0 0 680 ' in candidate.visual.svg
 
 
 def test_svg_normalizes_connector_fill_and_viewbox_height_and_extracts_texts():
@@ -227,7 +245,7 @@ def test_every_json_example_in_the_tutor_prompt_is_a_valid_candidate():
 
     from app.infrastructure.ai.prompts import PROMPTS
 
-    text = PROMPTS["tutoring.turn.system.v16"].text
+    text = PROMPTS["tutoring.turn.system.v18"].text
     decoder, found, start = json.JSONDecoder(), [], 0
     while (index := text.find("例如 {", start)) != -1:
         example, end = decoder.raw_decode(text, index + 3)
@@ -243,7 +261,7 @@ def test_every_json_example_in_the_tutor_prompt_is_a_valid_candidate():
 def test_the_prompt_offers_exactly_the_kinds_the_contract_accepts():
     from app.infrastructure.ai.prompts import PROMPTS
 
-    text = PROMPTS["tutoring.turn.system.v16"].text
+    text = PROMPTS["tutoring.turn.system.v18"].text
     for kind in ("steps", "compare", "segment", "number_line", "svg"):
         assert f'"kind":"{kind}"' in text
     assert "widget_guidelines" in text
@@ -252,8 +270,8 @@ def test_the_prompt_offers_exactly_the_kinds_the_contract_accepts():
 
 
 def test_widget_guidelines_tool_and_visual_repair_in_call_tutor_model():
-    """模型可先调 widget_guidelines 拿完整 SVG 规范；若首次 SVG 违反语法（如 viewBox 宽度错），
-    call_tutor_model 会把具体 visual 错误通过 repair_error 喂回模型重修一次，修不好也保底保留文字。"""
+    """模型可先调 widget_guidelines 拿完整 SVG 规范；若首次 SVG 仍非法，
+    call_tutor_model 会把错误和上一版正文通过 repair_error 喂回模型重修一次，修不好也保底保留文字。"""
     from app.application.workflows.tutor_loop import call_tutor_model
     from app.application.workflows.tutor_tools import SVG_WIDGET_GUIDELINES, TutorToolbox
     from tests.support.fakes import StaticTutorModel
@@ -261,7 +279,7 @@ def test_widget_guidelines_tool_and_visual_repair_in_call_tutor_model():
     tools = TutorToolbox(
         None, tutoring_session_id=None, problem=None, task_title=None, task_active=False, window=[],
     )
-    bad_svg = {**SVG, "svg": SVG["svg"].replace("0 0 680 180", "0 0 500 180")}
+    bad_svg = {**SVG, "svg": SVG["svg"].replace("</svg>", "<foreignObject/></svg>")}
     model = StaticTutorModel(
         {"tool": "widget_guidelines", "args": {}},
         tutor_raw("answer", "这是折射光路。", relation="none", visual=bad_svg),
@@ -272,7 +290,42 @@ def test_widget_guidelines_tool_and_visual_repair_in_call_tutor_model():
     obs = model.calls[1]["observations"][0]
     assert obs["tool"] == "widget_guidelines" and obs["guidelines"] == SVG_WIDGET_GUIDELINES
     assert "visual 校验未通过" in (model.calls[2]["repair_error"] or "")
-    assert "680" in (model.calls[2]["repair_error"] or "")
+    assert "这是折射光路" in (model.calls[2]["repair_error"] or "")
     assert res.candidate is not None and res.candidate.visual is not None
     assert res.candidate.visual_dropped is None
+
+
+def test_visual_invalid_retry_injects_guidelines_and_keeps_the_rejected_draft():
+    """未调 widget_guidelines 就写 svg 且校验失败时，重试必须带规范和上一版正文。"""
+    from app.application.workflows.tutor_loop import call_tutor_model
+    from app.application.workflows.tutor_tools import SVG_WIDGET_GUIDELINES, TutorToolbox
+    from tests.support.fakes import StaticTutorModel
+
+    tools = TutorToolbox(
+        None, tutoring_session_id=None, problem=None, task_title=None, task_active=False, window=[],
+    )
+    text_only = {
+        "kind": "svg",
+        "alt": "660 除以 150 的竖式框架",
+        "title": "除法竖式框架",
+        "svg": (
+            '<svg viewBox="0 0 680 200" width="100%" role="img">'
+            '<text x="10" y="90" font-size="13">150) 660</text>'
+            '</svg>'
+        ),
+    }
+    model = StaticTutorModel(
+        tutor_raw("guide", "我们先列 660 ÷ 150 的框架。", visual=text_only),
+        tutor_raw("guide", "我们先列 660 ÷ 150 的框架。", visual=SVG),
+    )
+    res = call_tutor_model(model, {}, "{}", [], [], tools)
+    assert len(model.calls) == 2
+    repair = model.calls[1]["repair_error"] or ""
+    assert "visual 校验未通过" in repair
+    assert "我们先列 660 ÷ 150 的框架。" in repair
+    assert "150) 660" in repair
+    guidelines = [item for item in model.calls[1]["observations"] if item.get("tool") == "widget_guidelines"]
+    assert len(guidelines) == 1 and guidelines[0]["guidelines"] == SVG_WIDGET_GUIDELINES
+    assert res.candidate is not None and res.candidate.visual is not None
+    assert res.candidate.content == "我们先列 660 ÷ 150 的框架。"
 

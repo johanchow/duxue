@@ -23,8 +23,14 @@ def _case(case_id="turn-test-00", status="proposed", tags=("pronounce",), **fiel
     return EvalCase.model_validate({**base, **fields})
 
 
+class _JudgeBadAsLeak(StaticLeakJudge):
+    def leaks(self, *, text: str, task_title: str | None, problem_summary: str | None) -> bool | None:
+        super().leaks(text=text, task_title=task_title, problem_summary=problem_summary)
+        return "答案是 5" in text
+
+
 def _run(cases, *raws, samples=3, **kwargs):
-    backends = {"tutoring.turn": Backends(tutor_model=StaticTutorModel(*raws), leak_judge=StaticLeakJudge(False))}
+    backends = {"tutoring.turn": Backends(tutor_model=StaticTutorModel(*raws), leak_judge=_JudgeBadAsLeak())}
     return run_cases(cases, backends, samples=samples, workers=1, **kwargs)
 
 
@@ -55,7 +61,7 @@ def test_flaky_and_always_failing_cases_are_told_apart():
 def test_guardrail_counts_fallbacks_and_names_the_reason():
     summary = report.summarize(_run([_case()], BAD, samples=3))
     assert summary["guardrail"]["fallback_rate"]["k"] == 3
-    assert summary["guardrail"]["fallback_reasons"] == {"answer_marker": 3}
+    assert summary["guardrail"]["fallback_reasons"] == {"leak_detected": 3}
 
 
 def test_confirmed_and_proposed_are_reported_apart_and_needs_decision_is_not_scored():
@@ -115,7 +121,7 @@ def test_instruction_is_the_production_one():
 
 def test_results_serialise_without_losing_failure_reasons():
     rows = report.to_json(_run([_case()], BAD, samples=1))
-    assert rows[0]["samples"][0]["reason"] == "answer_marker"
+    assert rows[0]["samples"][0]["reason"] == "leak_detected"
     assert rows[0]["samples"][0]["passed"] is False
 
 
@@ -124,7 +130,7 @@ def test_text_report_names_failing_cases():
     meta = {"component": "tutoring.turn", "component_version": "v1", "model": "m", "variant": "baseline",
             "samples": 2, "dataset_hash": "h", "git_sha": "g"}
     text = report.render_text(meta, report.summarize(results), results)
-    assert "turn-test-00" in text and "answer_marker" in text
+    assert "turn-test-00" in text and "leak_detected" in text
 
 
 # ---- variants: evaluation-process only ---------------------------------------------------------

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 MAX_ACTIVE_SECONDS = 180 * 60
-ANSWER_LEAK_MARKERS = ("最终答案", "答案是", "所以选")
 
 
 def should_auto_pause(active_seconds: int) -> bool:

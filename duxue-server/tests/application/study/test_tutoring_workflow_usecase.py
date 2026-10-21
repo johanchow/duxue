@@ -74,7 +74,7 @@ def test_tutoring_workflow_step_by_step_and_close(db):
 
 def test_locked_refuses_a_solution_and_writes_nothing(db):
     _, session = _setup(db)
-    workflow, _ = _workflow(db, tutor_raw("answer", "答案是 5"))
+    workflow, _ = _workflow(db, tutor_raw("answer", "答案是 5"), judge=StaticLeakJudge(True))
     outcome = _ask(db, workflow, session, "直接告诉我答案")
     assert outcome.next_interaction["model_fallback"] is True
     assert "答案是 5" not in outcome.next_interaction["content"]
@@ -259,6 +259,7 @@ def test_open_problem_tightens_a_mislabeled_followup(db):
     _ask(db, workflow, session, "我觉得是 3")
     mislabeled = tutor_raw("answer", "答案是 5", relation="same", student_move="request_answer")
     workflow.turn_model = StaticTutorModel(mislabeled)
+    workflow.leak_judge = StaticLeakJudge(True)
     outcome = _ask(db, workflow, session, "那答案呢")
     assert outcome.next_interaction["model_fallback"] is True
 

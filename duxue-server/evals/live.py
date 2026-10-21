@@ -6,7 +6,7 @@ from functools import partial
 from types import SimpleNamespace
 
 from app.bootstrap.settings import settings
-from app.infrastructure.ai.components import ComponentSpec
+from app.infrastructure.ai.components import COMPONENTS, ComponentSpec
 from app.infrastructure.ai.intent_classifier import complete_intent
 from app.infrastructure.ai.tutor_turn_model import QwenLeakJudge, QwenTutorTurnGateway
 from evals.runner import Backends
@@ -30,6 +30,7 @@ def build_backends(spec: ComponentSpec) -> Backends:
     if spec.component_id == "tutoring.turn":
         return Backends(
             tutor_model=QwenTutorTurnGateway(spec=spec, settings_obj=runtime),
+            backup_model=QwenTutorTurnGateway(spec=COMPONENTS.get("tutoring.turn-backup"), settings_obj=runtime),
             leak_judge=QwenLeakJudge(settings_obj=runtime),  # production judge, registered model
         )
     if spec.component_id == "companion.intent":

@@ -3,7 +3,8 @@
 模型只表达"有哪些对象、什么关系或数量"，不给坐标、样式或任何可执行内容；布局与绘制由客户端完成。
 设计与取舍见 docs/technical/domain-tutoring-presentation.md §五。
 
-结构非法、超预算或违反不变量时，调用方丢弃**整张图**，不截断、不猜测修复。
+结构非法、超预算或违反不变量时，调用方丢弃**整张图**，不截断、不猜测内容。
+确定性清洗只去掉无害包装（XML 注释、`<style>` 块）并改写画布为 `0 0 680 H`；其余交给模型重试。
 本模块只做结构与确定性不变量；"图是否泄露作业答案"由出口检查的图判官负责。
 """
 
@@ -47,13 +48,9 @@ Detail = _text(120)
 Number = Annotated[float, Field(ge=-_BOUND, le=_BOUND, allow_inf_nan=False)]
 
 
-def _has_digit(*texts: str | None) -> bool:
-    return any(ch.isdigit() for text in texts for ch in (text or ""))
-
-
-def _unknown_has_no_value(unknown: bool, *, numbers: tuple, texts: tuple) -> None:
-    """`unknown=true` 的量不得带数值，也不得在文字里写出数字：挡住"图上直接标出答案"。"""
-    if unknown and (any(n is not None for n in numbers) or _has_digit(*texts)):
+def _unknown_has_no_value(unknown: bool, *, numbers: tuple) -> None:
+    """`unknown=true` 的量不得带数值字段：挡住结构化数值字段直接填出答案。"""
+    if unknown and any(n is not None for n in numbers):
         raise ValueError("unknown_value: an unknown quantity must not carry a number")
 
 
@@ -107,7 +104,7 @@ class Segment(BaseModel):
 
     @model_validator(mode="after")
     def _unknown(self):
-        _unknown_has_no_value(self.unknown, numbers=(self.value,), texts=(self.label,))
+        _unknown_has_no_value(self.unknown, numbers=(self.value,))
         return self
 
 
@@ -128,7 +125,7 @@ class Bracket(BaseModel):
 
     @model_validator(mode="after")
     def _unknown(self):
-        _unknown_has_no_value(self.unknown, numbers=(self.value,), texts=(self.label,))
+        _unknown_has_no_value(self.unknown, numbers=(self.value,))
         return self
 
 
@@ -158,7 +155,7 @@ class Mark(BaseModel):
 
     @model_validator(mode="after")
     def _shape(self):
-        _unknown_has_no_value(self.unknown, numbers=(self.at, self.start, self.end), texts=(self.label,))
+        _unknown_has_no_value(self.unknown, numbers=(self.at, self.start, self.end))
         if self.unknown:
             return self
         is_point = self.at is not None
@@ -208,6 +205,7 @@ _SVG_ALLOWED_TAGS = frozenset({
 })
 _SVG_SHAPE_TAGS = frozenset({"rect", "circle", "ellipse", "line", "polyline", "polygon", "path"})
 _SVG_XML_COMMENT = re.compile(r"<!--[\s\S]*?-->")
+_SVG_STYLE_BLOCK = re.compile(r"<style\b[^>]*>[\s\S]*?</style>|<style\b[^>]*/>", re.I)
 _SVG_TEXT_BODY = re.compile(r"(<(?:text|tspan|title|desc)\b[^>]*>)([\s\S]*?)(</(?:text|tspan|title|desc)>)", re.I)
 _SVG_RAW_AMP = re.compile(r"&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);)")
 _SVG_FORBIDDEN_RAW = re.compile(
@@ -255,7 +253,7 @@ def _escape_svg_text_nodes(code: str) -> str:
 
 
 def _validate_and_normalize_svg(raw_svg: str) -> str:
-    code = _escape_svg_text_nodes(_SVG_XML_COMMENT.sub("", raw_svg).strip())
+    code = _escape_svg_text_nodes(_SVG_STYLE_BLOCK.sub("", _SVG_XML_COMMENT.sub("", raw_svg)).strip())
     if len(code) > SVG_MAX_CHARS:
         raise ValueError("svg exceeds maximum character budget")
     if _SVG_FORBIDDEN_RAW.search(code):
@@ -283,8 +281,10 @@ def _validate_and_normalize_svg(raw_svg: str) -> str:
         x0, y0, w, h = (float(p) for p in vb_parts)
     except ValueError as exc:
         raise ValueError("svg viewBox values must be numbers") from exc
-    if abs(x0) > 0.01 or abs(y0) > 0.01 or abs(w - SVG_CANVAS_WIDTH) > 0.01:
-        raise ValueError("svg viewBox must start with '0 0 680'")
+    if abs(x0) > 0.01 or abs(y0) > 0.01:
+        raise ValueError("svg viewBox must start at origin 0 0")
+    if w <= 0:
+        raise ValueError("svg viewBox width must be positive")
     if h < SVG_MIN_HEIGHT or h > SVG_MAX_HEIGHT:
         raise ValueError(f"svg viewBox height must be between {SVG_MIN_HEIGHT} and {SVG_MAX_HEIGHT}")
 

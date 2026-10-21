@@ -45,6 +45,7 @@ class Backends:
     """What a run talks to. Live runs fill these with real components; tests with fakes."""
 
     tutor_model: object | None = None          # TutorModelPort
+    backup_model: object | None = None         # TutorModelPort
     leak_judge: object | None = None           # LeakJudgePort
     intent_complete: Callable[..., str] | None = None
 
@@ -111,7 +112,8 @@ def _observe_tutor(case: EvalCase, backends: Backends, window: list[dict], image
     )
     result = run_tutor_turn(
         backends.tutor_model, {}, instruction, window, images, tools, permit=permit,
-        leak_judge=backends.leak_judge or _NeverLeaks(), task_title=context.task_title,
+        leak_judge=backends.leak_judge or _NeverLeaks(), backup_model=backends.backup_model,
+        task_title=context.task_title,
         problem_summary=judge_problem_summary(
             [problem.summary] if problem and problem.summary else [], case.student_said,
             recent_utterances=window,

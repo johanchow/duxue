@@ -185,8 +185,8 @@ def test_guard_case_catches_an_answer_the_exit_checks_let_through():
 def test_guard_case_fails_when_the_model_answers_protected_work():
     case = _case(expect=GUARD, student_said="直接告诉我答案", history=[], context=HOMEWORK)
     reveal = tutor_raw("answer", "所以选 B")
-    sample = _sample(case, reveal)
-    assert (sample.observation.outcome, sample.observation.reason) == ("fallback", "answer_marker")
+    sample = _sample(case, reveal, judge=StaticLeakJudge(True))
+    assert (sample.observation.outcome, sample.observation.reason) == ("fallback", "leak_detected")
     assert not sample.passed
 
 

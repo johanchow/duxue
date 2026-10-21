@@ -2,11 +2,16 @@
 
 import pytest
 
-from app.application.workflows.tutor_loop import vet_candidate
+from app.application.workflows.tutor_loop import run_tutor_turn, vet_candidate
+from app.application.workflows.tutor_tools import TutorToolbox
 from app.application.workflows.tutor_turn import TutorTurnCandidate
-from app.contexts.study.domain.execution import ANSWER_LEAK_MARKERS
 from app.contexts.tutoring.domain.tutor_permit import AttemptSummary, TutorPermit
-from tests.support.fakes import StaticLeakJudge, StaticVisualLeakJudge, tutor_raw
+from tests.support.fakes import (
+    StaticLeakJudge,
+    StaticTutorModel,
+    StaticVisualLeakJudge,
+    tutor_raw,
+)
 from tests.unit.tutoring.test_tutor_visual import SEGMENT, STEPS, SVG
 
 PROTECTED = TutorPermit(True, AttemptSummary())
@@ -41,6 +46,56 @@ def test_a_bad_diagram_verdict_drops_only_the_diagram(visual_result):
     assert result.visual_dropped == ("visual_leak_detected" if visual_result is True else "visual_leak_check_failed")
 
 
+def test_a_leaking_diagram_gets_one_safe_redraw():
+    class VisualJudge(StaticVisualLeakJudge):
+        def visual_leaks(self, *, text, task_title, problem_summary):
+            self.visual_texts.append(text)
+            return len(self.visual_texts) == 1
+
+    model = StaticTutorModel(homework(), homework())
+    judge = VisualJudge()
+    tools = TutorToolbox(None, tutoring_session_id=None, problem=None, task_title=None, task_active=False, window=[])
+    result = run_tutor_turn(
+        model, {}, "{}", [], [], tools, permit=PROTECTED, leak_judge=judge,
+        task_title="应用题", problem_summary="小明有3份，小红有5份，一共几份",
+    )
+    assert len(model.calls) == 2
+    assert "visual" in model.calls[1]["repair_error"]
+    assert "被拒草稿" in model.calls[1]["repair_error"]
+    assert result.vetting.failure is None and result.vetting.visual is not None
+    assert len(judge.visual_texts) == 2
+
+
+def test_redraw_cannot_change_the_approved_text():
+    class VisualJudge(StaticVisualLeakJudge):
+        def visual_leaks(self, *, text, task_title, problem_summary):
+            return "合计未知" in text
+
+    changed = tutor_raw("guide", "改写了正文。", relation="same", visual=STEPS)
+    model = StaticTutorModel(homework(), changed)
+    tools = TutorToolbox(None, tutoring_session_id=None, problem=None, task_title=None, task_active=False, window=[])
+    result = run_tutor_turn(
+        model, {}, "{}", [], [], tools, permit=PROTECTED, leak_judge=VisualJudge(),
+        task_title="应用题", problem_summary="小明有3份，小红有5份，一共几份",
+    )
+    assert len(model.calls) == 2
+    assert result.call.candidate.content == homework()["content"]
+    assert result.vetting.visual is None and result.vetting.visual_dropped == "visual_leak_detected"
+
+
+def test_a_second_leaking_diagram_is_dropped_after_one_redraw():
+    model = StaticTutorModel(homework(), homework())
+    tools = TutorToolbox(None, tutoring_session_id=None, problem=None, task_title=None, task_active=False, window=[])
+    result = run_tutor_turn(
+        model, {}, "{}", [], [], tools, permit=PROTECTED,
+        leak_judge=StaticVisualLeakJudge(visual_result=True),
+        task_title="应用题", problem_summary="小明有3份，小红有5份，一共几份",
+    )
+    assert len(model.calls) == 2
+    assert result.vetting.failure is None
+    assert result.vetting.visual is None and result.vetting.visual_dropped == "visual_leak_detected"
+
+
 @pytest.mark.parametrize("text_result,reason", [(True, "leak_detected"), (None, "leak_check_failed")])
 def test_a_text_leak_still_falls_back_the_whole_turn(text_result, reason):
     result = vet(homework(), StaticVisualLeakJudge(result=text_result, visual_result=False))
@@ -51,15 +106,6 @@ def test_a_judge_without_visual_support_fails_closed_for_the_diagram_only():
     result = vet(homework(), StaticLeakJudge(False))
     assert result.failure is None and result.visual is None
     assert result.visual_dropped == "visual_leak_check_failed"
-
-
-def test_answer_marker_in_a_protected_diagram_drops_it_without_asking_the_judge():
-    marker_visual = {**SEGMENT, "alt": f"{ANSWER_LEAK_MARKERS[0]} 8"}
-    judge = StaticVisualLeakJudge()
-    result = vet(tutor_raw("guide", "先看看谁多谁少？", relation="same", visual=marker_visual), judge)
-    assert result.failure is None and result.visual is None
-    assert result.visual_dropped == "visual_answer_marker"
-    assert judge.visual_texts == []
 
 
 def test_unprotected_knowledge_turn_needs_no_leak_judge_for_its_diagram():
@@ -204,13 +250,13 @@ def test_homework_turn_allows_svg_and_sends_inner_svg_text_to_visual_leak_judge(
     assert len(judge.visual_texts) == 1
     assert "图内文字：直角三角形 | 3 | 4 | ?" in judge.visual_texts[0]
 
-    # 若 SVG 内部 <text> 含答案标记，同样在不调判官时直接丢图
+    # 若 SVG 内部 <text> 写出求解结果，由图泄露判官审出并只丢图
     leaked_svg = {
         **SVG,
-        "svg": SVG["svg"].replace(">?<", f">{ANSWER_LEAK_MARKERS[0]} 5<"),
+        "svg": SVG["svg"].replace(">?<", ">斜边 = 5<"),
     }
-    judge2 = StaticVisualLeakJudge()
+    judge2 = StaticVisualLeakJudge(visual_result=True)
     dropped = vet(tutor_raw("guide", "观察两条直角边。", relation="same", visual=leaked_svg), judge2)
     assert dropped.failure is None and dropped.visual is None
-    assert dropped.visual_dropped == "visual_answer_marker"
-    assert judge2.visual_texts == []
+    assert dropped.visual_dropped == "visual_leak_detected"
+    assert "斜边 = 5" in judge2.visual_texts[0]

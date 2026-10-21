@@ -21,7 +21,6 @@ from app.application.workflows.tutor_loop import (
     run_tutor_turn,
 )
 from app.application.workflows.tutor_tools import TutorToolbox
-from app.application.workflows.tutor_visual import describe
 from app.application.workflows.tutor_turn import (
     FALLBACK_TEXT,
     REMINDER,
@@ -30,6 +29,7 @@ from app.application.workflows.tutor_turn import (
     TutorModelPort,
     build_tutor_instruction,
 )
+from app.application.workflows.tutor_visual import describe
 from app.contexts.companion.domain.policy import PolicyRegistry
 from app.contexts.tutoring.domain.tutor_permit import (
     PROTECTED_STATUSES,
@@ -39,7 +39,10 @@ from app.contexts.tutoring.domain.tutor_permit import (
 )
 from app.infrastructure.ai import components
 from app.infrastructure.messaging.outbox import publish_learning_fact
-from app.infrastructure.observability.telemetry import record_llm_fallback, record_tutor_turn_result
+from app.infrastructure.observability.telemetry import (
+    record_llm_fallback,
+    record_tutor_turn_result,
+)
 from app.infrastructure.persistence.models import (
     StudySession,
     StudySessionInterval,
@@ -75,9 +78,12 @@ class TutoringWorkflow:
     def __init__(
         self, db: Session, turn_model: TutorModelPort | None = None, leak_judge: LeakJudgePort | None = None,
         safety_screening: SafetyScreeningPort | None = None,
+        backup_model: TutorModelPort | None = None,
     ):
         self.db = db
         self.turn_model = turn_model
+        self.backup_model = backup_model
+        self._live_turn_model = turn_model is None
         self.leak_judge = leak_judge
         self.safety_screening = safety_screening
         self._media_cache: dict[str, tuple[list[dict], list[str | None]]] = {}
@@ -87,6 +93,13 @@ class TutoringWorkflow:
             from app.infrastructure.ai.tutor_turn_model import QwenTutorTurnGateway
             self.turn_model = QwenTutorTurnGateway()
         return self.turn_model
+
+    def _backup_model(self) -> TutorModelPort | None:
+        if self.backup_model is None and self._live_turn_model:
+            from app.infrastructure.ai import components
+            from app.infrastructure.ai.tutor_turn_model import QwenTutorTurnGateway
+            self.backup_model = QwenTutorTurnGateway(spec=components.COMPONENTS.get("tutoring.turn-backup"))
+        return self.backup_model
 
     def _judge(self) -> LeakJudgePort:
         if self.leak_judge is None:
@@ -201,7 +214,8 @@ class TutoringWorkflow:
             record_llm_fallback(operation="tutor_turn", reason=str(error))
             return None
         return run_tutor_turn(
-            model, envelope, instruction, window, images, tools, leak_judge=self._judge(), **checks,
+            model, envelope, instruction, window, images, tools, leak_judge=self._judge(),
+            backup_model=self._backup_model(), **checks,
         )
 
     def _turn(self, invocation: RunInvocation) -> WorkflowOutcome:

@@ -4,6 +4,7 @@ from datetime import date
 import pytest
 
 from app.application.workflows.reflection_workflow import ReflectionWorkflow
+from app.application.process_managers.companion_coordinator import CompanionCoordinator
 from app.application.ports.companion import RunInvocation
 from app.infrastructure.persistence.models import OutboxEvent, SelfReview, FocusKit, uid
 from tests.support.factories import create_ward
@@ -27,6 +28,7 @@ def test_reflection_waits_for_self_review_input(db):
     )
     assert outcome1.run_status == "waiting_for_ward"
     assert outcome1.next_interaction["status"] == "needs_self_review"
+    assert CompanionCoordinator._visible_outcome_content(outcome1)
 
     # 有 review_date 但无 review_feeling
     outcome2 = workflow.invoke(
@@ -40,6 +42,7 @@ def test_reflection_waits_for_self_review_input(db):
     )
     assert outcome2.run_status == "waiting_for_ward"
     assert outcome2.next_interaction["status"] == "needs_self_review"
+    assert CompanionCoordinator._visible_outcome_content(outcome2)
 
 
 def test_self_review_versioning_and_fact_emission(db):

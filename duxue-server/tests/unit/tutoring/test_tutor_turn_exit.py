@@ -193,8 +193,6 @@ def test_answer_on_protected_work_is_judged_on_its_content_not_rejected_for_its_
     verdict = _verdict(answer, permit=protected)
     assert verdict.ok and verdict.answer_protected and verdict.needs_leak_check
     assert not verdict.effective_work_product  # an answer never opens or advances a problem record
-    marker = tutor_raw("answer", "最终答案是 3", relation="same")
-    assert _verdict(marker, permit=protected).reason == "answer_marker"
     guide = tutor_raw("guide", "先移项。", relation="same")
     verdict = _verdict(guide, permit=protected)
     assert verdict.ok and verdict.answer_protected and verdict.needs_leak_check
@@ -206,8 +204,6 @@ def test_relation_none_cannot_switch_off_protection_on_a_protected_problem():
     verdict = _verdict(tutor_raw("answer", "海滩。", relation="none"), permit=protected)
     assert verdict.ok and verdict.answer_protected and verdict.needs_leak_check
     assert not verdict.effective_work_product
-    assert _verdict(tutor_raw("answer", "最终答案是 3", relation="none"), permit=protected).reason == "answer_marker"
-    assert _verdict(tutor_raw("guide", "最终答案是 3"), permit=protected).reason == "answer_marker"
 
 
 def test_relation_none_without_a_protected_problem_is_not_checked():
@@ -252,8 +248,6 @@ def test_a_direct_answer_to_a_single_fact_inside_homework_is_still_checked_and_n
         verdict = _verdict(tutor_raw("answer", "斜边是最长的边。", relation="same", depth=depth), permit=protected)
         assert verdict.ok and verdict.answer_protected and verdict.needs_leak_check
         assert not verdict.effective_work_product
-    marker = tutor_raw("answer", "最终答案是 beach", relation="same", depth="recall")
-    assert _verdict(marker, permit=protected).reason == "answer_marker"
 
 
 def test_fields_removed_in_v4_are_ignored_and_never_reach_the_ward():
@@ -287,8 +281,6 @@ def test_clarify_on_a_protected_problem_is_held_to_the_content_check():
     verdict = _verdict(plain, permit=protected)
     assert verdict.ok and verdict.answer_protected and verdict.needs_leak_check
     assert not verdict.effective_work_product
-    leaked = {"act": "clarify", "content": "你问的是哪一题？", "clarify": {"candidates": ["第一题，最终答案是 3", "第二题"]}}
-    assert _verdict(leaked, permit=protected).reason == "answer_marker"
 
 
 def test_clarify_without_a_protected_problem_is_not_checked():

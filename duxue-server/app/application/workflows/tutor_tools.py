@@ -50,7 +50,8 @@ Draw textbook-grade educational diagrams (教科书级的教学插图与原理�
 ## 4. Diagram Guidance
 - **Illustrative diagram**: draw textbook-grade simplified cross-sections, cutaways, or spatial models that clearly show the underlying mechanism, reference lines, angles/vectors, and causal relationships. Place labels outside the drawn object with thin leader lines so text never collides with shapes.
 - **Structural diagram**: outermost container `rx="20"` with 50-level fill; inner regions `rx="10"` with 100-level fill; `>= 20px` padding; max 2-3 nesting levels.
-- **Flowchart**: max 4-5 nodes per diagram; up to 4 boxes per horizontal row (`x = 40 + i * (w + 60)`)."""
+- **Flowchart**: max 4-5 nodes per diagram; up to 4 boxes per horizontal row (`x = 40 + i * (w + 60)`).
+- **Aligned grid & spatial notation** (二维对位演算式、竖式、配平/结构框架): align columns on a fixed x-grid (e.g. `40..48px` per column with `text-anchor="middle"` and `dominant-baseline="central"`), draw clear operator symbols and horizontal divider lines (`<line>`), and mark every uncomputed digit, coefficient, or unknown result slot with a highlighted dashed box and `?` (never fill in the solved answer on protected homework)."""
 
 
 class TutorToolbox:

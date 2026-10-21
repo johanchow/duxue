@@ -19,7 +19,7 @@ Context Map 与分层图只在 [ddd-overview.md](ddd-overview.md) 维护。`Stud
 5. **怎么判断是不是作业：由模型按证据判断，代码不替它判断，也不让它的判断放宽保护。** 只有两种情况才算孩子在做题（`turn.type=work`）：孩子明确说这是作业题、练习题或试卷上的题；或者图片里有作业本、试卷、印好的题目、答题空格或分数。学习任务开着、前几轮聊过知识、孩子顺口问一句，都不是做题，不用任务标题推断。线索不足时用 `non_work`，仍拿不准用 `clarify`。
 6. **判错的代价不对称，所以保护由代码兜底。** 把非作业判成作业，代价是多给一次提示，孩子可以追问；把作业判成非作业，代价是答案泄露。因此当前有受保护的题时，模型的判断只决定本轮怎么回应、是否推进题目，不决定要不要检查泄露（见出口检查）；用评测里的“把推理题谎称成记忆题”对抗用例持续盯这一条。
 
-> **已定的事实直答原则**：作业里的单个事实（`depth=atomic|recall`），以及非作业的一次性查询（`topic=atomic_lookup`），仍可直接用 `answer` 回答，**哪怕它恰好是空格里要填的词**（如听写里问“海滩的英文”）。但模型自报 `depth`/`topic` 不能当作可信放行依据：当前题目受保护或候选声称处理作业时，所有正文都交独立裁判按题型检查，`tutor_loop.fact_gate` 仅保留短事实分类的观测指标。非作业且没有受保护题目的普通知识问答不触发泄露检查。明显答案标记仍由代码先拦；裁判失败时 fail-closed。此修改消除把选择题谎称为记忆事实时的快路漏洞，代价是受保护题目中原子知识多一次裁判调用。越界回复仍先请模型改用 `guide` 重试一次（见 [§4.2](#42-出口检查)）。
+> **已定的事实直答原则**：作业里的单个事实（`depth=atomic|recall`），以及非作业的一次性查询（`topic=atomic_lookup`），仍可直接用 `answer` 回答，**哪怕它恰好是空格里要填的词**（如听写里问“海滩的英文”）。但模型自报 `depth`/`topic` 不能当作可信放行依据：当前题目受保护或候选声称处理作业时，所有正文都交独立裁判按题型检查，`tutor_loop.fact_gate` 仅保留短事实分类的观测指标。非作业且没有受保护题目的普通知识问答不触发泄露检查。裁判失败时 fail-closed。此修改消除把选择题谎称为记忆事实时的快路漏洞，代价是受保护题目中原子知识多一次裁判调用。越界回复仍先请模型改用 `guide` 重试一次（见 [§4.2](#42-出口检查)）。
 
 ## 设计原则：教学优先
 
@@ -418,13 +418,13 @@ class TutorTurnCandidate(BaseModel):
 | 字段 | 谁信任 | 用途 |
 |---|---|---|
 | `act` | 出口检查核对是否在许可内 | 决定交互类型 |
-| `content` | 必填，1–1200 字 UTF-8 Markdown + TeX 字符串。算式、分式、根号、方程直接用 `$...$` / `$$...$$`（兼容 `\(...\)` / `\[...\]`）写在 `content` 中，客户端由 `ChatMarkdownBody` + `flutter_math_fork` 原生渲染，不为单个算式调 `visual` 或 WebView；链接与 Markdown 内联图片仅按纯文本展示，不拉取外图、不跳转外链 | 面向孩子的正文与追问 |
+| `content` | 必填，1–1200 字 UTF-8 Markdown + TeX 字符串。一维常规公式（算式、分式、根号、方程组、物理公式、化学方程式）直接用 `$...$` / `$$...$$`（兼容 `\(...\)` / `\[...\]`）写在 `content` 中，客户端由 `ChatMarkdownBody` + `flutter_math_fork` 原生渲染，不为单个一维算式调 `visual` 或 WebView；需要二维空间对位、画线框或画结构的演算式与结构式（如竖式、受力/电路图、化学结构式）则走 `visual` 的 `kind="svg"`。链接与 Markdown 内联图片仅按纯文本展示，不拉取外图、不跳转外链 | 面向孩子的正文与追问 |
 | `turn.type` / `turn.relation` | 模型自述；`answer`/`guide` 缺失或非法、`guide` 非 `work` 分支时走一次结构重试。**不决定答案保护**，只决定是否推进题目、是否换题 | 作业 vs 非作业；续题 vs 新题 |
 | `turn.depth` | 只有 `work` 分支携带，`atomic`（一次性查询）／`recall`（要记住的）／`reasoning`（需要推理，默认）。`atomic`/`recall` 可直接回答（不推进题目），但仍过受保护题目的独立审核；短事实分类仅供观测，不按模型自报跳过审核。`answer` 配 `reasoning` 不拒绝，记 shape flag `answer_on_reasoning` | 作业里的单个事实不必让孩子猜 |
 | `turn` 其余字段 | 只有 `work` 分支携带；模型自述，只决定 `advance()` 是否推进；未知值按“未报告”，不拒绝。`progress`、`evidence` 只属于 `student_move=attempt`，其他 move 上解析时置空（否则一个误填的 `submitted` 会吞掉提示计数）；`student_move` 进 `tutor.turn.result` 观测 | 记录对当前小目标的证据 |
 | `turn.topic` | 只有 `non_work` 分支携带；`spontaneous_curiosity` 才写好奇心事实 | 区分一次性查询与自发好奇 |
 | `pronounce.lesson` / `pronounce.lessons` | 仅 `act=pronounce` 保留（归一为 1–8 条 `lessons`），缺失则拒绝；其他 `act` 带 `pronounce` 时丢弃 | 1 到多张发音卡（气泡正文取 `content` 解释词义） |
-| `visual` | 关闭词汇表（`steps`、`compare`、`segment`、`number_line`、`svg`）；结构非法、超预算、`unknown` 量带数值、SVG 违反白名单/画布约束、`act` 不适用都**只丢图**，不拒绝候选。作业成果轮次统一经 `describe(visual)` 提取图内文字（含 SVG 全部 `<text>`/`<tspan>`）送关键词答案标记检查与图泄露判官，判泄露、超时或结果非法同样只丢图 | 解释性配图，设计与取舍见 [答疑表达设计](domain-tutoring-presentation.md) |
+| `visual` | 关闭词汇表（`steps`、`compare`、`segment`、`number_line`、`svg`）；结构非法、超预算、`unknown` 量带结构化数值字段、SVG 违反白名单/画布约束、`act` 不适用都**只丢图**，不拒绝候选。作业成果轮次统一经 `describe(visual)` 提取图内文字（含 SVG 全部 `<text>`/`<tspan>`）送独立图泄露判官审核，判泄露、超时或结果非法同样只丢图 | 解释性配图，设计与取舍见 [答疑表达设计](domain-tutoring-presentation.md) |
 
 结构恢复只做两件事：丢弃不属于该 `act` 的子对象；把常见的错位（发音字段摊在最外层、`candidates` 摊在最外层）归位。不得生成或替换面向孩子的内容、lesson、作业状态或许可。
 
@@ -448,8 +448,8 @@ Application 在本轮不是作业成果、且 `StudySessionQuery` 返回活动�
 | 检查 | 逻辑 | 目的 | 不通过 |
 |---|---|---|---|
 | 1 结构校验 | Pydantic 校验 `act`、`content`，以及 `answer`/`guide` 的 `turn`；多余字段和不属于该 `act` 的子对象丢弃，元数据的未知值按“未报告” | 保证后面的代码可以放心使用候选 | 把校验错误附在同一次调用里重试一次；仍不合法则回退 |
-| 2 越权与一致性 | 只拦会让孩子看到不该看的内容的情形：`answer_protected=true`（来自 permit）时，所有 `answer`/`guide` 一律正文含答案标记拒绝并强制过泄露裁判，**与 `turn` 声明无关**：`non_work` 只能让本轮不推进题目，不能关闭保护；没有受保护的题时，声称作业成果（`turn.type=work`）的轮次也按受保护处理。`act=answer` 不开启、放弃或推进题目记录；`act=pronounce` 必须有合法 `lesson`（`locale`、`segment` 合法，无标记/URL）；`act=safety` 由代码换成安全话术；`act=clarify` 在 `answer_protected=true` 时，正文连同 `candidates` 同样做答案标记检查并过泄露裁判（候选也给孩子看）。元数据之间的不一致（`progress` 无证据、`next_subgoal` 出现在非作业轮）不拒绝，只是不推进题目 | 确定性地拦住越权和泄露，不让与展示无关的字段矛盾替换一个安全的回答 | 直接回退，不重试 |
-| 3 泄露检查 | 在 `answer_protected` 成立时触发（见检查 2），所有正文都交独立结构化裁判；短事实分类仅供观测，不再因模型自报 `atomic`/`recall` 跳过审核（选项也可能被误报成事实）。按题型判断是否越界：尚未提交的结果/完整解法不得代做；计算题、问答题已提交的答案仅在能依据原题独立核验时可准确确认或纠错；选择题、判断题等可逐项试探的候选项不得确认对错。`guide` 每轮只推进一个由学生完成的最小动作，不替学生完成尚未完成的计算或核验并宣布结论。词义等原子知识仍可直答，由裁判区分。裁判看到的 `problem` 包含最近 3 道题摘要、窗口内最近 3 条学生原话和孩子本轮的话，不把导师原话当作学生证据；生产与离线评测共用 `judge_problem_summary()`。现有关键词只作明显答案标记兜底，不充当语义判分 | 拦住越界代做、错误附和和选项试探（概率性；不能替代人工校准） | `answer_protected=true` 时调用超时或结果非法按泄露处理，回退（fail-closed）。判定越界时带 `repair_error` 给模型一个有界的审核原因和被拒草稿，请其改用 `guide` 重试一次；重试结果重新走完整出口检查，仍不过才回退，裁判失败不重试 |
+| 2 越权与一致性 | 只拦会让孩子看到不该看的内容的情形：`answer_protected=true`（来自 permit）时，所有 `answer`/`guide` 一律强制过泄露裁判，**与 `turn` 声明无关**：`non_work` 只能让本轮不推进题目，不能关闭保护；没有受保护的题时，声称作业成果（`turn.type=work`）的轮次也按受保护处理。`act=answer` 不开启、放弃或推进题目记录；`act=pronounce` 必须有合法 `lesson`（`locale`、`segment` 合法，无标记/URL）；`act=safety` 由代码换成安全话术；`act=clarify` 在 `answer_protected=true` 时，正文连同 `candidates` 同样过泄露裁判（候选也给孩子看）。元数据之间的不一致（`progress` 无证据、`next_subgoal` 出现在非作业轮）不拒绝，只是不推进题目 | 确定性地拦住越权和泄露，不让与展示无关的字段矛盾替换一个安全的回答 | 直接回退，不重试 |
+| 3 泄露检查 | 在 `answer_protected` 成立时触发（见检查 2），所有正文都交独立结构化裁判（不靠关键词或正则猜语义）；短事实分类仅供观测，不再因模型自报 `atomic`/`recall` 跳过审核（选项也可能被误报成事实）。按题型判断是否越界：尚未提交的结果/完整解法不得代做；计算题、问答题已提交的答案仅在能依据原题独立核验时可准确确认或纠错；选择题、判断题等可逐项试探的候选项不得确认对错。`guide` 每轮只推进一个由学生完成的最小动作，不替学生完成尚未完成的计算或核验并宣布结论。词义等原子知识仍可直答，由裁判区分。裁判看到的 `problem` 包含最近 3 道题摘要、窗口内最近 3 条学生原话和孩子本轮的话，不把导师原话当作学生证据；生产与离线评测共用 `judge_problem_summary()` | 拦住越界代做、错误附和和选项试探（概率性；不能替代人工校准） | `answer_protected=true` 时调用超时或结果非法按泄露处理，回退（fail-closed）。判定越界时带 `repair_error` 给模型一个有界的审核原因和被拒草稿，请其改用 `guide` 重试一次；重试结果重新走完整出口检查，仍不过才回退，裁判失败不重试 |
 
 任一检查失败的结果都一样：返回固定话术，记录 `model_fallback`（只按最终结果记一次），不写 Fact，不推进 `ProblemRecord`，不用反问掩盖失败。允许的重试只有两种：检查 1 的格式问题重试一次；正文给出了答案时改用 `guide` 重试一次（把误拦从兜底话术变成最小提示）。生产与离线评测共用 `run_tutor_turn()`。
 
@@ -634,7 +634,7 @@ checkpoint、Trace 和 Ward 可见 journal 的存储属于 Companion。Tutoring 
 Given 作业题的 ProblemRecord 为 open，且孩子还没有任何尝试
 When 孩子说“直接告诉我答案”
 Then 本轮 TutorPermit.answer_protected 为 true
-And 答案标记检查或泄露裁判拒绝给出答案的候选（含 act=answer 与 guide）
+And 泄露裁判拒绝给出答案的候选（含 act=answer 与 guide）
 And 孩子得到固定话术或追问，不写 Fact，不推进 ProblemRecord
 
 Given 同一题目为 open，孩子给出第一次实质性尝试
@@ -720,7 +720,7 @@ Then 按泄露处理，回退固定话术（fail-closed）
 
 Given 当前有 open 的 ProblemRecord
 When 模型返回 act=clarify，候选里写出了本题答案
-Then 答案标记检查或泄露裁判拒绝该候选，回退固定话术
+Then 泄露裁判拒绝该候选，回退固定话术
 
 Given 模型以 relation=new 放弃了上一道题
 When 孩子随后追问上一道题的答案

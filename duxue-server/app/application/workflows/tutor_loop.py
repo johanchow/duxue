@@ -16,6 +16,7 @@ from app.application.workflows.tutor_shape import lint_shape
 from app.application.workflows.tutor_tools import (
     MAX_MODEL_CALLS,
     MAX_TOOL_CALLS,
+    SVG_WIDGET_GUIDELINES,
     TutorToolbox,
 )
 from app.application.workflows.tutor_turn import (
@@ -28,7 +29,6 @@ from app.application.workflows.tutor_turn import (
     schema_error_diagnostic,
 )
 from app.application.workflows.tutor_visual import Visual, describe
-from app.contexts.study.domain.execution import ANSWER_LEAK_MARKERS
 from app.contexts.tutoring.domain.tutor_permit import TutorPermit
 from app.infrastructure.ai.model_gateway import ModelGatewayError
 from app.infrastructure.observability.telemetry import (
@@ -41,6 +41,26 @@ from app.infrastructure.observability.telemetry import (
 )
 
 INVALID_CANDIDATE = "invalid_model_candidate"
+_VISUAL_REPAIR_DRAFT_MAX = 4000
+
+
+def _ensure_widget_guidelines(observations: list[dict]) -> None:
+    if any(item.get("tool") == "widget_guidelines" for item in observations):
+        return
+    observations.append({
+        "tool": "widget_guidelines", "status": "unique", "guidelines": SVG_WIDGET_GUIDELINES,
+    })
+
+
+def _visual_repair(candidate: TutorTurnCandidate, raw: dict) -> str:
+    draft = {key: raw[key] for key in ("act", "content", "turn", "visual") if key in raw}
+    rejected = json.dumps(draft, ensure_ascii=False)
+    if len(rejected) > _VISUAL_REPAIR_DRAFT_MAX:
+        rejected = rejected[:_VISUAL_REPAIR_DRAFT_MAX] + "…"
+    return (
+        f"visual 校验未通过（{candidate.visual_error}）；请保持 act、content、turn 不变，只修正 visual。"
+        f"\n被拒草稿（只供改写 visual，禁止改动正文）：{rejected}"
+    )
 
 
 @dataclass(frozen=True)
@@ -130,7 +150,9 @@ def call_tutor_model(
             and repair is None
         ):
             best_candidate = candidate
-            repair = f"visual 校验未通过（{candidate.visual_error}）；请保持 act、content、turn 不变，只修正 visual。"
+            if isinstance(raw.get("visual"), dict) and raw["visual"].get("kind") == "svg":
+                _ensure_widget_guidelines(observations)
+            repair = _visual_repair(candidate, raw)
             continue
         return ModelCall(candidate)
     if best_candidate is not None:
@@ -156,8 +178,13 @@ FACT_REPLY_MAX_CHARS = 120
 JUDGE_RECENT_PROBLEMS = 3
 JUDGE_RECENT_STUDENT_UTTERANCES = 3
 # 越过作业答案边界时重试一次；判官自身失败不重试。
-LEAK_RETRY_REASONS = frozenset({"answer_marker", "leak_detected"})
+LEAK_RETRY_REASONS = frozenset({"leak_detected"})
 LEAK_REPAIR = "泄露：上一版回复越过了作业答案边界；请按题型重写，不附和错误答案或确认可试探的选项。"
+VISUAL_LEAK_REPAIR = (
+    "visual 泄露审核未通过：重画一张辅助图。尽量只摆题面已知量，可有少量过程描述；"
+    "最终待求量用 ?，不要直接暴露答案或替学生完成关键计算。"
+    "保持 act、content、turn 原样，只修改 visual。"
+)
 
 
 def judge_problem_summary(
@@ -196,11 +223,18 @@ def _leak_repair(vetting: Vetting) -> str:
     return f"{LEAK_REPAIR}\n审核原因：{reason}。\n被拒草稿（只供改写，禁止照抄）：{rejected}"
 
 
+def _visual_leak_repair(vetting: Vetting) -> str:
+    rejected = json.dumps(vetting.candidate.model_dump(mode="json"), ensure_ascii=False)
+    if len(rejected) > _VISUAL_REPAIR_DRAFT_MAX:
+        rejected = rejected[:_VISUAL_REPAIR_DRAFT_MAX] + "…"
+    return f"{VISUAL_LEAK_REPAIR}\n被拒草稿（只供重画，禁止照抄图中泄露内容）：{rejected}"
+
+
 def fact_gate(candidate: TutorTurnCandidate) -> str | None:
     """短事实分类，仅用于观测；返回 None 表示模型声明了短事实。
 
     模型自报的 atomic/recall/atomic_lookup 不能作为跳过受保护题目审核的权限。
-    分类不看关键词或数字；答案标记检查在此之前已经照跑。"""
+    分类不看关键词或数字；受保护题目统一交独立判官审核。"""
     if candidate.depth not in {"atomic", "recall"} and candidate.topic != "atomic_lookup":
         return "not_fact"
     if len(candidate.content) > FACT_REPLY_MAX_CHARS:
@@ -215,7 +249,7 @@ def vet_candidate(
     """检查 2（越权与一致性）和检查 3（泄露）。只判断，不记录 fallback（由 ``run_tutor_turn`` 按最终结果记）。
 
     文字（``content``，澄清时连同候选）任一不过，调用方回退固定话术。``fact_gate``
-    仅分类观测，受保护正文都交判官审。图（``visual``）单独判断：不适用、非法、含答案标记、
+    仅分类观测，受保护正文都交判官审。图（``visual``）单独判断：不适用、非法、
     被图判官判为泄露（含超时、结果非法）一律只丢图，文字照常。
     """
     verdict = check_authority(candidate, permit)
@@ -231,10 +265,6 @@ def vet_candidate(
 
     visual, dropped = candidate.visual, candidate.visual_dropped
     visual_text = describe(visual) if visual is not None else None
-    if visual_text is not None and verdict.answer_protected and any(
-        marker in visual_text for marker in ANSWER_LEAK_MARKERS
-    ):
-        visual, visual_text, dropped = None, None, "visual_answer_marker"
 
     text_leaks: bool | None = False
     visual_leaks: bool | None = False
@@ -283,6 +313,7 @@ def run_tutor_turn(
     model: TutorModelPort, envelope: dict, instruction: str, window: list[dict], images: list,
     tools: TutorToolbox, *, permit: TutorPermit, leak_judge: LeakJudgePort,
     task_title: str | None, problem_summary: str | None,
+    backup_model: TutorModelPort | None = None,
 ) -> TurnResult:
     """主调用 + 出口检查；文字给出了答案时带 ``LEAK_REPAIR`` 重试一次，重试结果重新完整检查。
 
@@ -300,6 +331,7 @@ def run_tutor_turn(
     vetting = vet(call.candidate)
     retried = False
     if vetting.failure in LEAK_RETRY_REASONS:
+        original_failure, original_reason = vetting.failure, vetting.leak_reason
         retried = True
         record_tutor_leak_retry(reason=vetting.failure)
         retry = call_tutor_model(
@@ -307,6 +339,31 @@ def run_tutor_turn(
         )
         if retry.candidate is not None:
             call, vetting = retry, vet(retry.candidate)
+        if (
+            backup_model is not None
+            and vetting.failure == original_failure == "leak_detected"
+            and vetting.leak_reason == original_reason
+        ):
+            backup = call_tutor_model(
+                backup_model, envelope, instruction, window, images, tools,
+                repair_error=_leak_repair(vetting),
+            )
+            if backup.candidate is not None:
+                call, vetting = backup, vet(backup.candidate)
+    if vetting.failure is None and vetting.visual_dropped == "visual_leak_detected":
+        redraw = call_tutor_model(
+            model, envelope, instruction, window, images, tools,
+            repair_error=_visual_leak_repair(vetting),
+        )
+        if redraw.candidate is not None:
+            redrawn = vet(redraw.candidate)
+            if (
+                redrawn.failure is None and redrawn.visual is not None
+                and redrawn.candidate.act == vetting.candidate.act
+                and redrawn.candidate.content == vetting.candidate.content
+                and redrawn.candidate.turn == vetting.candidate.turn
+            ):
+                call, vetting = redraw, redrawn
     if vetting.failure is not None:
         record_llm_fallback(operation="tutor_turn", reason=vetting.failure)
     return TurnResult(call, vetting, retried)

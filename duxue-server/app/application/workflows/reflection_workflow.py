@@ -14,6 +14,8 @@ from app.infrastructure.messaging.outbox import publish_learning_fact
 from app.application.commands.memory import SqlAlchemyMemoryFacade
 from app.infrastructure.persistence.models import FocusKit, Report, SelfReview, now
 
+_SELF_REVIEW_PROMPT = "如果想复盘今天的学习，请先说说今天学了什么、感觉如何；想问其他问题也可以直接问我。"
+
 class ReflectionWorkflow:
     def __init__(self, db: Session): self.db = db
     def invoke(self, invocation: RunInvocation) -> WorkflowOutcome:
@@ -24,11 +26,11 @@ class ReflectionWorkflow:
             context_spec=PolicyRegistry().context_spec("reflection"),
         )
         if not turn.get("review_date"):
-            return WorkflowOutcome(run_status="waiting_for_ward", outcome_type="waiting", next_interaction={"status": "needs_self_review"}, context_snapshot=envelope.trace_snapshot())
+            return WorkflowOutcome(run_status="waiting_for_ward", outcome_type="waiting", next_interaction={"status": "needs_self_review", "content": _SELF_REVIEW_PROMPT}, context_snapshot=envelope.trace_snapshot())
         day = date.fromisoformat(turn["review_date"])
         review = self.db.query(SelfReview).filter_by(ward_id=invocation.ward_id, review_date=day).one_or_none()
         if review is None and not turn.get("review_feeling"):
-            return WorkflowOutcome(run_status="waiting_for_ward", outcome_type="waiting", next_interaction={"status": "needs_self_review"}, context_snapshot=envelope.trace_snapshot())
+            return WorkflowOutcome(run_status="waiting_for_ward", outcome_type="waiting", next_interaction={"status": "needs_self_review", "content": _SELF_REVIEW_PROMPT}, context_snapshot=envelope.trace_snapshot())
         if review is None:
             review = SelfReview(ward_id=invocation.ward_id, review_date=day, feeling=turn["review_feeling"], reflection=turn.get("review_reflection"))
             self.db.add(review); self.db.flush()

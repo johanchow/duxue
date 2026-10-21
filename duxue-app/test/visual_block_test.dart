@@ -138,6 +138,19 @@ void main() {
       'svg': '<!-- Background -->${svgVisual['svg']}',
     };
     expect(VisualData.tryParse(commentedSvg), isNotNull);
+    final styledSvg = {
+      ...svgVisual,
+      'svg':
+          '<svg viewBox="0 0 300 180" width="100%" role="img">'
+          '<style>text{font-family:monospace;font-size:24px}</style>'
+          '<polygon points="220,140 220,40 380,140" fill="#E6F1FB" stroke="#185FA5" stroke-width="1.5"/>'
+          '<text x="200" y="95" font-size="13">3</text>'
+          '</svg>',
+    };
+    final parsedStyled = VisualData.tryParse(styledSvg) as SvgData?;
+    expect(parsedStyled, isNotNull);
+    expect(parsedStyled!.svg.toLowerCase().contains('<style'), isFalse);
+    expect(parsedStyled.svg, contains('viewBox="0 0 680 '));
     expect(
       VisualData.tryParse({
         ...compare,
@@ -239,10 +252,6 @@ void main() {
         'marks': [
           {'unknown': true, 'at': 2}
         ]
-      },
-      'svg with wrong viewBox width': {
-        ...svgVisual,
-        'svg': (svgVisual['svg'] as String).replaceAll('0 0 680 180', '0 0 500 180'),
       },
       'svg with script tag': {
         ...svgVisual,

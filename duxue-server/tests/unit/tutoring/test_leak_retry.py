@@ -3,6 +3,7 @@
 from app.application.workflows import tutor_loop
 from app.application.workflows.tutor_loop import LEAK_REPAIR, run_tutor_turn
 from app.application.workflows.tutor_tools import TutorToolbox
+from app.application.workflows.tutoring_workflow import TutoringWorkflow
 from app.contexts.tutoring.domain.tutor_permit import AttemptSummary, TutorPermit
 from tests.support.fakes import StaticLeakJudge, StaticTutorModel, tutor_raw
 
@@ -23,14 +24,14 @@ class LeaksWhen(StaticLeakJudge):
         return self.marker in text
 
 
-def _run(model, judge, monkeypatch=None):
+def _run(model, judge, monkeypatch=None, backup_model=None):
     fallbacks: list[str] = []
     if monkeypatch is not None:
         monkeypatch.setattr(tutor_loop, "record_llm_fallback", lambda **kw: fallbacks.append(kw["reason"]))
     tools = TutorToolbox(None, tutoring_session_id=None, problem=None, task_title=None, task_active=False, window=[])
     result = run_tutor_turn(
         model, {}, "{}", [], [], tools, permit=PROTECTED, leak_judge=judge,
-        task_title="数学作业", problem_summary="第1题：解方程 x+3=7",
+        task_title="数学作业", problem_summary="第1题：解方程 x+3=7", backup_model=backup_model,
     )
     return result, fallbacks
 
@@ -46,17 +47,44 @@ def test_a_leaking_reply_is_retried_once_and_the_hint_is_shown(monkeypatch):
     assert fallbacks == []  # the first, blocked version is not a fallback
 
 
-def test_an_answer_marker_is_retried_too(monkeypatch):
-    model = StaticTutorModel(tutor_raw("guide", "最终答案是 4"), HINT)
-    result, fallbacks = _run(model, StaticLeakJudge(False), monkeypatch)
-    assert result.leak_retried and result.vetting.failure is None and fallbacks == []
-
-
 def test_a_retry_that_still_leaks_falls_back_once(monkeypatch):
     model = StaticTutorModel(LEAKY)
     result, fallbacks = _run(model, StaticLeakJudge(True), monkeypatch)
     assert result.leak_retried and result.vetting.failure == "leak_detected"
     assert len(model.calls) == 2 and fallbacks == ["leak_detected"]
+
+
+def test_same_leak_reason_uses_backup_model_and_rechecks_it(monkeypatch):
+    model = StaticTutorModel(LEAKY)
+    backup = StaticTutorModel(HINT)
+    result, fallbacks = _run(model, LeaksWhen("等于 4"), monkeypatch, backup_model=backup)
+    assert len(model.calls) == 2 and len(backup.calls) == 1
+    assert "被拒草稿" in backup.calls[0]["repair_error"]
+    assert result.vetting.failure is None and result.call.candidate.content == HINT["content"]
+    assert fallbacks == []
+
+
+def test_backup_model_cannot_bypass_the_leak_judge(monkeypatch):
+    model = StaticTutorModel(LEAKY)
+    backup = StaticTutorModel(LEAKY)
+    result, fallbacks = _run(model, LeaksWhen("等于 4"), monkeypatch, backup_model=backup)
+    assert len(backup.calls) == 1
+    assert result.vetting.failure == "leak_detected" and fallbacks == ["leak_detected"]
+
+
+def test_workflow_passes_backup_model_to_the_shared_exit_checks():
+    backup = StaticTutorModel(HINT)
+    workflow = TutoringWorkflow(
+        None, turn_model=StaticTutorModel(LEAKY), backup_model=backup,
+        leak_judge=LeaksWhen("等于 4"),
+    )
+    tools = TutorToolbox(None, tutoring_session_id=None, problem=None, task_title=None, task_active=False, window=[])
+    result = workflow._run_model(
+        {}, "{}", [], [], tools, permit=PROTECTED,
+        task_title="数学作业", problem_summary="第1题：解方程 x+3=7",
+    )
+    assert len(backup.calls) == 1
+    assert result.vetting.failure is None
 
 
 def test_retry_includes_a_specific_review_reason_when_available():

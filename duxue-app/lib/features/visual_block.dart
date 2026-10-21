@@ -324,6 +324,10 @@ class SvgData extends VisualData {
   static const int maxChars = 16000;
 
   static final RegExp _xmlComment = RegExp(r'<!--[\s\S]*?-->');
+  static final RegExp _styleBlock = RegExp(
+    r'<style\b[^>]*>[\s\S]*?</style>|<style\b[^>]*/>',
+    caseSensitive: false,
+  );
   static final RegExp _textBody = RegExp(
     r'(<(?:text|tspan|title|desc)\b[^>]*>)([\s\S]*?)(</(?:text|tspan|title|desc)>)',
     caseSensitive: false,
@@ -338,7 +342,7 @@ class SvgData extends VisualData {
     caseSensitive: false,
   );
   static final RegExp _viewBox = RegExp(
-    r'''viewBox\s*=\s*["']\s*0(?:\.0+)?\s+0(?:\.0+)?\s+680(?:\.0+)?\s+([0-9]+(?:\.[0-9]+)?)\s*["']''',
+    r'''viewBox\s*=\s*(["'])\s*0(?:\.0+)?\s+0(?:\.0+)?\s+([0-9]+(?:\.[0-9]+)?)\s+([0-9]+(?:\.[0-9]+)?)\s*\1''',
   );
   static final RegExp _shapeTag = RegExp(
     r'<\s*(?:rect|circle|ellipse|line|polyline|polygon|path)\b',
@@ -371,7 +375,9 @@ class SvgData extends VisualData {
       Map<String, dynamic> raw, String alt, String? title) {
     final svgObj = raw['svg'];
     if (svgObj is! String) return null;
-    final code = _escapeTextNodes(svgObj.replaceAll(_xmlComment, '').trim());
+    var code = _escapeTextNodes(
+      svgObj.replaceAll(_xmlComment, '').replaceAll(_styleBlock, '').trim(),
+    );
     if (code.length < 20 || code.length > maxChars) return null;
     if (_forbidden.hasMatch(code)) return null;
     final lower = code.toLowerCase();
@@ -383,8 +389,14 @@ class SvgData extends VisualData {
 
     final vbMatch = _viewBox.firstMatch(code);
     if (vbMatch == null) return null;
-    final h = double.tryParse(vbMatch.group(1)!);
-    if (h == null || h < 40 || h > 1600) return null;
+    final width = double.tryParse(vbMatch.group(2)!);
+    final h = double.tryParse(vbMatch.group(3)!);
+    if (width == null || width <= 0 || h == null || h < 40 || h > 1600) {
+      return null;
+    }
+    if ((width - canvasWidth).abs() > 0.01) {
+      code = code.replaceFirst(vbMatch.group(0)!, 'viewBox="0 0 680 $h"');
+    }
 
     final texts = <String>[];
     for (final m in _textTag.allMatches(code)) {

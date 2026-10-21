@@ -25,7 +25,10 @@ from typing import Literal
 from app.bootstrap.settings import settings
 from app.infrastructure.ai.errors import ModelGatewayError
 from app.infrastructure.ai.prompts import PROMPTS, DynamicPrompt, PromptTemplate
-from app.infrastructure.observability.telemetry import model_call_span, record_model_response
+from app.infrastructure.observability.telemetry import (
+    model_call_span,
+    record_model_response,
+)
 
 # DashScope model ids (see docs/technical/infra-ai-components.md §4.2.3).
 # Thinking is turned off at the call: these calls return JSON on a latency budget.
@@ -92,9 +95,16 @@ class ComponentRegistry:
 COMPONENTS = ComponentRegistry(
     # --- protected: child-safety path -------------------------------------
     ComponentSpec(
-        component_id="tutoring.turn", version="v16", operation="tutor_turn",
+        component_id="tutoring.turn", version="v18", operation="tutor_turn",
         agent_label="tutoring", risk_tier="protected", model=PLUS,
-        prompt=PROMPTS["tutoring.turn.system.v16"],
+        prompt=PROMPTS["tutoring.turn.system.v18"],
+        input_contract="tutor-turn.v4", output_contract="tutor-turn-candidate.v4",
+        max_tokens=1100, temperature=0.2,
+    ),
+    ComponentSpec(
+        component_id="tutoring.turn-backup", version="v1", operation="tutor_turn_backup",
+        agent_label="tutoring", risk_tier="protected", model=REPLY_FLASH,
+        prompt=PROMPTS["tutoring.turn.system.v18"],
         input_contract="tutor-turn.v4", output_contract="tutor-turn-candidate.v4",
         max_tokens=1100, temperature=0.2,
     ),
@@ -107,18 +117,18 @@ COMPONENTS = ComponentRegistry(
         accepts_images=False,
     ),
     ComponentSpec(
-        component_id="tutoring.visual-leak-judge", version="v2", operation="tutor_visual_leak_check",
+        component_id="tutoring.visual-leak-judge", version="v4", operation="tutor_visual_leak_check",
         agent_label="tutoring", risk_tier="protected", model=TEXT_PLUS,
-        prompt=PROMPTS["tutoring.visual-leak-judge.system.v2"],
+        prompt=PROMPTS["tutoring.visual-leak-judge.system.v4"],
         input_contract="visual-leak-judge-input.v2", output_contract="leak-judge-verdict.v1",
         max_tokens=40, temperature=0.2,
         accepts_images=False,
     ),
     # --- standard ----------------------------------------------------------
     ComponentSpec(
-        component_id="companion.intent", version="v1", operation="intent_proposal",
+        component_id="companion.intent", version="v2", operation="intent_proposal",
         agent_label="planning", risk_tier="standard", model=TEXT_FLASH,
-        prompt=PROMPTS["companion.intent.system.v1"],
+        prompt=PROMPTS["companion.intent.system.v2"],
         input_contract="intent-input.v1", output_contract="intent-proposal.v1",
         max_tokens=60, temperature=0,
         accepts_images=False,
