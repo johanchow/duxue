@@ -51,10 +51,17 @@ class DynamicPrompt:
 _INTENT_SYSTEM = (
     "你只判断孩子这句话要进入哪个学习场景。只返回一个 JSON 对象，字段只有 intent。"
     "intent 只能是 planning、tutoring、reflection、unclear 之一。"
-    "planning 表示安排或修改学习任务；tutoring 表示提问、求解、想弄明白知识、请举例，或询问自己问过什么；"
-    "reflection 只在孩子讲自己做过的事情、感想、思考，或以后会怎样时选择，或者孩子明确说明要总结或复盘；"
-    "询问最近问过哪些问题不是 reflection。"
-    "unclear 表示同时要做多件事，或听不出要哪一件。"
+    "按本轮要执行的动作区分三个场景："
+    "planning 处理具体任务或作业的新增、记录作业、修改、删除、查询已有任务及安排时间。"
+    "例如‘记录一下这些任务作业’‘把图片里的作业创建成任务’‘把数学作业改成二十分钟’‘删除这项任务’‘今晚七点安排英语作业’。"
+    "缺少预计时长或开始时间仍是 planning；咨询作业题的知识或解法不属于任务管理。"
+    "reflection 处理总结、反思、回忆某天自己的学习或工作经历、过程和表现，包含已完成的任务回顾；"
+    "当孩子结合自己的学习或工作经历、错误、目标谈将来怎么做、怎么做更好、怎么避免再犯错误时，也选 reflection。"
+    "例如‘回忆昨天我是怎么学习的’‘总结今天做作业的表现’‘我今天做题总漏单位，下次怎么避免这个错误？’。"
+    "tutoring 处理其余咨询、知识提问、作业题讨论、探讨、举例和闲聊；"
+    "例如‘这道作业题怎么做’‘你觉得这个故事怎么样’‘随便聊聊’。"
+    "单纯询问最近问过什么，或请教一般方法而没有回顾自己的经历，选 tutoring；记录作业或创建任务选 planning。"
+    "只有话语无法理解或同一轮同时要求多个不同场景且无法确定主要动作时才选 unclear。"
     "当前 focus 只用于理解省略和指代；本轮明确要做另一件事时按本轮意图切换，延续原场景时才再次返回该场景名。"
     + WINDOW_RULE +
     "场景仍然按这句话要做的事判断；对不上的指代不要猜成另一个场景。"
@@ -177,7 +184,8 @@ _VISUAL_LEAK_SYSTEM = (
 _AGENT_TEXT_SYSTEM = (
     "你是读学系统的受控学习助手。只返回一个 JSON 对象，字段为 content 和 "
     "follow_up_question；不得调用工具、不得输出思维链，"
-    "不得把上下文中的个人数据扩写或泄露。content 必须是面向孩子的简短中文。"
+    "不得把上下文中的个人数据扩写或泄露。content 必须是面向孩子的简短中文，"
+    "用 Markdown 排版，按内容自然分段；不要强制逐任务列项或添加标题。"
     "作业题不得给出最终答案。若指令中的 reply_mode 是 direct_answer，"
     "content 必须直接写出词义或翻译，不能改成让孩子猜。"
     + WINDOW_RULE
@@ -186,11 +194,11 @@ _AGENT_TEXT_SYSTEM = (
 PROMPTS = {
     prompt.id: prompt
     for prompt in (
-        PromptTemplate("companion.intent.system.v3", _INTENT_SYSTEM),
+        PromptTemplate("companion.intent.system.v6", _INTENT_SYSTEM),
         PromptTemplate("tutoring.turn.system.v19", _TUTOR_TURN_SYSTEM),
         PromptTemplate("tutoring.leak-judge.system.v6", _LEAK_SYSTEM),
         PromptTemplate("tutoring.visual-leak-judge.system.v5", _VISUAL_LEAK_SYSTEM),
-        PromptTemplate("companion.agent-text.system.v1", _AGENT_TEXT_SYSTEM),
+        PromptTemplate("companion.agent-text.system.v2", _AGENT_TEXT_SYSTEM),
         DynamicPrompt("task.intake.prompt.v1", "app.application.commands.task_intake:_prompt"),
         DynamicPrompt("planning.intake.prompt.v1", "app.application.commands.plan_intake:_prompt"),
     )

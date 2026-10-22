@@ -106,7 +106,7 @@ def test_invoke_sends_static_prompt_as_system_and_uses_spec(spans):
     assert call["messages"][0] == {"role": "system", "content": spec.prompt.text}
     assert call["messages"][1] == {"role": "user", "content": "hi"}
     assert spans["span"]["component_id"] == "companion.intent"
-    assert spans["span"]["component_version"] == "v3"
+    assert spans["span"]["component_version"] == "v6"
     assert spans["span"]["model_source"] == "registry"
 
 

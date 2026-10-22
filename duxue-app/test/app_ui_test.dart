@@ -47,6 +47,11 @@ class _WardHomeApi extends ApiClient {
   String? startedPlanItem;
   String? pausedSessionId;
   String? finishedSessionId;
+  bool showPlanSuggestions = false;
+  bool showClarifyAdvice = false;
+  bool suggestMissingDuration = false;
+  bool showIntentChoice = false;
+  Map<String, dynamic>? lastStructuredCommand;
   final deleted = <String>[];
   final turns = <({String content, List<String> attachmentKeys})>[];
 
@@ -131,12 +136,53 @@ class _WardHomeApi extends ApiClient {
     Map<String, dynamic>? structuredCommand,
     List<String> attachmentKeys = const [],
   }) async {
+    lastStructuredCommand = structuredCommand;
     lastRouteHint = routeHint;
     lastTutoringIntent = tutoringIntent;
     turns.add((
       content: content,
       attachmentKeys: List<String>.from(attachmentKeys),
     ));
+    if (showIntentChoice) {
+      if (structuredCommand == null) {
+        return {
+          'thread_id': threadId ?? 'thread-1',
+          'thread_version': (expectedThreadVersion ?? 0) + 2,
+          'interaction': {
+            'protocol': 'companion-interaction.v1',
+            'kind': 'intent_choice',
+            'content': '请选你想做的事。',
+            'parts': [
+              {'type': 'text', 'text': '请选你想做的事。'},
+            ],
+            'actions': [
+              for (final choice in [
+                ('planning', '管理任务'),
+                ('reflection', '总结思考'),
+                ('tutoring', '提问探讨'),
+              ])
+                {
+                  'id': 'intent:thread-1:source',
+                  'command': 'choose_intent',
+                  'label': choice.$2,
+                  'enabled': true,
+                  'payload': {'intent': choice.$1},
+                },
+            ],
+          },
+        };
+      }
+      return {
+        'thread_id': threadId ?? 'thread-1',
+        'thread_version': (expectedThreadVersion ?? 0) + 2,
+        'interaction': {
+          'kind': 'text',
+          'parts': [
+            {'type': 'text', 'text': '已按选择继续。'},
+          ],
+        },
+      };
+    }
     if (tutoringIntent == 'pronunciation' || content == 'apple') {
       return {
         'thread_id': threadId ?? 'thread-1',
@@ -200,6 +246,26 @@ class _WardHomeApi extends ApiClient {
       };
     }
     if (structuredCommand != null) {
+      if (showPlanSuggestions || suggestMissingDuration) {
+        return {
+          'thread_id': threadId ?? 'thread-1',
+          'thread_version': (expectedThreadVersion ?? 0) + 2,
+          'interaction': {
+            'kind': 'plan_confirm_list',
+            'parts': [
+              {'type': 'text', 'text': '已采用建议，请检查草稿。'}
+            ],
+            'object_ref': {'context': 'planning', 'object_id': 'draft-1'},
+            'actions': [
+              {
+                'id': 'plan:run:1:draft-1:3',
+                'command': 'confirm_plan',
+                'enabled': true
+              },
+            ],
+          },
+        };
+      }
       return {
         'thread_id': threadId ?? 'thread-1',
         'thread_version': (expectedThreadVersion ?? 0) + 2,
@@ -212,7 +278,9 @@ class _WardHomeApi extends ApiClient {
       'thread_version': (expectedThreadVersion ?? 0) + 2,
       'interaction': {
         'protocol': 'companion-interaction.v1',
-        'kind': 'plan_confirm_list',
+        'kind': suggestMissingDuration || showClarifyAdvice
+            ? 'clarify'
+            : 'plan_confirm_list',
         'parts': [
           {'type': 'text', 'text': '已整理为今天的草稿。'},
         ],
@@ -223,9 +291,17 @@ class _WardHomeApi extends ApiClient {
         'actions': [
           {
             'id': 'plan:run:1:draft-1:2',
-            'command': 'confirm_plan',
+            'command': suggestMissingDuration || showClarifyAdvice
+                ? 'clarify_reply'
+                : 'confirm_plan',
             'enabled': true
           },
+          if (showPlanSuggestions || showClarifyAdvice)
+            {
+              'id': 'plan:run:1:draft-1:2',
+              'command': 'accept_plan_suggestion',
+              'enabled': true
+            },
         ],
       },
     };
@@ -236,8 +312,44 @@ class _WardHomeApi extends ApiClient {
         'draft_id': draftId,
         'object_version': 2,
         'items': [
-          {'title': '整理错题', 'planned_minutes': 20},
+          {
+            'assignment_id': 'task-1',
+            'title': '整理错题',
+            'planned_minutes': 20,
+            if (showPlanSuggestions || showClarifyAdvice) ...{
+              'duration_suggestion': {
+                'suggested_minutes': 35,
+                'sample_count': 3,
+                'actual_median_minutes': 35,
+                'fingerprint': 'duration-sample',
+              },
+              'time_suggestion': {
+                'reason': '建议在22:00前结束',
+                'suggested_start_at':
+                    showClarifyAdvice ? null : '2026-10-22T21:25:00+08:00',
+                'suggested_end_at':
+                    showClarifyAdvice ? null : '2026-10-22T22:00:00+08:00',
+                'fingerprint': 'time-sample',
+              },
+            },
+          },
         ],
+        if (suggestMissingDuration)
+          'clarification_batch': {
+            'slots': [
+              {
+                'slot_id': 'slot-1',
+                'field': 'planned_minutes',
+                'title': '英语阅读',
+                'duration_suggestion': {
+                  'suggested_minutes': 25,
+                  'sample_count': 3,
+                  'actual_median_minutes': 25,
+                  'fingerprint': 'clarification-sample',
+                },
+              },
+            ],
+          },
         'confirm_enabled': true,
       };
 
@@ -321,6 +433,60 @@ class _WardHomeApi extends ApiClient {
       beforeThreadVersion: beforeThreadVersion,
       limit: limit,
     ));
+    if (showIntentChoice) {
+      final choiceActions = [
+        for (final choice in [
+          ('planning', '管理任务'),
+          ('reflection', '总结思考'),
+          ('tutoring', '提问探讨'),
+        ])
+          {
+            'id': 'intent:thread-1:source',
+            'command': 'choose_intent',
+            'label': choice.$2,
+            'enabled': true,
+            'payload': {'intent': choice.$1},
+          },
+      ];
+      return {
+        'thread_id': threadId,
+        'thread_version': turns.length * 2,
+        'messages': [
+          if (turns.isNotEmpty) ...[
+            {
+              'author_type': 'ward',
+              'content': turns.first.content,
+              'thread_id': threadId,
+              'thread_version': 1
+            },
+            {
+              'author_type': 'companion',
+              'content': '请选你想做的事。',
+              'thread_id': threadId,
+              'thread_version': 2,
+              'interaction_ref': {
+                'kind': 'intent_choice',
+                'actions': choiceActions
+              }
+            },
+          ],
+          if (turns.length > 1) ...[
+            {
+              'author_type': 'ward',
+              'content': turns.last.content,
+              'thread_id': threadId,
+              'thread_version': 3
+            },
+            {
+              'author_type': 'companion',
+              'content': '已按选择继续。',
+              'thread_id': threadId,
+              'thread_version': 4
+            },
+          ],
+        ],
+      };
+    }
     final key = '$threadId:${beforeThreadVersion ?? "latest"}';
     if (threadTranscriptOverrides.containsKey(key)) {
       return threadTranscriptOverrides[key]!;
@@ -335,6 +501,42 @@ class _WardHomeApi extends ApiClient {
             'content': turn.content,
             'attachment_refs': turn.attachmentKeys,
           },
+          if (turn.content == 'apple' || turn.content == 'start also')
+            {
+              'author_type': 'companion',
+              'content':
+                  turn.content == 'apple' ? '先听这个词。' : 'start 是开始，also 是也。',
+              'attachment_refs': const <String>[],
+              'interaction_ref': {
+                'kind': 'pronunciation_lesson',
+                'lessons': turn.content == 'apple'
+                    ? [
+                        {
+                          'source_text': 'apple',
+                          'locale': 'en-US',
+                          'introduction': '先听这个词。',
+                          'speech_ref': 'lesson-1',
+                          'supported_rates': [0.5, 0.75, 1.0],
+                        },
+                      ]
+                    : [
+                        {
+                          'source_text': 'start',
+                          'locale': 'en-US',
+                          'introduction': 'start（开始）',
+                          'speech_ref': 'lesson-multi',
+                          'supported_rates': [0.5, 0.75, 1.0],
+                        },
+                        {
+                          'source_text': 'also',
+                          'locale': 'en-US',
+                          'introduction': 'also（也）',
+                          'speech_ref': 'lesson-multi:1',
+                          'supported_rates': [0.5, 0.75, 1.0],
+                        },
+                      ],
+              },
+            },
           if (turn.content.contains('水循环'))
             {
               'author_type': 'companion',
@@ -955,6 +1157,51 @@ void main() {
   });
 
   testWidgets(
+      'a pronunciation card stays with its reply when a later message is sent',
+      (tester) async {
+    FlutterSecureStoragePlatform.instance =
+        TestFlutterSecureStoragePlatform({});
+    final api = _WardHomeApi();
+    final voice = _FakeVoice()..finalText = 'apple';
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiProvider.overrideWithValue(api)],
+      child: MaterialApp(
+          home: WardDayPage(
+              wardId: 'ward-1',
+              voiceFactory: (
+                      {required baseUrl,
+                      required tokens,
+                      required telemetry}) =>
+                  voice)),
+    ));
+    await tester.pumpAndSettle();
+
+    var gesture = await tester
+        .startGesture(tester.getCenter(find.text('说出你的任何想法、问题、安排')));
+    await tester.pump(const Duration(milliseconds: 600));
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    final asked = tester.getTopLeft(find
+        .byKey(const ValueKey('chat-bubble-ward-apple'), skipOffstage: false));
+    final card = tester.getTopLeft(find.text('播放', skipOffstage: false));
+    expect(card.dy, greaterThan(asked.dy));
+
+    voice.finalText = '谢谢';
+    gesture = await tester
+        .startGesture(tester.getCenter(find.text('说出你的任何想法、问题、安排')));
+    await tester.pump(const Duration(milliseconds: 600));
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(find.text('播放', skipOffstage: false), findsOneWidget);
+    final cardAfter = tester.getTopLeft(find.text('播放', skipOffstage: false));
+    final later = tester.getTopLeft(
+        find.byKey(const ValueKey('chat-bubble-ward-谢谢'), skipOffstage: false));
+    expect(cardAfter.dy, lessThan(later.dy));
+  });
+
+  testWidgets(
       'a text_visual answer draws the diagram in the bubble and keeps it on subsequent turns',
       (tester) async {
     FlutterSecureStoragePlatform.instance =
@@ -1062,10 +1309,10 @@ void main() {
     final contentLeft = list.left + 16;
     final contentRight = list.right - 16;
     final contentWidth = contentRight - contentLeft;
-    final ward = tester.getRect(find.byKey(const ValueKey(
-        'chat-bubble-ward-今晚先读十分钟课外书，然后再做两道数学题，看看时间够不够。')));
-    final ai = tester.getRect(find.byKey(const ValueKey(
-        'chat-bubble-ai-我不会替你排今天。你说想怎么安排，我帮你记下来，并检查有没有冲突。')));
+    final ward = tester.getRect(find.byKey(
+        const ValueKey('chat-bubble-ward-今晚先读十分钟课外书，然后再做两道数学题，看看时间够不够。')));
+    final ai = tester.getRect(find.byKey(
+        const ValueKey('chat-bubble-ai-我不会替你排今天。你说想怎么安排，我帮你记下来，并检查有没有冲突。')));
 
     expect(ward.right, closeTo(contentRight, 1));
     expect(ward.width, lessThanOrEqualTo(contentWidth * 2 / 3 + 1));
@@ -1426,5 +1673,145 @@ void main() {
     expect(find.text('重绑前的历史提问'), findsOneWidget);
     expect(find.text('重绑前的历史回答'), findsOneWidget);
     expect(find.byKey(const Key('load-older-messages-button')), findsNothing);
+  });
+
+  testWidgets('plan suggestions can be dismissed or adopted explicitly',
+      (tester) async {
+    FlutterSecureStoragePlatform.instance =
+        TestFlutterSecureStoragePlatform({});
+    final api = _WardHomeApi()..showPlanSuggestions = true;
+    final voice = _FakeVoice()..finalText = '今晚整理错题';
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiProvider.overrideWithValue(api)],
+      child: MaterialApp(
+          home: WardDayPage(
+              wardId: 'ward-1',
+              voiceFactory: (
+                      {required baseUrl,
+                      required tokens,
+                      required telemetry}) =>
+                  voice)),
+    ));
+    await tester.pumpAndSettle();
+    final gesture = await tester
+        .startGesture(tester.getCenter(find.text('说出你的任何想法、问题、安排')));
+    await tester.pump(const Duration(milliseconds: 600));
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('建议时段为 07:00–22:00'), findsOneWidget);
+    expect(find.textContaining('21:25–22:00'), findsOneWidget);
+    await tester.ensureVisible(
+        find.byKey(const Key('dismiss-plan-suggestion-duration:task-1')));
+    await tester
+        .tap(find.byKey(const Key('dismiss-plan-suggestion-duration:task-1')));
+    await tester.pumpAndSettle();
+    expect(api.lastStructuredCommand, isNull);
+    await tester.ensureVisible(
+        find.byKey(const Key('accept-plan-suggestion-time:task-1')));
+    await tester
+        .tap(find.byKey(const Key('accept-plan-suggestion-time:task-1')));
+    await tester.pumpAndSettle();
+    expect(api.lastStructuredCommand?['command'], 'accept_plan_suggestion');
+    expect((api.lastStructuredCommand?['payload'] as Map)['kind'], 'time');
+    expect((api.lastStructuredCommand?['payload'] as Map)['task_id'], 'task-1');
+  });
+
+  testWidgets('unclear intent shows choices and sends the issued selection',
+      (tester) async {
+    FlutterSecureStoragePlatform.instance =
+        TestFlutterSecureStoragePlatform({});
+    final api = _WardHomeApi()..showIntentChoice = true;
+    final voice = _FakeVoice()..finalText = '这些作业怎么处理？';
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiProvider.overrideWithValue(api)],
+      child: MaterialApp(
+          home: WardDayPage(
+              wardId: 'ward-1',
+              voiceFactory: (
+                      {required baseUrl,
+                      required tokens,
+                      required telemetry}) =>
+                  voice)),
+    ));
+    await tester.pumpAndSettle();
+    final gesture = await tester
+        .startGesture(tester.getCenter(find.text('说出你的任何想法、问题、安排')));
+    await tester.pump(const Duration(milliseconds: 600));
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(find.text('管理任务'), findsOneWidget);
+    expect(find.text('总结思考'), findsOneWidget);
+    expect(find.text('提问探讨'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('intent-choice-reflection')));
+    await tester.pumpAndSettle();
+    expect(api.lastStructuredCommand?['command'], 'choose_intent');
+    expect(
+        (api.lastStructuredCommand?['payload'] as Map)['intent'], 'reflection');
+    expect(api.turns.last.content, '选择：总结思考');
+    expect(find.byKey(const Key('intent-choice-reflection')), findsNothing);
+  });
+
+  testWidgets('missing duration suggestion uses the clarification action',
+      (tester) async {
+    FlutterSecureStoragePlatform.instance =
+        TestFlutterSecureStoragePlatform({});
+    final api = _WardHomeApi()..suggestMissingDuration = true;
+    final voice = _FakeVoice()..finalText = '加一个英语阅读任务';
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiProvider.overrideWithValue(api)],
+      child: MaterialApp(
+          home: WardDayPage(
+              wardId: 'ward-1',
+              voiceFactory: (
+                      {required baseUrl,
+                      required tokens,
+                      required telemetry}) =>
+                  voice)),
+    ));
+    await tester.pumpAndSettle();
+    final gesture = await tester
+        .startGesture(tester.getCenter(find.text('说出你的任何想法、问题、安排')));
+    await tester.pump(const Duration(milliseconds: 600));
+    await gesture.up();
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(
+        find.byKey(const Key('accept-plan-suggestion-clarification:slot-1')));
+    await tester.tap(
+        find.byKey(const Key('accept-plan-suggestion-clarification:slot-1')));
+    await tester.pumpAndSettle();
+    expect(api.lastStructuredCommand?['command'], 'clarify_reply');
+    final answers =
+        (api.lastStructuredCommand?['payload'] as Map)['answers'] as List;
+    expect(answers.single['value'], '25分钟');
+  });
+
+  testWidgets('clarification still shows time warning without a valid move',
+      (tester) async {
+    FlutterSecureStoragePlatform.instance =
+        TestFlutterSecureStoragePlatform({});
+    final api = _WardHomeApi()..showClarifyAdvice = true;
+    final voice = _FakeVoice()..finalText = '看看时间安排';
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiProvider.overrideWithValue(api)],
+      child: MaterialApp(
+          home: WardDayPage(
+              wardId: 'ward-1',
+              voiceFactory: (
+                      {required baseUrl,
+                      required tokens,
+                      required telemetry}) =>
+                  voice)),
+    ));
+    await tester.pumpAndSettle();
+    final gesture = await tester
+        .startGesture(tester.getCenter(find.text('说出你的任何想法、问题、安排')));
+    await tester.pump(const Duration(milliseconds: 600));
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(find.textContaining('目前没有不冲突的调整时间'), findsOneWidget);
+    expect(find.byKey(const Key('accept-plan-suggestion-time:task-1')),
+        findsNothing);
   });
 }

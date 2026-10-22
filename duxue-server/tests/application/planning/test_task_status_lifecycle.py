@@ -2,7 +2,12 @@
 from datetime import date
 
 from app.application.workflows.planning_domain_service import PlanningDomainService
-from app.infrastructure.persistence.models import DailySchedule, StudySession, StudySessionInterval, Task
+from app.infrastructure.persistence.models import (
+    DailySchedule,
+    StudySession,
+    StudySessionInterval,
+    Task,
+)
 from app.infrastructure.security.tokens import create_access_token
 from tests.support.factories import create_daily_schedule, create_task, create_ward
 
@@ -133,6 +138,7 @@ def test_cross_day_sessions_reset_to_unstarted_and_task_can_be_deleted(client, d
     ward = create_ward(db, display_name="小宇", session_version=1)
     past_dt = datetime(2026, 9, 27, 7, 48, tzinfo=timezone.utc)
     task = create_task(db, ward=ward, title="英语的典范故事阅读", status="pool")
+    task.source = "ward"
     session = StudySession(
         ward_id=ward.id, task_id=task.id, status="paused",
         started_at=past_dt, last_activity_at=past_dt, active_seconds=333,

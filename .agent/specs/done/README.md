@@ -17,3 +17,5 @@
 | [tutor-markdown-math-rendering.md](tutor-markdown-math-rendering.md) | 2026-10-17 |
 | [tutoring-eval-categories.md](tutoring-eval-categories.md) | 2026-10-20 |
 | [tutoring-eval-review-seed.md](tutoring-eval-review-seed.md) | 2026-10-20 |
+| [intent-choice-clarification.md](intent-choice-clarification.md) | 2026-10-22 |
+| [planning-time-suggestions.md](planning-time-suggestions.md) | 2026-10-22 |

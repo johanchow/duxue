@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+
 import pytest
 
 from app.application.ports.companion import IntentProposal
 from app.contexts.companion.domain.intent_router import IntentRouter
 from app.contexts.companion.domain.policy import PolicyRegistry
-from app.infrastructure.ai.intent_classifier import ModelIntentClassifier, parse_intent_payload
+from app.infrastructure.ai.intent_classifier import (
+    ModelIntentClassifier,
+    parse_intent_payload,
+)
 from app.infrastructure.ai.model_gateway import ModelGatewayError
+from app.infrastructure.ai.prompts import PROMPTS
 
 
 @pytest.fixture
@@ -152,6 +157,29 @@ def test_invalid_model_payload_becomes_unclear():
     assert parse_intent_payload('{"intent":"none"}').intent == "unclear"
     assert parse_intent_payload('{"intent":"delete_all"}').intent == "unclear"
     assert parse_intent_payload("not-json").intent == "unclear"
+
+
+def test_intent_prompt_covers_the_three_scene_boundaries():
+    prompt = PROMPTS["companion.intent.system.v6"].text
+    for action in ("新增", "修改", "删除", "安排时间"):
+        assert action in prompt
+    assert "具体任务" in prompt
+    assert "回忆某天" in prompt
+    assert "工作" in prompt
+    assert "闲聊" in prompt
+    assert "tutoring" in prompt
+    assert "记录作业" in prompt
+    assert "将来怎么做" in prompt
+    assert "怎么做更好" in prompt
+    assert "怎么避免" in prompt
+    assert "自己的学习或工作" in prompt
+    assert "一般方法" in prompt
+
+
+def test_planning_reply_prompt_requires_markdown_for_all_visible_text():
+    prompt = PROMPTS["companion.agent-text.system.v2"].text
+    assert "Markdown" in prompt
+    assert "不要强制逐任务" in prompt
 
 
 def test_classifier_failure_proposes_unclear():
