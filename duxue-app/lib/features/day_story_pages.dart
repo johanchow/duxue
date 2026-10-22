@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import '../core/cue_notifications.dart';
+import '../core/cue_refresh_schedule.dart';
 import '../core/speech_playback.dart';
 import '../core/voice_transcription_service.dart';
 import '../providers.dart';
@@ -238,8 +239,16 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     _chatScrollController.addListener(_onChatScroll);
     _load();
     _restoreCompanionThread();
-    cueRefresh =
-        Timer.periodic(const Duration(minutes: 1), (_) => _refreshCue());
+    _scheduleCueRefresh();
+  }
+
+  void _scheduleCueRefresh() {
+    cueRefresh?.cancel();
+    cueRefresh = Timer(nextCueRefreshDelay(DateTime.now()), () {
+      if (!mounted) return;
+      _refreshCue();
+      _scheduleCueRefresh();
+    });
   }
 
   SpeechPlayback _playback() =>
@@ -257,7 +266,10 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _refreshCue();
+    if (state == AppLifecycleState.resumed) {
+      _refreshCue();
+      _scheduleCueRefresh();
+    }
   }
 
   @override
@@ -1182,6 +1194,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   Future<void> _review() async {
     try {
       await ref.read(apiProvider).review(widget.wardId, DateTime.now(), '顺利');
+      await _refreshCue();
       insight =
           await ref.read(apiProvider).insight(widget.wardId, DateTime.now());
       if (mounted) setState(() => tab = 2);

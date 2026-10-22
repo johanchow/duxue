@@ -3,8 +3,19 @@ from datetime import datetime, timezone
 from app.application.commands.start_cue import StartCueService
 from app.contexts.planning.domain.scheduling import local_plan_date
 from app.contexts.study.domain.start_cue import SceneRead, StartCueError
-from app.infrastructure.persistence.models import LearningEvent, StudySession, StudySessionInterval
-from tests.support.factories import create_daily_schedule, create_guardian, create_study_session, create_task, create_ward
+from app.infrastructure.persistence.models import (
+    LearningEvent,
+    SelfReview,
+    StudySession,
+    StudySessionInterval,
+)
+from tests.support.factories import (
+    create_daily_schedule,
+    create_guardian,
+    create_study_session,
+    create_task,
+    create_ward,
+)
 
 AT = datetime(2026, 10, 6, 11, 10, tzinfo=timezone.utc)  # 19:10 Asia/Shanghai
 AT_NEXT = datetime(2026, 10, 6, 11, 41, tzinfo=timezone.utc)  # 19:41 Asia/Shanghai
@@ -37,6 +48,24 @@ def test_due_task_without_a_camera_presents_one_card(db):
     start_notes = [item for item in view["notifications"] if item["kind"] == "start"]
     assert [item["id"] for item in start_notes] == [f"start:{english.id}"]
     assert any(item["kind"] == "day_review" for item in view["notifications"])
+
+
+def test_completed_task_and_submitted_review_are_not_scheduled_as_notifications(db):
+    ward = create_ward(db, guardian=create_guardian(db))
+    schedule = _schedule(db, ward)
+    done = create_task(db, ward=ward, title="数学", status="completed", schedule_id=schedule.id)
+    pending = create_task(db, ward=ward, title="英语", status="scheduled", schedule_id=schedule.id)
+    schedule.items = [
+        {"assignment_id": done.id, "start_at": "2026-10-06T19:40:00", "end_at": "2026-10-06T20:00:00"},
+        {"assignment_id": pending.id, "start_at": "2026-10-06T20:00:00", "end_at": "2026-10-06T20:20:00"},
+    ]
+    db.add(SelfReview(ward_id=ward.id, review_date=schedule.schedule_date, feeling="还不错"))
+    db.flush()
+
+    view = StartCueService(db).sync(ward.id, moment=AT)
+    assert [(item["kind"], item["id"]) for item in view["notifications"]] == [
+        ("start", f"start:{pending.id}"),
+    ]
 
 
 def test_previous_task_still_running_offers_continue_or_switch(db):
