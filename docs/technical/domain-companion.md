@@ -216,8 +216,7 @@ Repository/ORM 或创建多 Context 全局事务。
 
 自由文本的意图由一次无状态的结构化模型调用提议，不由关键词或正则解释。模型只返回
 `IntentProposal`：`intent` 取 `planning`、`tutoring`、`reflection`、`unclear` 之一。
-`reflection` 只用于 Ward 在讲自己做过的事情、感想、思考，或以后会怎样，以及明确说明要总结或复盘；
-提问、求解、理解知识、请举例，或询问自己最近问过什么，属于 `tutoring`。当前 focus 只用于理解省略和指代，
+`planning` 处理具体任务或作业的新增、修改、删除、已有任务查询和时间安排；`reflection` 处理总结、反思、回忆某天自己的学习或工作经历与表现，也包含结合这些经历、错误或目标谈将来怎么做、怎么做更好、怎么避免再犯；其余咨询、知识或作业题探讨、一般方法请教、举例和闲聊属于 `tutoring`。无法理解或一轮同时要求多个场景且主动作不明时返回 `unclear`。当前 focus 只用于理解省略和指代，
 本轮明确要做另一件事时应切换场景。延续当前场景时必须再次写出该场景名，
 不另设「无新意图」取值。它没有工具、没有写权限，
 也不能自行决定 `mode` 或创建 Run。`HandleCompanionTurn` 校验该提议属于这个闭集；非法 JSON、
@@ -230,13 +229,13 @@ Repository/ORM 或创建多 Context 全局事务。
 | --- | ------------- | ------------------------------------------------------ | ------------------------------ |
 | 1   | Domain 封闭安全词表 | 命中自伤或伤人短语                                              | `safety`，不调用模型，不建 Run          |
 | 2   | 已验证 UI        | `route_hint` 属于 `planning` / `tutoring` / `reflection` | 该目标，`mode=start`，不调用模型         |
-| 3   | 模型提议 + Domain | `unclear` 或没有有效提议                                      | `clarify`，不建 Run               |
+| 3   | 模型提议 + Domain | `unclear` 或没有有效提议                                      | `clarify`，不建 Run；无明确意图的图片且无焦点或焦点为 Planning 时进入 Planning |
 | 4   | 模型提议 + Domain | 提议与 focus 的场景相同                                        | `continue`                     |
 | 5   | 模型提议 + Domain | 提议是另一个业务场景，或没有 focus                                   | 有 focus 时 `handoff`，否则 `start` |
 
 
 同时出现多个业务意图时，模型必须提议 `unclear`，由代码进入澄清，不得猜测其中一个。
-澄清和安全都写入一条固定的、已校验的 Ward-facing 回复；不能返回没有正文的成功结果。
+澄清和安全都写入一条固定的、已校验的 Ward-facing 回复；不能返回没有正文的成功结果。入口 `unclear` 的澄清回复附带三项 `intent_choice`，分别选管理任务、总结思考、提问探讨。`choose_intent` 只能消费当前 Thread 最新的该回复，并用服务端保存的原 Ward 文本与附件进入所选场景；选择本身在 transcript 中显示为“选择：…”。Thread 已前进、动作不属于当前回复或选项被篡改时返回 409，旧按钮失效。
 安全词表只拦截已知伤害表述，不承担开放说法的意图理解。
 
 `tutoring` 只表示进入答疑场景。进入之后如何在 `problem_solving`、`curiosity`、`conversation`、`safety`、`pronunciation` 中选择，见 [Tutoring §1.1](domain-tutoring.md#11-控制模型)。这里不把发音加进 `IntentProposal`。
@@ -496,6 +495,7 @@ App 按 `kind` 选择组件；业务数字一律用 `object_ref` 再拉一次目
 | `text_media`        | 图文提示（当前仅图片；视频未开放） | `text` + `media_ref`   | 无                                               | 无                                   |
 | `text_visual`       | 文字 + 一张只读配图（`steps`、`compare`、`segment`、`number_line`、`svg`；由 Application 在图通过全部检查后投影，并随 `CompanionMessage.interaction_ref` 保留在历史气泡中） | `text` + `visual`（内联，不用 `object_ref`） | 无                                               | 无                                   |
 | `clarify`           | 单一必要问题、发音原文确认或候选选择 | `text`                 | `reply`                                         | 无或当前 Workflow 等待点                    |
+| `intent_choice`     | 入口意图不明时选择场景             | `text`                 | `choose_intent`（管理任务、总结思考、提问探讨） | 原 Ward 输入的当前 Thread 引用               |
 | `plan_confirm_list` | 全部未完成任务：耗时、开始、结束  | `text` + `object_ref`  | `confirm`（仅 `confirm_enabled`）、`edit`、`discard` | [PlanDraftView](domain-planning.md) |
 | `tutoring_hint`     | 启发式提示卡 + 阶梯       | `text`（Markdown/LaTeX） | `understood`、`more_hint`、`close`                | TutoringInteractionView             |
 | `pronunciation_lesson` | 已校验原文、发音提示与按需播放 | `text` + `object_ref`  | 无                                               | [PronunciationLessonView](domain-tutoring.md#五query) |
@@ -531,7 +531,7 @@ class InteractionPart(BaseModel):
 
 class AllowedAction(BaseModel):
     name: Literal[
-        "confirm", "edit", "discard", "reply",
+        "confirm", "edit", "discard", "reply", "select",
         "understood", "more_hint", "close",
         "submit_review", "retry", "restart",
         "start_due_task", "continue_current",
@@ -539,7 +539,7 @@ class AllowedAction(BaseModel):
     ]
     label: str
     command: Literal[
-        "confirm_plan", "patch_plan", "discard_plan",
+        "confirm_plan", "patch_plan", "discard_plan", "choose_intent",
         "clarify_reply", "tutor_understood", "tutor_more_hint", "tutor_close",
         "submit_self_review", "retry_run", "restart_run",
         "start_due_task", "continue_current",
@@ -551,7 +551,7 @@ class AllowedAction(BaseModel):
 class WorkflowInteractionView(BaseModel):
     protocol: Literal["companion-interaction.v1"]
     kind: Literal[
-        "text", "text_media", "text_visual", "clarify", "plan_confirm_list",
+        "text", "text_media", "text_visual", "clarify", "intent_choice", "plan_confirm_list",
         "tutoring_hint", "pronunciation_lesson", "self_review",
         "achievement", "start_cue", "failure",
     ]

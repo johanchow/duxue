@@ -7,16 +7,6 @@ from unittest.mock import patch
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.application.workflows.planning_domain_service import PlanningDomainService
-from app.application.workflows.planning_workflow import build_planning_graph
-from app.application.workflows.planning_adapter import PlanningWorkflowAdapter, planning_today
-from app.application.workflows.tutoring_workflow import TutoringWorkflow
-from app.application.workflows.reflection_workflow import ReflectionWorkflow
-from app.application.process_managers.companion_coordinator import CompanionCoordinator
-from tests.support.fakes import StaticIntentClassifier, StaticLeakJudge, StaticTutorModel, tutor_raw
-from app.application.ports.companion import RunInvocation, WorkflowOutcome
-from app.infrastructure.ai.model_gateway import ModelGatewayError
-from app.infrastructure.persistence.database import Base
 from app.application.commands.memory import (
     LearningFactRecorded,
     MemoryAccessDenied,
@@ -25,24 +15,41 @@ from app.application.commands.memory import (
     SqlAlchemyMemoryFacade,
 )
 from app.application.commands.memory_worker import consume_pending_learning_facts
+from app.application.ports.companion import RunInvocation, WorkflowOutcome
+from app.application.process_managers.companion_coordinator import CompanionCoordinator
+from app.application.workflows.planning_adapter import (
+    PlanningWorkflowAdapter,
+    planning_today,
+)
+from app.application.workflows.planning_domain_service import PlanningDomainService
+from app.application.workflows.planning_workflow import build_planning_graph
+from app.application.workflows.reflection_workflow import ReflectionWorkflow
+from app.application.workflows.tutoring_workflow import TutoringWorkflow
+from app.infrastructure.ai.model_gateway import ModelGatewayError
 from app.infrastructure.messaging.outbox import publish_learning_fact
+from app.infrastructure.persistence.database import Base
 from app.infrastructure.persistence.models import (
     AgentCheckpoint,
     AgentRun,
     ConversationThread,
     DerivedSignal,
-    DerivedSignalEvent,
     EpisodicMemory,
     EpisodicMemoryEvent,
     LearningEvent,
     LongTermProfile,
     OutboxEvent,
     PlanDraft,
-    Task,
     StudySession,
+    Task,
     User,
     Ward,
     uid,
+)
+from tests.support.fakes import (
+    StaticIntentClassifier,
+    StaticLeakJudge,
+    StaticTutorModel,
+    tutor_raw,
 )
 
 
@@ -177,14 +184,14 @@ class MemoryFacadeTest(unittest.TestCase):
         service = PlanningDomainService(self.db)
         draft = service.save_draft(
             self.ward_id,
-            datetime.now(timezone.utc).date(),
+            planning_today(),
             [
                 {
                     "assignment_id": task.id,
                     "new_task": False,
                     "title": task.title,
                     "planned_minutes": 30,
-                    "start_at": "2026-09-16T19:00:00",
+                    "start_at": f"{planning_today().isoformat()}T19:00:00",
                 }
             ],
         )
@@ -219,14 +226,14 @@ class MemoryFacadeTest(unittest.TestCase):
         paused = graph.invoke(
             {
                 "ward_id": self.ward_id,
-                "plan_date": datetime.now(timezone.utc).date().isoformat(),
+                "plan_date": planning_today().isoformat(),
                 "items": [
                     {
                         "assignment_id": task.id,
                         "new_task": False,
                         "title": task.title,
                         "planned_minutes": 20,
-                        "start_at": "2026-09-16T19:00:00",
+                        "start_at": f"{planning_today().isoformat()}T19:00:00",
                     }
                 ],
             },
@@ -255,7 +262,7 @@ class MemoryFacadeTest(unittest.TestCase):
             run_id=run.id, thread_id=thread.id, ward_id=self.ward_id, agent_type="planning",
             turn={"planning_items": [{"assignment_id": task.id, "new_task": False,
                                         "title": task.title, "planned_minutes": 20,
-                                        "start_at": "2026-09-17T19:00:00"}]},
+                                        "start_at": f"{planning_today().isoformat()}T19:00:00"}]},
             turn_id=run.current_turn_id, attempt=1,
         ))
         draft = self.db.query(PlanDraft).filter_by(ward_id=self.ward_id).one()
@@ -272,6 +279,45 @@ class MemoryFacadeTest(unittest.TestCase):
         self.assertEqual(confirmed.run_status, "closed")
         self.assertEqual(confirmed.next_interaction["status"], "confirmed")
 
+    def test_structured_time_suggestion_reenters_review_with_new_version(self):
+        from langgraph.checkpoint.memory import InMemorySaver
+
+        task = Task(ward_id=self.ward_id, title="数学", planned_minutes=30)
+        thread = ConversationThread(ward_id=self.ward_id)
+        self.db.add_all([task, thread])
+        self.db.flush()
+        run = AgentRun(thread_id=thread.id, ward_id=self.ward_id, agent_type="planning",
+                       run_ref=f"agent_run:{uid()}", current_turn_id=uid())
+        self.db.add(run)
+        self.db.flush()
+        adapter = PlanningWorkflowAdapter(self.db, checkpointer=InMemorySaver())
+        reviewed = adapter.invoke(invocation=RunInvocation(
+            run_id=run.id, thread_id=thread.id, ward_id=self.ward_id, agent_type="planning",
+            turn={"planning_items": [{"assignment_id": task.id, "new_task": False,
+                                        "title": task.title, "planned_minutes": 30,
+                                        "start_at": f"{planning_today().isoformat()}T06:30:00+08:00"}]},
+            turn_id=run.current_turn_id, attempt=1,
+        ))
+        action = next(action for action in reviewed.next_interaction["actions"]
+                      if action["command"] == "accept_plan_suggestion")
+        draft = self.db.query(PlanDraft).filter_by(ward_id=self.ward_id).one()
+        old_version = draft.version
+        fingerprint = PlanningDomainService(self.db).plan_draft_view(
+            self.ward_id, draft.id)["items"][0]["time_suggestion"]["fingerprint"]
+        run.status, run.current_turn_id = "active", uid()
+        adopted = adapter.invoke(invocation=RunInvocation(
+            run_id=run.id, thread_id=thread.id, ward_id=self.ward_id, agent_type="planning",
+            turn={"structured_command": {"interaction_id": action["id"],
+                  "command": "accept_plan_suggestion", "payload": {
+                      "draft_id": draft.id, "expected_draft_version": old_version,
+                      "kind": "time", "task_id": task.id,
+                      "expected_fingerprint": fingerprint}}},
+            turn_id=run.current_turn_id, attempt=1,
+        ))
+        self.assertEqual(adopted.next_interaction["kind"], "plan_confirm_list")
+        self.assertGreater(draft.version, old_version)
+        self.assertTrue(draft.items[0]["start_at"].endswith("07:00:00+08:00"))
+
     def test_structured_clarification_reenters_review_before_issuing_confirm(self):
         """A slot form must never sign confirm_plan without a graph interrupt."""
         from langgraph.checkpoint.memory import InMemorySaver
@@ -287,7 +333,7 @@ class MemoryFacadeTest(unittest.TestCase):
         draft = PlanningDomainService(self.db).save_draft(
             self.ward_id, planning_today(), [{
                 "assignment_id": task.id, "new_task": False, "title": task.title,
-                "planned_minutes": None, "start_at": "2026-09-18T19:30:00",
+                "planned_minutes": None, "start_at": f"{planning_today().isoformat()}T19:30:00",
             }], pending_fields=["planned_minutes"],
         )
         slot_id = draft.working_state["active_clarification_batch"]["slots"][0]["slot_id"]
@@ -334,6 +380,28 @@ class MemoryFacadeTest(unittest.TestCase):
         assert all(action["command"] != "confirm_plan"
                    for action in outcome.next_interaction["actions"])
 
+    def test_missing_duration_reply_uses_overall_markdown_without_duplicate_summary(self):
+        thread = ConversationThread(ward_id=self.ward_id)
+        self.db.add(thread)
+        self.db.flush()
+        run = AgentRun(thread_id=thread.id, ward_id=self.ward_id, agent_type="planning",
+                       run_ref=f"agent_run:{uid()}", current_turn_id=uid())
+        self.db.add(run)
+        draft = PlanningDomainService(self.db).apply_operations(
+            self.ward_id, planning_today(), [
+                {"kind": "create", "title": "抄词表"},
+                {"kind": "create", "title": "数学小卷"},
+            ], command_id="image-create",
+        )
+        outcome = PlanningWorkflowAdapter(self.db)._clarification_outcome(
+            run=run, draft=draft, resolved_count=0, context_snapshot={},
+        )
+        text = outcome.next_interaction["content"]
+        self.assertIn("**需要补充的信息**", text)
+        self.assertIn("预计时长：抄词表、数学小卷", text)
+        self.assertNotIn("- **抄词表**", text)
+        self.assertNotIn("待补充：", text)
+
     def test_confirming_the_same_draft_twice_returns_the_existing_schedule(self):
         task = Task(ward_id=self.ward_id, title="科学观察")
         self.db.add(task)
@@ -341,9 +409,9 @@ class MemoryFacadeTest(unittest.TestCase):
         service = PlanningDomainService(self.db)
         draft = service.save_draft(
             self.ward_id,
-            datetime.now(timezone.utc).date(),
+            planning_today(),
             [{"assignment_id": task.id, "new_task": False, "title": task.title, "planned_minutes": 15,
-              "start_at": "2026-09-16T19:00:00"}],
+              "start_at": f"{planning_today().isoformat()}T19:00:00"}],
         )
         first = service.confirm(self.ward_id, draft.id)
         second = service.confirm(self.ward_id, draft.id)

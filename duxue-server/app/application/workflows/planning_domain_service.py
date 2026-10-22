@@ -19,6 +19,8 @@ from app.contexts.planning.domain.scheduling import (
     can_schedule,
     local_plan_date,
 )
+from app.contexts.planning.domain.time_suggestions import suggest_plan_time
+from app.application.queries.planning_suggestions import DurationSuggestionQuery
 from app.infrastructure.messaging.outbox import publish_learning_fact
 from app.infrastructure.persistence.models import (
     DailySchedule,
@@ -399,6 +401,8 @@ class PlanningDomainService(PlanningOperations):
         task = self.db.get(Task, task_id)
         if task is None or task.ward_id != ward_id:
             raise HTTPException(404, "任务不存在")
+        if task.source == "guardian":
+            raise HTTPException(409, "家长确认的必做任务不能删除，可说明原因暂不安排")
         if task.status in {COMPLETED, CANCELLED}:
             raise HTTPException(409, "任务当前不可删除")
         if self.db.query(StudySession).filter_by(task_id=task.id).first():
@@ -548,13 +552,23 @@ class PlanningDomainService(PlanningOperations):
         for item in items:
             if not item.get("deferred"):
                 self._slot(item)
-        conflicts = SchedulingService.validate_schedule(items)
+        conflicts = SchedulingService.validate_schedule(items, plan_date=draft.plan_date)
         conflict_ids = {ident for c in conflicts for ident in c["task_ids"]}
         state = draft.working_state or {}
         pending = set(draft.pending_fields)
-        batch = self._clarification_batch(draft)
+        batch = deepcopy(self._clarification_batch(draft))
         if batch:
             pending.update(slot["field"] for slot in batch["slots"])
+        duration_query = DurationSuggestionQuery(self.db)
+        if batch:
+            for slot in batch["slots"]:
+                if slot.get("field") == "planned_minutes" and slot.get("title"):
+                    target = slot.get("target") or {}
+                    suggestion = duration_query.for_title(
+                        ward_id=ward_id, title=slot["title"], plan_date=draft.plan_date,
+                        exclude_task_id=target.get("task_id"))
+                    if suggestion:
+                        slot["duration_suggestion"] = suggestion
         for item in items:
             task = self.db.get(Task, item["assignment_id"])
             if task and task.source == "guardian" and not item.get("start_at") and not item.get("unscheduled_reason") and not pending:
@@ -564,6 +578,15 @@ class PlanningDomainService(PlanningOperations):
             item["schedule_conflict"] = item["assignment_id"] in conflict_ids
             item["will_enter_plan"] = bool(item.get("start_at") and item.get("end_at")
                                            and not item.get("deferred") and not item["schedule_conflict"])
+            if task and item.get("planned_minutes"):
+                suggestion = duration_query.for_title(
+                    ward_id=ward_id, title=item["title"], plan_date=draft.plan_date,
+                    exclude_task_id=task.id)
+                if suggestion and abs(suggestion["suggested_minutes"] - item["planned_minutes"]) >= max(
+                    10, item["planned_minutes"] * 0.25,
+                ):
+                    item["duration_suggestion"] = suggestion
+            item["time_suggestion"] = suggest_plan_time(item, items, draft.plan_date)
         schedule = self._schedule(ward_id, draft.plan_date)
         stale = (schedule.version if schedule else 0) != draft.base_schedule_version
         for task_id, version in state.get("task_versions", {}).items():
@@ -585,6 +608,35 @@ class PlanningDomainService(PlanningOperations):
                 "planning_agent_loop": state.get("planning_agent_loop", {}),
                 "is_revision": bool(schedule), "proposed_task_changes": state.get("proposed_task_changes", {}),
                 "proposed_task_deletions": proposed_task_deletions}
+
+    def accept_suggestion(self, ward_id: str, draft_id: str, expected_draft_version: int,
+                          *, kind: str, task_id: str, expected_fingerprint: str) -> PlanDraft:
+        """Apply a freshly recomputed suggestion through the ordinary draft write path."""
+        if kind not in {"duration", "time"}:
+            raise HTTPException(400, "未知计划建议")
+        self._lock_ward(ward_id)
+        draft = self.db.query(PlanDraft).filter_by(
+            id=draft_id, ward_id=ward_id, status="active").with_for_update().one_or_none()
+        if draft is None:
+            raise HTTPException(404, "计划草稿不存在")
+        if draft.version != expected_draft_version:
+            raise HTTPException(409, "计划草稿已变化，请重新审阅")
+        view = self.plan_draft_view(ward_id, draft_id)
+        item = next((row for row in view["items"] if row["assignment_id"] == task_id), None)
+        if item is None:
+            raise HTTPException(409, "建议目标已失效")
+        suggestion = item.get(f"{kind}_suggestion")
+        if not suggestion or suggestion.get("fingerprint") != expected_fingerprint:
+            raise HTTPException(409, "建议已失效，请重新审阅")
+        patch = {"assignment_id": task_id, "new_task": False,
+                 "title": item["title"], "planned_minutes": item["planned_minutes"]}
+        if kind == "duration":
+            patch["planned_minutes"] = suggestion["suggested_minutes"]
+        else:
+            if not suggestion.get("suggested_start_at"):
+                raise HTTPException(409, "当前没有不冲突的建议时间")
+            patch["start_at"] = suggestion["suggested_start_at"]
+        return self.save_draft(ward_id, draft.plan_date, [patch])
 
     def confirm(self, ward_id: str, draft_id: str, expected_draft_version: int | None = None) -> DailySchedule:
         self._lock_ward(ward_id)
@@ -609,6 +661,8 @@ class PlanningDomainService(PlanningOperations):
         for ident, payload in proposed_deletions.items():
             if ident not in tasks or tasks[ident].version != payload.get("task_version"):
                 raise HTTPException(409, "任务已变化，请重新审阅")
+            if tasks[ident].source == "guardian":
+                raise HTTPException(409, "家长确认的必做任务不能删除，可说明原因暂不安排")
         view = self.plan_draft_view(ward_id, draft.id)
         if not view["confirm_enabled"]:
             raise HTTPException(409, {"code": "plan_not_confirmable", "message": "计划草稿仍有待确认信息或时间冲突",

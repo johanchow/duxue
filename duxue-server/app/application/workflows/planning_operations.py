@@ -42,7 +42,8 @@ class PlanningOperations:
         schedule = self._schedule(ward_id, plan_date)
         self._check_not_started(schedule)
         # A new edit is a new review, never a silent confirmation retry.
-        if (schedule.version if schedule else 0) != draft.base_schedule_version:
+        schedule_changed = (schedule.version if schedule else 0) != draft.base_schedule_version
+        if schedule_changed:
             draft.base_schedule_version = schedule.version if schedule else 0
             saved = {i['assignment_id']: deepcopy(i) for i in (schedule.items or [])} if schedule else {}
             saved.update({i['assignment_id']: deepcopy(i) for i in draft.items})
@@ -59,7 +60,43 @@ class PlanningOperations:
         pending_ops = state.setdefault('operations', {})
         batch = state.get('active_clarification_batch') or {}
         slots = deepcopy(batch.get('slots', []))
-        answers = answers or []
+        answers = list(answers or [])
+        # Rephrasing or confirming an unresolved create is still the same
+        # candidate. Reuse its issued slot; a newly supplied duration answers
+        # that slot instead of opening another create operation.
+        fresh_operations = []
+        candidate_changed = False
+        reused_candidate = False
+        for raw in operations:
+            if raw.get('kind') != 'create' or not raw.get('title'):
+                fresh_operations.append(raw)
+                continue
+            matching = [
+                (op_id, op) for op_id, op in pending_ops.items()
+                if op.get('kind') == 'create' and op.get('status') == 'waiting'
+                and not op.get('task_ids')
+                and TaskReferenceResolver.normalise(op.get('title'))
+                == TaskReferenceResolver.normalise(raw['title'])
+                and any(slot.get('operation_id') == op_id and slot.get('field') == 'planned_minutes'
+                        for slot in slots)
+            ]
+            if len(matching) != 1:
+                fresh_operations.append(raw)
+                continue
+            reused_candidate = True
+            op_id, pending = matching[0]
+            if raw.get('planned_minutes') is not None:
+                duration_slot = next(slot for slot in slots
+                                     if slot.get('operation_id') == op_id and slot.get('field') == 'planned_minutes')
+                answers.append({'slot_id': duration_slot['slot_id'], 'value': raw['planned_minutes']})
+            for field in ('start_at', 'after_task_reference', 'before_task_reference'):
+                if raw.get(field) is not None and pending.get(field) != raw[field]:
+                    pending[field] = deepcopy(raw[field])
+                    candidate_changed = True
+        operations = fresh_operations
+        if (reused_candidate and not operations and not answers and not items
+                and not schedule_changed and not candidate_changed):
+            return draft
         if answers and batch.get('issued_draft_version') != draft.version:
             raise HTTPException(409, '澄清问题已过期，请刷新')
         invalid_slot_ids = set()
@@ -293,6 +330,11 @@ class PlanningOperations:
                         prior['status'] = 'deferred'
                         slots = [s for s in slots if s['operation_id'] != prior_id]
             elif kind == 'delete':
+                if any(task.source == 'guardian' for task in targets):
+                    op['status'] = 'rejected'
+                    results.append({'operation_id': op_id, 'status': 'rejected',
+                                    'reason': '家长确认的必做任务不能删除，可说明原因暂不安排'})
+                    continue
                 if self.db.query(StudySession).filter(StudySession.task_id.in_(ids)).first():
                     op['status'] = 'rejected'
                     results.append({'operation_id': op_id, 'status': 'rejected',
@@ -339,15 +381,6 @@ class PlanningOperations:
                             draft_row.items = draft_items
                             draft_row.version += 1
             else:
-                if kind == 'create' and not targets:
-                    task = Task(ward_id=ward_id, title=op['title'].strip(), planned_minutes=minutes, source='ward')
-                    self.db.add(task)
-                    self.db.flush()
-                    tasks[task.id] = task
-                    editable.append(task)
-                    candidates.append({'id': task.id, 'title': task.title})
-                    targets = [task]
-                    op['task_ids'] = [task.id]
                 # Validate relative targets and times before mutating any member of a batch.
                 timing = {}
                 unresolved = False
@@ -372,6 +405,15 @@ class PlanningOperations:
                         ask(op_id, op, 'start_at')
                         continue
                     timing.update(start_at=op['start_at'], slot_source='ward_explicit')
+                if kind == 'create' and not targets:
+                    task = Task(ward_id=ward_id, title=op['title'].strip(), planned_minutes=minutes, source='ward')
+                    self.db.add(task)
+                    self.db.flush()
+                    tasks[task.id] = task
+                    editable.append(task)
+                    candidates.append({'id': task.id, 'title': task.title})
+                    targets = [task]
+                    op['task_ids'] = [task.id]
                 for task in targets:
                     item = items.setdefault(task.id, self._task_item(task))
                     item['target_bound'] = True
@@ -450,9 +492,7 @@ class PlanningOperations:
             status = 'needs_clarification'
         elif not operations and not answers and not statuses:
             status = 'no_op'
-        elif has_reviewed_plan_change:
-            status = 'draft_changed'
-        elif has_applied_change and any(
+        elif has_reviewed_plan_change or has_applied_change and any(
             (item.get('schedule_requested') and (
                 item.get('start_at') or item.get('after_assignment_id') or item.get('before_assignment_id')
             ))

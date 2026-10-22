@@ -37,6 +37,52 @@ def test_missing_name_candidate_preserves_duration_and_registers_once(db):
     assert not service.plan_draft_view(ward.id, draft.id)['confirm_enabled']
 
 
+def test_repeated_create_while_duration_is_pending_reuses_original_slots(db):
+    ward = create_ward(db)
+    service = PlanningDomainService(db)
+    operations = [
+        {'kind': 'create', 'title': '抄词表'},
+        {'kind': 'create', 'title': '数学小卷'},
+    ]
+    first = operate(service, ward, operations, command_id='image-create')
+    original_version = first.version
+    original_slots = [slot['slot_id'] for slot in
+                      first.working_state['active_clarification_batch']['slots']]
+
+    repeated = operate(service, ward, operations, command_id='acknowledge')
+    assert repeated.version == original_version
+    assert [slot['slot_id'] for slot in repeated.working_state[
+        'active_clarification_batch']['slots']] == original_slots
+    assert len(repeated.working_state['operations']) == 2
+    assert db.query(Task).count() == 0
+
+    completed = operate(service, ward, answers=[
+        {'slot_id': original_slots[0], 'value': '20分钟'},
+        {'slot_id': original_slots[1], 'value': '30分钟'},
+    ], command_id='provide-duration')
+    assert not completed.pending_fields
+    assert sorted((task.title, task.planned_minutes) for task in db.query(Task)) == [
+        ('抄词表', 20), ('数学小卷', 30),
+    ]
+
+
+def test_repeated_create_with_new_duration_completes_pending_candidate_once(db):
+    ward = create_ward(db)
+    service = PlanningDomainService(db)
+    first = operate(service, ward, [{'kind': 'create', 'title': '抄词表'}],
+                    command_id='first-create')
+    slot_id = first.working_state['active_clarification_batch']['slots'][0]['slot_id']
+
+    completed = operate(service, ward, [
+        {'kind': 'create', 'title': '抄词表', 'planned_minutes': 20},
+    ], command_id='repeat-with-duration')
+    assert not completed.pending_fields
+    assert db.query(Task).count() == 1
+    assert (db.query(Task).one().title, db.query(Task).one().planned_minutes) == ('抄词表', 20)
+    assert slot_id not in [slot['slot_id'] for slot in
+                           (completed.working_state.get('active_clarification_batch') or {}).get('slots', [])]
+
+
 def test_loop_reports_task_pool_only_when_created_without_start_time(db):
     ward = create_ward(db)
     service = PlanningDomainService(db)
@@ -326,7 +372,11 @@ def test_confirmation_turn_sees_prior_itinerary_and_creates_those_tasks(db, monk
     from app.application.workflows.planning_adapter import PlanningWorkflowAdapter
     from app.infrastructure.ai.model_gateway import ModelGatewayError
     from app.infrastructure.persistence.models import (
-        AgentRun, CompanionCommand, CompanionMessage, ConversationThread, uid,
+        AgentRun,
+        CompanionCommand,
+        CompanionMessage,
+        ConversationThread,
+        uid,
     )
 
     ward = create_ward(db)
@@ -518,7 +568,11 @@ def test_image_create_without_duration_still_asks_instead_of_claiming_recorded(d
     from app.application.commands.plan_intake import PlanIntakeResult, PlanIntakeService
     from app.application.ports.companion import RunInvocation
     from app.application.workflows.planning_adapter import PlanningWorkflowAdapter
-    from app.infrastructure.persistence.models import AgentRun, ConversationThread, PlanDraft
+    from app.infrastructure.persistence.models import (
+        AgentRun,
+        ConversationThread,
+        PlanDraft,
+    )
 
     ward = create_ward(db)
     thread = ConversationThread(ward_id=ward.id)
@@ -550,6 +604,7 @@ def test_adapter_model_operations_reach_review_and_confirmation(db, monkeypatch)
     from app.application.ports.companion import RunInvocation
     from app.application.workflows.planning_adapter import PlanningWorkflowAdapter
     from app.infrastructure.persistence.models import AgentRun, ConversationThread
+    monkeypatch.setattr('app.application.workflows.planning_adapter.planning_today', lambda current=None: DAY)
     ward = create_ward(db)
     thread = ConversationThread(ward_id=ward.id)
     db.add(thread)
@@ -681,6 +736,7 @@ def test_delete_operation_removes_task_pool_item_and_draft_references(db):
     ward = create_ward(db)
     math = create_task(db, ward=ward, title='数学', planned_minutes=30)
     english = create_task(db, ward=ward, title='英语', planned_minutes=20)
+    math.source = 'ward'
     service = PlanningDomainService(db)
     draft = operate(service, ward, [{'kind': 'schedule', 'references': ['数学'],
                                      'start_at': '2026-09-20T19:00:00'}])
@@ -701,6 +757,7 @@ def test_delete_operation_removes_task_pool_item_and_draft_references(db):
 def test_delete_operation_rejects_task_with_learning_record(db):
     ward = create_ward(db)
     task = create_task(db, ward=ward, title='数学', planned_minutes=30)
+    task.source = 'ward'
     create_study_session(db, ward=ward, task=task)
     service = PlanningDomainService(db)
 
@@ -719,6 +776,7 @@ def test_delete_operation_for_confirmed_schedule_waits_for_review_confirmation(d
     original = scheduled(service, ward)
     schedule = service.confirm(ward.id, original.id, original.version)
     task = db.query(Task).one()
+    assert task.source == 'ward'
     old_version = schedule.version
     db.commit()
 
@@ -752,6 +810,128 @@ def test_direct_delete_rejects_confirmed_schedule_task_without_review(db):
 
     assert exc.value.status_code == 409
     assert db.get(Task, task.id) is not None
+
+
+def test_guardian_task_cannot_be_deleted_from_pool_or_agent(db):
+    ward = create_ward(db)
+    task = create_task(db, ward=ward, title='家长确认的作业', planned_minutes=30)
+    service = PlanningDomainService(db)
+
+    with pytest.raises(HTTPException) as exc:
+        service.delete_task(ward.id, task.id)
+    assert exc.value.status_code == 409
+
+    draft = operate(service, ward, [{'kind': 'delete', 'references': [task.title]}])
+    assert draft.working_state['operation_results'][0]['status'] == 'rejected'
+    assert db.get(Task, task.id) is not None
+
+
+def test_guardian_task_cannot_be_deleted_through_schedule_revision(db):
+    ward = create_ward(db)
+    task = create_task(db, ward=ward, title='家长确认的作业', planned_minutes=30)
+    service = PlanningDomainService(db)
+    original = service.save_draft(ward.id, DAY, [{
+        'assignment_id': task.id, 'title': task.title,
+        'planned_minutes': 30, 'start_at': '2026-09-20T19:00:00',
+    }])
+    schedule = service.confirm(ward.id, original.id, original.version)
+
+    draft = operate(service, ward, [{'kind': 'delete', 'references': [task.title]}], command_id='delete-guardian')
+    assert draft.working_state['operation_results'][0]['status'] == 'rejected'
+    assert not draft.working_state.get('proposed_task_deletions')
+    assert db.get(Task, task.id) is not None
+    assert schedule.items[0]['assignment_id'] == task.id
+
+
+def test_confirmation_rechecks_guardian_deletion_even_if_draft_contains_proposal(db):
+    ward = create_ward(db)
+    task = create_task(db, ward=ward, title='家长确认的作业', planned_minutes=30)
+    service = PlanningDomainService(db)
+    original = service.save_draft(ward.id, DAY, [{
+        'assignment_id': task.id, 'title': task.title,
+        'planned_minutes': 30, 'start_at': '2026-09-20T19:00:00',
+    }])
+    service.confirm(ward.id, original.id, original.version)
+    revision = operate(service, ward, command_id='revision')
+    state = dict(revision.working_state)
+    state['proposed_task_deletions'] = {task.id: {'task_version': task.version}}
+    revision.working_state = state
+    db.flush()
+
+    with pytest.raises(HTTPException) as exc:
+        service.confirm(ward.id, revision.id, revision.version)
+    assert exc.value.status_code == 409
+    assert db.get(Task, task.id) is not None
+
+
+def test_rejected_create_with_unknown_relative_anchor_does_not_register_task(db):
+    ward = create_ward(db)
+    service = PlanningDomainService(db)
+
+    draft = operate(service, ward, [{
+        'kind': 'create', 'title': '数学', 'planned_minutes': 30,
+        'after_task_reference': '不存在的任务',
+    }])
+
+    assert draft.working_state['operation_results'][0]['status'] == 'rejected'
+    assert db.query(Task).count() == 0
+    assert draft.items == []
+
+
+def test_create_with_invalid_start_time_waits_without_registering_task(db):
+    ward = create_ward(db)
+    service = PlanningDomainService(db)
+
+    draft = operate(service, ward, [{
+        'kind': 'create', 'title': '数学', 'planned_minutes': 30,
+        'start_at': '无效时间',
+    }])
+
+    assert draft.working_state['operation_results'][0]['status'] == 'waiting'
+    assert db.query(Task).count() == 0
+    assert draft.items == []
+
+
+def test_cross_day_start_cannot_be_confirmed(db):
+    ward = create_ward(db)
+    service = PlanningDomainService(db)
+    draft = operate(service, ward, [{
+        'kind': 'create', 'title': '数学', 'planned_minutes': 30,
+        'start_at': '2026-09-21T19:00:00',
+    }])
+
+    view = service.plan_draft_view(ward.id, draft.id)
+    assert not view['confirm_enabled']
+    assert any(conflict['code'] == 'wrong_plan_date' for conflict in view['conflicts'])
+    with pytest.raises(HTTPException) as exc:
+        service.confirm(ward.id, draft.id, draft.version)
+    assert exc.value.status_code == 409
+
+
+def test_plan_date_uses_shanghai_day_for_offset_timestamp(db):
+    ward = create_ward(db)
+    service = PlanningDomainService(db)
+    draft = operate(service, ward, [{
+        'kind': 'create', 'title': '数学', 'planned_minutes': 30,
+        'start_at': '2026-09-20T16:30:00+00:00',
+    }])
+
+    view = service.plan_draft_view(ward.id, draft.id)
+    assert not view['confirm_enabled']
+    assert any(conflict['code'] == 'wrong_plan_date' for conflict in view['conflicts'])
+
+
+def test_same_local_day_offset_timestamp_can_be_confirmed(db):
+    ward = create_ward(db)
+    service = PlanningDomainService(db)
+    draft = operate(service, ward, [{
+        'kind': 'create', 'title': '数学', 'planned_minutes': 30,
+        'start_at': '2026-09-20T11:00:00+00:00',
+    }])
+
+    view = service.plan_draft_view(ward.id, draft.id)
+    assert view['confirm_enabled']
+    assert service.confirm(ward.id, draft.id, draft.version).status == 'confirmed'
 
 
 def test_adapter_ignores_legacy_empty_target_slot_when_new_operation_can_apply(db, monkeypatch):
