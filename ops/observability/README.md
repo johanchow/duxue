@@ -52,14 +52,23 @@ Use the Langfuse region approved for your data residency requirements. The
 public key is an identifier, but the secret key is a credential; never put
 either in source code, the App, or CI logs.
 
-The Langfuse configuration sends no logs or metrics. It retains only the
-explicit `llm.request` span from `service.name=duxue-server`; then it applies
-an attribute allow-list. The only
-permitted model-call fields are component/version, model, model source,
-operation, duration, token counts, provider request ID and result status.
-Prompt text, Ward text, model output, image/data URLs, ContextEnvelope,
-Authorization and API keys are not in that allow-list. Do not add prompt or
-completion fields merely to improve the Langfuse UI.
+The Langfuse configuration sends no logs or metrics. It exports only the
+explicit `duxue.agent` turn, route, workflow, node, tool and check spans,
+plus `duxue.model` `llm.request` generations. HTTP, SQL, Redis and Celery
+instrumentation remains in Grafana only. A ConversationThread ID is the
+Langfuse session ID, assigned before intent classification; the AgentRun ID
+is trace/observation metadata for filtering one task execution. Exported
+steps carry code-owned status categories and timing, never tool arguments or
+results. Model calls carry component/version, model, operation, duration,
+token counts, provider request ID and result status. Prompt text, Ward text,
+model output, image/data URLs, SVG, ContextEnvelope, exception messages,
+Authorization and API keys are excluded. Do not add prompt or completion
+fields merely to improve the Langfuse UI.
+
+Grafana and Langfuse share one OpenTelemetry sampler. To see every turn in a
+Langfuse session, set `OTEL_TRACES_SAMPLER_ARG=1.0` in the deployment environment;
+lower values omit whole turns from both destinations. Check the uncommitted
+production `.env.prod` separately before deployment.
 
 Langfuse is an observability aid, not a source of record or a permission to
 upload children’s conversations. Dataset import, annotation, or any approved

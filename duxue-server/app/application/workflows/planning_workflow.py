@@ -6,6 +6,10 @@ from typing import Literal, TypedDict
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
+from app.infrastructure.observability.telemetry import (
+    agent_step_span,
+    traced_agent_node,
+)
 from app.infrastructure.persistence.models import PlanDraft
 
 from .planning_domain_service import PlanningDomainService
@@ -25,6 +29,7 @@ class PlanningState(TypedDict, total=False):
 def build_planning_graph(service: PlanningDomainService):
     """A bounded HITL graph with a write-free confirmation resume node."""
 
+    @traced_agent_node("planning.prepare_review")
     def prepare_review(state: PlanningState) -> dict:
         if state.get("prepared_draft_id"):
             draft = service.db.get(PlanDraft, state["prepared_draft_id"])
@@ -46,18 +51,27 @@ def build_planning_graph(service: PlanningDomainService):
             }
         return {"draft_id": draft.id, "ready_for_confirmation": True}
 
+    @traced_agent_node("planning.route_after_prepare")
     def route_after_prepare(state: PlanningState) -> Literal["review", "finish"]:
         return "review" if state.get("ready_for_confirmation") else "finish"
 
+    @traced_agent_node("planning.wait_for_confirmation")
     def wait_for_confirmation(state: PlanningState) -> dict:
         # LangGraph re-enters an interrupted node.  The preceding node is the
         # only place that persists a draft, so resume cannot upgrade the
         # version or alter the snapshot Ward approved.
         view = service.plan_draft_view(state["ward_id"], state["draft_id"])
         command = interrupt({"type": "plan_review", **view})
-        if not isinstance(command, dict) or command.get("action") != "confirm":
-            return {"outcome": {"status": "waiting_for_ward"}}
-        schedule = service.confirm(state["ward_id"], state["draft_id"], command.get("expected_draft_version"))
+        with agent_step_span("check", "planning.confirmation_gate") as check_span:
+            if not isinstance(command, dict) or command.get("action") != "confirm":
+                check_span.set_attribute("agent.check.result", "rejected")
+                return {"outcome": {"status": "waiting_for_ward"}}
+            try:
+                schedule = service.confirm(state["ward_id"], state["draft_id"], command.get("expected_draft_version"))
+            except Exception:
+                check_span.set_attribute("agent.check.result", "error")
+                raise
+            check_span.set_attribute("agent.check.result", "accepted")
         return {
             "outcome": {"status": "confirmed", "schedule_id": schedule.id,
                         "schedule_version": (service.db.get(PlanDraft, state["draft_id"]).working_state or {}).get("confirmed_schedule_version", schedule.version)},

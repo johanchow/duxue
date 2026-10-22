@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
 from dataclasses import dataclass, field
 
 from pydantic import ValidationError
@@ -32,6 +33,7 @@ from app.application.workflows.tutor_visual import Visual, describe
 from app.contexts.tutoring.domain.tutor_permit import TutorPermit
 from app.infrastructure.ai.model_gateway import ModelGatewayError
 from app.infrastructure.observability.telemetry import (
+    agent_step_span,
     record_llm_fallback,
     record_tutor_candidate_rejection,
     record_tutor_fact_gate,
@@ -47,9 +49,11 @@ _VISUAL_REPAIR_DRAFT_MAX = 4000
 def _ensure_widget_guidelines(observations: list[dict]) -> None:
     if any(item.get("tool") == "widget_guidelines" for item in observations):
         return
-    observations.append({
-        "tool": "widget_guidelines", "status": "unique", "guidelines": SVG_WIDGET_GUIDELINES,
-    })
+    with agent_step_span("tool", "widget_guidelines", **{"agent.tool.source": "preloaded"}) as span:
+        observations.append({
+            "tool": "widget_guidelines", "status": "unique", "guidelines": SVG_WIDGET_GUIDELINES,
+        })
+        span.set_attribute("agent.tool.status", "unique")
 
 
 def _visual_repair(candidate: TutorTurnCandidate, raw: dict, *, reason: str | None = None) -> str:
@@ -124,20 +128,28 @@ def call_tutor_model(
             if best_candidate is not None:
                 return ModelCall(best_candidate)
             return ModelCall(None, str(error))
-        except Exception as error:  # noqa: BLE001 - provider failures must fall back safely.
+        except Exception as error:
             if best_candidate is not None:
                 return ModelCall(best_candidate)
             return ModelCall(None, str(error))
         if isinstance(raw, dict) and "tool" in raw:
             name = str(raw.get("tool"))
             if tool_calls >= MAX_TOOL_CALLS:
-                observations.append({"tool": name, "status": "budget_exhausted"})
+                with agent_step_span("check", "tutoring.tool_budget") as span:
+                    span.set_attribute("agent.check.result", "budget_exhausted")
+                    observations.append({"tool": name, "status": "budget_exhausted"})
             else:
                 tool_calls += 1
                 observations.append(tools.run(name, raw.get("args")))
             continue
         try:
-            candidate = TutorTurnCandidate.model_validate(raw)
+            with agent_step_span("check", "tutoring.candidate_schema") as span:
+                try:
+                    candidate = TutorTurnCandidate.model_validate(raw)
+                except (ValidationError, ValueError):
+                    span.set_attribute("agent.check.result", "rejected")
+                    raise
+                span.set_attribute("agent.check.result", "accepted")
         except (ValidationError, ValueError) as error:
             error_type, field = schema_error_diagnostic(error)
             record_tutor_candidate_rejection(
@@ -147,6 +159,13 @@ def call_tutor_model(
                 break
             repair = format_schema_error(error)
             continue
+        with agent_step_span("check", "tutoring.visual_schema") as visual_span:
+            visual_span.set_attribute(
+                "agent.check.result",
+                "invalid" if candidate.visual_dropped == "visual_invalid" else "pass" if candidate.visual else "absent",
+            )
+            if candidate.visual is not None:
+                visual_span.set_attribute("tutor.visual.kind", candidate.visual.kind)
         if (
             candidate.visual_dropped == "visual_invalid"
             and candidate.visual_error
@@ -190,10 +209,21 @@ def _check_visual_leak(leak_judge: LeakJudgePort, text: str, task_title, problem
     judge = getattr(leak_judge, "visual_leaks", None)
     if judge is None:
         return None
-    try:
-        return judge(text=text, task_title=task_title, problem_summary=problem_summary)
-    except Exception:  # noqa: BLE001 - a broken judge must never become a shown diagram.
-        return None
+    with agent_step_span("check", "tutoring.visual_leak") as span:
+        try:
+            result = judge(text=text, task_title=task_title, problem_summary=problem_summary)
+        except Exception:
+            result = None
+        span.set_attribute("agent.check.result", "unknown" if result is None else "leak" if result else "pass")
+        return result
+
+
+def _check_text_leak(leak_judge: LeakJudgePort, text: str, task_title, problem_summary):
+    with agent_step_span("check", "tutoring.text_leak") as span:
+        result = leak_judge.leaks(text=text, task_title=task_title, problem_summary=problem_summary)
+        leaks = result.get("leaks") if isinstance(result, dict) else result
+        span.set_attribute("agent.check.result", "unknown" if leaks is None else "leak" if leaks else "pass")
+        return result
 
 
 # 短事实分类的长度上限（字）；受保护题目的正文无论分类结果都交独立审核。
@@ -318,12 +348,12 @@ def vet_candidate(
         with ThreadPoolExecutor(max_workers=2) as pool:
             if judge_text:
                 jobs["text"] = pool.submit(
-                    leak_judge.leaks, text=candidate.shown_text, task_title=task_title,
+                    copy_context().run, _check_text_leak, leak_judge, text=candidate.shown_text, task_title=task_title,
                     problem_summary=problem_summary,
                 )
             if visual_text is not None:
                 jobs["visual"] = pool.submit(
-                    _check_visual_leak, leak_judge, visual_text, task_title, problem_summary,
+                    copy_context().run, _check_visual_leak, leak_judge, visual_text, task_title, problem_summary,
                 )
             text_leaks, leak_reason = _text_leak_result(jobs["text"].result()) if "text" in jobs else (False, None)
             visual_leaks = jobs["visual"].result() if "visual" in jobs else False
@@ -357,10 +387,17 @@ def run_tutor_turn(
 
     生产与离线评测共用。``model_fallback`` 只按最终结果记录一次。"""
     def vet(candidate: TutorTurnCandidate) -> Vetting:
-        return vet_candidate(
-            candidate, permit=permit, leak_judge=leak_judge,
-            task_title=task_title, problem_summary=problem_summary,
-        )
+        with agent_step_span("check", "tutoring.exit_gate") as span:
+            result = vet_candidate(
+                candidate, permit=permit, leak_judge=leak_judge,
+                task_title=task_title, problem_summary=problem_summary,
+            )
+            span.set_attribute("agent.check.result", "rejected" if result.failure else "pass")
+            if result.visual is not None:
+                span.set_attribute("tutor.visual.kind", result.visual.kind)
+            if result.visual_dropped:
+                span.set_attribute("tutor.visual.dropped", result.visual_dropped)
+            return result
 
     call = call_tutor_model(model, envelope, instruction, window, images, tools)
     if call.candidate is None:

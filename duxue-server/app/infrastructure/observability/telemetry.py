@@ -14,20 +14,50 @@ import logging
 import os
 import re
 import threading
+from collections.abc import Iterator
 from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime
+from functools import wraps
 from pathlib import Path
 from time import perf_counter
-from typing import Any, Iterator
+from typing import Any
 
 from opentelemetry import metrics, trace
-
 
 _configured = False
 _lock = threading.Lock()
 _audit_logger = logging.getLogger("duxue.agent.audit")
 _EMAIL = re.compile(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}")
 _PHONE = re.compile(r"(?<!\d)1\d{10}(?!\d)")
+_thread_id: ContextVar[str | None] = ContextVar("duxue_thread_id", default=None)
+_run_id: ContextVar[str | None] = ContextVar("duxue_run_id", default=None)
+_agent_parent_span: ContextVar[Any] = ContextVar("duxue_agent_parent_span", default=None)
+_PLANNING_STAGES = frozenset({
+    "checkpointer_connect", "checkpointer_setup", "context_build", "plan_intake",
+    "agent_text", "graph_compile", "graph_invoke",
+})
+_LANGFUSE_SPANS = frozenset({
+    "agent.turn", "agent.route", "agent.workflow", "agent.node", "agent.tool",
+    "agent.check", "llm.request",
+}) | frozenset(f"planning.{stage}" for stage in _PLANNING_STAGES)
+# These attributes are generated from code-owned enums/counters. Never export
+# arbitrary event payloads from an application span to Langfuse.
+_LANGFUSE_EVENT_KEYS = frozenset({
+    "agent.type", "agent.run_id", "agent.thread_id", "agent.target", "agent.mode",
+    "agent.route_reason", "agent.status", "agent.duration_ms", "agent.fallback",
+    "input.length", "llm.operation", "llm.model", "ai.component_id",
+    "ai.component_version", "output.length", "planning.stage", "planning.duration_ms",
+    "planning.loop_status", "planning.field", "planning.rejection_code",
+    "planning.value_shape", "plan_intake.has_image", "plan_intake.operation_count",
+    "plan_intake.slot_update_count", "plan_intake.clarification_required",
+    "plan_intake.recent_utterance_count", "tutor.act", "tutor.relation",
+    "tutor.topic", "tutor.depth", "tutor.student_move", "tutor.leak_retried",
+    "tutor.outcome", "tutor.visual.kind", "tutor.visual.dropped",
+    "tutor.visual.reason", "tutor.shape.flags", "tutor.candidate.error_type",
+    "tutor.candidate.field", "tutor.candidate.retrying", "tutor.fact_gate.outcome",
+    "tutor.leak.reason", "http.status_code",
+})
 
 
 def _grafana_enabled() -> bool:
@@ -45,12 +75,15 @@ def _langfuse_enabled() -> bool:
 
 
 def _should_export_to_langfuse(span: Any) -> bool:
-    """Allow only the deliberately payload-free model-call span into Langfuse."""
-    return span.name == "llm.request"
+    """Export only application spans whose payloads are controlled here."""
+    scope = getattr(getattr(span, "instrumentation_scope", None), "name", None)
+    return (span.name == "llm.request" and scope == "duxue.model") or (
+        span.name in _LANGFUSE_SPANS - {"llm.request"} and scope == "duxue.agent"
+    )
 
 
 def _component_resource(component: str):
-    from opentelemetry.sdk.resources import Resource, SERVICE_NAME
+    from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 
     return Resource.create({
         SERVICE_NAME: os.getenv("OTEL_SERVICE_NAME", "duxue-server"),
@@ -97,10 +130,14 @@ def configure_observability(*, component: str, app=None, engine=None) -> bool:
         if _configured:
             return True
         resource = _component_resource(component)
-        from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
-        from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
-        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
         from opentelemetry import _logs
+        from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
+        from opentelemetry.exporter.otlp.proto.http.metric_exporter import (
+            OTLPMetricExporter,
+        )
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+            OTLPSpanExporter,
+        )
         from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
         from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
         from opentelemetry.sdk.metrics import MeterProvider
@@ -177,6 +214,7 @@ def _register_runtime_gauges(component: str) -> None:
 def _observe_online_devices(_options):
     try:
         from sqlalchemy import func
+
         from .database import SessionLocal
         from .models import Device
         with SessionLocal() as db:
@@ -189,6 +227,7 @@ def _observe_online_devices(_options):
 def _observe_celery_queue(_options):
     try:
         import redis
+
         from .config import settings
         client = redis.Redis.from_url(settings.redis_url, socket_connect_timeout=1, socket_timeout=1)
         # Celery's default Redis transport queue key is `celery`; a custom
@@ -254,7 +293,84 @@ def _attrs(**attrs: Any) -> dict[str, Any]:
 def _span_event(name: str, attributes: dict[str, Any]) -> None:
     span = trace.get_current_span()
     if span.is_recording():
+        if getattr(span, "name", None) in _LANGFUSE_SPANS:
+            attributes = {key: value for key, value in attributes.items() if key in _LANGFUSE_EVENT_KEYS}
         span.add_event(name, attributes=attributes)
+
+
+def _agent_context_attrs() -> dict[str, str]:
+    thread_id, run_id = _thread_id.get(), _run_id.get()
+    return _attrs(**{
+        "langfuse.session.id": thread_id,
+        "langfuse.trace.metadata.thread_id": thread_id,
+        "langfuse.trace.metadata.run_id": run_id,
+        "langfuse.observation.metadata.run_id": run_id,
+        "agent.thread_id": thread_id,
+        "agent.run_id": run_id,
+    })
+
+
+def set_agent_context(*, thread_id: str | None = None, run_id: str | None = None) -> None:
+    """Bind IDs after routing; the current turn span stays open across the turn."""
+    if thread_id is not None:
+        _thread_id.set(thread_id)
+    if run_id is not None:
+        _run_id.set(run_id)
+    span = trace.get_current_span()
+    if span.is_recording():
+        for key, value in _agent_context_attrs().items():
+            span.set_attribute(key, value)
+
+
+@contextmanager
+def agent_turn_span() -> Iterator[None]:
+    thread_token, run_token = _thread_id.set(None), _run_id.set(None)
+    parent_token = _agent_parent_span.set(trace.get_current_span())
+    try:
+        with trace.get_tracer("duxue.agent").start_as_current_span(
+            "agent.turn", attributes={"langfuse.observation.type": "agent", "langfuse.trace.name": "companion.turn"},
+            record_exception=False, set_status_on_exception=False,
+        ):
+            yield
+    finally:
+        _agent_parent_span.reset(parent_token)
+        _run_id.reset(run_token)
+        _thread_id.reset(thread_token)
+
+
+def trace_agent_turn(function):
+    @wraps(function)
+    def wrapped(*args, **kwargs):
+        with agent_turn_span():
+            return function(*args, **kwargs)
+    return wrapped
+
+
+@contextmanager
+def agent_step_span(kind: str, name: str, **attributes: Any) -> Iterator[Any]:
+    """A payload-free Agent step; callers pass only code-owned categories."""
+    if kind not in {"route", "node", "tool", "check"}:
+        raise ValueError("unknown agent step kind")
+    with trace.get_tracer("duxue.agent").start_as_current_span(
+        f"agent.{kind}",
+        attributes={**_agent_context_attrs(), "agent.step": name,
+                    "langfuse.observation.metadata.step": name,
+                    "langfuse.observation.type": {"route": "span", "node": "chain", "tool": "tool", "check": "guardrail"}[kind],
+                    **_attrs(**attributes)},
+        record_exception=False, set_status_on_exception=False,
+    ) as span:
+        yield span
+
+
+def traced_agent_node(name: str):
+    """Trace a code-owned graph node, including its interrupt/resume passes."""
+    def decorate(function):
+        @wraps(function)
+        def wrapped(*args, **kwargs):
+            with agent_step_span("node", name):
+                return function(*args, **kwargs)
+        return wrapped
+    return decorate
 
 
 _INPUT_TEXT_LIMIT = 2000
@@ -275,6 +391,11 @@ def record_agent_input(*, agent_type: str, run_id: str | None, thread_id: str | 
     attrs = _attrs(**{"agent.type": agent_type, "agent.run_id": run_id, "agent.thread_id": thread_id, "input.length": summary["length"]})
     shown = {**attrs, "input.text": _scrub(content)[:_INPUT_TEXT_LIMIT]}
     _span_event("agent.turn.received", shown)
+    # Keep the existing rich Grafana trace on the HTTP parent, which the
+    # Langfuse processor excludes. The exported Agent turn sees safe fields.
+    parent = _agent_parent_span.get()
+    if parent is not None and parent.is_recording() and getattr(parent, "name", None) not in _LANGFUSE_SPANS:
+        parent.add_event("agent.turn.received", attributes=shown)
     _audit_logger.info("agent.turn.received", extra={"telemetry": {**shown, "input.sha256": summary["sha256"]}})
     _write_debug_audit("input", {**attrs, "input": summary}, content)
 
@@ -296,6 +417,12 @@ def record_tutor_turn_result(
         "tutor.visual.kind": visual_kind, "tutor.visual.dropped": visual_dropped,
         "tutor.shape.flags": ",".join(shape_flags or []) or None,
     })
+    with agent_step_span("node", "tutoring.result") as result_span:
+        result_span.set_attribute("tutor.outcome", outcome)
+        if visual_kind:
+            result_span.set_attribute("tutor.visual.kind", visual_kind)
+        if visual_dropped:
+            result_span.set_attribute("tutor.visual.dropped", visual_dropped)
     _span_event("tutor.turn.result", attrs)
     _audit_logger.info("tutor.turn.result", extra={"telemetry": attrs})
     _write_debug_audit("turn_result", attrs, shown)
@@ -382,7 +509,9 @@ def planning_stage_span(stage: str, **extra: Any) -> Iterator[None]:
     started = perf_counter()
     with trace.get_tracer("duxue.agent").start_as_current_span(
         f"planning.{stage}",
-        attributes=_attrs(**{"agent.type": "planning", "planning.stage": stage, **extra}),
+        attributes={**_agent_context_attrs(), "agent.type": "planning", "planning.stage": stage,
+                    "langfuse.observation.type": "chain", **_attrs(**extra)},
+        record_exception=False, set_status_on_exception=False,
     ):
         try:
             yield
@@ -391,12 +520,21 @@ def planning_stage_span(stage: str, **extra: Any) -> Iterator[None]:
 
 
 @contextmanager
-def agent_workflow_span(*, agent_type: str, run_id: str, thread_id: str) -> Iterator[None]:
+def agent_workflow_span(*, agent_type: str, run_id: str, thread_id: str) -> Iterator[Any]:
     with trace.get_tracer("duxue.agent").start_as_current_span(
         "agent.workflow",
-        attributes={"agent.type": agent_type, "agent.run_id": run_id, "agent.thread_id": thread_id},
-    ):
-        yield
+        attributes={**_agent_context_attrs(), "agent.type": agent_type, "agent.run_id": run_id,
+                    "agent.thread_id": thread_id, "langfuse.session.id": thread_id,
+                    "langfuse.observation.type": "agent"},
+        record_exception=False, set_status_on_exception=False,
+    ) as span:
+        try:
+            yield span
+        except Exception as error:
+            span.set_attribute("agent.run_status", "failed")
+            span.set_attribute("error.type", type(error).__name__)
+            span.set_status(trace.Status(trace.StatusCode.ERROR, type(error).__name__))
+            raise
 
 
 @contextmanager
@@ -404,16 +542,18 @@ def model_call_span(*, operation: str, model: str, agent_type: str | None = None
                     component_id: str | None = None, component_version: str | None = None,
                     model_source: str | None = None) -> Iterator[dict[str, Any]]:
     started = perf_counter()
-    attrs = _attrs(**{
+    attrs = {**_agent_context_attrs(), **_attrs(**{
         "llm.operation": operation, "llm.model": model, "agent.type": agent_type,
         "ai.component_id": component_id, "ai.component_version": component_version,
         "ai.model_source": model_source,
-        # These are mapping keys, not prompt/completion payloads. The optional
-        # in-process Langfuse processor exports only this existing span.
+        # These are mapping keys, not prompt/completion payloads. Langfuse
+        # also exports the controlled Agent spans enclosing this generation.
         "langfuse.observation.type": "generation",
         "langfuse.observation.model.name": model,
-    })
-    with trace.get_tracer("duxue.model").start_as_current_span("llm.request", attributes=attrs) as span:
+    })}
+    with trace.get_tracer("duxue.model").start_as_current_span(
+        "llm.request", attributes=attrs, record_exception=False, set_status_on_exception=False,
+    ) as span:
         result: dict[str, Any] = {"result": "success", "tokens_in": None, "tokens_out": None, "provider_request_id": None}
         try:
             yield result
@@ -504,12 +644,19 @@ def record_tutor_candidate_rejection(*, error_type: str, field: str, retrying: b
         "tutor.candidate.field": field,
         "tutor.candidate.retrying": retrying,
     }
+    with agent_step_span("check", "tutoring.candidate_exit") as span:
+        span.set_attribute("agent.check.result", "rejected")
+        span.set_attribute("tutor.candidate.error_type", error_type)
+        span.set_attribute("tutor.candidate.retrying", retrying)
     _span_event("tutor.candidate.rejected", attrs)
     _audit_logger.warning("tutor.candidate.rejected", extra={"telemetry": attrs})
 
 
 def record_tutor_visual_dropped(*, reason: str) -> None:
     """A dropped `visual` is not a failure: the words are shown. Only the category is recorded."""
+    with agent_step_span("check", "tutoring.visual") as span:
+        span.set_attribute("agent.check.result", "dropped")
+        span.set_attribute("tutor.visual.reason", reason)
     _span_event("tutor.visual.dropped", {"tutor.visual.reason": reason})
 
 

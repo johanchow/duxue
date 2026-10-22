@@ -40,8 +40,10 @@ from app.contexts.tutoring.domain.tutor_permit import (
 from app.infrastructure.ai import components
 from app.infrastructure.messaging.outbox import publish_learning_fact
 from app.infrastructure.observability.telemetry import (
+    agent_step_span,
     record_llm_fallback,
     record_tutor_turn_result,
+    traced_agent_node,
 )
 from app.infrastructure.persistence.models import (
     StudySession,
@@ -206,11 +208,12 @@ class TutoringWorkflow:
         task = self.db.get(Task, task_id) if task_id else None
         return task.title if task is not None else None
 
+    @traced_agent_node("tutoring.model_loop")
     def _run_model(self, envelope, instruction, window, images, tools: TutorToolbox, **checks) -> TurnResult | None:
         """有界循环、出口检查与泄露后的一次重试由 tutor_loop 提供（评测共用）。"""
         try:
             model = self._model()
-        except Exception as error:  # noqa: BLE001 - provider failures must fall back safely.
+        except Exception as error:
             record_llm_fallback(operation="tutor_turn", reason=str(error))
             return None
         return run_tutor_turn(
@@ -218,6 +221,7 @@ class TutoringWorkflow:
             backup_model=self._backup_model(), **checks,
         )
 
+    @traced_agent_node("tutoring.turn")
     def _turn(self, invocation: RunInvocation) -> WorkflowOutcome:
         turn = invocation.turn
         policy = PolicyRegistry()
@@ -331,11 +335,13 @@ class TutoringWorkflow:
             failure = vetting.failure
         failed = candidate is None or verdict is None or not verdict.ok
         # 独立输出安全审核看孩子将看到的全部文字：正文与图里的每个字。
-        safety = not failed and (
-            candidate.act == "safety" or self._safety().blocks_output(
-                text=candidate.content if visual is None else f"{candidate.content}\n{describe(visual)}",
+        with agent_step_span("check", "tutoring.output_safety") as safety_span:
+            safety = not failed and (
+                candidate.act == "safety" or self._safety().blocks_output(
+                    text=candidate.content if visual is None else f"{candidate.content}\n{describe(visual)}",
+                )
             )
-        )
+            safety_span.set_attribute("agent.check.result", "skipped" if failed else "blocked" if safety else "pass")
         # 发音和澄清是只读展示：不打开会话，不写消息、事实或题目记录。
         if not failed and not safety and candidate.act == "pronounce":
             outcome = project_lesson(
@@ -447,6 +453,7 @@ class TutoringWorkflow:
             context_snapshot=envelope.trace_snapshot(),
         )
 
+    @traced_agent_node("tutoring.apply_problem")
     def _apply_problem(self, tutor, row, candidate, verdict, invocation, *, has_work_input, summary):
         """按 `TutorPermitPolicy.advance()` 推进题目记录。返回（题目状态，本轮提示序号，是否计了一次实质尝试）。
 
