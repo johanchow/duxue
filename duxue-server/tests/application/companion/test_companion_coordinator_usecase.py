@@ -1,15 +1,27 @@
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 from fastapi import HTTPException
 
+from app.application.ports.companion import (
+    RouteDecision,
+    WorkflowOutcome,
+)
 from app.application.process_managers.companion_coordinator import CompanionCoordinator
-from app.application.ports.companion import CoordinatorResult, RouteDecision, WorkflowOutcome
 from app.application.workflows.planning_domain_service import PlanningDomainService
-from app.infrastructure.persistence.models import AgentCheckpoint, AgentRun, AgentStreamEvent, AgentTrace, CompanionMessage, ConversationThread, uid
+from app.infrastructure.persistence.models import (
+    AgentCheckpoint,
+    AgentRun,
+    AgentStreamEvent,
+    AgentTrace,
+    CompanionMessage,
+    ConversationThread,
+    uid,
+)
 from tests.support.factories import create_task, create_ward
 from tests.support.fakes import FakeWorkflowDispatcher, StaticIntentClassifier
-from datetime import date
 
 
 def test_coordinator_handles_turn_and_records_trace_and_stream_event(db):
@@ -73,7 +85,96 @@ def test_unclear_intent_writes_a_visible_reply_without_a_run(db):
     assert result.decision.target == "clarify"
     messages = db.query(CompanionMessage).filter_by(thread_id=result.thread_id).order_by(CompanionMessage.thread_version).all()
     assert [message.author_type for message in messages] == ["ward", "companion"]
-    assert messages[1].content
+    assert "管理任务" in messages[1].content
+    assert "总结思考" in messages[1].content
+    assert "提问探讨" in messages[1].content
+
+
+@pytest.mark.parametrize("intent,label", [
+    ("planning", "管理任务"),
+    ("reflection", "总结思考"),
+    ("tutoring", "提问探讨"),
+])
+def test_unclear_choice_routes_original_input_once(db, intent, label):
+    ward = create_ward(db)
+    db.commit()
+    dispatcher = FakeWorkflowDispatcher()
+    coordinator = CompanionCoordinator(
+        db, classifier=StaticIntentClassifier("unclear"), dispatcher=dispatcher,
+    )
+    first = coordinator.handle(
+        ward_id=ward.id, content="这些作业怎么处理？", thread_id=None,
+        expected_thread_version=0, route_hint=None,
+    )
+    assert first.run_id is None
+    assert first.interaction["kind"] == "intent_choice"
+    actions = first.interaction["actions"]
+    assert [action["label"] for action in actions] == ["管理任务", "总结思考", "提问探讨"]
+    action = next(action for action in actions if action["payload"]["intent"] == intent)
+    messages = db.query(CompanionMessage).filter_by(thread_id=first.thread_id).order_by(CompanionMessage.thread_version).all()
+    assert messages[-1].interaction_ref == first.interaction
+
+    chosen = coordinator.handle(
+        ward_id=ward.id, content=f"选择：{label}", thread_id=first.thread_id,
+        expected_thread_version=first.thread_version, route_hint=None,
+        structured_command={"interaction_id": action["id"], "command": "choose_intent",
+                            "payload": action["payload"]},
+    )
+    assert chosen.decision.target == intent
+    assert len(dispatcher.invocations) == 1
+    assert dispatcher.invocations[0].turn["content"] == "这些作业怎么处理？"
+    messages = db.query(CompanionMessage).filter_by(thread_id=first.thread_id).order_by(CompanionMessage.thread_version).all()
+    assert [message.content for message in messages if message.author_type == "ward"] == [
+        "这些作业怎么处理？", f"选择：{label}",
+    ]
+
+    with pytest.raises(HTTPException) as stale:
+        coordinator.handle(
+            ward_id=ward.id, content=f"选择：{label}", thread_id=first.thread_id,
+            expected_thread_version=chosen.thread_version, route_hint=None,
+            structured_command={"interaction_id": action["id"], "command": "choose_intent",
+                                "payload": action["payload"]},
+        )
+    assert stale.value.status_code == 409
+
+
+def test_unclear_choice_rejects_a_forged_option(db):
+    ward = create_ward(db)
+    db.commit()
+    coordinator = CompanionCoordinator(db, classifier=StaticIntentClassifier("unclear"))
+    first = coordinator.handle(ward_id=ward.id, content="帮我看看这个", thread_id=None,
+                               expected_thread_version=0, route_hint=None)
+    with pytest.raises(HTTPException) as rejected:
+        coordinator.handle(
+            ward_id=ward.id, content="选择：管理任务", thread_id=first.thread_id,
+            expected_thread_version=first.thread_version, route_hint=None,
+            structured_command={"interaction_id": first.interaction["actions"][0]["id"],
+                                "command": "choose_intent", "payload": {"intent": "other"}},
+        )
+    assert rejected.value.status_code == 409
+
+
+def test_unclear_choice_reuses_original_image_when_switching_from_tutoring(db):
+    ward = create_ward(db)
+    db.commit()
+    dispatcher = FakeWorkflowDispatcher()
+    coordinator = CompanionCoordinator(db, classifier=StaticIntentClassifier("unclear"), dispatcher=dispatcher)
+    tutored = coordinator.handle(ward_id=ward.id, content="解释这个词", thread_id=None,
+                                expected_thread_version=0, route_hint="tutoring")
+    image_key = f"ward/{ward.id}/companion/homework.jpg"
+    unclear = coordinator.handle(ward_id=ward.id, content="看看这张图", thread_id=tutored.thread_id,
+                                 expected_thread_version=tutored.thread_version, route_hint=None,
+                                 attachment_keys=[image_key])
+    assert unclear.decision.target == "clarify"
+    action = unclear.interaction["actions"][0]
+    coordinator.handle(
+        ward_id=ward.id, content="选择：管理任务", thread_id=unclear.thread_id,
+        expected_thread_version=unclear.thread_version, route_hint=None,
+        structured_command={"interaction_id": action["id"], "command": "choose_intent",
+                            "payload": action["payload"]},
+    )
+    assert dispatcher.invocations[-1].turn["content"] == "看看这张图"
+    assert dispatcher.invocations[-1].turn["attachment_keys"] == [image_key]
 
 
 def test_coordinator_exposes_a_controlled_failure_reply_when_workflow_raises(db):
@@ -397,6 +498,7 @@ def test_coordinator_persists_pronunciation_lessons_in_companion_message_interac
 
 def test_companion_messages_supports_current_thread_lookup_cursor_pagination_and_previous_thread_link(db):
     from datetime import timedelta
+
     from app.api.v1.common import Principal, now
     from app.api.v1.companion import companion_messages, current_companion_messages
 

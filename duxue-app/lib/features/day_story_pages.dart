@@ -201,6 +201,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   final planAttachments = <String>[];
   final stagedImages = <_StagedImage>[];
   List<Map<String, dynamic>> planDraft = [];
+  List<Map<String, dynamic>> planAdviceItems = [];
   final planMessages = <_ChatLine>[];
   final historyMessages = <_ChatLine>[];
   final rememberedImages = <String, Uint8List>{};
@@ -214,6 +215,9 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   String? planFeedback;
   String? planInteractionKind;
   Map<String, dynamic>? planConfirmAction;
+  Map<String, dynamic>? planSuggestionAction, planClarifyAction;
+  List<Map<String, dynamic>> planClarificationSlots = [];
+  final dismissedPlanSuggestions = <String>{};
   String? planDraftId;
   int? planDraftVersion;
   String? failedPlanText;
@@ -815,8 +819,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
               key: const Key('load-older-messages-button'),
               onPressed: _loadOlderMessages,
               icon: const Icon(Icons.history, size: 16),
-              label: const Text('上滑或点击查看更早对话',
-                  style: TextStyle(fontSize: 12)),
+              label: const Text('上滑或点击查看更早对话', style: TextStyle(fontSize: 12)),
             ),
           ),
         ),
@@ -856,12 +859,15 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
                 const Text('已记录（待你确认）',
                     style: TextStyle(fontWeight: FontWeight.w700)),
                 const SizedBox(height: 8),
-                for (final item in planDraft)
+                for (final item in planDraft) ...[
                   Padding(
                       padding: const EdgeInsets.only(bottom: 4),
                       child: Text('• ${item['title']} · '
                           '${_draftSlotLabel(item)} · '
                           '约 ${item['planned_minutes']} 分钟')),
+                  _planSuggestion(item, 'duration'),
+                  _planSuggestion(item, 'time'),
+                ],
                 const SizedBox(height: 8),
                 Row(children: [
                   Expanded(
@@ -879,6 +885,14 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
                 ])
               ])),
         ),
+      for (final slot in planClarificationSlots)
+        if (slot['field'] == 'planned_minutes')
+          _planSuggestion(slot, 'clarification'),
+      if (planInteractionKind == 'clarify')
+        for (final item in planAdviceItems) ...[
+          _planSuggestion(item, 'duration'),
+          _planSuggestion(item, 'time'),
+        ],
       if (!_messagesCarryPronunciation)
         for (final item in pronunciationLessons)
           Padding(
@@ -956,8 +970,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     _openPlanChat();
     setState(() {
       _anchorPronunciationLessons();
-      planMessages
-          .add(_ChatLine(label: '我', content: content, images: images));
+      planMessages.add(_ChatLine(label: '我', content: content, images: images));
     });
     _scrollToChatBottom();
     await _submitPlanInput(content, pronunciation: pronunciation);
@@ -1470,78 +1483,254 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
           routeHint: pronunciation ? 'tutoring' : null,
           tutoringIntent: pronunciation ? 'pronunciation' : null);
       if (!mounted) return;
-      final interaction =
-          Map<String, dynamic>.from(result['interaction'] as Map? ?? const {});
-      companionThreadId = result['thread_id'] as String?;
-      companionThreadVersion = result['thread_version'] as int?;
-      if (companionThreadId != null && companionThreadVersion != null) {
-        await ref
-            .read(tokenStorageProvider)
-            .saveCompanionThread(companionThreadId!, companionThreadVersion!);
-      }
-      final objectRef = Map<String, dynamic>.from(
-          interaction['object_ref'] as Map? ?? const {});
-      final actions = (interaction['actions'] as List? ?? const [])
-          .map((action) => Map<String, dynamic>.from(action as Map));
-      Map<String, dynamic>? draft;
-      Map<String, dynamic>? lesson;
-      if (objectRef['context'] == 'planning' &&
-          objectRef['object_id'] is String) {
-        draft = await ref
-            .read(apiProvider)
-            .companionPlanDraft(objectRef['object_id'] as String);
-      }
-      if (interaction['kind'] == 'pronunciation_lesson' &&
-          objectRef['object_id'] is String) {
-        lesson = await ref
-            .read(apiProvider)
-            .pronunciationLesson(objectRef['object_id'] as String);
-      }
-      setState(() {
-        failedPlanText = null;
-        stagedImages.clear();
-        planAttachments.clear();
-        final rawLessons = lesson?['lessons'] ?? interaction['lessons'];
-        pronunciationLessons = rawLessons is List && rawLessons.isNotEmpty
-            ? [
-                for (final item in rawLessons)
-                  if (item is Map) Map<String, dynamic>.from(item),
-              ]
-            : (lesson != null ? [lesson] : const []);
-        planFeedback = ((interaction['parts'] as List? ?? const []).isNotEmpty)
-            ? Map<String, dynamic>.from(
-                (interaction['parts'] as List).first as Map)['text'] as String?
-            : null;
-        planConfirmAction = null;
-        for (final action in actions) {
-          if (action['command'] == 'confirm_plan' &&
-              action['enabled'] == true) {
-            planConfirmAction = action;
-            break;
-          }
-        }
-        planInteractionKind = interaction['kind'] as String?;
-        final canReview = planInteractionKind == 'plan_confirm_list' &&
-            planConfirmAction != null;
-        planDraft = canReview
-            ? (draft?['items'] as List? ?? const [])
-                .map((item) => Map<String, dynamic>.from(item as Map))
-                .toList()
-            : [];
-        planDraftId = canReview ? (draft?['draft_id'] as String?) : null;
-        planDraftVersion =
-            canReview ? (draft?['object_version'] as int?) : null;
-      });
-      // RegisterTask happens inside the Planning workflow.  Reload the home
-      // projections immediately so an unscheduled task is visible in its
-      // actual task-pool home, not only in this transient chat card.
-      await _load();
-      await _refreshTranscript();
+      await _applyPlanTurnResult(result);
     } catch (_) {
       if (mounted) {
         setState(() => failedPlanText = text);
         showMessage(context, '暂时无法整理今天的计划，请重试');
       }
+    } finally {
+      if (mounted) setState(() => planSending = false);
+    }
+  }
+
+  Future<void> _chooseIntent(
+      _ChatLine message, Map<String, dynamic> action) async {
+    if (planSending ||
+        message.threadId != companionThreadId ||
+        message.threadVersion != companionThreadVersion) {
+      return;
+    }
+    setState(() => planSending = true);
+    try {
+      final result = await ref.read(apiProvider).companionTurn(
+        content: '选择：${action['label']}',
+        threadId: companionThreadId,
+        expectedThreadVersion: companionThreadVersion,
+        structuredCommand: {
+          'interaction_id': action['id'],
+          'command': 'choose_intent',
+          'payload': action['payload'],
+        },
+      );
+      if (!mounted) return;
+      await _applyPlanTurnResult(result);
+    } on DioException catch (error) {
+      if (error.response?.statusCode == 409) {
+        try {
+          await _refreshTranscript();
+        } catch (_) {}
+        if (mounted) showMessage(context, '这个选择已过期，请重新说明。');
+      } else if (mounted) {
+        showMessage(context, '选择没有送达，请重试');
+      }
+    } catch (_) {
+      if (mounted) showMessage(context, '选择没有送达，请重试');
+    } finally {
+      if (mounted) setState(() => planSending = false);
+    }
+  }
+
+  Future<void> _applyPlanTurnResult(Map<String, dynamic> result) async {
+    final interaction =
+        Map<String, dynamic>.from(result['interaction'] as Map? ?? const {});
+    companionThreadId = result['thread_id'] as String?;
+    companionThreadVersion = result['thread_version'] as int?;
+    if (companionThreadId != null && companionThreadVersion != null) {
+      await ref
+          .read(tokenStorageProvider)
+          .saveCompanionThread(companionThreadId!, companionThreadVersion!);
+    }
+    final objectRef = Map<String, dynamic>.from(
+        interaction['object_ref'] as Map? ?? const {});
+    final actions = (interaction['actions'] as List? ?? const [])
+        .map((action) => Map<String, dynamic>.from(action as Map));
+    Map<String, dynamic>? draft;
+    Map<String, dynamic>? lesson;
+    if (objectRef['context'] == 'planning' &&
+        objectRef['object_id'] is String) {
+      draft = await ref
+          .read(apiProvider)
+          .companionPlanDraft(objectRef['object_id'] as String);
+    }
+    if (interaction['kind'] == 'pronunciation_lesson' &&
+        objectRef['object_id'] is String) {
+      lesson = await ref
+          .read(apiProvider)
+          .pronunciationLesson(objectRef['object_id'] as String);
+    }
+    final nextDraftId = draft?['draft_id'] as String?;
+    final nextDraftVersion = draft?['object_version'] as int?;
+    setState(() {
+      failedPlanText = null;
+      stagedImages.clear();
+      planAttachments.clear();
+      final rawLessons = lesson?['lessons'] ?? interaction['lessons'];
+      pronunciationLessons = rawLessons is List && rawLessons.isNotEmpty
+          ? [
+              for (final item in rawLessons)
+                if (item is Map) Map<String, dynamic>.from(item),
+            ]
+          : (lesson != null ? [lesson] : const []);
+      planFeedback = ((interaction['parts'] as List? ?? const []).isNotEmpty)
+          ? Map<String, dynamic>.from(
+              (interaction['parts'] as List).first as Map)['text'] as String?
+          : null;
+      planConfirmAction = null;
+      planSuggestionAction = null;
+      planClarifyAction = null;
+      for (final action in actions) {
+        if (action['command'] == 'confirm_plan' && action['enabled'] == true) {
+          planConfirmAction = action;
+        }
+        if (action['command'] == 'accept_plan_suggestion' &&
+            action['enabled'] == true) {
+          planSuggestionAction = action;
+        }
+        if (action['command'] == 'clarify_reply' && action['enabled'] == true) {
+          planClarifyAction = action;
+        }
+      }
+      planInteractionKind = interaction['kind'] as String?;
+      final canReview = planInteractionKind == 'plan_confirm_list' &&
+          planConfirmAction != null;
+      planDraft = canReview
+          ? (draft?['items'] as List? ?? const [])
+              .map((item) => Map<String, dynamic>.from(item as Map))
+              .toList()
+          : [];
+      planAdviceItems = planInteractionKind == 'clarify'
+          ? (draft?['items'] as List? ?? const [])
+              .map((item) => Map<String, dynamic>.from(item as Map))
+              .toList()
+          : [];
+      if (planDraftId != nextDraftId || planDraftVersion != nextDraftVersion) {
+        dismissedPlanSuggestions.clear();
+      }
+      planDraftId = nextDraftId;
+      planDraftVersion = nextDraftVersion;
+      final batch = Map<String, dynamic>.from(
+          draft?['clarification_batch'] as Map? ?? const {});
+      planClarificationSlots = planInteractionKind == 'clarify'
+          ? (batch['slots'] as List? ?? const [])
+              .map((slot) => Map<String, dynamic>.from(slot as Map))
+              .toList()
+          : [];
+    });
+    // RegisterTask happens inside the Planning workflow.  Reload the home
+    // projections immediately so an unscheduled task is visible in its
+    // actual task-pool home, not only in this transient chat card.
+    await _load();
+    await _refreshTranscript();
+  }
+
+  String? _suggestedClock(dynamic value) {
+    final parsed = DateTime.tryParse(value?.toString() ?? '');
+    if (parsed == null) return null;
+    final shanghai = parsed.toUtc().add(const Duration(hours: 8));
+    return '${shanghai.hour.toString().padLeft(2, '0')}:${shanghai.minute.toString().padLeft(2, '0')}';
+  }
+
+  Widget _planSuggestion(Map<String, dynamic> target, String kind) {
+    final raw =
+        target[kind == 'time' ? 'time_suggestion' : 'duration_suggestion'];
+    if (raw is! Map) return const SizedBox.shrink();
+    final suggestion = Map<String, dynamic>.from(raw);
+    final targetId = (target['assignment_id'] ?? target['slot_id'])?.toString();
+    if (targetId == null) return const SizedBox.shrink();
+    final key = '$kind:$targetId';
+    if (dismissedPlanSuggestions.contains(key)) return const SizedBox.shrink();
+    final minutes = suggestion['suggested_minutes'];
+    final start = _suggestedClock(suggestion['suggested_start_at']);
+    final end = _suggestedClock(suggestion['suggested_end_at']);
+    final text = kind == 'time'
+        ? '${suggestion['reason']} ${start == null ? '目前没有不冲突的调整时间。' : '可改为 $start–$end。'}建议时段为 07:00–22:00。'
+        : '${target['title']}：近 15 天 ${suggestion['sample_count']} 次同名任务，实际用时中位数约 ${suggestion['actual_median_minutes']} 分钟，建议预计 $minutes 分钟。';
+    final canAccept =
+        (kind == 'clarification' ? planClarifyAction : planSuggestionAction) !=
+                null &&
+            (kind != 'time' || start != null);
+    return Padding(
+      padding: const EdgeInsets.only(top: 6, bottom: 6),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(text, style: const TextStyle(fontSize: 12)),
+        Row(children: [
+          if (canAccept)
+            TextButton(
+              key: Key('accept-plan-suggestion-$key'),
+              onPressed: planSending
+                  ? null
+                  : () => _acceptPlanSuggestion(target, kind),
+              child: const Text('采用建议'),
+            ),
+          TextButton(
+            key: Key('dismiss-plan-suggestion-$key'),
+            onPressed: () => setState(() => dismissedPlanSuggestions.add(key)),
+            child: const Text('先不改'),
+          ),
+        ]),
+      ]),
+    );
+  }
+
+  Future<void> _acceptPlanSuggestion(
+      Map<String, dynamic> target, String kind) async {
+    if (planSending || planDraftId == null || planDraftVersion == null) return;
+    final action =
+        kind == 'clarification' ? planClarifyAction : planSuggestionAction;
+    if (action == null) return;
+    final payload = kind == 'clarification'
+        ? {
+            'draft_id': planDraftId,
+            'answers': [
+              {
+                'slot_id': target['slot_id'],
+                'value':
+                    '${(target['duration_suggestion'] as Map)['suggested_minutes']}分钟'
+              },
+            ],
+          }
+        : {
+            'draft_id': planDraftId,
+            'expected_draft_version': planDraftVersion,
+            'kind': kind,
+            'task_id': target['assignment_id'],
+            'expected_fingerprint':
+                (target['${kind}_suggestion'] as Map)['fingerprint'],
+          };
+    setState(() => planSending = true);
+    try {
+      final result = await ref.read(apiProvider).companionTurn(
+        content: '采用建议',
+        threadId: companionThreadId,
+        expectedThreadVersion: companionThreadVersion,
+        structuredCommand: {
+          'interaction_id': action['id'],
+          'command': action['command'],
+          'payload': payload,
+        },
+      );
+      if (!mounted) return;
+      await _applyPlanTurnResult(result);
+    } on DioException catch (error) {
+      if (error.response?.statusCode == 409) {
+        if (mounted) {
+          setState(() {
+            planDraft = [];
+            planAdviceItems = [];
+            planClarificationSlots = [];
+            planSuggestionAction = null;
+            planClarifyAction = null;
+          });
+        }
+        await _load();
+        await _refreshTranscript();
+        if (mounted) showMessage(context, '计划已变化，请重新说明或审阅。');
+      } else if (mounted) {
+        showMessage(context, '采用建议失败，请稍后重试');
+      }
+    } catch (_) {
+      if (mounted) showMessage(context, '采用建议失败，请稍后重试');
     } finally {
       if (mounted) setState(() => planSending = false);
     }
@@ -1584,9 +1773,14 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
       }
       planAttachments.clear();
       planDraft = [];
+      planAdviceItems = [];
       planFeedback = null;
       planInteractionKind = null;
       planConfirmAction = null;
+      planSuggestionAction = null;
+      planClarifyAction = null;
+      planClarificationSlots = [];
+      dismissedPlanSuggestions.clear();
       planDraftId = null;
       planDraftVersion = null;
       await _load();
@@ -1599,7 +1793,11 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         if (mounted) {
           setState(() {
             planDraft = [];
+            planAdviceItems = [];
             planConfirmAction = null;
+            planSuggestionAction = null;
+            planClarifyAction = null;
+            planClarificationSlots = [];
             planDraftId = null;
             planDraftVersion = null;
             planInteractionKind = null;
@@ -1638,6 +1836,8 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
             : null);
     return _ChatLine(
         id: id,
+        threadId: item['thread_id'] as String?,
+        threadVersion: item['thread_version'] as int?,
         label: item['author_type'] == 'ward' ? '我' : '读学 AI',
         content: item['content'] as String,
         images: [
@@ -1647,7 +1847,15 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         visual: interactionRef == null
             ? null
             : visualFromInteraction(interactionRef),
-        lessons: _lessonsFromInteraction(interactionRef));
+        lessons: _lessonsFromInteraction(interactionRef),
+        intentActions: interactionRef?['kind'] == 'intent_choice'
+            ? [
+                for (final action
+                    in (interactionRef?['actions'] as List? ?? const []))
+                  if (action is Map && action['command'] == 'choose_intent')
+                    Map<String, dynamic>.from(action),
+              ]
+            : const []);
   }
 
   bool get _messagesCarryPronunciation =>
@@ -1665,8 +1873,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         return;
       }
     }
-    planMessages.add(
-        _ChatLine(label: '读学 AI', content: '', lessons: lessons));
+    planMessages.add(_ChatLine(label: '读学 AI', content: '', lessons: lessons));
   }
 
   Widget _pronunciationCard(Map<String, dynamic> lesson) =>
@@ -1691,6 +1898,23 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
                 text: message.content,
                 images: message.images,
                 visual: message.visual),
+            if (message.intentActions.isNotEmpty &&
+                message.threadId == companionThreadId &&
+                message.threadVersion == companionThreadVersion)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Wrap(spacing: 8, runSpacing: 8, children: [
+                  for (final action in message.intentActions)
+                    OutlinedButton(
+                      key: ValueKey(
+                          'intent-choice-${(action['payload'] as Map)['intent']}'),
+                      onPressed: planSending || action['enabled'] != true
+                          ? null
+                          : () => _chooseIntent(message, action),
+                      child: Text(action['label'] as String),
+                    ),
+                ]),
+              ),
             for (final lesson in message.lessons)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
@@ -1710,27 +1934,27 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     });
   }
 
-      // Only auto-load on scroll after the user has scrolled away from the top
-      // and then scrolls back up near the top; prevents auto-fetching every page
-      // immediately when the list first renders at pixels == 0.
-      bool _userScrolledAwayFromTop = false;
-      void _onChatScroll() {
-        if (!planChatOpen ||
-            loadingOlderMessages ||
-            !_hasOlderHistory ||
-            !_chatScrollController.hasClients) {
-          return;
-        }
-        final position = _chatScrollController.position;
-        if (position.pixels > 80) {
-          _userScrolledAwayFromTop = true;
-        } else if (_userScrolledAwayFromTop &&
-            position.pixels <= 32 &&
-            position.maxScrollExtent > 0) {
-          _userScrolledAwayFromTop = false;
-          _loadOlderMessages();
-        }
-      }
+  // Only auto-load on scroll after the user has scrolled away from the top
+  // and then scrolls back up near the top; prevents auto-fetching every page
+  // immediately when the list first renders at pixels == 0.
+  bool _userScrolledAwayFromTop = false;
+  void _onChatScroll() {
+    if (!planChatOpen ||
+        loadingOlderMessages ||
+        !_hasOlderHistory ||
+        !_chatScrollController.hasClients) {
+      return;
+    }
+    final position = _chatScrollController.position;
+    if (position.pixels > 80) {
+      _userScrolledAwayFromTop = true;
+    } else if (_userScrolledAwayFromTop &&
+        position.pixels <= 32 &&
+        position.maxScrollExtent > 0) {
+      _userScrolledAwayFromTop = false;
+      _loadOlderMessages();
+    }
+  }
 
   Future<void> _loadOlderMessages() async {
     if (loadingOlderMessages || !_hasOlderHistory) return;
@@ -1743,8 +1967,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     final hadClients = _chatScrollController.hasClients;
     final oldMaxExtent =
         hadClients ? _chatScrollController.position.maxScrollExtent : 0.0;
-    final oldPixels =
-        hadClients ? _chatScrollController.position.pixels : 0.0;
+    final oldPixels = hadClients ? _chatScrollController.position.pixels : 0.0;
 
     setState(() => loadingOlderMessages = true);
     try {
@@ -1939,26 +2162,35 @@ class _HomeOverlay extends StatelessWidget {
 class _ChatLine {
   const _ChatLine({
     this.id,
+    this.threadId,
+    this.threadVersion,
     required this.label,
     required this.content,
     this.images = const [],
     this.visual,
     this.lessons = const [],
+    this.intentActions = const [],
   });
   final String? id;
+  final String? threadId;
+  final int? threadVersion;
   final String label;
   final String content;
   final List<Uint8List> images;
   final Map<String, dynamic>? visual;
   final List<Map<String, dynamic>> lessons;
+  final List<Map<String, dynamic>> intentActions;
 
   _ChatLine copyWith({List<Map<String, dynamic>>? lessons}) => _ChatLine(
         id: id,
+        threadId: threadId,
+        threadVersion: threadVersion,
         label: label,
         content: content,
         images: images,
         visual: visual,
         lessons: lessons ?? this.lessons,
+        intentActions: intentActions,
       );
 }
 
@@ -1995,55 +2227,57 @@ class _ChatBubble extends StatelessWidget {
       final maxWidth =
           isWard ? constraints.maxWidth * 2 / 3 : constraints.maxWidth;
       return Align(
-        alignment: isWard ? Alignment.centerRight : Alignment.centerLeft,
-        child: Container(
-            key: ValueKey('chat-bubble-${isWard ? 'ward' : 'ai'}-$text'),
-            constraints: BoxConstraints(maxWidth: maxWidth),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-                color:
-                    isWard ? const Color(0xffdbeafe) : const Color(0xfff8fafc),
-                border: Border.all(
-                    color: isWard
-                        ? const Color(0xff93c5fd)
-                        : const Color(0xffe2e8f0)),
-                borderRadius: BorderRadius.circular(16)),
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              if (!isWard)
-                Text(label,
-                    style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.blueGrey)),
-              if (images.isNotEmpty) ...[
-                const SizedBox(height: 6),
-                Wrap(spacing: 6, runSpacing: 6, children: [
-                  for (var index = 0; index < images.length; index++)
-                    ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Image.memory(images[index],
-                            key: ValueKey('sent-chat-image-$index'),
-                            width: 72,
-                            height: 72,
-                            fit: BoxFit.cover,
-                            cacheWidth: chatImageCachePixels(
-                                72, MediaQuery.devicePixelRatioOf(context)),
-                            cacheHeight: chatImageCachePixels(
-                                72, MediaQuery.devicePixelRatioOf(context)),
-                            gaplessPlayback: true)),
-                ]),
-              ],
-              if (text.isNotEmpty &&
-                  !(images.isNotEmpty && text == '请看这张图片。')) ...[
-                const SizedBox(height: 4),
-                ChatMarkdownBody(text: text),
-              ],
-              if (visual != null) ...[
-                const SizedBox(height: 8),
-                VisualBlock(visual: visual!),
-              ],
-            ])));
+          alignment: isWard ? Alignment.centerRight : Alignment.centerLeft,
+          child: Container(
+              key: ValueKey('chat-bubble-${isWard ? 'ward' : 'ai'}-$text'),
+              constraints: BoxConstraints(maxWidth: maxWidth),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                  color: isWard
+                      ? const Color(0xffdbeafe)
+                      : const Color(0xfff8fafc),
+                  border: Border.all(
+                      color: isWard
+                          ? const Color(0xff93c5fd)
+                          : const Color(0xffe2e8f0)),
+                  borderRadius: BorderRadius.circular(16)),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (!isWard)
+                      Text(label,
+                          style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.blueGrey)),
+                    if (images.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Wrap(spacing: 6, runSpacing: 6, children: [
+                        for (var index = 0; index < images.length; index++)
+                          ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Image.memory(images[index],
+                                  key: ValueKey('sent-chat-image-$index'),
+                                  width: 72,
+                                  height: 72,
+                                  fit: BoxFit.cover,
+                                  cacheWidth: chatImageCachePixels(72,
+                                      MediaQuery.devicePixelRatioOf(context)),
+                                  cacheHeight: chatImageCachePixels(72,
+                                      MediaQuery.devicePixelRatioOf(context)),
+                                  gaplessPlayback: true)),
+                      ]),
+                    ],
+                    if (text.isNotEmpty &&
+                        !(images.isNotEmpty && text == '请看这张图片。')) ...[
+                      const SizedBox(height: 4),
+                      ChatMarkdownBody(text: text),
+                    ],
+                    if (visual != null) ...[
+                      const SizedBox(height: 8),
+                      VisualBlock(visual: visual!),
+                    ],
+                  ])));
     });
   }
 }

@@ -19,14 +19,19 @@ from app.application.queries.run_transcript import (
     recent_thread_utterances,
     visible_utterances,
 )
-from app.infrastructure.ai.utterance_window import instruction_with_window
 from app.application.workflows.planning_domain_service import PlanningDomainService
 from app.application.workflows.planning_workflow import build_planning_graph
 from app.bootstrap.settings import settings
 from app.contexts.companion.domain.policy import PolicyRegistry
-from app.contexts.planning.domain.scheduling import CANCELLED, COMPLETED, TaskReferenceResolver, local_plan_date
+from app.contexts.planning.domain.scheduling import (
+    CANCELLED,
+    COMPLETED,
+    TaskReferenceResolver,
+    local_plan_date,
+)
 from app.infrastructure.ai import components
 from app.infrastructure.ai.model_gateway import ModelGatewayError, QwenAgentModelGateway
+from app.infrastructure.ai.utterance_window import instruction_with_window
 from app.infrastructure.observability.telemetry import (
     planning_stage_span,
     record_llm_fallback,
@@ -105,7 +110,17 @@ class PlanningWorkflowAdapter:
         service.release_unfinished_tasks(run.ward_id, planning_today())
         prepared_draft_id = None
         window_rows: list[dict] | None = None
-        if not confirm and structured.get("command") == "clarify_reply":
+        if not confirm and structured.get("command") == "accept_plan_suggestion":
+            payload = structured.get("payload") or {}
+            draft = service.accept_suggestion(
+                run.ward_id, payload["draft_id"], payload["expected_draft_version"],
+                kind=payload["kind"], task_id=payload["task_id"],
+                expected_fingerprint=payload["expected_fingerprint"],
+            )
+            items, pending_fields = draft.items, draft.pending_fields
+            prepared_draft_id = draft.id
+            assistant_text = "已按你的选择调整草稿，请再检查时间安排。"
+        elif not confirm and structured.get("command") == "clarify_reply":
             payload = structured.get("payload") or {}
             draft = service.apply_operations(run.ward_id, planning_today(), [],
                 answers=payload.get("answers") or [], command_id=invocation.command_id)
@@ -273,12 +288,13 @@ class PlanningWorkflowAdapter:
         )
 
     @staticmethod
-    def _operation_summary(view):
+    def _operation_summary(view, *, include_waiting=True):
         labels = {"applied": "已保存", "waiting": "待补充", "rejected": "未修改", "deferred": "本次暂不安排"}
         return "；".join(
             labels.get(result['status'], result['status']) + "：" + "、".join(result.get('titles', []))
             + ("（" + result['reason'] + "）" if result.get('reason') else "")
-            for result in view.get('operation_results', []))
+            for result in view.get('operation_results', [])
+            if include_waiting or result['status'] != 'waiting')
 
     def _clarification_outcome(
         self, *, run: AgentRun, draft: PlanDraft, resolved_count: int, context_snapshot: dict,
@@ -289,10 +305,25 @@ class PlanningWorkflowAdapter:
         # Confirmation is signed only in _invoke after LangGraph yielded the
         # review interrupt that owns the resumable state.
         if batch:
-            labels = {"title": "名字", "planned_minutes": "预计时长", "start_at": "开始时间", "target_task_ids": "具体任务（可明确选择多项）"}
-            questions = [slot.get('question') or f"“{slot.get('title') or '这个任务'}”的{labels.get(slot['field'], slot['field'])}"
-                         for slot in batch.get("slots", [])]
-            text = "还需要补充：" + "、".join(questions) + "。也可以明确说明本次暂不安排。"
+            labels = {"title": "名字", "planned_minutes": "预计时长", "start_at": "开始时间",
+                      "target_task_ids": "具体任务（可明确选择多项）", "title_conflict": "同名任务的处理方式"}
+            grouped: dict[str, list[str]] = {}
+            custom_questions = []
+            for slot in batch.get("slots", []):
+                title = slot.get("title") or "这个任务"
+                if slot.get("question"):
+                    custom_questions.append(f"{title}：{slot['question']}")
+                else:
+                    field_label = labels.get(slot["field"], slot["field"])
+                    grouped.setdefault(field_label, []).append(title)
+            requirements = [f"{label}：{'、'.join(titles)}" for label, titles in grouped.items()]
+            requirements.extend(custom_questions)
+            text = (
+                "**需要补充的信息**\n\n"
+                + "；".join(requirements)
+                + "。补齐后才会创建或更新任务。"
+                + "\n\n请按任务名称补充，例如“抄词表 20 分钟”。本次不安排的任务也可以直接说明。"
+            )
             kind = "clarify"
             actions = [{"name": "reply", "label": "补充信息", "command": "clarify_reply",
                         "id": f"clarify:{run.id}:{run.attempt}:{draft.id}:{draft.version}",
@@ -309,9 +340,9 @@ class PlanningWorkflowAdapter:
             actions = [{"name": "reply", "label": "补充信息", "command": "clarify_reply",
                         "id": f"clarify:{run.id}:{run.attempt}:{draft.id}:{draft.version}",
                         "enabled": True, "payload_schema": None}]
-        summary = self._operation_summary(view)
+        summary = self._operation_summary(view, include_waiting=not bool(batch))
         if summary:
-            text = summary + "。" + text
+            text = "**本轮已处理**：" + summary + "。\n\n" + text
         run.status = "waiting_for_ward"
         interaction = {
             "protocol": "companion-interaction.v1", "kind": kind,
@@ -415,9 +446,27 @@ class PlanningWorkflowAdapter:
                             "id": f"plan:{run.id}:{run.attempt}:{review['draft_id']}:{review['object_version']}",
                             "enabled": review["confirm_enabled"],
                             "payload_schema": "confirm-plan.v1"}]
+                if any(item.get("duration_suggestion") or
+                       (item.get("time_suggestion") or {}).get("suggested_start_at")
+                       for item in review.get("items", [])):
+                    actions.append({"name": "accept_suggestion", "label": "采纳建议",
+                                    "command": "accept_plan_suggestion",
+                                    "id": actions[0]["id"], "enabled": True,
+                                    "payload_schema": "accept-plan-suggestion.v1"})
+            if kind == "clarify":
+                for action in actions:
+                    if action.get("command") == "clarify_reply":
+                        action["id"] = f"clarify:{run.id}:{run.attempt}:{review['draft_id']}:{review['object_version']}"
+                if any(item.get("duration_suggestion") or
+                       (item.get("time_suggestion") or {}).get("suggested_start_at")
+                       for item in review.get("items", [])):
+                    actions.append({"name": "accept_suggestion", "label": "采纳建议",
+                                    "command": "accept_plan_suggestion",
+                                    "id": f"plan:{run.id}:{run.attempt}:{review['draft_id']}:{review['object_version']}",
+                                    "enabled": True, "payload_schema": "accept-plan-suggestion.v1"})
             summary = self._operation_summary(review)
             if summary:
-                visible_text = summary + "。" + visible_text
+                visible_text = "**本轮已处理**：" + summary + "。\n\n" + visible_text
             interaction = {
                 "protocol": "companion-interaction.v1", "kind": kind,
                 "run_id": run.id, "turn_id": run.current_turn_id, "attempt": run.attempt,

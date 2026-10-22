@@ -43,9 +43,12 @@ from app.infrastructure.persistence.workflow_dispatcher import (
 
 _ACTIVE_STATUSES = ("active", "waiting_for_ward", "paused")
 _RESUMABLE_STATUSES = ("waiting_for_ward", "paused", "failed", "timed_out")
-_CLARIFY_REPLY = "我还没分清你是想安排学习、问一个问题，还是复盘今天。你直接说一件就好。"
+_CLARIFY_REPLY = (
+    "我还没确定你想做哪件事，请选择：**管理任务**、**总结思考**，还是**提问探讨**？"
+)
 _SAFETY_REPLY = "如果你现在很难受，请立刻告诉身边的大人。"
 _VALID_HINTS = {"planning", "tutoring", "reflection"}
+_INTENT_CHOICES = (("planning", "管理任务"), ("reflection", "总结思考"), ("tutoring", "提问探讨"))
 
 
 class CompanionCoordinator:
@@ -193,6 +196,20 @@ class CompanionCoordinator:
                 return {"kind": "pronunciation_lesson", "lessons": lessons}
         return None
 
+    @staticmethod
+    def _intent_choice_interaction(thread_id: str, command_id: str) -> dict:
+        interaction_id = f"intent:{thread_id}:{command_id}"
+        return {
+            "protocol": "companion-interaction.v1", "kind": "intent_choice",
+            "content": _CLARIFY_REPLY, "parts": [{"type": "text", "text": _CLARIFY_REPLY}],
+            "source_command_id": command_id,
+            "actions": [
+                {"id": interaction_id, "name": "select", "label": label,
+                 "command": "choose_intent", "enabled": True, "payload": {"intent": intent}}
+                for intent, label in _INTENT_CHOICES
+            ],
+        }
+
     def handle(
         self, *, ward_id: str, content: str, thread_id: str | None,
         expected_thread_version: int | None, route_hint: str | None,
@@ -226,10 +243,47 @@ class CompanionCoordinator:
         thread = self._thread(ward_id=ward_id, thread_id=thread_id, expected_version=expected_thread_version)
         command = CompanionCommand(id=command_id, ward_id=ward_id, thread_id=thread.id, payload_digest=digest)
         self.db.add(command)
+        visible_content = content
+        choice_selected = structured_command is not None and structured_command.get("command") == "choose_intent"
+        if choice_selected:
+            if (planning_items is not None or planning_confirm or study_session_id is not None
+                    or tutoring_directive is not None or tutoring_intent is not None
+                    or review_date is not None or review_feeling is not None
+                    or review_reflection is not None or adopt_focus_kit):
+                raise HTTPException(409, "意图选择不能同时提交其他操作")
+            interaction_id = structured_command.get("interaction_id")
+            payload = structured_command.get("payload") or {}
+            latest = (self.db.query(CompanionMessage)
+                      .filter_by(ward_id=ward_id, thread_id=thread.id, author_type="companion")
+                      .order_by(CompanionMessage.thread_version.desc()).first())
+            issued = latest.interaction_ref if latest is not None else None
+            actions = issued.get("actions", []) if isinstance(issued, dict) else []
+            matching = [action for action in actions
+                        if action.get("id") == interaction_id and action.get("command") == "choose_intent"
+                        and action.get("enabled") is True and action.get("payload") == payload]
+            if (route_hint is not None or attachment_keys or latest is None or not isinstance(issued, dict)
+                    or latest.thread_version != thread.version
+                    or issued.get("kind") != "intent_choice" or len(matching) != 1):
+                raise HTTPException(409, "意图选择已过期，请重新说明")
+            source = (self.db.query(CompanionMessage)
+                      .filter_by(ward_id=ward_id, thread_id=thread.id,
+                                 command_id=issued.get("source_command_id"), author_type="ward")
+                      .one_or_none())
+            if source is None or source.thread_version != latest.thread_version - 1:
+                raise HTTPException(409, "意图选择已过期，请重新说明")
+            route_hint = payload["intent"]
+            content = source.content
+            attachment_keys = list(source.attachment_refs or [])
+            turn["content"], turn["attachment_keys"] = content, attachment_keys
+            turn["structured_command"] = None
+            visible_content = f"选择：{matching[0]['label']}"
         focus_run = self._focus_run(thread)
         proposal = None
         if not self.router.blocks_for_safety(content) and route_hint not in _VALID_HINTS:
-            from app.application.queries.run_transcript import current_turn_images, load_visible_utterances
+            from app.application.queries.run_transcript import (
+                current_turn_images,
+                load_visible_utterances,
+            )
 
             proposal = self.classifier.propose(
                 content=content, focus_agent_type=getattr(focus_run, "agent_type", None),
@@ -244,12 +298,12 @@ class CompanionCoordinator:
         )
         if decision.mode == "start" and focus_run is not None and decision.target not in {"clarify", "safety"}:
             decision.mode = "continue" if focus_run.agent_type == decision.target else "handoff"
-        if structured_command:
+        if structured_command and not choice_selected:
             # A form reply is often intentionally content-less.  Its signed
             # interaction, rather than lexical routing, selects Planning.
             if focus_run is not None and focus_run.agent_type == "planning":
                 decision.target, decision.mode = "planning", "continue"
-            if decision.target != "planning" or structured_command.get("command") not in {"confirm_plan", "clarify_reply"}:
+            if decision.target != "planning" or structured_command.get("command") not in {"confirm_plan", "clarify_reply", "accept_plan_suggestion"}:
                 raise HTTPException(409, "当前交互不允许这个动作")
             if focus_run is None or focus_run.agent_type != "planning":
                 raise HTTPException(409, "计划交互已失效，请重新审阅")
@@ -257,7 +311,7 @@ class CompanionCoordinator:
             draft = self.db.get(PlanDraft, payload.get("draft_id"))
             expected = payload.get("expected_draft_version")
             command_name = structured_command["command"]
-            if command_name == "confirm_plan":
+            if command_name in {"confirm_plan", "accept_plan_suggestion"}:
                 interaction_id = f"plan:{focus_run.id}:{focus_run.attempt}:{payload.get('draft_id')}:{expected}"
                 version_valid = draft is not None and draft.version == expected
             else:
@@ -265,8 +319,15 @@ class CompanionCoordinator:
                 version_valid = draft is not None
             if (draft is None or draft.ward_id != ward_id or draft.status != "active"
                     or not version_valid or structured_command.get("interaction_id") != interaction_id
-                    or (focus_run.outcome or {}).get("interaction_id") != interaction_id):
+                    or (focus_run.outcome or {}).get("issued_actions", {}).get(
+                        command_name,
+                        (focus_run.outcome or {}).get("interaction_id")
+                        if command_name != "accept_plan_suggestion" else None,
+                    ) != interaction_id):
                 raise HTTPException(409, "计划交互已过期，请重新审阅")
+            if (command_name == "accept_plan_suggestion"
+                    and command_name not in (focus_run.outcome or {}).get("allowed_commands", [])):
+                raise HTTPException(409, "当前交互不允许采纳建议")
         run = None
         if decision.target not in {"clarify", "safety"}:
             run = self._start_or_resume(thread=thread, decision=decision, focus_run=focus_run)
@@ -280,18 +341,21 @@ class CompanionCoordinator:
         self._trace(thread=thread, run=run, decision=decision, snapshot={})
         version = self._advance_thread(thread)
         self._write_transcript(
-            thread=thread, command_id=command_id, author_type="ward", content=content,
+            thread=thread, command_id=command_id, author_type="ward", content=visible_content,
             thread_version=version, run=run, turn_id=run.current_turn_id if run else None,
             attempt=run.attempt if run else None,
-            attachment_refs=attachment_keys,
+            attachment_refs=[] if choice_selected else attachment_keys,
         )
         terminal_reply = { "clarify": _CLARIFY_REPLY, "safety": _SAFETY_REPLY }.get(decision.target)
+        intent_choice = (self._intent_choice_interaction(thread.id, command_id)
+                         if decision.target == "clarify" else None)
         if terminal_reply is not None:
             thread.version = version
             version = self._advance_thread(thread)
             self._write_transcript(
                 thread=thread, command_id=command_id, author_type="companion",
                 content=terminal_reply, thread_version=version,
+                interaction_ref=intent_choice,
             )
         self.db.commit()
         # The conditional SQL update deliberately bypasses the identity map;
@@ -300,7 +364,8 @@ class CompanionCoordinator:
         self.db.expire_all()
 
         if run is None:
-            result = CoordinatorResult(thread_id=thread.id, thread_version=version, decision=decision, command_id=command_id)
+            result = CoordinatorResult(thread_id=thread.id, thread_version=version, decision=decision,
+                                       interaction=intent_choice, command_id=command_id)
             command = self.db.get(CompanionCommand, command_id)
             command.result, command.completed_at = result.model_dump(), now()
             self.db.commit()
@@ -327,7 +392,7 @@ class CompanionCoordinator:
             # workflow failure: the API/App recovery path must receive 409.
             self.db.rollback()
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - unexpected workflow failures need a visible fallback
             self.db.rollback()
             failure_text = (
                 "计划整理暂不可用，请稍后重试。"
@@ -398,6 +463,11 @@ class CompanionCoordinator:
             # a command only from a draft id and thread version.
             "interaction_id": next((action.get("id") for action in interaction.get("actions", [])
                                     if action.get("enabled")), None),
+            "allowed_commands": [action.get("command") for action in interaction.get("actions", [])
+                                 if action.get("enabled")],
+            "issued_actions": {action.get("command"): action.get("id")
+                               for action in interaction.get("actions", [])
+                               if action.get("enabled") and action.get("id")},
         }
         if outcome.run_status == "cancelled":
             run.cancelled_at = now()

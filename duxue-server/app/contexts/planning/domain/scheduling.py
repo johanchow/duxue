@@ -1,6 +1,6 @@
 """Pure, deterministic Planning rules; no persistence, transport or model calls."""
 import unicodedata
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo
 
 PLAN_TIME_ZONE = ZoneInfo("Asia/Shanghai")
@@ -54,9 +54,15 @@ class SchedulingService:
         return result.replace(tzinfo=ZoneInfo('Asia/Shanghai')) if result.tzinfo is None else result
 
     @classmethod
-    def validate_schedule(cls, items):
+    def validate_schedule(cls, items, *, plan_date: date | None = None):
         conflicts = []
         slots = [i for i in items if i.get('start_at') and i.get('end_at') and not i.get('deferred')]
+        if plan_date is not None:
+            for item in slots:
+                if cls.instant(item['start_at']).astimezone(PLAN_TIME_ZONE).date() != plan_date:
+                    conflicts.append({'code': 'wrong_plan_date',
+                                      'task_ids': [item['assignment_id']],
+                                      'intervals': [[item['start_at'], item['end_at']]]})
         for index, item in enumerate(slots):
             for other in slots[index + 1:]:
                 if (cls.instant(item['start_at']) < cls.instant(other['end_at'])

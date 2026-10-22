@@ -48,10 +48,9 @@ class IntentRouter:
         active_type = getattr(focus_run, "agent_type", None)
         active_id = getattr(focus_run, "id", None)
         if intent == "unclear":
-            # The classifier sees the images too, yet may still return unclear.
-            # An image with no explicit scene keeps its established default of
-            # reaching Planning. An active tutoring or reflection focus is
-            # left unchanged.
+            # The intent component is text-only. An attached image with no
+            # explicit scene keeps its established Planning default when no
+            # other focus is active. Tutoring or reflection focus is left intact.
             if has_image and active_type in {None, "planning"}:
                 return RouteDecision(
                     target="planning",

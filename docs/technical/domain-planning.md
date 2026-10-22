@@ -10,6 +10,8 @@
 
 `plan_date` 是 Ward 面向用户的本地日历日，而不是 UTC 日期；当前产品时区固定为 `Asia/Shanghai`。时间戳仍以 UTC 存储。Planning Graph、草稿查询、确认和 App 的“今天”必须使用同一个本地 `plan_date`，否则在本地午夜至 UTC 午夜之间会出现草稿落在昨天、今日计划 404 或基准版本错误。
 
+每个拟排入计划的 `start_at` 换算到 `Asia/Shanghai` 后必须属于该草稿的 `plan_date`。跨日开始时间作为 `wrong_plan_date` 冲突展示，确认门禁关闭；确认事务必须重验，不能把次日时间槽写进当日日程。
+
 ## 二、应用用例与 Workflow Definition
 
 计划协商是固定 Graph + 局部受控 Agent Loop，不是全自由 ReAct。固定 Graph 负责业务阶段、等待点、版本恢复和确认提交；`PlanningAgentLoop` 只在本轮自然语言处理阶段使用一组窄工具完成任务提取、引用解析、重复名澄清、任务创建/修改/删除和草稿 patch。任务归属、容量、时间冲突、基准版本和确认写入仍为确定性服务，模型不能创建真实 ID、不能判定无冲突、不能确认正式计划。
@@ -60,15 +62,26 @@ flowchart TD
 2. **唯一绑定针对每一个引用，不限制一轮只能操作一个 Task。** “英语改三十分钟”遇到听力和阅读时，不得擅自选中两项；“听力和阅读都改三十分钟”则可产生两个已绑定目标。`target_task_ids` 多选答案必须来自当前签发的受权候选集合，去重且非空；候选集合为空时不得签发该 Slot，必须作为 `no_match/rejected` observation 返回给 Agent Loop；每个更新值须明确是分别赋值还是显式共同赋值。
 3. **澄清必须保留待执行修改。** Slot / Batch 关联 `operation_id`、操作种类、目标候选及已接受字段，答案只补绑定关系，不丢失原有“改三十分钟”等要求。名称为空、目标未匹配或歧义不等于新增任务；只有明确新增操作才进入 RegisterTask。
 4. **批量修改不静默执行一半。** 一个明确的多目标修改操作中，任一目标未绑定或无效，该操作整体等待；目标和字段都合法后，目标集合的内容修改在同一本地事务中原子保存。一轮中相互独立的操作可以分别成功，依赖未完成操作的后续安排继续等待。每项以 `command_id + operation_id` 去重，报告逐项结果；重试不重复登记已成功任务。
+   对包含相对时间或绝对开始时间的新增操作，先校验引用和时间格式，再登记 Task；标为 `rejected` 或等待时间澄清的操作不能留下新 Task。
 5. **内容与安排分开维护。** `UpdateTask` 用例加载 Task 与受影响的当前草稿，校验 Ward、Task 版本及草稿版本，调用 `update_details()` 后保存。改名字不换 Task ID；改耗时使旧审阅动作失效，并重新推导结束时间及受影响的相对安排。Ward 明示的绝对开始时间保持不变，产生重叠则展示冲突，不静默平移。其他草稿保存其引用 Task 的版本，确认时必须重验，不能靠旧时间槽确认。
 6. **已正式排期任务的修改进入修订。** 不通过 UpdateTask 直接改变已确认安排所依赖的名字或耗时；拟修改内容保存在修订草稿 `proposed_task_changes`，与新日程一起确认提交。`UpdateTask` 直接修改范围限定为未正式排期、未开始执行的任务。
-7. **删除任务是独立 Use Case，不等于暂不安排。** 未进入正式计划的 Task，`DeleteTask` 用例只在目标唯一绑定、Ward 有权限且任务未开始/无学习记录时执行；成功后从任务池移除 Task，并在同一事务清理 active/pending 草稿、澄清 Slot 和 Task 版本快照中的引用。已进入正式计划的 Task 不允许在 `PlanningAgentLoop` 中直接删除，只能写入修订草稿的 `proposed_task_deletions`，在 `DraftReview` 二次确认后由 `ConfirmPlanDraft` 同事务删除 Task、移除日程项并记录历史版本。已有 `StudySession`、学习事实或已开始执行的任务返回结构化拒绝，不物理删除。`remove_task_from_draft()` 只移除本次草稿安排，`defer_task()` 只表示本次暂不安排，二者都保留 Task。
+7. **删除任务是独立 Use Case，不等于暂不安排。** Guardian 确认的必做任务不能由 Ward 删除，即使尚未排期；可说明原因暂不安排。对其他未进入正式计划的 Task，`DeleteTask` 用例只在目标唯一绑定、Ward 有权限且任务未开始/无学习记录时执行；成功后从任务池移除 Task，并在同一事务清理 active/pending 草稿、澄清 Slot 和 Task 版本快照中的引用。其他已进入正式计划的 Task 不允许在 `PlanningAgentLoop` 中直接删除，只能写入修订草稿的 `proposed_task_deletions`，在 `DraftReview` 二次确认后由 `ConfirmPlanDraft` 同事务删除 Task、移除日程项并记录历史版本。已有 `StudySession`、学习事实或已开始执行的任务返回结构化拒绝，不物理删除。`remove_task_from_draft()` 只移除本次草稿安排，`defer_task()` 只表示本次暂不安排，二者都保留 Task。
 
 #### 澄清范围与开始时间
 
 登记 Task 与本次排程分离：任务只加入池中时不强制追问开始时间；当 Ward 要安排该任务且没有明示或可推导的时间锚点时，才创建 `start_at` Slot。仅说“先数学再英语”仍缺一个可确定的起点；“十九点先数学再英语”可由耗时推导英语时间。
 
+#### 时长与计划时间的软建议
+
+实现验收与边界见 [planning-time-suggestions spec](../../.agent/specs/done/planning-time-suggestions.md)。`GetPlanDraft` 在只读投影中附带两种建议，不能把建议当作 Ward 已输入的值，也不能因建议阻止确认。
+
+- **预计时长：** 查询当前 Ward 在草稿 `plan_date` 截止的近 15 个上海本地日内，已完成且绑定同名 Task 的 StudySession。标题按现有规范化规则等价，同一 Task 最多贡献一次；有效实际计时至少来自 3 个不同 Task，才以中位数舍入到 5 分钟并返回样本数与依据。`active_seconds` 来自客户端计时，不代表客观专注时长。新候选缺时长时，建议写在 `planned_minutes` 澄清 Slot 上，采纳仍通过 `clarify_reply` 登记；已有任务只有差异至少 10 分钟且达到当前预计时长的 25% 才在草稿项上展示。采纳已有任务建议走版本绑定的 `accept_plan_suggestion(kind=duration)`，复用草稿内容修改与冲突重验。
+- **开始与结束：** 所有 Ward 统一以 `Asia/Shanghai` 的 07:00–22:00 作为产品默认建议时段，不根据历史作息推断。开始早于 07:00，或由开始时间加预计时长推得的结束晚于 22:00 时，在草稿项给原因；只有确定性校验无冲突时才给可采纳的新开始/结束。结束时间只由开始与时长推导，不独立写入。采纳走 `accept_plan_suggestion(kind=time)`；忽略不改草稿和正式计划。
+- 两种采纳动作都绑定当前 `interaction_id + draft_id + expected_draft_version + expected_fingerprint`。指纹覆盖时长历史样本或时间槽输入；服务端重新计算建议并校验 Ward、Task 与草稿，输入变化或过期动作返回 409，避免采纳到用户没有看到的新值。App 对同一草稿版本已点“先不改”的建议停止展示，草稿版本改变后可重新提示。Guardian 不能调用采纳动作。
+
 本设计保留“没有 pending Slot 才能确认”的门禁，但允许 Ward **明确暂不安排某个目标**：`PlanDraft.defer_target()` 在目标明确且可编辑时从本次拟安排范围中移除该目标，对依赖它的相对安排继续澄清，不自动删除其他 Task 的安排，将对应待执行操作标为本次不执行、关联 Slot 标为 skipped，并记录原因。必做 Task 必须有暂不安排原因；候选不会因此变为完整 Task，既有 Task 继续留池。skipped 不等于字段有效；重新加入安排时必须重新检查并生成必要问题。不能仅因为另一任务已完整而自动跳过旧 Slot。
+
+当 Ward 在缺预计时长期间再次确认或复述同名创建请求时，按规范化标题复用唯一的待创建候选和原 `slot_id`，不新增同义 `create` 操作；若新话语补了时长，则作为原 Slot 的答案继续执行。只有待补候选且没有新信息时，草稿版本也不增加。Planning 可见回复使用 Markdown 排版；澄清问题按缺失字段组织成段落，已处理操作另列，避免同一任务在摘要和问题里重复堆叠；App 使用现有 `ChatMarkdownBody` 渲染。
 
 #### 确认冲突、恢复与正式计划修订
 
@@ -448,7 +461,8 @@ sequenceDiagram
 | 澄清批次 | 一个 Batch 可含多个 Slot；结构化表单按 `slot_id` 原子写入；自然语言无法唯一归属时不得广播写入 |
 | 混合输入 | `PlanningAgentLoop` 可在同一轮同时处理 Slot 答案和新的时间/内容修改，但所有真实 ID 与版本必须来自工具 observation |
 | 内容修改 | 改名不换 Task ID；改耗时使旧审阅动作失效并重新推导，产生重叠时展示冲突，不静默平移其它任务 |
-| 删除任务 | Ward 明确删除且目标唯一绑定时，未入正式计划的 Task 可立即从任务池删除并清理草稿引用；已入正式计划的 Task 只写入 `proposed_task_deletions` 并要求 DraftReview 二次确认，确认前原日程与 Task 不变；多候选必须澄清；无匹配返回 rejected；已有学习记录或已开始执行返回 409 / `has_learning_record` / `not_editable`，不得物理删除 |
+| 删除任务 | Guardian 确认的必做 Task 无论是否排期都不得由 Ward 删除，可暂不安排并说明原因；其他 Task 目标唯一绑定时，未入正式计划的 Task 可立即从任务池删除并清理草稿引用；已入正式计划的 Task 只写入 `proposed_task_deletions` 并要求 DraftReview 二次确认，确认前原日程与 Task 不变；多候选必须澄清；无匹配返回 rejected；已有学习记录或已开始执行返回 409 / `has_learning_record` / `not_editable`，不得物理删除 |
+| 本地计划日 | `start_at` 按 `Asia/Shanghai` 换算后不属于 `plan_date` 时，草稿展示 `wrong_plan_date` 冲突且不可确认；带时区偏移的时间戳也按本地日判断 |
 | 多目标修改 | 明确批量修改必须目标和字段都合法才原子提交；独立操作可部分成功，结果必须在 `OperationResultReview` 汇总 |
 | 暂不安排 | Ward 明确暂不安排时对应 Slot 为 `skipped`，不等于字段有效；重新安排时仍需补齐缺失字段 |
 | 确认 | `confirm_plan` 只读取已审阅 `draft_id + version`，不重新运行 `PlanningAgentLoop`，不创建 Task；冲突或版本变化返回最新 DraftReview |

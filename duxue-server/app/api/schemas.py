@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from uuid import uuid4
 from typing import Any
+from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -169,7 +169,7 @@ class CompanionTurnRequest(BaseModel):
     review_reflection: str | None = Field(default=None, max_length=2000)
     adopt_focus_kit: bool = False
     attachment_keys: list[str] = Field(default_factory=list, max_length=8)
-    structured_command: "StructuredWardCommand | None" = None
+    structured_command: StructuredWardCommand | None = None
 
     @field_validator("content")
     @classmethod
@@ -181,14 +181,19 @@ class StructuredWardCommand(BaseModel):
     """A server-issued, allow-listed action; never an arbitrary tool call."""
 
     interaction_id: str = Field(min_length=1, max_length=200)
-    command: str = Field(pattern=r"^(confirm_plan|clarify_reply)$")
+    command: str = Field(pattern=r"^(confirm_plan|clarify_reply|accept_plan_suggestion|choose_intent)$")
     payload: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def confirm_plan_payload(self):
-        if self.command == "confirm_plan":
-            if not isinstance(self.payload.get("draft_id"), str) or not isinstance(self.payload.get("expected_draft_version"), int):
-                raise ValueError("confirm_plan requires draft_id and expected_draft_version")
+        if (self.command == "choose_intent"
+                and (set(self.payload) != {"intent"}
+                     or self.payload["intent"] not in {"planning", "reflection", "tutoring"})):
+            raise ValueError("choose_intent requires a supported intent")
+        if (self.command == "confirm_plan"
+                and (not isinstance(self.payload.get("draft_id"), str)
+                     or not isinstance(self.payload.get("expected_draft_version"), int))):
+            raise ValueError("confirm_plan requires draft_id and expected_draft_version")
         if self.command == "clarify_reply":
             answers = self.payload.get("answers")
             if not isinstance(self.payload.get("draft_id"), str) or not isinstance(answers, list) or not answers:
@@ -196,6 +201,13 @@ class StructuredWardCommand(BaseModel):
             if any(not isinstance(answer, dict) or not isinstance(answer.get("slot_id"), str)
                    or not isinstance(answer.get("value"), str) for answer in answers):
                 raise ValueError("clarify_reply answers require slot_id and value")
+        if (self.command == "accept_plan_suggestion"
+                and (not isinstance(self.payload.get("draft_id"), str)
+                     or not isinstance(self.payload.get("expected_draft_version"), int)
+                     or self.payload.get("kind") not in {"duration", "time"}
+                     or not isinstance(self.payload.get("task_id"), str)
+                     or not isinstance(self.payload.get("expected_fingerprint"), str))):
+            raise ValueError("accept_plan_suggestion requires draft/version/kind/task_id/fingerprint")
         return self
 
 
