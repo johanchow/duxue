@@ -8,6 +8,7 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.application.workflows.teaching_skills import history_candidates
+from app.infrastructure.observability.telemetry import agent_step_span
 from app.infrastructure.persistence.models import TutoringMessage, TutoringProblem
 
 MAX_TOOL_CALLS = 3
@@ -68,19 +69,24 @@ class TutorToolbox:
         self.window = window
 
     def run(self, name: str, args: dict | None) -> dict:
-        args = args if isinstance(args, dict) else {}
-        handler = {
-            "get_task_context": self._task_context,
-            "get_attempt_summary": self._attempt_summary,
-            "lookup_history": self._lookup_history,
-            "widget_guidelines": self._widget_guidelines,
-        }.get(name)
-        if handler is None:
-            return {"tool": name, "status": "tool_error", "detail": "unknown_tool"}
-        try:
-            return {"tool": name, **handler(args)}
-        except Exception:  # noqa: BLE001 - tool failures are intentionally isolated per observation.
-            return {"tool": name, "status": "tool_error"}
+        with agent_step_span("tool", name if name in TOOL_NAMES else "unknown_tool",
+                             **{"agent.tool.source": "model_request"}) as span:
+            args = args if isinstance(args, dict) else {}
+            handler = {
+                "get_task_context": self._task_context,
+                "get_attempt_summary": self._attempt_summary,
+                "lookup_history": self._lookup_history,
+                "widget_guidelines": self._widget_guidelines,
+            }.get(name)
+            if handler is None:
+                span.set_attribute("agent.tool.status", "tool_error")
+                return {"tool": name, "status": "tool_error", "detail": "unknown_tool"}
+            try:
+                result = {"tool": name, **handler(args)}
+            except Exception:
+                result = {"tool": name, "status": "tool_error"}
+            span.set_attribute("agent.tool.status", result.get("status", "tool_error"))
+            return result
 
     def _task_context(self, _args: dict) -> dict:
         if not self.task_active or not self.task_title:

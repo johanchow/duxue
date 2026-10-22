@@ -46,7 +46,7 @@ def test_model_span_includes_only_safe_langfuse_generation_mapping(monkeypatch):
 
     class Tracer:
         @contextmanager
-        def start_as_current_span(self, _name, attributes):
+        def start_as_current_span(self, _name, attributes, **_kwargs):
             captured.attributes.update(attributes)
             yield captured
 
@@ -63,6 +63,103 @@ def test_model_span_includes_only_safe_langfuse_generation_mapping(monkeypatch):
     assert json.loads(captured.attributes["langfuse.observation.usage_details"]) == {"input": 12, "output": 34}
     assert "langfuse.observation.input" not in captured.attributes
     assert "langfuse.observation.output" not in captured.attributes
+
+
+def test_agent_session_includes_route_and_model_before_run_and_scrubs_root_events(monkeypatch):
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+        InMemorySpanExporter,
+    )
+
+    from app.infrastructure.observability import telemetry
+
+    monkeypatch.setenv("OTEL_SDK_DISABLED", "false")
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    monkeypatch.setattr(telemetry.trace, "get_tracer", provider.get_tracer)
+    with telemetry.agent_turn_span():
+        telemetry.set_agent_context(thread_id="thread-1")
+        with telemetry.agent_step_span("route", "intent_route"), telemetry.model_call_span(
+            operation="intent", model="qwen-test",
+        ):
+            pass
+        telemetry.set_agent_context(run_id="run-1")
+        telemetry.record_agent_input(
+            agent_type="tutoring", run_id="run-1", thread_id="thread-1", content="孩子的原话",
+        )
+        with telemetry.agent_workflow_span(agent_type="tutoring", run_id="run-1", thread_id="thread-1"):
+            telemetry.record_llm_fallback(operation="tutor_turn", reason="child-secret-in-error")
+            with telemetry.agent_step_span("tool", "get_task_context") as tool:
+                tool.set_attribute("agent.tool.status", "unique")
+
+    spans = exporter.get_finished_spans()
+    assert all(telemetry._should_export_to_langfuse(span) for span in spans)
+    by_name = {span.name: span for span in spans}
+    assert {"agent.turn", "agent.route", "agent.workflow", "agent.tool", "llm.request"} <= by_name.keys()
+    assert all(span.attributes["langfuse.session.id"] == "thread-1" for span in spans)
+    assert by_name["agent.turn"].attributes["langfuse.trace.metadata.run_id"] == "run-1"
+    assert "agent.run_id" not in by_name["agent.route"].attributes
+    assert "agent.run_id" not in by_name["llm.request"].attributes
+    assert by_name["agent.tool"].attributes["agent.run_id"] == "run-1"
+    assert by_name["llm.request"].parent.span_id == by_name["agent.route"].context.span_id
+    assert by_name["agent.tool"].parent.span_id == by_name["agent.workflow"].context.span_id
+    exported = str([(s.attributes, [(e.name, e.attributes) for e in s.events]) for s in spans])
+    assert "孩子的原话" not in exported
+    assert "child-secret-in-error" not in exported
+
+
+def test_grafana_parent_keeps_input_event_while_langfuse_turn_is_payload_free(monkeypatch):
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+        InMemorySpanExporter,
+    )
+
+    from app.infrastructure.observability import telemetry
+
+    monkeypatch.setenv("OTEL_SDK_DISABLED", "false")
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    monkeypatch.setattr(telemetry.trace, "get_tracer", provider.get_tracer)
+    with provider.get_tracer("http").start_as_current_span("HTTP POST"), telemetry.agent_turn_span():
+        telemetry.set_agent_context(thread_id="thread-1")
+        telemetry.record_agent_input(
+            agent_type="tutoring", run_id=None, thread_id="thread-1", content="孩子的原话",
+        )
+
+    spans = {span.name: span for span in exporter.get_finished_spans()}
+    assert spans["HTTP POST"].events[0].attributes["input.text"] == "孩子的原话"
+    assert "input.text" not in spans["agent.turn"].events[0].attributes
+    assert telemetry._should_export_to_langfuse(spans["HTTP POST"]) is False
+
+
+def test_exported_model_error_records_class_only(monkeypatch):
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+        InMemorySpanExporter,
+    )
+
+    from app.infrastructure.observability import telemetry
+
+    monkeypatch.setenv("OTEL_SDK_DISABLED", "false")
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    monkeypatch.setattr(telemetry.trace, "get_tracer", provider.get_tracer)
+    with pytest.raises(ValueError, match="private-child-content"), telemetry.model_call_span(
+        operation="intent", model="qwen-test",
+    ):
+        raise ValueError("private-child-content")
+
+    span = exporter.get_finished_spans()[0]
+    assert span.attributes["error.type"] == "ValueError"
+    assert not span.events
+    assert "private-child-content" not in str(span.attributes)
+    assert "private-child-content" not in str(span.status)
 
 
 def test_langfuse_requires_an_explicit_enabled_flag_and_both_keys(monkeypatch):
@@ -194,7 +291,10 @@ def test_non_production_stores_model_original_without_an_explicit_switch(tmp_pat
 
 
 def test_plan_intake_structure_log_counts_results_without_model_text(caplog, monkeypatch):
-    from app.infrastructure.observability.telemetry import record_plan_intake_structure, record_planning_loop_outcome
+    from app.infrastructure.observability.telemetry import (
+        record_plan_intake_structure,
+        record_planning_loop_outcome,
+    )
 
     monkeypatch.setenv("AGENT_DEBUG_AUDIT_ENABLED", "false")
     raw = '{"assistant_text":"孩子的作业：数学口算","operations":[]}'

@@ -20,10 +20,13 @@ from app.application.workflows.planning_adapter import PlanningWorkflowAdapter
 from app.contexts.companion.domain.intent_router import IntentRouter
 from app.infrastructure.ai.intent_classifier import ModelIntentClassifier
 from app.infrastructure.observability.telemetry import (
+    agent_step_span,
     agent_workflow_span,
     record_agent_input,
     record_agent_outcome,
     record_agent_route,
+    set_agent_context,
+    trace_agent_turn,
 )
 from app.infrastructure.persistence.models import (
     AgentCheckpoint,
@@ -210,6 +213,7 @@ class CompanionCoordinator:
             ],
         }
 
+    @trace_agent_turn
     def handle(
         self, *, ward_id: str, content: str, thread_id: str | None,
         expected_thread_version: int | None, route_hint: str | None,
@@ -237,10 +241,12 @@ class CompanionCoordinator:
         digest = self._digest({"thread_id": thread_id, "expected_version": expected_thread_version, "route_hint": route_hint, "turn": turn})
         cached = self._restore_idempotent(command_id, ward_id, digest)
         if cached is not None:
+            set_agent_context(thread_id=cached.thread_id)
             return cached
 
         # Phase 1: persist the routing decision before invoking any target work.
         thread = self._thread(ward_id=ward_id, thread_id=thread_id, expected_version=expected_thread_version)
+        set_agent_context(thread_id=thread.id)
         command = CompanionCommand(id=command_id, ward_id=ward_id, thread_id=thread.id, payload_digest=digest)
         self.db.add(command)
         visible_content = content
@@ -279,23 +285,26 @@ class CompanionCoordinator:
             visible_content = f"选择：{matching[0]['label']}"
         focus_run = self._focus_run(thread)
         proposal = None
-        if not self.router.blocks_for_safety(content) and route_hint not in _VALID_HINTS:
-            from app.application.queries.run_transcript import (
-                current_turn_images,
-                load_visible_utterances,
-            )
+        with agent_step_span("route", "intent_route") as route_span:
+            if not self.router.blocks_for_safety(content) and route_hint not in _VALID_HINTS:
+                from app.application.queries.run_transcript import (
+                    current_turn_images,
+                    load_visible_utterances,
+                )
 
-            proposal = self.classifier.propose(
-                content=content, focus_agent_type=getattr(focus_run, "agent_type", None),
-                recent_utterances=load_visible_utterances(
-                    self.db, ward_id=ward_id, thread_id=thread.id, exclude_turn_id=None,
-                ),
-                current_images=current_turn_images(ward_id, attachment_keys),
+                proposal = self.classifier.propose(
+                    content=content, focus_agent_type=getattr(focus_run, "agent_type", None),
+                    recent_utterances=load_visible_utterances(
+                        self.db, ward_id=ward_id, thread_id=thread.id, exclude_turn_id=None,
+                    ),
+                    current_images=current_turn_images(ward_id, attachment_keys),
+                )
+            decision = self.router.decide(
+                content=content, route_hint=route_hint, focus_run=focus_run, proposal=proposal,
+                has_image=bool(attachment_keys),
             )
-        decision = self.router.decide(
-            content=content, route_hint=route_hint, focus_run=focus_run, proposal=proposal,
-            has_image=bool(attachment_keys),
-        )
+            route_span.set_attribute("agent.proposed_target", decision.target)
+            route_span.set_attribute("agent.proposed_mode", decision.mode)
         if decision.mode == "start" and focus_run is not None and decision.target not in {"clarify", "safety"}:
             decision.mode = "continue" if focus_run.agent_type == decision.target else "handoff"
         if structured_command and not choice_selected:
@@ -331,13 +340,18 @@ class CompanionCoordinator:
         run = None
         if decision.target not in {"clarify", "safety"}:
             run = self._start_or_resume(thread=thread, decision=decision, focus_run=focus_run)
+            set_agent_context(run_id=run.id)
             decision.context_refs = list(run.context_refs)
             run.current_turn_id = str(uuid4())
         record_agent_input(
             agent_type=decision.target, run_id=run.id if run else None,
             thread_id=thread.id, content=content,
         )
-        record_agent_route(target=decision.target, mode=decision.mode, reason=decision.route_reason)
+        with agent_step_span("route", "final_route") as route_span:
+            route_span.set_attribute("agent.target", decision.target)
+            route_span.set_attribute("agent.mode", decision.mode)
+            route_span.set_attribute("agent.route_reason", decision.route_reason)
+            record_agent_route(target=decision.target, mode=decision.mode, reason=decision.route_reason)
         self._trace(thread=thread, run=run, decision=decision, snapshot={})
         version = self._advance_thread(thread)
         self._write_transcript(
@@ -381,8 +395,10 @@ class CompanionCoordinator:
             context_refs=decision.context_refs, resume_from_checkpoint=decision.mode == "continue",
         )
         try:
-            with agent_workflow_span(agent_type=run.agent_type, run_id=run.id, thread_id=thread.id):
+            with agent_workflow_span(agent_type=run.agent_type, run_id=run.id, thread_id=thread.id) as workflow_span:
                 outcome = self.dispatcher.invoke(invocation)
+                workflow_span.set_attribute("agent.run_status", outcome.run_status)
+                workflow_span.set_attribute("agent.outcome_type", outcome.outcome_type or "unknown")
         except StaleDataError as exc:
             self.db.rollback()
             raise HTTPException(409, "计划或任务已变化，请重新审阅") from exc

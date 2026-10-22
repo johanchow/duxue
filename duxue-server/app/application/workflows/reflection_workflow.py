@@ -1,23 +1,34 @@
 from __future__ import annotations
+
 from datetime import date
+
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
+
+from app.application.commands.memory import SqlAlchemyMemoryFacade
 from app.application.ports.companion import RunInvocation, WorkflowOutcome
 from app.application.queries.context_builder import ContextBuilder
+from app.application.queries.run_transcript import (
+    current_turn_images,
+    load_visible_utterances,
+)
 from app.contexts.companion.domain.policy import PolicyRegistry
-from app.application.queries.run_transcript import current_turn_images, load_visible_utterances
 from app.infrastructure.ai import components
 from app.infrastructure.ai.model_gateway import ModelGatewayError, QwenAgentModelGateway
 from app.infrastructure.ai.utterance_window import instruction_with_window
-from app.infrastructure.observability.telemetry import record_llm_fallback
 from app.infrastructure.messaging.outbox import publish_learning_fact
-from app.application.commands.memory import SqlAlchemyMemoryFacade
+from app.infrastructure.observability.telemetry import (
+    agent_step_span,
+    record_llm_fallback,
+    traced_agent_node,
+)
 from app.infrastructure.persistence.models import FocusKit, Report, SelfReview, now
 
 _SELF_REVIEW_PROMPT = "如果想复盘今天的学习，请先说说今天学了什么、感觉如何；想问其他问题也可以直接问我。"
 
 class ReflectionWorkflow:
     def __init__(self, db: Session): self.db = db
+    @traced_agent_node("reflection.turn")
     def invoke(self, invocation: RunInvocation) -> WorkflowOutcome:
         turn = invocation.turn
         envelope = ContextBuilder(SqlAlchemyMemoryFacade(self.db)).build(
@@ -64,7 +75,10 @@ class ReflectionWorkflow:
                     window, len(current_images),
                 ),
             )
-            if PolicyRegistry().validate_candidate(candidate.model_dump(), allowed_tools=set()).accepted:
+            with agent_step_span("check", "reflection.candidate") as check_span:
+                accepted = PolicyRegistry().validate_candidate(candidate.model_dump(), allowed_tools=set()).accepted
+                check_span.set_attribute("agent.check.result", "accepted" if accepted else "rejected")
+            if accepted:
                 advice = candidate.content
         except ModelGatewayError as error:
             model_fallback = True

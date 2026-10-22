@@ -13,6 +13,14 @@
 > 原文、模型原文、图片或完整上下文。部署说明见
 > [`ops/observability/README.md`](../ops/observability/README.md)。
 
+> 实施状态（2026-10-22）：Langfuse 的安全导出范围扩展到 Companion turn / route / workflow、
+> Planning 与 Tutoring 节点、只读工具、结构与安全检查、模型 generation。每次 `/companion/turn`
+> 是一条 trace；`ConversationThread.id` 作为 Langfuse `session_id`，从意图分类前开始传播；
+> `AgentRun.id` 作为可筛选的执行关联字段。一次对话中切换 Agent 会更换 Run，但保留 Session。
+> 导出仍为显式白名单，并限制在 `duxue.agent` / `duxue.model` instrumentation scope；
+> 不包含 HTTP、SQL、Redis 等自动 span，也不包含儿童原话、模型正文、图片、SVG、工具参数或结果正文。
+> `widget_guidelines` 若预置给模型会标记为 `preloaded`，实际工具请求标记为 `model_request`。
+
 ---
 
 ## 一、背景与目标
@@ -268,11 +276,13 @@ Server 端 OTEL SDK 完整支持通过环境变量配置，无需改动代码：
 
 Langfuse 默认关闭。需要 AI trace 时，在同一份服务端环境文件配置 `LANGFUSE_ENABLED=true`、`LANGFUSE_PUBLIC_KEY`、`LANGFUSE_SECRET_KEY` 与区域对应的 `LANGFUSE_BASE_URL`。它作为同一 Python 进程中的第二个 OpenTelemetry span processor 工作；Grafana 仍使用已有的 OTLP exporter，因此不需要 Alloy、Compose override 或额外容器。
 
-Langfuse 导出采用严格 allow-list：只发送由 `model_call_span` 创建的 `llm.request`，其中仅有模型名、操作、组件版本、结果、时延、token 用量和供应商请求 ID。不得记录 prompt、completion、Ward 问话、图片、ContextEnvelope、异常原文、认证或 API key。由于 HTTP 根 span 被刻意排除，这些 generation 会在 Langfuse 中显示为顶层 trace；这是降低儿童数据外发面的有意取舍。
+Langfuse 导出采用严格 allow-list：只接收 `duxue.agent` 创建的 turn、route、workflow、node、tool、check span，以及 `duxue.model` 创建的 `llm.request` generation。HTTP、SQL、Redis、Celery 等自动 span 不进入 Langfuse。Thread ID 从意图分类前传播为 `session_id`；Run ID 是可筛选的执行关联字段。业务 span 只记录封闭类别、随机关联 ID、耗时和模型用量；不记录 prompt、completion、Ward 问话、图片、SVG、工具正文、ContextEnvelope、异常原文、认证或 API key。
+
+Grafana 与 Langfuse 共用同一个 OpenTelemetry `TracerProvider` 和采样器。若要在 Langfuse 查看每一轮完整 Session，部署环境需设 `OTEL_TRACES_SAMPLER_ARG=1.0`；小于 1 的值会让部分整轮 trace 在两处都缺席。环境模板默认全量采样，生产主机未提交的 `.env.prod` 需单独核对。
 
 ### 7.1.2 Agent 数据边界
 
-Agent span / OTLP log event 包含运行关联 ID、模型、结果、时延、token 用量（供应商返回时）、**Ward 本轮问话文本**（`input.text`，上限 2000 字，邮箱与大陆手机号已遮蔽）以及输入/输出的长度和 SHA-256 摘要；答疑轮另有 `tutor.turn.result` 事件（`act`、`relation`、结果 `shown|fallback|blocked`、失败原因、配图丢弃原因、形状告警，不含展示文本）。容器 stdout 也输出携带 trace/span ID 的 JSON 日志。问话进入 Grafana 是为审计与评测取样，Loki 的访问权限与留存按儿童数据处理。不得将模型原文、完整 ContextEnvelope、图像 data URL、Authorization 或 API Key 写入 Grafana。
+Grafana 的 HTTP 父 span、OTLP log / stdout JSON 日志包含运行关联 ID、模型、结果、时延、token 用量（供应商返回时）、**Ward 本轮问话文本**（`input.text`，上限 2000 字，邮箱与大陆手机号已遮蔽）以及输入/输出的长度和 SHA-256 摘要；可导出的 Agent span 只保留安全的结构化事件，不保留 `input.text`。HTTP 父 span 不导出到 Langfuse。答疑轮另有 `tutor.turn.result` 类别事件（`act`、`relation`、结果 `shown|fallback|blocked`、配图丢弃类别、形状告警，不含展示文本）。问话进入 Grafana 是为审计与评测取样，Loki 的访问权限与留存按儿童数据处理。不得将模型原文、完整 ContextEnvelope、图像 data URL、Authorization 或 API Key 写入 Grafana。
 
 模型原文写在独立文件，不进 stdout、普通应用日志或 Loki。非生产环境默认写入 `duxue-server/var/agent-llm-audit.jsonl`；生产环境只有同时设置 `AGENT_DEBUG_AUDIT_ENABLED=true` 和 `AGENT_DEBUG_AUDIT_PATH` 才写入，路径必须是加密挂载、访问受控且有短留存清理的目录。`AGENT_DEBUG_AUDIT_ENABLED=false` 在任何环境都关闭。每一行带与 stdout 相同的 `trace_id`、`span_id`，`kind` 区分三类记录：`input`（Ward 问话，元数据含 run/thread id）、`output`（模型原文，含操作名、长度和 SHA-256）、`turn_result`（孩子最终看到的文本，元数据为 act、relation、结果、失败原因、配图丢弃原因）。按 `trace_id` 连接即得“问—模型—展示”完整一轮，可直接用于抽取评测用例。`content` 只替换常见邮箱和中国大陆手机号。
 
