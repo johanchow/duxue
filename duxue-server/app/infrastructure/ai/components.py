@@ -32,7 +32,7 @@ from app.infrastructure.observability.telemetry import (
 
 # DashScope model ids (see docs/technical/infra-ai-components.md §4.2.3).
 # Thinking is turned off at the call: these calls return JSON on a latency budget.
-PLUS = "qwen3.7-plus-2026-05-26"  # vision + instruction following: tutoring, intake, advice
+PLUS = "qwen3.7-plus-2026-05-26"  # vision + instruction following: tutoring, intake
 REPLY_FLASH = "qwen3.8-flash"     # short multimodal replies on the wait path
 TEXT_FLASH = "qwen-flash"         # closed routing; a decision model needs another protocol
 TEXT_PLUS = "qwen-plus"           # leak judge; must stay a different model from PLUS
@@ -141,17 +141,17 @@ COMPONENTS = ComponentRegistry(
         max_tokens=450, temperature=0.2,
     ),
     ComponentSpec(
-        component_id="reflection.advice", version="v2", operation="agent_text",
-        agent_label="reflection", risk_tier="standard", model=PLUS,
-        prompt=PROMPTS["companion.agent-text.system.v2"],
-        input_contract="agent-text-input.v1", output_contract="agent-text-candidate.v1",
-        max_tokens=450, temperature=0.2,
+        component_id="evaluation.review-aspects", version="v1", operation="review_aspects",
+        agent_label="reflection", risk_tier="standard", model=TEXT_FLASH,
+        prompt=PROMPTS["evaluation.review-aspects.system.v1"],
+        input_contract="review-expression.v1", output_contract="review-aspects-candidate.v1",
+        max_tokens=900, temperature=0,
         accepts_images=False,
     ),
     ComponentSpec(
-        component_id="planning.intake", version="v1", operation="plan_intake",
+        component_id="planning.intake", version="v2", operation="plan_intake",
         agent_label="planning", risk_tier="standard", model=PLUS,
-        prompt=PROMPTS["planning.intake.prompt.v1"],
+        prompt=PROMPTS["planning.intake.prompt.v2"],
         input_contract="plan-intake-input.v1", output_contract="plan-intake-result.v1",
         max_tokens=1600, temperature=0, requires_agent_switch=False,
         timeout_seconds=60,

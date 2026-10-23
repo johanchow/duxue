@@ -292,12 +292,11 @@ class EndToEndTest(unittest.TestCase):
             ).status_code,
             200,
         )
-        self.assertEqual(
-            self.request(
-                "GET", f"/wards/{ward}/reviews/{day}/insight", token=ward_token
-            ).json()["status"],
-            "ready",
-        )
+        insight = self.request(
+            "GET", f"/wards/{ward}/reviews/{day}/insight", token=ward_token
+        ).json()
+        self.assertEqual(insight["status"], "ready")
+        self.assertNotIn("advice", insight)
         self.assertEqual(
             self.request(
                 "GET", f"/wards/{ward}/guardian-story/{day}", token=token

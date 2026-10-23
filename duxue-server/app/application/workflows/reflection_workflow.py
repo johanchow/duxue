@@ -2,27 +2,15 @@ from __future__ import annotations
 
 from datetime import date
 
-from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.application.commands.memory import SqlAlchemyMemoryFacade
 from app.application.ports.companion import RunInvocation, WorkflowOutcome
 from app.application.queries.context_builder import ContextBuilder
-from app.application.queries.run_transcript import (
-    current_turn_images,
-    load_visible_utterances,
-)
 from app.contexts.companion.domain.policy import PolicyRegistry
-from app.infrastructure.ai import components
-from app.infrastructure.ai.model_gateway import ModelGatewayError, QwenAgentModelGateway
-from app.infrastructure.ai.utterance_window import instruction_with_window
-from app.infrastructure.messaging.outbox import publish_learning_fact
-from app.infrastructure.observability.telemetry import (
-    agent_step_span,
-    record_llm_fallback,
-    traced_agent_node,
-)
-from app.infrastructure.persistence.models import FocusKit, Report, SelfReview, now
+from app.application.commands.self_reviews import confirm_self_review
+from app.infrastructure.observability.telemetry import traced_agent_node
+from app.infrastructure.persistence.models import Report, SelfReview
 
 _SELF_REVIEW_PROMPT = "如果想复盘今天的学习，请先说说今天学了什么、感觉如何；想问其他问题也可以直接问我。"
 
@@ -43,44 +31,25 @@ class ReflectionWorkflow:
         if review is None and not turn.get("review_feeling"):
             return WorkflowOutcome(run_status="waiting_for_ward", outcome_type="waiting", next_interaction={"status": "needs_self_review", "content": _SELF_REVIEW_PROMPT}, context_snapshot=envelope.trace_snapshot())
         if review is None:
-            review = SelfReview(ward_id=invocation.ward_id, review_date=day, feeling=turn["review_feeling"], reflection=turn.get("review_reflection"))
-            self.db.add(review); self.db.flush()
+            review = confirm_self_review(
+                self.db, ward_id=invocation.ward_id, review_date=day,
+                raw_expression=turn.get("review_reflection") or turn["review_feeling"],
+                aspects=[], expected_version=0, feeling=turn["review_feeling"],
+            )
         elif turn.get("review_feeling"):
-            review.feeling, review.reflection = turn["review_feeling"], turn.get("review_reflection")
-            review.version += 1
-        if turn.get("review_feeling"):
-            publish_learning_fact(self.db, ward_id=invocation.ward_id, event_type="self_review.submitted", source_type="self_review", source_id=review.id, source_version=review.version, source="ward", payload={"review_date": day.isoformat(), "feeling": review.feeling})
-        kit = self.db.query(FocusKit).filter_by(ward_id=invocation.ward_id, review_date=day).one_or_none()
-        if turn.get("adopt_focus_kit"):
-            if kit is None:
-                kit = FocusKit(ward_id=invocation.ward_id, review_date=day, advice="下一次卡住时，先写下已知条件再继续。")
-                self.db.add(kit)
-                self.db.flush()
-            kit.saved_at = now()
-            publish_learning_fact(self.db, ward_id=invocation.ward_id, event_type="focus_kit.adopted", source_type="focus_kit", source_id=kit.id, source="ward", payload={"review_date": day.isoformat()})
+            review = confirm_self_review(
+                self.db, ward_id=invocation.ward_id, review_date=day,
+                raw_expression=turn.get("review_reflection") or turn["review_feeling"],
+                aspects=[], expected_version=review.version, feeling=turn["review_feeling"],
+            )
         report = self.db.query(Report).filter_by(ward_id=invocation.ward_id, report_date=day).one_or_none()
-        advice = "下一次卡住时，先写下已知条件再继续。"
-        model_fallback = False
-        try:
-            window = load_visible_utterances(
-                self.db, ward_id=invocation.ward_id, thread_id=invocation.thread_id,
-                exclude_turn_id=invocation.turn_id,
-            )
-            current_images = current_turn_images(invocation.ward_id, turn.get("attachment_keys"))
-            candidate = QwenAgentModelGateway().generate(
-                agent_type="reflection", envelope=envelope.model_dump(),
-                recent_utterances=window, current_images=current_images,
-                instruction=instruction_with_window(
-                    f"孩子的今日自评是：{review.feeling}。给一句积极、具体且不评价人格的复盘建议。",
-                    window, len(current_images),
-                ),
-            )
-            with agent_step_span("check", "reflection.candidate") as check_span:
-                accepted = PolicyRegistry().validate_candidate(candidate.model_dump(), allowed_tools=set()).accepted
-                check_span.set_attribute("agent.check.result", "accepted" if accepted else "rejected")
-            if accepted:
-                advice = candidate.content
-        except ModelGatewayError as error:
-            model_fallback = True
-            record_llm_fallback(operation="agent_text", reason=str(error))
-        return WorkflowOutcome(run_status="closed", outcome_type="completed", context_refs=[f"self_review:{review.id}"], next_interaction={"status": "ready", "objective_evidence_status": "available" if report else "pending", "advice": advice, "model": components.model_for("reflection.advice"), "model_fallback": model_fallback}, context_snapshot=envelope.trace_snapshot())
+        return WorkflowOutcome(
+            run_status="closed", outcome_type="completed",
+            context_refs=[f"self_review:{review.id}"],
+            next_interaction={
+                "status": "ready",
+                "objective_evidence_status": "available" if report else "pending",
+                "content": "我记下了你的今日总结。" if report else "我记下了你的今日总结，观察记录还在整理中。",
+            },
+            context_snapshot=envelope.trace_snapshot(),
+        )

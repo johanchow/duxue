@@ -7,6 +7,7 @@ from app.application.commands.memory import SqlAlchemyMemoryFacade
 from app.application.ports.companion import RunInvocation, WorkflowOutcome
 from app.application.ports.tutoring import SafetyScreeningPort
 from app.application.queries.context_builder import ContextBuilder
+from app.application.queries.self_reviews import get_recent_self_reviews
 from app.application.workflows.planning_adapter import planning_today
 from app.application.workflows.planning_domain_service import PlanningDomainService
 from app.application.workflows.pronunciation_guidance import (
@@ -312,9 +313,15 @@ class TutoringWorkflow:
             )
         window, images = self._media(invocation)
         candidates = history_candidates(window)
+        review_aspects = get_recent_self_reviews(
+            self.db, actor_id=invocation.ward_id, actor_role="ward",
+            ward_id=invocation.ward_id, use_case="tutoring", end_date=planning_today(),
+            task_ref=session.task_id, item_budget=4,
+        ) if session and session.task_id else []
         instruction = build_tutor_instruction(
             content=content, permit=permit, history_candidates=candidates,
             tutoring_intent=turn.get("tutoring_intent"),
+            self_review_aspects=review_aspects,
         )
         tools = TutorToolbox(
             self.db, tutoring_session_id=tutor.id if tutor else None, problem=problem_row,

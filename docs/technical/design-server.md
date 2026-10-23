@@ -1,5 +1,7 @@
 # 读学系统 — Server 端详细技术设计 (design-server.md)
 
+> 评估领域的 `actionable_tips`、锦囊生成/采纳接口及点选自评为旧版规划，当前阶段不实施；`focus_kits` 实际旧表将在执行[退役迁移](../../duxue-server/migrations/versions/20261022_26_remove_focus_kits.py)时删除。今日总结目标模型以 [Evaluation & Reflection 设计](domain-evaluation.md) 为准。
+
 > 版本：v3.0  
 > 核心技术栈：Python 3.11 · FastAPI · SQLAlchemy 2.0 (Async) · PostgreSQL 16 · Redis 7 · Celery 5 · 阿里云 OSS · Qwen3-VL / LLM  
 > 系统定位：读学系统的智能中枢与服务中台，负责物理感知接入、视觉行为推理、启发式伴学支架编排、三层孩子记忆模型演进与双轨复盘报告生成。

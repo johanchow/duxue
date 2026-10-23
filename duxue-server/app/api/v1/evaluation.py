@@ -1,26 +1,100 @@
 from .common import *
 from .common import _report, _ward_owned
+from app.api.schemas import SelfReviewConfirmRequest, SelfReviewDraftRequest
+from app.application.commands.self_reviews import confirm_self_review
+from app.application.queries.review_draft import propose_review_aspects
+from app.application.queries.review_prompt import review_invitation
+from app.application.queries.self_reviews import get_recent_self_reviews
+from app.infrastructure.persistence.models import SelfReviewAspect, SelfReviewVersion
 
 router = APIRouter(tags=["evaluation"])
 
 @router.post("/wards/{ward_id}/reviews/{review_date}")
 def submit_review(ward_id: str, review_date: date, body: SelfReviewCreate, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
-    _ward_owned(principal, ward_id); row=db.query(SelfReview).filter_by(ward_id=ward_id, review_date=review_date).one_or_none()
-    if row is None: row=SelfReview(ward_id=ward_id, review_date=review_date, **body.model_dump()); db.add(row)
-    else:
-        for k,v in body.model_dump().items(): setattr(row,k,v)
-    kit=db.query(FocusKit).filter_by(ward_id=ward_id,review_date=review_date).one_or_none()
-    if kit is None: db.add(FocusKit(ward_id=ward_id, review_date=review_date, advice="遇到卡住时，先停两分钟写下已知条件，再继续下一步。"))
-    db.flush()
-    publish_learning_fact(db, ward_id=ward_id, event_type="self_review.submitted", source_type="self_review", source_id=row.id, payload={"review_date": review_date.isoformat(), "feeling": row.feeling})
-    db.commit(); return {"status":"submitted"}
+    _ward_owned(principal, ward_id)
+    row = confirm_self_review(
+        db, ward_id=ward_id, review_date=review_date,
+        raw_expression=body.reflection or body.feeling, aspects=[],
+        expected_version=None, feeling=body.feeling,
+    )
+    row.timeline_json = body.timeline_json
+    db.commit()
+    return {"status": "submitted", "review_id": row.id, "version": row.version}
+
+
+@router.post("/wards/{ward_id}/reviews/{review_date}/draft")
+def draft_review(ward_id: str, review_date: date, body: SelfReviewDraftRequest,
+                 principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
+    _ward_owned(principal, ward_id)
+    current = db.query(SelfReview).filter_by(ward_id=ward_id, review_date=review_date).one_or_none()
+    return {
+        "raw_expression": body.raw_expression.strip(),
+        "aspects": propose_review_aspects(body.raw_expression),
+        "expected_version": current.version if current else 0,
+    }
+
+
+@router.get("/wards/{ward_id}/reviews/{review_date}/prompt")
+def review_prompt(ward_id: str, review_date: date,
+                  principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
+    _ward_owned(principal, ward_id)
+    return review_invitation(db, ward_id=ward_id, review_date=review_date)
+
+
+@router.put("/wards/{ward_id}/reviews/{review_date}/confirm")
+def confirm_review(ward_id: str, review_date: date, body: SelfReviewConfirmRequest,
+                   principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
+    _ward_owned(principal, ward_id)
+    row = confirm_self_review(
+        db, ward_id=ward_id, review_date=review_date,
+        raw_expression=body.raw_expression,
+        aspects=[aspect.model_dump() for aspect in body.aspects],
+        expected_version=body.expected_version,
+        source_message_id=body.source_message_id,
+    )
+    db.commit()
+    return {"status": "confirmed", "review_id": row.id, "version": row.version}
+
+
+@router.get("/wards/{ward_id}/reviews/recent")
+def recent_reviews(ward_id: str, end_date: date | None = None, days: int = 5,
+                   task_ref: str | None = None, topic_ref: str | None = None,
+                   limit: int = 8, char_budget: int = 2000,
+                   principal: Principal = Depends(current_ward),
+                   db: Session = Depends(get_db)):
+    return {"items": get_recent_self_reviews(
+        db, actor_id=principal.user_id, actor_role=principal.role,
+        ward_id=ward_id, use_case="ward_history", end_date=end_date or date.today(),
+        days=days, task_ref=task_ref, topic_ref=topic_ref,
+        item_budget=limit, char_budget=char_budget,
+    )}
+
+
+@router.get("/wards/{ward_id}/reviews/{review_date}")
+def get_review(ward_id: str, review_date: date,
+               principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
+    _ward_owned(principal, ward_id)
+    review = db.query(SelfReview).filter_by(ward_id=ward_id, review_date=review_date).one_or_none()
+    if review is None:
+        raise HTTPException(404, "summary not found")
+    version = db.query(SelfReviewVersion).filter_by(review_id=review.id, version=review.version).one_or_none()
+    aspects = db.query(SelfReviewAspect).filter_by(review_id=review.id, review_version=review.version).all()
+    return {
+        "review_id": review.id, "review_date": review_date,
+        "version": review.version,
+        "raw_expression": version.raw_expression if version else review.reflection or review.feeling,
+        "aspects": [{"aspect_id": a.id, "dimension": a.dimension, "statement": a.statement,
+                     "source_quote": a.source_quote, "task_ref": a.task_ref, "topic_ref": a.topic_ref}
+                    for a in aspects],
+        "status": "confirmed" if version else "legacy_unstructured",
+    }
 
 @router.get("/wards/{ward_id}/reviews/{review_date}/insight")
 def ward_insight(ward_id: str, review_date: date, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
     _ward_owned(principal, ward_id); review=db.query(SelfReview).filter_by(ward_id=ward_id,review_date=review_date).one_or_none()
     if review is None: return {"status":"locked"}
-    report=db.query(Report).filter_by(ward_id=ward_id,report_date=review_date).one_or_none(); kit=db.query(FocusKit).filter_by(ward_id=ward_id,review_date=review_date).one()
-    return {"status":"ready","subjective_timeline":review.timeline_json,"objective_timeline": report.timeline_json if report else [],"advice":kit.advice}
+    report=db.query(Report).filter_by(ward_id=ward_id,report_date=review_date).one_or_none()
+    return {"status":"ready","subjective_timeline":review.timeline_json,"objective_timeline": report.timeline_json if report else []}
 
 @router.get("/wards/{ward_id}/guardian-story/{story_date}")
 def guardian_story(ward_id: str, story_date: date, principal: Principal = Depends(current_guardian), db: Session = Depends(get_db)):

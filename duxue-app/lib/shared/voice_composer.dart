@@ -20,6 +20,7 @@ class VoiceComposer extends StatefulWidget {
     this.onTap,
     this.onBeforeRecording,
     this.enabled = true,
+    this.showImageAction = true,
     this.voiceFactory = VoiceTranscriptionService.new,
   });
 
@@ -37,6 +38,7 @@ class VoiceComposer extends StatefulWidget {
   /// Optional host-owned preflight, e.g. refresh an expiring session.
   final Future<void> Function()? onBeforeRecording;
   final bool enabled;
+  final bool showImageAction;
   final VoiceTranscriptionFactory voiceFactory;
 
   @override
@@ -258,20 +260,22 @@ class _VoiceComposerState extends State<VoiceComposer> {
                                               color: Colors.blueGrey)),
                                   ])),
                             ]))))),
-        const SizedBox(width: 10),
-        SizedBox(
-            width: 64,
-            height: 52,
-            child: OutlinedButton(
-                onPressed:
-                    _recording || !widget.enabled ? null : widget.onPickImage,
-                style: OutlinedButton.styleFrom(padding: EdgeInsets.zero),
-                child: const Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.camera_alt_outlined, size: 20),
-                      Text('拍照', style: TextStyle(fontSize: 11)),
-                    ]))),
+        if (widget.showImageAction) ...[
+          const SizedBox(width: 10),
+          SizedBox(
+              width: 64,
+              height: 52,
+              child: OutlinedButton(
+                  onPressed:
+                      _recording || !widget.enabled ? null : widget.onPickImage,
+                  style: OutlinedButton.styleFrom(padding: EdgeInsets.zero),
+                  child: const Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.camera_alt_outlined, size: 20),
+                        Text('拍照', style: TextStyle(fontSize: 11)),
+                      ]))),
+        ],
       ]);
 }
 

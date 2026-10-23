@@ -18,8 +18,8 @@ from app.infrastructure.ai.utterance_window import image_parts
 
 __all__ = ["AgentTextCandidate", "ModelGatewayError", "QwenAgentModelGateway"]
 
-AgentName = Literal["planning", "reflection"]
-_COMPONENT_BY_AGENT = {"planning": "planning.reply", "reflection": "reflection.advice"}
+AgentName = Literal["planning"]
+_COMPONENT_BY_AGENT = {"planning": "planning.reply"}
 
 
 class AgentTextCandidate(BaseModel):
@@ -28,7 +28,7 @@ class AgentTextCandidate(BaseModel):
 
 
 class QwenAgentModelGateway:
-    """Planning / reflection text candidates through the registered components."""
+    """Planning text candidates through the registered component."""
 
     def generate(
         self, *, agent_type: AgentName, envelope: dict, instruction: str,

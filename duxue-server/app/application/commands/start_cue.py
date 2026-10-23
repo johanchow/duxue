@@ -19,6 +19,7 @@ from app.contexts.study.domain.start_cue import (
 from app.infrastructure.messaging.outbox import publish_learning_fact
 from app.infrastructure.persistence.models import (
     DailySchedule,
+    SelfReview,
     StartCueRecord,
     StudySession,
     StudySessionInterval,
@@ -94,7 +95,8 @@ class StartCueService:
         for item in self._slots(schedule, ward_id):
             if last_end is None or item["end"] > last_end:
                 last_end = item["end"]
-            if item["start"] > current and not self._task_in_progress(ward_id, item["task_id"]):
+            if (item["start"] > current and item["status"] == "scheduled"
+                    and not self._task_in_progress(ward_id, item["task_id"])):
                 notes.append({
                     "id": f"start:{item['task_id']}",
                     "fire_at": item["start"].isoformat(),
@@ -123,7 +125,12 @@ class StartCueService:
                         "body": f"{task.title}的这段时间到了。可以暂停，也可以继续。",
                         "kind": "rest",
                     })
-        if last_end is not None and last_end > current:
+        has_review = (
+            self.db.query(SelfReview.id)
+            .filter_by(ward_id=ward_id, review_date=schedule.schedule_date)
+            .first() is not None
+        )
+        if last_end is not None and last_end > current and not has_review:
             notes.append({
                 "id": f"day:{schedule.id}",
                 "fire_at": last_end.isoformat(),
@@ -152,6 +159,7 @@ class StartCueService:
             rows.append({
                 "task_id": task_id,
                 "title": task.title,
+                "status": task.status,
                 "start": start,
                 "end": end,
                 "start_label": SchedulingService.instant(start_raw).strftime("%H:%M"),

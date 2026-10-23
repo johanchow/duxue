@@ -206,7 +206,6 @@ def companion_turn(body: CompanionTurnRequest, principal: Principal = Depends(cu
             review_date=body.review_date,
             review_feeling=body.review_feeling,
             review_reflection=body.review_reflection,
-            adopt_focus_kit=body.adopt_focus_kit,
             attachment_keys=body.attachment_keys,
             structured_command=body.structured_command.model_dump() if body.structured_command else None,
         )

@@ -46,7 +46,7 @@ flowchart LR
     CO -->|authorized RunInvocation| ER
     PL -->|LearningFactRecorded.v1| MU
     TU -->|LearningFactRecorded.v1| MU
-    ER -->|LearningFactRecorded.v1| MU
+    ER -->|authorized GetRecentSelfReviews Query| CO
     MU -->|authorized MemoryBundle ACL| CO
     RT -. validated candidate only .-> PL
     RT -. validated candidate only .-> TU
@@ -420,6 +420,7 @@ Workflow 必须声明版本化 `ContextSpec`：Memory 范围、近期会话窗�
 | `CompanionTranscriptView` | Ward 对话 UI     | `CompanionTranscriptStore` 中的 `CompanionMessage` journal | 同一 Unit of Work 后强一致；仅当前 Ward；按 Thread 版本游标分页；可按 `run_id` 分段展示，但不把完整历史作为跨 Context Query 或 Handoff 载荷    |
 | `WorkflowInteractionView` | Ward 当前屏       | 已校验 Outcome + 目标 Query 投影                                | 见 [§5.2 Companion Interaction Protocol](#52-companion-interaction-protocol)；完整对话不是跨 Context Query Model |
 | `MemoryBundle`            | ContextBuilder | Memory Query ACL                                         | 单次授权快照；预算/freshness 标记；不能用于写决策                                                                          |
+| `RecentSelfReviewsView`（目标） | 相关复盘、答疑或计划的上下文组装 | Evaluation `GetRecentSelfReviews` Query | 仅 Ward 受权、当前确认版本、按日期/主题/任务和 item/token 预算筛选；不进入默认 MemoryBundle；当前代码尚未接入 |
 
 
 

@@ -167,7 +167,6 @@ class CompanionTurnRequest(BaseModel):
     review_date: date | None = None
     review_feeling: str | None = Field(default=None, max_length=40)
     review_reflection: str | None = Field(default=None, max_length=2000)
-    adopt_focus_kit: bool = False
     attachment_keys: list[str] = Field(default_factory=list, max_length=8)
     structured_command: StructuredWardCommand | None = None
 
@@ -259,3 +258,22 @@ class SelfReviewCreate(BaseModel):
     feeling: str = Field(min_length=1, max_length=40)
     reflection: str | None = Field(default=None, max_length=2000)
     timeline_json: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class SelfReviewDraftRequest(BaseModel):
+    raw_expression: str = Field(min_length=1, max_length=4000)
+
+
+class SelfReviewAspectInput(BaseModel):
+    dimension: str
+    statement: str = Field(min_length=1, max_length=300)
+    source_quote: str = Field(min_length=1, max_length=4000)
+    task_ref: str | None = None
+    topic_ref: str | None = None
+
+
+class SelfReviewConfirmRequest(BaseModel):
+    raw_expression: str = Field(min_length=1, max_length=4000)
+    aspects: list[SelfReviewAspectInput] = Field(default_factory=list, max_length=18)
+    expected_version: int | None = Field(default=None, ge=0)
+    source_message_id: str | None = None

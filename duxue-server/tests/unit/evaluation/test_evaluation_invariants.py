@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from datetime import date
-import pytest
+from sqlalchemy import inspect
 
-from app.application.workflows.reflection_workflow import ReflectionWorkflow
-from app.application.process_managers.companion_coordinator import CompanionCoordinator
 from app.application.ports.companion import RunInvocation
-from app.infrastructure.persistence.models import OutboxEvent, SelfReview, FocusKit, uid
+from app.application.process_managers.companion_coordinator import CompanionCoordinator
+from app.application.workflows.reflection_workflow import ReflectionWorkflow
+from app.infrastructure.persistence.models import OutboxEvent, SelfReview, uid
 from tests.support.factories import create_ward
 
 
@@ -98,17 +97,15 @@ def test_self_review_versioning_and_fact_emission(db):
         for event in db.query(OutboxEvent).all()
         if event.payload.get("event_type") == "self_review.submitted"
     ]
-    assert len(facts) == 2
-    assert [f["source_version"] for f in facts] == [1, 2]
+    assert facts == []
 
 
-def test_focus_kit_only_adopted_when_explicitly_requested(db):
-    """仅当 adopt_focus_kit 为 True 时才沉淀锦囊采纳事实。"""
+def test_self_review_does_not_emit_focus_kit_fact(db):
+    """提交自述不会自动生成锦囊采纳事实。"""
     ward = create_ward(db)
     db.commit()
 
     workflow = ReflectionWorkflow(db)
-    # 不采纳锦囊
     workflow.invoke(
         RunInvocation(
             run_id=uid(),
@@ -118,7 +115,6 @@ def test_focus_kit_only_adopted_when_explicitly_requested(db):
             turn={
                 "review_date": "2026-09-12",
                 "review_feeling": "smooth",
-                "adopt_focus_kit": False,
             },
         )
     )
@@ -127,25 +123,8 @@ def test_focus_kit_only_adopted_when_explicitly_requested(db):
         event for event in db.query(OutboxEvent).all()
         if event.payload.get("event_type") == "focus_kit.adopted"
     ]
-    assert len(adopted_facts) == 0
+    assert adopted_facts == []
 
-    # 显式采纳锦囊
-    workflow.invoke(
-        RunInvocation(
-            run_id=uid(),
-            thread_id=uid(),
-            ward_id=ward.id,
-            agent_type="reflection",
-            turn={
-                "review_date": "2026-09-12",
-                "review_feeling": "smooth",
-                "adopt_focus_kit": True,
-            },
-        )
-    )
-    db.commit()
-    adopted_facts2 = [
-        event for event in db.query(OutboxEvent).all()
-        if event.payload.get("event_type") == "focus_kit.adopted"
-    ]
-    assert len(adopted_facts2) == 1
+
+def test_retired_focus_kit_table_is_absent(db_engine):
+    assert not inspect(db_engine).has_table("focus_kits")

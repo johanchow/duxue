@@ -19,7 +19,7 @@ from app.api.deps import Principal, _bearer, current_device, current_guardian, c
 from app.infrastructure.persistence.models import (
     AnalysisProfile, BehaviorLabelConfig, BehaviorSegment, Device, Frame, FramePrediction,
     Guardian, GuardianWard, RefreshToken, WardRefreshToken, Report, User, Ward, WardCredential, WardInvite,
-    Task, DailySchedule, PlanDraft, StudySession, StudySessionInterval, TutoringSession, TutoringMessage, PronunciationLesson, SelfReview, FocusKit,
+    Task, DailySchedule, PlanDraft, StudySession, StudySessionInterval, TutoringSession, TutoringMessage, PronunciationLesson, SelfReview, SelfReviewAspect, SelfReviewVersion,
     AgentRun, AgentStreamEvent, AgentCheckpoint, AgentTrace, CompanionCommand, CompanionMessage, ConversationThread,
     LearningEvent, EpisodicMemory, EpisodicMemoryEvent, DerivedSignal, DerivedSignalEvent, LongTermProfile, OutboxEvent,
     now,

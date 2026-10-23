@@ -1,6 +1,6 @@
 # 读学系统 — Memory & Understanding Bounded Context
 
-> 状态：讨论稿 · 版本：v2.2
+> 状态：讨论稿 · 版本：v2.4
 > 适用范围：`duxue-server` 中 Ward 学习证据、情境记忆、可校正理解与长期画像投影。
 > 关联：[DDD 系统级 Overview](ddd-overview.md) · [陪伴编排](domain-companion.md) · [Planning Context](domain-planning.md) · [Tutoring Context](domain-tutoring.md) · [Evaluation Context](domain-evaluation.md) · [服务端物理 Schema](design-server.md) · [记忆 PRD](../product/prd-memory.md)
 
@@ -11,22 +11,21 @@
 ```mermaid
 flowchart LR
     PL[Planning Context]
-    ST[Tutoring Context]
+    TU[Tutoring Context]
     BA[Behavior Analysis]
     ER[Evaluation & Reflection]
     MC[Memory & Understanding Context]
     CO[Companion Orchestration]
 
     PL -->|LearningFactRecorded.v1| MC
-    ST -->|LearningFactRecorded.v1| MC
+    TU -->|LearningFactRecorded.v1| MC
     BA -->|LearningFactRecorded.v1| MC
-    ER -->|LearningFactRecorded.v1| MC
     MC -->|authorized MemoryBundle ACL| CO
     MC -->|authorized MemoryBundle ACL| PL
     MC -->|authorized MemoryBundle ACL| ER
 ```
 
-这是 Memory & Understanding Context 的邻接图；全系统 Domain Inventory、Context Map 与跨 Context 写入所有权由 [DDD 系统级 Overview](ddd-overview.md) 唯一维护。上游拥有业务状态，Memory 只保存可追溯证据和派生理解；Companion、Planning 与 Evaluation & Reflection 均只能经 `MemoryFacade` 的受权 Query 边界读取最小 `MemoryBundle`。
+这是 Memory & Understanding Context 的邻接图；全系统 Domain Inventory、Context Map 与跨 Context 写入所有权由 [DDD 系统级 Overview](ddd-overview.md) 唯一维护。上游拥有业务状态，Memory 只保存有独立用途的可追溯证据和派生理解；Companion、Planning 与 Evaluation & Reflection 经 `MemoryFacade` 的受权 Query 边界读取最小 `MemoryBundle`。今日总结由 Evaluation 自己提供受权 Query，Companion 按需调用；Planning 需要相关自述时也调用 Evaluation Query，而不是查询 Memory 中的总结副本。
 
 | 术语 | Context 内定义 | 所有权 |
 |---|---|---|
@@ -37,7 +36,9 @@ flowchart LR
 | Long-Term Profile | Active 长期 Signal 的可重算读模型 | Memory Query Side |
 | Working Memory | 当前 Run 的可恢复运行状态 | Companion Runtime，不是本 Context 写 Aggregate |
 
-Planning、Tutoring、Behavior Analysis 与 Evaluation & Reflection 在各自 Use Case 的本地事务中发布版本化 `LearningFactRecorded.v1`。Memory Consumer Adapter 负责 transport/schema 校验、去重和投递，`IngestLearningFact` 再以来源四元组 `source_type + source_id + event_type + source_version` 幂等写入本地 Evidence Ledger。跨 Context 不共享 Aggregate，也不直接改写彼此业务表。
+Planning、Tutoring 与 Behavior Analysis 在各自 Use Case 的本地事务中发布有 Memory 消费用途的版本化 `LearningFactRecorded.v1`。Memory Consumer Adapter 负责 transport/schema 校验、去重和投递，`IngestLearningFact` 再以来源四元组 `source_type + source_id + event_type + source_version` 幂等写入本地 Evidence Ledger。跨 Context 不共享 Aggregate，也不直接改写彼此业务表。
+
+Evaluation 拥有 Ward 今日总结的原话、六维整理、确认与修订；六维定义只在 [Evaluation & Reflection](domain-evaluation.md) 维护。近期总结直接从该 Context 的受权 Query 召回，不因提交或修订总结而在 Memory 建立 `daily_review`、复制六维条目或自动生成 Signal。将来若有明确的跨日判断用途，应另行定义最小证据契约与修订失效规则；模型候选、未确认转写、提示语和系统自动建议都不是 Ward 事实。
 
 ## 二、领域模型与 Aggregate
 
@@ -77,7 +78,7 @@ flowchart LR
 | 领域事件 | `EpisodicMemorySettled`、`EpisodicMemoryArchived` |
 | Repository Port | `EpisodicMemoryRepository` |
 
-`tutoring_episode` 是该 Aggregate 的逻辑类型：保存受控题目引用、Ward 可观察尝试、实际支持、结果与下一步；其幂等键为 `tutoring_episode + tutoring_session_id + session_version`。
+`tutoring_episode` 是该 Aggregate 的逻辑类型：保存受控题目引用、Ward 可观察尝试、实际支持、结果与下一步；其幂等键为 `tutoring_episode + tutoring_session_id + session_version`。今日总结有独立的权威记录与版本生命周期，不是本 Aggregate 的逻辑类型。
 
 #### 2.2.1 Internal UML 与 Entity Inventory
 
@@ -126,7 +127,7 @@ classDiagram
     EpisodicMemoryEvidenceLink --> LearningEvidence : ID reference only
 ```
 
-图中只包含本 Aggregate 的领域对象；`LearningEvidence` 属于独立 Evidence Ledger Aggregate，只通过 ID 引用。
+图中只包含本 Aggregate 的领域对象；当前 Episode 持有 `TutoringEpisodePayload`。`LearningEvidence` 属于独立 Evidence Ledger Aggregate，只通过 ID 引用。
 
 | 对象 | 类型与 Identity | 关键领域属性 | 主要领域方法 | 不变量职责 |
 |---|---|---|---|---|
@@ -137,6 +138,22 @@ classDiagram
 | `DecayWindow` | Value Object；无 Identity | `hot_until`、`expires_at`、`policy_version` | `contains(at)`、`is_expired(at)` | 时间窗口合法，且衰减策略可追溯到版本 |
 
 这里的“属性”是会影响领域决策、生命周期或不变量的状态，不是 `episodic_memories` 的逐列 ORM 映射；持久化字段仍以 `design-server.md` 为准。
+
+### 2.2.2 今日总结与 Memory 的边界
+
+`self_reviews`、版本化原话与 `self_review_aspects` 是 Evaluation 的权威记录。六维 `dimension` 属于 Evaluation 的条目分类，不是 Memory 的 `signal_type`，也不需要在 `learning_events` 增加六列。Ward 的“已理解”“方法有效”“下次想做”均是自述，不等于能力、效果或已执行行动。
+
+Companion 在 Ward 主动回顾、继续复盘或答疑问题与过去总结相关时，经 Evaluation 的 `GetRecentSelfReviews` 受权 Query 读取少量已确认条目；Planning 仅在 Ward 明确请求相关计划时读取 `next_intent`。查询按 Ward、日期范围、主题/任务关联及当前确认版本过滤，返回日期、维度、陈述、原话定位和版本；只供模型上下文或 Ward 展示，不作为写入其他 Aggregate 的依据。今天的主客观对照使用 Evaluation 本地当前总结，不绕经 Memory。
+
+Evaluation 的同日修订原子更新当前版本；查询立即返回最高已确认版本，没有条目时返回空条目，不从旧版补齐。旧版本由 Evaluation 保留用于审计与报告溯源，不参与默认召回。Memory 当前不因总结提交或修订生成 Evidence、Episode、Signal 或画像更新。将来若跨日 Signal 确需引用自述，必须先定义最小来源引用、独立样本和旧版失效/重评契约，不把原话或六维条目批量复制进 Memory。
+
+| Evaluation 条目维度 | Memory 用途边界 |
+|---|---|
+| `understanding`、`strategy`、`time_help` | Evaluation Query 可提供近期自述线索；若要提出 `knowledge_gap`、`effective_strategy` 或 `estimation_bias` Candidate，仍需相应受控答疑/执行证据，单日自述不能证明能力、方法效果或归因。 |
+| `affect`、`context` | 仅由 Evaluation 按授权和必要性提供近期情境，不默认推导人格、心理或家庭画像。 |
+| `next_intent` | 由 Evaluation 在 Ward 继续复盘或明确请求排计划时提供“孩子说过的意向”；不创建系统锦囊、不自动变更计划，也不当作已执行行动。 |
+
+多日一致的自述仍是主观证据；长期 Signal 需满足各自 Policy 的独立样本、反证和 Ward 确认门槛。特别是 `reflection_accuracy_trend` 必须使用可比的自述与客观指标，并显式记录方法/样本，不从一次“感觉和观察不同”推断孩子自评不准。
 
 ### 2.3 DerivedSignal Aggregate
 
@@ -153,7 +170,7 @@ classDiagram
 ```mermaid
 stateDiagram-v2
     [*] --> Candidate : controlled evidence arrives
-    Candidate --> Active : Policy threshold met<br/>or Ward confirmation
+    Candidate --> Active : Policy threshold met<br/>and required Ward confirmation
     Candidate --> Expired : insufficient evidence + expiry
     Active --> Challenged : counterevidence / Ward denial
     Challenged --> Active : re-evaluation meets Policy
@@ -302,7 +319,7 @@ Aggregate 产生的 **Domain Event**。前者由接收方的 Application Event H
 
 | 触发与来源 | Adapter / 入口 | Memory Application Command / Handler | Domain 调用与原子边界 | 本地领域事件 | 后续 Outbox / Projection | 一致性、幂等与失败 |
 |---|---|---|---|---|---|---|
-| Planning、Tutoring、Behavior Analysis、Evaluation & Reflection 发布 `LearningFactRecorded.v1` | Consumer Adapter 验证 transport/schema 后投递 | `IngestLearningFact` 校验版本、来源四元组与 ACL | create `LearningEvidence`；原子保证 append-only 与来源去重 | `LearningEvidenceRecorded`（本地） | 标记可被结算 Worker 处理 | 四元组唯一；未知 schema 死信/人工对账；重复投递无副作用 |
+| Planning、Tutoring、Behavior Analysis 发布 `LearningFactRecorded.v1` | Consumer Adapter 验证 transport/schema 后投递 | `IngestLearningFact` 校验版本、来源四元组与 ACL | create `LearningEvidence`；原子保证 append-only 与来源去重 | `LearningEvidenceRecorded`（本地） | 标记可被结算 Worker 处理 | 四元组唯一；未知 schema 死信/人工对账；重复投递无副作用 |
 | 会话关闭、关联事实到达或周期性结算窗口 | Scheduler / Outbox Worker | `SettleEpisodicMemory` 选择同一 `aggregate_ref` 的证据并开启本地事务 | `EpisodicSettlementPolicy.decide()` → load/create `EpisodicMemory` → `attach_evidence()` → `settle(payload)` | `EpisodicMemorySettled` | 同 Context 结算/信号 Worker；更新 `EpisodicMemoryView` | 以 `memory_type + aggregate_ref + aggregate_version` 幂等；失败重试并可由 Ledger 重放 |
 | 已结算的情境、或受控证据窗口达到候选阈值 | Local Domain-Event Dispatcher / Worker | `ProposeCandidateSignal` | `SignalEvolutionService` 计算资格 → load/create `DerivedSignal` → `propose()` / `attach_evidence()` | `SignalProposed` | 更新 Candidate View；**不**更新 Profile | Policy/version 和 Signal identity 幂等；候选失败不影响 Evidence Ledger |
 | Ward 明确纠正 / 否认 | 受权 API / UI Command Adapter | `ChallengeSignal` 先把 Ward 陈述记录为可追溯证据，再处理命令 | load Signal → `attach_evidence(ward_fact, counterevidence)` → `challenge(statement)` | `SignalChallenged` | Profile Worker 移除其 Active 长期投影 | Ward、visibility、Signal 归属必须校验；重复命令按 evidence role 去重 |
@@ -343,6 +360,9 @@ Aggregate 产生的 **Domain Event**。前者由接收方的 Application Event H
 “独立”至少要求不同的 `aggregate_ref`（通常是不同答疑会话）；同一会话中的多条消息只能
 丰富一个 Episode，不能凑晋升次数。
 
+Ward 总结不结算为 Episode。若将来要根据总结与受控答疑/执行事实形成跨日 Signal，必须明确区分自述、观察及反证来源；不能擅自改写 Ward 原话或把观察覆盖成主观感受。
+
+
 | Signal 类型 | 可提出 Candidate 的最低条件 | `long_term` Active 的典型 guard |
 |---|---|---|
 | `knowledge_gap`、`estimation_bias` | 一个已结算 Episode 中存在受控、可定位的证据 | 多个独立 Episode 在窗口内一致，且无未处理反证 |
@@ -360,7 +380,7 @@ Aggregate 产生的 **Domain Event**。前者由接收方的 Application Event H
 
 | 异步步骤 | 生产者 → 接收方 | 幂等 / 顺序 | 失败、对账与重放 |
 |---|---|---|---|
-| 稳定 Fact 投递 | Planning / Tutoring / Evaluation 本地事务 → `outbox_events` → Memory Consumer Adapter | 来源四元组；同一来源对象按 `source_version` 有序处理 | 投递失败保留待发送记录并退避重试；未知 schema 死信，人工对账后才可重放 |
+| 稳定 Fact 投递 | Planning / Tutoring / Behavior Analysis 本地事务 → `outbox_events` → Memory Consumer Adapter | 来源四元组；同一来源对象按 `source_version` 有序处理 | 投递失败保留待发送记录并退避重试；未知 schema 死信，人工对账后才可重放 |
 | Fact 入账 | Consumer Adapter → `IngestLearningFact` | Evidence Ledger 的来源四元组唯一约束 | 重复投递无副作用；可根据 Outbox 与 Ledger 对账并补投 |
 | Episode 结算 | 关闭 Fact / Scheduler → `SettleEpisodicMemory` | `memory_type + aggregate_ref + aggregate_version`，证据链接去重 | 从 Ledger 重放；不能靠重新读取原始聊天补造证据 |
 | Signal / Profile 投影 | 本地 Episode 或 Signal 事件 → Worker / Projection | Signal identity；Profile 是全量覆盖式读模型 | 单个 Signal 失败可独立重试；Profile 可从 Active long-term Signals 全量重建 |
@@ -550,6 +570,35 @@ sequenceDiagram
 | Memory Outbox / Profile Worker | Infrastructure | 提交后触发可重试投影 |
 | LongTermProfileView | Projection | 仅由 Active long-term Signal 重建 |
 
+#### 3.2.3 Ward 总结的直接召回
+
+| Participant | Canonical type | Owned responsibility |
+|---|---|---|
+| Ward / Companion | Actor / Interface | 触发回顾、答疑或相关计划请求；传入受权身份与当前上下文 |
+| Companion ContextBuilder | Query caller | 按需请求少量相关总结，控制 item/token 预算 |
+| Evaluation `GetRecentSelfReviews` | Query | 校验 Ward/角色/用途，筛选最高已确认版本及相关条目 |
+| `SelfReviewView` | Read Model | 返回日期、版本、维度、陈述和可定位原话引用 |
+| Tutoring / Planning 模型调用 | Infrastructure | 只使用被允许的自述上下文，不产生自动计划或长期结论 |
+
+```mermaid
+sequenceDiagram
+    actor Ward
+    participant CO as Companion Query caller
+    participant ER as Evaluation GetRecentSelfReviews Query
+    participant RV as SelfReviewView
+    participant AI as Tutoring or Planning model
+    Ward->>CO: 回顾或提出相关答疑/计划问题
+    CO->>ER: ward + actor + use case + date/topic/task + budget
+    ER->>RV: 读取当前最高已确认版本
+    RV-->>ER: 相关条目、日期、版本、原话定位
+    ER-->>CO: 受权的最小自述上下文
+    opt 当前问题确需该信息
+        CO->>AI: 限量注入，标记为 Ward 自述
+    end
+```
+
+查询没有跨 Context 写入事务。Ward 修订后，Evaluation 的当前版本立即成为查询结果；旧版仅供授权审计和报告溯源。查询失败返回缺失状态，调用方不从旧 Episode 或原始聊天回退补造总结。
+
 ## 四、CQRS Query Model
 
 | Query Model | 消费者 | 来源 | 新鲜度 |
@@ -559,7 +608,9 @@ sequenceDiagram
 | `LongTermProfileView` | 报告与受权业务服务 | Active 长期 Signal 的重算投影 | 每日或状态变化后最终一致；不得用于强一致写决策 |
 | `MemoryBundle`（response DTO） | Companion、Planning、Evaluation & Reflection | Query 按 use case 装配上述 View；不含 Working Memory | 单次查询快照，受 item/token 预算 |
 
-`MemoryFacade.resolve_context(request)` 是唯一跨 Context 的受权 Query 边界：执行 Ward/角色/`visibility` 授权、结构化优先筛选、脱敏、证据投影与预算裁剪。它不暴露 Aggregate、完整原始对话、未经验证长期结论或 Working Memory；Working Memory 仍由 Companion Runtime 自己拥有。
+Ward 总结不进入 `EpisodicMemoryView` 或 `MemoryBundle`；它由 Evaluation 的 `GetRecentSelfReviews` 受权 Query 提供。Guardian 不通过该 Query 读取总结原话，其可见内容由 Evaluation 报告契约决定。候选 Signal 和过期情境不进入默认 Bundle。
+
+`MemoryFacade.resolve_context(request)` 是 Memory 数据的跨 Context 受权 Query 边界：执行 Ward/角色/`visibility` 授权、结构化优先筛选、脱敏、证据投影与预算裁剪。它不暴露 Aggregate、完整原始对话、未经验证长期结论或 Working Memory；Working Memory 仍由 Companion Runtime 自己拥有。Evaluation 自己的数据经其 Query 边界读取，不能让 `MemoryFacade` 越界读取 Evaluation ORM。
 
 ## 五、接口与事件契约
 
@@ -578,6 +629,10 @@ class MemoryQueryService(Protocol):
 ### 5.1 `LearningFactRecorded.v1`：入站 Integration Event
 
 该 Published Language 的目录归属 [DDD Overview](ddd-overview.md)；Memory 是接收方。最小 envelope 为 `source_type`、`source_id`、`source_version`、`event_type`、`occurred_at`、`ward_id`、`visibility`、受控 `evidence_refs`、`payload_schema_version` 与 `payload`。Consumer Adapter 仅验证 transport/schema 并去重投递；`IngestLearningFact` 负责将上游语言经 ACL 转换为本地 `LearningEvidence`。
+
+当前范围不为今日总结定义 `self_review.confirmed` 入站 Memory Fact；提交、确认和修订由 Evaluation 持有，并通过其 Query 立即可读。若未来跨日 Signal 确需自述证据，再单独定义最小事实契约、来源版本、修订失效和删除规则；不得仅为近期召回复制整段总结或六维条目。
+
+已有 `self_review.submitted` 是旧协议事实，只含日期和 `feeling`，不能据此构造六维条目、总结摘要或长期 Signal。Evaluation 的新提交和旧兼容路径均已停止新投递该事实；历史记录只按既有审计和删除规则处理，不作为召回来源。旧 `focus_kit.adopted` 若在历史账本出现，同样只保留既有审计/删除处理，不触发新 Episode、Signal 或计划行为。
 
 未知版本、Ward 不匹配、不可见引用或无效 payload 返回可重试/不可重试分类：前者退避重试，后者进入死信并人工对账；不得猜测解析。来源四元组是消费幂等键，同一来源对象按 `source_version` 有序处理。
 
@@ -604,7 +659,7 @@ class MemoryQueryService(Protocol):
 
 每个 Aggregate 有独立 Repository Port。`IngestLearningFact` 原子写入 `LearningEvidence` 与消费结果；`SettleEpisodicMemory`、`ChallengeSignal`、`EvolveSignals` 各自拥有本地事务并原子保存 Aggregate 与本地 Domain Event/Outbox。`RebuildLongTermProfile` 只写 Projection。来源四元组、Episode identity、Signal identity 和证据链接唯一键均应由数据库约束兜底。
 
-`source_*`、Episode identity/window、`dimension_key`、证据角色唯一约束以及自评版本由服务端 Alembic 迁移维护；新库升级与既有库增量升级均须验证。迁移失败或回滚时保留 Evidence Ledger，允许从其重放 Episode、Signal 与 Profile。
+`source_*`、Episode identity/window、`dimension_key` 与证据角色唯一约束由服务端 Alembic 迁移维护；自述版本和条目归 Evaluation 所有，参见 [Evaluation & Reflection](domain-evaluation.md)。六维条目不映射到 Memory 表，也不建立 `daily_review` Episode。新库升级与既有库增量升级均须验证；Memory 现有证据仍可重放自身的 Episode、Signal 与 Profile。
 
 ### 6.3 异步投递与 Projection
 
@@ -620,8 +675,13 @@ class MemoryQueryService(Protocol):
 |---|---|---|
 | Authorization | `MemoryFacade` 与 `ChallengeSignal` 校验 actor、Ward、visibility；不跨 Ward 返回 Bundle | 授权拒绝审计、越权告警 |
 | Sensitive evidence | Bundle 脱敏、预算裁剪；不返回原始对话/模型 trace | redaction 测试、payload 访问审计 |
+| Ward 今日总结 | 原话、已确认条目和版本只由 Evaluation 保存与受权查询；Memory 不为近期召回保存总结副本 | 越权读取、修订后立即返回当前版本、敏感条目泄露测试 |
 | Retention / deletion | 停止 Run/Worker 后按政策删除 Projection/可删除关联；不依赖 Cascade；Working Memory 由 Companion Runtime 清理 | 删除作业审计、遗留记录对账 |
 | Operations | 透传 correlation ID；记录消费滞后、死信、投影 freshness、重放次数与幂等冲突 | 指标、日志、追踪与告警 |
+
+### 6.5 当前实现差距
+
+通用 `LearningFactRecorded.v1` 仍可读取历史 `self_review.submitted`，但 Evaluation 不再新投递，Memory 不以其生成总结 Episode 或六维 Signal。近期总结由 Evaluation 的 `GetRecentSelfReviews` 从当前确认版本直接召回，按 Ward、日期、任务和用途限制，供相关答疑/计划使用。`payload_schema_version` 是其他入站事实的目标契约字段，当前通用 Outbox envelope 尚未提供；历史事实继续遵守原有审计与删除处理。
 
 ## 七、验收场景
 
@@ -639,4 +699,14 @@ Given 同一 LearningFactRecorded.v1 被重复投递
 When IngestLearningFact 重试
 Then Evidence Ledger 只保留一条对应事实
 And 不会重复结算同一情境记忆
+
+Given Ward 今天的总结只确认了理解和感受两个条目
+When Companion 经 Evaluation 的 GetRecentSelfReviews 召回相关总结
+Then 只返回当前确认版本的这两个条目和可定位的原话引用
+And MemoryBundle 不包含该总结的副本或由此自动生成的长期结论
+
+Given Ward 修订今日总结，将版本一改为版本二
+When Ward 再次查看总结或提出相关答疑问题
+Then Evaluation Query 返回版本二的相关条目
+And 旧版本仅供授权审计和报告溯源，不进入默认模型上下文
 ```

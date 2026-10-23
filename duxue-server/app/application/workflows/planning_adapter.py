@@ -13,6 +13,7 @@ from app.application.commands.memory import SqlAlchemyMemoryFacade
 from app.application.commands.plan_intake import PlanIntakeInput, PlanIntakeService
 from app.application.ports.companion import RunInvocation, WorkflowOutcome
 from app.application.queries.context_builder import ContextBuilder
+from app.application.queries.self_reviews import get_recent_self_reviews
 from app.application.queries.run_transcript import (
     current_turn_images,
     load_visible_utterances,
@@ -138,6 +139,15 @@ class PlanningWorkflowAdapter:
                             "candidates": [c["title"] for c in slot.get("candidates", [])],
                             "choices": slot.get("choices", []), "question": slot.get("question")} for slot in slots]
             attachment_keys = invocation.turn.get("attachment_keys") or []
+            review_aspects = []
+            for task in tasks:
+                if len(review_aspects) >= 4:
+                    break
+                review_aspects.extend(get_recent_self_reviews(
+                    self.db, actor_id=run.ward_id, actor_role="ward", ward_id=run.ward_id,
+                    use_case="planning", end_date=planning_today(), task_ref=task.id,
+                    item_budget=4 - len(review_aspects),
+                ))
             raw_utterances, omitted_utterances = recent_thread_utterances(
                 self.db, ward_id=run.ward_id, thread_id=invocation.thread_id,
                 exclude_turn_id=invocation.turn_id,
@@ -151,7 +161,8 @@ class PlanningWorkflowAdapter:
                     request=PlanIntakeInput(content=invocation.turn.get("content", ""),
                         draft_items=active_draft.items if active_draft else [], clarification_slots=model_slots,
                         attachment_keys=attachment_keys, recent_utterances=utterances,
-                        omitted_utterance_count=omitted_utterances),
+                        omitted_utterance_count=omitted_utterances,
+                        self_review_aspects=review_aspects),
                 )
             substantive = [op for op in extracted.operations if _operation_changes_task(op, tasks)]
             unchanged_only = bool(extracted.operations) and not substantive

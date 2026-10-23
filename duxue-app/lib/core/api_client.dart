@@ -447,26 +447,24 @@ class ApiClient {
     int? beforeThreadVersion,
     int limit = 50,
   }) async =>
-      Map<String, dynamic>.from((await dio.get(
-              '/companion/threads/$threadId/messages',
-              queryParameters: {
-                if (beforeThreadVersion != null)
-                  'before_thread_version': beforeThreadVersion,
-                'limit': limit,
-              }))
+      Map<String, dynamic>.from((await dio
+              .get('/companion/threads/$threadId/messages', queryParameters: {
+        if (beforeThreadVersion != null)
+          'before_thread_version': beforeThreadVersion,
+        'limit': limit,
+      }))
           .data as Map);
 
   Future<Map<String, dynamic>> currentCompanionMessages({
     int? beforeThreadVersion,
     int limit = 50,
   }) async =>
-      Map<String, dynamic>.from((await dio.get(
-              '/companion/threads/current/messages',
-              queryParameters: {
-                if (beforeThreadVersion != null)
-                  'before_thread_version': beforeThreadVersion,
-                'limit': limit,
-              }))
+      Map<String, dynamic>.from((await dio
+              .get('/companion/threads/current/messages', queryParameters: {
+        if (beforeThreadVersion != null)
+          'before_thread_version': beforeThreadVersion,
+        'limit': limit,
+      }))
           .data as Map);
 
   Future<String> uploadCompanionAttachment(
@@ -503,7 +501,8 @@ class ApiClient {
       Map<String, dynamic>.from(
           (await dio.get('/wards/$wardId/plans/${_day(day)}')).data);
   Future<Map<String, dynamic>> currentStartCue() async =>
-      Map<String, dynamic>.from((await dio.get('/start-cues/current')).data as Map);
+      Map<String, dynamic>.from(
+          (await dio.get('/start-cues/current')).data as Map);
   Future<Map<String, dynamic>> actOnStartCue(
           String cueId, String command, int expectedVersion) async =>
       Map<String, dynamic>.from((await dio.post('/start-cues/$cueId/commands',
@@ -533,6 +532,32 @@ class ApiClient {
   Future<void> review(String wardId, DateTime day, String feeling) =>
       dio.post('/wards/$wardId/reviews/${_day(day)}',
           data: {'feeling': feeling, 'timeline_json': []});
+  Future<Map<String, dynamic>> draftSelfReview(
+          String wardId, DateTime day, String expression) async =>
+      Map<String, dynamic>.from((await dio.post(
+              '/wards/$wardId/reviews/${_day(day)}/draft',
+              data: {'raw_expression': expression}))
+          .data);
+  Future<Map<String, dynamic>> selfReviewPrompt(
+          String wardId, DateTime day) async =>
+      Map<String, dynamic>.from(
+          (await dio.get('/wards/$wardId/reviews/${_day(day)}/prompt')).data);
+  Future<Map<String, dynamic>> confirmSelfReview(
+          String wardId,
+          DateTime day,
+          String expression,
+          List<Map<String, dynamic>> aspects,
+          int expectedVersion) async =>
+      Map<String, dynamic>.from(
+          (await dio.put('/wards/$wardId/reviews/${_day(day)}/confirm', data: {
+        'raw_expression': expression,
+        'aspects': aspects,
+        'expected_version': expectedVersion
+      }))
+              .data);
+  Future<Map<String, dynamic>> selfReview(String wardId, DateTime day) async =>
+      Map<String, dynamic>.from(
+          (await dio.get('/wards/$wardId/reviews/${_day(day)}')).data);
   Future<Map<String, dynamic>> insight(String wardId, DateTime day) async =>
       Map<String, dynamic>.from(
           (await dio.get('/wards/$wardId/reviews/${_day(day)}/insight')).data);

@@ -641,7 +641,7 @@ class MemoryFacadeTest(unittest.TestCase):
         )
         self.assertEqual(self.db.query(OutboxEvent).filter_by(status="published").count(), 3)
 
-    def test_reflection_revisions_publish_distinct_fact_versions(self):
+    def test_reflection_revisions_do_not_publish_memory_facts(self):
         workflow = ReflectionWorkflow(self.db)
         review_day = datetime.now(timezone.utc).date().isoformat()
         for feeling in ("stuck", "smooth"):
@@ -649,8 +649,8 @@ class MemoryFacadeTest(unittest.TestCase):
                 run_id=uid(), thread_id=uid(), ward_id=self.ward_id,
                 agent_type="reflection", turn={
                     "review_date": review_day, "review_feeling": feeling,
-                    "review_reflection": "补充说明", "adopt_focus_kit": False,
+                    "review_reflection": "补充说明",
                 },
             ))
         facts = [event.payload for event in self.db.query(OutboxEvent).filter_by(event_type="LearningFactRecorded.v1").all() if event.payload["event_type"] == "self_review.submitted"]
-        self.assertEqual([fact["source_version"] for fact in facts], [1, 2])
+        self.assertEqual(facts, [])
