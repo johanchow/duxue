@@ -221,7 +221,7 @@ class CompanionCoordinator:
         planning_confirm: bool = False, study_session_id: str | None = None,
         tutoring_directive: str | None = None, tutoring_intent: str | None = None, review_date=None,
         review_feeling: str | None = None, review_reflection: str | None = None,
-        adopt_focus_kit: bool = False, attachment_keys: list[str] | None = None,
+        attachment_keys: list[str] | None = None,
         structured_command: dict | None = None,
     ) -> CoordinatorResult:
         started = perf_counter()
@@ -234,7 +234,6 @@ class CompanionCoordinator:
             "tutoring_intent": tutoring_intent,
             "content": content, "review_date": review_date.isoformat() if review_date else None,
             "review_feeling": review_feeling, "review_reflection": review_reflection,
-            "adopt_focus_kit": adopt_focus_kit,
             "attachment_keys": attachment_keys or [],
             "structured_command": structured_command,
         }
@@ -255,7 +254,7 @@ class CompanionCoordinator:
             if (planning_items is not None or planning_confirm or study_session_id is not None
                     or tutoring_directive is not None or tutoring_intent is not None
                     or review_date is not None or review_feeling is not None
-                    or review_reflection is not None or adopt_focus_kit):
+                    or review_reflection is not None):
                 raise HTTPException(409, "意图选择不能同时提交其他操作")
             interaction_id = structured_command.get("interaction_id")
             payload = structured_command.get("payload") or {}

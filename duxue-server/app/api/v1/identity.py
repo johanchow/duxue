@@ -201,7 +201,10 @@ def delete_ward_data(ward_id: str, principal: Principal = Depends(current_guardi
     if session_ids:
         db.query(StudySessionInterval).filter(StudySessionInterval.study_session_id.in_(session_ids)).delete(synchronize_session=False)
     db.query(StudySession).filter(StudySession.ward_id == ward_id).delete(synchronize_session=False)
-    db.query(FocusKit).filter(FocusKit.ward_id == ward_id).delete(synchronize_session=False)
+    review_ids = [row[0] for row in db.query(SelfReview.id).filter_by(ward_id=ward_id).all()]
+    if review_ids:
+        db.query(SelfReviewAspect).filter(SelfReviewAspect.review_id.in_(review_ids)).delete(synchronize_session=False)
+        db.query(SelfReviewVersion).filter(SelfReviewVersion.review_id.in_(review_ids)).delete(synchronize_session=False)
     db.query(SelfReview).filter(SelfReview.ward_id == ward_id).delete(synchronize_session=False)
     db.query(PlanDraft).filter(PlanDraft.ward_id == ward_id).delete(synchronize_session=False)
     db.query(Task).filter(Task.ward_id == ward_id).delete(synchronize_session=False)

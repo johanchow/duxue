@@ -400,6 +400,7 @@ sequenceDiagram
 | Query / View | 消费者与新鲜度 | 来源 |
 |---|---|---|
 | `GetPlanningTaskPool` / `TaskPoolView` | Ward；`TaskRegistered` 或日界释放提交后必须重新读取最新投影 | 状态为 `pool` 的 Task（含已过本地日、未完成而释放回来的任务）、固定约束、授权 MemoryBundle |
+| `GetRecentSelfReviews` / `RecentSelfReviewsView`（目标） | Ward 明确提出相关计划请求时，由 Planning 的上下文组装调用；修订提交后强一致 | Evaluation 返回当前确认版本中与请求相关的少量 `next_intent`；仅作 Ward 自述参考，计划仍需 Ward 审阅确认；当前代码尚未接入 |
 | `GetPlanDraft` / `PlanDraftView` | Ward；草稿提交后强一致 | **全部未完成 Task** 的确认列表：`title`、`planned_minutes`、`start_at`、`end_at`、`will_enter_plan` |
 | `GetConfirmedSchedule` / `ScheduleView` | Ward/Guardian；确认后强一致 | DailySchedule projection |
 | `GetHomeTaskCards` / `HomeTaskCard` | Ward 首页；`Task` 或该任务的 `StudySession` 提交后重新读取 | 上表：安排状态来自 `Task`，进行中和暂停来自未结束的 `StudySession` |

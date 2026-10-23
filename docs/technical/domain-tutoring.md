@@ -599,7 +599,7 @@ sequenceDiagram
 |---|---|---|---|---|
 | `LearningFactRecorded.v1` | `ApplyTutorTurn`、`ConfirmUnderstanding`、`CloseTutoringSession` | Memory `IngestLearningFact` | `source_type + source_id + event_type + source_version` | 投递重试；Tutoring 不因投递失败回滚已提交会话 |
 
-本 Context 从 [Study](domain-study.md) 读取受权 Query `GetStudySession`（`status`、`ward_id`、`task_id`），用于 `open()` 前置检查；Application 另据此投影回任务提醒。不订阅 Study 的 Domain Event，也不调用其 Aggregate。任务标题经 Planning 的受权 Query 取得，不写回本 Context。`MemoryBundle` 来自 Memory 的受权查询，只进入模型上下文。
+本 Context 从 [Study](domain-study.md) 读取受权 Query `GetStudySession`（`status`、`ward_id`、`task_id`），用于 `open()` 前置检查；Application 另据此投影回任务提醒。不订阅 Study 的 Domain Event，也不调用其 Aggregate。任务标题经 Planning 的受权 Query 取得，不写回本 Context。`MemoryBundle` 来自 Memory 的受权查询，只进入模型上下文。若当前问题与 Ward 过去的总结相关，Application 另经 Evaluation 的 `GetRecentSelfReviews` 受权 Query 读取少量当前确认条目，标记为 Ward 自述后注入模型；默认答疑不加载全部历史总结，查询结果不进入 MemoryBundle，也不改变题目状态。当前代码尚未接入该 Query。
 
 发音卡的 `kind` 为 `pronunciation_lesson`，`object_ref` 指向 `GetPronunciationLesson`，不带业务写动作。确认一个候选、选择多个候选或补充未识别原文复用 Companion `clarify + reply`；后续 Turn 仍走同一主流程，并带上最近原句窗口与其中已授权图片。首期音频不作为 Companion `media_ref`；端侧播放契约见 App/Server 物理设计。
 

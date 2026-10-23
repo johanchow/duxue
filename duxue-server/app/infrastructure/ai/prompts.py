@@ -191,6 +191,14 @@ _AGENT_TEXT_SYSTEM = (
     + WINDOW_RULE
 )
 
+_REVIEW_ASPECTS_SYSTEM = (
+    "你只整理孩子自己说的今日学习总结，不替孩子作判断。只返回 JSON 对象，字段 aspects 为数组。"
+    "每项仅含 dimension、statement、source_quote；dimension 只能是 understanding、strategy、time_help、affect、context、next_intent。"
+    "一段原话可整理为多项，同一维度可有多项；未说到的维度保持空缺。"
+    "source_quote 必须从孩子原话逐字截取，statement 必须简短准确，不能补写事实、能力结论、诊断、建议或计划。"
+    "任务、答疑与用时背景只能帮助理解指代，不能写成孩子说过的话。最多返回 12 项。"
+)
+
 PROMPTS = {
     prompt.id: prompt
     for prompt in (
@@ -199,7 +207,8 @@ PROMPTS = {
         PromptTemplate("tutoring.leak-judge.system.v6", _LEAK_SYSTEM),
         PromptTemplate("tutoring.visual-leak-judge.system.v5", _VISUAL_LEAK_SYSTEM),
         PromptTemplate("companion.agent-text.system.v2", _AGENT_TEXT_SYSTEM),
+        PromptTemplate("evaluation.review-aspects.system.v1", _REVIEW_ASPECTS_SYSTEM),
         DynamicPrompt("task.intake.prompt.v1", "app.application.commands.task_intake:_prompt"),
-        DynamicPrompt("planning.intake.prompt.v1", "app.application.commands.plan_intake:_prompt"),
+        DynamicPrompt("planning.intake.prompt.v2", "app.application.commands.plan_intake:_prompt"),
     )
 }

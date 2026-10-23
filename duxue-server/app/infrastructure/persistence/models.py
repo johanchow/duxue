@@ -395,14 +395,29 @@ class SelfReview(Base):
     version: Mapped[int] = mapped_column(Integer, default=1)
     submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
-class FocusKit(Base):
-    __tablename__ = "focus_kits"
-    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
-    ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id"), index=True)
-    review_date: Mapped[date] = mapped_column(Date, index=True)
-    advice: Mapped[str] = mapped_column(Text)
-    saved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+class SelfReviewVersion(Base):
+    __tablename__ = "self_review_versions"
+    __table_args__ = (UniqueConstraint("review_id", "version", name="uq_self_review_version"),)
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
+    review_id: Mapped[str] = mapped_column(ForeignKey("self_reviews.id"), index=True)
+    version: Mapped[int] = mapped_column(Integer)
+    raw_expression: Mapped[str] = mapped_column(Text)
+    source_message_id: Mapped[str | None] = mapped_column(Uuid(as_uuid=False), nullable=True)
+    confirmed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class SelfReviewAspect(Base):
+    __tablename__ = "self_review_aspects"
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
+    review_id: Mapped[str] = mapped_column(ForeignKey("self_reviews.id"), index=True)
+    review_version: Mapped[int] = mapped_column(Integer)
+    dimension: Mapped[str] = mapped_column(String(32), index=True)
+    statement: Mapped[str] = mapped_column(Text)
+    source_quote: Mapped[str] = mapped_column(Text)
+    task_ref: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    topic_ref: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 # These tables are runtime audit and recovery metadata.  They deliberately do
 # not replace domain aggregates, learning events, or LangGraph's graph-state

@@ -76,7 +76,7 @@ flowchart LR
 
 | 类别 | 例子 | 结果性质 |
 | --- | --- | --- |
-| `generator` | `tutoring.turn`、`reflection.advice` | 面向 Ward 的候选或结构化教学动作 |
+| `generator` | `tutoring.turn`、`planning.reply` | 面向 Ward 的候选或结构化教学动作 |
 | `classifier` | `companion.intent` | 闭集提议；失败映射到既定保守值 |
 | `judge` | `tutoring.leak_judge` | 独立审核结果；受保护场景失败时 fail-closed |
 | `extractor` | `planning.intake`、`task.intake` | 从输入提取结构化候选，必须由后续规则确认 |
@@ -119,7 +119,6 @@ flowchart LR
 | `tutoring.leak-judge` | `qwen-plus`（纯文本） | 只审文本；与主调用不同型号。决策模型更合适，但协议和预览状态未接入。protected |
 | `companion.intent` | `qwen-flash`（纯文本） | 四选一、60 token；判错回退 `unclear`。决策模型更合适，但要另接 `/systemone` |
 | `planning.reply` | `qwen3.8-flash` | 短回复，窗口里可能带图，孩子在等；关闭思考 |
-| `reflection.advice` | `qwen3.7-plus-2026-05-26`（纯文本） | 会后生成，重语气与文字质量；不发送图片；关闭思考 |
 | `planning.intake` / `task.intake` | `qwen3.7-plus-2026-05-26`，60s 超时 | 读图加多条硬规则的结构化提取；关闭思考 |
 | 帧分析 VLM（未迁移） | `qwen3-vl-flash-2026-01-22` | 调用量最大；该快照加强了桌面与巡检类识别；关闭思考 |
 | 实时 ASR | `qwen3-asr-flash-realtime` | 按住说话。北京业务空间不接受 2026-02-10 快照，会在会话中途断开。发音点读仍用标准 TTS |
@@ -172,8 +171,9 @@ class ComponentSpec:
 | `tutoring.leak-judge@v6` | protected | 作业答案泄露审核（`problem` 包含有界的学生先前原话；v6：区分引用已有结果与替学生完成计算/核验，返回单个审核原因） | `None` 由 Workflow fail-closed；越界重试仍经完整出口检查 |
 | `tutoring.visual-leak-judge@v5` | protected | 配图是否替孩子完成了作业；允许少量过程描述，但不能暴露最终待求变量，除法竖式的商位也按未知量检查 | 泄露时重画一次并复审；复审未过、超时或异常都只丢弃 `visual` |
 | `companion.intent@v1` | standard | 场景路由提议 | 非法或失败映射为 `unclear` |
-| `planning.reply@v1` / `reflection.advice@v1` | standard | `QwenAgentModelGateway.generate` | `AgentTextCandidate` 校验，失败走确定性降级 |
-| `planning.intake@v1` | standard | 当天计划草稿提取 | `PlanIntakeResult` 校验，失败映射为用户提示 |
+| `planning.reply@v2` | standard | `QwenAgentModelGateway.generate` | `AgentTextCandidate` 校验，失败走确定性降级 |
+| `planning.intake@v2` | standard | 当天计划草稿提取；有限读取相关任务的 Ward 确认自述 | `PlanIntakeResult` 校验，失败映射为用户提示 |
+| `evaluation.review-aspects@v1` | standard | 从 Ward 当日原话提出可编辑的六维整理候选 | 仅接受逐字引用，模型失败时保存原话仍可继续 |
 | `task.intake@v1` | standard | Guardian 对话式任务整理 | `TaskIntakeResult` 校验与 ward 白名单 |
 
 **防绕过：** `tests/unit/ai/test_no_direct_model_calls.py` 扫描 `app/`，除 `components.py`、`client.py` 与待迁移的 `inference.py`（VLM 帧分析：批处理 + 实时，调用形态不同）外，任何模块直接使用 `chat.completions` 或 `dashscope_client(` 都会失败。
@@ -232,7 +232,7 @@ class ComponentSpec:
 | 现有调用 | 目标 Component | 状态 |
 | --- | --- | --- |
 | 答疑主调用、泄露 Judge、场景路由 | `tutoring.turn` / `tutoring.leak-judge` / `tutoring.visual-leak-judge` / `companion.intent` | 已迁移 |
-| `QwenAgentModelGateway.generate` | `planning.reply` / `reflection.advice` | 已迁移 |
+| `QwenAgentModelGateway.generate` | `planning.reply` | 已迁移；旧复盘建议组件随默认锦囊退役 |
 | 任务 / 计划 intake | `task.intake` / `planning.intake` | 已迁移（应用层不再直接依赖 SDK） |
 | `DashscopeInference` 帧分析 | `behavior.frame-analysis` | 待迁：批处理 + 实时 + 200–400 帧并发，需要并发度与成本约束的独立设计 |
 | 答疑流式输出 | — | 待设计：非 JSON 流式形态 |

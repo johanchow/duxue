@@ -53,6 +53,7 @@ class PlanIntakeInput(BaseModel):
     attachment_keys: list[str] = Field(default_factory=list, max_length=8)
     recent_utterances: list[dict] = Field(default_factory=list, max_length=8)
     omitted_utterance_count: int = Field(default=0, ge=0)
+    self_review_aspects: list[dict] = Field(default_factory=list, max_length=4)
 
 
 class PlanIntakeResult(BaseModel):
@@ -77,6 +78,8 @@ def _prompt(ward: dict, tasks: list[dict], request: PlanIntakeInput) -> str:
 当前未完成任务池：{json.dumps(tasks, ensure_ascii=False)}
 当前尚未确认的草稿：{json.dumps(draft_items, ensure_ascii=False)}
 当前待补槽位：{json.dumps(request.clarification_slots, ensure_ascii=False)}
+同一学生对相关任务的已确认自述：{json.dumps(request.self_review_aspects, ensure_ascii=False)}
+自述只作参考；不能当作今天的排程命令、已掌握结论或已经执行的行动。
 
 硬规则：
 1. 根据本轮学生输入或图片，保留、增加、删除或调整今天的草稿任务；不要编造作业内容、页码或截止日。

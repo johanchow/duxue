@@ -63,7 +63,8 @@ def test_registry_lists_every_call_with_stable_identity():
     ids = {spec.component_id for spec in COMPONENTS.all()}
     assert ids == {
         "tutoring.turn", "tutoring.turn-backup", "tutoring.leak-judge", "tutoring.visual-leak-judge", "companion.intent",
-        "planning.reply", "reflection.advice", "planning.intake", "task.intake",
+        "planning.reply", "planning.intake", "task.intake",
+        "evaluation.review-aspects",
     }
     for spec in COMPONENTS.all():
         assert spec.version.startswith("v") and spec.model and spec.input_contract and spec.output_contract
@@ -191,7 +192,7 @@ def test_tutoring_components_keep_existing_success_and_failure_boundaries(monkey
     assert tutor_turn_model.QwenLeakJudge().leaks(text="提示", task_title=None, problem_summary=None) is None
 
 
-@pytest.mark.parametrize("agent_type,component_id", [("planning", "planning.reply"), ("reflection", "reflection.advice")])
+@pytest.mark.parametrize("agent_type,component_id", [("planning", "planning.reply")])
 def test_agent_text_gateway_uses_registered_component_and_validates(monkeypatch, agent_type, component_id):
     from app.infrastructure.ai import model_gateway
 
@@ -238,9 +239,9 @@ def test_model_assignment_matrix():
         "tutoring.visual-leak-judge": ("qwen-plus", False),
         "companion.intent": ("qwen-flash", False),
         "planning.reply": ("qwen3.8-flash", True),
-        "reflection.advice": ("qwen3.7-plus-2026-05-26", False),
         "planning.intake": ("qwen3.7-plus-2026-05-26", True),
         "task.intake": ("qwen3.7-plus-2026-05-26", True),
+            "evaluation.review-aspects": ("qwen-flash", False),
     }
     # The judge must not share a model with the generator it audits.
     for judge in ("tutoring.leak-judge", "tutoring.visual-leak-judge"):

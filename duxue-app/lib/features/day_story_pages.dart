@@ -1010,9 +1010,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
                             title: Text('你的感受与观察记录'),
                             subtitle: Text('先看自己的体感，再一起发现学习节奏。')),
                         Padding(
-                            padding: const EdgeInsets.all(12),
-                            child: Text('给你的小建议：${insight!['advice']}')),
-                        Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 12),
                             child:
                                 Text('观察记录：${insight!['objective_timeline']}'))
@@ -1192,14 +1189,184 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   int get _elapsedSeconds => savedSeconds + watch.elapsed.inSeconds;
 
   Future<void> _review() async {
+    final expressionController = TextEditingController();
+    final reviewDay = DateTime.now();
     try {
-      await ref.read(apiProvider).review(widget.wardId, DateTime.now(), '顺利');
+      var prompt = '今天学了什么、哪里还不明白？有没有花时间特别久的地方？想到什么就用自己的话说出来。';
+      var expectedVersion = 0;
+      try {
+        final invitation = await ref
+            .read(apiProvider)
+            .selfReviewPrompt(widget.wardId, reviewDay);
+        prompt = invitation['prompt'] as String? ?? prompt;
+      } catch (_) {
+        // The Ward can always write a summary when supporting evidence is unavailable.
+      }
+      try {
+        final current =
+            await ref.read(apiProvider).selfReview(widget.wardId, reviewDay);
+        expressionController.text = current['raw_expression'] as String? ?? '';
+        expectedVersion = current['version'] as int? ?? 0;
+      } catch (_) {
+        // A first review has no saved expression yet.
+      }
+      if (!mounted) return;
+      final expression = await showDialog<String>(
+          context: context,
+          builder: (dialogContext) => StatefulBuilder(
+              builder: (dialogContext, updateDialog) => AlertDialog(
+                      title: const Text('说说今天的学习'),
+                      content: SizedBox(
+                          width: 460,
+                          child: SingleChildScrollView(
+                              child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                Text(prompt),
+                                const SizedBox(height: 12),
+                                TextField(
+                                    controller: expressionController,
+                                    maxLines: 5,
+                                    maxLength: 4000,
+                                    onChanged: (_) => updateDialog(() {}),
+                                    decoration: const InputDecoration(
+                                        hintText: '用自己的话记录今天的想法',
+                                        border: OutlineInputBorder())),
+                                VoiceComposer(
+                                    baseUrl: apiBaseUrl,
+                                    tokens: ref.read(tokenStorageProvider),
+                                    telemetry: ref.read(telemetryProvider),
+                                    voiceFactory: widget.voiceFactory,
+                                    holdToTalkText: '按住说总结',
+                                    showImageAction: false,
+                                    onBeforeRecording: () => ref
+                                        .read(apiProvider)
+                                        .ensureValidAccess(),
+                                    onPickImage: () async {},
+                                    onVoiceFinal: (text) async {
+                                      expressionController.text =
+                                          '${expressionController.text.trim()} $text'
+                                              .trim();
+                                      updateDialog(() {});
+                                    }),
+                              ]))),
+                      actions: [
+                        TextButton(
+                            onPressed: () => Navigator.pop(dialogContext),
+                            child: const Text('稍后再说')),
+                        FilledButton(
+                            onPressed: expressionController.text.trim().isEmpty
+                                ? null
+                                : () => Navigator.pop(dialogContext,
+                                    expressionController.text.trim()),
+                            child: const Text('整理我的总结')),
+                      ])));
+      if (expression == null || !mounted) return;
+      final draft = await ref
+          .read(apiProvider)
+          .draftSelfReview(widget.wardId, reviewDay, expression);
+      if (!mounted) return;
+      final rows = (draft['aspects'] as List? ?? const [])
+          .map((item) => Map<String, dynamic>.from(item as Map))
+          .toList();
+      const aspectLabels = {
+        'understanding': '理解与疑问',
+        'strategy': '试过的方法',
+        'time_help': '用时与求助',
+        'affect': '感受与信心',
+        'context': '学习情境',
+        'next_intent': '下次想怎么做',
+      };
+      final edits = [
+        for (final row in rows)
+          TextEditingController(text: row['statement'] as String? ?? '')
+      ];
+      final confirmed = await showDialog<List<Map<String, dynamic>>>(
+          context: context,
+          builder: (dialogContext) => StatefulBuilder(
+              builder: (dialogContext, updateDialog) => AlertDialog(
+                    title: const Text('确认你的总结'),
+                    content: SizedBox(
+                        width: 460,
+                        child: SingleChildScrollView(
+                            child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                              Text(expression),
+                              const SizedBox(height: 14),
+                              if (rows.isEmpty)
+                                const Text('暂时没有整理出条目。仍可以保存你的原话。'),
+                              for (var i = 0; i < rows.length; i++)
+                                Card(
+                                    child: Padding(
+                                        padding: const EdgeInsets.all(8),
+                                        child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Row(children: [
+                                                Expanded(
+                                                    child: Text(aspectLabels[
+                                                            rows[i][
+                                                                'dimension']] ??
+                                                        '学习想法')),
+                                                IconButton(
+                                                    tooltip: '删除这条整理',
+                                                    onPressed: () =>
+                                                        updateDialog(() {
+                                                          rows.removeAt(i);
+                                                          edits
+                                                              .removeAt(i)
+                                                              .dispose();
+                                                        }),
+                                                    icon:
+                                                        const Icon(Icons.close))
+                                              ]),
+                                              Text(
+                                                  '原话：${rows[i]['source_quote']}'),
+                                              TextField(
+                                                  controller: edits[i],
+                                                  maxLength: 300,
+                                                  onChanged: (_) =>
+                                                      updateDialog(() {}),
+                                                  decoration:
+                                                      const InputDecoration(
+                                                          labelText:
+                                                              '你可以修改这条整理'))
+                                            ])))
+                            ]))),
+                    actions: [
+                      TextButton(
+                          onPressed: () => Navigator.pop(dialogContext),
+                          child: const Text('返回')),
+                      FilledButton(
+                          onPressed:
+                              edits.any((item) => item.text.trim().isEmpty)
+                                  ? null
+                                  : () => Navigator.pop(dialogContext, [
+                                        for (var i = 0; i < rows.length; i++)
+                                          {
+                                            ...rows[i],
+                                            'statement': edits[i].text.trim()
+                                          }
+                                      ]),
+                          child: const Text('确认并保存'))
+                    ],
+                  )));
+      for (final edit in edits) {
+        edit.dispose();
+      }
+      if (confirmed == null || !mounted) return;
+      await ref.read(apiProvider).confirmSelfReview(
+          widget.wardId, reviewDay, expression, confirmed, expectedVersion);
       await _refreshCue();
-      insight =
-          await ref.read(apiProvider).insight(widget.wardId, DateTime.now());
+      insight = await ref.read(apiProvider).insight(widget.wardId, reviewDay);
       if (mounted) setState(() => tab = 2);
     } catch (e) {
       if (mounted) showMessage(context, '提交自我总结失败：$e');
+    } finally {
+      expressionController.dispose();
     }
   }
 
