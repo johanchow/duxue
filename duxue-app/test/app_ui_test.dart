@@ -603,6 +603,19 @@ class _WardHomeApi extends ApiClient {
   }
 }
 
+class _EmailAuthApi extends _WardHomeApi {
+  String? sentTo;
+  (String, String, String)? registration;
+
+  @override
+  Future<void> sendEmailCode(String email) async => sentTo = email;
+
+  @override
+  Future<void> register(String name, String email, String code) async {
+    registration = (name, email, code);
+  }
+}
+
 const _tinyPng = <int>[
   137,
   80,
@@ -1497,6 +1510,32 @@ void main() {
     expect(find.text('松开发送'), findsNothing);
     expect(find.text('voice transcription is temporarily unavailable'),
         findsOneWidget);
+  });
+
+  testWidgets('guardian registration sends and submits an email code',
+      (tester) async {
+    FlutterSecureStoragePlatform.instance =
+        TestFlutterSecureStoragePlatform({});
+    final api = _EmailAuthApi();
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiProvider.overrideWithValue(api)],
+      child: const MaterialApp(home: LoginPage()),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('密码'), findsNothing);
+    await tester.tap(find.text('没有账号？注册'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextFormField, '姓名'), '妈妈');
+    await tester.enterText(
+        find.widgetWithText(TextFormField, '邮箱'), 'parent@example.com');
+    await tester.tap(find.text('获取验证码'));
+    await tester.pump();
+    expect(api.sentTo, 'parent@example.com');
+    await tester.enterText(
+        find.widgetWithText(TextFormField, '邮箱验证码'), '123456');
+    await tester.tap(find.text('注册并登录'));
+    await tester.pump();
+    expect(api.registration, ('妈妈', 'parent@example.com', '123456'));
   });
 
   testWidgets(

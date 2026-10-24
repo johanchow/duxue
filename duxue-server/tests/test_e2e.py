@@ -42,6 +42,13 @@ class EndToEndTest(unittest.TestCase):
         _tmp.cleanup()
 
     def request(self, method, path, *, token=None, device_token=None, **kwargs):
+        if method == "POST" and path == "/auth/register":
+            payload = dict(kwargs["json"])
+            with patch("app.api.v1.identity.send_email_code") as mail:
+                sent = self.client.post("/auth/email-code/send", json={"email": payload["email"]})
+                self.assertEqual(sent.status_code, 202, sent.text)
+                payload["code"] = mail.call_args.kwargs["code"]
+            kwargs["json"] = payload
         auth = token or device_token
         headers = kwargs.pop("headers", {})
         if auth:
@@ -55,7 +62,6 @@ class EndToEndTest(unittest.TestCase):
             json={
                 "name": "监护人",
                 "email": "guardian@example.com",
-                "password": "password123",
             },
         )
         self.assertEqual(registration.status_code, 201, registration.text)
@@ -161,7 +167,6 @@ class EndToEndTest(unittest.TestCase):
             json={
                 "name": "其他家长",
                 "email": "other@example.com",
-                "password": "password123",
             },
         ).json()["access_token"]
         forbidden_by_isolation = self.request(
@@ -178,7 +183,6 @@ class EndToEndTest(unittest.TestCase):
             json={
                 "name": "家长2",
                 "email": "story@example.com",
-                "password": "password123",
             },
         ).json()["access_token"]
         ward = self.request(
@@ -311,7 +315,6 @@ class EndToEndTest(unittest.TestCase):
             json={
                 "name": "执行家长",
                 "email": "execution@example.com",
-                "password": "password123",
             },
         ).json()["access_token"]
         ward = self.request(
@@ -468,7 +471,6 @@ class EndToEndTest(unittest.TestCase):
             json={
                 "name": "林妈妈",
                 "email": "profile@example.com",
-                "password": "password123",
             },
         ).json()["access_token"]
         ward = self.request(
@@ -523,7 +525,6 @@ class EndToEndTest(unittest.TestCase):
             json={
                 "name": "陪伴家长",
                 "email": "companion@example.com",
-                "password": "password123",
             },
         ).json()["access_token"]
         ward = self.request(
@@ -574,7 +575,7 @@ class EndToEndTest(unittest.TestCase):
 
         other_guardian = self.request(
             "POST", "/auth/register",
-            json={"name": "另一位家长", "email": "other-companion@example.com", "password": "password123"},
+            json={"name": "另一位家长", "email": "other-companion@example.com"},
         ).json()["access_token"]
         other_ward = self.request(
             "POST", "/wards", token=other_guardian,
@@ -665,7 +666,6 @@ class EndToEndTest(unittest.TestCase):
             json={
                 "name": "语音家长",
                 "email": "voice@example.com",
-                "password": "password123",
             },
         ).json()["access_token"]
         ward = self.request(
@@ -737,7 +737,6 @@ class EndToEndTest(unittest.TestCase):
             json={
                 "name": "换机家长",
                 "email": "rebind@example.com",
-                "password": "password123",
             },
         ).json()["access_token"]
         ward = self.request(
@@ -809,7 +808,6 @@ class EndToEndTest(unittest.TestCase):
             json={
                 "name": "多孩家长",
                 "email": "intake@example.com",
-                "password": "password123",
             },
         ).json()["access_token"]
         first = self.request(
@@ -893,7 +891,6 @@ class EndToEndTest(unittest.TestCase):
             json={
                 "name": "外部家长",
                 "email": "intake-other@example.com",
-                "password": "password123",
             },
         ).json()["access_token"]
         foreign = self.request(

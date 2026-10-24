@@ -178,10 +178,14 @@ class ApiClient {
     }
   }
 
-  Future<void> login(String email, String password) async {
+  Future<void> sendEmailCode(String email) async {
+    await dio.post('/auth/email-code/send', data: {'email': email});
+  }
+
+  Future<void> login(String email, String code) async {
     final response = await dio.post(
       '/auth/login',
-      data: {'email': email, 'password': password},
+      data: {'email': email, 'code': code},
     );
     await tokens.save(
       response.data['access_token'],
@@ -189,10 +193,10 @@ class ApiClient {
     );
   }
 
-  Future<void> register(String name, String email, String password) async {
+  Future<void> register(String name, String email, String code) async {
     final response = await dio.post(
       '/auth/register',
-      data: {'name': name, 'email': email, 'password': password},
+      data: {'name': name, 'email': email, 'code': code},
     );
     await tokens.save(
       response.data['access_token'],

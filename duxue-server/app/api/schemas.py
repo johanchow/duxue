@@ -12,9 +12,10 @@ class ORMModel(BaseModel):
 
 
 class RegisterRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1, max_length=100)
     email: str
-    password: str = Field(min_length=8, max_length=128)
+    code: str = Field(pattern=r"^[0-9]{6}$")
 
     @field_validator("email")
     @classmethod
@@ -25,8 +26,13 @@ class RegisterRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     email: str
-    password: str
+    code: str = Field(pattern=r"^[0-9]{6}$")
+
+
+class EmailCodeRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=255)
 
 
 class RefreshRequest(BaseModel):

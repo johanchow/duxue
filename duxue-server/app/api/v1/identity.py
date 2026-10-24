@@ -1,5 +1,12 @@
 from .common import *
 from .common import _tokens, _ward_tokens
+import hashlib
+import hmac
+import re
+
+from sqlalchemy import text
+
+from app.infrastructure.messaging.email import send_email_code
 
 router = APIRouter(tags=["identity"])
 
@@ -44,25 +51,112 @@ def ward_profile(principal: Principal = Depends(current_ward), db: Session = Dep
     return {"id": ward.id, "display_name": ward.display_name, "guardians": [{"id": guardian.id, "name": guardian.name} for guardian in guardians]}
 
 
+def _email(value: str) -> str:
+    email = value.strip().lower()
+    if len(email) > 255 or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+        raise HTTPException(422, "invalid email")
+    return email
+
+
+def _code_hash(email: str, code: str) -> str:
+    return hmac.new(settings.secret_key.encode(), f"email-code:{email}:{code}".encode(), hashlib.sha256).hexdigest()
+
+
+def _email_lock(db: Session, email: str) -> None:
+    if db.bind is not None and db.bind.dialect.name == "postgresql":
+        key = int.from_bytes(hashlib.sha256(email.encode()).digest()[:8], "big", signed=True)
+        db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": key})
+
+
+def _ip_hash(request: Request) -> str:
+    # Use the socket peer, never an untrusted X-Forwarded-For header.
+    host = request.client.host if request.client else "unknown"
+    return hmac.new(settings.secret_key.encode(), host.encode(), hashlib.sha256).hexdigest()
+
+
+def _utc(value: datetime) -> datetime:
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+
+
+@router.post("/auth/email-code/send", status_code=202)
+def send_code(body: EmailCodeRequest, request: Request, db: Session = Depends(get_db)) -> dict:
+    email = _email(body.email)
+    current = now()
+    ip_hash = _ip_hash(request)
+    try:
+        _email_lock(db, email)
+        db.query(EmailAuthChallenge).filter(EmailAuthChallenge.created_at < current - timedelta(days=1)).delete()
+        latest = db.query(EmailAuthChallenge).filter_by(email=email).order_by(EmailAuthChallenge.created_at.desc()).first()
+        if latest and _utc(latest.created_at) > current - timedelta(seconds=60):
+            raise HTTPException(429, "请稍后再获取验证码")
+        email_count = db.query(EmailAuthChallenge).filter(EmailAuthChallenge.email == email, EmailAuthChallenge.created_at >= current - timedelta(hours=1)).count()
+        ip_count = db.query(EmailAuthChallenge).filter(EmailAuthChallenge.request_ip_hash == ip_hash, EmailAuthChallenge.created_at >= current - timedelta(hours=1)).count()
+        if email_count >= 5 or ip_count >= 20:
+            raise HTTPException(429, "验证码请求过于频繁，请稍后再试")
+        if latest and latest.consumed_at is None:
+            latest.consumed_at = current
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        db.add(EmailAuthChallenge(email=email, code_hash=_code_hash(email, code), request_ip_hash=ip_hash, created_at=current, expires_at=current + timedelta(minutes=10), attempts=0))
+        db.flush()
+        send_email_code(recipient=email, code=code)
+        db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        raise HTTPException(503, "邮件发送失败，请稍后重试") from None
+    return {"message": "验证码已发送"}
+
+
+def _consume_code(db: Session, email: str, code: str, request: Request) -> None:
+    _email_lock(db, email)
+    current = now()
+    ip_hash = _ip_hash(request)
+    db.query(EmailAuthFailure).filter(EmailAuthFailure.created_at < current - timedelta(days=1)).delete()
+    failed_email = db.query(EmailAuthFailure).filter(EmailAuthFailure.email == email, EmailAuthFailure.created_at >= current - timedelta(hours=1)).count()
+    failed_ip = db.query(EmailAuthFailure).filter(EmailAuthFailure.request_ip_hash == ip_hash, EmailAuthFailure.created_at >= current - timedelta(hours=1)).count()
+    if failed_email >= 20 or failed_ip >= 100:
+        db.rollback()
+        raise HTTPException(429, "验证码尝试过于频繁，请稍后重试")
+    challenge = db.query(EmailAuthChallenge).filter(EmailAuthChallenge.email == email, EmailAuthChallenge.consumed_at.is_(None)).order_by(EmailAuthChallenge.created_at.desc()).with_for_update().first()
+    if challenge is None or _utc(challenge.expires_at) <= current or challenge.attempts >= 5:
+        db.add(EmailAuthFailure(email=email, request_ip_hash=ip_hash, created_at=current))
+        db.commit()
+        raise HTTPException(400, "验证码无效或已过期")
+    if not hmac.compare_digest(challenge.code_hash, _code_hash(email, code)):
+        challenge.attempts += 1
+        db.add(EmailAuthFailure(email=email, request_ip_hash=ip_hash, created_at=current))
+        db.commit()
+        raise HTTPException(400, "验证码无效或已过期")
+    challenge.consumed_at = current
+
+
 @router.post("/auth/register", response_model=TokenPair, status_code=201)
-def register(body: RegisterRequest, db: Session = Depends(get_db)) -> TokenPair:
-    email = body.email.lower().strip()
+def register(body: RegisterRequest, request: Request, db: Session = Depends(get_db)) -> TokenPair:
+    email = _email(body.email)
+    _consume_code(db, email, body.code, request)
     if db.query(Guardian).filter(func.lower(Guardian.email) == email).count():
+        db.rollback()
         raise HTTPException(409, "email already registered")
     user = User(type="guardian")
     db.add(user)
     db.flush()
-    guardian = Guardian(id=user.id, name=body.name, email=email, password_hash=hash_secret(body.password), role="admin")
+    guardian = Guardian(id=user.id, name=body.name, email=email, role="admin")
     db.add(guardian)
     db.commit()
     return _tokens(db, guardian)
 
 
 @router.post("/auth/login", response_model=TokenPair)
-def login(body: LoginRequest, db: Session = Depends(get_db)) -> TokenPair:
-    guardian = db.query(Guardian).filter(func.lower(Guardian.email) == body.email.lower().strip()).one_or_none()
-    if guardian is None or not verify_secret(body.password, guardian.password_hash):
-        raise HTTPException(401, "invalid email or password")
+def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)) -> TokenPair:
+    email = _email(body.email)
+    _consume_code(db, email, body.code, request)
+    guardian = db.query(Guardian).filter(func.lower(Guardian.email) == email).one_or_none()
+    if guardian is None:
+        db.rollback()
+        raise HTTPException(404, "account not found")
+    db.commit()
     return _tokens(db, guardian)
 
 

@@ -70,7 +70,7 @@ duxue-app/
 │   │   └── formatters/              # 时间戳、时长、学科文案格式化
 │   │
 │   └── features/                    # 业务特性模块 (Feature-First)
-│       ├── auth/                    # 认证：角色选择、手机登录、Token 维护
+│       ├── auth/                    # 认证：角色选择、Guardian 邮箱验证码、Token 维护
 │       ├── ward_schedule/           # 学生端：协商计划、任务清单、AI排序
 │       ├── ward_companion/          # 学生端：沉浸伴学、4级启发答疑、作弊拦截
 │       ├── ward_evaluation/         # 学生端：30s盲评自评、双轨对比展开、锦囊采纳
@@ -116,7 +116,7 @@ graph TD
 
 | 路由层级 | 路由路径 | 对应组件 / 功能 | 访问控制约束 |
 |---|---|---|---|
-| **公共认证** | `/splash`<br>`/auth/role-select`<br>`/auth/login` | 闪屏页<br>角色选择页（我是学生 / 我是家长）<br>手机号密码统一登录页 | 公开访问；已登录用户访问自动重定向至对应角色主页 |
+| **公共认证** | `/splash`<br>`/auth/role-select`<br>`/auth/login` | 闪屏页<br>角色选择页（我是学生 / 我是家长）<br>Guardian 邮箱验证码与 Ward 绑定码入口 | 公开访问；已登录用户访问自动重定向至对应角色主页 |
 | **Ward Shell**<br>(5 Tabs) | `/ward/home`<br>`/ward/schedule`<br>`/ward/companion`<br>`/ward/growth`<br>`/ward/profile` | 学习行动首页<br>协商式计划任务清单<br>AI 启发伴学工作台<br>成长档案与自主度趋势<br>学生个人中心 | 仅 `Role = ward` 可访问；越权访问自动重定向至 `/ward/home` |
 | **Guardian Shell**<br>(5 Tabs) | `/guardian/children`<br>`/guardian/insights`<br>`/guardian/pass`<br>`/guardian/action`<br>`/guardian/profile` | 孩子动态与多 Ward 切换<br>双轨日报与跨周期洞察<br>作业与学校通知传递<br>睡前正向沟通与协商<br>家长个人中心与共管成员 | 仅 `Role = guardian` 可访问；越权访问自动重定向至 `/guardian/children` |
 | **全屏沉浸流** | `/ward/tutoring/:sessionId`<br>`/ward/evaluate/:scheduleId`<br>`/guardian/coguardian/invite`<br>`/guardian/coguardian/accept/:code` | 沉浸答疑全屏页（隐藏底部 Tab）<br>今日自评盲评全屏页<br>发起共管邀请全屏页<br>扫码接受共管邀请页 | 使用 `rootNavigatorKey` 挂载，覆盖底部导航栏 |

@@ -96,6 +96,12 @@ class Settings:
     redis_password: str = os.getenv("REDIS_PASSWORD", "")
     redis_db: int = _integer("REDIS_DB", "0")
     redis_scheme: str = os.getenv("REDIS_SCHEME", "redis")
+    mail_host: str = os.getenv("MAIL_HOST", "").strip()
+    mail_port: int = _integer("MAIL_PORT", "0")
+    mail_secure: bool = os.getenv("MAIL_SECURE", "true").strip().lower() in {"1", "true", "yes", "ssl", "tls"}
+    mail_user: str = os.getenv("MAIL_USER", "").strip()
+    mail_password: str = os.getenv("MAIL_PASSWORD", "")
+    mail_from: str = os.getenv("MAIL_FROM", "").strip()
 
     def __post_init__(self) -> None:
         missing: list[str] = []

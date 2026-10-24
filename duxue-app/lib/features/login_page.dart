@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -15,17 +17,21 @@ class LoginPage extends ConsumerStatefulWidget {
 class _LoginPageState extends ConsumerState<LoginPage> {
   final formKey = GlobalKey<FormState>();
   final email = TextEditingController();
-  final password = TextEditingController();
+  final code = TextEditingController();
   final name = TextEditingController();
   final bindingCode = TextEditingController();
   bool registering = false;
   bool wardMode = false;
   bool bindingLoading = false;
+  bool codeSending = false;
+  int resendSeconds = 0;
+  Timer? resendTimer;
 
   @override
   void dispose() {
     email.dispose();
-    password.dispose();
+    code.dispose();
+    resendTimer?.cancel();
     name.dispose();
     bindingCode.dispose();
     super.dispose();
@@ -120,22 +126,33 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       decoration: const InputDecoration(labelText: '邮箱'),
                       validator: _validateEmail,
                     ),
-                    TextFormField(
-                      controller: password,
-                      obscureText: true,
-                      textInputAction: TextInputAction.done,
-                      autofillHints: const [AutofillHints.password],
-                      decoration:
-                          const InputDecoration(labelText: '密码（至少 8 位）'),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) return '请输入密码';
-                        if (registering && value.length < 8) {
-                          return '密码至少需要 8 位';
-                        }
-                        return null;
-                      },
-                      onFieldSubmitted: (_) => _submit(),
-                    ),
+                    Row(children: [
+                      Expanded(
+                        child: TextFormField(
+                          controller: code,
+                          keyboardType: TextInputType.number,
+                          textInputAction: TextInputAction.done,
+                          maxLength: 6,
+                          autofillHints: const [AutofillHints.oneTimeCode],
+                          decoration: const InputDecoration(labelText: '邮箱验证码'),
+                          validator: (value) => RegExp(r'^[0-9]{6}$')
+                                  .hasMatch(value?.trim() ?? '')
+                              ? null
+                              : '请输入 6 位验证码',
+                          onFieldSubmitted: (_) => _submit(),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      OutlinedButton(
+                        onPressed:
+                            codeSending || resendSeconds > 0 ? null : _sendCode,
+                        child: Text(codeSending
+                            ? '发送中…'
+                            : resendSeconds > 0
+                                ? '${resendSeconds}s 后重发'
+                                : '获取验证码'),
+                      ),
+                    ]),
                     const SizedBox(height: 20),
                     FilledButton(
                       onPressed: auth.isLoading ? null : _submit,
@@ -179,6 +196,38 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     return null;
   }
 
+  Future<void> _sendCode() async {
+    final emailText = email.text.trim();
+    final error = _validateEmail(emailText);
+    if (error != null) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error)));
+      return;
+    }
+    setState(() => codeSending = true);
+    try {
+      await ref.read(apiProvider).sendEmailCode(emailText);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('验证码已发送，请查看邮箱')),
+      );
+      resendTimer?.cancel();
+      setState(() => resendSeconds = 60);
+      resendTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (!mounted) return timer.cancel();
+        setState(() => resendSeconds--);
+        if (resendSeconds <= 0) timer.cancel();
+      });
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_messageFor(error))),
+      );
+    } finally {
+      if (mounted) setState(() => codeSending = false);
+    }
+  }
+
   Future<void> _bindWard() async {
     final code = bindingCode.text.trim();
     if (code.length != 6) {
@@ -210,12 +259,12 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         await ref.read(authProvider.notifier).register(
               name.text.trim(),
               email.text.trim(),
-              password.text,
+              code.text.trim(),
             );
       } else {
         await ref.read(authProvider.notifier).login(
               email.text.trim(),
-              password.text,
+              code.text.trim(),
             );
       }
     } catch (error) {
@@ -238,7 +287,10 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         return '无法连接服务，请检查网络或服务地址';
       case DioExceptionType.badResponse:
         final status = error.response?.statusCode;
-        if (status == 401) return '邮箱或密码不正确';
+        if (status == 400) return '验证码无效或已过期，请重新获取';
+        if (status == 404) return '账号不存在，请先注册';
+        if (status == 429) return '请求过于频繁，请稍后再试';
+        if (status == 401) return '登录失败，请重试';
         if (status == 409) return '该邮箱已注册，请直接登录';
         if (status == 422) return '提交的信息不符合要求，请检查后重试';
         if (status != null && status >= 500) return '服务暂时不可用，请稍后重试';

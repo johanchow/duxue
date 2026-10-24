@@ -21,3 +21,4 @@
 | [intent-choice-clarification.md](intent-choice-clarification.md) | 2026-10-22 |
 | [planning-time-suggestions.md](planning-time-suggestions.md) | 2026-10-22 |
 | [self-review-direct-recall.md](self-review-direct-recall.md) | 2026-10-23 |
+| [guardian-email-code-auth.md](guardian-email-code-auth.md) | 2026-10-24 |
