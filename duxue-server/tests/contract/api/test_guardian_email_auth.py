@@ -33,6 +33,18 @@ def test_registration_and_login_require_single_use_email_code(client, db):
         assert client.post("/auth/login", json={"email": "parent@example.com", "code": next_code}).status_code == 400
 
 
+def test_unknown_guardian_login_returns_404_and_code_can_register(client, db):
+    with patch("app.api.v1.identity.send_email_code") as mail:
+        code = _send(client, mail, "new@example.com")
+        login = client.post("/auth/login", json={"email": "new@example.com", "code": code})
+        assert login.status_code == 404
+        assert login.json() == {"detail": "account not found"}
+        assert db.query(Guardian).count() == 0
+
+        registered = client.post("/auth/register", json={"name": "Parent", "email": "new@example.com", "code": code})
+        assert registered.status_code == 201, registered.text
+
+
 def test_expired_code_and_password_cannot_authenticate(client, db):
     with patch("app.api.v1.identity.send_email_code") as mail:
         code = _send(client, mail)

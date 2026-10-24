@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:dio/dio.dart';
 import 'package:duxue_app/core/api_client.dart';
 import 'package:duxue_app/core/models.dart';
 import 'package:duxue_app/core/token_storage.dart';
@@ -10,6 +11,7 @@ import 'package:duxue_app/core/telemetry.dart';
 import 'package:duxue_app/features/day_story_pages.dart';
 import 'package:duxue_app/features/login_page.dart';
 import 'package:duxue_app/features/ward_pages.dart';
+import 'package:duxue_app/main.dart' show routerProvider;
 import 'package:duxue_app/providers.dart';
 import 'package:duxue_app/shared/voice_composer.dart';
 import 'package:flutter/material.dart';
@@ -613,6 +615,22 @@ class _EmailAuthApi extends _WardHomeApi {
   @override
   Future<void> register(String name, String email, String code) async {
     registration = (name, email, code);
+  }
+}
+
+class _MissingGuardianApi extends _EmailAuthApi {
+  @override
+  Future<void> login(String email, String code) async {
+    final request = RequestOptions(path: '/auth/login');
+    throw DioException(
+      requestOptions: request,
+      response: Response(
+        requestOptions: request,
+        statusCode: 404,
+        data: {'detail': 'account not found'},
+      ),
+      type: DioExceptionType.badResponse,
+    );
   }
 }
 
@@ -1536,6 +1554,37 @@ void main() {
     await tester.tap(find.text('注册并登录'));
     await tester.pump();
     expect(api.registration, ('妈妈', 'parent@example.com', '123456'));
+  });
+
+  testWidgets(
+      'unknown guardian stays on login with a visible registration action',
+      (tester) async {
+    FlutterSecureStoragePlatform.instance =
+        TestFlutterSecureStoragePlatform({});
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiProvider.overrideWithValue(_MissingGuardianApi())],
+      child: Consumer(
+          builder: (context, ref, _) =>
+              MaterialApp.router(routerConfig: ref.watch(routerProvider))),
+    ));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.widgetWithText(TextFormField, '邮箱'), 'new@example.com');
+    await tester.enterText(
+        find.widgetWithText(TextFormField, '邮箱验证码'), '123456');
+    await tester.tap(find.text('登录'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('该邮箱尚未注册，请先注册'), findsOneWidget);
+    await tester.tap(find.text('去注册'));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(TextFormField, '姓名'), findsOneWidget);
+    expect(find.widgetWithText(TextFormField, '邮箱验证码'), findsOneWidget);
+    expect(find.text('123456'), findsOneWidget);
+    await tester.enterText(find.widgetWithText(TextFormField, '姓名'), '家长');
+    await tester.tap(find.text('注册并登录'));
+    await tester.pumpAndSettle();
+    expect(find.text('还没有孩子档案'), findsOneWidget);
   });
 
   testWidgets(

@@ -1,5 +1,6 @@
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -26,11 +27,14 @@ String? appRedirect(AppSession? session, String location) {
 }
 
 final routerProvider = Provider<GoRouter>((ref) {
-  final session = ref.watch(authProvider).valueOrNull;
+  final session =
+      ValueNotifier<AppSession?>(ref.read(authProvider).valueOrNull);
   final telemetry = ref.watch(telemetryProvider);
-  return GoRouter(
+  ref.listen(authProvider, (_, next) => session.value = next.valueOrNull);
+  final router = GoRouter(
     initialLocation: '/login',
-    redirect: (_, state) => appRedirect(session, state.matchedLocation),
+    refreshListenable: session,
+    redirect: (_, state) => appRedirect(session.value, state.matchedLocation),
     observers: [TelemetryRouteObserver(telemetry)],
     routes: [
       GoRoute(path: '/login', builder: (_, __) => const LoginPage()),
@@ -74,6 +78,11 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
     ],
   );
+  ref.onDispose(() {
+    router.dispose();
+    session.dispose();
+  });
+  return router;
 });
 
 class DuxueApp extends ConsumerWidget {
@@ -83,35 +92,37 @@ class DuxueApp extends ConsumerWidget {
     final telemetry = ref.watch(telemetryProvider);
     telemetry.recordEvent('app.startup', attributes: {'platform': 'flutter'});
     FlutterError.onError = (details) {
-      telemetry.recordEvent('app.unhandled_error', attributes: {'error_kind': 'flutter'});
+      telemetry.recordEvent('app.unhandled_error',
+          attributes: {'error_kind': 'flutter'});
       FlutterError.presentError(details);
     };
     PlatformDispatcher.instance.onError = (error, stack) {
-      telemetry.recordEvent('app.unhandled_error', attributes: {'error_kind': 'platform'});
+      telemetry.recordEvent('app.unhandled_error',
+          attributes: {'error_kind': 'platform'});
       return false;
     };
     return MaterialApp.router(
-        title: '读学',
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: brandBlue),
-          scaffoldBackgroundColor: appSurface,
-          useMaterial3: true,
-          appBarTheme: const AppBarTheme(
-              backgroundColor: appSurface, elevation: 0, centerTitle: false),
-          cardTheme: CardThemeData(
-              color: Colors.white,
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  side: const BorderSide(color: Color(0xffe2e8f0)))),
-          inputDecorationTheme: InputDecorationTheme(
-              filled: true,
-              fillColor: Colors.white,
-              border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Color(0xffe2e8f0)))),
-        ),
-        routerConfig: ref.watch(routerProvider),
-      );
+      title: '读学',
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: brandBlue),
+        scaffoldBackgroundColor: appSurface,
+        useMaterial3: true,
+        appBarTheme: const AppBarTheme(
+            backgroundColor: appSurface, elevation: 0, centerTitle: false),
+        cardTheme: CardThemeData(
+            color: Colors.white,
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: const BorderSide(color: Color(0xffe2e8f0)))),
+        inputDecorationTheme: InputDecorationTheme(
+            filled: true,
+            fillColor: Colors.white,
+            border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: Color(0xffe2e8f0)))),
+      ),
+      routerConfig: ref.watch(routerProvider),
+    );
   }
 }

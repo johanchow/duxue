@@ -24,6 +24,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   bool wardMode = false;
   bool bindingLoading = false;
   bool codeSending = false;
+  bool accountNotFound = false;
   int resendSeconds = 0;
   Timer? resendTimer;
 
@@ -117,6 +118,11 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       ),
                     TextFormField(
                       controller: email,
+                      onChanged: (_) {
+                        if (accountNotFound) {
+                          setState(() => accountNotFound = false);
+                        }
+                      },
                       keyboardType: TextInputType.emailAddress,
                       textInputAction: TextInputAction.next,
                       autofillHints: const [
@@ -164,9 +170,24 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                                 : '登录',
                       ),
                     ),
+                    if (accountNotFound) ...[
+                      const SizedBox(height: 8),
+                      Text('该邮箱尚未注册，请先注册',
+                          style: TextStyle(
+                              color: Theme.of(context).colorScheme.error)),
+                      TextButton(
+                        onPressed: () => setState(() {
+                          registering = true;
+                          accountNotFound = false;
+                        }),
+                        child: const Text('去注册'),
+                      ),
+                    ],
                     TextButton(
-                      onPressed: () =>
-                          setState(() => registering = !registering),
+                      onPressed: () => setState(() {
+                        registering = !registering;
+                        accountNotFound = false;
+                      }),
                       child: Text(registering ? '已有账号？登录' : '没有账号？注册'),
                     ),
                   ],
@@ -254,6 +275,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
   Future<void> _submit() async {
     if (!(formKey.currentState?.validate() ?? false)) return;
+    if (accountNotFound) setState(() => accountNotFound = false);
     try {
       if (registering) {
         await ref.read(authProvider.notifier).register(
@@ -269,10 +291,24 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       }
     } catch (error) {
       if (!mounted) return;
+      if (!registering && _isAccountNotFound(error)) {
+        setState(() => accountNotFound = true);
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(_messageFor(error))),
       );
     }
+  }
+
+  bool _isAccountNotFound(Object error) {
+    if (error is! DioException ||
+        error.requestOptions.path != '/auth/login' ||
+        error.response?.statusCode != 404) {
+      return false;
+    }
+    final data = error.response?.data;
+    return data is Map && data['detail'] == 'account not found';
   }
 
   String _messageFor(Object error) {
@@ -288,7 +324,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       case DioExceptionType.badResponse:
         final status = error.response?.statusCode;
         if (status == 400) return '验证码无效或已过期，请重新获取';
-        if (status == 404) return '账号不存在，请先注册';
+        if (status == 404) return '请求的服务暂不可用，请稍后重试';
         if (status == 429) return '请求过于频繁，请稍后再试';
         if (status == 401) return '登录失败，请重试';
         if (status == 409) return '该邮箱已注册，请直接登录';
