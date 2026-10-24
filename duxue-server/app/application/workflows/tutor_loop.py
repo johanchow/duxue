@@ -139,8 +139,10 @@ def call_tutor_model(
             name = str(raw.get("tool"))
             if tool_calls >= MAX_TOOL_CALLS:
                 with agent_step_span("check", "tutoring.tool_budget") as span:
+                    set_observation_payload(span, input={"tool": name, "calls": tool_calls, "limit": MAX_TOOL_CALLS})
                     span.set_attribute("agent.check.result", "budget_exhausted")
                     observations.append({"tool": name, "status": "budget_exhausted"})
+                    set_observation_payload(span, output={"result": "budget_exhausted"})
             else:
                 tool_calls += 1
                 observations.append(tools.run(name, raw.get("args")))
@@ -170,12 +172,20 @@ def call_tutor_model(
             repair = format_schema_error(error)
             continue
         with agent_step_span("check", "tutoring.visual_schema") as visual_span:
+            set_observation_payload(visual_span, input={"visual": raw.get("visual")})
+            visual_result = (
+                "invalid" if candidate.visual_dropped == "visual_invalid"
+                else "pass" if candidate.visual else "absent"
+            )
             visual_span.set_attribute(
                 "agent.check.result",
-                "invalid" if candidate.visual_dropped == "visual_invalid" else "pass" if candidate.visual else "absent",
+                visual_result,
             )
             if candidate.visual is not None:
                 visual_span.set_attribute("tutor.visual.kind", candidate.visual.kind)
+            set_observation_payload(visual_span, output={
+                "result": visual_result, "reason": candidate.visual_error,
+            })
         if (
             candidate.visual_dropped == "visual_invalid"
             and candidate.visual_error

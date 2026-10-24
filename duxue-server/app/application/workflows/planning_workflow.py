@@ -8,6 +8,7 @@ from langgraph.types import interrupt
 
 from app.infrastructure.observability.telemetry import (
     agent_step_span,
+    set_observation_payload,
     traced_agent_node,
 )
 from app.infrastructure.persistence.models import PlanDraft
@@ -63,15 +64,19 @@ def build_planning_graph(service: PlanningDomainService):
         view = service.plan_draft_view(state["ward_id"], state["draft_id"])
         command = interrupt({"type": "plan_review", **view})
         with agent_step_span("check", "planning.confirmation_gate") as check_span:
+            set_observation_payload(check_span, input={"command": command, "draft_id": state["draft_id"]})
             if not isinstance(command, dict) or command.get("action") != "confirm":
                 check_span.set_attribute("agent.check.result", "rejected")
+                set_observation_payload(check_span, output={"result": "rejected"})
                 return {"outcome": {"status": "waiting_for_ward"}}
             try:
                 schedule = service.confirm(state["ward_id"], state["draft_id"], command.get("expected_draft_version"))
             except Exception:
                 check_span.set_attribute("agent.check.result", "error")
+                set_observation_payload(check_span, output={"result": "error"})
                 raise
             check_span.set_attribute("agent.check.result", "accepted")
+            set_observation_payload(check_span, output={"result": "accepted", "schedule_id": schedule.id})
         return {
             "outcome": {"status": "confirmed", "schedule_id": schedule.id,
                         "schedule_version": (service.db.get(PlanDraft, state["draft_id"]).working_state or {}).get("confirmed_schedule_version", schedule.version)},

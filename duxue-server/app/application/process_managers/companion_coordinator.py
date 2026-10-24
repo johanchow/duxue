@@ -29,6 +29,7 @@ from app.infrastructure.observability.telemetry import (
     record_agent_route,
     record_tutor_subgoal_committed,
     set_agent_context,
+    set_observation_payload,
     trace_agent_turn,
 )
 from app.infrastructure.persistence.models import (
@@ -292,6 +293,10 @@ class CompanionCoordinator:
         focus_run = self._focus_run(thread)
         proposal = None
         with agent_step_span("route", "intent_route") as route_span:
+            set_observation_payload(route_span, input={
+                "content": content, "route_hint": route_hint,
+                "focus_agent_type": getattr(focus_run, "agent_type", None),
+            })
             if not self.router.blocks_for_safety(content) and route_hint not in _VALID_HINTS:
                 from app.application.queries.run_transcript import (
                     load_visible_utterances,
@@ -310,6 +315,7 @@ class CompanionCoordinator:
             )
             route_span.set_attribute("agent.proposed_target", decision.target)
             route_span.set_attribute("agent.proposed_mode", decision.mode)
+            set_observation_payload(route_span, output=decision.model_dump(mode="json"))
         if decision.mode == "start" and focus_run is not None and decision.target not in {"clarify", "safety"}:
             decision.mode = "continue" if focus_run.agent_type == decision.target else "handoff"
         if structured_command and not choice_selected:
@@ -354,9 +360,14 @@ class CompanionCoordinator:
             images=current_turn_images(ward_id, attachment_keys) if attachment_keys else None,
         )
         with agent_step_span("route", "final_route") as route_span:
+            set_observation_payload(route_span, input={
+                "target": decision.target, "mode": decision.mode,
+                "route_reason": decision.route_reason,
+            })
             route_span.set_attribute("agent.target", decision.target)
             route_span.set_attribute("agent.mode", decision.mode)
             route_span.set_attribute("agent.route_reason", decision.route_reason)
+            set_observation_payload(route_span, output=decision.model_dump(mode="json"))
             record_agent_route(target=decision.target, mode=decision.mode, reason=decision.route_reason)
         self._trace(thread=thread, run=run, decision=decision, snapshot={})
         version = self._advance_thread(thread)
@@ -404,9 +415,11 @@ class CompanionCoordinator:
         )
         try:
             with agent_workflow_span(agent_type=run.agent_type, run_id=run.id, thread_id=thread.id) as workflow_span:
+                set_observation_payload(workflow_span, input=invocation.model_dump(mode="json"))
                 outcome = self.dispatcher.invoke(invocation)
                 workflow_span.set_attribute("agent.run_status", outcome.run_status)
                 workflow_span.set_attribute("agent.outcome_type", outcome.outcome_type or "unknown")
+                set_observation_payload(workflow_span, output=outcome.model_dump(mode="json"))
         except StaleDataError as exc:
             self.db.rollback()
             raise HTTPException(409, "计划或任务已变化，请重新审阅") from exc

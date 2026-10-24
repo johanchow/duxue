@@ -348,8 +348,7 @@ class TutoringWorkflow:
             review_text = None if failed else (
                 candidate.content if visual is None else f"{candidate.content}\n{describe(visual)}"
             )
-            if review_text is not None:
-                set_observation_payload(safety_span, input={"text": review_text})
+            set_observation_payload(safety_span, input={"text": review_text, "skipped": failed})
             safety = not failed and (
                 candidate.act == "safety" or self._safety().blocks_output(
                     text=review_text,
