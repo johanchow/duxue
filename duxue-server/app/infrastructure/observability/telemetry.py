@@ -667,11 +667,13 @@ def agent_workflow_span(*, agent_type: str, run_id: str, thread_id: str) -> Iter
 @contextmanager
 def model_call_span(*, operation: str, model: str, agent_type: str | None = None,
                     component_id: str | None = None, component_version: str | None = None,
-                    model_source: str | None = None, input_payload: Any = None) -> Iterator[dict[str, Any]]:
+                    prompt_id: str | None = None, model_source: str | None = None,
+                    input_payload: Any = None) -> Iterator[dict[str, Any]]:
     started = perf_counter()
     attrs = {**_agent_context_attrs(), **_attrs(**{
         "llm.operation": operation, "llm.model": model, "agent.type": agent_type,
         "ai.component_id": component_id, "ai.component_version": component_version,
+        "ai.prompt_id": prompt_id,
         "ai.model_source": model_source,
         # These are mapping keys, not prompt/completion payloads. Langfuse
         # also exports the controlled Agent spans enclosing this generation.
