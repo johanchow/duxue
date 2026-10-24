@@ -11,6 +11,7 @@ status: done
 - 每轮 Companion 根 observation 记录孩子本轮可见输入与最终展示回复，Session 能回放对话；clarify、安全回复与幂等返回也有正文。
 - 每次模型 generation 记录实际发送的消息与模型原始回复；孩子上传的图片在根轮次和模型输入中作为 Langfuse Media 保留，供后续读取。
 - 答疑工具（含预置指南）的 observation 记录实际参数和结果；没有执行的工具不生成工具节点。
+- 答疑目标推进可直接核对模型候选 `next_subgoal`、规则处理后的 `active_subgoal` 与最终展示文案；成功提交后 Loki 写入目标和展示正文，回滚不写 `committed` 日志。
 - 保持现有 session/run 关联、token、Grafana 导出与测试可用，更新可观测性文档。
 
 ## 实现计划
@@ -30,4 +31,4 @@ status: done
 
 用户已明确授权上报孩子问话、模型回复和工具正文，作为本次数据策略变更依据。
 用户后续要求图片可供 MCP 完整分析；OSS 临时 URL 会过期，因此使用 Langfuse SDK 自动提取并上传 `data:` 图片，trace 留下可解析 Media 引用。Grafana 导出副本移除图片字节。
-追加验证：完整服务端测试 637 passed；修改文件 `ruff check --select I,UP035` 与 `git diff --check` 通过。
+追加验证：完整服务端测试 639 passed；修改文件 `ruff check --select I,UP035` 与 `git diff --check` 通过。

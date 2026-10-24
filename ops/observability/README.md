@@ -66,6 +66,12 @@ and leaves resolvable references in traces. The Grafana OTLP exporter keeps
 text but substitutes `[image omitted]` for image bytes. HTTP, SQL, Redis and
 Celery spans still stay in Grafana only.
 
+For tutoring turns, the `tutoring.apply_problem` observation records the
+candidate `next_subgoal` and the policy-applied `active_subgoal`. After a
+successful database commit, Loki receives `tutor.subgoal.committed` with both
+values and `agent.turn.output` with the final text shown to the Ward. Use the
+shared trace ID to compare these with the raw model generation.
+
 Grafana and Langfuse share one OpenTelemetry sampler. To see every turn in a
 Langfuse session, set `OTEL_TRACES_SAMPLER_ARG=1.0` in the deployment environment;
 lower values omit whole turns from both destinations. Check the uncommitted

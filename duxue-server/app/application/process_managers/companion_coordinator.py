@@ -27,6 +27,7 @@ from app.infrastructure.observability.telemetry import (
     record_agent_outcome,
     record_agent_output,
     record_agent_route,
+    record_tutor_subgoal_committed,
     set_agent_context,
     trace_agent_turn,
 )
@@ -369,7 +370,6 @@ class CompanionCoordinator:
         intent_choice = (self._intent_choice_interaction(thread.id, command_id)
                          if decision.target == "clarify" else None)
         if terminal_reply is not None:
-            record_agent_output(terminal_reply)
             thread.version = version
             version = self._advance_thread(thread)
             self._write_transcript(
@@ -378,6 +378,8 @@ class CompanionCoordinator:
                 interaction_ref=intent_choice,
             )
         self.db.commit()
+        if terminal_reply is not None:
+            record_agent_output(terminal_reply)
         # The conditional SQL update deliberately bypasses the identity map;
         # reload before the outcome transaction so its fence sees the new
         # Thread version rather than the pre-routing snapshot.
@@ -523,13 +525,15 @@ class CompanionCoordinator:
         version = self._advance_thread(thread)
         visible_content = self._visible_outcome_content(outcome)
         if visible_content is not None and command_id is not None:
-            record_agent_output(visible_content)
             self._write_transcript(
                 thread=thread, command_id=command_id, author_type="companion",
                 content=visible_content, thread_version=version, run=run, turn_id=turn_id,
                 attempt=attempt, interaction_ref=self._visible_interaction_ref(outcome),
             )
         self.db.commit()
+        record_tutor_subgoal_committed()
+        if visible_content is not None and command_id is not None:
+            record_agent_output(visible_content)
         self.db.expire_all()
         return True
 

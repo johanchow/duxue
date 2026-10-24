@@ -286,6 +286,8 @@ Grafana 与 Langfuse 共用同一个 OpenTelemetry `TracerProvider` 和采样器
 
 Grafana 的 HTTP 父 span、OTLP log / stdout JSON 日志包含运行关联 ID、模型、结果、时延、token 用量（供应商返回时）、**Ward 本轮问话文本**（`input.text`，上限 2000 字，邮箱与大陆手机号已遮蔽）以及输入/输出的长度和 SHA-256 摘要。共享 OTLP tracer 上的 Companion、模型与工具 span 还包含 `langfuse.observation.input/output` 原文，因此 Grafana trace 同样可读这些文字正文；其专用 exporter 将图片 data URL 替换为占位符。HTTP 父 span 不导出到 Langfuse。答疑轮另有 `tutor.turn.result` 类别事件（`act`、`relation`、结果 `shown|fallback|blocked`、配图丢弃类别、形状告警）。Authorization 和 API Key 不主动写入 trace。
 
+答疑题目推进时，`tutoring.apply_problem` observation 的 input 记录 `previous_subgoal` 与本轮采纳候选的 `candidate_next_subgoal`，output 记录规则处理后的 `active_subgoal` 和是否变化。只有数据库提交成功后才写 Loki `tutor.subgoal.committed` 日志（含这些值及 problem/turn/run/thread ID）；同一轮的 `agent.turn.output` 日志记录最终展示文案 `shown`。按 `trace_id` 可直接对照模型原始回复、采纳候选、写回目标与孩子看到的文字；失败回滚不会产生 `committed` 日志。
+
 模型原文除 Langfuse/Grafana trace 外仍可写在独立审计文件，不进 stdout、普通应用日志或 Loki。非生产环境默认写入 `duxue-server/var/agent-llm-audit.jsonl`；生产环境只有同时设置 `AGENT_DEBUG_AUDIT_ENABLED=true` 和 `AGENT_DEBUG_AUDIT_PATH` 才写入。`AGENT_DEBUG_AUDIT_ENABLED=false` 在任何环境都关闭。每一行带与 stdout 相同的 `trace_id`、`span_id`，`kind` 区分三类记录：`input`（Ward 问话，元数据含 run/thread id）、`output`（模型原文，含操作名、长度和 SHA-256）、`turn_result`（孩子最终看到的文本，元数据为 act、relation、结果、失败原因、配图丢弃原因）。按 `trace_id` 可连接完整一轮。
 
 ### 7.2 duxue-cam（Android Build Config）

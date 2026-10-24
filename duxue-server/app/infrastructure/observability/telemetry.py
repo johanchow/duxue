@@ -32,6 +32,7 @@ _PHONE = re.compile(r"(?<!\d)1\d{10}(?!\d)")
 _thread_id: ContextVar[str | None] = ContextVar("duxue_thread_id", default=None)
 _run_id: ContextVar[str | None] = ContextVar("duxue_run_id", default=None)
 _agent_parent_span: ContextVar[Any] = ContextVar("duxue_agent_parent_span", default=None)
+_pending_subgoal: ContextVar[dict[str, Any] | None] = ContextVar("duxue_pending_subgoal", default=None)
 _PLANNING_STAGES = frozenset({
     "checkpointer_connect", "checkpointer_setup", "context_build", "plan_intake",
     "agent_text", "graph_compile", "graph_invoke",
@@ -398,6 +399,7 @@ def set_agent_context(*, thread_id: str | None = None, run_id: str | None = None
 @contextmanager
 def agent_turn_span() -> Iterator[None]:
     thread_token, run_token = _thread_id.set(None), _run_id.set(None)
+    subgoal_token = _pending_subgoal.set(None)
     parent_token = _agent_parent_span.set(trace.get_current_span())
     try:
         with trace.get_tracer("duxue.agent").start_as_current_span(
@@ -407,6 +409,7 @@ def agent_turn_span() -> Iterator[None]:
             yield
     finally:
         _agent_parent_span.reset(parent_token)
+        _pending_subgoal.reset(subgoal_token)
         _run_id.reset(run_token)
         _thread_id.reset(thread_token)
 
@@ -489,6 +492,39 @@ def record_agent_output(content: str) -> None:
     span = trace.get_current_span()
     if span.is_recording() and getattr(span, "name", None) == "agent.turn":
         set_observation_payload(span, output=content)
+    _audit_logger.info("agent.turn.output", extra={"telemetry": {
+        **_attrs(**{"agent.thread_id": _thread_id.get(), "agent.run_id": _run_id.get()}),
+        "shown": content,
+    }})
+
+
+def stage_tutor_subgoal_transition(*, problem_id: str, turn_id: str,
+                                   previous: str | None, candidate: str | None,
+                                   applied: str | None) -> None:
+    """Capture the candidate and policy result; log it only after the transaction commits."""
+    transition = {
+        "tutor.problem_id": problem_id, "tutor.turn_id": turn_id,
+        "previous_subgoal": previous, "candidate_next_subgoal": candidate,
+        "active_subgoal": applied, "subgoal_changed": previous != applied,
+    }
+    _pending_subgoal.set(transition)
+    span = trace.get_current_span()
+    if span.is_recording() and getattr(span, "name", None) == "agent.node":
+        set_observation_payload(span,
+            input={"previous_subgoal": previous, "candidate_next_subgoal": candidate},
+            output={"active_subgoal": applied, "subgoal_changed": previous != applied})
+
+
+def record_tutor_subgoal_committed() -> None:
+    """Emit the staged tutoring state only after the owning database commit succeeds."""
+    transition = _pending_subgoal.get()
+    if transition is None:
+        return
+    _pending_subgoal.set(None)
+    _audit_logger.info("tutor.subgoal.committed", extra={"telemetry": {
+        **_attrs(**{"agent.thread_id": _thread_id.get(), "agent.run_id": _run_id.get()}),
+        **transition,
+    }})
 
 
 def record_tutor_turn_result(

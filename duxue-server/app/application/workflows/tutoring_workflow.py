@@ -44,6 +44,7 @@ from app.infrastructure.observability.telemetry import (
     agent_step_span,
     record_llm_fallback,
     record_tutor_turn_result,
+    stage_tutor_subgoal_transition,
     traced_agent_node,
 )
 from app.infrastructure.persistence.models import (
@@ -484,6 +485,11 @@ class TutoringWorkflow:
         before = _state(row)
         new = TutorPermitPolicy.advance(before, assessment)
         _store(row, new)
+        stage_tutor_subgoal_transition(
+            problem_id=row.id, turn_id=invocation.turn_id,
+            previous=before.active_subgoal, candidate=candidate.next_subgoal,
+            applied=new.active_subgoal,
+        )
         row.last_turn_id = invocation.turn_id
         hint_index = new.hints_given if new.hints_given > before.hints_given else None
         return row.status, hint_index, new.substantive_attempts > before.substantive_attempts

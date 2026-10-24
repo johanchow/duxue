@@ -72,6 +72,35 @@ def test_tutoring_workflow_step_by_step_and_close(db):
     assert "tutoring.session_closed" in _events(db)
 
 
+def test_subgoal_observation_matches_the_persisted_problem(db, monkeypatch):
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+        InMemorySpanExporter,
+    )
+
+    from app.infrastructure.observability import telemetry
+
+    monkeypatch.setenv("OTEL_SDK_DISABLED", "false")
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    monkeypatch.setattr(telemetry.trace, "get_tracer", provider.get_tracer)
+    _, session = _setup(db)
+    workflow, _ = _workflow(db, ATTEMPT)
+
+    with telemetry.agent_turn_span():
+        _ask(db, workflow, session, "我先把已知条件写出来")
+        telemetry.record_tutor_subgoal_committed()
+
+    problem = db.query(TutoringProblem).one()
+    node = next(span for span in exporter.get_finished_spans()
+                if span.attributes.get("agent.step") == "tutoring.apply_problem")
+    assert problem.active_subgoal == "写出第一个等式"
+    assert '"candidate_next_subgoal": "写出第一个等式"' in node.attributes["langfuse.observation.input"]
+    assert '"active_subgoal": "写出第一个等式"' in node.attributes["langfuse.observation.output"]
+
+
 def test_locked_refuses_a_solution_and_writes_nothing(db):
     _, session = _setup(db)
     workflow, _ = _workflow(db, tutor_raw("answer", "答案是 5"), judge=StaticLeakJudge(True))

@@ -216,6 +216,38 @@ def test_grafana_parent_keeps_input_event_and_langfuse_turn_has_input(monkeypatc
     assert telemetry._should_export_to_langfuse(spans["HTTP POST"]) is False
 
 
+def test_committed_subgoal_and_shown_reply_are_joinable_in_trace_and_logs(monkeypatch, caplog):
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+        InMemorySpanExporter,
+    )
+
+    from app.infrastructure.observability import telemetry
+
+    monkeypatch.setenv("OTEL_SDK_DISABLED", "false")
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    monkeypatch.setattr(telemetry.trace, "get_tracer", provider.get_tracer)
+    with caplog.at_level("INFO", logger="duxue.agent.audit"), telemetry.agent_turn_span():
+        telemetry.set_agent_context(thread_id="thread-1", run_id="run-1")
+        with telemetry.agent_step_span("node", "tutoring.apply_problem"):
+            telemetry.stage_tutor_subgoal_transition(
+                problem_id="problem-1", turn_id="turn-1", previous="先列式",
+                candidate="先移项", applied="先移项",
+            )
+        telemetry.record_tutor_subgoal_committed()
+        telemetry.record_agent_output("先看看等式两边能怎样整理？")
+
+    node = next(s for s in exporter.get_finished_spans() if s.attributes.get("agent.step") == "tutoring.apply_problem")
+    assert json.loads(node.attributes["langfuse.observation.input"])["candidate_next_subgoal"] == "先移项"
+    assert json.loads(node.attributes["langfuse.observation.output"])["active_subgoal"] == "先移项"
+    logged = [record.telemetry for record in caplog.records if hasattr(record, "telemetry")]
+    assert any(item.get("active_subgoal") == "先移项" and item.get("agent.run_id") == "run-1" for item in logged)
+    assert any(item.get("shown") == "先看看等式两边能怎样整理？" for item in logged)
+
+
 def test_exported_model_error_records_class_only(monkeypatch):
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import SimpleSpanProcessor
