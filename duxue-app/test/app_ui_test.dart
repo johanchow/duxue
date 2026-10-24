@@ -634,6 +634,18 @@ class _MissingGuardianApi extends _EmailAuthApi {
   }
 }
 
+class _InvalidEmailCodeApi extends _EmailAuthApi {
+  @override
+  Future<void> register(String name, String email, String code) async {
+    final request = RequestOptions(path: '/auth/register');
+    throw DioException(
+      requestOptions: request,
+      response: Response(requestOptions: request, statusCode: 400),
+      type: DioExceptionType.badResponse,
+    );
+  }
+}
+
 const _tinyPng = <int>[
   137,
   80,
@@ -1498,7 +1510,7 @@ void main() {
       'a startup recognition error does not leave the listening overlay',
       (tester) async {
     final voice = _FakeVoice()
-      ..failOnStartWith = 'voice transcription is temporarily unavailable'
+      ..failOnStartWith = '语音识别暂不可用，请稍后重试'
       ..commitProducesFinal = false;
     await tester.pumpWidget(MaterialApp(
         home: Scaffold(
@@ -1526,8 +1538,7 @@ void main() {
 
     expect(find.text('正在听…上滑取消'), findsNothing);
     expect(find.text('松开发送'), findsNothing);
-    expect(find.text('voice transcription is temporarily unavailable'),
-        findsOneWidget);
+    expect(find.text('语音识别暂不可用，请稍后重试'), findsOneWidget);
   });
 
   testWidgets('guardian registration sends and submits an email code',
@@ -1609,6 +1620,56 @@ void main() {
     await tester.tap(find.text('注册并登录'));
     await tester.pumpAndSettle();
     expect(find.text('还没有孩子档案'), findsOneWidget);
+  });
+
+  testWidgets('ward list shows a readable server error instead of Dio details',
+      (tester) async {
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        wardsProvider.overrideWith((ref) async {
+          final request = RequestOptions(path: '/wards');
+          throw DioException(
+            requestOptions: request,
+            response: Response(requestOptions: request, statusCode: 503),
+            type: DioExceptionType.badResponse,
+          );
+        }),
+      ],
+      child: const MaterialApp(home: WardListPage()),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('加载孩子档案失败：服务暂时不可用，请稍后重试'), findsOneWidget);
+    expect(find.textContaining('DioException'), findsNothing);
+  });
+
+  testWidgets('invalid email code stays visible beside registration form',
+      (tester) async {
+    FlutterSecureStoragePlatform.instance =
+        TestFlutterSecureStoragePlatform({});
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiProvider.overrideWithValue(_InvalidEmailCodeApi())],
+      child: Consumer(
+          builder: (context, ref, _) =>
+              MaterialApp.router(routerConfig: ref.watch(routerProvider))),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('没有账号？注册'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextFormField, '姓名'), '家长');
+    await tester.enterText(
+        find.widgetWithText(TextFormField, '邮箱'), 'parent@example.com');
+    await tester.enterText(
+        find.widgetWithText(TextFormField, '邮箱验证码'), '123456');
+    await tester.tap(find.text('注册并登录'));
+    await tester.pumpAndSettle();
+    final inlineError = find.descendant(
+      of: find.byType(Form),
+      matching: find.text('验证码无效或已过期，请重新获取'),
+    );
+    expect(inlineError, findsOneWidget);
+    await tester.pump(const Duration(seconds: 5));
+    expect(inlineError, findsOneWidget);
   });
 
   testWidgets(

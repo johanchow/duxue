@@ -10,6 +10,7 @@ import '../core/cue_notifications.dart';
 import '../core/cue_refresh_schedule.dart';
 import '../core/speech_playback.dart';
 import '../core/voice_transcription_service.dart';
+import '../core/user_error_message.dart';
 import '../providers.dart';
 import '../shared/app_ui.dart';
 import '../shared/chat_markdown.dart';
@@ -35,7 +36,7 @@ String wardBindFailureMessage(Object error) {
   }
   // ApiClient.bindWard only reaches a non-network error after the server has
   // accepted the binding response, usually while persisting the local session.
-  return '绑定请求已成功，但本机登录状态保存失败；请查看 Flutter 终端日志。';
+  return '绑定已完成，但这台设备未能保存登录状态；请重试或重启 App。';
 }
 
 class WardBindPage extends ConsumerStatefulWidget {
@@ -1069,11 +1070,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     } on DioException catch (error) {
       if (!mounted) return;
       setState(() => removedPoolTaskIds.remove(id));
-      final detail = error.response?.data;
-      final message = detail is Map && detail['detail'] is String
-          ? detail['detail'] as String
-          : '删除失败，请稍后重试';
-      showMessage(context, message);
+      showMessage(context, '删除失败：${userErrorMessage(error)}');
       await _load();
     }
   }
@@ -1116,7 +1113,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
       await ref.read(apiProvider).actOnStartCue(cueId, command, version);
       await _load();
     } catch (error) {
-      if (mounted) showMessage(context, '操作没有完成，请稍后再试：$error');
+      if (mounted) showMessage(context, '操作未完成：${userErrorMessage(error)}');
     }
   }
 
@@ -1364,7 +1361,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
       insight = await ref.read(apiProvider).insight(widget.wardId, reviewDay);
       if (mounted) setState(() => tab = 2);
     } catch (e) {
-      if (mounted) showMessage(context, '提交自我总结失败：$e');
+      if (mounted) showMessage(context, '提交自我总结失败：${userErrorMessage(e)}');
     } finally {
       expressionController.dispose();
     }
@@ -1419,7 +1416,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
       _trackSession(sessionId, seconds);
       await _load();
     } catch (error) {
-      if (mounted) showMessage(context, '操作没有完成，请稍后再试：$error');
+      if (mounted) showMessage(context, '操作未完成：${userErrorMessage(error)}');
     }
   }
 
@@ -1549,7 +1546,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
       if (!mounted) return;
       _patchTaskSession(taskId, previous);
       _trackSession(sessionId, seconds);
-      showMessage(context, '操作没有完成，请稍后再试：$error');
+      showMessage(context, '操作未完成：${userErrorMessage(error)}');
     }
   }
 
@@ -1572,7 +1569,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         'status': 'paused',
         'active_seconds': seconds,
       });
-      showMessage(context, '操作没有完成，请稍后再试：$error');
+      showMessage(context, '操作未完成：${userErrorMessage(error)}');
     }
   }
 
@@ -1595,7 +1592,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         'active_seconds': seconds,
       });
       _trackSession(sessionId, seconds);
-      showMessage(context, '操作没有完成，请稍后再试：$error');
+      showMessage(context, '操作未完成：${userErrorMessage(error)}');
     }
   }
 
@@ -1968,8 +1965,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
       if (mounted) showMessage(context, '今天计划已确认');
     } on DioException catch (error) {
       if (error.response?.statusCode == 409) {
-        final body = error.response?.data;
-        final detail = body is Map ? body['detail'] as String? : null;
         if (mounted) {
           setState(() {
             planDraft = [];
@@ -1991,7 +1986,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
           await _refreshTranscript();
         } catch (_) {}
         if (mounted) {
-          showMessage(context, detail ?? '计划已变化，已刷新，请重新说明或确认。');
+          showMessage(context, '计划已变化，已刷新，请重新说明或确认。');
         }
       } else if (mounted) {
         showMessage(context, '确认计划失败，请稍后重试');

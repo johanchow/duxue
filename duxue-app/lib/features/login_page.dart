@@ -25,6 +25,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   bool bindingLoading = false;
   bool codeSending = false;
   bool accountNotFound = false;
+  String? formError;
   int resendSeconds = 0;
   Timer? resendTimer;
 
@@ -119,8 +120,11 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                     TextFormField(
                       controller: email,
                       onChanged: (_) {
-                        if (accountNotFound) {
-                          setState(() => accountNotFound = false);
+                        if (accountNotFound || formError != null) {
+                          setState(() {
+                            accountNotFound = false;
+                            formError = null;
+                          });
                         }
                       },
                       keyboardType: TextInputType.emailAddress,
@@ -141,6 +145,11 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                           maxLength: 6,
                           autofillHints: const [AutofillHints.oneTimeCode],
                           decoration: const InputDecoration(labelText: '邮箱验证码'),
+                          onChanged: (_) {
+                            if (formError != null) {
+                              setState(() => formError = null);
+                            }
+                          },
                           validator: (value) => RegExp(r'^[0-9]{6}$')
                                   .hasMatch(value?.trim() ?? '')
                               ? null
@@ -170,15 +179,28 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                                 : '登录',
                       ),
                     ),
+                    if (formError != null) ...[
+                      const SizedBox(height: 8),
+                      Semantics(
+                        liveRegion: true,
+                        child: Text(formError!,
+                            style: TextStyle(
+                                color: Theme.of(context).colorScheme.error)),
+                      ),
+                    ],
                     if (accountNotFound) ...[
                       const SizedBox(height: 8),
-                      Text('该邮箱尚未注册，请先注册',
-                          style: TextStyle(
-                              color: Theme.of(context).colorScheme.error)),
+                      Semantics(
+                        liveRegion: true,
+                        child: Text('该邮箱尚未注册，请先注册',
+                            style: TextStyle(
+                                color: Theme.of(context).colorScheme.error)),
+                      ),
                       TextButton(
                         onPressed: () => setState(() {
                           registering = true;
                           accountNotFound = false;
+                          formError = null;
                         }),
                         child: const Text('去注册'),
                       ),
@@ -187,6 +209,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       onPressed: () => setState(() {
                         registering = !registering;
                         accountNotFound = false;
+                        formError = null;
                       }),
                       child: Text(registering ? '已有账号？登录' : '没有账号？注册'),
                     ),
@@ -221,15 +244,16 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     final emailText = email.text.trim();
     final error = _validateEmail(emailText);
     if (error != null) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(error)));
+      setState(() => formError = error);
       return;
     }
+    if (formError != null) setState(() => formError = null);
     setState(() => codeSending = true);
     try {
       await ref.read(apiProvider).sendEmailCode(emailText);
       if (!mounted) return;
       code.clear();
+      if (formError != null) setState(() => formError = null);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('新验证码已发送，请输入邮件中的最新验证码')),
       );
@@ -242,9 +266,8 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       });
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_messageFor(error))),
-      );
+      FocusScope.of(context).unfocus();
+      setState(() => formError = _messageFor(error));
     } finally {
       if (mounted) setState(() => codeSending = false);
     }
@@ -276,7 +299,12 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
   Future<void> _submit() async {
     if (!(formKey.currentState?.validate() ?? false)) return;
-    if (accountNotFound) setState(() => accountNotFound = false);
+    if (accountNotFound || formError != null) {
+      setState(() {
+        accountNotFound = false;
+        formError = null;
+      });
+    }
     try {
       if (registering) {
         await ref.read(authProvider.notifier).register(
@@ -292,13 +320,12 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       }
     } catch (error) {
       if (!mounted) return;
+      FocusScope.of(context).unfocus();
       if (!registering && _isAccountNotFound(error)) {
         setState(() => accountNotFound = true);
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_messageFor(error))),
-      );
+      setState(() => formError = _messageFor(error));
     }
   }
 

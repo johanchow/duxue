@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:pretty_qr_code/pretty_qr_code.dart';
 import '../core/models.dart';
+import '../core/user_error_message.dart';
 import '../core/voice_transcription_service.dart';
 import '../providers.dart';
 import '../shared/app_ui.dart';
@@ -64,7 +65,7 @@ class _WardListPageState extends ConsumerState<WardListPage> {
     final wards = ref.watch(wardsProvider);
     return wards.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('加载孩子档案失败：$e')),
+      error: (e, _) => Center(child: Text('加载孩子档案失败：${userErrorMessage(e)}')),
       data: (items) => ListView(padding: const EdgeInsets.all(16), children: [
         if (items.isNotEmpty) ...[
           FilledButton.icon(
@@ -222,7 +223,7 @@ class _WardListPageState extends ConsumerState<WardListPage> {
         );
       }
     } catch (e) {
-      if (mounted) showMessage(context, '创建失败：$e');
+      if (mounted) showMessage(context, '创建失败：${userErrorMessage(e)}');
     }
   }
 
@@ -356,7 +357,7 @@ class _WardListPageState extends ConsumerState<WardListPage> {
                         });
                       } catch (error) {
                         if (!sheetContext.mounted) return;
-                        showMessage(sheetContext, '$error');
+                        showMessage(sheetContext, userErrorMessage(error));
                       }
                     },
                     onLongPressEnd: (_) => stopVoice(setSheet),
@@ -746,7 +747,7 @@ class _WardDetailPageState extends ConsumerState<WardDetailPage> {
                   ]));
       ref.invalidate(devicesProvider(widget.wardId));
     } catch (e) {
-      if (mounted) showMessage(context, '生成邀请码失败：$e');
+      if (mounted) showMessage(context, '生成邀请码失败：${userErrorMessage(e)}');
     }
   }
 }
@@ -780,6 +781,8 @@ Future<void> showWardAppInviteDialog(
                       child: const Text('完成'))
                 ]));
   } catch (error) {
-    if (context.mounted) showMessage(context, '生成学生 App 绑定码失败：$error');
+    if (context.mounted) {
+      showMessage(context, '生成学生 App 绑定码失败：${userErrorMessage(error)}');
+    }
   }
 }

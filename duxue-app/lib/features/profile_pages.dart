@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/models.dart';
+import '../core/user_error_message.dart';
 import '../providers.dart';
 
 const _fields = <String, String>{
@@ -26,7 +27,8 @@ class ProfileListPage extends ConsumerWidget {
       appBar: AppBar(title: const Text('分析配置')),
       body: profiles.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => Center(child: Text('加载失败：$error')),
+        error: (error, _) =>
+            Center(child: Text('加载分析配置失败：${userErrorMessage(error)}')),
         data: (items) => ListView(
           padding: const EdgeInsets.all(16),
           children: [
@@ -244,7 +246,8 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('保存失败：$error')));
+        ).showSnackBar(
+            SnackBar(content: Text('保存失败：${userErrorMessage(error)}')));
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -280,7 +283,8 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('删除失败：$error')));
+        ).showSnackBar(
+            SnackBar(content: Text('删除失败：${userErrorMessage(error)}')));
       }
     }
   }
@@ -485,7 +489,8 @@ class _LabelEditorState extends ConsumerState<LabelEditor> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('保存失败：$error')));
+        ).showSnackBar(
+            SnackBar(content: Text('保存失败：${userErrorMessage(error)}')));
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -504,7 +509,8 @@ class _LabelEditorState extends ConsumerState<LabelEditor> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('删除失败：$error')));
+        ).showSnackBar(
+            SnackBar(content: Text('删除失败：${userErrorMessage(error)}')));
       }
     }
   }
