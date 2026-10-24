@@ -80,6 +80,26 @@ def test_thread_session_contains_two_tutoring_turns_then_planning_handoff(db, mo
     assert all(s.attributes["langfuse.session.id"] == first.thread_id for s in routes)
 
 
+def test_companion_turn_root_contains_uploaded_image_for_session_replay(db, monkeypatch):
+    from app.application.process_managers import companion_coordinator
+
+    exporter = _capture(monkeypatch)
+    ward = create_ward(db)
+    db.commit()
+    monkeypatch.setattr(companion_coordinator, "current_turn_images", lambda *_: ["data:image/png;base64,secret"])
+    coordinator = CompanionCoordinator(
+        db, dispatcher=FakeWorkflowDispatcher(), classifier=StaticIntentClassifier("tutoring"),
+    )
+    coordinator.handle(
+        ward_id=ward.id, content="看这张图", thread_id=None, expected_thread_version=0,
+        route_hint="tutoring", attachment_keys=[f"ward/{ward.id}/companion/problem.png"],
+    )
+    turn = next(span for span in exporter.get_finished_spans() if span.name == "agent.turn")
+    payload = json.loads(turn.attributes["langfuse.observation.input"])
+    assert payload["content"][0] == {"type": "text", "text": "看这张图"}
+    assert payload["content"][1]["image_url"]["url"] == "data:image/png;base64,secret"
+
+
 def test_planning_graph_nodes_keep_session_context(db, monkeypatch):
     from types import SimpleNamespace
 

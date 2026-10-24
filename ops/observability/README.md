@@ -59,11 +59,12 @@ instrumentation remains in Grafana only. A ConversationThread ID is the
 Langfuse session ID, assigned before intent classification; the AgentRun ID
 is trace/observation metadata for filtering one task execution. Exported
 steps carry status categories and timing. Companion turn observations carry
-the Ward's visible input and the final reply; model generations carry the
-actual text messages and raw completion; tool observations carry arguments
-and results. Image data URLs are represented by `[image omitted]` in model
-inputs. The same content attributes reach Grafana through the shared OTLP
-trace exporter. HTTP, SQL, Redis and Celery spans still stay in Grafana only.
+the Ward's visible input, uploaded images and final reply; model generations
+carry the actual messages, images and raw completion; tool observations carry
+arguments and results. The Langfuse SDK extracts `data:` images into Media
+and leaves resolvable references in traces. The Grafana OTLP exporter keeps
+text but substitutes `[image omitted]` for image bytes. HTTP, SQL, Redis and
+Celery spans still stay in Grafana only.
 
 Grafana and Langfuse share one OpenTelemetry sampler. To see every turn in a
 Langfuse session, set `OTEL_TRACES_SAMPLER_ARG=1.0` in the deployment environment;

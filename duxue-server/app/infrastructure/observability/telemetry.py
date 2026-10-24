@@ -146,7 +146,7 @@ def configure_observability(*, component: str, app=None, engine=None) -> bool:
 
         tracer_provider = TracerProvider(resource=resource)
         if grafana_enabled:
-            tracer_provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+            tracer_provider.add_span_processor(BatchSpanProcessor(_GrafanaSpanExporter(OTLPSpanExporter())))
         trace.set_tracer_provider(tracer_provider)
         if langfuse_enabled:
             # Langfuse registers on the already-configured global provider.
@@ -290,20 +290,69 @@ def _attrs(**attrs: Any) -> dict[str, Any]:
 
 
 def _langfuse_payload(value: Any) -> str:
-    """Serialize text payloads without embedding image data URLs in a trace."""
+    """Serialize the model payload; Langfuse uploads image data URIs as Media."""
+    if isinstance(value, str):
+        return value
+    return json.dumps(value, ensure_ascii=False, default=str)
+
+
+def _grafana_span_attributes(attributes: dict[str, Any]) -> dict[str, Any]:
+    """Keep image bytes out of the shared Grafana OTLP exporter."""
     def without_image_bytes(item: Any) -> Any:
         if isinstance(item, dict):
             return {
-                key: "[image omitted]" if key == "image_url" else without_image_bytes(child)
+                key: "[image omitted]" if key == "image_url" and (
+                    isinstance(child, str) and child.startswith("data:image/")
+                    or isinstance(child, dict) and str(child.get("url", "")).startswith("data:image/")
+                ) else without_image_bytes(child)
                 for key, child in item.items()
             }
         if isinstance(item, list):
             return [without_image_bytes(child) for child in item]
         return item
 
-    if isinstance(value, str):
-        return value
-    return json.dumps(without_image_bytes(value), ensure_ascii=False, default=str)
+    cleaned = dict(attributes)
+    for key in ("langfuse.observation.input", "langfuse.observation.output"):
+        value = cleaned.get(key)
+        if not isinstance(value, str) or "data:image/" not in value:
+            continue
+        try:
+            parsed = json.loads(value)
+        except ValueError:
+            continue
+        cleaned[key] = json.dumps(without_image_bytes(parsed), ensure_ascii=False, default=str)
+    return cleaned
+
+
+class _GrafanaSpanExporter:
+    """Forward spans to OTLP after removing embedded image bytes."""
+
+    def __init__(self, exporter: Any) -> None:
+        self._exporter = exporter
+
+    def export(self, spans: Any) -> Any:
+        from opentelemetry.sdk.trace import ReadableSpan
+
+        cleaned = []
+        for span in spans:
+            attributes = _grafana_span_attributes(dict(span.attributes or {}))
+            if attributes == span.attributes:
+                cleaned.append(span)
+                continue
+            cleaned.append(ReadableSpan(
+                name=span.name, context=span.context, parent=span.parent,
+                resource=span.resource, attributes=attributes, events=span.events,
+                links=span.links, kind=span.kind,
+                instrumentation_scope=span.instrumentation_scope,
+                status=span.status, start_time=span.start_time, end_time=span.end_time,
+            ))
+        return self._exporter.export(cleaned)
+
+    def shutdown(self) -> None:
+        self._exporter.shutdown()
+
+    def force_flush(self, timeout_millis: int = 30000) -> bool:
+        return self._exporter.force_flush(timeout_millis)
 
 
 def set_observation_payload(span: Any, *, input: Any = None, output: Any = None) -> None:
@@ -404,17 +453,25 @@ def _scrub(value: str) -> str:
     return _PHONE.sub("[phone]", _EMAIL.sub("[email]", value))
 
 
-def record_agent_input(*, agent_type: str, run_id: str | None, thread_id: str | None, content: str) -> None:
+def record_agent_input(*, agent_type: str, run_id: str | None, thread_id: str | None,
+                       content: str, images: list[str | None] | None = None) -> None:
     """Record the Ward's sentence.
 
     The text itself goes to Grafana (span event and the stdout JSON log that Loki ingests) and to the
     local audit file, so a trace can be read as a question and an answer.  Emails and mainland phone
-    numbers are masked first; the text is capped.  Images are never recorded.
+    numbers are masked first; the text is capped. Langfuse receives attached
+    images through its Media extraction path.
     """
     summary = _summary(content)
     span = trace.get_current_span()
     if span.is_recording() and getattr(span, "name", None) == "agent.turn":
-        set_observation_payload(span, input=content)
+        payload: Any = content
+        if images:
+            payload = {"role": "user", "content": [
+                {"type": "text", "text": content},
+                *({"type": "image_url", "image_url": {"url": url}} for url in images if url),
+            ]}
+        set_observation_payload(span, input=payload)
     attrs = _attrs(**{"agent.type": agent_type, "agent.run_id": run_id, "agent.thread_id": thread_id, "input.length": summary["length"]})
     shown = {**attrs, "input.text": _scrub(content)[:_INPUT_TEXT_LIMIT]}
     _span_event("agent.turn.received", shown)

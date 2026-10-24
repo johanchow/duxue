@@ -77,8 +77,11 @@ def test_model_span_includes_langfuse_generation_input_and_output(monkeypatch):
     assert captured.attributes["langfuse.observation.output"] == '{"reply":"模型原文"}'
 
 
-def test_langfuse_model_payload_omits_image_data_url():
-    from app.infrastructure.observability.telemetry import _langfuse_payload
+def test_langfuse_model_payload_keeps_image_for_media_upload_and_grafana_omits_bytes():
+    from app.infrastructure.observability.telemetry import (
+        _grafana_span_attributes,
+        _langfuse_payload,
+    )
 
     payload = [{"role": "user", "content": [
         {"type": "text", "text": "这道题怎么做？"},
@@ -86,8 +89,56 @@ def test_langfuse_model_payload_omits_image_data_url():
     ]}]
     encoded = _langfuse_payload(payload)
     assert json.loads(encoded)[0]["content"][0]["text"] == "这道题怎么做？"
-    assert json.loads(encoded)[0]["content"][1]["image_url"] == "[image omitted]"
-    assert "base64" not in encoded
+    assert json.loads(encoded)[0]["content"][1]["image_url"]["url"] == "data:image/png;base64,secret"
+    grafana = _grafana_span_attributes({"langfuse.observation.input": encoded})
+    assert json.loads(grafana["langfuse.observation.input"])[0]["content"][1]["image_url"] == "[image omitted]"
+    assert "base64" not in grafana["langfuse.observation.input"]
+
+
+def test_grafana_exporter_scrubs_image_without_changing_langfuse_span(monkeypatch):
+    from langfuse._client.span_exporter import LangfuseTransformingSpanExporter
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+        InMemorySpanExporter,
+    )
+
+    from app.infrastructure.observability import telemetry
+
+    monkeypatch.setenv("OTEL_SDK_DISABLED", "false")
+    captured = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(captured))
+    monkeypatch.setattr(telemetry.trace, "get_tracer", provider.get_tracer)
+    with telemetry.agent_turn_span():
+        telemetry.record_agent_input(
+            agent_type="tutoring", run_id=None, thread_id="thread-1",
+            content="看这张图", images=["data:image/png;base64,secret"],
+        )
+    original = captured.get_finished_spans()[0]
+
+    class Sink:
+        def export(self, spans):
+            self.spans = spans
+            return True
+
+    sink = Sink()
+    telemetry._GrafanaSpanExporter(sink).export([original])
+    assert "data:image/png;base64,secret" in original.attributes["langfuse.observation.input"]
+    assert "base64" not in sink.spans[0].attributes["langfuse.observation.input"]
+    assert sink.spans[0].context == original.context
+
+    media_seen = []
+
+    class MediaManagerSpy:
+        def _find_and_process_media(self, **kwargs):
+            media_seen.append(kwargs["data"])
+            return kwargs["data"]
+
+    LangfuseTransformingSpanExporter(
+        exporter=InMemorySpanExporter(), media_manager=MediaManagerSpy(), mask_otel_spans=None,
+    ).export([original])
+    assert media_seen[0]["content"][1]["image_url"]["url"] == "data:image/png;base64,secret"
 
 
 def test_agent_session_includes_route_and_model_before_run_and_root_text(monkeypatch):

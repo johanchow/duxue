@@ -16,6 +16,7 @@ from app.application.ports.companion import (
     RunInvocation,
     WorkflowOutcome,
 )
+from app.application.queries.run_transcript import current_turn_images
 from app.application.workflows.planning_adapter import PlanningWorkflowAdapter
 from app.contexts.companion.domain.intent_router import IntentRouter
 from app.infrastructure.ai.intent_classifier import ModelIntentClassifier
@@ -292,7 +293,6 @@ class CompanionCoordinator:
         with agent_step_span("route", "intent_route") as route_span:
             if not self.router.blocks_for_safety(content) and route_hint not in _VALID_HINTS:
                 from app.application.queries.run_transcript import (
-                    current_turn_images,
                     load_visible_utterances,
                 )
 
@@ -350,6 +350,7 @@ class CompanionCoordinator:
         record_agent_input(
             agent_type=decision.target, run_id=run.id if run else None,
             thread_id=thread.id, content=visible_content,
+            images=current_turn_images(ward_id, attachment_keys) if attachment_keys else None,
         )
         with agent_step_span("route", "final_route") as route_span:
             route_span.set_attribute("agent.target", decision.target)
