@@ -24,6 +24,7 @@ from app.infrastructure.observability.telemetry import (
     agent_workflow_span,
     record_agent_input,
     record_agent_outcome,
+    record_agent_output,
     record_agent_route,
     set_agent_context,
     trace_agent_turn,
@@ -241,6 +242,10 @@ class CompanionCoordinator:
         cached = self._restore_idempotent(command_id, ward_id, digest)
         if cached is not None:
             set_agent_context(thread_id=cached.thread_id)
+            record_agent_input(agent_type=cached.decision.target, run_id=cached.run_id,
+                               thread_id=cached.thread_id, content=content)
+            if cached.interaction and isinstance(cached.interaction.get("content"), str):
+                record_agent_output(cached.interaction["content"])
             return cached
 
         # Phase 1: persist the routing decision before invoking any target work.
@@ -344,7 +349,7 @@ class CompanionCoordinator:
             run.current_turn_id = str(uuid4())
         record_agent_input(
             agent_type=decision.target, run_id=run.id if run else None,
-            thread_id=thread.id, content=content,
+            thread_id=thread.id, content=visible_content,
         )
         with agent_step_span("route", "final_route") as route_span:
             route_span.set_attribute("agent.target", decision.target)
@@ -363,6 +368,7 @@ class CompanionCoordinator:
         intent_choice = (self._intent_choice_interaction(thread.id, command_id)
                          if decision.target == "clarify" else None)
         if terminal_reply is not None:
+            record_agent_output(terminal_reply)
             thread.version = version
             version = self._advance_thread(thread)
             self._write_transcript(
@@ -516,6 +522,7 @@ class CompanionCoordinator:
         version = self._advance_thread(thread)
         visible_content = self._visible_outcome_content(outcome)
         if visible_content is not None and command_id is not None:
+            record_agent_output(visible_content)
             self._write_transcript(
                 thread=thread, command_id=command_id, author_type="companion",
                 content=visible_content, thread_version=version, run=run, turn_id=turn_id,

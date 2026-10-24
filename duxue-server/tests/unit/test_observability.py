@@ -23,8 +23,7 @@ def test_telemetry_is_disabled_without_an_otlp_endpoint_or_langfuse(monkeypatch)
     assert configure_observability(component="api") is False
 
 
-def test_model_span_includes_only_safe_langfuse_generation_mapping(monkeypatch):
-    """The optional SDK exporter can classify a generation without prompt text."""
+def test_model_span_includes_langfuse_generation_input_and_output(monkeypatch):
     from contextlib import contextmanager
 
     from app.infrastructure.observability import telemetry
@@ -32,9 +31,16 @@ def test_model_span_includes_only_safe_langfuse_generation_mapping(monkeypatch):
     class Span:
         def __init__(self):
             self.attributes = {}
+            self.name = "llm.request"
+
+        def is_recording(self):
+            return True
 
         def set_attribute(self, key, value):
             self.attributes[key] = value
+
+        def add_event(self, _name, attributes):
+            pass
 
         def record_exception(self, _error):
             raise AssertionError("unexpected model error")
@@ -51,21 +57,40 @@ def test_model_span_includes_only_safe_langfuse_generation_mapping(monkeypatch):
             yield captured
 
     monkeypatch.setattr(telemetry.trace, "get_tracer", lambda _name: Tracer())
+    monkeypatch.setattr(telemetry.trace, "get_current_span", lambda: captured)
+    monkeypatch.setattr(telemetry, "_write_debug_audit", lambda *_args: None)
     with telemetry.model_call_span(
         operation="tutor_turn", model="qwen-test", agent_type="tutoring",
         component_id="tutoring.turn", component_version="v1",
+        input_payload=[{"role": "user", "content": "孩子的题目"}],
     ) as result:
         result["tokens_in"] = 12
         result["tokens_out"] = 34
+        telemetry.record_model_response(agent_type="tutoring", model="qwen-test", content='{"reply":"模型原文"}')
 
     assert captured.attributes["langfuse.observation.type"] == "generation"
     assert captured.attributes["langfuse.observation.model.name"] == "qwen-test"
     assert json.loads(captured.attributes["langfuse.observation.usage_details"]) == {"input": 12, "output": 34}
-    assert "langfuse.observation.input" not in captured.attributes
-    assert "langfuse.observation.output" not in captured.attributes
+    assert json.loads(captured.attributes["langfuse.observation.input"]) == [
+        {"role": "user", "content": "孩子的题目"},
+    ]
+    assert captured.attributes["langfuse.observation.output"] == '{"reply":"模型原文"}'
 
 
-def test_agent_session_includes_route_and_model_before_run_and_scrubs_root_events(monkeypatch):
+def test_langfuse_model_payload_omits_image_data_url():
+    from app.infrastructure.observability.telemetry import _langfuse_payload
+
+    payload = [{"role": "user", "content": [
+        {"type": "text", "text": "这道题怎么做？"},
+        {"type": "image_url", "image_url": {"url": "data:image/png;base64,secret"}},
+    ]}]
+    encoded = _langfuse_payload(payload)
+    assert json.loads(encoded)[0]["content"][0]["text"] == "这道题怎么做？"
+    assert json.loads(encoded)[0]["content"][1]["image_url"] == "[image omitted]"
+    assert "base64" not in encoded
+
+
+def test_agent_session_includes_route_and_model_before_run_and_root_text(monkeypatch):
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import SimpleSpanProcessor
     from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
@@ -89,6 +114,7 @@ def test_agent_session_includes_route_and_model_before_run_and_scrubs_root_event
         telemetry.record_agent_input(
             agent_type="tutoring", run_id="run-1", thread_id="thread-1", content="孩子的原话",
         )
+        telemetry.record_agent_output("展示给孩子的回复")
         with telemetry.agent_workflow_span(agent_type="tutoring", run_id="run-1", thread_id="thread-1"):
             telemetry.record_llm_fallback(operation="tutor_turn", reason="child-secret-in-error")
             with telemetry.agent_step_span("tool", "get_task_context") as tool:
@@ -106,11 +132,13 @@ def test_agent_session_includes_route_and_model_before_run_and_scrubs_root_event
     assert by_name["llm.request"].parent.span_id == by_name["agent.route"].context.span_id
     assert by_name["agent.tool"].parent.span_id == by_name["agent.workflow"].context.span_id
     exported = str([(s.attributes, [(e.name, e.attributes) for e in s.events]) for s in spans])
-    assert "孩子的原话" not in exported
+    assert by_name["agent.turn"].attributes["langfuse.observation.input"] == "孩子的原话"
+    assert by_name["agent.turn"].attributes["langfuse.observation.output"] == "展示给孩子的回复"
+    assert "input.text" not in str(by_name["agent.turn"].events)
     assert "child-secret-in-error" not in exported
 
 
-def test_grafana_parent_keeps_input_event_while_langfuse_turn_is_payload_free(monkeypatch):
+def test_grafana_parent_keeps_input_event_and_langfuse_turn_has_input(monkeypatch):
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import SimpleSpanProcessor
     from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
@@ -133,6 +161,7 @@ def test_grafana_parent_keeps_input_event_while_langfuse_turn_is_payload_free(mo
     spans = {span.name: span for span in exporter.get_finished_spans()}
     assert spans["HTTP POST"].events[0].attributes["input.text"] == "孩子的原话"
     assert "input.text" not in spans["agent.turn"].events[0].attributes
+    assert spans["agent.turn"].attributes["langfuse.observation.input"] == "孩子的原话"
     assert telemetry._should_export_to_langfuse(spans["HTTP POST"]) is False
 
 

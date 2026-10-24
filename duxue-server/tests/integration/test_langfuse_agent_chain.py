@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
@@ -64,6 +66,11 @@ def test_thread_session_contains_two_tutoring_turns_then_planning_handoff(db, mo
     turns = [s for s in exporter.get_finished_spans() if s.name == "agent.turn"]
     assert len(turns) == 4
     assert all(s.attributes["langfuse.session.id"] == first.thread_id for s in turns)
+    assert [s.attributes["langfuse.observation.input"] for s in turns] == [
+        "这题我不会", "除数是 130 吗", "帮我安排今晚的计划", "再说一遍",
+    ]
+    assert [s.attributes["langfuse.observation.output"] for s in turns[:3]] == ["请回答"] * 3
+    assert turns[3].attributes["langfuse.observation.output"] == "我还没确定你想做哪件事，请选择：**管理任务**、**总结思考**，还是**提问探讨**？"
     assert [s.attributes.get("langfuse.trace.metadata.run_id") for s in turns] == [
         first.run_id, second.run_id, third.run_id,
         None,
@@ -129,7 +136,8 @@ def test_tutoring_tools_and_parallel_judges_are_children_of_one_trace(monkeypatc
     assert tool.attributes["agent.tool.status"] == "no_match"
     assert preloaded.attributes["agent.tool.source"] == "preloaded"
     assert unknown.attributes["agent.tool.status"] == "tool_error"
-    assert "private-child" not in str(unknown.attributes)
+    assert json.loads(unknown.attributes["langfuse.observation.input"]) == {"query": "private-child-query"}
+    assert json.loads(unknown.attributes["langfuse.observation.output"])["tool"] == "private-child-tool-name"
     for name in ("tutoring.candidate_schema", "tutoring.visual_schema", "tutoring.exit_gate",
                  "tutoring.text_leak", "tutoring.visual_leak"):
         assert ("agent.check", name) in steps

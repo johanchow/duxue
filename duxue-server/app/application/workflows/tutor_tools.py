@@ -8,7 +8,10 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.application.workflows.teaching_skills import history_candidates
-from app.infrastructure.observability.telemetry import agent_step_span
+from app.infrastructure.observability.telemetry import (
+    agent_step_span,
+    set_observation_payload,
+)
 from app.infrastructure.persistence.models import TutoringMessage, TutoringProblem
 
 MAX_TOOL_CALLS = 3
@@ -72,6 +75,7 @@ class TutorToolbox:
         with agent_step_span("tool", name if name in TOOL_NAMES else "unknown_tool",
                              **{"agent.tool.source": "model_request"}) as span:
             args = args if isinstance(args, dict) else {}
+            set_observation_payload(span, input=args)
             handler = {
                 "get_task_context": self._task_context,
                 "get_attempt_summary": self._attempt_summary,
@@ -80,12 +84,15 @@ class TutorToolbox:
             }.get(name)
             if handler is None:
                 span.set_attribute("agent.tool.status", "tool_error")
-                return {"tool": name, "status": "tool_error", "detail": "unknown_tool"}
+                result = {"tool": name, "status": "tool_error", "detail": "unknown_tool"}
+                set_observation_payload(span, output=result)
+                return result
             try:
                 result = {"tool": name, **handler(args)}
             except Exception:
                 result = {"tool": name, "status": "tool_error"}
             span.set_attribute("agent.tool.status", result.get("status", "tool_error"))
+            set_observation_payload(span, output=result)
             return result
 
     def _task_context(self, _args: dict) -> dict:

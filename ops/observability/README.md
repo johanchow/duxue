@@ -58,21 +58,20 @@ plus `duxue.model` `llm.request` generations. HTTP, SQL, Redis and Celery
 instrumentation remains in Grafana only. A ConversationThread ID is the
 Langfuse session ID, assigned before intent classification; the AgentRun ID
 is trace/observation metadata for filtering one task execution. Exported
-steps carry code-owned status categories and timing, never tool arguments or
-results. Model calls carry component/version, model, operation, duration,
-token counts, provider request ID and result status. Prompt text, Ward text,
-model output, image/data URLs, SVG, ContextEnvelope, exception messages,
-Authorization and API keys are excluded. Do not add prompt or completion
-fields merely to improve the Langfuse UI.
+steps carry status categories and timing. Companion turn observations carry
+the Ward's visible input and the final reply; model generations carry the
+actual text messages and raw completion; tool observations carry arguments
+and results. Image data URLs are represented by `[image omitted]` in model
+inputs. The same content attributes reach Grafana through the shared OTLP
+trace exporter. HTTP, SQL, Redis and Celery spans still stay in Grafana only.
 
 Grafana and Langfuse share one OpenTelemetry sampler. To see every turn in a
 Langfuse session, set `OTEL_TRACES_SAMPLER_ARG=1.0` in the deployment environment;
 lower values omit whole turns from both destinations. Check the uncommitted
 production `.env.prod` separately before deployment.
 
-Langfuse is an observability aid, not a source of record or a permission to
-upload children’s conversations. Dataset import, annotation, or any approved
-sample export needs a separate child-data governance decision.
+Langfuse remains an observability aid rather than the conversation source of
+record. Existing traces are unchanged; new payloads appear after deployment.
 
 ## Grafana import and alerts
 

@@ -6,10 +6,13 @@ import tempfile
 from pathlib import Path
 
 from app.bootstrap.settings import settings
+from app.infrastructure.observability.telemetry import (
+    model_call_span,
+    record_model_response,
+    record_vlm_frames,
+)
 from app.infrastructure.persistence.models import Frame
 from app.infrastructure.storage.object_storage import storage
-from app.infrastructure.observability.telemetry import model_call_span, record_vlm_frames
-
 
 STRUCTURED_PROMPT = """这张图片来自学生侧后方约45度且略高于头顶的摄像头。请仅依据可见的手部、桌面、头部朝向和身体姿态，用合法 JSON 描述行为，不要输出其他文字，也不要依赖正脸、眼睛或表情。输出字段必须是 hand_action、desk_objects、head_orientation、body_pos、seat_status、motion_state、desc_summary。"""
 
@@ -74,12 +77,15 @@ class DashscopeInference:
 
     def realtime(self, frame: Frame, extra_prompt: str = "") -> dict:
         body = _request(frame, extra_prompt)["body"]
-        with model_call_span(operation="vlm_realtime", model=settings.vlm_model) as telemetry:
+        with model_call_span(operation="vlm_realtime", model=settings.vlm_model,
+                             input_payload=body["messages"]) as telemetry:
             response = self.client.chat.completions.create(**body)
             usage = response.usage
             telemetry["provider_request_id"] = getattr(response, "id", None)
             telemetry["tokens_in"] = getattr(usage, "prompt_tokens", None)
             telemetry["tokens_out"] = getattr(usage, "completion_tokens", None)
             content = response.choices[0].message.content.strip().removeprefix("```json").removesuffix("```").strip()
+            record_model_response(agent_type="supervision", model=settings.vlm_model,
+                                  content=content, operation="vlm_realtime")
             record_vlm_frames(count=1, mode="realtime")
             return json.loads(content)
