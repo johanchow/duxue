@@ -1,9 +1,8 @@
 """Privacy-safe OpenTelemetry bootstrap and Duxue business telemetry.
 
 Grafana is for operational health and debugging, never the system of record for
-children's conversations.  This module deliberately exposes summaries, hashes
-and low-cardinality dimensions only.  Full text is written nowhere unless a
-separate, explicitly configured encrypted debug-audit sink is enabled.
+children's conversations.  Explicit Companion/LLM/tool spans also carry their
+input and output for Langfuse Session replay and product diagnostics.
 """
 
 from __future__ import annotations
@@ -33,6 +32,7 @@ _PHONE = re.compile(r"(?<!\d)1\d{10}(?!\d)")
 _thread_id: ContextVar[str | None] = ContextVar("duxue_thread_id", default=None)
 _run_id: ContextVar[str | None] = ContextVar("duxue_run_id", default=None)
 _agent_parent_span: ContextVar[Any] = ContextVar("duxue_agent_parent_span", default=None)
+_pending_subgoal: ContextVar[dict[str, Any] | None] = ContextVar("duxue_pending_subgoal", default=None)
 _PLANNING_STAGES = frozenset({
     "checkpointer_connect", "checkpointer_setup", "context_build", "plan_intake",
     "agent_text", "graph_compile", "graph_invoke",
@@ -147,7 +147,7 @@ def configure_observability(*, component: str, app=None, engine=None) -> bool:
 
         tracer_provider = TracerProvider(resource=resource)
         if grafana_enabled:
-            tracer_provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+            tracer_provider.add_span_processor(BatchSpanProcessor(_GrafanaSpanExporter(OTLPSpanExporter())))
         trace.set_tracer_provider(tracer_provider)
         if langfuse_enabled:
             # Langfuse registers on the already-configured global provider.
@@ -290,6 +290,80 @@ def _attrs(**attrs: Any) -> dict[str, Any]:
     return {key: value for key, value in attrs.items() if value is not None}
 
 
+def _langfuse_payload(value: Any) -> str:
+    """Serialize the model payload; Langfuse uploads image data URIs as Media."""
+    if isinstance(value, str):
+        return value
+    return json.dumps(value, ensure_ascii=False, default=str)
+
+
+def _grafana_span_attributes(attributes: dict[str, Any]) -> dict[str, Any]:
+    """Keep image bytes out of the shared Grafana OTLP exporter."""
+    def without_image_bytes(item: Any) -> Any:
+        if isinstance(item, dict):
+            return {
+                key: "[image omitted]" if key == "image_url" and (
+                    isinstance(child, str) and child.startswith("data:image/")
+                    or isinstance(child, dict) and str(child.get("url", "")).startswith("data:image/")
+                ) else without_image_bytes(child)
+                for key, child in item.items()
+            }
+        if isinstance(item, list):
+            return [without_image_bytes(child) for child in item]
+        return item
+
+    cleaned = dict(attributes)
+    for key in ("langfuse.observation.input", "langfuse.observation.output"):
+        value = cleaned.get(key)
+        if not isinstance(value, str) or "data:image/" not in value:
+            continue
+        try:
+            parsed = json.loads(value)
+        except ValueError:
+            continue
+        cleaned[key] = json.dumps(without_image_bytes(parsed), ensure_ascii=False, default=str)
+    return cleaned
+
+
+class _GrafanaSpanExporter:
+    """Forward spans to OTLP after removing embedded image bytes."""
+
+    def __init__(self, exporter: Any) -> None:
+        self._exporter = exporter
+
+    def export(self, spans: Any) -> Any:
+        from opentelemetry.sdk.trace import ReadableSpan
+
+        cleaned = []
+        for span in spans:
+            attributes = _grafana_span_attributes(dict(span.attributes or {}))
+            if attributes == span.attributes:
+                cleaned.append(span)
+                continue
+            cleaned.append(ReadableSpan(
+                name=span.name, context=span.context, parent=span.parent,
+                resource=span.resource, attributes=attributes, events=span.events,
+                links=span.links, kind=span.kind,
+                instrumentation_scope=span.instrumentation_scope,
+                status=span.status, start_time=span.start_time, end_time=span.end_time,
+            ))
+        return self._exporter.export(cleaned)
+
+    def shutdown(self) -> None:
+        self._exporter.shutdown()
+
+    def force_flush(self, timeout_millis: int = 30000) -> bool:
+        return self._exporter.force_flush(timeout_millis)
+
+
+def set_observation_payload(span: Any, *, input: Any = None, output: Any = None) -> None:
+    """Set Langfuse's input/output on an explicitly created business span."""
+    if input is not None:
+        span.set_attribute("langfuse.observation.input", _langfuse_payload(input))
+    if output is not None:
+        span.set_attribute("langfuse.observation.output", _langfuse_payload(output))
+
+
 def _span_event(name: str, attributes: dict[str, Any]) -> None:
     span = trace.get_current_span()
     if span.is_recording():
@@ -325,6 +399,7 @@ def set_agent_context(*, thread_id: str | None = None, run_id: str | None = None
 @contextmanager
 def agent_turn_span() -> Iterator[None]:
     thread_token, run_token = _thread_id.set(None), _run_id.set(None)
+    subgoal_token = _pending_subgoal.set(None)
     parent_token = _agent_parent_span.set(trace.get_current_span())
     try:
         with trace.get_tracer("duxue.agent").start_as_current_span(
@@ -334,6 +409,7 @@ def agent_turn_span() -> Iterator[None]:
             yield
     finally:
         _agent_parent_span.reset(parent_token)
+        _pending_subgoal.reset(subgoal_token)
         _run_id.reset(run_token)
         _thread_id.reset(thread_token)
 
@@ -380,14 +456,25 @@ def _scrub(value: str) -> str:
     return _PHONE.sub("[phone]", _EMAIL.sub("[email]", value))
 
 
-def record_agent_input(*, agent_type: str, run_id: str | None, thread_id: str | None, content: str) -> None:
+def record_agent_input(*, agent_type: str, run_id: str | None, thread_id: str | None,
+                       content: str, images: list[str | None] | None = None) -> None:
     """Record the Ward's sentence.
 
     The text itself goes to Grafana (span event and the stdout JSON log that Loki ingests) and to the
     local audit file, so a trace can be read as a question and an answer.  Emails and mainland phone
-    numbers are masked first; the text is capped.  Images are never recorded.
+    numbers are masked first; the text is capped. Langfuse receives attached
+    images through its Media extraction path.
     """
     summary = _summary(content)
+    span = trace.get_current_span()
+    if span.is_recording() and getattr(span, "name", None) == "agent.turn":
+        payload: Any = content
+        if images:
+            payload = {"role": "user", "content": [
+                {"type": "text", "text": content},
+                *({"type": "image_url", "image_url": {"url": url}} for url in images if url),
+            ]}
+        set_observation_payload(span, input=payload)
     attrs = _attrs(**{"agent.type": agent_type, "agent.run_id": run_id, "agent.thread_id": thread_id, "input.length": summary["length"]})
     shown = {**attrs, "input.text": _scrub(content)[:_INPUT_TEXT_LIMIT]}
     _span_event("agent.turn.received", shown)
@@ -398,6 +485,46 @@ def record_agent_input(*, agent_type: str, run_id: str | None, thread_id: str | 
         parent.add_event("agent.turn.received", attributes=shown)
     _audit_logger.info("agent.turn.received", extra={"telemetry": {**shown, "input.sha256": summary["sha256"]}})
     _write_debug_audit("input", {**attrs, "input": summary}, content)
+
+
+def record_agent_output(content: str) -> None:
+    """Attach the reply shown to the Ward to the current Companion turn."""
+    span = trace.get_current_span()
+    if span.is_recording() and getattr(span, "name", None) == "agent.turn":
+        set_observation_payload(span, output=content)
+    _audit_logger.info("agent.turn.output", extra={"telemetry": {
+        **_attrs(**{"agent.thread_id": _thread_id.get(), "agent.run_id": _run_id.get()}),
+        "shown": content,
+    }})
+
+
+def stage_tutor_subgoal_transition(*, problem_id: str, turn_id: str,
+                                   previous: str | None, candidate: str | None,
+                                   applied: str | None) -> None:
+    """Capture the candidate and policy result; log it only after the transaction commits."""
+    transition = {
+        "tutor.problem_id": problem_id, "tutor.turn_id": turn_id,
+        "previous_subgoal": previous, "candidate_next_subgoal": candidate,
+        "active_subgoal": applied, "subgoal_changed": previous != applied,
+    }
+    _pending_subgoal.set(transition)
+    span = trace.get_current_span()
+    if span.is_recording() and getattr(span, "name", None) == "agent.node":
+        set_observation_payload(span,
+            input={"previous_subgoal": previous, "candidate_next_subgoal": candidate},
+            output={"active_subgoal": applied, "subgoal_changed": previous != applied})
+
+
+def record_tutor_subgoal_committed() -> None:
+    """Emit the staged tutoring state only after the owning database commit succeeds."""
+    transition = _pending_subgoal.get()
+    if transition is None:
+        return
+    _pending_subgoal.set(None)
+    _audit_logger.info("tutor.subgoal.committed", extra={"telemetry": {
+        **_attrs(**{"agent.thread_id": _thread_id.get(), "agent.run_id": _run_id.get()}),
+        **transition,
+    }})
 
 
 def record_tutor_turn_result(
@@ -540,7 +667,7 @@ def agent_workflow_span(*, agent_type: str, run_id: str, thread_id: str) -> Iter
 @contextmanager
 def model_call_span(*, operation: str, model: str, agent_type: str | None = None,
                     component_id: str | None = None, component_version: str | None = None,
-                    model_source: str | None = None) -> Iterator[dict[str, Any]]:
+                    model_source: str | None = None, input_payload: Any = None) -> Iterator[dict[str, Any]]:
     started = perf_counter()
     attrs = {**_agent_context_attrs(), **_attrs(**{
         "llm.operation": operation, "llm.model": model, "agent.type": agent_type,
@@ -554,6 +681,8 @@ def model_call_span(*, operation: str, model: str, agent_type: str | None = None
     with trace.get_tracer("duxue.model").start_as_current_span(
         "llm.request", attributes=attrs, record_exception=False, set_status_on_exception=False,
     ) as span:
+        if input_payload is not None:
+            set_observation_payload(span, input=input_payload)
         result: dict[str, Any] = {"result": "success", "tokens_in": None, "tokens_out": None, "provider_request_id": None}
         try:
             yield result
@@ -616,8 +745,11 @@ def record_planning_loop_outcome(*, status: str, has_image: bool) -> None:
 
 def record_model_response(*, agent_type: str, model: str, content: str, operation: str | None = None,
                           component_id: str | None = None, component_version: str | None = None) -> None:
-    """Record one model completion. Stdout and Grafana stay content-free; the original text goes to the local audit file."""
+    """Record one model completion on the active generation and audit sink."""
     summary = _summary(content)
+    span = trace.get_current_span()
+    if span.is_recording() and getattr(span, "name", None) == "llm.request":
+        set_observation_payload(span, output=content)
     attrs = _attrs(**{
         "agent.type": agent_type,
         "llm.model": model,

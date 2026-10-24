@@ -40,6 +40,7 @@ from app.infrastructure.observability.telemetry import (
     record_tutor_leak_retry,
     record_tutor_shape_lint,
     record_tutor_visual_dropped,
+    set_observation_payload,
 )
 
 INVALID_CANDIDATE = "invalid_model_candidate"
@@ -50,9 +51,11 @@ def _ensure_widget_guidelines(observations: list[dict]) -> None:
     if any(item.get("tool") == "widget_guidelines" for item in observations):
         return
     with agent_step_span("tool", "widget_guidelines", **{"agent.tool.source": "preloaded"}) as span:
+        set_observation_payload(span, input={})
         observations.append({
             "tool": "widget_guidelines", "status": "unique", "guidelines": SVG_WIDGET_GUIDELINES,
         })
+        set_observation_payload(span, output=observations[-1])
         span.set_attribute("agent.tool.status", "unique")
 
 

@@ -16,6 +16,7 @@ from app.application.ports.companion import (
     RunInvocation,
     WorkflowOutcome,
 )
+from app.application.queries.run_transcript import current_turn_images
 from app.application.workflows.planning_adapter import PlanningWorkflowAdapter
 from app.contexts.companion.domain.intent_router import IntentRouter
 from app.infrastructure.ai.intent_classifier import ModelIntentClassifier
@@ -24,7 +25,9 @@ from app.infrastructure.observability.telemetry import (
     agent_workflow_span,
     record_agent_input,
     record_agent_outcome,
+    record_agent_output,
     record_agent_route,
+    record_tutor_subgoal_committed,
     set_agent_context,
     trace_agent_turn,
 )
@@ -241,6 +244,10 @@ class CompanionCoordinator:
         cached = self._restore_idempotent(command_id, ward_id, digest)
         if cached is not None:
             set_agent_context(thread_id=cached.thread_id)
+            record_agent_input(agent_type=cached.decision.target, run_id=cached.run_id,
+                               thread_id=cached.thread_id, content=content)
+            if cached.interaction and isinstance(cached.interaction.get("content"), str):
+                record_agent_output(cached.interaction["content"])
             return cached
 
         # Phase 1: persist the routing decision before invoking any target work.
@@ -287,7 +294,6 @@ class CompanionCoordinator:
         with agent_step_span("route", "intent_route") as route_span:
             if not self.router.blocks_for_safety(content) and route_hint not in _VALID_HINTS:
                 from app.application.queries.run_transcript import (
-                    current_turn_images,
                     load_visible_utterances,
                 )
 
@@ -344,7 +350,8 @@ class CompanionCoordinator:
             run.current_turn_id = str(uuid4())
         record_agent_input(
             agent_type=decision.target, run_id=run.id if run else None,
-            thread_id=thread.id, content=content,
+            thread_id=thread.id, content=visible_content,
+            images=current_turn_images(ward_id, attachment_keys) if attachment_keys else None,
         )
         with agent_step_span("route", "final_route") as route_span:
             route_span.set_attribute("agent.target", decision.target)
@@ -371,6 +378,8 @@ class CompanionCoordinator:
                 interaction_ref=intent_choice,
             )
         self.db.commit()
+        if terminal_reply is not None:
+            record_agent_output(terminal_reply)
         # The conditional SQL update deliberately bypasses the identity map;
         # reload before the outcome transaction so its fence sees the new
         # Thread version rather than the pre-routing snapshot.
@@ -522,6 +531,9 @@ class CompanionCoordinator:
                 attempt=attempt, interaction_ref=self._visible_interaction_ref(outcome),
             )
         self.db.commit()
+        record_tutor_subgoal_committed()
+        if visible_content is not None and command_id is not None:
+            record_agent_output(visible_content)
         self.db.expire_all()
         return True
 

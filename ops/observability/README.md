@@ -58,21 +58,27 @@ plus `duxue.model` `llm.request` generations. HTTP, SQL, Redis and Celery
 instrumentation remains in Grafana only. A ConversationThread ID is the
 Langfuse session ID, assigned before intent classification; the AgentRun ID
 is trace/observation metadata for filtering one task execution. Exported
-steps carry code-owned status categories and timing, never tool arguments or
-results. Model calls carry component/version, model, operation, duration,
-token counts, provider request ID and result status. Prompt text, Ward text,
-model output, image/data URLs, SVG, ContextEnvelope, exception messages,
-Authorization and API keys are excluded. Do not add prompt or completion
-fields merely to improve the Langfuse UI.
+steps carry status categories and timing. Companion turn observations carry
+the Ward's visible input, uploaded images and final reply; model generations
+carry the actual messages, images and raw completion; tool observations carry
+arguments and results. The Langfuse SDK extracts `data:` images into Media
+and leaves resolvable references in traces. The Grafana OTLP exporter keeps
+text but substitutes `[image omitted]` for image bytes. HTTP, SQL, Redis and
+Celery spans still stay in Grafana only.
+
+For tutoring turns, the `tutoring.apply_problem` observation records the
+candidate `next_subgoal` and the policy-applied `active_subgoal`. After a
+successful database commit, Loki receives `tutor.subgoal.committed` with both
+values and `agent.turn.output` with the final text shown to the Ward. Use the
+shared trace ID to compare these with the raw model generation.
 
 Grafana and Langfuse share one OpenTelemetry sampler. To see every turn in a
 Langfuse session, set `OTEL_TRACES_SAMPLER_ARG=1.0` in the deployment environment;
 lower values omit whole turns from both destinations. Check the uncommitted
 production `.env.prod` separately before deployment.
 
-Langfuse is an observability aid, not a source of record or a permission to
-upload children’s conversations. Dataset import, annotation, or any approved
-sample export needs a separate child-data governance decision.
+Langfuse remains an observability aid rather than the conversation source of
+record. Existing traces are unchanged; new payloads appear after deployment.
 
 ## Grafana import and alerts
 
