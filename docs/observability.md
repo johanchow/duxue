@@ -280,11 +280,15 @@ Langfuse 默认关闭。需要 AI trace 时，在同一份服务端环境文件�
 
 Langfuse 导出采用显式 span allow-list：只接收 `duxue.agent` 创建的 turn、route、workflow、node、tool、check span，以及 `duxue.model` 创建的 `llm.request` generation。HTTP、SQL、Redis、Celery 等自动 span 不进入 Langfuse。Thread ID 从意图分类前传播为 `session_id`；Run ID 是可筛选的执行关联字段。根轮次有 Ward 输入、上传图片和展示回复；模型 generation 有实际消息、图片与原始回复；工具有参数与结果。Langfuse SDK 将图片数据提取为 Media 引用，异常原文与认证/API key 不主动采集。
 
+路由 observation 记录本轮输入和路由决定；workflow 记录授权调用和返回的 Outcome；node 记录节点参数与结果（数据库 Session、模型客户端等对象只记类型）；check 记录实际检查输入与通过、拒绝或跳过的结果。节点已有专用业务投影时优先保留它，例如 `tutoring.apply_problem` 的目标写回。执行异常只记类型，不把异常消息写进 observation。新增字段仅对部署后的新 trace 生效。
+
 Grafana 与 Langfuse 共用同一个 OpenTelemetry `TracerProvider` 和采样器。若要在 Langfuse 查看每一轮完整 Session，部署环境需设 `OTEL_TRACES_SAMPLER_ARG=1.0`；小于 1 的值会让部分整轮 trace 在两处都缺席。环境模板默认全量采样，生产主机未提交的 `.env.prod` 需单独核对。
 
 ### 7.1.2 Agent 数据边界
 
 Grafana 的 HTTP 父 span、OTLP log / stdout JSON 日志包含运行关联 ID、模型、结果、时延、token 用量（供应商返回时）、**Ward 本轮问话文本**（`input.text`，上限 2000 字，邮箱与大陆手机号已遮蔽）以及输入/输出的长度和 SHA-256 摘要。共享 OTLP tracer 上的 Companion、模型与工具 span 还包含 `langfuse.observation.input/output` 原文，因此 Grafana trace 同样可读这些文字正文；其专用 exporter 将图片 data URL 替换为占位符。HTTP 父 span 不导出到 Langfuse。答疑轮另有 `tutor.turn.result` 类别事件（`act`、`relation`、结果 `shown|fallback|blocked`、配图丢弃类别、形状告警）。Authorization 和 API Key 不主动写入 trace。
+
+答疑的每一次生成与审核按 `tutoring.attempt` 节点分组（`primary`、`repair`、`backup`，以及配图重画）；模型 generation 记录实际发送的消息、原始回复、模型与 `ai.prompt_id`，即使候选后来被拒也保留。`tutoring.candidate_schema` 记录原始候选和结构校验结果；`tutoring.exit_gate` 记录候选、当时的 `permit`、题目摘要以及最终拒绝类别；文字和图的独立审核节点记录实际审核输入与结构化结论，文字泄露原因在 `tutor.leak.reason`。最终 `tutoring.output_safety` 也记录待检查文字和结果。根 `agent.turn` 的 output 才是孩子最终看到的回复。回放时先按 attempt 分组，再比较原始候选、每层审核和最终展示，不能把被拒草稿误当成已展示内容。旧 trace 无法回填；2026-10-24 18:25 的失败轮早于 19:08 的正文采集版本生产启动，只有长度和 SHA-256，不能还原三版原文。
 
 答疑题目推进时，`tutoring.apply_problem` observation 的 input 记录 `previous_subgoal` 与本轮采纳候选的 `candidate_next_subgoal`，output 记录规则处理后的 `active_subgoal` 和是否变化。只有数据库提交成功后才写 Loki `tutor.subgoal.committed` 日志（含这些值及 problem/turn/run/thread ID）；同一轮的 `agent.turn.output` 日志记录最终展示文案 `shown`。按 `trace_id` 可直接对照模型原始回复、采纳候选、写回目标与孩子看到的文字；失败回滚不会产生 `committed` 日志。
 

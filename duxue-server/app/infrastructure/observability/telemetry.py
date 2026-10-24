@@ -8,6 +8,7 @@ input and output for Langfuse Session replay and product diagnostics.
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import logging
 import os
@@ -16,13 +17,15 @@ import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
-from datetime import datetime
+from dataclasses import fields, is_dataclass
+from datetime import date, datetime
 from functools import wraps
 from pathlib import Path
 from time import perf_counter
 from typing import Any
 
 from opentelemetry import metrics, trace
+from pydantic import BaseModel
 
 _configured = False
 _lock = threading.Lock()
@@ -364,6 +367,26 @@ def set_observation_payload(span: Any, *, input: Any = None, output: Any = None)
         span.set_attribute("langfuse.observation.output", _langfuse_payload(output))
 
 
+def _node_payload(value: Any, depth: int = 0) -> Any:
+    """Project node arguments without serializing services, sessions or model clients."""
+    if depth > 8:
+        return {"type": type(value).__name__}
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    if isinstance(value, BaseModel):
+        return _node_payload(value.model_dump(mode="json"), depth + 1)
+    if is_dataclass(value) and not isinstance(value, type):
+        return {field.name: _node_payload(getattr(value, field.name), depth + 1)
+                for field in fields(value)}
+    if isinstance(value, dict):
+        return {str(key): _node_payload(item, depth + 1) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_node_payload(item, depth + 1) for item in value]
+    return {"type": type(value).__name__}
+
+
 def _span_event(name: str, attributes: dict[str, Any]) -> None:
     span = trace.get_current_span()
     if span.is_recording():
@@ -424,7 +447,7 @@ def trace_agent_turn(function):
 
 @contextmanager
 def agent_step_span(kind: str, name: str, **attributes: Any) -> Iterator[Any]:
-    """A payload-free Agent step; callers pass only code-owned categories."""
+    """A named Agent step; callers attach reviewed input/output payloads."""
     if kind not in {"route", "node", "tool", "check"}:
         raise ValueError("unknown agent step kind")
     with trace.get_tracer("duxue.agent").start_as_current_span(
@@ -435,7 +458,12 @@ def agent_step_span(kind: str, name: str, **attributes: Any) -> Iterator[Any]:
                     **_attrs(**attributes)},
         record_exception=False, set_status_on_exception=False,
     ) as span:
-        yield span
+        try:
+            yield span
+        except Exception as error:
+            if "langfuse.observation.output" not in (getattr(span, "attributes", None) or {}):
+                set_observation_payload(span, output={"error_type": type(error).__name__})
+            raise
 
 
 def traced_agent_node(name: str):
@@ -443,8 +471,20 @@ def traced_agent_node(name: str):
     def decorate(function):
         @wraps(function)
         def wrapped(*args, **kwargs):
-            with agent_step_span("node", name):
-                return function(*args, **kwargs)
+            with agent_step_span("node", name) as span:
+                bound = inspect.signature(function).bind(*args, **kwargs)
+                set_observation_payload(span, input={
+                    key: _node_payload(value) for key, value in bound.arguments.items()
+                    if key != "self"
+                })
+                try:
+                    result = function(*args, **kwargs)
+                except Exception as error:
+                    set_observation_payload(span, output={"error_type": type(error).__name__})
+                    raise
+                if "langfuse.observation.output" not in (getattr(span, "attributes", None) or {}):
+                    set_observation_payload(span, output=_node_payload(result) if result is not None else {"result": None})
+                return result
         return wrapped
     return decorate
 
@@ -545,6 +585,12 @@ def record_tutor_turn_result(
         "tutor.shape.flags": ",".join(shape_flags or []) or None,
     })
     with agent_step_span("node", "tutoring.result") as result_span:
+        set_observation_payload(result_span, input={
+            "act": act, "relation": relation, "topic": topic, "depth": depth,
+            "student_move": student_move, "leak_retried": leak_retried,
+            "visual_kind": visual_kind, "shape_flags": shape_flags or [],
+        }, output={"outcome": outcome, "reason": reason, "shown": shown,
+                   "visual_dropped": visual_dropped})
         result_span.set_attribute("tutor.outcome", outcome)
         if visual_kind:
             result_span.set_attribute("tutor.visual.kind", visual_kind)
@@ -660,6 +706,8 @@ def agent_workflow_span(*, agent_type: str, run_id: str, thread_id: str) -> Iter
         except Exception as error:
             span.set_attribute("agent.run_status", "failed")
             span.set_attribute("error.type", type(error).__name__)
+            if "langfuse.observation.output" not in (getattr(span, "attributes", None) or {}):
+                set_observation_payload(span, output={"error_type": type(error).__name__})
             span.set_status(trace.Status(trace.StatusCode.ERROR, type(error).__name__))
             raise
 
@@ -667,11 +715,13 @@ def agent_workflow_span(*, agent_type: str, run_id: str, thread_id: str) -> Iter
 @contextmanager
 def model_call_span(*, operation: str, model: str, agent_type: str | None = None,
                     component_id: str | None = None, component_version: str | None = None,
-                    model_source: str | None = None, input_payload: Any = None) -> Iterator[dict[str, Any]]:
+                    prompt_id: str | None = None, model_source: str | None = None,
+                    input_payload: Any = None) -> Iterator[dict[str, Any]]:
     started = perf_counter()
     attrs = {**_agent_context_attrs(), **_attrs(**{
         "llm.operation": operation, "llm.model": model, "agent.type": agent_type,
         "ai.component_id": component_id, "ai.component_version": component_version,
+        "ai.prompt_id": prompt_id,
         "ai.model_source": model_source,
         # These are mapping keys, not prompt/completion payloads. Langfuse
         # also exports the controlled Agent spans enclosing this generation.
@@ -777,9 +827,11 @@ def record_tutor_candidate_rejection(*, error_type: str, field: str, retrying: b
         "tutor.candidate.retrying": retrying,
     }
     with agent_step_span("check", "tutoring.candidate_exit") as span:
+        set_observation_payload(span, input={"error_type": error_type, "field": field, "retrying": retrying})
         span.set_attribute("agent.check.result", "rejected")
         span.set_attribute("tutor.candidate.error_type", error_type)
         span.set_attribute("tutor.candidate.retrying", retrying)
+        set_observation_payload(span, output={"result": "rejected"})
     _span_event("tutor.candidate.rejected", attrs)
     _audit_logger.warning("tutor.candidate.rejected", extra={"telemetry": attrs})
 
@@ -787,8 +839,10 @@ def record_tutor_candidate_rejection(*, error_type: str, field: str, retrying: b
 def record_tutor_visual_dropped(*, reason: str) -> None:
     """A dropped `visual` is not a failure: the words are shown. Only the category is recorded."""
     with agent_step_span("check", "tutoring.visual") as span:
+        set_observation_payload(span, input={"reason": reason})
         span.set_attribute("agent.check.result", "dropped")
         span.set_attribute("tutor.visual.reason", reason)
+        set_observation_payload(span, output={"result": "dropped"})
     _span_event("tutor.visual.dropped", {"tutor.visual.reason": reason})
 
 

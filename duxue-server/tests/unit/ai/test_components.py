@@ -108,7 +108,43 @@ def test_invoke_sends_static_prompt_as_system_and_uses_spec(spans):
     assert call["messages"][1] == {"role": "user", "content": "hi"}
     assert spans["span"]["component_id"] == "companion.intent"
     assert spans["span"]["component_version"] == "v6"
+    assert spans["span"]["prompt_id"] == spec.prompt.id
     assert spans["span"]["model_source"] == "registry"
+
+
+def test_real_generation_export_keeps_sent_messages_prompt_id_and_raw_reply(monkeypatch):
+    from langfuse._client.span_exporter import LangfuseTransformingSpanExporter
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+        InMemorySpanExporter,
+    )
+
+    from app.infrastructure.observability import telemetry
+
+    monkeypatch.setenv("OTEL_SDK_DISABLED", "false")
+    source = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(source))
+    monkeypatch.setattr(telemetry.trace, "get_tracer", provider.get_tracer)
+    monkeypatch.setattr(telemetry, "_write_debug_audit", lambda *_args: None)
+    spec = COMPONENTS.get("tutoring.turn")
+    raw = '{"act":"chat","content":"先说说你的想法。"}'
+    with telemetry.agent_turn_span():
+        invoke_json_component(spec=spec, user="孩子的原话", client=_Client(raw), settings_obj=_settings())
+
+    generation = next(s for s in source.get_finished_spans() if s.name == "llm.request")
+    transformed = InMemorySpanExporter()
+    LangfuseTransformingSpanExporter(
+        exporter=transformed, media_manager=None, mask_otel_spans=None,
+    ).export([generation])
+    exported = transformed.get_finished_spans()[0]
+    assert exported.attributes["ai.prompt_id"] == spec.prompt.id
+    assert json.loads(exported.attributes["langfuse.observation.input"]) == [
+        {"role": "system", "content": spec.prompt.text},
+        {"role": "user", "content": "孩子的原话"},
+    ]
+    assert exported.attributes["langfuse.observation.output"] == raw
 
 
 def test_invoke_dynamic_prompt_has_no_system_message_and_records_override(spans):

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from app.application.ports.companion import RunInvocation
 from app.application.workflows.tutoring_workflow import TutoringWorkflow
 from app.infrastructure.ai.model_gateway import ModelGatewayError
@@ -99,6 +101,15 @@ def test_subgoal_observation_matches_the_persisted_problem(db, monkeypatch):
     assert problem.active_subgoal == "写出第一个等式"
     assert '"candidate_next_subgoal": "写出第一个等式"' in node.attributes["langfuse.observation.input"]
     assert '"active_subgoal": "写出第一个等式"' in node.attributes["langfuse.observation.output"]
+    safety = next(span for span in exporter.get_finished_spans()
+                  if span.attributes.get("agent.step") == "tutoring.output_safety")
+    assert json.loads(safety.attributes["langfuse.observation.input"])["text"] == ATTEMPT["content"]
+    assert json.loads(safety.attributes["langfuse.observation.output"]) == {"result": "pass"}
+    for step in ("tutoring.turn", "tutoring.model_loop", "tutoring.result"):
+        traced = next(span for span in exporter.get_finished_spans()
+                      if span.attributes.get("agent.step") == step)
+        assert "langfuse.observation.input" in traced.attributes
+        assert "langfuse.observation.output" in traced.attributes
 
 
 def test_locked_refuses_a_solution_and_writes_nothing(db):

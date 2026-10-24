@@ -78,6 +78,15 @@ def test_thread_session_contains_two_tutoring_turns_then_planning_handoff(db, mo
     routes = [s for s in exporter.get_finished_spans() if s.name == "agent.route"]
     assert len(routes) == 8
     assert all(s.attributes["langfuse.session.id"] == first.thread_id for s in routes)
+    first_route = next(s for s in routes if s.attributes["agent.step"] == "intent_route")
+    assert json.loads(first_route.attributes["langfuse.observation.input"])["content"] == "这题我不会"
+    assert json.loads(first_route.attributes["langfuse.observation.output"])["target"] == "tutoring"
+    workflows = [s for s in exporter.get_finished_spans() if s.name == "agent.workflow"]
+    assert json.loads(workflows[0].attributes["langfuse.observation.input"])["turn"]["content"] == "这题我不会"
+    assert json.loads(workflows[0].attributes["langfuse.observation.output"])["run_status"] == "waiting_for_ward"
+    for span in (*routes, *workflows):
+        assert "langfuse.observation.input" in span.attributes
+        assert "langfuse.observation.output" in span.attributes
 
 
 def test_companion_turn_root_contains_uploaded_image_for_session_replay(db, monkeypatch):
@@ -120,6 +129,12 @@ def test_planning_graph_nodes_keep_session_context(db, monkeypatch):
     }
     assert all(s.attributes["langfuse.session.id"] == "thread-1" for s in nodes)
     assert all(s.attributes["agent.run_id"] == "run-1" for s in nodes)
+    prepared = next(s for s in nodes if s.attributes["agent.step"] == "planning.prepare_review")
+    assert json.loads(prepared.attributes["langfuse.observation.input"])["state"]["plan_date"] == "2026-10-22"
+    assert json.loads(prepared.attributes["langfuse.observation.output"])["draft_id"] == "draft-1"
+    for span in nodes:
+        assert "langfuse.observation.input" in span.attributes
+        assert "langfuse.observation.output" in span.attributes
 
 
 def test_tutoring_tools_and_parallel_judges_are_children_of_one_trace(monkeypatch):
@@ -163,3 +178,5 @@ def test_tutoring_tools_and_parallel_judges_are_children_of_one_trace(monkeypatc
         assert ("agent.check", name) in steps
         assert steps[("agent.check", name)].context.trace_id == tool.context.trace_id
         assert steps[("agent.check", name)].attributes["langfuse.session.id"] == "thread-1"
+        assert "langfuse.observation.input" in steps[("agent.check", name)].attributes
+        assert "langfuse.observation.output" in steps[("agent.check", name)].attributes

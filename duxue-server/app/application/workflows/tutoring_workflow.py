@@ -44,6 +44,7 @@ from app.infrastructure.observability.telemetry import (
     agent_step_span,
     record_llm_fallback,
     record_tutor_turn_result,
+    set_observation_payload,
     stage_tutor_subgoal_transition,
     traced_agent_node,
 )
@@ -344,12 +345,18 @@ class TutoringWorkflow:
         failed = candidate is None or verdict is None or not verdict.ok
         # 独立输出安全审核看孩子将看到的全部文字：正文与图里的每个字。
         with agent_step_span("check", "tutoring.output_safety") as safety_span:
+            review_text = None if failed else (
+                candidate.content if visual is None else f"{candidate.content}\n{describe(visual)}"
+            )
+            set_observation_payload(safety_span, input={"text": review_text, "skipped": failed})
             safety = not failed and (
                 candidate.act == "safety" or self._safety().blocks_output(
-                    text=candidate.content if visual is None else f"{candidate.content}\n{describe(visual)}",
+                    text=review_text,
                 )
             )
-            safety_span.set_attribute("agent.check.result", "skipped" if failed else "blocked" if safety else "pass")
+            safety_result = "skipped" if failed else "blocked" if safety else "pass"
+            safety_span.set_attribute("agent.check.result", safety_result)
+            set_observation_payload(safety_span, output={"result": safety_result})
         # 发音和澄清是只读展示：不打开会话，不写消息、事实或题目记录。
         if not failed and not safety and candidate.act == "pronounce":
             outcome = project_lesson(

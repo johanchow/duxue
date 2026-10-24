@@ -235,7 +235,8 @@ def invoke_json_component(*, spec: ComponentSpec, user, client=None, settings_ob
     try:
         with model_call_span(
             operation=spec.operation, model=model, agent_type=spec.agent_label,
-            component_id=spec.component_id, component_version=spec.version, model_source=model_source,
+            component_id=spec.component_id, component_version=spec.version,
+            prompt_id=spec.prompt.id, model_source=model_source,
             input_payload=messages,
         ) as telemetry:
             response = client.chat.completions.create(

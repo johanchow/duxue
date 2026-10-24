@@ -139,20 +139,29 @@ def call_tutor_model(
             name = str(raw.get("tool"))
             if tool_calls >= MAX_TOOL_CALLS:
                 with agent_step_span("check", "tutoring.tool_budget") as span:
+                    set_observation_payload(span, input={"tool": name, "calls": tool_calls, "limit": MAX_TOOL_CALLS})
                     span.set_attribute("agent.check.result", "budget_exhausted")
                     observations.append({"tool": name, "status": "budget_exhausted"})
+                    set_observation_payload(span, output={"result": "budget_exhausted"})
             else:
                 tool_calls += 1
                 observations.append(tools.run(name, raw.get("args")))
             continue
         try:
             with agent_step_span("check", "tutoring.candidate_schema") as span:
+                set_observation_payload(span, input=raw)
                 try:
                     candidate = TutorTurnCandidate.model_validate(raw)
-                except (ValidationError, ValueError):
+                except (ValidationError, ValueError) as error:
                     span.set_attribute("agent.check.result", "rejected")
+                    error_type, field = schema_error_diagnostic(error)
+                    set_observation_payload(span, output={
+                        "result": "rejected", "error_type": error_type,
+                        "field": field, "reason": format_schema_error(error),
+                    })
                     raise
                 span.set_attribute("agent.check.result", "accepted")
+                set_observation_payload(span, output={"result": "accepted"})
         except (ValidationError, ValueError) as error:
             error_type, field = schema_error_diagnostic(error)
             record_tutor_candidate_rejection(
@@ -163,12 +172,20 @@ def call_tutor_model(
             repair = format_schema_error(error)
             continue
         with agent_step_span("check", "tutoring.visual_schema") as visual_span:
+            set_observation_payload(visual_span, input={"visual": raw.get("visual")})
+            visual_result = (
+                "invalid" if candidate.visual_dropped == "visual_invalid"
+                else "pass" if candidate.visual else "absent"
+            )
             visual_span.set_attribute(
                 "agent.check.result",
-                "invalid" if candidate.visual_dropped == "visual_invalid" else "pass" if candidate.visual else "absent",
+                visual_result,
             )
             if candidate.visual is not None:
                 visual_span.set_attribute("tutor.visual.kind", candidate.visual.kind)
+            set_observation_payload(visual_span, output={
+                "result": visual_result, "reason": candidate.visual_error,
+            })
         if (
             candidate.visual_dropped == "visual_invalid"
             and candidate.visual_error
@@ -213,19 +230,29 @@ def _check_visual_leak(leak_judge: LeakJudgePort, text: str, task_title, problem
     if judge is None:
         return None
     with agent_step_span("check", "tutoring.visual_leak") as span:
+        set_observation_payload(span, input={
+            "visual": text, "task_title": task_title, "problem": problem_summary,
+        })
         try:
             result = judge(text=text, task_title=task_title, problem_summary=problem_summary)
         except Exception:
             result = None
         span.set_attribute("agent.check.result", "unknown" if result is None else "leak" if result else "pass")
+        set_observation_payload(span, output={"leaks": result})
         return result
 
 
 def _check_text_leak(leak_judge: LeakJudgePort, text: str, task_title, problem_summary):
     with agent_step_span("check", "tutoring.text_leak") as span:
+        set_observation_payload(span, input={
+            "reply": text, "task_title": task_title, "problem": problem_summary,
+        })
         result = leak_judge.leaks(text=text, task_title=task_title, problem_summary=problem_summary)
-        leaks = result.get("leaks") if isinstance(result, dict) else result
+        leaks, reason = _text_leak_result(result)
         span.set_attribute("agent.check.result", "unknown" if leaks is None else "leak" if leaks else "pass")
+        if reason:
+            span.set_attribute("tutor.leak.reason", reason)
+        set_observation_payload(span, output={"leaks": leaks, "reason": reason})
         return result
 
 
@@ -391,57 +418,77 @@ def run_tutor_turn(
     生产与离线评测共用。``model_fallback`` 只按最终结果记录一次。"""
     def vet(candidate: TutorTurnCandidate) -> Vetting:
         with agent_step_span("check", "tutoring.exit_gate") as span:
+            set_observation_payload(span, input={
+                "candidate": candidate.model_dump(mode="json"), "permit": permit.as_context(),
+                "task_title": task_title, "problem_summary": problem_summary,
+            })
             result = vet_candidate(
                 candidate, permit=permit, leak_judge=leak_judge,
                 task_title=task_title, problem_summary=problem_summary,
             )
             span.set_attribute("agent.check.result", "rejected" if result.failure else "pass")
+            if result.failure:
+                span.set_attribute("tutor.failure", result.failure)
+            if result.leak_reason:
+                span.set_attribute("tutor.leak.reason", result.leak_reason)
+            set_observation_payload(span, output={
+                "failure": result.failure, "leak_reason": result.leak_reason,
+                "visual_dropped": result.visual_dropped,
+                "shape_flags": result.shape_flags,
+            })
             if result.visual is not None:
                 span.set_attribute("tutor.visual.kind", result.visual.kind)
             if result.visual_dropped:
                 span.set_attribute("tutor.visual.dropped", result.visual_dropped)
             return result
 
-    call = call_tutor_model(model, envelope, instruction, window, images, tools)
+    def attempt(
+        current_model: TutorModelPort, kind: str, *, repair_error: str | None = None,
+        preload_svg_guidelines: bool = False,
+    ) -> tuple[ModelCall, Vetting | None]:
+        with agent_step_span("node", "tutoring.attempt", **{"tutor.attempt.kind": kind}) as span:
+            proposal = call_tutor_model(
+                current_model, envelope, instruction, window, images, tools,
+                repair_error=repair_error, preload_svg_guidelines=preload_svg_guidelines,
+            )
+            review = vet(proposal.candidate) if proposal.candidate is not None else None
+            set_observation_payload(span, output={
+                "candidate_available": proposal.candidate is not None,
+                "failure": review.failure if review is not None else proposal.failure,
+                "leak_reason": review.leak_reason if review is not None else None,
+            })
+            return proposal, review
+
+    call, vetting = attempt(model, "primary")
     if call.candidate is None:
         record_llm_fallback(operation="tutor_turn", reason=call.failure or INVALID_CANDIDATE)
         return TurnResult(call, None)
-    vetting = vet(call.candidate)
+    assert vetting is not None
     retried = False
     if vetting.failure in LEAK_RETRY_REASONS:
         original_failure, original_reason = vetting.failure, vetting.leak_reason
         retried = True
         record_tutor_leak_retry(reason=vetting.failure)
-        retry = call_tutor_model(
-            model, envelope, instruction, window, images, tools, repair_error=_leak_repair(vetting),
-        )
-        if retry.candidate is not None:
-            call, vetting = retry, vet(retry.candidate)
+        retry, retry_review = attempt(model, "repair", repair_error=_leak_repair(vetting))
+        if retry_review is not None:
+            call, vetting = retry, retry_review
         if (
             backup_model is not None
             and vetting.failure == original_failure == "leak_detected"
             and vetting.leak_reason == original_reason
         ):
-            backup = call_tutor_model(
-                backup_model, envelope, instruction, window, images, tools,
-                repair_error=_leak_repair(vetting),
-            )
-            if backup.candidate is not None:
-                call, vetting = backup, vet(backup.candidate)
+            backup, backup_review = attempt(backup_model, "backup", repair_error=_leak_repair(vetting))
+            if backup_review is not None:
+                call, vetting = backup, backup_review
     if vetting.failure is None and vetting.visual_dropped == "visual_leak_detected":
-        redraw = call_tutor_model(
-            model, envelope, instruction, window, images, tools,
-            repair_error=_visual_leak_repair(vetting),
-        )
-        if redraw.candidate is not None:
-            redrawn = vet(redraw.candidate)
-            if (
-                redrawn.failure is None and redrawn.visual is not None
-                and redrawn.candidate.act == vetting.candidate.act
-                and redrawn.candidate.content == vetting.candidate.content
-                and redrawn.candidate.turn == vetting.candidate.turn
-            ):
-                call, vetting = redraw, redrawn
+        redraw, redrawn = attempt(model, "visual_redraw", repair_error=_visual_leak_repair(vetting))
+        if (
+            redrawn is not None and redrawn.failure is None and redrawn.visual is not None
+            and redrawn.candidate.act == vetting.candidate.act
+            and redrawn.candidate.content == vetting.candidate.content
+            and redrawn.candidate.turn == vetting.candidate.turn
+        ):
+            call, vetting = redraw, redrawn
     if (
         vetting.failure is None and vetting.visual is None
         and _TEXT_DIAGRAM_TEX in vetting.candidate.content
@@ -450,13 +497,12 @@ def run_tutor_turn(
         for retry_model in (model, backup_model):
             if retry_model is None:
                 continue
-            redrawn_call = call_tutor_model(
-                retry_model, envelope, instruction, window, images, tools,
-                repair_error=repair, preload_svg_guidelines=True,
+            redrawn_call, redrawn = attempt(
+                retry_model, "missing_visual_redraw", repair_error=repair,
+                preload_svg_guidelines=True,
             )
-            if redrawn_call.candidate is None:
+            if redrawn is None:
                 continue
-            redrawn = vet(redrawn_call.candidate)
             if (
                 redrawn.failure is None and redrawn.visual is not None
                 and redrawn.visual.kind == "svg"
