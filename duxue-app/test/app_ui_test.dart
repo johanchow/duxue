@@ -1556,6 +1556,30 @@ void main() {
     expect(api.registration, ('妈妈', 'parent@example.com', '123456'));
   });
 
+  testWidgets('sending a replacement code clears the old code input',
+      (tester) async {
+    FlutterSecureStoragePlatform.instance =
+        TestFlutterSecureStoragePlatform({});
+    final api = _EmailAuthApi();
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiProvider.overrideWithValue(api)],
+      child: const MaterialApp(home: LoginPage()),
+    ));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.widgetWithText(TextFormField, '邮箱'), 'parent@example.com');
+    await tester.tap(find.text('获取验证码'));
+    await tester.pump();
+    await tester.enterText(
+        find.widgetWithText(TextFormField, '邮箱验证码'), '123456');
+    await tester.pump(const Duration(seconds: 60));
+    await tester.tap(find.text('获取验证码'));
+    await tester.pump();
+
+    expect(api.sentTo, 'parent@example.com');
+    expect(find.text('123456'), findsNothing);
+  });
+
   testWidgets(
       'unknown guardian stays on login with a visible registration action',
       (tester) async {

@@ -229,8 +229,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     try {
       await ref.read(apiProvider).sendEmailCode(emailText);
       if (!mounted) return;
+      code.clear();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('验证码已发送，请查看邮箱')),
+        const SnackBar(content: Text('新验证码已发送，请输入邮件中的最新验证码')),
       );
       resendTimer?.cancel();
       setState(() => resendSeconds = 60);
