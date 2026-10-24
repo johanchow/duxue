@@ -10,6 +10,12 @@ import 'telemetry.dart';
 
 typedef TranscriptHandler = void Function(String text);
 typedef VoiceErrorHandler = void Function(String message);
+
+String voiceProtocolErrorMessage(Object? code) {
+  if (code == 'unauthorized') return '登录已过期，请重新登录';
+  return '语音识别暂不可用，请稍后重试';
+}
+
 typedef VoiceTranscriptionFactory = VoiceTranscription Function({
   required String baseUrl,
   required TokenStorage tokens,
@@ -104,7 +110,7 @@ class VoiceTranscriptionService implements VoiceTranscription {
             'error_kind': errorKind,
             'route': route
           });
-          onError(event['message'] as String? ?? '语音识别暂不可用');
+          onError(voiceProtocolErrorMessage(event['code']));
       }
     }, onError: (_, __) {
       span.finish(attributes: {'result': 'error', 'error_kind': 'socket'});

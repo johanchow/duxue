@@ -46,8 +46,29 @@ class Guardian(Base):
     id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True)
     name: Mapped[str] = mapped_column(String(100))
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
-    password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(String(20), default="guardian")
+
+
+class EmailAuthChallenge(Base):
+    __tablename__ = "email_auth_challenges"
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
+    email: Mapped[str] = mapped_column(String(255), index=True)
+    code_hash: Mapped[str] = mapped_column(String(64))
+    request_ip_hash: Mapped[str] = mapped_column(String(64), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class EmailAuthFailure(Base):
+    __tablename__ = "email_auth_failures"
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
+    email: Mapped[str] = mapped_column(String(255), index=True)
+    request_ip_hash: Mapped[str] = mapped_column(String(64), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
 class Ward(Base):

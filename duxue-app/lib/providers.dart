@@ -58,10 +58,10 @@ class AuthController extends AsyncNotifier<AppSession?> {
     }
   }
 
-  Future<void> login(String email, String password) async {
+  Future<void> login(String email, String code) async {
     state = const AsyncLoading();
     try {
-      await ref.read(apiProvider).login(email, password);
+      await ref.read(apiProvider).login(email, code);
       state = const AsyncData(AppSession.guardian());
     } catch (_) {
       state = const AsyncData(null);
@@ -69,10 +69,10 @@ class AuthController extends AsyncNotifier<AppSession?> {
     }
   }
 
-  Future<void> register(String name, String email, String password) async {
+  Future<void> register(String name, String email, String code) async {
     state = const AsyncLoading();
     try {
-      await ref.read(apiProvider).register(name, email, password);
+      await ref.read(apiProvider).register(name, email, code);
       state = const AsyncData(AppSession.guardian());
     } catch (_) {
       state = const AsyncData(null);

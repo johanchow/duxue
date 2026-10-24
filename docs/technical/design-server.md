@@ -120,8 +120,25 @@ erDiagram
         uuid id PK,FK "users.id"
         string name
         string email UK "登录邮箱"
-        string password_hash
         string role "admin | guardian"
+    }
+
+    email_auth_challenges {
+        uuid id PK
+        string email "规范化登录邮箱"
+        string code_hash "HMAC 摘要"
+        string request_ip_hash "来源摘要"
+        timestamp created_at
+        timestamp expires_at
+        int attempts
+        timestamp consumed_at
+    }
+
+    email_auth_failures {
+        uuid id PK
+        string email "规范化登录邮箱"
+        string request_ip_hash "来源摘要"
+        timestamp created_at
     }
 
     user_wards {
@@ -785,8 +802,9 @@ graph TD
 
 当前实现采用 `users` 作为身份根、`user_guardians` / `user_wards` 作为角色资料扩展，并以 `guardian_ward_relations` 表示 Guardian 与 Ward 的唯一绑定关系。当前没有跨 Guardian 共管邀请实体；`ward_invites` 仅用于 Ward 登录或换机绑定。
 
-- `POST /auth/register`：注册 Guardian，创建 `users` 与 `user_guardians`；
-- `POST /auth/login`、`POST /auth/refresh`：Guardian 登录和刷新令牌，令牌记录写入 `refresh_tokens`；
+- `POST /auth/email-code/send`：向邮箱发送一次性验证码，挑战摘要存于 `email_auth_challenges`，校验失败计数存于 `email_auth_failures`；
+- `POST /auth/register`：验证邮箱验证码后注册 Guardian，创建 `users` 与 `user_guardians`，不保存读学密码；
+- `POST /auth/login`、`POST /auth/refresh`：Guardian 使用邮箱验证码登录及刷新令牌，令牌记录写入 `refresh_tokens`；
 - `GET /wards`、`POST /wards`：Guardian 查询或创建名下 Ward；创建时同时写入 `users`、`user_wards`、`guardian_ward_relations`；
 - `POST /wards/{ward_id}/login-invite`：创建一次性 `ward_invites` 登录码；
 - `POST /ward-auth/bind`：Ward 使用邀请码绑定，递增 `ward_credentials.session_version` 使旧 Ward token 失效；

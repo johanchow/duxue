@@ -23,7 +23,7 @@ from app.infrastructure.persistence.models import (
     uid,
 )
 from app.application.commands.memory import LearningFactRecorded
-from app.infrastructure.security.tokens import hash_secret, token_hash
+from app.infrastructure.security.tokens import token_hash
 
 
 def create_guardian(
@@ -31,7 +31,6 @@ def create_guardian(
     *,
     name: str = "监护人",
     email: str | None = None,
-    password: str = "password123",
     role: str = "guardian",
 ) -> Guardian:
     user = User(type="guardian")
@@ -41,7 +40,6 @@ def create_guardian(
         id=user.id,
         name=name,
         email=email or f"guardian_{uid()[:8]}@example.com",
-        password_hash=hash_secret(password),
         role=role,
     )
     db.add(guardian)

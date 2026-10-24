@@ -2,6 +2,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/models.dart';
+import '../core/user_error_message.dart';
 import '../providers.dart';
 
 class ReportPage extends ConsumerStatefulWidget {
@@ -48,7 +49,8 @@ class _ReportPageState extends ConsumerState<ReportPage> {
           Expanded(
             child: report.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(child: Text('加载失败：$e')),
+              error: (e, _) =>
+                  Center(child: Text('加载报告失败：${userErrorMessage(e)}')),
               data: (data) {
                 if (data.status != 'ready') {
                   return Center(
@@ -138,7 +140,8 @@ class _WeeklyTrendPageState extends ConsumerState<WeeklyTrendPage> {
       appBar: AppBar(title: const Text('近 7 天趋势')),
       body: trend.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => Center(child: Text('加载失败：$error')),
+        error: (error, _) =>
+            Center(child: Text('加载趋势失败：${userErrorMessage(error)}')),
         data: (data) => ListView(
           padding: const EdgeInsets.all(16),
           children: [

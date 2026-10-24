@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -15,17 +17,23 @@ class LoginPage extends ConsumerStatefulWidget {
 class _LoginPageState extends ConsumerState<LoginPage> {
   final formKey = GlobalKey<FormState>();
   final email = TextEditingController();
-  final password = TextEditingController();
+  final code = TextEditingController();
   final name = TextEditingController();
   final bindingCode = TextEditingController();
   bool registering = false;
   bool wardMode = false;
   bool bindingLoading = false;
+  bool codeSending = false;
+  bool accountNotFound = false;
+  String? formError;
+  int resendSeconds = 0;
+  Timer? resendTimer;
 
   @override
   void dispose() {
     email.dispose();
-    password.dispose();
+    code.dispose();
+    resendTimer?.cancel();
     name.dispose();
     bindingCode.dispose();
     super.dispose();
@@ -111,6 +119,14 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       ),
                     TextFormField(
                       controller: email,
+                      onChanged: (_) {
+                        if (accountNotFound || formError != null) {
+                          setState(() {
+                            accountNotFound = false;
+                            formError = null;
+                          });
+                        }
+                      },
                       keyboardType: TextInputType.emailAddress,
                       textInputAction: TextInputAction.next,
                       autofillHints: const [
@@ -120,22 +136,38 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       decoration: const InputDecoration(labelText: '邮箱'),
                       validator: _validateEmail,
                     ),
-                    TextFormField(
-                      controller: password,
-                      obscureText: true,
-                      textInputAction: TextInputAction.done,
-                      autofillHints: const [AutofillHints.password],
-                      decoration:
-                          const InputDecoration(labelText: '密码（至少 8 位）'),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) return '请输入密码';
-                        if (registering && value.length < 8) {
-                          return '密码至少需要 8 位';
-                        }
-                        return null;
-                      },
-                      onFieldSubmitted: (_) => _submit(),
-                    ),
+                    Row(children: [
+                      Expanded(
+                        child: TextFormField(
+                          controller: code,
+                          keyboardType: TextInputType.number,
+                          textInputAction: TextInputAction.done,
+                          maxLength: 6,
+                          autofillHints: const [AutofillHints.oneTimeCode],
+                          decoration: const InputDecoration(labelText: '邮箱验证码'),
+                          onChanged: (_) {
+                            if (formError != null) {
+                              setState(() => formError = null);
+                            }
+                          },
+                          validator: (value) => RegExp(r'^[0-9]{6}$')
+                                  .hasMatch(value?.trim() ?? '')
+                              ? null
+                              : '请输入 6 位验证码',
+                          onFieldSubmitted: (_) => _submit(),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      OutlinedButton(
+                        onPressed:
+                            codeSending || resendSeconds > 0 ? null : _sendCode,
+                        child: Text(codeSending
+                            ? '发送中…'
+                            : resendSeconds > 0
+                                ? '${resendSeconds}s 后重发'
+                                : '获取验证码'),
+                      ),
+                    ]),
                     const SizedBox(height: 20),
                     FilledButton(
                       onPressed: auth.isLoading ? null : _submit,
@@ -147,9 +179,38 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                                 : '登录',
                       ),
                     ),
+                    if (formError != null) ...[
+                      const SizedBox(height: 8),
+                      Semantics(
+                        liveRegion: true,
+                        child: Text(formError!,
+                            style: TextStyle(
+                                color: Theme.of(context).colorScheme.error)),
+                      ),
+                    ],
+                    if (accountNotFound) ...[
+                      const SizedBox(height: 8),
+                      Semantics(
+                        liveRegion: true,
+                        child: Text('该邮箱尚未注册，请先注册',
+                            style: TextStyle(
+                                color: Theme.of(context).colorScheme.error)),
+                      ),
+                      TextButton(
+                        onPressed: () => setState(() {
+                          registering = true;
+                          accountNotFound = false;
+                          formError = null;
+                        }),
+                        child: const Text('去注册'),
+                      ),
+                    ],
                     TextButton(
-                      onPressed: () =>
-                          setState(() => registering = !registering),
+                      onPressed: () => setState(() {
+                        registering = !registering;
+                        accountNotFound = false;
+                        formError = null;
+                      }),
                       child: Text(registering ? '已有账号？登录' : '没有账号？注册'),
                     ),
                   ],
@@ -179,6 +240,39 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     return null;
   }
 
+  Future<void> _sendCode() async {
+    final emailText = email.text.trim();
+    final error = _validateEmail(emailText);
+    if (error != null) {
+      setState(() => formError = error);
+      return;
+    }
+    if (formError != null) setState(() => formError = null);
+    setState(() => codeSending = true);
+    try {
+      await ref.read(apiProvider).sendEmailCode(emailText);
+      if (!mounted) return;
+      code.clear();
+      if (formError != null) setState(() => formError = null);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('新验证码已发送，请输入邮件中的最新验证码')),
+      );
+      resendTimer?.cancel();
+      setState(() => resendSeconds = 60);
+      resendTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (!mounted) return timer.cancel();
+        setState(() => resendSeconds--);
+        if (resendSeconds <= 0) timer.cancel();
+      });
+    } catch (error) {
+      if (!mounted) return;
+      FocusScope.of(context).unfocus();
+      setState(() => formError = _messageFor(error));
+    } finally {
+      if (mounted) setState(() => codeSending = false);
+    }
+  }
+
   Future<void> _bindWard() async {
     final code = bindingCode.text.trim();
     if (code.length != 6) {
@@ -205,25 +299,44 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
   Future<void> _submit() async {
     if (!(formKey.currentState?.validate() ?? false)) return;
+    if (accountNotFound || formError != null) {
+      setState(() {
+        accountNotFound = false;
+        formError = null;
+      });
+    }
     try {
       if (registering) {
         await ref.read(authProvider.notifier).register(
               name.text.trim(),
               email.text.trim(),
-              password.text,
+              code.text.trim(),
             );
       } else {
         await ref.read(authProvider.notifier).login(
               email.text.trim(),
-              password.text,
+              code.text.trim(),
             );
       }
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_messageFor(error))),
-      );
+      FocusScope.of(context).unfocus();
+      if (!registering && _isAccountNotFound(error)) {
+        setState(() => accountNotFound = true);
+        return;
+      }
+      setState(() => formError = _messageFor(error));
     }
+  }
+
+  bool _isAccountNotFound(Object error) {
+    if (error is! DioException ||
+        error.requestOptions.path != '/auth/login' ||
+        error.response?.statusCode != 404) {
+      return false;
+    }
+    final data = error.response?.data;
+    return data is Map && data['detail'] == 'account not found';
   }
 
   String _messageFor(Object error) {
@@ -238,7 +351,10 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         return '无法连接服务，请检查网络或服务地址';
       case DioExceptionType.badResponse:
         final status = error.response?.statusCode;
-        if (status == 401) return '邮箱或密码不正确';
+        if (status == 400) return '验证码无效或已过期，请重新获取';
+        if (status == 404) return '请求的服务暂不可用，请稍后重试';
+        if (status == 429) return '请求过于频繁，请稍后再试';
+        if (status == 401) return '登录失败，请重试';
         if (status == 409) return '该邮箱已注册，请直接登录';
         if (status == 422) return '提交的信息不符合要求，请检查后重试';
         if (status != null && status >= 500) return '服务暂时不可用，请稍后重试';

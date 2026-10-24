@@ -10,7 +10,6 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from app.infrastructure.persistence.database import Base
 from app.infrastructure.persistence.models import AnalysisProfile, BehaviorLabelConfig, Guardian, User, Ward
-from app.infrastructure.security.tokens import hash_secret
 
 
 class DomainTest(unittest.TestCase):
@@ -33,7 +32,7 @@ class DomainTest(unittest.TestCase):
         local_engine = create_engine("sqlite://"); Base.metadata.create_all(local_engine)
         db = sessionmaker(bind=local_engine, expire_on_commit=False)()
         guardian_user = User(type="guardian"); db.add(guardian_user); db.flush()
-        db.add(Guardian(id=guardian_user.id, name="g", email=f"{guardian_user.id}@example.com", password_hash=hash_secret("password123")))
+        db.add(Guardian(id=guardian_user.id, name="g", email=f"{guardian_user.id}@example.com"))
         profile = AnalysisProfile(created_by=guardian_user.id, name="custom"); db.add(profile); db.flush()
         ward_user = User(type="ward"); db.add(ward_user); db.flush()
         ward = Ward(id=ward_user.id, display_name="w", analysis_profile_id=profile.id); db.add(ward)

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../core/token_storage.dart';
 import '../core/voice_transcription_service.dart';
 import '../core/telemetry.dart';
+import '../core/user_error_message.dart';
 
 /// A business-agnostic WeChat-style hold-to-talk control with an image action.
 class VoiceComposer extends StatefulWidget {
@@ -164,7 +165,7 @@ class _VoiceComposerState extends State<VoiceComposer> {
       });
     } catch (error) {
       _aborted = true;
-      _showError('$error');
+      _showError('语音启动失败：${userErrorMessage(error)}');
     }
   }
 

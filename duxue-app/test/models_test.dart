@@ -44,7 +44,7 @@ void main() {
       () {
     expect(
       wardBindFailureMessage(StateError('secure storage unavailable')),
-      '绑定请求已成功，但本机登录状态保存失败；请查看 Flutter 终端日志。',
+      '绑定已完成，但这台设备未能保存登录状态；请重试或重启 App。',
     );
   });
 
