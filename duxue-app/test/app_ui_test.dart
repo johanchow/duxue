@@ -1848,8 +1848,7 @@ void main() {
     expect(find.byKey(const Key('load-older-messages-button')), findsNothing);
   });
 
-  testWidgets('plan suggestions can be dismissed or adopted explicitly',
-      (tester) async {
+  testWidgets('plan review card has only the confirm action', (tester) async {
     FlutterSecureStoragePlatform.instance =
         TestFlutterSecureStoragePlatform({});
     final api = _WardHomeApi()..showPlanSuggestions = true;
@@ -1874,20 +1873,145 @@ void main() {
 
     expect(find.textContaining('建议时段为 07:00–22:00'), findsOneWidget);
     expect(find.textContaining('21:25–22:00'), findsOneWidget);
-    await tester.ensureVisible(
-        find.byKey(const Key('dismiss-plan-suggestion-duration:task-1')));
-    await tester
-        .tap(find.byKey(const Key('dismiss-plan-suggestion-duration:task-1')));
+    expect(find.text('确认这个计划'), findsOneWidget);
+    expect(find.text('我再改一句'), findsNothing);
+    expect(find.byKey(const Key('dismiss-plan-suggestion-duration:task-1')),
+        findsNothing);
+    expect(find.byKey(const Key('accept-plan-suggestion-time:task-1')),
+        findsNothing);
+  });
+
+  testWidgets('historical plan review stays before the next question',
+      (tester) async {
+    FlutterSecureStoragePlatform.instance =
+        TestFlutterSecureStoragePlatform({});
+    final api = _WardHomeApi()
+      ..currentTranscriptOverride = {
+        'thread_id': 'thread-1',
+        'thread_version': 4,
+        'messages': [
+          {
+            'id': 'm-1',
+            'thread_id': 'thread-1',
+            'thread_version': 1,
+            'author_type': 'ward',
+            'content': '今晚整理错题',
+          },
+          {
+            'id': 'm-2',
+            'thread_id': 'thread-1',
+            'thread_version': 2,
+            'author_type': 'companion',
+            'content': '请检查这份计划草稿。',
+            'interaction_ref': {
+              'kind': 'plan_confirm_list',
+              'card_snapshot': {
+                'items': [
+                  {
+                    'title': '整理错题',
+                    'planned_minutes': 20,
+                    'start_at': '2026-10-25T19:00:00+08:00',
+                    'end_at': '2026-10-25T19:20:00+08:00',
+                  },
+                ],
+              },
+            },
+          },
+          {
+            'id': 'm-3',
+            'thread_id': 'thread-1',
+            'thread_version': 3,
+            'author_type': 'ward',
+            'content': '再问一道题',
+          },
+          {
+            'id': 'm-4',
+            'thread_id': 'thread-1',
+            'thread_version': 4,
+            'author_type': 'companion',
+            'content': '我们一步一步看。',
+          },
+        ],
+      };
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiProvider.overrideWithValue(api)],
+      child: const MaterialApp(home: WardDayPage(wardId: 'ward-1')),
+    ));
     await tester.pumpAndSettle();
-    expect(api.lastStructuredCommand, isNull);
-    await tester.ensureVisible(
-        find.byKey(const Key('accept-plan-suggestion-time:task-1')));
-    await tester
-        .tap(find.byKey(const Key('accept-plan-suggestion-time:task-1')));
+    await tester.tap(find.text('说出你的任何想法、问题、安排'));
     await tester.pumpAndSettle();
-    expect(api.lastStructuredCommand?['command'], 'accept_plan_suggestion');
-    expect((api.lastStructuredCommand?['payload'] as Map)['kind'], 'time');
-    expect((api.lastStructuredCommand?['payload'] as Map)['task_id'], 'task-1');
+
+    expect(find.text('已记录（待你确认）', skipOffstage: false), findsOneWidget);
+    final card = tester.getTopLeft(find.text('已记录（待你确认）', skipOffstage: false));
+    final nextQuestion = tester.getTopLeft(find
+        .byKey(const ValueKey('chat-bubble-ward-再问一道题'), skipOffstage: false));
+    expect(card.dy, lessThan(nextQuestion.dy));
+    expect(find.text('确认这个计划', skipOffstage: false), findsNothing);
+  });
+
+  testWidgets('current plan review can be confirmed after reopening chat',
+      (tester) async {
+    FlutterSecureStoragePlatform.instance =
+        TestFlutterSecureStoragePlatform({});
+    final api = _WardHomeApi()
+      ..currentTranscriptOverride = {
+        'thread_id': 'thread-1',
+        'thread_version': 2,
+        'messages': [
+          {
+            'id': 'm-1',
+            'thread_id': 'thread-1',
+            'thread_version': 1,
+            'author_type': 'ward',
+            'content': '今晚整理错题',
+          },
+          {
+            'id': 'm-2',
+            'thread_id': 'thread-1',
+            'thread_version': 2,
+            'author_type': 'companion',
+            'content': '请检查这份计划草稿。',
+            'interaction_ref': {
+              'kind': 'plan_confirm_list',
+              'object_ref': {'object_id': 'draft-1', 'object_version': 2},
+              'actions': [
+                {
+                  'id': 'plan:run:1:draft-1:2',
+                  'command': 'confirm_plan',
+                  'enabled': true
+                },
+              ],
+              'card_snapshot': {
+                'items': [
+                  {
+                    'title': '整理错题',
+                    'planned_minutes': 20,
+                    'start_at': '2026-10-25T19:00:00+08:00',
+                    'end_at': '2026-10-25T19:20:00+08:00'
+                  },
+                ],
+              },
+            },
+          },
+        ],
+      };
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiProvider.overrideWithValue(api)],
+      child: const MaterialApp(home: WardDayPage(wardId: 'ward-1')),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('说出你的任何想法、问题、安排'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('已记录（待你确认）'), findsOneWidget);
+    expect(find.text('确认这个计划'), findsOneWidget);
+    await tester.tap(find.text('确认这个计划'));
+    await tester.pumpAndSettle();
+    expect(api.lastStructuredCommand?['command'], 'confirm_plan');
+    expect(api.lastStructuredCommand?['payload'], {
+      'draft_id': 'draft-1',
+      'expected_draft_version': 2,
+    });
   });
 
   testWidgets('unclear intent shows choices and sends the issued selection',

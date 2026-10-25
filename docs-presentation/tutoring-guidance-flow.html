@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tutoring 引导流程：回路范围与契约</title>
+<style>
+  :root{
+    --bg:#ffffff; --bg-soft:#f6f7f9; --bg-inset:#eef0f3;
+    --text:#1a1d21; --text-2:#5b6470; --text-3:#8a94a3;
+    --stroke:#d8dde5; --stroke-soft:#e6eaef;
+    --blue:#2563eb; --blue-bg:#eff4ff;
+    --orange:#ea580c; --orange-bg:#fff4ec;
+    --purple:#7c3aed; --purple-bg:#f4efff;
+    --green:#15803d; --green-bg:#ecf8f0;
+    --red:#dc2626; --red-bg:#fdf0f0;
+    --gray:#64748b; --gray-bg:#f1f5f9;
+    --code-bg:#f6f7f9;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#14171c; --bg-soft:#1a1f27; --bg-inset:#212834;
+      --text:#e8ecf1; --text-2:#a3adbd; --text-3:#6f7a8c;
+      --stroke:#333c4b; --stroke-soft:#29303d;
+      --blue:#6ea8ff; --blue-bg:#1b2a47;
+      --orange:#fb923c; --orange-bg:#3a2413;
+      --purple:#b79cff; --purple-bg:#2c2145;
+      --green:#4ade80; --green-bg:#173325;
+      --red:#f87171; --red-bg:#3a1d1d;
+      --gray:#94a3b8; --gray-bg:#232a35;
+      --code-bg:#1a1f27;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    font-size:14px;line-height:1.6}
+  .page{max-width:1280px;margin:0 auto;padding:28px 22px 56px}
+  h1{font-size:24px;font-weight:600;margin:0 0 8px;line-height:1.35}
+  h2{font-size:17px;font-weight:600;margin:0 0 10px}
+  h3{font-size:14px;font-weight:600;margin:0 0 8px}
+  p{margin:0}
+  .sub{color:var(--text-2);max-width:900px}
+  .sub b{color:var(--text)}
+
+  /* 回路切换 */
+  .focusbar{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0 10px}
+  .focusbar button{appearance:none;border:1px solid var(--stroke);background:var(--bg);
+    color:var(--text-2);border-radius:999px;padding:5px 14px;font-size:13px;cursor:pointer;font-family:inherit}
+  .focusbar button:hover{border-color:var(--text-3);color:var(--text)}
+  .focusbar button.active{background:var(--text);color:var(--bg);border-color:var(--text);font-weight:600}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;color:var(--text-3);font-size:12px;margin-bottom:18px}
+  .legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;font-style:normal}
+
+  /* 主版面：左流程 右契约 */
+  .layout{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:18px;align-items:start}
+  @media (max-width:960px){.layout{grid-template-columns:1fr}}
+
+  /* 回路边框：范围即嵌套 */
+  .loop{border:1.5px dashed;border-radius:10px;padding:24px 10px 10px;position:relative;margin-top:16px;transition:opacity .18s}
+  .loop:first-child{margin-top:6px}
+  .loop>.tag{position:absolute;top:-10px;left:10px;background:var(--bg);padding:0 7px;
+    font-size:11.5px;font-weight:600;line-height:1.4}
+  .loop-c{border-color:var(--purple)} .loop-c>.tag{color:var(--purple)}
+  .loop-b{border-color:var(--orange)} .loop-b>.tag{color:var(--orange)}
+  .loop-a{border-color:var(--blue)} .loop-a>.tag{color:var(--blue)}
+  .dim{opacity:.35}
+
+  /* 阶段盒：同一层级 */
+  .stage{border:1px solid var(--stroke);border-left:3px solid var(--gray);border-radius:8px;
+    background:var(--bg);padding:10px 12px;transition:opacity .18s}
+  .stage .head{display:flex;align-items:center;gap:8px}
+  .stage .no{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;
+    border-radius:50%;color:#fff;font-size:11px;font-weight:600;flex:none;background:var(--gray)}
+  .stage .t{font-weight:600}
+  .stage .d{color:var(--text-2);font-size:12.5px;margin-top:4px}
+  .stage.model{border-left-color:var(--blue)} .stage.model .no{background:var(--blue)}
+  .stage.gate{border-left-color:var(--orange)} .stage.gate .no{background:var(--orange)}
+  .stage.commit{border-left-color:var(--green)} .stage.commit .no{background:var(--green)}
+  .stage.reject{border-left-color:var(--red)} .stage.reject .no{background:var(--red)}
+  .stage.deliver{border-left-color:var(--purple)} .stage.deliver .no{background:var(--purple)}
+
+  .arrow{text-align:center;color:var(--text-3);padding:3px 0;font-size:15px;line-height:1.2}
+  .arrow small{display:block;font-size:11px;line-height:1.35}
+  .split{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  @media (max-width:560px){.split{grid-template-columns:1fr}}
+
+  .tools{margin-top:9px;border:1px solid var(--stroke-soft);border-radius:6px;background:var(--bg-inset);padding:8px 10px}
+  .tools .tt{font-size:12.5px;font-weight:600}
+  .tools .td{font-size:12.5px;color:var(--text-2);margin-top:3px}
+  .tools .tn{font-size:11.5px;color:var(--text-3);margin-top:4px}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}
+  .chip{border:1px solid var(--stroke);border-radius:999px;padding:1px 9px;font-size:11.5px;color:var(--text-2);background:var(--bg-soft)}
+  .gate-note{font-size:11.5px;color:var(--text-3);margin-top:6px}
+
+  /* 契约栏 */
+  .contracts{display:flex;flex-direction:column;gap:12px}
+  .contract{border:1px solid var(--stroke);border-radius:8px;overflow:hidden;background:var(--bg)}
+  .contract.active{border-color:var(--blue)}
+  .contract header{display:flex;justify-content:space-between;align-items:center;gap:8px;
+    padding:8px 12px;background:var(--bg-soft);border-bottom:1px solid var(--stroke-soft)}
+  .contract header .name{font-weight:600;font-size:13px}
+  .contract header .owner{font-size:11px;color:var(--text-3);border:1px solid var(--stroke);
+    border-radius:999px;padding:1px 8px;white-space:nowrap;background:var(--bg)}
+  .contract pre{margin:0;padding:10px 12px;background:var(--code-bg);overflow-x:auto;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11.5px;line-height:1.55;color:var(--text-2)}
+
+  /* 详情面板 / 表格 / 结论 */
+  .panel{border:1px solid var(--stroke);border-radius:8px;margin-top:20px}
+  .panel header{padding:10px 14px;border-bottom:1px solid var(--stroke-soft);font-weight:600;background:var(--bg-soft);border-radius:8px 8px 0 0}
+  .panel .body{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:14px}
+  @media (max-width:700px){.panel .body{grid-template-columns:1fr}}
+  .kv b{display:block;font-size:12.5px;margin-bottom:2px}
+  .kv span{color:var(--text-2);font-size:12.5px}
+  .kv{margin-bottom:10px}
+  section{margin-top:26px}
+  table{width:100%;border-collapse:collapse;border:1px solid var(--stroke);border-radius:8px;overflow:hidden;font-size:12.5px}
+  th,td{border-bottom:1px solid var(--stroke-soft);padding:8px 10px;text-align:left;vertical-align:top}
+  th{background:var(--bg-soft);font-weight:600}
+  tr:last-child td{border-bottom:none}
+  td:first-child{font-weight:600;white-space:nowrap}
+  .src{color:var(--text-3);font-size:11.5px;margin-top:8px}
+  .conclusions{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  @media (max-width:700px){.conclusions{grid-template-columns:1fr}}
+  .conclusions .c b{display:block;margin-bottom:4px}
+  .conclusions .c p{color:var(--text-2);font-size:12.5px}
+  .conclusions .example{border-left:3px solid var(--orange);background:var(--bg-inset);
+    border-radius:0 6px 6px 0;padding:7px 10px;margin:0 0 8px;font-size:12.5px;color:var(--text-2)}
+  .conclusions .example b{display:block;color:var(--text);font-size:11px;margin-bottom:2px}
+
+  /* 开头核心难点 */
+  .challenges-head{margin:20px 0 0}
+  .challenges{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:10px 0 4px}
+  @media (max-width:960px){.challenges{grid-template-columns:1fr}}
+  .challenge{border:1px solid var(--stroke);border-radius:8px;padding:10px 12px;background:var(--bg-soft)}
+  .challenge .k{display:block;font-size:11px;font-weight:600;color:var(--orange);margin-bottom:3px}
+  .challenge b.t{display:block;font-size:13.5px;margin-bottom:4px}
+  .challenge p{color:var(--text-2);font-size:12.5px}
+  .challenge .turn{display:block;margin-top:7px;font-size:12px;color:var(--text)}
+  .challenge .turn i{font-style:normal;color:var(--blue)}
+  hr{border:none;border-top:1px solid var(--stroke-soft);margin:26px 0 0}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.92em;background:var(--bg-inset);border-radius:4px;padding:0 4px}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <h1>Tutoring 引导流程：回路范围与契约</h1>
+  <p class="sub">一句话设计：<b>代码签发许可并守住出口，模型只在有界回路内提案；题目状态只被已验证的孩子证据推进。</b>
+  下方虚线框即回路边界——框内是可迭代的部分，框外是每轮只执行一次的确定性代码。点击上方按钮可单独高亮某条回路。</p>
+
+  <!-- 核心难点 -->
+  <h2 class="challenges-head">核心难点：这个方案必须同时解决的三个问题</h2>
+  <div class="challenges" aria-label="核心难点">
+    <div class="challenge">
+      <span class="k">难点 1 · 分界</span>
+      <b class="t">什么能直接答，什么绝不能代答？</b>
+      <p>分界不在“是不是作业”，而在有没有推理层次：词义、拼写这类“知道或不知道”的事实，逼孩子猜毫无教学价值；而应用题的结论、选择题的选项、待填的推理结果，一旦代答，就等于替他做完了练习。</p>
+      <span class="turn">难点在于：<i>这条界线要逐轮划准，还不能被孩子的说法或模型的误标绕过。</i></span>
+    </div>
+    <div class="challenge">
+      <span class="k">难点 2 · 引导</span>
+      <b class="t">有逻辑层次的问题，如何只搭脚手架、不替他走路？</b>
+      <p>苏格拉底式引导不是简单地拒绝给答案，而是先诊断他卡在哪一步，每轮只递出一个他自己能完成的最小下一步；久卡不进时换一种讲法、把步子拆得更细、或给一道同构的简单例题——而不是逐级加码，直到把答案变相说完。</p>
+      <span class="turn">难点在于：<i>步子太粗他跟不上，太细又成了牵着走；且无论失败多少次，都不能破例“就这一次直接告诉你”。</i></span>
+    </div>
+    <div class="challenge">
+      <span class="k">难点 3 · 表达</span>
+      <b class="t">如何图文并茂，又不让图变成答案的旁路？</b>
+      <p>数量关系、空间结构、过程原理，画出来往往比讲一段话更清楚：线段图帮他审题，数轴帮他定位，几何图帮他看见条件。但图只要标出未知量的数值、或把关系摆成完整的解法，就成了换了一种形式的答案。</p>
+      <span class="turn">难点在于：<i>让模型自由决定何时画、画什么，同时保证图里的每一个字和线段都可检查、不泄露待求的结果。</i></span>
+    </div>
+  </div>
+
+  <div class="focusbar" role="tablist" aria-label="回路聚焦">
+    <button data-focus="overview" class="active">全景</button>
+    <button data-focus="tool">Loop A · 工具循环</button>
+    <button data-focus="repair">Loop B · 修复回路</button>
+    <button data-focus="teaching">Loop C · 教学循环</button>
+  </div>
+  <div class="legend">
+    <span><i style="background:var(--blue)"></i>模型提案</span>
+    <span><i style="background:var(--orange)"></i>代码裁决</span>
+    <span><i style="background:var(--green)"></i>状态提交</span>
+    <span><i style="background:var(--red)"></i>拒绝终止</span>
+    <span><i style="background:var(--purple)"></i>跨回合状态</span>
+  </div>
+
+  <div class="layout">
+    <!-- 左：流程与回路边界 -->
+    <div id="flow">
+      <div class="loop loop-c" data-loop="teaching">
+        <span class="tag">Loop C · 跨回合教学循环（一道题的生命周期，状态载体 = ProblemRecord）</span>
+
+        <div class="stage" data-stage>
+          <div class="head"><span class="no">1</span><span class="t">回合接入</span></div>
+          <p class="d">组装只读上下文：作用域校验、最近原句与授权图片、当前任务、ProblemRecord 快照。</p>
+        </div>
+        <div class="arrow">↓</div>
+        <div class="stage" data-stage>
+          <div class="head"><span class="no">2</span><span class="t">许可签发 TutorPermitPolicy.permit()</span></div>
+          <p class="d">调用模型之前由代码算出：本题是否受保护、当前唯一最小目标、已有尝试与提示计数。模型只读，不可放宽。</p>
+        </div>
+
+        <div class="loop loop-b" data-loop="repair">
+          <span class="tag">Loop B · 回合内修复回路（提案 ⇄ 裁决，最多各退回 1 次）</span>
+
+          <div class="loop loop-a" data-loop="tool">
+            <span class="tag">Loop A · 模型—工具循环（阶段 3 内部，预算：工具 ≤3 · 模型 ≤4 · Run deadline）</span>
+            <div class="stage model" data-stage>
+              <div class="head"><span class="no">3</span><span class="t">教学提案：LLM 决策</span></div>
+              <p class="d">诊断卡点、判断本轮类型、选定唯一最小下一步；信息不足时先调只读工具，否则直接 finish_turn。</p>
+              <div class="tools">
+                <div class="tt">ToolGateway（只读，observation 回注模型）</div>
+                <div class="td">get_task_context · 当前任务　/　get_attempt_summary · 本题尝试摘要</div>
+                <div class="td">lookup_history · 历史原句检索　/　widget_guidelines · SVG 配图规范（出 svg 前必调）</div>
+                <div class="tn">模型 ⇄ 工具在此小框内往返；拿到足够信息后以 finish_turn 退出，产出 TutorTurnCandidate。</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="arrow">↓<small>候选 TutorTurnCandidate</small></div>
+          <div class="stage gate" data-stage>
+            <div class="head"><span class="no">4</span><span class="t">出口裁决（代码，每轮必经）</span></div>
+            <p class="d">结构校验 → 越权与一致性 → 独立泄露裁判 → 输出安全审核。受保护时与模型自报类型无关，一律送审；裁判失败按泄露处理。</p>
+            <div class="chips">
+              <span class="chip">final_answer</span><span class="chip">complete_solution</span>
+              <span class="chip">choice_verdict</span><span class="chip">incorrect_confirmation</span>
+              <span class="chip">premature_conclusion</span>
+            </div>
+            <p class="gate-note">泄露退回路径在本框内完成：附原因码 → 改写为 guide 的一个最小下一步 → 重新走完整裁决。图泄露只重画 visual。</p>
+          </div>
+        </div>
+
+        <div class="arrow">↓<small>accepted 才向下；rejected 右转终止</small></div>
+        <div class="split">
+          <div class="stage commit" data-stage>
+            <div class="head"><span class="no">5</span><span class="t">状态提交 ApplyTutorTurn</span></div>
+            <p class="d">advance() 按已验证证据推进：有 evidence 的 attempt 才计数并切换小目标；同事务写 VerifiedTurn 与学习事实，command_id 幂等。</p>
+          </div>
+          <div class="stage reject" data-stage>
+            <div class="head"><span class="no">✕</span><span class="t">拒绝终止</span></div>
+            <p class="d">回退固定话术。不写事实、不推进 ProblemRecord、不计数；只记 model_fallback 指标。</p>
+          </div>
+        </div>
+        <div class="arrow">↓</div>
+        <div class="stage deliver" data-stage>
+          <div class="head"><span class="no">6</span><span class="t">回合交付</span></div>
+          <p class="d">accepted 候选投影为孩子可见回合（文字 + 通过检查的配图）；题外问题答完补回任务提醒。孩子回应当前小目标后，沿 Loop C 回到阶段 1 开启下一圈。</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 右：契约栏 -->
+    <div class="contracts" id="contracts">
+      <h3>契约（类 TS，虚线对应左侧阶段）</h3>
+
+      <div class="contract" data-contract="context permit">
+        <header><span class="name">TurnContext</span><span class="owner">阶段 1 输出 · 只读快照</span></header>
+        <pre>type TurnContext = {
+  wardScope: WardScope
+  window: Utterance[]        // 最近原句 + 已授权图片
+  task: TaskContext | null
+  problemSnapshot: ProblemRecord | null
+}</pre>
+      </div>
+
+      <div class="contract" data-contract="permit teaching">
+        <header><span class="name">TutorPermit</span><span class="owner">阶段 2 签发 · 代码拥有，模型只读</span></header>
+        <pre>type TutorPermit = {
+  answerProtected: boolean
+  activeSubgoal: string | null
+  attemptSummary: {
+    substantiveAttempts: number
+    hintsGiven: number
+    evidenceSummary: string | null
+  }
+}
+
+// permit(problemSnapshot): 纯函数，无副作用
+// 本轮许可在本轮开始前已确定</pre>
+      </div>
+
+      <div class="contract" data-contract="tool repair">
+        <header><span class="name">TutorTurnCandidate (tutor-turn.v4)</span><span class="owner">阶段 3 提案 · 不可信输入</span></header>
+        <pre>type TutorTurnCandidate = {
+  act: "guide" | "answer" | "chat"
+     | "clarify" | "redirect"
+     | "pronounce" | "safety"
+  content: string
+  turn?: WorkTurn | NonWorkTurn
+  visual?: Visual
+}
+
+type WorkTurn = {
+  type: "work"
+  relation: "same" | "new"
+  depth: "atomic" | "recall" | "reasoning"
+  studentMove: "attempt" | "request_hint"
+             | "request_answer" | "other"
+  evidence?: string      // 仅 attempt
+  nextSubgoal?: string   // 唯一、最小
+}</pre>
+      </div>
+
+      <div class="contract" data-contract="repair">
+        <header><span class="name">ExitVerdict</span><span class="owner">阶段 4 裁决 · 代码拥有</span></header>
+        <pre>type ExitVerdict =
+  | { kind: "accepted"
+      assessment: ProblemAssessment }
+  | { kind: "rejected"
+      reason: RejectReason }
+
+type ProblemAssessment = {
+  countsAsAttempt: boolean
+  subgoalEvidence?: string
+  nextSubgoal?: string
+}
+
+// 仅 attempt 且带 evidence 才计数</pre>
+      </div>
+
+      <div class="contract" data-contract="teaching">
+        <header><span class="name">ProblemRecord</span><span class="owner">阶段 5 唯一可写状态 · 聚合内</span></header>
+        <pre>type ProblemRecord = {
+  status: "open" | "submitted" | "abandoned"
+  disclosure: "protected" | "released"
+  activeSubgoal: string | null
+  substantiveAttempts: number
+  hintsGiven: number
+}
+
+// advance(record, assessment) 才能推进
+// requestAnswer 永不改变 status / disclosure</pre>
+      </div>
+
+      <div class="contract" data-contract="overview">
+        <header><span class="name">TutorOutcome</span><span class="owner">阶段 6 交付 · 投影结果</span></header>
+        <pre>type TutorOutcome =
+  | { kind: "needs_input"
+      candidate: TutorTurnCandidate }
+  | { kind: "fallback"
+      stateDelta: "none" }
+
+// rejected 不产生 VerifiedTurn
+// 不推进 ProblemRecord</pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- 回路详情面板 -->
+  <div class="panel" aria-live="polite">
+    <header id="detailTitle">全景：三条回路彼此嵌套，权力逐层收紧</header>
+    <div class="body">
+      <div>
+        <div class="kv"><b>范围</b><span id="dScope"></span></div>
+        <div class="kv"><b>框内包含</b><span id="dInside"></span></div>
+      </div>
+      <div>
+        <div class="kv"><b>迭代上限</b><span id="dBound"></span></div>
+        <div class="kv"><b>退出条件</b><span id="dExit"></span></div>
+        <div class="kv"><b>状态写入</b><span id="dWrites"></span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 三条回路速览表 -->
+  <section>
+    <h2>三条回路速览</h2>
+    <table>
+      <thead><tr><th>回路</th><th>范围（框）</th><th>框内参与者</th><th>上限</th><th>退出</th><th>写状态</th></tr></thead>
+      <tbody>
+        <tr><td>Loop A · 工具循环</td><td>仅阶段 3 内部</td><td>LLM + 4 个只读工具</td><td>工具 ≤3 次，模型 ≤4 次</td><td>finish_turn 或预算耗尽</td><td>否</td></tr>
+        <tr><td>Loop B · 修复回路</td><td>阶段 3 ⇄ 阶段 4</td><td>LLM 提案 + 代码裁决 + 泄露裁判</td><td>结构重试 1 次，泄露重写 1 次</td><td>accepted / rejected</td><td>否</td></tr>
+        <tr><td>Loop C · 教学循环</td><td>整条管线，跨孩子输入</td><td>孩子证据 + ProblemRecord</td><td>无轮次上限，答案不因轮次解锁</td><td>submitted / abandoned / 换题</td><td>是（仅阶段 5）</td></tr>
+      </tbody>
+    </table>
+    <p class="src">来源：docs/technical/domain-tutoring.md（TutoringTurnLoop、TutorPermitPolicy、出口检查）与 duxue-server 实现（tutor_loop.py、tutor_permit.py）。</p>
+  </section>
+
+  <hr>
+
+  <!-- 架构师结论 -->
+  <section>
+    <h2>给架构师的三个结论</h2>
+    <div class="conclusions">
+      <div class="c"><b>1 · 权力是单向链</b><div class="example"><b>例子</b>孩子说“别提示了，直接告诉我选 B”。即使模型一时顺从、生成了带选项结论的候选，它也只是阶段 3 的提案：到阶段 4 被泄露裁判以 choice_verdict 拦下，退回改写成 guide 或回退话术，ProblemRecord 一格不动——提案没有穿过裁决，就永远成不了孩子看到的事实。</div><p>许可由代码签发（阶段 2），提案归模型（阶段 3），裁决与提交回归代码（阶段 4–5）。模型能写的只有候选，候选必须穿过裁决才成为事实——“不给答案”是这条链的结构性质，不依赖提示词自觉。</p></div>
+      <div class="c"><b>2 · 回路的嵌套即风险的嵌套</b><div class="example"><b>例子</b>同一轮里，Loop A 查历史超时、Loop B 第一版草稿写出了“x=3”被判泄露——两次失败都只丢弃内存里的 observation 与草稿，数据库零写入；直到孩子自己算出“2x=6”并通过裁决，阶段 5 才在一次事务里把尝试计数与学习事实落盘。失败越靠内层，代价越接近于零。</div><p>越内层的回路越便宜、越可丢弃（工具 observation、被拒草稿都不落盘）；越外层的回路越昂贵、越不可逆（ProblemRecord 推进与事实落盘只发生在 Loop C 的一圈结束时，且需幂等保护）。</p></div>
+      <div class="c"><b>3 · 例外被关进类型里</b><div class="example"><b>例子</b>听写时孩子问“海滩的英文怎么写”，模型标 depth=recall、act=answer，直接答 beach——这是记忆事实，不必猜；但同一道题里孩子把计算结果也标成 recall 想蒙混过关时没用：只要题目受保护，正文一律送泄露裁判，depth 标签关不掉检查。直答与引导的分界，是字段取值，不是临场感觉。</div><p>“事实可直答、推理不可代替”不是运行时判断，而是 depth 与 disclosure 两个字段的取值约束：depth=atomic/recall 走 answer，reasoning 走 guide；disclosure 只有代码能置为 released。判错代价不对称时（泄露 ≫ 多问一轮），一律按更严的一侧执行。</p></div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+  var DETAILS = {
+    overview: {
+      title: "全景：三条回路彼此嵌套，权力逐层收紧",
+      scope: "Loop C（跨回合）⊃ Loop B（回合内修复）⊃ Loop A（工具循环）。越内层越接近模型，越外层越接近领域状态。",
+      inside: "模型只出现在 Loop A 与 Loop B 的提案侧；裁决、许可、状态提交永远在回路之外由代码执行。",
+      bound: "A：工具 ≤3 次、主模型 ≤4 次；B：结构重试 1 次、泄露重写 1 次；C：无轮次上限，但答案永不因轮次解锁。",
+      exit: "A 以 finish_turn 退出；B 以 accepted / rejected 退出；C 以 submitted / abandoned / 换题退出。",
+      writes: "只有穿过阶段 5 的 accepted 轮次才写 VerifiedTurn 与学习事实；其余路径状态增量为空。"
+    },
+    tool: {
+      title: "Loop A · 模型—工具循环（TutoringTurnLoop 内部）",
+      scope: "仅包含阶段 3 内部：LLM 决策 ⇄ ToolGateway。不包含许可签发、出口裁决和状态提交。",
+      inside: "只读工具：get_task_context（当前任务）、get_attempt_summary（本题尝试摘要）、lookup_history（历史原句检索）、widget_guidelines（SVG 配图规范，输出 svg 前必调）。工具结果以 observation 回到模型，全部不可信。",
+      bound: "工具调用 ≤3 次、主模型调用 ≤4 次（含结构重试），受 Run deadline 约束；预算耗尽即终止本轮，不产生候选。",
+      exit: "模型返回 finish_turn（结构化候选）时退出；或预算 / 超时 / 取消时以失败信封退出。",
+      writes: "无。工具全为只读，observation 不直接修改任何聚合；候选仍须过阶段 4 裁决。"
+    },
+    repair: {
+      title: "Loop B · 回合内修复回路（提案 ⇄ 裁决）",
+      scope: "包含阶段 3 的候选生成与阶段 4 的出口裁决两段，是唯一允许“打回重写”的回路。",
+      inside: "两种退回：结构不合法 → 附 schema 错误重问模型（1 次）；内容被泄露裁判判越界 → 附原因码要求改写为 guide 的一个最小下一步（1 次，仍不过可换备用模型再试）。图泄露只重画 visual，不连累正文。",
+      bound: "每种退回最多 1 次；重试结果必须重新走完整出口检查；裁判超时或结果非法按泄露处理，不重试、直接拒绝（fail-closed）。",
+      exit: "accepted 进入阶段 5；rejected 进入拒绝终止（回退话术）。被拒草稿永不展示给孩子。",
+      writes: "无。回路内的所有中间候选都不落盘、不计数、不推进 ProblemRecord。"
+    },
+    teaching: {
+      title: "Loop C · 跨回合教学循环（一道题的生命周期）",
+      scope: "包含完整管线 1→6，并跨越多次孩子输入；状态载体是持久化的 ProblemRecord，而非某一轮的对话上下文。",
+      inside: "每圈只推进 activeSubgoal 这一个最小目标：孩子给出式子 / 草稿 / 解释（evidence）→ advance() 关闭当前小目标、保存下一个 → 下一圈继续。request_hint 只增加提示计数，request_answer 什么都不改变。",
+      bound: "无固定轮次与步数（按题目真实推理链走）；但卡住、反复尝试、索要答案都不是退出条件，更不是答案放行条件。长时间无推进时换表征、拆细目标、给同构例题或建议记入待问老师。",
+      exit: "孩子提交完整思路 → submitted（仍受保护，只代表提议不代表正确）；换题 → 旧题 abandoned、新题 open 计数清零。",
+      writes: "每圈至多推进一次状态：attempt 计数、hint 计数、小目标切换与学习事实在同一事务提交（command_id 幂等去重）。"
+    }
+  };
+
+  function setFocus(name){
+    document.querySelectorAll(".focusbar button").forEach(function(btn){
+      btn.classList.toggle("active", btn.getAttribute("data-focus") === name);
+    });
+    // 回路框：全景不高亮任何单独回路；选中某回路时，其余回路与框外阶段变淡
+    document.querySelectorAll("[data-loop]").forEach(function(el){
+      var isTarget = name !== "overview" && el.getAttribute("data-loop") === name;
+      var inTarget = false;
+      if (name !== "overview") {
+        var frame = document.querySelector('[data-loop="' + name + '"]');
+        if (frame && frame.contains(el)) inTarget = true;
+      }
+      el.classList.toggle("dim", name !== "overview" && !inTarget && el.getAttribute("data-loop") !== name);
+    });
+    if (name === "tool" || name === "repair") {
+      // 聚焦内层回路时，Loop C 外框与阶段 1/2/5/6 变淡，突出框内范围
+      document.querySelectorAll("#flow .stage").forEach(function(st){
+        var frame = document.querySelector('[data-loop="' + name + '"]');
+        st.classList.toggle("dim", !(frame && frame.contains(st)));
+      });
+    } else {
+      document.querySelectorAll("#flow .stage").forEach(function(st){ st.classList.remove("dim"); });
+    }
+    // 契约高亮
+    document.querySelectorAll("[data-contract]").forEach(function(card){
+      var keys = card.getAttribute("data-contract").split(" ");
+      card.classList.toggle("active", name === "overview" || keys.indexOf(name) !== -1);
+    });
+    var d = DETAILS[name];
+    document.getElementById("detailTitle").textContent = d.title;
+    document.getElementById("dScope").textContent = d.scope;
+    document.getElementById("dInside").textContent = d.inside;
+    document.getElementById("dBound").textContent = d.bound;
+    document.getElementById("dExit").textContent = d.exit;
+    document.getElementById("dWrites").textContent = d.writes;
+  }
+
+  document.querySelectorAll(".focusbar button").forEach(function(btn){
+    btn.addEventListener("click", function(){ setFocus(btn.getAttribute("data-focus")); });
+  });
+  setFocus("overview");
+</script>
+</body>
+</html>

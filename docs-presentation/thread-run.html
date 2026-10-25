@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>陪伴对话如何接得住：换话题不串话，中断了能续上</title>
+<style>
+  :root{
+    --bg:#ffffff; --bg-soft:#f6f7f9; --bg-inset:#eef0f3;
+    --text:#1a1d21; --text-2:#5b6470; --text-3:#8a94a3;
+    --stroke:#d8dde5; --stroke-soft:#e6eaef;
+    --blue:#2563eb; --orange:#ea580c; --purple:#7c3aed;
+    --green:#15803d; --red:#dc2626; --gray:#64748b; --code-bg:#f6f7f9;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#14171c; --bg-soft:#1a1f27; --bg-inset:#212834;
+      --text:#e8ecf1; --text-2:#a3adbd; --text-3:#6f7a8c;
+      --stroke:#333c4b; --stroke-soft:#29303d;
+      --blue:#6ea8ff; --orange:#fb923c; --purple:#b79cff;
+      --green:#4ade80; --red:#f87171; --gray:#94a3b8; --code-bg:#1a1f27;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    font-size:14px;line-height:1.6}
+  .page{max-width:1280px;margin:0 auto;padding:28px 22px 56px}
+  h1{font-size:24px;font-weight:600;margin:0 0 8px;line-height:1.35}
+  h2{font-size:17px;font-weight:600;margin:0 0 10px}
+  h3{font-size:14px;font-weight:600;margin:0 0 8px}
+  p{margin:0}
+  .sub{color:var(--text-2);max-width:940px}
+  .sub b{color:var(--text)}
+  .focusbar{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0 10px}
+  .focusbar button{appearance:none;border:1px solid var(--stroke);background:var(--bg);
+    color:var(--text-2);border-radius:999px;padding:5px 14px;font-size:13px;cursor:pointer;font-family:inherit}
+  .focusbar button:hover{border-color:var(--text-3);color:var(--text)}
+  .focusbar button.active{background:var(--text);color:var(--bg);border-color:var(--text);font-weight:600}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;color:var(--text-3);font-size:12px;margin-bottom:18px}
+  .legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;font-style:normal}
+
+  .layout{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr);gap:18px;align-items:start}
+  @media (max-width:960px){.layout{grid-template-columns:1fr}}
+
+  /* 技术难点 */
+  .challenges-head{margin:20px 0 0}
+  .challenges{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin:10px 0 4px}
+  @media (max-width:700px){.challenges{grid-template-columns:1fr}}
+  .challenge{border:1px solid var(--stroke);border-radius:8px;padding:10px 12px;background:var(--bg-soft)}
+  .challenge .k{display:block;font-size:11px;font-weight:600;color:var(--orange);margin-bottom:3px}
+  .challenge b.t{display:block;font-size:13.5px;margin-bottom:4px}
+  .challenge p{color:var(--text-2);font-size:12.5px}
+  .challenge .turn{display:block;margin-top:7px;font-size:12px;color:var(--text)}
+  .challenge .turn i{font-style:normal;color:var(--blue)}
+
+  /* 阶段泳道 */
+  .turn-loop{border:1.5px dashed var(--purple);border-radius:10px;padding:24px 10px 10px;position:relative;margin-top:16px}
+  .turn-loop>.tag{position:absolute;top:-10px;left:10px;background:var(--bg);padding:0 7px;font-size:11.5px;font-weight:600;color:var(--purple)}
+  .lane{border:1px solid var(--stroke);border-radius:10px;overflow:hidden;display:flex;background:var(--bg);transition:opacity .18s}
+  .lane + .lane{margin-top:0}
+  .lane-head{width:128px;flex:none;padding:13px 12px;background:var(--bg-soft);border-right:1px solid var(--stroke-soft)}
+  .lane-head .no{font-size:15px;font-weight:600}
+  .lane-head .pr{color:var(--blue);font-size:12.5px;font-weight:600}
+  .lane-head .ds{color:var(--text-3);font-size:11.5px;margin-top:5px;line-height:1.45}
+  .lane-body{padding:12px;flex:1;min-width:0}
+  .flowrow{display:flex;flex-wrap:wrap;align-items:stretch}
+  .node{border:1.5px solid var(--stroke);border-radius:8px;padding:8px 10px;width:158px;background:var(--bg)}
+  .node .nt{font-weight:600;font-size:12.5px;line-height:1.4}
+  .node .nd{color:var(--text-3);font-size:11.5px;margin-top:3px;line-height:1.45}
+  .node.blue{border-color:var(--blue)} .node.orange{border-color:var(--orange)}
+  .node.green{border-color:var(--green)} .node.red{border-style:dashed}
+  .arr{display:flex;align-items:center;padding:0 5px;color:var(--text-3);font-weight:700}
+  .connector{display:flex;align-items:center;gap:10px;padding:6px 0 6px 140px}
+  .connector .bar{width:2px;height:18px;background:var(--blue)}
+  .connector .tx{font-size:12px;font-weight:600;color:var(--blue)}
+  .connector.loopback .tx{color:var(--purple)}
+  .branch{font-size:11.5px;color:var(--text-3);margin-top:9px}
+  .mini-loop{margin-top:9px;border:1.5px dashed var(--blue);border-radius:8px;padding:16px 8px 8px;position:relative}
+  .mini-loop>.tag{position:absolute;top:-9px;left:8px;background:var(--bg);padding:0 6px;font-size:11px;font-weight:600;color:var(--blue)}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}
+  .chip{border:1px solid var(--stroke);border-radius:999px;padding:1px 9px;font-size:11.5px;color:var(--text-2);background:var(--bg-soft)}
+  .dim{opacity:.35}
+  .states{display:flex;flex-wrap:wrap;align-items:center;margin-top:10px}
+  .state{border:1px solid var(--stroke);border-radius:999px;padding:6px 12px;text-align:center;background:var(--bg)}
+  .state.hot{border-color:var(--blue);background:var(--bg-soft)}
+  .state .st{font-weight:600;font-size:12px}
+  .state .sd{display:block;color:var(--text-3);font-size:11px}
+  .state-note{font-size:11.5px;color:var(--text-3);margin-top:8px}
+
+  /* 契约栏 */
+  .contracts{display:flex;flex-direction:column;gap:12px}
+  .contract{border:1px solid var(--stroke);border-radius:8px;overflow:hidden;background:var(--bg)}
+  .contract.active{border-color:var(--blue)}
+  .contract header{display:flex;justify-content:space-between;align-items:center;gap:8px;
+    padding:8px 12px;background:var(--bg-soft);border-bottom:1px solid var(--stroke-soft)}
+  .contract header .name{font-weight:600;font-size:13px}
+  .contract header .owner{font-size:11px;color:var(--text-3);border:1px solid var(--stroke);
+    border-radius:999px;padding:1px 8px;white-space:nowrap;background:var(--bg)}
+  .contract pre{margin:0;padding:10px 12px;background:var(--code-bg);overflow-x:auto;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11.5px;line-height:1.55;color:var(--text-2)}
+
+  .panel{border:1px solid var(--stroke);border-radius:8px;margin-top:20px}
+  .panel header{padding:10px 14px;border-bottom:1px solid var(--stroke-soft);font-weight:600;background:var(--bg-soft);border-radius:8px 8px 0 0}
+  .panel .body{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:14px}
+  @media (max-width:700px){.panel .body{grid-template-columns:1fr}}
+  .kv b{display:block;font-size:12.5px;margin-bottom:2px}
+  .kv span{color:var(--text-2);font-size:12.5px}
+  .kv{margin-bottom:10px}
+  section{margin-top:26px}
+  table{width:100%;border-collapse:collapse;border:1px solid var(--stroke);border-radius:8px;overflow:hidden;font-size:12.5px}
+  th,td{border-bottom:1px solid var(--stroke-soft);padding:8px 10px;text-align:left;vertical-align:top}
+  th{background:var(--bg-soft);font-weight:600}
+  tr:last-child td{border-bottom:none}
+  td:first-child{font-weight:600;white-space:nowrap}
+  .src{color:var(--text-3);font-size:11.5px;margin-top:8px}
+  .conclusions{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  @media (max-width:700px){.conclusions{grid-template-columns:1fr}}
+  .conclusions .c b{display:block;margin-bottom:4px}
+  .conclusions .c p{color:var(--text-2);font-size:12.5px}
+  .conclusions .example{border-left:3px solid var(--orange);background:var(--bg-inset);
+    border-radius:0 6px 6px 0;padding:7px 10px;margin:0 0 8px;font-size:12.5px;color:var(--text-2)}
+  .conclusions .example b{display:block;color:var(--text);font-size:11px;margin-bottom:2px}
+  hr{border:none;border-top:1px solid var(--stroke-soft);margin:26px 0 0}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <h1>陪伴对话如何接得住：换话题不串话，中断了能续上</h1>
+  <p class="sub">一句话设计：<b>Ward 看到一条连续对话，系统内部却有多个可暂停、可恢复、可作废的工作（Run）；Thread 是这条对话的唯一仲裁者，Coordinator 是流程的推进者，模型只是被围栏约束的候选生产者。</b>
+  本图只画同一抽象层的逻辑概念（聚合、值对象、流程角色与裁决规则）；数据库表、SSE、HTTP 状态码等物理落地只在契约栏中以代码类型标注。</p>
+
+  <!-- 技术难点（根据 domain-companion.md 与 companion_coordinator.py 实现提炼） -->
+  <h2 class="challenges-head">技术难点：这个编排层必须同时解决的两个问题</h2>
+  <div class="challenges" aria-label="技术难点">
+    <div class="challenge">
+      <span class="k">难点 1 · 连续性</span>
+      <b class="t">一条对话，多个随时切换的工作，如何不串话？</b>
+      <p>孩子感知到的是一条连贯对话，背后却是计划、答疑、复盘等多个可并存、可暂停的 Run：上一题还没做完，又说“帮我安排明天复习”。若每个工作都能直接对孩子说话，回复必然互相覆盖、指代错乱。</p>
+      <span class="turn">难点在于：<i>必须有一个唯一仲裁者决定“此刻谁有回复权”，且切换必须是原子裁决，不能靠各工作自行抢占。</i></span>
+    </div>
+    <div class="challenge">
+      <span class="k">难点 2 · 不可信输入</span>
+      <b class="t">意图与内容都出自模型，状态一致性由谁负责？</b>
+      <p>“这句话该进哪个场景”只能靠模型理解语义，但模型会误判、会迟到、会被注入。若让它直接建 Run、改状态、写事实，一次幻觉就能污染业务数据；可若事事都要代码裁决，又不能把昂贵的模型调用包进数据库事务里慢慢等。</p>
+      <span class="turn">难点在于：<i>提议与裁决必须分离——先用短事务把路由定下来，再放模型在事务之外执行。</i></span>
+    </div>
+  </div>
+
+  <div class="focusbar" role="tablist" aria-label="阶段聚焦">
+    <button data-focus="overview" class="active">全景</button>
+    <button data-focus="route">① 路由裁决</button>
+    <button data-focus="exec">② 受控执行</button>
+    <button data-focus="fence">③ 收口裁决</button>
+    <button data-focus="state">Run 状态机</button>
+  </div>
+  <div class="legend">
+    <span><i style="background:var(--blue)"></i>模型提议 / 执行</span>
+    <span><i style="background:var(--orange)"></i>代码裁决</span>
+    <span><i style="background:var(--green)"></i>业务写入（目标 Context）</span>
+    <span><i style="background:var(--red)"></i>终结 / 丢弃</span>
+    <span><i style="background:var(--purple)"></i>跨 Turn 连续性</span>
+  </div>
+
+  <div class="layout">
+    <!-- 左：三阶段泳道 -->
+    <div id="flow">
+      <div class="turn-loop">
+        <span class="tag">Turn 循环 · 每圈处理一次 Ward 输入，状态载体 = ConversationThread（focus + version）</span>
+
+        <!-- 阶段 1 -->
+        <div class="lane" data-lane="route">
+          <div class="lane-head"><div class="no">① 路由裁决</div><div class="pr">先裁决，后执行</div><div class="ds">决定「交给谁」</div></div>
+          <div class="lane-body">
+            <div class="flowrow">
+              <div class="node"><div class="nt">Ward Turn</div><div class="nd">一次消息或已验证 UI 动作；带 command_id 与 expected_thread_version</div></div>
+              <span class="arr">→</span>
+              <div class="node"><div class="nt">Coordinator 受理</div><div class="nd">先查幂等：同 command_id 同载荷直接返原结果，不同载荷 409</div></div>
+              <span class="arr">→</span>
+              <div class="node blue"><div class="nt">意图提议 → 路由裁决</div><div class="nd">安全词表 / route_hint 短路；否则模型提议闭集标签，IntentRouter 按固定优先级定 target 与 mode</div></div>
+              <span class="arr">→</span>
+              <div class="node orange"><div class="nt">Thread 裁决落盘</div><div class="nd">start / continue / handoff：启动或恢复唯一 Run，旧 focus 转 paused；version 原子 +1，Ward 原话入 journal</div></div>
+            </div>
+            <p class="branch">⤼ 支路：clarify / safety 在此终结——写入固定回复，不创建 Run。结构化动作（choose_intent、confirm_plan 等）必须匹配服务端已签发的 interaction，过期即 409。</p>
+          </div>
+        </div>
+        <div class="connector"><span class="bar"></span><span class="tx">↓ 出口产物：RunInvocation（一张不可变的执行工单：run + turn + attempt + context_refs）</span></div>
+
+        <!-- 阶段 2 -->
+        <div class="lane" data-lane="exec">
+          <div class="lane-head"><div class="no">② 受控执行</div><div class="pr">模型只是候选生产者</div><div class="ds">在围栏内「把事做完」</div></div>
+          <div class="lane-body">
+            <div class="flowrow">
+              <div class="node"><div class="nt">WorkflowDispatcher</div><div class="nd">按 agent_type 三选一分发（planning / tutoring / reflection），未注册不执行</div></div>
+              <span class="arr">→</span>
+              <div class="node blue"><div class="nt">目标 Workflow</div><div class="nd">照单执行：组装最小上下文，在预算内调用模型 / 工具</div></div>
+              <span class="arr">→</span>
+              <div class="node orange"><div class="nt">候选 → Validator</div><div class="nd">结构、安全、权限、预算校验；不过则降级或以 failure 汇报</div></div>
+              <span class="arr">→</span>
+              <div class="node green"><div class="nt">目标 Use Case</div><div class="nd">类型化命令进入本域聚合的本地事务；只有它能写业务状态与 Fact</div></div>
+            </div>
+            <div class="mini-loop">
+              <span class="tag">Workflow 内部有界循环（ContextSpec 声明上限，唯一出口是候选或失败）</span>
+              <div class="flowrow">
+                <div class="node"><div class="nt">ContextEnvelope</div><div class="nd">最近 8 句原句 + 已授权引用 + MemoryBundle 快照；禁止完整聊天与其他 Ward 数据</div></div>
+                <span class="arr">→</span>
+                <div class="node blue"><div class="nt">模型 / 工具循环</div><div class="nd">次数、工具清单、token 预算封顶；只能产候选、工具请求或 state patch 提议</div></div>
+                <span class="arr">→</span>
+                <div class="node"><div class="nt">候选 Candidate</div><div class="nd">未校验产物：不得落状态、不得成为学习事实</div></div>
+              </div>
+            </div>
+            <p class="branch">⤼ 支路：预算耗尽 / 校验不过 → 以 failed 或 timed_out 的 Outcome 汇报收口，不在同一 attempt 内续命。</p>
+          </div>
+        </div>
+        <div class="connector"><span class="bar"></span><span class="tx">↓ 出口产物：WorkflowOutcome（一份待裁决的汇报：run_status + 回复 + 恢复动作）</span></div>
+
+        <!-- 阶段 3 -->
+        <div class="lane" data-lane="fence">
+          <div class="lane-head"><div class="no">③ 收口裁决</div><div class="pr">迟到不夺权</div><div class="ds">决定「算不算数」</div></div>
+          <div class="lane-body">
+            <div class="flowrow">
+              <div class="node"><div class="nt">WorkflowOutcome</div><div class="nd">携带 run_id、turn_id、attempt 与 checkpoint 引用回到 Coordinator</div></div>
+              <span class="arr">→</span>
+              <div class="node orange"><div class="nt">Fencing 世代校验</div><div class="nd">run + current_turn + attempt + Thread.focus 四者全对才算「当前」</div></div>
+              <span class="arr">→</span>
+              <div class="node green"><div class="nt">✔ 接受</div><div class="nd">推进 Run 状态与 Thread 版本，可见回复入 journal、流事件可重放，回复权确认</div></div>
+            </div>
+            <div class="flowrow" style="margin-top:8px">
+              <div class="node red"><div class="nt">✘ 不匹配 → 丢弃</div><div class="nd">只写一条 late_outcome_discarded 审计 Trace：不展示、不夺权、不触发业务写入</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="connector loopback"><span class="tx">⟲ 回环：Ward 收到回复后发出下一轮 Turn，凭 Thread 新版本重进 ① —— 对话因此连续，Run 可以更换</span></div>
+
+        <!-- 状态机 -->
+        <div class="lane" data-lane="state" style="margin-top:10px">
+          <div class="lane-head"><div class="no">Run 状态机</div><div class="pr">与流程正交的另一面</div><div class="ds">回答「一个 Run 一生处于哪些状态」</div></div>
+          <div class="lane-body">
+            <div class="states">
+              <div class="state hot"><span class="st">active</span><span class="sd">执行中</span></div><span class="arr">⇄</span>
+              <div class="state"><span class="st">waiting_for_ward</span><span class="sd">等 Ward 输入</span></div><span class="arr">⇄</span>
+              <div class="state"><span class="st">paused</span><span class="sd">被 handoff 让位</span></div><span class="arr">→</span>
+              <div class="state"><span class="st">failed · timed_out</span><span class="sd">保留 checkpoint 引用</span></div><span class="arr">→</span>
+              <div class="state"><span class="st">closed · cancelled</span><span class="sd">终态，不可复活</span></div>
+            </div>
+            <p class="state-note">关键转换：failed / timed_out → active 只能由 Ward 显式重试（attempt 世代 +1）；cancel 只来自受权取消命令；SSE / HTTP 断开不改变任何状态。</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 右：契约栏（字段取自 ports/companion.py 与 persistence/models.py） -->
+    <div class="contracts">
+      <h3>关键契约（类 TS，字段与代码一一对应）</h3>
+
+      <div class="contract" data-contract="route">
+        <header><span class="name">CompanionTurn</span><span class="owner">接口输入 · POST /companion/turn</span></header>
+        <pre>type CompanionTurn = {
+  commandId: string          // 幂等键，默认新 UUID
+  threadId?: string
+  expectedThreadVersion?: number
+  content: string            // ≤ 4000
+  routeHint?: "planning" | "tutoring" | "reflection"
+  structuredCommand?: StructuredWardCommand
+  attachmentKeys: string[]   // 必须属当前 Ward 前缀
+}
+
+type StructuredWardCommand = {
+  interactionId: string      // 服务端已签发的那一个
+  command: "confirm_plan" | "clarify_reply"
+         | "accept_plan_suggestion" | "choose_intent"
+  payload: object            // 按命令校验，不自由扩展
+}</pre>
+      </div>
+
+      <div class="contract" data-contract="route">
+        <header><span class="name">IntentProposal → RouteDecision</span><span class="owner">阶段 1 · 提议与裁决分离</span></header>
+        <pre>type IntentProposal = {   // 模型唯一能写的
+  intent: "planning" | "tutoring"
+        | "reflection" | "unclear"
+}
+
+type RouteDecision = {    // 代码裁决的产物
+  target: "planning" | "tutoring" | "reflection"
+        | "clarify" | "safety"
+  mode: "start" | "continue" | "handoff" | "clarify"
+  confidence: number      // 0..1
+  routeReason: string     // 可审计
+  contextRefs: string[]
+}
+
+// 优先级: 安全词表 > route_hint > 模型提议
+// unclear / 多意图 → clarify，不猜</pre>
+      </div>
+
+      <div class="contract" data-contract="route state">
+        <header><span class="name">ConversationThread + AgentRun</span><span class="owner">唯一写聚合 + 子实体</span></header>
+        <pre>type ConversationThread = {
+  id: string
+  wardId: string
+  focusRunRef: string | null  // 唯一回复权指向
+  version: number             // 乐观锁，条件更新
+}
+
+type AgentRun = {
+  id: string
+  threadId: string
+  agentType: "planning" | "tutoring" | "reflection"
+  runRef: string        // 只存目标引用，不存业务副本
+  status: RunStatus
+  attempt: number       // 世代，重试 +1
+  currentTurnId: string | null
+  contextRefs: string[]
+  graphCheckpointRef: string | null
+  policyVersion: string
+}
+
+type RunStatus = "active" | "waiting_for_ward"
+  | "paused" | "closed" | "escalated"
+  | "failed" | "timed_out" | "cancelled"</pre>
+      </div>
+
+      <div class="contract" data-contract="route exec">
+        <header><span class="name">RunInvocation</span><span class="owner">阶段 1 → 2 · 不可变工单</span></header>
+        <pre>type RunInvocation = {
+  runId: string
+  threadId: string
+  wardId: string
+  agentType: AgentType
+  turnId: string
+  commandId: string
+  attempt: number           // ≥ 1
+  turn: object              // 本轮已裁决输入
+  contextRefs: string[]
+  resumeFromCheckpoint: boolean
+}
+
+// 一经发出不可修改
+// 执行方不得自行改目标、扩权限</pre>
+      </div>
+
+      <div class="contract" data-contract="exec">
+        <header><span class="name">ContextEnvelope + ContextSpec</span><span class="owner">阶段 2 · 有界上下文</span></header>
+        <pre>type ContextSpec = {      // Workflow 先声明，代码按声明装配
+  memoryTypes: Set&lt;"episodic"|"signal"|"profile"&gt;
+  itemBudget: number        // 1..100，默认 12
+  tokenBudget: number       // 64..20000，默认 900
+  toolAllowList: Set&lt;string&gt;
+  maxModelCalls: number     // 0..20
+  maxToolCalls: number      // 0..20
+  checkpointVersion: string
+  policyVersion: string
+  utteranceScope: "thread"  // 最近 8 句原句
+}
+
+type ContextEnvelope = {
+  version: "companion-context.v1"
+  run: object; actor: object; objective: object
+  evidenceRefs: object[]; signals: object[]
+  memory: object[]; profile: object | null
+  policy: object; tools: object[]
+  truncated: boolean
+  // traceSnapshot() 只留计数与元数据
+}</pre>
+      </div>
+
+      <div class="contract" data-contract="exec fence">
+        <header><span class="name">WorkflowOutcome</span><span class="owner">阶段 2 → 3 · 待裁决汇报</span></header>
+        <pre>type WorkflowOutcome = {
+  runStatus: RunStatus
+  outcomeType: "response" | "waiting" | "completed"
+             | "failure" | "cancelled" | "escalation"
+  nextInteraction: object | null
+  contextRefs: string[]
+  checkpointRef: string | null
+  failure: object | null    // code / retriable / source
+  resumeAction: "retry" | "resume_from_checkpoint"
+              | "restart" | "none"
+  handoffSuggestion: AgentType | null
+}
+
+// Outcome 本身没有展示权
+// 展示权由阶段 3 的 fencing 授予</pre>
+      </div>
+
+      <div class="contract" data-contract="fence">
+        <header><span class="name">Fence 四元组 + Journal</span><span class="owner">阶段 3 · 收口与可见性</span></header>
+        <pre>// record_outcome() 的接受条件，缺一即丢弃:
+fence = {
+  run.attempt      == outcome.attempt
+  run.currentTurnId == outcome.turnId
+  thread.focusRunRef == run.runRef
+  run.wardId / threadId 归属一致
+}
+
+type CompanionMessage = {  // append-only journal
+  wardId: string; threadId: string
+  runId: string | null; turnId: string | null
+  attempt: number | null
+  threadVersion: number    // 游标分页
+  authorType: "ward" | "companion"
+  content: string
+  attachmentRefs: string[]
+  interactionRef: object | null
+  // 唯一约束: (threadId, threadVersion)
+  //           (runId, turnId, attempt, authorType)
+}
+
+type CompanionCommand = {  // 幂等围栏
+  id: string               // = commandId
+  payloadDigest: string    // 同键不同载荷 → 409
+  result: object           // 完成后返原结果
+  completedAt: timestamp | null
+}</pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- 阶段详情面板 -->
+  <div class="panel" aria-live="polite">
+    <header id="detailTitle">全景：先裁决，后执行；迟到不夺权</header>
+    <div class="body">
+      <div>
+        <div class="kv"><b>范围</b><span id="dScope"></span></div>
+        <div class="kv"><b>框内包含</b><span id="dInside"></span></div>
+      </div>
+      <div>
+        <div class="kv"><b>边界 / 上限</b><span id="dBound"></span></div>
+        <div class="kv"><b>出口产物</b><span id="dExit"></span></div>
+        <div class="kv"><b>写状态</b><span id="dWrites"></span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 机制速览表 -->
+  <section>
+    <h2>关键机制速览（与代码对应）</h2>
+    <table>
+      <thead><tr><th>机制</th><th>解决哪个难点</th><th>代码落点</th><th>不变量</th></tr></thead>
+      <tbody>
+        <tr><td>单一回复权</td><td>难点 1 · 连续性</td><td>Thread.focus_run_ref + _start_or_resume()</td><td>同一时刻仅 focus Run 可见回复；handoff 原子换焦</td></tr>
+        <tr><td>先裁决，后执行</td><td>难点 2 · 不可信输入</td><td>handle() 两段提交：路由事务先 commit，模型在事务外 invoke</td><td>模型调用绝不占用 Thread 事务；执行照单不改单</td></tr>
+        <tr><td>命令幂等</td><td>配套保障 · 防重复提交</td><td>CompanionCommand + payload_digest（_restore_idempotent）</td><td>同 command_id 同载荷返原结果，不同载荷 409，进行中 409</td></tr>
+        <tr><td>世代围栏 Fencing</td><td>配套保障 · 防迟到覆盖</td><td>record_outcome() 四元组校验</td><td>不匹配只记 late_outcome_discarded，不上屏、不写业务</td></tr>
+        <tr><td>显式重试</td><td>配套保障 · 可恢复不可复活</td><td>_start_or_resume() 中 failed/timed_out 才 attempt += 1</td><td>closed / cancelled 永不 resume；断线不改状态</td></tr>
+        <tr><td>写所有权分离</td><td>难点 2 · 不可信输入</td><td>WorkflowDispatcher 三选一 + 目标 Use Case 本地事务</td><td>Coordinator 不直写目标聚合；跨域事实走 Outbox</td></tr>
+      </tbody>
+    </table>
+    <p class="src">来源：docs/technical/domain-companion.md（v3.4）与 duxue-server 实现（application/process_managers/companion_coordinator.py、application/ports/companion.py、contexts/companion/domain/intent_router.py、infrastructure/persistence/models.py）。</p>
+  </section>
+
+  <hr>
+
+  <!-- 结论 -->
+  <section>
+    <h2>给架构师的三个结论</h2>
+    <div class="conclusions">
+      <div class="c"><b>1 · 单一回复权是“不串话”的前提</b><div class="example"><b>例子</b>答疑 Run 还在等孩子提交第一步，孩子突然说“帮我安排明天复习”。Coordinator 在同一事务里把答疑 Run 转 paused、新建 Planning Run 并换 focus；随后旧答疑的流式结果迟到到达，因 focus 已变更被直接丢弃——孩子自始至终只看到计划场景的回复。</div><p>多个 Run 可以并存、暂停、等待，但同一时刻只有 focus Run 能对 Ward 说话。焦点切换是一次原子裁决（换 focus + 推进 Thread 版本同事务提交），不是各 Workflow 自行抢占。</p></div>
+      <div class="c"><b>2 · 先裁决，后执行，慢模型才不锁状态</b><div class="example"><b>例子</b>网络抖动让同一条消息带着同一 command_id 提交了两次：第二次在 _restore_idempotent 就命中已完成的结果直接返回，不再调模型、不再建 Run。而正常路径里，路由（建 Run、写 Ward 原话、version+1）先短事务提交，耗时数秒的模型调用发生在这之后、事务之外。</div><p>一轮 Turn 先完成路由裁决并固定世代，再开始昂贵且不可回滚的模型执行。短事务只做确定性的事，慢且不可信的事全部推到事务之外——一致性与响应速度因此不必二选一。</p></div>
+      <div class="c"><b>3 · 世代围栏让“迟到”从事故变成常态处理</b><div class="example"><b>例子</b>孩子点取消后，在途的答疑调用才返回一份“完美”的引导文案：record_outcome 校验发现 Run 已 cancelled、focus 已清除，四元组不匹配，于是只留一条 late_outcome_discarded 审计——内容再对也不上屏。反过来，SSE 只是断线时，孩子带最后 sequence 重连同一 attempt 即可重放，不会被误判成取消。</div><p>Outcome 必须携带 run + turn + attempt 并仍是 focus 才被接受。系统不判断迟到结果“对不对”，只判断它“还属不属于现在”——异步系统里，世代正确性优先于内容正确性。</p></div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+  var DETAILS = {
+    overview: {
+      title: "全景：先裁决，后执行；迟到不夺权",
+      scope: "三段泳道串行衔接：① 路由裁决（同步、短事务）→ ② 受控执行（事务外、可慢）→ ③ 收口裁决（同步、短事务）；整圈由 Turn 循环驱动，Thread 是唯一状态载体。",
+      inside: "模型出现两次且都只是提议者：阶段 1 提议意图标签，阶段 2 提议内容候选。建 Run、换 focus、展示回复、写业务状态，四件事全部由代码裁决。",
+      bound: "阶段 1 只允许一次意图提议；阶段 2 受 ContextSpec 的 maxModelCalls / maxToolCalls / tokenBudget 封顶；阶段 3 不调模型。",
+      exit: "① 出口 RunInvocation；② 出口 WorkflowOutcome；③ 出口被接受的可见回复或被丢弃的审计记录。",
+      writes: "Thread/Run/journal 由 Coordinator 在短事务内写；业务状态只由目标 Context 的 Use Case 在自己的本地事务里写。"
+    },
+    route: {
+      title: "① 路由裁决：先把“交给谁”定下来",
+      scope: "从 Ward Turn 进入，到 RunInvocation 发出为止。包含幂等恢复、安全/路由提示短路、意图提议、IntentRouter 裁决、Thread 落盘五步，全部在一个短事务内提交。",
+      inside: "IntentClassifier 只返回闭集 IntentProposal；IntentRouter 按「安全词表 > route_hint > 模型提议」优先级生成 RouteDecision（target + mode）；structured_command 必须匹配服务端签发的 interaction_id 与 allowed_commands。",
+      bound: "模型提议最多一次且无工具、无写权；unclear、多意图、非法 JSON 一律 clarify 不猜；expected_thread_version 不符 409。",
+      exit: "RunInvocation（不可变工单），或 clarify/safety 的固定回复（不建 Run、直接终结本轮）。",
+      writes: "ConversationThread.version 条件 +1、focus_run_ref、AgentRun 的启动/暂停、Ward 原话 journal 与 CompanionCommand 幂等记录——同事务提交。"
+    },
+    exec: {
+      title: "② 受控执行：照单执行的围栏内自治",
+      scope: "从 Dispatcher 按 agent_type 三选一分发，到目标 Workflow 返回 WorkflowOutcome 为止。发生在 Thread 事务之外，耗时不受短事务约束。",
+      inside: "ContextBuilder 按 ContextSpec 装配 ContextEnvelope（最近 8 句原句、已授权引用、MemoryBundle 快照）；Workflow 在内部有界循环里调用模型/工具产候选，经 OutputValidator 后转类型化命令交目标 Use Case。",
+      bound: "ContextSpec 的 itemBudget / tokenBudget / toolAllowList / maxModelCalls / maxToolCalls 是硬上限；预算耗尽即以 failed / timed_out 汇报，同一 attempt 内不续命。",
+      exit: "WorkflowOutcome：run_status、待裁决的回复、checkpoint 引用与 resume_action。它没有展示权。",
+      writes: "仅目标 Context 可在自己的本地事务里写聚合与 LearningFactRecorded Outbox；Coordinator 与 Workflow 都不得越界直写。"
+    },
+    fence: {
+      title: "③ 收口裁决：迟到结果内容再对也不算数",
+      scope: "从 WorkflowOutcome 回到 Coordinator，到可见回复入 journal（或迟到 Outcome 入审计）为止，仍是短事务。",
+      inside: "record_outcome() 校验四元组：run.attempt、run.current_turn_id、thread.focus_run_ref 与归属；匹配才推进 Run 状态、写流事件与 companion 回复，并把签发的 interaction_id / allowed_commands 存回 Run 供下一轮动作验真。",
+      bound: "不匹配零容忍：rollback 后只补一条 late_outcome_discarded 的 Trace 并 commit，不展示、不夺权、不触发任何业务写入；重复提交无副作用。",
+      exit: "被接受：CoordinatorResult（Thread 新版本 + 当前交互）；被丢弃：审计留痕，Ward 无感知。",
+      writes: "接受时同事务写 AgentRun 状态、AgentStreamEvent、AgentTrace、Thread version 与 CompanionMessage；丢弃时只写 Trace。"
+    },
+    state: {
+      title: "Run 状态机：与流程正交的生命周期",
+      scope: "状态机回答「一个 Run 一生可以处于哪些状态、谁能推动它」，与三阶段流程分开看：流程是横切的一轮，状态机是纵贯的一生。",
+      inside: "active ⇄ waiting_for_ward / paused 由 Outcome 与 handoff 推动；escalated 由安全或政策触发；failed / timed_out 保留 graph_checkpoint_ref 等待显式处置；closed / cancelled 为终态。",
+      bound: "failed / timed_out → active 仅限 Ward 显式重试且 attempt +1（代码落在 _start_or_resume 的 continue 分支）；不兼容 checkpoint 拒绝恢复，不猜测重建。",
+      exit: "closed（目标结算或清理完成）与 cancelled（Ward 受权取消）为终点，永不复活；其迟到 Outcome 只能进审计。",
+      writes: "状态只由 Coordinator 经 Thread 聚合行为推进；SSE/HTTP 断开、模型内部重试都不写状态。"
+    }
+  };
+
+  function setFocus(name){
+    document.querySelectorAll(".focusbar button").forEach(function(btn){
+      btn.classList.toggle("active", btn.getAttribute("data-focus") === name);
+    });
+    document.querySelectorAll("[data-lane]").forEach(function(el){
+      el.classList.toggle("dim", name !== "overview" && el.getAttribute("data-lane") !== name);
+    });
+    document.querySelectorAll("[data-contract]").forEach(function(card){
+      var keys = card.getAttribute("data-contract").split(" ");
+      card.classList.toggle("active", name === "overview" || keys.indexOf(name) !== -1);
+    });
+    var d = DETAILS[name];
+    document.getElementById("detailTitle").textContent = d.title;
+    document.getElementById("dScope").textContent = d.scope;
+    document.getElementById("dInside").textContent = d.inside;
+    document.getElementById("dBound").textContent = d.bound;
+    document.getElementById("dExit").textContent = d.exit;
+    document.getElementById("dWrites").textContent = d.writes;
+  }
+
+  document.querySelectorAll(".focusbar button").forEach(function(btn){
+    btn.addEventListener("click", function(){ setFocus(btn.getAttribute("data-focus")); });
+  });
+  setFocus("overview");
+</script>
+</body>
+</html>

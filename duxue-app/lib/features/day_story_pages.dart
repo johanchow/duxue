@@ -802,6 +802,40 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   bool get _hasOlderHistory =>
       nextBeforeThreadVersion != null || previousThreadId != null;
 
+  Widget _planReviewCard(List<Map<String, dynamic>> items,
+          {required bool active}) =>
+      Padding(
+        padding: const EdgeInsets.only(top: 14),
+        child: AppCard(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('已记录（待你确认）',
+              style: TextStyle(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 8),
+          for (final item in items) ...[
+            Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text('• ${item['title']} · '
+                    '${_draftSlotLabel(item)} · '
+                    '约 ${item['planned_minutes']} 分钟')),
+            _planSuggestion(item, 'duration',
+                showActions: false, honorDismissal: active),
+            _planSuggestion(item, 'time',
+                showActions: false, honorDismissal: active),
+          ],
+          if (active) ...[
+            const SizedBox(height: 8),
+            SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                    onPressed: planSending || planConfirmAction == null
+                        ? null
+                        : _confirmPlanDraft,
+                    child: const Text('确认这个计划'))),
+          ],
+        ])),
+      );
+
   Widget _planChatOverlay() {
     final canReviewDraft = planInteractionKind == 'plan_confirm_list' &&
         planConfirmAction != null &&
@@ -862,42 +896,8 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
                 child: const Text('重试')),
           ]),
         ),
-      if (canReviewDraft)
-        Padding(
-          padding: const EdgeInsets.only(top: 14),
-          child: AppCard(
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                const Text('已记录（待你确认）',
-                    style: TextStyle(fontWeight: FontWeight.w700)),
-                const SizedBox(height: 8),
-                for (final item in planDraft) ...[
-                  Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Text('• ${item['title']} · '
-                          '${_draftSlotLabel(item)} · '
-                          '约 ${item['planned_minutes']} 分钟')),
-                  _planSuggestion(item, 'duration'),
-                  _planSuggestion(item, 'time'),
-                ],
-                const SizedBox(height: 8),
-                Row(children: [
-                  Expanded(
-                      child: OutlinedButton(
-                          onPressed: () =>
-                              showMessage(context, '草稿还在，按住下方再说想改哪一段。'),
-                          child: const Text('我再改一句'))),
-                  const SizedBox(width: 8),
-                  Expanded(
-                      child: FilledButton(
-                          onPressed: planSending || planConfirmAction == null
-                              ? null
-                              : _confirmPlanDraft,
-                          child: const Text('确认这个计划'))),
-                ])
-              ])),
-        ),
+      if (canReviewDraft && !_currentMessageCarriesPlanReview)
+        _planReviewCard(planDraft, active: true),
       for (final slot in planClarificationSlots)
         if (slot['field'] == 'planned_minutes')
           _planSuggestion(slot, 'clarification'),
@@ -983,6 +983,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     _openPlanChat();
     setState(() {
       _anchorPronunciationLessons();
+      _anchorPlanReview();
       planMessages.add(_ChatLine(label: '我', content: content, images: images));
     });
     _scrollToChatBottom();
@@ -1808,7 +1809,8 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     return '${shanghai.hour.toString().padLeft(2, '0')}:${shanghai.minute.toString().padLeft(2, '0')}';
   }
 
-  Widget _planSuggestion(Map<String, dynamic> target, String kind) {
+  Widget _planSuggestion(Map<String, dynamic> target, String kind,
+      {bool showActions = true, bool honorDismissal = true}) {
     final raw =
         target[kind == 'time' ? 'time_suggestion' : 'duration_suggestion'];
     if (raw is! Map) return const SizedBox.shrink();
@@ -1816,7 +1818,9 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     final targetId = (target['assignment_id'] ?? target['slot_id'])?.toString();
     if (targetId == null) return const SizedBox.shrink();
     final key = '$kind:$targetId';
-    if (dismissedPlanSuggestions.contains(key)) return const SizedBox.shrink();
+    if (honorDismissal && dismissedPlanSuggestions.contains(key)) {
+      return const SizedBox.shrink();
+    }
     final minutes = suggestion['suggested_minutes'];
     final start = _suggestedClock(suggestion['suggested_start_at']);
     final end = _suggestedClock(suggestion['suggested_end_at']);
@@ -1831,21 +1835,23 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
       padding: const EdgeInsets.only(top: 6, bottom: 6),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(text, style: const TextStyle(fontSize: 12)),
-        Row(children: [
-          if (canAccept)
+        if (showActions)
+          Row(children: [
+            if (canAccept)
+              TextButton(
+                key: Key('accept-plan-suggestion-$key'),
+                onPressed: planSending
+                    ? null
+                    : () => _acceptPlanSuggestion(target, kind),
+                child: const Text('采用建议'),
+              ),
             TextButton(
-              key: Key('accept-plan-suggestion-$key'),
-              onPressed: planSending
-                  ? null
-                  : () => _acceptPlanSuggestion(target, kind),
-              child: const Text('采用建议'),
+              key: Key('dismiss-plan-suggestion-$key'),
+              onPressed: () =>
+                  setState(() => dismissedPlanSuggestions.add(key)),
+              child: const Text('先不改'),
             ),
-          TextButton(
-            key: Key('dismiss-plan-suggestion-$key'),
-            onPressed: () => setState(() => dismissedPlanSuggestions.add(key)),
-            child: const Text('先不改'),
-          ),
-        ]),
+          ]),
       ]),
     );
   }
@@ -1901,7 +1907,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
           });
         }
         await _load();
-        await _refreshTranscript();
+        await _refreshTranscript(restoreReviewAction: false);
         if (mounted) showMessage(context, '计划已变化，请重新说明或审阅。');
       } else if (mounted) {
         showMessage(context, '采用建议失败，请稍后重试');
@@ -1983,7 +1989,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         // recovery message or leave the stale card on screen.
         try {
           await _load();
-          await _refreshTranscript();
+          await _refreshTranscript(restoreReviewAction: false);
         } catch (_) {}
         if (mounted) {
           showMessage(context, '计划已变化，已刷新，请重新说明或确认。');
@@ -2023,6 +2029,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
             ? null
             : visualFromInteraction(interactionRef),
         lessons: _lessonsFromInteraction(interactionRef),
+        interactionRef: interactionRef,
         intentActions: interactionRef?['kind'] == 'intent_choice'
             ? [
                 for (final action
@@ -2037,13 +2044,41 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
       historyMessages.any((message) => message.lessons.isNotEmpty) ||
       planMessages.any((message) => message.lessons.isNotEmpty);
 
+  bool get _currentMessageCarriesPlanReview =>
+      [...historyMessages, ...planMessages].any((message) =>
+          message.threadId == companionThreadId &&
+          message.threadVersion == companionThreadVersion &&
+          message.planReview != null);
+
+  void _anchorPlanReview() {
+    if (planInteractionKind != 'plan_confirm_list' ||
+        planDraft.isEmpty ||
+        _currentMessageCarriesPlanReview) {
+      return;
+    }
+    for (final lines in [planMessages, historyMessages]) {
+      for (var index = lines.length - 1; index >= 0; index--) {
+        if (lines[index].label == '我') {
+          continue;
+        }
+        lines[index] = lines[index].copyWith(interactionRef: {
+          'kind': 'plan_confirm_list',
+          'card_snapshot': {'items': planDraft},
+        });
+        return;
+      }
+    }
+  }
+
   void _anchorPronunciationLessons() {
     if (pronunciationLessons.isEmpty) return;
     final lessons = pronunciationLessons;
     pronunciationLessons = const [];
     for (final lines in [planMessages, historyMessages]) {
       for (var index = lines.length - 1; index >= 0; index--) {
-        if (lines[index].label == '我') continue;
+        if (lines[index].label == '我') {
+          continue;
+        }
         lines[index] = lines[index].copyWith(lessons: lessons);
         return;
       }
@@ -2095,6 +2130,12 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
                 padding: const EdgeInsets.only(top: 8),
                 child: _pronunciationCard(lesson),
               ),
+            if (message.planReview != null)
+              _planReviewCard(message.planReview!,
+                  active: message.threadId == companionThreadId &&
+                      message.threadVersion == companionThreadVersion &&
+                      planConfirmAction != null &&
+                      planDraft.isNotEmpty),
           ],
         ),
       );
@@ -2186,7 +2227,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     }
   }
 
-  Future<void> _refreshTranscript() async {
+  Future<void> _refreshTranscript({bool restoreReviewAction = true}) async {
     final Map<String, dynamic> transcript;
     if (companionThreadId != null) {
       transcript =
@@ -2221,6 +2262,32 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
       planMessages
         ..clear()
         ..addAll(latestLines);
+      final latestReview =
+          latestLines.isNotEmpty && latestLines.last.threadVersion == version
+              ? latestLines.last
+              : null;
+      final reviewRef = latestReview?.interactionRef;
+      if (restoreReviewAction &&
+          latestReview?.planReview != null &&
+          reviewRef != null) {
+        final action = (reviewRef['actions'] as List? ?? const [])
+            .whereType<Map>()
+            .map((value) => Map<String, dynamic>.from(value))
+            .where((value) =>
+                value['command'] == 'confirm_plan' && value['enabled'] == true);
+        final objectRef = reviewRef['object_ref'] is Map
+            ? Map<String, dynamic>.from(reviewRef['object_ref'] as Map)
+            : const <String, dynamic>{};
+        if (action.isNotEmpty &&
+            objectRef['object_id'] is String &&
+            objectRef['object_version'] is int) {
+          planInteractionKind = 'plan_confirm_list';
+          planConfirmAction = action.first;
+          planDraft = latestReview!.planReview!;
+          planDraftId = objectRef['object_id'] as String;
+          planDraftVersion = objectRef['object_version'] as int;
+        }
+      }
       if (latestLines.any((message) => message.lessons.isNotEmpty)) {
         pronunciationLessons = const [];
       }
@@ -2345,6 +2412,7 @@ class _ChatLine {
     this.visual,
     this.lessons = const [],
     this.intentActions = const [],
+    this.interactionRef,
   });
   final String? id;
   final String? threadId;
@@ -2355,8 +2423,22 @@ class _ChatLine {
   final Map<String, dynamic>? visual;
   final List<Map<String, dynamic>> lessons;
   final List<Map<String, dynamic>> intentActions;
+  final Map<String, dynamic>? interactionRef;
 
-  _ChatLine copyWith({List<Map<String, dynamic>>? lessons}) => _ChatLine(
+  List<Map<String, dynamic>>? get planReview {
+    if (interactionRef?['kind'] != 'plan_confirm_list') return null;
+    final snapshot = interactionRef?['card_snapshot'];
+    if (snapshot is! Map || snapshot['items'] is! List) return null;
+    return [
+      for (final item in snapshot['items'] as List)
+        if (item is Map) Map<String, dynamic>.from(item),
+    ];
+  }
+
+  _ChatLine copyWith(
+          {List<Map<String, dynamic>>? lessons,
+          Map<String, dynamic>? interactionRef}) =>
+      _ChatLine(
         id: id,
         threadId: threadId,
         threadVersion: threadVersion,
@@ -2366,6 +2448,7 @@ class _ChatLine {
         visual: visual,
         lessons: lessons ?? this.lessons,
         intentActions: intentActions,
+        interactionRef: interactionRef ?? this.interactionRef,
       );
 }
 
