@@ -626,6 +626,7 @@ def test_adapter_model_operations_reach_review_and_confirmation(db, monkeypatch)
     second = adapter.invoke(invocation=RunInvocation(run_id=run.id, thread_id=thread.id,
         ward_id=ward.id, agent_type='planning', command_id='name-second', turn={'content': '数学，十九点开始'}))
     assert second.next_interaction['kind'] == 'plan_confirm_list'
+    assert second.next_interaction['card_snapshot']['items'][0]['title'] == '数学'
     result = adapter.invoke(invocation=RunInvocation(run_id=run.id, thread_id=thread.id,
         ward_id=ward.id, agent_type='planning', command_id='name-confirm', turn={'structured_command': {
             'command': 'confirm_plan', 'payload': {'draft_id': draft.id, 'expected_draft_version': draft.version}}}))
@@ -986,6 +987,7 @@ def test_adapter_ignores_legacy_empty_target_slot_when_new_operation_can_apply(d
         turn={'content': '加一个英语听力要三十分钟，从七点开始'}))
 
     assert outcome.next_interaction['kind'] == 'plan_confirm_list'
+    assert outcome.next_interaction['card_snapshot']['items'][0]['title'] == '英语听力'
     assert [(task.title, task.planned_minutes) for task in db.query(Task).all()] == [('英语听力', 30)]
 
 

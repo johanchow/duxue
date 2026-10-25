@@ -201,6 +201,16 @@ class CompanionCoordinator:
             lessons = payload.get("lessons")
             if isinstance(lessons, list) and lessons and all(isinstance(item, dict) for item in lessons):
                 return {"kind": "pronunciation_lesson", "lessons": lessons}
+        if kind == "plan_confirm_list":
+            snapshot = payload.get("card_snapshot")
+            if isinstance(snapshot, dict) and isinstance(snapshot.get("items"), list):
+                return {
+                    "kind": "plan_confirm_list",
+                    "object_ref": payload.get("object_ref"),
+                    "actions": [action for action in payload.get("actions", [])
+                                if action.get("command") == "confirm_plan"],
+                    "card_snapshot": snapshot,
+                }
         return None
 
     @staticmethod

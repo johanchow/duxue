@@ -13,13 +13,13 @@ from app.application.commands.memory import SqlAlchemyMemoryFacade
 from app.application.commands.plan_intake import PlanIntakeInput, PlanIntakeService
 from app.application.ports.companion import RunInvocation, WorkflowOutcome
 from app.application.queries.context_builder import ContextBuilder
-from app.application.queries.self_reviews import get_recent_self_reviews
 from app.application.queries.run_transcript import (
     current_turn_images,
     load_visible_utterances,
     recent_thread_utterances,
     visible_utterances,
 )
+from app.application.queries.self_reviews import get_recent_self_reviews
 from app.application.workflows.planning_domain_service import PlanningDomainService
 from app.application.workflows.planning_workflow import build_planning_graph
 from app.bootstrap.settings import settings
@@ -488,6 +488,16 @@ class PlanningWorkflowAdapter:
                                "query": "GetPlanDraft"},
                 "actions": actions,
             }
+            if kind == "plan_confirm_list":
+                # The journal keeps what the Ward reviewed in this turn. A later
+                # draft revision must not rewrite an older card in chat history.
+                interaction["card_snapshot"] = {"items": [
+                    {key: deepcopy(item[key]) for key in (
+                        "assignment_id", "title", "planned_minutes", "start_at", "end_at",
+                        "duration_suggestion", "time_suggestion",
+                    ) if key in item}
+                    for item in review["items"]
+                ]}
             interaction.update({"model": components.model_for("planning.reply"), "model_fallback": model_fallback})
             if model_guidance:
                 interaction["model_guidance"] = model_guidance

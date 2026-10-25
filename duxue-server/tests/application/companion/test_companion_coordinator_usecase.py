@@ -496,6 +496,42 @@ def test_coordinator_persists_pronunciation_lessons_in_companion_message_interac
     assert messages[1].interaction_ref == {"kind": "pronunciation_lesson", "lessons": lessons}
 
 
+def test_coordinator_persists_plan_review_with_its_reply(db):
+    ward = create_ward(db)
+    db.commit()
+    snapshot = {"items": [{"title": "整理错题", "planned_minutes": 20,
+                            "start_at": "2026-10-25T19:00:00+08:00",
+                            "end_at": "2026-10-25T19:20:00+08:00"}]}
+    interaction = {
+        "kind": "plan_confirm_list", "content": "请检查这份计划草稿。",
+        "parts": [{"type": "text", "text": "请检查这份计划草稿。"}],
+        "object_ref": {"context": "planning", "object_id": "draft-1", "object_version": 2},
+        "actions": [{"id": "plan:run:1:draft-1:2", "command": "confirm_plan", "enabled": True}],
+        "card_snapshot": snapshot,
+    }
+    coordinator = CompanionCoordinator(
+        db,
+        dispatcher=FakeWorkflowDispatcher(WorkflowOutcome(
+            run_status="waiting_for_ward", outcome_type="waiting",
+            next_interaction=interaction,
+        )),
+        classifier=StaticIntentClassifier("planning"),
+    )
+    result = coordinator.handle(
+        ward_id=ward.id, content="今晚七点整理错题", thread_id=None,
+        expected_thread_version=0, route_hint=None,
+    )
+    messages = (db.query(CompanionMessage)
+                .filter_by(thread_id=result.thread_id)
+                .order_by(CompanionMessage.thread_version).all())
+    assert messages[-1].interaction_ref == {
+        "kind": "plan_confirm_list",
+        "object_ref": interaction["object_ref"],
+        "actions": interaction["actions"],
+        "card_snapshot": snapshot,
+    }
+
+
 def test_companion_messages_supports_current_thread_lookup_cursor_pagination_and_previous_thread_link(db):
     from datetime import timedelta
 
