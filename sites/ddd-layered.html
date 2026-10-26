@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DDD领域分层</title>
+<style>
+  :root{--bg:#ffffff;--bg-soft:#f6f7f9;--bg-inset:#eef0f3;--text:#1a1d21;--text-2:#5b6470;--text-3:#8a94a3;--stroke:#d8dde5;--stroke-soft:#e6eaef;--blue:#2563eb;--code-bg:#f6f7f9}
+  @media (prefers-color-scheme: dark){:root{--bg:#14171c;--bg-soft:#1a1f27;--bg-inset:#212834;--text:#e8ecf1;--text-2:#a3adbd;--text-3:#6f7a8c;--stroke:#333c4b;--stroke-soft:#29303d;--blue:#6ea8ff;--code-bg:#1a1f27}}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;font-size:14px;line-height:1.6}
+  .page{max-width:1280px;margin:0 auto;padding:28px 22px 56px}
+  h1{font-size:24px;font-weight:600;margin:0 0 8px;line-height:1.35}
+  h2{font-size:17px;font-weight:600;margin:28px 0 10px}
+  p{margin:0}
+  .sub{color:var(--text-2);max-width:940px}
+  .sub b{color:var(--text)}
+  .legend{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0 12px}
+  .pill{border:1px solid var(--stroke);border-radius:999px;padding:4px 12px;font-size:12.5px;color:var(--text-2);background:var(--bg)}
+  .pill.active{background:var(--text);color:var(--bg);border-color:var(--text);font-weight:600}
+  figure.diagram{margin:0;border:1px solid var(--stroke);border-radius:12px;background:#fcfcfc;padding:10px;overflow-x:auto}
+  figure.diagram svg{min-width:900px;display:block}
+  .callout{border:1px solid var(--stroke);border-left:3px solid var(--blue);border-radius:8px;background:var(--bg-soft);padding:12px 14px;margin:16px 0}
+  .callout b{display:block;margin-bottom:4px}
+  table{border-collapse:collapse;width:100%;font-size:13px;margin:8px 0 4px}
+  th,td{border:1px solid var(--stroke-soft);padding:7px 10px;text-align:left;vertical-align:top}
+  th{background:var(--bg-soft);font-weight:600;white-space:nowrap}
+  td{color:var(--text-2)} td:first-child{color:var(--text);font-weight:600}
+  code{background:var(--code-bg);border-radius:4px;padding:0 4px;font-size:12.5px}
+  .foot{color:var(--text-3);font-size:12px;margin-top:28px}
+  .back{color:var(--blue);text-decoration:none;font-size:13px}
+</style>
+</head>
+<body>
+<main class="page">
+  <p><a class="back" href="index.html">← 读学 · 技术演示</a></p>
+  <h1>DDD领域分层</h1>
+  <p class="sub">读学 Server 的限界分层全景：<b>纵向</b>看四层依赖（Interface → Application → Domain → Infrastructure，Port 是接缝不是层）；<b>横向</b>看 9 个 Bounded Context 的写所有权与协作。模块化单体，单一事实源为 <code>docs/technical/ddd-overview.md</code> 与 <code>design-server.md</code>。</p>
+  <div class="legend">
+    <span class="pill active">实线箭头 = Integration Event（Outbox 最终一致）</span>
+    <span class="pill">虚线箭头 = 受权 Query / ACL（同步只读）</span>
+    <span class="pill">蓝 = Core · 青 = Supporting · 黄 = Generic</span>
+  </div>
+
+  <figure class="diagram"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 1010" width="100%" height="auto" role="img" aria-label="读学 Server DDD 限界分层图" font-family="-apple-system,Helvetica,Arial,sans-serif">
+<rect x="0" y="0" width="1180" height="1010" fill="#FCFCFC"/>
+<defs><marker id="arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#1414148A"/></marker></defs>
+<text x="24" y="14" fill="#1414148A" font-size="8"> </text>
+<rect x="24" y="16" width="1132" height="62" rx="10" fill="none" stroke="#14141433" stroke-width="1"/>
+<rect x="24" y="16" width="104" height="62" rx="10" fill="#F7F7F7" stroke="none"/>
+<text x="76" y="33.0" fill="#3685BF" font-size="16" font-weight="800" text-anchor="middle">L0</text>
+<text x="76" y="51.0" fill="#141414" font-size="10.5" font-weight="700" text-anchor="middle">外部参与者</text>
+<text x="76" y="64.0" fill="#1414148A" font-size="7.5" text-anchor="middle">ACTORS</text>
+<rect x="150" y="27" width="190" height="40" rx="7" fill="#FFFFFF" stroke="#14141433"/>
+<text x="245.0" y="44" fill="#141414" font-size="10.5" font-weight="700" text-anchor="middle">Ward / Guardian App</text>
+<text x="245.0" y="58" fill="#1414148A" font-size="8" text-anchor="middle">Flutter · REST / SSE</text>
+<rect x="356" y="27" width="190" height="40" rx="7" fill="#FFFFFF" stroke="#14141433"/>
+<text x="451.0" y="44" fill="#141414" font-size="10.5" font-weight="700" text-anchor="middle">读学Eye Cam</text>
+<text x="451.0" y="58" fill="#1414148A" font-size="8" text-anchor="middle">Android · 预签名直传 / 心跳</text>
+<rect x="562" y="27" width="190" height="40" rx="7" fill="#FFFFFF" stroke="#14141433"/>
+<text x="657.0" y="44" fill="#141414" font-size="10.5" font-weight="700" text-anchor="middle">Scheduler / Beat</text>
+<text x="657.0" y="58" fill="#1414148A" font-size="8" text-anchor="middle">心跳巡检 · 记忆演进 · 清理</text>
+<rect x="768" y="27" width="272" height="40" rx="7" fill="#FFFFFF" stroke="#14141433"/>
+<text x="904.0" y="44" fill="#141414" font-size="10.5" font-weight="700" text-anchor="middle">外部 AI 服务（经 Gateway 接入）</text>
+<text x="904.0" y="58" fill="#1414148A" font-size="8" text-anchor="middle">Qwen3-VL / LLM / TTS / ASR · 不进 Domain</text>
+<rect x="24" y="92" width="1132" height="78" rx="10" fill="none" stroke="#14141433" stroke-width="1"/>
+<rect x="24" y="92" width="104" height="78" rx="10" fill="#F7F7F7" stroke="none"/>
+<text x="76" y="117.0" fill="#3685BF" font-size="16" font-weight="800" text-anchor="middle">L1</text>
+<text x="76" y="135.0" fill="#141414" font-size="10.5" font-weight="700" text-anchor="middle">接口层</text>
+<text x="76" y="148.0" fill="#1414148A" font-size="7.5" text-anchor="middle">INTERFACE</text>
+<rect x="150" y="111" width="210" height="40" rx="7" fill="#FFFFFF" stroke="#14141433"/>
+<text x="255.0" y="128" fill="#141414" font-size="10.5" font-weight="700" text-anchor="middle">api/v1 Routers</text>
+<text x="255.0" y="142" fill="#1414148A" font-size="8" text-anchor="middle">identity · device_ingestion · planning</text>
+<rect x="376" y="111" width="210" height="40" rx="7" fill="#FFFFFF" stroke="#14141433"/>
+<text x="481.0" y="128" fill="#141414" font-size="10.5" font-weight="700" text-anchor="middle">Companion / Tutoring API</text>
+<text x="481.0" y="142" fill="#1414148A" font-size="8" text-anchor="middle">study · evaluation · memory · behavior</text>
+<rect x="602" y="111" width="190" height="40" rx="7" fill="#FFFFFF" stroke="#14141433"/>
+<text x="697.0" y="128" fill="#141414" font-size="10.5" font-weight="700" text-anchor="middle">SSE Endpoints</text>
+<text x="697.0" y="142" fill="#1414148A" font-size="8" text-anchor="middle">流式答疑 · 可重放事件</text>
+<rect x="808" y="111" width="232" height="40" rx="7" fill="#FFFFFF" stroke="#14141433"/>
+<text x="924.0" y="128" fill="#141414" font-size="10.5" font-weight="700" text-anchor="middle">Event Consumers</text>
+<text x="924.0" y="142" fill="#1414148A" font-size="8" text-anchor="middle">Outbox 消费 · 版本校验/去重/重试</text>
+<text x="150" y="104" fill="#1414148A" font-size="8" font-weight="400">职责：鉴权、DTO 转换、错误映射 · 禁止：直接操作 Aggregate / Repository / ORM · 统一收口 verify_ward_access</text>
+<rect x="24" y="184" width="1132" height="96" rx="10" fill="none" stroke="#14141433" stroke-width="1"/>
+<rect x="24" y="184" width="104" height="96" rx="10" fill="#F7F7F7" stroke="none"/>
+<text x="76" y="218.0" fill="#3685BF" font-size="16" font-weight="800" text-anchor="middle">L2</text>
+<text x="76" y="236.0" fill="#141414" font-size="10.5" font-weight="700" text-anchor="middle">应用层</text>
+<text x="76" y="249.0" fill="#1414148A" font-size="7.5" text-anchor="middle">APPLICATION</text>
+<text x="150" y="200" fill="#1414148A" font-size="8" font-weight="400">构件分类上四者并列（同属 Application，各管一种入口）；下方细条单独表示 Companion Turn 运行时调用链，不代表分类层级</text>
+<rect x="150" y="206" width="205" height="32" rx="7" fill="#FFFFFF" stroke="#14141433" stroke-width="1"/>
+<text x="162" y="220" fill="#141414" font-size="10" font-weight="700">Commands / Use Cases</text>
+<text x="162" y="232" fill="#1414148A" font-size="8">单 Context · 一次调用一个短事务</text>
+<rect x="363" y="206" width="180" height="32" rx="7" fill="#FFFFFF" stroke="#14141433" stroke-width="1"/>
+<text x="375" y="220" fill="#141414" font-size="10" font-weight="700">Queries</text>
+<text x="375" y="232" fill="#1414148A" font-size="8">受权只读 · 读模型/投影</text>
+<rect x="551" y="206" width="235" height="32" rx="7" fill="#F0F0F0" stroke="#3685BF" stroke-width="1.6"/>
+<text x="563" y="220" fill="#141414" font-size="10" font-weight="800">★ Process Managers</text>
+<text x="563" y="232" fill="#141414BD" font-size="8">CompanionCoordinator · 有状态跨步编排</text>
+<rect x="794" y="206" width="246" height="32" rx="7" fill="#FFFFFF" stroke="#14141433" stroke-width="1"/>
+<text x="806" y="220" fill="#141414" font-size="10" font-weight="700">Event Handlers</text>
+<text x="806" y="232" fill="#1414148A" font-size="8">消费 Integration Event → 转本地 Command</text>
+<rect x="150" y="246" width="890" height="28" rx="7" fill="#F7F7F7" stroke="#14141424" stroke-dasharray="4 3"/>
+<text x="162" y="258" fill="#141414BD" font-size="8.5" font-weight="700">运行时 · 仅 Companion Turn：</text>
+<text x="162" y="270" fill="#141414" font-size="8.5">Coordinator(PM) ──RunInvocation──▶ WorkflowDispatcher（Application Port，注册表分发）──▶ 恰好一个 Workflow ──▶ ① ContextBuilder 组装 ContextEnvelope ② 模型/工具循环 ③ OutputValidator ──typed command──▶ 目标 Use Case</text>
+<rect x="24" y="294" width="1132" height="470" rx="10" fill="none" stroke="#14141433" stroke-width="1"/>
+<rect x="24" y="294" width="104" height="470" rx="10" fill="#F7F7F7" stroke="none"/>
+<text x="76" y="515.0" fill="#3685BF" font-size="16" font-weight="800" text-anchor="middle">L3</text>
+<text x="76" y="533.0" fill="#141414" font-size="10.5" font-weight="700" text-anchor="middle">领域层</text>
+<text x="76" y="546.0" fill="#1414148A" font-size="7.5" text-anchor="middle">DOMAIN · BOUNDED CONTEXTS</text>
+<text x="150" y="316" fill="#1414148A" font-size="8" font-weight="400">每个可变概念只有一个 owning Context 可写；其它 Context 只能持有 ID、消费事件、或走受权 Query 读投影。共享 PostgreSQL ≠ 共享 Aggregate / Repository / 写权限。</text>
+<text x="150" y="330" fill="#141414BD" font-size="9" font-weight="700">授权 ACL（对全部业务 Context）</text>
+<rect x="150" y="382" width="150" height="330" rx="8" fill="#F7F7F7" stroke="#C08532" stroke-width="1.4"/>
+<rect x="150" y="382" width="150" height="34" rx="8" fill="#F0F0F0" stroke="none"/>
+<text x="160" y="398" fill="#141414" font-size="12" font-weight="700">身份与监护关系</text>
+<text x="290" y="398" fill="#C08532" font-size="8.5" font-weight="700" text-anchor="end">GENERIC</text>
+<text x="160" y="410" fill="#1414148A" font-size="8">Identity &amp; Relationship</text>
+<text x="160" y="434" fill="#141414BD" font-size="8.8">• User / Guardian / Ward 资料</text>
+<text x="160" y="447" fill="#141414BD" font-size="8.8">• guardian_ward_relations (M:N)</text>
+<text x="160" y="460" fill="#141414BD" font-size="8.8">• refresh_tokens · ward_invites</text>
+<text x="160" y="473" fill="#141414BD" font-size="8.8">• ward_credentials.session_version</text>
+<text x="160" y="692" fill="#1414148A" font-size="8" font-style="italic">只判定谁能访问哪个 Ward</text>
+<text x="160" y="703" fill="#1414148A" font-size="8" font-style="italic">不拥有任何学习业务状态</text>
+<rect x="322" y="360" width="718" height="62" rx="8" fill="#F7F7F7" stroke="#4C7F8C" stroke-width="1.4"/>
+<rect x="322" y="360" width="718" height="26" rx="8" fill="#F0F0F0" stroke="none"/>
+<text x="332" y="376" fill="#141414" font-size="12" font-weight="700">陪伴编排</text>
+<text x="1030" y="376" fill="#4C7F8C" font-size="8.5" font-weight="700" text-anchor="end">SUPPORTING</text>
+<text x="332" y="402" fill="#141414BD" font-size="8.8">• ConversationThread（Aggregate） · AgentRunLink · focus / 回复权 / Handoff</text>
+<text x="332" y="414" fill="#1414148A" font-size="8" font-style="italic">Coordinator = Application 层 Process Manager，只路由一次受权 Run，不替目标 Context 做领域决策</text>
+<rect x="322" y="448" width="168" height="132" rx="8" fill="#F7F7F7" stroke="#3685BF" stroke-width="1.4"/>
+<rect x="322" y="448" width="168" height="34" rx="8" fill="#F0F0F0" stroke="none"/>
+<text x="332" y="464" fill="#141414" font-size="12" font-weight="700">学习计划协商</text>
+<text x="480" y="464" fill="#3685BF" font-size="8.5" font-weight="700" text-anchor="end">CORE</text>
+<text x="332" y="476" fill="#1414148A" font-size="8">Planning</text>
+<text x="332" y="500" fill="#141414BD" font-size="8.8">• Task</text>
+<text x="332" y="513" fill="#141414BD" font-size="8.8">• PlanDraft（active 唯一）</text>
+<text x="332" y="526" fill="#141414BD" font-size="8.8">• DailySchedule（Ward×日唯一）</text>
+<text x="332" y="560" fill="#1414148A" font-size="8" font-style="italic">Ward 确认才写正式日程</text>
+<text x="332" y="571" fill="#1414148A" font-size="8" font-style="italic">Guardian 只读 + 留言</text>
+<rect x="502" y="448" width="168" height="132" rx="8" fill="#F7F7F7" stroke="#3685BF" stroke-width="1.4"/>
+<rect x="502" y="448" width="168" height="34" rx="8" fill="#F0F0F0" stroke="none"/>
+<text x="512" y="464" fill="#141414" font-size="12" font-weight="700">学习执行</text>
+<text x="660" y="464" fill="#3685BF" font-size="8.5" font-weight="700" text-anchor="end">CORE</text>
+<text x="512" y="476" fill="#1414148A" font-size="8">Study</text>
+<text x="512" y="500" fill="#141414BD" font-size="8.8">• StudySession</text>
+<text x="512" y="513" fill="#141414BD" font-size="8.8">• StudySessionInterval</text>
+<text x="512" y="526" fill="#141414BD" font-size="8.8">• StartCue（到点邀请）</text>
+<text x="512" y="560" fill="#1414148A" font-size="8" font-style="italic">只记实际开始/暂停/完成</text>
+<text x="512" y="571" fill="#1414148A" font-size="8" font-style="italic">不做答疑、不形成画像</text>
+<rect x="682" y="448" width="168" height="132" rx="8" fill="#F7F7F7" stroke="#3685BF" stroke-width="1.4"/>
+<rect x="682" y="448" width="168" height="34" rx="8" fill="#F0F0F0" stroke="none"/>
+<text x="692" y="464" fill="#141414" font-size="12" font-weight="700">辅导答疑</text>
+<text x="840" y="464" fill="#3685BF" font-size="8.5" font-weight="700" text-anchor="end">CORE</text>
+<text x="692" y="476" fill="#1414148A" font-size="8">Tutoring</text>
+<text x="692" y="500" fill="#141414BD" font-size="8.8">• TutoringSession</text>
+<text x="692" y="513" fill="#141414BD" font-size="8.8">• ProblemRecord · VerifiedTurn</text>
+<text x="692" y="526" fill="#141414BD" font-size="8.8">• PronunciationLesson（只读投影）</text>
+<text x="692" y="560" fill="#1414148A" font-size="8" font-style="italic">红线：推理成果不被代替完成</text>
+<text x="692" y="571" fill="#1414148A" font-size="8" font-style="italic">TutorPermit 由代码裁决</text>
+<rect x="862" y="448" width="178" height="132" rx="8" fill="#F7F7F7" stroke="#3685BF" stroke-width="1.4"/>
+<rect x="862" y="448" width="178" height="34" rx="8" fill="#F0F0F0" stroke="none"/>
+<text x="872" y="464" fill="#141414" font-size="12" font-weight="700">评估与复盘</text>
+<text x="1030" y="464" fill="#3685BF" font-size="8.5" font-weight="700" text-anchor="end">CORE</text>
+<text x="872" y="476" fill="#1414148A" font-size="8">Evaluation &amp; Reflection</text>
+<text x="872" y="500" fill="#141414BD" font-size="8.8">• SelfReview / ReviewAspect</text>
+<text x="872" y="513" fill="#141414BD" font-size="8.8">• ReflectionReport / 双轨报告</text>
+<text x="872" y="526" fill="#141414BD" font-size="8.8">• ReviewPrompt</text>
+<text x="872" y="560" fill="#1414148A" font-size="8" font-style="italic">保存 Ward 自述并对照证据</text>
+<text x="872" y="571" fill="#1414148A" font-size="8" font-style="italic">不回写计划或画像</text>
+<rect x="322" y="622" width="168" height="104" rx="8" fill="#F7F7F7" stroke="#4C7F8C" stroke-width="1.4"/>
+<rect x="322" y="622" width="168" height="34" rx="8" fill="#F0F0F0" stroke="none"/>
+<text x="332" y="638" fill="#141414" font-size="12" font-weight="700">设备接入与采集</text>
+<text x="480" y="638" fill="#4C7F8C" font-size="8.5" font-weight="700" text-anchor="end">SUPPORTING</text>
+<text x="332" y="650" fill="#1414148A" font-size="8">Device &amp; Ingestion</text>
+<text x="332" y="674" fill="#141414BD" font-size="8.8">• Device · device_token</text>
+<text x="332" y="687" fill="#141414BD" font-size="8.8">• Frame 元数据（oss_key/时间）</text>
+<text x="332" y="700" fill="#141414BD" font-size="8.8">• 心跳与设备健康</text>
+<text x="332" y="706" fill="#1414148A" font-size="8" font-style="italic">只记录可信采集事实</text>
+<text x="332" y="717" fill="#1414148A" font-size="8" font-style="italic">不解释学习行为</text>
+<rect x="502" y="622" width="168" height="104" rx="8" fill="#F7F7F7" stroke="#4C7F8C" stroke-width="1.4"/>
+<rect x="502" y="622" width="168" height="34" rx="8" fill="#F0F0F0" stroke="none"/>
+<text x="512" y="638" fill="#141414" font-size="12" font-weight="700">行为观察与分析</text>
+<text x="660" y="638" fill="#4C7F8C" font-size="8.5" font-weight="700" text-anchor="end">SUPPORTING</text>
+<text x="512" y="650" fill="#1414148A" font-size="8">Behavior Analysis</text>
+<text x="512" y="674" fill="#141414BD" font-size="8.8">• FramePrediction</text>
+<text x="512" y="687" fill="#141414BD" font-size="8.8">• BehaviorSegment</text>
+<text x="512" y="700" fill="#141414BD" font-size="8.8">• 分类/滑窗平滑/片段归并</text>
+<text x="512" y="706" fill="#1414148A" font-size="8" font-style="italic">VLM 只出物理字段</text>
+<text x="512" y="717" fill="#1414148A" font-size="8" font-style="italic">不判主观感受/长期能力</text>
+<rect x="682" y="606" width="358" height="138" rx="8" fill="#F7F7F7" stroke="#3685BF" stroke-width="1.4"/>
+<rect x="682" y="606" width="358" height="34" rx="8" fill="#F0F0F0" stroke="none"/>
+<text x="692" y="622" fill="#141414" font-size="12" font-weight="700">孩子理解与记忆</text>
+<text x="1030" y="622" fill="#3685BF" font-size="8.5" font-weight="700" text-anchor="end">CORE</text>
+<text x="692" y="634" fill="#1414148A" font-size="8">Memory &amp; Understanding</text>
+<text x="692" y="658" fill="#141414BD" font-size="8.8">• LearningEvidence（learning_events · append-only）</text>
+<text x="692" y="671" fill="#141414BD" font-size="8.8">• EpisodicMemory（近 5 天） · DerivedSignal（可校正）</text>
+<text x="692" y="684" fill="#141414BD" font-size="8.8">• LongTermProfileView（可重算投影）</text>
+<text x="692" y="724" fill="#1414148A" font-size="8" font-style="italic">事实 → 情境 → Signal → 画像；模型只能提 Candidate，原始对话不入记忆</text>
+<line x1="410" y1="422" x2="410" y2="446" stroke="#4C7F8C" stroke-width="1.2" marker-end="url(#arrow)"/>
+<text x="368" y="438" fill="#4C7F8C" font-size="8" text-anchor="middle">RunInvocation</text>
+<line x1="585" y1="422" x2="585" y2="446" stroke="#4C7F8C" stroke-width="1.2" marker-end="url(#arrow)"/>
+<text x="585" y="438" fill="#4C7F8C" font-size="8" text-anchor="middle">typed intent</text>
+<line x1="765" y1="422" x2="765" y2="446" stroke="#4C7F8C" stroke-width="1.2" marker-end="url(#arrow)"/>
+<line x1="950" y1="422" x2="950" y2="446" stroke="#4C7F8C" stroke-width="1.2" marker-end="url(#arrow)"/>
+<line x1="490" y1="500" x2="500" y2="500" stroke="#1414148A" stroke-width="1.2" marker-end="url(#arrow)"/>
+<text x="495" y="490" fill="#1414148A" font-size="8" text-anchor="middle">PlanConfirmed.v1</text>
+<line x1="670" y1="500" x2="680" y2="500" stroke="#1414148A" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#arrow)"/>
+<text x="675" y="490" fill="#1414148A" font-size="8" text-anchor="middle">GetStudySession</text>
+<line x1="850" y1="500" x2="860" y2="500" stroke="#1414148A" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#arrow)"/>
+<text x="855" y="490" fill="#1414148A" font-size="8" text-anchor="middle">证据/题目 Query</text>
+<line x1="620" y1="580" x2="900" y2="584" stroke="#1414148A" stroke-width="1.2" marker-end="url(#arrow)"/>
+<text x="760" y="574" fill="#1414148A" font-size="8" text-anchor="middle">StudySessionCompleted.v1</text>
+<line x1="490" y1="672" x2="500" y2="672" stroke="#1414148A" stroke-width="1.2" marker-end="url(#arrow)"/>
+<text x="495" y="662" fill="#1414148A" font-size="8" text-anchor="middle">FrameRecorded.v1</text>
+<line x1="620" y1="622" x2="900" y2="584" stroke="#1414148A" stroke-width="1.2" marker-end="url(#arrow)"/>
+<text x="790" y="612" fill="#1414148A" font-size="8" text-anchor="middle">BehaviorSegmentGenerated.v1</text>
+<line x1="400" y1="580" x2="760" y2="604" stroke="#3685BF" stroke-width="1.2" marker-end="url(#arrow)"/>
+<text x="560" y="600" fill="#3685BF" font-size="8" text-anchor="middle">LearningFactRecorded.v1（PL / TU / BA → MU）</text>
+<line x1="765" y1="580" x2="765" y2="604" stroke="#3685BF" stroke-width="1.2" marker-end="url(#arrow)"/>
+<line x1="860" y1="606" x2="860" y2="584" stroke="#7754D9" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#arrow)"/>
+<text x="920" y="598" fill="#7754D9" font-size="8" text-anchor="middle">MemoryBundle ACL</text>
+<line x1="300" y1="400" x2="318" y2="400" stroke="#C08532" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#arrow)"/>
+<text x="225" y="372" fill="#C08532" font-size="8" text-anchor="middle">verify_ward_access</text>
+<rect x="24" y="778" width="1132" height="72" rx="10" fill="none" stroke="#14141433" stroke-width="1"/>
+<rect x="24" y="778" width="104" height="72" rx="10" fill="#F7F7F7" stroke="none"/>
+<text x="76" y="800.0" fill="#3685BF" font-size="16" font-weight="800" text-anchor="middle">◇</text>
+<text x="76" y="818.0" fill="#141414" font-size="10.5" font-weight="700" text-anchor="middle">端口契约</text>
+<text x="76" y="831.0" fill="#1414148A" font-size="7.5" text-anchor="middle">PORTS · 归属 L2/L3</text>
+<text x="150" y="792" fill="#1414148A" font-size="8" font-weight="400">不是独立层、没有运行时实体：Repository Port 归 Domain，Gateway/Publisher/Query Port 归 Application；均为纯抽象（Protocol），L4 Adapter 实现它</text>
+<rect x="150" y="798" width="200" height="40" rx="7" fill="#FFFFFF" stroke="#14141433"/>
+<text x="250.0" y="815" fill="#141414" font-size="10.5" font-weight="700" text-anchor="middle">Repository Ports</text>
+<text x="250.0" y="829" fill="#1414148A" font-size="8" text-anchor="middle">归 Domain · 每 Aggregate 一个</text>
+<rect x="366" y="798" width="200" height="40" rx="7" fill="#FFFFFF" stroke="#14141433"/>
+<text x="466.0" y="815" fill="#141414" font-size="10.5" font-weight="700" text-anchor="middle">Query / ACL Ports</text>
+<text x="466.0" y="829" fill="#1414148A" font-size="8" text-anchor="middle">归 Application · 受权只读</text>
+<rect x="582" y="798" width="210" height="40" rx="7" fill="#FFFFFF" stroke="#14141433"/>
+<text x="687.0" y="815" fill="#141414" font-size="10.5" font-weight="700" text-anchor="middle">Model / Tool Gateway</text>
+<text x="687.0" y="829" fill="#1414148A" font-size="8" text-anchor="middle">归 Application · 出站防腐</text>
+<rect x="808" y="798" width="232" height="40" rx="7" fill="#FFFFFF" stroke="#14141433"/>
+<text x="924.0" y="815" fill="#141414" font-size="10.5" font-weight="700" text-anchor="middle">Outbox / Checkpoint / Safety</text>
+<text x="924.0" y="829" fill="#1414148A" font-size="8" text-anchor="middle">归 Application · 发布与恢复</text>
+<rect x="24" y="864" width="1132" height="84" rx="10" fill="none" stroke="#14141433" stroke-width="1"/>
+<rect x="24" y="864" width="104" height="84" rx="10" fill="#F7F7F7" stroke="none"/>
+<text x="76" y="892.0" fill="#3685BF" font-size="16" font-weight="800" text-anchor="middle">L4</text>
+<text x="76" y="910.0" fill="#141414" font-size="10.5" font-weight="700" text-anchor="middle">基础设施</text>
+<text x="76" y="923.0" fill="#1414148A" font-size="7.5" text-anchor="middle">INFRASTRUCTURE</text>
+<text x="150" y="878" fill="#1414148A" font-size="8" font-weight="400">实现上方 Port 契约（依赖倒置）；Domain 不依赖 ORM / 队列 / 模型 SDK。Worker、Scheduler 只能经 Use Case 进入系统。</text>
+<rect x="150" y="886" width="200" height="40" rx="7" fill="#FFFFFF" stroke="#14141433"/>
+<text x="250.0" y="903" fill="#141414" font-size="10.5" font-weight="700" text-anchor="middle">PostgreSQL 16 + SQLAlchemy</text>
+<text x="250.0" y="917" fill="#1414148A" font-size="8" text-anchor="middle">业务表 · 证据账本 · Outbox</text>
+<rect x="366" y="886" width="200" height="40" rx="7" fill="#FFFFFF" stroke="#14141433"/>
+<text x="466.0" y="903" fill="#141414" font-size="10.5" font-weight="700" text-anchor="middle">Redis 7 + Celery / Beat</text>
+<text x="466.0" y="917" fill="#1414148A" font-size="8" text-anchor="middle">队列 · Worker 只调 Use Case</text>
+<rect x="582" y="886" width="210" height="40" rx="7" fill="#FFFFFF" stroke="#14141433"/>
+<text x="687.0" y="903" fill="#141414" font-size="10.5" font-weight="700" text-anchor="middle">阿里云 OSS</text>
+<text x="687.0" y="917" fill="#1414148A" font-size="8" text-anchor="middle">帧直传 · 90 天生命周期</text>
+<rect x="808" y="886" width="232" height="40" rx="7" fill="#FFFFFF" stroke="#14141433"/>
+<text x="924.0" y="903" fill="#141414" font-size="10.5" font-weight="700" text-anchor="middle">AI Adapters + 可观测性</text>
+<text x="924.0" y="917" fill="#1414148A" font-size="8" text-anchor="middle">Qwen/TTS/ASR · OTel / Langfuse 白名单</text>
+<line x1="640" y1="78" x2="640" y2="90" stroke="#3685BF" stroke-width="1.2" marker-end="url(#arrow)"/>
+<line x1="640" y1="170" x2="640" y2="182" stroke="#3685BF" stroke-width="1.2" marker-end="url(#arrow)"/>
+<line x1="640" y1="280" x2="640" y2="292" stroke="#3685BF" stroke-width="1.2" marker-end="url(#arrow)"/>
+<text x="700" y="288" fill="#3685BF" font-size="8" text-anchor="middle">调用 Domain / Port</text>
+<line x1="1080" y1="764" x2="1080" y2="776" stroke="#3685BF" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#arrow)"/>
+<text x="1110" y="772" fill="#3685BF" font-size="8" text-anchor="middle">实现 Port</text>
+</svg></figure>
+
+  <div class="callout"><b>怎么读这张图</b>先纵向看四层依赖：请求只能从 L1 进入、经 L2 编排、落到 L3 的某个 Context 本地事务，L4 只是 Port 契约的实现。再横向看 L3 内部：实线是可重放的版本化事件（最终一致），虚线是同步只读的受权 Query；任何跨 Context 的“直接改对方表 / 调对方 Aggregate”都是禁止项。</div>
+
+  <h2>Process Manager 与 Use Case 的区别（L2 内部关系）</h2>
+  <table><thead><tr><th>维度</th><th>Use Case（应用服务）</th><th>Process Manager（如 CompanionCoordinator）</th></tr></thead><tbody><tr><td>范围</td><td>单个 Bounded Context 内</td><td>跨多个 Context / 跨多个步骤</td></tr><tr><td>状态</td><td>无流程状态；一次调用结束即完成</td><td>有状态：自己持有流程状态（Thread/Run/focus/attempt）</td></tr><tr><td>时间跨度</td><td>单次请求、单个本地短事务</td><td>跨请求、跨 Turn、长时运行（等待 Ward、超时、重试、Handoff）</td></tr><tr><td>一致性</td><td>强一致：Aggregate + Outbox 同事务提交</td><td>只保证自身流程状态一致；目标 Context 各自本地事务，靠 fencing / 幂等衔接</td></tr><tr><td>领域规则</td><td>调用一个 Aggregate 的行为，不含规则本身（规则在 Domain）</td><td>不含任何领域规则；只做路由与流程推进，不得替目标 Context 决策或直写其表</td></tr><tr><td>本项目实例</td><td><code>ConfirmPlan</code>、<code>ApplyTutorTurn</code>、<code>IngestLearningFact</code></td><td><code>CompanionCoordinator</code>：route → RunInvocation → 收 Outcome → fencing → 推进 / 等待 / 关闭</td></tr></tbody></table>
+  <p class="sub">分类上 PM 与 Commands / Queries / Event Handlers <b>并列同属 L2</b>；只有 Companion Turn 这条运行时链路里 PM 是调用方。普通请求（建 Ward、确认计划、提交自评）由 Interface 直达 Use Case，不经过 PM。PM 的流程状态落在 L3 的 Companion Context（<code>ConversationThread</code> / <code>AgentRunLink</code>）。</p>
+
+  <h2>WorkflowDispatcher 是什么、何时经过</h2>
+  <table><thead><tr><th>问题</th><th>答案</th></tr></thead><tbody><tr><td>定位</td><td>Application Port（<code>ports/companion.py</code> 的 Protocol）+ 过渡实现 <code>SqlAlchemyWorkflowDispatcher</code>；本质是注册表 / 组合根，不是新的一层、不是第二个 Process Manager</td></tr><tr><td>作用</td><td>解耦（Coordinator 只依赖 <code>invoke(RunInvocation) -&gt; WorkflowOutcome</code>，测试可注入 Fake）；按 <code>agent_type</code> 保证恰好一个 Workflow 被执行；分发前校验 Run 的 thread_id / ward_id fencing</td></tr><tr><td>不做什么</td><td>不做意图路由（目标已由 Coordinator 内 IntentRouter 决定，它只是照单分发）；不写领域状态、不调模型、不推进 ProblemRecord</td></tr><tr><td>经过的场景</td><td>仅 <code>POST /companion/turn</code>：决策不是 clarify/safety、且已 start/resume 出一个 Run 时，提交路由事务后执行一轮，随后 <code>record_outcome</code> 收口</td></tr><tr><td>不经过的场景</td><td>clarify/safety 终结回复、取消 Run、SSE 重连 / 查 transcript、普通 REST、Celery 记忆与分析任务</td></tr></tbody></table>
+
+  <h2>ContextBuilder 与 Port 的归类</h2>
+  <table><thead><tr><th>对象</th><th>归类</th><th>说明</th></tr></thead><tbody><tr><td>ContextBuilder</td><td>L2 支撑应用服务</td><td>无对外入口、不与入口构件并列；被三个 Workflow 在 invoke() 开头调用，按 ContextSpec 经 MemoryFacade 受权查询组装最小 ContextEnvelope（预算裁剪、脱敏、freshness），绝不直读业务表</td></tr><tr><td>OutputValidator</td><td>L2 支撑应用服务</td><td>与 ContextBuilder 成对：一个管模型调用前喂什么，一个管调用后候选能不能过；均无状态、被 Workflow 调用</td></tr><tr><td>WorkflowDispatcher</td><td>Application Port（纯抽象 Protocol）</td><td>小写 interface（编程抽象）：只有 invoke 签名 + RunInvocation / WorkflowOutcome 数据契约；Coordinator 只依赖它，具体分发类运行时注入</td></tr><tr><td>Interface 层（L1）</td><td>大写 Interface（架构层）</td><td>面向外部 Actor 的入站适配（FastAPI/SSE、Event Consumer），有 HTTP / DTO / 鉴权语义；Port 没有这些，它只是进程内构件间的调用契约，不构成一层</td></tr></tbody></table>
+
+  <h2>跨 Context 集成契约</h2>
+  <table><thead><tr><th>事件 / Query</th><th>生产 → 消费</th><th>幂等与一致性</th></tr></thead><tbody><tr><td>PlanConfirmed.v1</td><td>Planning → Study</td><td>schedule_id + version · 最终一致</td></tr><tr><td>FrameRecorded.v1</td><td>Device → Behavior Analysis</td><td>frame_id · 可重试</td></tr><tr><td>BehaviorSegmentGenerated.v1</td><td>Behavior → Evaluation</td><td>study_session_id + segment version</td></tr><tr><td>StudySessionCompleted.v1</td><td>Study → Evaluation</td><td>study_session_id + version</td></tr><tr><td>LearningFactRecorded.v1</td><td>Planning / Tutoring / Behavior → Memory</td><td>来源四元组去重 · 重复无副作用</td></tr><tr><td>MemoryBundle（Query）</td><td>Memory → Companion / Planning / Evaluation</td><td>ACL + 预算裁剪 · 单次快照、非事件</td></tr><tr><td>GetRecentSelfReviews（Query）</td><td>Evaluation → Companion / Planning / Tutoring</td><td>当前确认版本 · 不入 Memory 副本</td></tr><tr><td>GetStudySession（Query）</td><td>Study → Tutoring</td><td>受权只读 · 非事件订阅</td></tr></tbody></table>
+
+  <h2>各层职责速览</h2>
+  <table><thead><tr><th>层</th><th>包含什么</th><th>禁止什么</th></tr></thead><tbody><tr><td>L1 Interface — app/api</td><td>FastAPI/SSE 路由、DTO、依赖注入、Event Consumer Adapter</td><td>直接操作 Aggregate、Repository 实现或 ORM</td></tr><tr><td>L2 Application — app/application</td><td>Commands / Queries / Workflows、Coordinator Process Manager、ContextBuilder、OutputValidator</td><td>替目标 Context 做领域决策；把模型调用包进 Thread 事务</td></tr><tr><td>L3 Domain — app/contexts/*/domain</td><td>Aggregate、Value Object、Domain Service（如 TutorPermitPolicy）、不变量、本地 Domain Event</td><td>依赖基础设施、ORM、模型 SDK；跨 Context 直写对方表</td></tr><tr><td>◇ Ports — app/application/ports（归属 L2/L3，非独立层）</td><td>Repository / Gateway / Publisher / Checkpoint 等纯抽象 Protocol</td><td>在 Port 里放业务规则或 SQL 实现</td></tr><tr><td>L4 Infrastructure — app/infrastructure + workers</td><td>SQLAlchemy、Celery/Redis、OSS、AI Gateway、OTel / Langfuse</td><td>Worker 绕过 Use Case 直接改 Aggregate；把儿童原文打进日志</td></tr></tbody></table>
+
+  <p class="foot">来源：docs/technical/ddd-overview.md、design-server.md、domain-companion.md、domain-memory.md · 存档文档：docs/technical/ddd-layered-map.md</p>
+</main>
+</body>
+</html>

@@ -10,9 +10,9 @@
 | `cam-release.yml` | Cam 相关 `main` 推送、`cam-v*` Tag 或手动触发 | 签名 Release APK、更新正式下载包；Tag 额外创建 GitHub Release |
 | `app-ci.yml` | Guardian 相关 PR，或被 `app-release.yml` 调用 | Flutter 静态检查与测试 |
 | `app-release.yml` | Guardian 相关 `main` 推送或手动触发 | 签名 Release APK，挂到该次 Actions 的 Artifacts |
-| `docs-presentation-pages.yml` | `docs-presentation/**` 合入 `main` 或手动触发 | 将演示目录发布到 GitHub Pages |
+| `sites-pages.yml` | `sites/**` 合入 `main` 或手动触发 | 将演示目录发布到 GitHub Pages |
 
-技术演示入口：<https://johanchow.github.io/duxue/>。仓库 Pages 已启用，发布来源为 GitHub Actions。工作流仅上传 `docs-presentation/`；相关文件合入 `main` 后自动更新。首次发布需等本工作流进入 `main` 并运行完成。
+技术演示入口：<https://johanchow.github.io/duxue/>。仓库 Pages 已启用，发布来源为 GitHub Actions。工作流把 `sites/` 的内容作为站点根上传，公开路径不含目录名；相关文件合入 `main` 后自动更新。首次发布需等本工作流进入 `main` 并运行完成。
 
 Guardian 的 Android 开发包由 `app-release.yml` 打出。iOS 与 Play 商店 AAB 仍由 Codemagic 负责；当前仓库未提交 `duxue-app/ios`，故不能配置 IPA。先在开发机确认应用标识后生成并提交该工程：
 
