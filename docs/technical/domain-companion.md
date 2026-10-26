@@ -22,7 +22,7 @@ Aggregate、领域规则和跨 Context 写权限。
 | ------------------------------------------------------------------ | -------------------------------------------- | -------------------------------------------- |
 | 全局 Context Map、类型与所有权                                              | [ddd-overview.md](ddd-overview.md)           | 只引用，不重新分类                                    |
 | Planning 的模型、用例与固定 Graph                                           | [domain-planning.md](domain-planning.md)     | 仅定义 `RunInvocation` / `WorkflowOutcome` 调用契约 |
-| Tutoring 的模型、受限 ReAct 与结算                                         | [domain-tutoring.md](domain-tutoring.md)     | 仅定义 `RunInvocation` / `WorkflowOutcome` 调用契约 |
+| Tutoring 的模型、受限 ReAct、结算与待实现视频回答                             | [domain-tutoring.md](domain-tutoring.md) · [视频回答专题](tutoring-video-answer.md) | 仅定义 `RunInvocation` / `WorkflowOutcome` 调用契约 |
 | Evaluation/Reflection 的模型、证据工作流与报告版本                               | [domain-evaluation.md](domain-evaluation.md) | 仅定义 `RunInvocation` / `WorkflowOutcome` 调用契约 |
 | Evidence、Episode、Signal、Profile、Memory Bundle                      | [domain-memory.md](domain-memory.md)         | 仅定义 ACL Query 与事实投递边界                        |
 | Thread/Run、Ward-facing transcript journal、Coordinator、Runtime 执行协议 | 本文                                           | 唯一维护                                         |
@@ -216,7 +216,7 @@ Repository/ORM 或创建多 Context 全局事务。
 
 自由文本的意图由一次无状态的结构化模型调用提议，不由关键词或正则解释。模型只返回
 `IntentProposal`：`intent` 取 `planning`、`tutoring`、`reflection`、`unclear` 之一。
-`planning` 处理具体任务或作业的新增、修改、删除、已有任务查询和时间安排；`reflection` 处理总结、反思、回忆某天自己的学习或工作经历与表现，也包含结合这些经历、错误或目标谈将来怎么做、怎么做更好、怎么避免再犯；其余咨询、知识或作业题探讨、一般方法请教、举例和闲聊属于 `tutoring`。无法理解或一轮同时要求多个场景且主动作不明时返回 `unclear`。当前 focus 只用于理解省略和指代，
+`planning` 处理具体任务或作业的新增、修改、删除、已有任务查询和时间安排；`reflection` 处理总结、反思、回忆某天自己的学习或工作经历与表现，也包含结合这些经历、错误或目标谈将来怎么做、怎么做更好、怎么避免再犯；其余咨询、知识或作业题探讨、一般方法请教、举例、闲聊和请求知识讲解视频均属于 `tutoring`。视频是回答形式，不新增 Context 意图标签。无法理解或一轮同时要求多个场景且主动作不明时返回 `unclear`。当前 focus 只用于理解省略和指代，
 本轮明确要做另一件事时应切换场景。延续当前场景时必须再次写出该场景名，
 不另设「无新意图」取值。它没有工具、没有写权限，
 也不能自行决定 `mode` 或创建 Run。`HandleCompanionTurn` 校验该提议属于这个闭集；非法 JSON、
@@ -495,6 +495,7 @@ App 按 `kind` 选择组件；当前操作所需的业务数字用 `object_ref` 
 | ------------------- | ----------------- | ---------------------- | ----------------------------------------------- | ----------------------------------- |
 | `text`              | 普通说明、追问、安全降级文案    | `text`                 | 无，或仅继续输入                                        | 无                                   |
 | `text_media`        | 图文提示（当前仅图片；视频未开放） | `text` + `media_ref`   | 无                                               | 无                                   |
+| `video_answer`（待实现） | Tutoring 的异步知识讲解回答；原消息显示制作状态，完成后可播放并暂停追问 | `text` + `object_ref`，媒体与时间轴经受权 `GetVideoAnswer` 读取 | `ask_at_position`（提交 `video_answer_id`、`artifact_version`、`t_ms` 或合法时间区间、Ward 问题和 `command_id`） | [VideoAnswerView](tutoring-video-answer.md#31-聚合用例与查询) |
 | `text_visual`       | 文字 + 一张只读配图（`steps`、`compare`、`segment`、`number_line`、`svg`；由 Application 在图通过全部检查后投影，并随 `CompanionMessage.interaction_ref` 保留在历史气泡中） | `text` + `visual`（内联，不用 `object_ref`） | 无                                               | 无                                   |
 | `clarify`           | 单一必要问题、发音原文确认或候选选择 | `text`                 | `reply`                                         | 无或当前 Workflow 等待点                    |
 | `intent_choice`     | 入口意图不明时选择场景             | `text`                 | `choose_intent`（管理任务、总结思考、提问探讨） | 原 Ward 输入的当前 Thread 引用               |
@@ -507,7 +508,7 @@ App 按 `kind` 选择组件；当前操作所需的业务数字用 `object_ref` 
 | `failure`           | 可恢复失败             | `text`                 | `retry` / `restart`（仅 Outcome 允许时）              | 无                                   |
 
 
-没有 `generative_ui`、`custom_widget`、`tool_call_card`。首期发音不扩展 `MediaRef.kind=audio`：`pronunciation_lesson` 通过 `object_ref` 读取目标 View，App 再用其中的 `speech_ref + rate` 请求按需音频。未来若把音频作为 journal 附件，再单独评审 `media_ref.kind` 扩展，不新开交互协议。
+没有 `generative_ui`、`custom_widget`、`tool_call_card`。首期发音不扩展 `MediaRef.kind=audio`：`pronunciation_lesson` 通过 `object_ref` 读取目标 View，App 再用其中的 `speech_ref + rate` 请求按需音频。待实现的视频回答同样通过 Tutoring 的 `object_ref` 读取授权媒体引用，不将任意 URL 作为 `MediaRef`；本节代码块为当前 `companion-interaction.v1` 契约，增加 `video_answer` 前须升协议版本并同步 App allow-list。
 
 #### 5.2.3 信封与动作契约
 

@@ -2,7 +2,7 @@
 
 > 状态：讨论稿 · 版本：v3.3（目标设计；契约升为 `tutor-turn.v4`，由 v3.0 的 `domain-study.md` 拆出，实现迁移进度与兼容边界见 [§1.2](#12-现状与迁移边界)）
 >
-> 范围：启发式答疑、发音辅导、任务进行中的题外提问回任务提醒、过程事实，以及一次 Ward 输入内的 `TutoringTurnLoop`。
+> 范围：启发式答疑、发音辅导、任务进行中的题外提问回任务提醒、过程事实、一次 Ward 输入内的 `TutoringTurnLoop`，以及待实现的异步视频回答（见 [视频回答专题](tutoring-video-answer.md)）。
 >
 > 关联：[系统 Context Map](ddd-overview.md) · [Study 学习执行](domain-study.md) · [Companion 编排](domain-companion.md) · [Memory Context](domain-memory.md) · [Planning](domain-planning.md) · [Server 物理设计](design-server.md) · [陪伴 PRD](../product/prd-companion.md)
 
@@ -32,7 +32,7 @@ Context Map 与分层图只在 [ddd-overview.md](ddd-overview.md) 维护。`Stud
 
 ## 一、边界与语言
 
-本 Context 拥有 `TutoringSession`、已验证的 Ward 尝试、实际提示、理解确认、好奇心观察和答疑会话关闭事实。它不拥有 `StudySession` 与 `StartCue`（见 [Study](domain-study.md)），不拥有 Thread/Run、长期画像、稳定 Signal、已确认日程，也不拥有帧或摄像行为结论。
+本 Context 拥有 `TutoringSession`、已验证的 Ward 尝试、实际提示、理解确认、好奇心观察和答疑会话关闭事实；待实现的视频回答由本 Context 的 `VideoAnswer` 拥有请求、发布和已审核产物引用，见 [视频回答专题](tutoring-video-answer.md)。它不拥有 `StudySession` 与 `StartCue`（见 [Study](domain-study.md)），不拥有 Thread/Run、长期画像、稳定 Signal、已确认日程，也不拥有帧或摄像行为结论。
 
 核心不变量：
 
@@ -42,7 +42,7 @@ Context Map 与分层图只在 [ddd-overview.md](ddd-overview.md) 维护。`Stud
 - 单次卡点、单次好奇心不升级为稳定能力或稳定兴趣结论。一次到点未开始也不写成学习事实或稳定特质。
 - 模型可以起草给 Ward 看的散文；题目状态和事实写入只能来自已提交的领域结果，按钮、对象/媒体引用只能来自已校验的 Application Outcome；“已经记下”必须有已提交事实。
 - 发音辅导是只读教学展示，不进入题目状态机，不写 `VerifiedTurn` 或学习 Fact；TTS 只能朗读 Application 已确认的原文。
-- `TutoringSession` 只能依附一个未结束的 `StudySession`，依据是 Study 提供的受权 Query `GetStudySession`；`StudySession` 结束后不追加新轮次，但不会因此自动关闭答疑，关闭只由 `CloseTutoringSession` 完成。
+- 当前 `TutoringSession` 只能依附一个未结束的 `StudySession`，依据是 Study 提供的受权 Query `GetStudySession`；`StudySession` 结束后不追加新轮次，但不会因此自动关闭答疑，关闭只由 `CloseTutoringSession` 完成。待实现的 `VideoAnswer` 可独立制作和回看；在 StudySession 结束后要继续追问，须先设计不强制依附学习执行会话的 Tutoring 会话路径，不能仅靠视频 ID 绕过此约束。
 
 | 术语 | 本 Context 中的含义 | 明确不是 |
 |---|---|---|
@@ -59,7 +59,7 @@ Context Map 与分层图只在 [ddd-overview.md](ddd-overview.md) 维护。`Stud
 | `TutoringTurnLoop` | 一次 Ward 输入内由 LLM 驱动、代码守住入口与出口的有界循环 | 跨回合的教学状态机，也不是第二个 Agent |
 | `PronunciationGuidance` | 已确认原文的易读发音提示和少量重音、连读、弱读、音变或语调说明 | 解题提示、跟读评分、音频文件、学习事实 |
 
-非目标：Tutoring 不私自发明交互 `kind`；本期不做通用数学验证器、离线评测或 A/B 实验平台，也不做作文共创画布、视频媒体、实时监工、一键拍照搜题、跟读录音或发音评分。同一对话最近原句窗口里当前 Ward 的已授权图片，与本轮图片一起进入答疑的每一次模型调用（见 [Companion 窗口规则](domain-companion.md#11-threadrun-与-turn-的层级)），模型看得到图，不等于一键拍照搜题。到点邀请由 [Study](domain-study.md) 拥有，不属于本 Context。无任务问答与任务进行中的题外提问见 [§2.1](#21-tutoringsession)。
+非目标：Tutoring 不私自发明交互 `kind`；当前已实现答疑不含视频媒体，异步视频回答为待实现扩展，见 [视频回答专题](tutoring-video-answer.md)。本期不做通用数学验证器、离线评测或 A/B 实验平台，也不做作文共创画布、实时监工、一键拍照搜题、跟读录音或发音评分。同一对话最近原句窗口里当前 Ward 的已授权图片，与本轮图片一起进入答疑的每一次模型调用（见 [Companion 窗口规则](domain-companion.md#11-threadrun-与-turn-的层级)），模型看得到图，不等于一键拍照搜题。到点邀请由 [Study](domain-study.md) 拥有，不属于本 Context。无任务问答与任务进行中的题外提问见 [§2.1](#21-tutoringsession)。
 
 ### 1.1 控制模型
 
@@ -132,7 +132,7 @@ flowchart LR
     TS -.->|study_session_id，受权 Query| SS
 ```
 
-本 Context 只有一个写 Aggregate：`TutoringSession`。`StudySession` 属于 Study，只以 ID 引用。`TutorWorkingState` 不在这张图里，它是 Infrastructure checkpoint。
+当前已实现的写 Aggregate 只有 `TutoringSession`；异步视频回答拟增加同 Context 的 `VideoAnswer` 写 Aggregate，制作细节见 [视频回答专题](tutoring-video-answer.md)。`StudySession` 属于 Study，只以 ID 引用。`TutorWorkingState` 不在这张图里，它是 Infrastructure checkpoint。
 
 ### 2.1 `TutoringSession`
 
