@@ -1,11 +1,11 @@
-name: Publish Presentation Docs
+name: Publish Sites
 
 on:
   push:
     branches: [main]
     paths:
-      - "docs-presentation/**"
-      - ".github/workflows/docs-presentation-pages.yml"
+      - "sites/**"
+      - ".github/workflows/sites-pages.yml"
   workflow_dispatch:
 
 permissions:
@@ -14,7 +14,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: docs-presentation-pages
+  group: sites-pages
   cancel-in-progress: false
 
 jobs:
@@ -28,7 +28,7 @@ jobs:
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:
-          path: docs-presentation
+          path: sites
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
