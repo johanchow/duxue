@@ -23,3 +23,4 @@
 | [self-review-direct-recall.md](self-review-direct-recall.md) | 2026-10-23 |
 | [guardian-email-code-auth.md](guardian-email-code-auth.md) | 2026-10-24 |
 | [langfuse-conversation-payloads.md](langfuse-conversation-payloads.md) | 2026-10-24 |
+| [first-image-leak-judge-eval.md](first-image-leak-judge-eval.md) | 2026-10-26 |
