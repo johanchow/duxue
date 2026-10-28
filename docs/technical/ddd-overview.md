@@ -150,7 +150,7 @@ flowchart TB
 |---|---|---|
 | Planning & Scheduling | [domain-planning.md](domain-planning.md) | Ward 计划草稿、确认日程与固定协商 Graph |
 | Study | [domain-study.md](domain-study.md) | 学习执行（开始、暂停、完成、计时）与到点开始邀请 `StartCue` |
-| Tutoring | [domain-tutoring.md](domain-tutoring.md) | 答疑红线与答案状态、一次输入内的 Turn Loop、发音 act、过程事实与答疑会话结算 |
+| Tutoring | [domain-tutoring.md](domain-tutoring.md)（[视频回答专题](tutoring-video-answer.md)） | 答疑红线与答案状态、一次输入内的 Turn Loop、发音 act、过程事实与答疑会话结算；视频回答是同一 Context 内待实现的异步回答形式 |
 | Evaluation & Reflection | [domain-evaluation.md](domain-evaluation.md) | 自由表达的今日总结、可追溯整理与证据版本化复盘 |
 | Memory & Understanding | [domain-memory.md](domain-memory.md) | 已有 Aggregate、触发矩阵和局部因果链；物理 Schema 对齐另行处理 |
 | Companion Orchestration | [domain-companion.md](domain-companion.md) | Supporting Context：维护 Thread/Run 连续性状态；Coordinator 是其 Application-layer Process Manager，并定义目标 Workflow 边界 |
