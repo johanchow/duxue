@@ -26,3 +26,4 @@
 | [first-image-leak-judge-eval.md](first-image-leak-judge-eval.md) | 2026-10-26 |
 | [visual-leak-judge-images.md](visual-leak-judge-images.md) | 2026-10-29 |
 | [resolve-multiphoto-reference.md](resolve-multiphoto-reference.md) | 2026-10-29 |
+| [chat-history-image-viewer.md](chat-history-image-viewer.md) | 2026-10-29 |

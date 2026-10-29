@@ -489,6 +489,14 @@ class ApiClient {
     return signed['oss_key'] as String;
   }
 
+  Future<Uint8List> companionMessageImage(String messageId, int index) async {
+    final response = await dio.get<List<int>>(
+      '/companion/messages/$messageId/attachments/$index',
+      options: Options(responseType: ResponseType.bytes),
+    );
+    return Uint8List.fromList(response.data!);
+  }
+
   Future<List<dynamic>> assignments(String wardId) async =>
       (await dio.get('/wards/$wardId/assignments')).data as List<dynamic>;
   Future<void> deleteAssignment(String wardId, String assignmentId) =>

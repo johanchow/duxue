@@ -445,6 +445,7 @@ Workflow 必须声明版本化 `ContextSpec`：Memory 范围、近期会话窗�
 目标读取接口为 `GET /companion/threads/{thread_id}/messages?before_thread_version=&limit=`（以及无本地 `thread_id` 时恢复最近对话的 `GET /companion/threads/current/messages`）；当单 Thread 游标到顶（`next_before_thread_version=null`）且该 Ward 存在更早的非空历史 Thread 时返回 `previous_thread_id`，供客户端无缝往前翻阅全部历史消息，而 LLM 上下文窗口始终由 `select_recent_utterances` 独立限制在当前 Thread 最近 8 条内。客户端以
 `command_id` 将乐观 Ward 气泡与服务端投影合并，重试同一命令不得产生重复气泡。当前实现仍用较宽松的
 `content`、`turn: dict` 和元数据响应；上述为目标契约，迁移必须保持兼容或显式版本化。
+历史图片通过 `GET /companion/messages/{message_id}/attachments/{index}` 按需读取。接口只接受当前 Ward 的可见消息及其已记录的附件序号，校验对象位于该 Ward 的 Companion 路径；客户端仅在聊天视口构建缩略图时请求图片，点击后用原图字节全屏展示，不把完整历史图片注入模型上下文。
 `WorkflowFailure` 至少含稳定 `code`、面向 Trace 的脱敏 `detail`、`retriable` 与失败来源
 （`model`、`tool`、`validator`、`budget`、`transport`）；`failure` 只在 `outcome_type=failure`
 时必填，`resume_action` 必须与 Run 状态机允许的转换一致。

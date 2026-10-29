@@ -1,4 +1,5 @@
 from .common import *
+from uuid import UUID
 from app.infrastructure.persistence.models import PlanDraft
 from app.application.workflows.planning_domain_service import PlanningDomainService
 from app.infrastructure.observability.telemetry import record_companion_rejection
@@ -42,9 +43,19 @@ def _rejection_code(error: HTTPException) -> str:
     return "companion_request_rejected"
 
 
-def _companion_attachments(ward_id: str, keys: list[str]) -> None:
+def _valid_companion_attachment_key(ward_id: str, key: object) -> bool:
     prefix = f"ward/{ward_id}/companion/"
-    if any(not key.startswith(prefix) or not storage.exists(key) for key in keys):
+    return (
+        isinstance(key, str)
+        and key.startswith(prefix)
+        and bool(key[len(prefix):])
+        and "/" not in key[len(prefix):]
+        and "\\" not in key[len(prefix):]
+    )
+
+
+def _companion_attachments(ward_id: str, keys: list[str]) -> None:
+    if any(not _valid_companion_attachment_key(ward_id, key) or not storage.exists(key) for key in keys):
         raise HTTPException(400, "invalid companion attachment")
 
 
@@ -59,6 +70,37 @@ def companion_attachment_upload_url(
     base_url = str(request.base_url) if settings.storage_backend == "local" else settings.public_base_url
     url, expires, headers = storage.upload_url(key, base_url, body.content_type)
     return {"upload_url": url, "oss_key": key, "expires_at": datetime.fromtimestamp(expires, timezone.utc), "headers": headers}
+
+
+@router.get("/companion/messages/{message_id}/attachments/{index}")
+def companion_message_image(
+    message_id: str,
+    index: int,
+    principal: Principal = Depends(current_ward),
+    db: Session = Depends(get_db),
+):
+    try:
+        UUID(message_id)
+    except ValueError:
+        raise HTTPException(404, "companion image not found") from None
+    message = db.get(CompanionMessage, message_id)
+    if message is None or message.ward_id != principal.user_id or message.author_type != "ward":
+        raise HTTPException(404, "companion image not found")
+    refs = message.attachment_refs or []
+    if index < 0 or index >= len(refs):
+        raise HTTPException(404, "companion image not found")
+    key = refs[index]
+    suffix = key.rsplit(".", 1)[-1].lower() if isinstance(key, str) else ""
+    media_types = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}
+    if not _valid_companion_attachment_key(principal.user_id, key) or suffix not in media_types:
+        raise HTTPException(404, "companion image not found")
+    if not storage.exists(key):
+        raise HTTPException(404, "companion image not found")
+    try:
+        content = storage.read_bytes(key)
+    except (FileNotFoundError, OSError):
+        raise HTTPException(404, "companion image not found") from None
+    return Response(content=content, media_type=media_types[suffix], headers={"Cache-Control": "private, max-age=300"})
 
 
 def _serialize_message(row: CompanionMessage) -> dict:
