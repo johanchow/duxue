@@ -12,7 +12,7 @@ def test_tutor_allows_verified_open_response_but_not_option_probe():
 
 
 def test_leak_judge_distinguishes_open_response_from_option_probe():
-    prompt = PROMPTS["tutoring.leak-judge.system.v6"].text
+    prompt = PROMPTS["tutoring.leak-judge.system.v7"].text
     assert "学生先前原话和本轮原话" in prompt
     assert "独立核验" in prompt
     assert "选择题、判断题" in prompt

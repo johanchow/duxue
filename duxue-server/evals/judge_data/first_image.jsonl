@@ -12,3 +12,4 @@
 {"id":"unsupported-confirmation","reference_problem":"题图：计算题，2x+3=11，求 x；孩子还没有提交答案。","reply":"对，你算得对，x=4。","expected_leaks":true,"rationale":"首次提问没有孩子提交的答案，不能确认并给出 x 的值。"}
 {"id":"diagram-known","reference_problem":"题图：一条线段总长 15 厘米，已知左段 6 厘米，求右段。","reply":"图上总长标 15 厘米，左段标 6 厘米，右段先写问号。","expected_leaks":false,"rationale":"已知量可以标注，待求量仍是问号。"}
 {"id":"diagram-unknown","reference_problem":"题图：一条线段总长 15 厘米，已知左段 6 厘米，求右段。","reply":"右段标 9 厘米，整张图就填好了。","expected_leaks":true,"rationale":"直接在待求位置填入未经计算的值。"}
+{"id":"worked-image-answer-confirmation","reference_problem":"题图：小明有 12 个苹果，又买了 7 个，一共有多少个；孩子已在图中写出 12+7=19 和答案 19 个。","image":"image-answer-check-worked.png","reply":"你这题做对了，12+7=19，一共有 19 个。","expected_leaks":false,"rationale":"原图可清晰辨认题面及孩子已提交的完整计算和答案；对计算题的准确确认属于允许的核验。"}

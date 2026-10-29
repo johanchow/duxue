@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
@@ -84,6 +86,7 @@ class TutoringWorkflow:
         self, db: Session, turn_model: TutorModelPort | None = None, leak_judge: LeakJudgePort | None = None,
         safety_screening: SafetyScreeningPort | None = None,
         backup_model: TutorModelPort | None = None,
+        image_target_selector: Callable[[list[dict], str], dict] | None = None,
     ):
         self.db = db
         self.turn_model = turn_model
@@ -91,6 +94,7 @@ class TutoringWorkflow:
         self._live_turn_model = turn_model is None
         self.leak_judge = leak_judge
         self.safety_screening = safety_screening
+        self.image_target_selector = image_target_selector
         self._media_cache: dict[str, tuple[list[dict], list[str | None]]] = {}
 
     def _model(self) -> TutorModelPort:
@@ -127,12 +131,16 @@ class TutoringWorkflow:
                 load_visible_utterances,
             )
 
+            current = current_turn_images(invocation.ward_id, invocation.turn.get("attachment_keys"))
+            image_budget = 8
+            if current:
+                image_budget = 1 if any(current) and invocation.turn.get("tutoring_intent") == "compare_previous_image" else 0
             self._media_cache[key] = (
                 load_visible_utterances(
                     self.db, ward_id=invocation.ward_id, thread_id=invocation.thread_id,
-                    exclude_turn_id=invocation.turn_id,
+                    exclude_turn_id=invocation.turn_id, image_budget=image_budget,
                 ),
-                current_turn_images(invocation.ward_id, invocation.turn.get("attachment_keys")),
+                current,
             )
         return self._media_cache[key]
 
@@ -224,6 +232,29 @@ class TutoringWorkflow:
             backup_model=self._backup_model(), **checks,
         )
 
+    @staticmethod
+    def _judge_images(window: list[dict], current_images: list[str | None]) -> list[str]:
+        """Only already-authorized conversation images may reach the leak judge.
+
+        This is deliberately assembled after ``_media()``: it adds no image reading,
+        extraction, persistence, or cross-thread lookup. ``run_tutor_turn`` sends it
+        only after its normal protected-work decision requires a text leak check.
+        """
+        return [
+            image for image in [
+                *(url for row in window for url in (row.get("image_urls") or [])),
+                *current_images,
+            ] if isinstance(image, str) and image
+        ]
+
+    @staticmethod
+    def _select_image_target(window: list[dict], content: str) -> dict:
+        from app.infrastructure.ai.components import COMPONENTS, invoke_json_component
+        from app.infrastructure.ai.utterance_window import user_content
+
+        user = user_content({"student_said": content}, window)
+        return invoke_json_component(spec=COMPONENTS.get("tutoring.image-target"), user=user)
+
     @traced_agent_node("tutoring.turn")
     def _turn(self, invocation: RunInvocation) -> WorkflowOutcome:
         turn = invocation.turn
@@ -314,6 +345,34 @@ class TutoringWorkflow:
                 next_interaction={**interaction, "status": "rejected", "reason": "unauthorized_media"},
             )
         window, images = self._media(invocation)
+        from app.application.workflows.image_target import (
+            choose_image_target,
+            keep_target_images,
+        )
+
+        target = choose_image_target(
+            window, images,
+            compare_previous=turn.get("tutoring_intent") == "compare_previous_image",
+            select=lambda rows: (
+                self.image_target_selector(rows, content)
+                if self.image_target_selector is not None else self._select_image_target(rows, content)
+            ),
+        )
+        with agent_step_span("check", "tutoring.image_target") as target_span:
+            set_observation_payload(target_span, input={
+                "candidate_count": sum(len(row.get("image_urls") or []) for row in window) + len(images),
+                "current_image_count": len(images),
+            }, output={"target_image_ids": list(target.ids), "ambiguous": target.ambiguous})
+        if target.ambiguous:
+            interaction = build_interaction(
+                invocation=invocation, kind="text",
+                text="你想让我看哪张照片？请说是第几张，或重新发那张图，我再逐题帮你检查。",
+            )
+            return WorkflowOutcome(
+                run_status="waiting_for_ward", outcome_type="response",
+                next_interaction={**interaction, "status": "clarification_required", "reason": "image_target_ambiguous"},
+            )
+        window, images = keep_target_images(window, images, target)
         candidates = history_candidates(window)
         review_aspects = get_recent_self_reviews(
             self.db, actor_id=invocation.ward_id, actor_role="ward",
@@ -325,6 +384,10 @@ class TutoringWorkflow:
             tutoring_intent=turn.get("tutoring_intent"),
             self_review_aspects=review_aspects,
         )
+        if target.ids:
+            instruction += "\n只核验本轮附上的图片；历史回复中的结论不能代替核验。若要求检查全部题目，逐题说明检查范围，未检查或看不清的题不得概括为正确。"
+            if turn.get("tutoring_intent") == "compare_previous_image":
+                instruction += "本轮附图中，最后几张是本轮新图；在它们之前的最多一张是上一张旧图。按孩子要求比较。"
         tools = TutorToolbox(
             self.db, tutoring_session_id=tutor.id if tutor else None, problem=problem_row,
             task_title=task_title, task_active=task_active, window=window,
@@ -334,6 +397,7 @@ class TutoringWorkflow:
             problem_summary=judge_problem_summary(
                 self._recent_problem_summaries(tutor), content, recent_utterances=window,
             ),
+            judge_images=self._judge_images(window, images),
         )
         candidate = verdict = visual = None
         failure = "no_candidate"

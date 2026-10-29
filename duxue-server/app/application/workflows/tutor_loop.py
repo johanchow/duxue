@@ -242,12 +242,17 @@ def _check_visual_leak(leak_judge: LeakJudgePort, text: str, task_title, problem
         return result
 
 
-def _check_text_leak(leak_judge: LeakJudgePort, text: str, task_title, problem_summary):
+def _check_text_leak(leak_judge: LeakJudgePort, text: str, task_title, problem_summary, judge_images: list[str]):
     with agent_step_span("check", "tutoring.text_leak") as span:
         set_observation_payload(span, input={
             "reply": text, "task_title": task_title, "problem": problem_summary,
+            # Keep image bytes out of trace payloads. The model call itself uses the
+            # shared telemetry scrubber for its multimodal message.
+            "judge_image_count": len(judge_images),
         })
-        result = leak_judge.leaks(text=text, task_title=task_title, problem_summary=problem_summary)
+        result = leak_judge.leaks(
+            text=text, task_title=task_title, problem_summary=problem_summary, images=judge_images,
+        )
         leaks, reason = _text_leak_result(result)
         span.set_attribute("agent.check.result", "unknown" if leaks is None else "leak" if leaks else "pass")
         if reason:
@@ -342,7 +347,7 @@ def fact_gate(candidate: TutorTurnCandidate) -> str | None:
 
 def vet_candidate(
     candidate: TutorTurnCandidate, *, permit: TutorPermit, leak_judge: LeakJudgePort,
-    task_title: str | None, problem_summary: str | None,
+    task_title: str | None, problem_summary: str | None, judge_images: list[str] | None = None,
 ) -> Vetting:
     """检查 2（越权与一致性）和检查 3（泄露）。只判断，不记录 fallback（由 ``run_tutor_turn`` 按最终结果记）。
 
@@ -379,7 +384,7 @@ def vet_candidate(
             if judge_text:
                 jobs["text"] = pool.submit(
                     copy_context().run, _check_text_leak, leak_judge, text=candidate.shown_text, task_title=task_title,
-                    problem_summary=problem_summary,
+                    problem_summary=problem_summary, judge_images=list(judge_images or []),
                 )
             if visual_text is not None:
                 jobs["visual"] = pool.submit(
@@ -412,6 +417,7 @@ def run_tutor_turn(
     tools: TutorToolbox, *, permit: TutorPermit, leak_judge: LeakJudgePort,
     task_title: str | None, problem_summary: str | None,
     backup_model: TutorModelPort | None = None,
+    judge_images: list[str] | None = None,
 ) -> TurnResult:
     """主调用 + 出口检查；文字给出了答案时带 ``LEAK_REPAIR`` 重试一次，重试结果重新完整检查。
 
@@ -424,7 +430,7 @@ def run_tutor_turn(
             })
             result = vet_candidate(
                 candidate, permit=permit, leak_judge=leak_judge,
-                task_title=task_title, problem_summary=problem_summary,
+                task_title=task_title, problem_summary=problem_summary, judge_images=judge_images,
             )
             span.set_attribute("agent.check.result", "rejected" if result.failure else "pass")
             if result.failure:

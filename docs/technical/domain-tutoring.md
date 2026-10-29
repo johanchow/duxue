@@ -59,7 +59,7 @@ Context Map 与分层图只在 [ddd-overview.md](ddd-overview.md) 维护。`Stud
 | `TutoringTurnLoop` | 一次 Ward 输入内由 LLM 驱动、代码守住入口与出口的有界循环 | 跨回合的教学状态机，也不是第二个 Agent |
 | `PronunciationGuidance` | 已确认原文的易读发音提示和少量重音、连读、弱读、音变或语调说明 | 解题提示、跟读评分、音频文件、学习事实 |
 
-非目标：Tutoring 不私自发明交互 `kind`；当前已实现答疑不含视频媒体，异步视频回答为待实现扩展，见 [视频回答专题](tutoring-video-answer.md)。本期不做通用数学验证器、离线评测或 A/B 实验平台，也不做作文共创画布、实时监工、一键拍照搜题、跟读录音或发音评分。同一对话最近原句窗口里当前 Ward 的已授权图片，与本轮图片一起进入答疑的每一次模型调用（见 [Companion 窗口规则](domain-companion.md#11-threadrun-与-turn-的层级)），模型看得到图，不等于一键拍照搜题。到点邀请由 [Study](domain-study.md) 拥有，不属于本 Context。无任务问答与任务进行中的题外提问见 [§2.1](#21-tutoringsession)。
+非目标：Tutoring 不私自发明交互 `kind`；当前已实现答疑不含视频媒体，异步视频回答为待实现扩展，见 [视频回答专题](tutoring-video-answer.md)。本期不做通用数学验证器、离线评测或 A/B 实验平台，也不做作文共创画布、实时监工、一键拍照搜题、跟读录音或发音评分。同一对话的已授权图片先按 [Companion 图片目标规则](domain-companion.md#11-threadrun-与-turn-的层级)解析，只有选定的目标图进入答疑主调用和泄露检查。到点邀请由 [Study](domain-study.md) 拥有，不属于本 Context。无任务问答与任务进行中的题外提问见 [§2.1](#21-tutoringsession)。
 
 ### 1.1 控制模型
 
@@ -379,7 +379,7 @@ flowchart TD
     classDef gate fill:#ffedd5,stroke:#c2410c,color:#0f172a
 ```
 
-读取走 Query，模型与工具走 Infrastructure，题目状态走 Domain Service，写入走 Use Case 和 Aggregate Root。消息窗口、checkpoint 摘要和 `MemoryBundle` 是 Query 的返回值，不是图上的对象。窗口图片和本轮图片随上下文进入同一次主调用，读取与授权规则以 [Companion 窗口规则](domain-companion.md#11-threadrun-与-turn-的层级) 为准。
+读取走 Query，模型与工具走 Infrastructure，题目状态走 Domain Service，写入走 Use Case 和 Aggregate Root。消息窗口、checkpoint 摘要和 `MemoryBundle` 是 Query 的返回值，不是图上的对象。图片目标解析和授权规则以 [Companion 窗口规则](domain-companion.md#11-threadrun-与-turn-的层级) 为准。
 
 本轮的答案保护不因累计卡住次数而放开。下一轮只会基于已提交的证据继续一个新的最小教学目标。具体 Run 生命周期、等待与失败状态由 [Companion](domain-companion.md) 维护；本 Context 只规定候选、出口检查和提交。
 
@@ -449,7 +449,7 @@ Application 在本轮不是作业成果、且 `StudySessionQuery` 返回活动�
 |---|---|---|---|
 | 1 结构校验 | Pydantic 校验 `act`、`content`，以及 `answer`/`guide` 的 `turn`；多余字段和不属于该 `act` 的子对象丢弃，元数据的未知值按“未报告” | 保证后面的代码可以放心使用候选 | 把校验错误附在同一次调用里重试一次；仍不合法则回退 |
 | 2 越权与一致性 | 只拦会让孩子看到不该看的内容的情形：`answer_protected=true`（来自 permit）时，所有 `answer`/`guide` 一律强制过泄露裁判，**与 `turn` 声明无关**：`non_work` 只能让本轮不推进题目，不能关闭保护；没有受保护的题时，声称作业成果（`turn.type=work`）的轮次也按受保护处理。`act=answer` 不开启、放弃或推进题目记录；`act=pronounce` 必须有合法 `lesson`（`locale`、`segment` 合法，无标记/URL）；`act=safety` 由代码换成安全话术；`act=clarify` 在 `answer_protected=true` 时，正文连同 `candidates` 同样过泄露裁判（候选也给孩子看）。元数据之间的不一致（`progress` 无证据、`next_subgoal` 出现在非作业轮）不拒绝，只是不推进题目 | 确定性地拦住越权和泄露，不让与展示无关的字段矛盾替换一个安全的回答 | 直接回退，不重试 |
-| 3 泄露检查 | 在 `answer_protected` 成立时触发（见检查 2），所有正文都交独立结构化裁判（不靠关键词或正则猜语义）；短事实分类仅供观测，不再因模型自报 `atomic`/`recall` 跳过审核（选项也可能被误报成事实）。按题型判断是否越界：尚未提交的结果/完整解法不得代做；计算题、问答题已提交的答案仅在能依据原题独立核验时可准确确认或纠错；选择题、判断题等可逐项试探的候选项不得确认对错。`guide` 每轮只推进一个由学生完成的最小动作，不替学生完成尚未完成的计算或核验并宣布结论。词义等原子知识仍可直答，由裁判区分。裁判看到的 `problem` 包含最近 3 道题摘要、窗口内最近 3 条学生原话和孩子本轮的话，不把导师原话当作学生证据；生产与离线评测共用 `judge_problem_summary()` | 拦住越界代做、错误附和和选项试探（概率性；不能替代人工校准） | `answer_protected=true` 时调用超时或结果非法按泄露处理，回退（fail-closed）。判定越界时带 `repair_error` 给模型一个有界的审核原因和被拒草稿，请其改用 `guide` 重试一次；重试结果重新走完整出口检查，仍不过才回退，裁判失败不重试 |
+| 3 泄露检查 | 在 `answer_protected` 成立时触发（见检查 2），所有正文都交独立结构化裁判（不靠关键词或正则猜语义）；短事实分类仅供观测，不再因模型自报 `atomic`/`recall` 跳过审核（选项也可能被误报成事实）。按题型判断是否越界：尚未提交的结果/完整解法不得代做；计算题、问答题已提交的答案仅在能依据原题独立核验时可准确确认或纠错；选择题、判断题等可逐项试探的候选项不得确认对错。`guide` 每轮只推进一个由学生完成的最小动作，不替学生完成尚未完成的计算或核验并宣布结论。词义等原子知识仍可直答，由裁判区分。裁判看到的 `problem` 包含最近 3 道题摘要、窗口内最近 3 条学生原话和孩子本轮的话，不把导师原话当作学生证据；若本轮或该线程可见窗口已有授权图片，才同时看到同一批原图，以辨认题面与孩子已写的作答。图片不预先抽取、摘要或持久化，非作业图片不会单独触发裁判；图片字节不进入观测载荷。生产与离线评测共用 `judge_problem_summary()` | 拦住越界代做、错误附和和选项试探（概率性；不能替代人工校准） | `answer_protected=true` 时调用超时或结果非法按泄露处理，回退（fail-closed）。判定越界时带 `repair_error` 给模型一个有界的审核原因和被拒草稿，请其改用 `guide` 重试一次；重试结果重新走完整出口检查，仍不过才回退，裁判失败不重试 |
 
 任一检查失败的结果都一样：返回固定话术，记录 `model_fallback`（只按最终结果记一次），不写 Fact，不推进 `ProblemRecord`，不用反问掩盖失败。允许的重试只有两种：检查 1 的格式问题重试一次；正文给出了答案时改用 `guide` 重试一次（把误拦从兜底话术变成最小提示）。生产与离线评测共用 `run_tutor_turn()`。
 
@@ -614,7 +614,7 @@ sequenceDiagram
 | `TutoringSessionRepository` | SQLAlchemy | 用例本地短事务；版本冲突返回 `conflict` |
 | `LearningFactPublisher` | Tutoring Outbox | 来源四元组去重；死信与补投见 Memory |
 | `AttachmentQuery` / `LearningMaterialQuery` | 授权检索适配器 | 超时、ACL 拒绝映射为工具 observation |
-| `ModelGatewayPort` | 现有多模态/文本模型 Adapter | 执行版本化的 `tutor-turn.v4`，每次调用都带窗口图片和本轮图片，返回结构化候选；受 Run deadline 与通用重试政策约束 |
+| `ModelGatewayPort` | 现有多模态/文本模型 Adapter | 执行版本化的 `tutor-turn.v4`，每次调用只带已解析的目标图片，返回结构化候选；受 Run deadline 与通用重试政策约束 |
 | `LeakJudgePort` | 模型 Gateway 的一次结构化调用 | 只回答是否泄露；超时或结果非法按泄露处理（fail-closed）；与主调用分开计量 |
 | `ToolGateway` | 只读工具适配器 | 每轮至多 3 次；没有实现返回 `tool_error`；全部限于当前 Ward 的授权范围 |
 | `PronunciationLessonProjectionPort` | Read Model Adapter | 以 `run_id + turn_id + attempt` 幂等投影；物理存储和清理见 design-server |
@@ -753,7 +753,7 @@ And StudySession 不被结束
 
 Given 本轮窗口和当前轮都有图片
 When 调用模型
-Then 每张图作为带编号的 image_url 进入同一次主调用
+Then 先解析图片目标，只有目标图作为带编号的 image_url 进入主调用；目标不明时追问
 And 文本里没有对象存储路径
 
 Given 输入安全审核命中，或模型声明 act=safety

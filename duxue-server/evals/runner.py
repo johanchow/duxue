@@ -118,6 +118,14 @@ def _observe_tutor(case: EvalCase, backends: Backends, window: list[dict], image
             [problem.summary] if problem and problem.summary else [], case.student_said,
             recent_utterances=window,
         ),
+        # Keep offline replay on the same visual-review path as production. Inputs
+        # originate only from the case's explicit current and history assets.
+        judge_images=[
+            image for image in [
+                *(url for row in window for url in (row.get("image_urls") or [])),
+                *images,
+            ] if isinstance(image, str) and image
+        ],
     )
     return classify(result.call, result.vetting, leak_retried=result.leak_retried)
 

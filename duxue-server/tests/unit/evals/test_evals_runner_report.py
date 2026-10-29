@@ -24,8 +24,8 @@ def _case(case_id="turn-test-00", status="proposed", tags=("pronounce",), **fiel
 
 
 class _JudgeBadAsLeak(StaticLeakJudge):
-    def leaks(self, *, text: str, task_title: str | None, problem_summary: str | None) -> bool | None:
-        super().leaks(text=text, task_title=task_title, problem_summary=problem_summary)
+    def leaks(self, *, text: str, task_title: str | None, problem_summary: str | None, images=None) -> bool | None:
+        super().leaks(text=text, task_title=task_title, problem_summary=problem_summary, images=images)
         return "答案是 5" in text
 
 
@@ -98,10 +98,12 @@ def test_images_reach_the_model_as_numbered_data_urls(tmp_path):
     window, images = build_input(case, tmp_path)
     assert window[0]["image_urls"][0].startswith("data:image/jpeg;base64,")
     assert images[0].startswith("data:image/png;base64,")
-    model = StaticTutorModel(GOOD)
-    run_cases([case], {"tutoring.turn": Backends(tutor_model=model, leak_judge=StaticLeakJudge(False))},
+    model = StaticTutorModel(tutor_raw("guide", "先看看题目给了哪些条件。"))
+    judge = StaticLeakJudge(False)
+    run_cases([case], {"tutoring.turn": Backends(tutor_model=model, leak_judge=judge)},
               samples=1, workers=1, assets_dir=tmp_path)
     assert model.calls[0]["recent_utterances"][0]["image_urls"] and len(model.calls[0]["current_images"]) == 1
+    assert len(judge.images[0]) == 2
 
 
 def test_instruction_is_the_production_one():
