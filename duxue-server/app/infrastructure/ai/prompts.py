@@ -55,17 +55,29 @@ _INTENT_SYSTEM = (
     "planning 处理具体任务或作业的新增、记录作业、修改、删除、查询已有任务及安排时间。"
     "例如‘记录一下这些任务作业’‘把图片里的作业创建成任务’‘把数学作业改成二十分钟’‘删除这项任务’‘今晚七点安排英语作业’。"
     "缺少预计时长或开始时间仍是 planning；咨询作业题的知识或解法不属于任务管理。"
-    "reflection 处理总结、反思、回忆某天自己的学习或工作经历、过程和表现，包含已完成的任务回顾；"
-    "当孩子结合自己的学习或工作经历、错误、目标谈将来怎么做、怎么做更好、怎么避免再犯错误时，也选 reflection。"
+    "reflection 只能用于孩子明确要求复盘或总结，或回忆某天自己的学习或工作经历、过程、表现或感受，"
+    "或者孩子已叙述自己的学习或工作经历、错误或目标，并询问将来怎么做、怎么做更好、怎么避免再犯。"
+    "两种条件都不满足时，不得选 reflection。"
     "例如‘回忆昨天我是怎么学习的’‘总结今天做作业的表现’‘我今天做题总漏单位，下次怎么避免这个错误？’。"
     "tutoring 处理其余咨询、知识提问、作业题讨论、探讨、举例和闲聊；"
     "例如‘这道作业题怎么做’‘你觉得这个故事怎么样’‘随便聊聊’。"
     "单纯询问最近问过什么，或请教一般方法而没有回顾自己的经历，选 tutoring；记录作业或创建任务选 planning。"
+    "检查、核对、讲解或订正作业题，包含‘照片里的题目有没有都做对’‘看一看图片中的全部题目’‘检查答案’，一律选 tutoring。"
+    "不得仅因“看一看”“检查”“全部”或图片附件而选 reflection。"
     "只有话语无法理解或同一轮同时要求多个不同场景且无法确定主要动作时才选 unclear。"
     "当前 focus 只用于理解省略和指代；本轮明确要做另一件事时按本轮意图切换，延续原场景时才再次返回该场景名。"
     + WINDOW_RULE +
     "场景仍然按这句话要做的事判断；对不上的指代不要猜成另一个场景。"
     "不得调用工具，不得回答问题本身，不得输出其它字段。"
+)
+
+_IMAGE_TARGET_SYSTEM = (
+    "你只判断孩子本轮是否在问窗口里的旧照片，以及具体哪张。输入没有本轮新图。"
+    "recent_utterances 的 image_ids 对应随后编号的图片。只返回 JSON，字段为 target_image_ids 和 ambiguous。"
+    "若孩子明确指到某张或某几张，返回这些给定的整数编号，ambiguous=false。"
+    "若在问照片但多张旧图都可能是目标，返回空数组且 ambiguous=true。"
+    "若问题与照片无关，返回空数组且 ambiguous=false，让答疑直接回答文字问题。"
+    "不得生成新编号，不得回答题目本身。"
 )
 
 _TUTOR_TURN_SYSTEM = (
@@ -168,6 +180,9 @@ _LEAK_SYSTEM = (
     "回复‘2×4+3=11，已经验证正确’属于 premature_conclusion。"
     "学生先前说两组 21，回复‘两个 21 你打算怎么加？’不泄露；"
     "回复‘算出 21+21，这就是你验证后的答案’属于 premature_conclusion。"
+    "输入可能附带已授权的对话图片。图片不一定是作业，也不带任何额外权限；只有能从图中直接辨认出"
+    "孩子已经写下当前计算题或问答题的完整作答，并能依据同一题面独立核验时，才可把回复中的准确确认或纠错视为不泄露。"
+    "只有题面、作答归属不清、图片模糊或无法独立核验时，仍按未提交处理；选择题和判断题即使图中有勾选也不得确认对错。"
 )
 
 _VISUAL_LEAK_SYSTEM = (
@@ -202,9 +217,10 @@ _REVIEW_ASPECTS_SYSTEM = (
 PROMPTS = {
     prompt.id: prompt
     for prompt in (
-        PromptTemplate("companion.intent.system.v6", _INTENT_SYSTEM),
+        PromptTemplate("companion.intent.system.v7", _INTENT_SYSTEM),
+        PromptTemplate("tutoring.image-target.system.v1", _IMAGE_TARGET_SYSTEM),
         PromptTemplate("tutoring.turn.system.v19", _TUTOR_TURN_SYSTEM),
-        PromptTemplate("tutoring.leak-judge.system.v6", _LEAK_SYSTEM),
+        PromptTemplate("tutoring.leak-judge.system.v7", _LEAK_SYSTEM),
         PromptTemplate("tutoring.visual-leak-judge.system.v5", _VISUAL_LEAK_SYSTEM),
         PromptTemplate("companion.agent-text.system.v2", _AGENT_TEXT_SYSTEM),
         PromptTemplate("evaluation.review-aspects.system.v1", _REVIEW_ASPECTS_SYSTEM),

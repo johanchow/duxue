@@ -138,11 +138,14 @@ def visible_utterances(
 def load_visible_utterances(
     db: Session, *, ward_id: str, thread_id: str, exclude_turn_id: str | None,
     read_image: Callable[[str], str] | None = None, strict: bool = False,
+    image_budget: int = MAX_WINDOW_IMAGES,
 ) -> list[dict]:
     rows, _omitted = recent_thread_utterances(
         db, ward_id=ward_id, thread_id=thread_id, exclude_turn_id=exclude_turn_id,
     )
-    return visible_utterances(rows, ward_id=ward_id, read_image=read_image, strict=strict)
+    return visible_utterances(
+        rows, ward_id=ward_id, read_image=read_image, strict=strict, image_budget=image_budget,
+    )
 
 
 def current_turn_images(

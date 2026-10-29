@@ -25,8 +25,8 @@ class LeaksWhen(StaticLeakJudge):
         super().__init__()
         self.marker = marker
 
-    def leaks(self, *, text, task_title, problem_summary):
-        super().leaks(text=text, task_title=task_title, problem_summary=problem_summary)
+    def leaks(self, *, text, task_title, problem_summary, images=None):
+        super().leaks(text=text, task_title=task_title, problem_summary=problem_summary, images=images)
         return self.marker in text
 
 
@@ -51,6 +51,22 @@ def test_a_leaking_reply_is_retried_once_and_the_hint_is_shown(monkeypatch):
     assert model.calls[1]["repair_error"].startswith(LEAK_REPAIR)
     assert LEAKY["content"] in model.calls[1]["repair_error"]
     assert fallbacks == []  # the first, blocked version is not a fallback
+
+
+def test_protected_review_receives_images_on_primary_repair_and_backup(monkeypatch):
+    image = "data:image/jpeg;base64,review-image"
+    judge = LeaksWhen("等于 4")
+    backup = StaticTutorModel(HINT)
+    fallbacks: list[str] = []
+    monkeypatch.setattr(tutor_loop, "record_llm_fallback", lambda **kw: fallbacks.append(kw["reason"]))
+    result = run_tutor_turn(
+        StaticTutorModel(LEAKY), {}, "{}", [], [],
+        TutorToolbox(None, tutoring_session_id=None, problem=None, task_title=None, task_active=False, window=[]),
+        permit=PROTECTED, leak_judge=judge, task_title="数学作业", problem_summary="第1题：解方程 x+3=7",
+        backup_model=backup, judge_images=[image],
+    )
+    assert result.vetting.failure is None and fallbacks == []
+    assert judge.images == [[image], [image], [image]]
 
 
 def test_a_retry_that_still_leaks_falls_back_once(monkeypatch):
@@ -82,7 +98,7 @@ def test_all_rejected_attempts_keep_candidate_review_input_and_reason_in_one_tra
     from app.infrastructure.observability import telemetry
 
     class ExplainsLeak(StaticLeakJudge):
-        def leaks(self, *, text, task_title, problem_summary):
+        def leaks(self, *, text, task_title, problem_summary, images=None):
             return {"leaks": True, "reason": "final_answer"}
 
     monkeypatch.setenv("OTEL_SDK_DISABLED", "false")
@@ -159,8 +175,8 @@ def test_workflow_passes_backup_model_to_the_shared_exit_checks():
 
 def test_retry_includes_a_specific_review_reason_when_available():
     class ExplainsLeak(StaticLeakJudge):
-        def leaks(self, *, text, task_title, problem_summary):
-            super().leaks(text=text, task_title=task_title, problem_summary=problem_summary)
+        def leaks(self, *, text, task_title, problem_summary, images=None):
+            super().leaks(text=text, task_title=task_title, problem_summary=problem_summary, images=images)
             return {"leaks": True, "reason": "premature_conclusion"}
 
     model = StaticTutorModel(LEAKY, HINT)

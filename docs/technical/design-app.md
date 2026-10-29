@@ -174,6 +174,10 @@ FUNCTION routerRedirectGuard(authState, targetPath):
 - **生命周期**：通过检查的 `visual` 随该轮 `CompanionMessage.interaction_ref` 写入消息 journal，在对应历史气泡内持久展示（进入新一轮对话或重新打开对话列表不会消失），但不会注入后续轮次传给大模型的对话上下文。
 - **与流式的关系**：当前伴学对话是一次请求返回完整交互，图随该交互一次性出现。若将来改为 SSE，`delta` 事件不得携带图的任何内容，只有最终 `interaction` 事件携带 `visual`。
 
+#### 1.2 历史对话图片查看
+- Ward 消息的 `attachment_refs` 保留图片顺序；聊天列表只为进入视口的气泡读取图片，缩略图按 72 逻辑像素解码，全屏查看时按原始上传字节解码。
+- 点击气泡图片打开黑底查看页，可双指缩放、拖动及左右切换同一条消息的图片；返回后保留聊天列表位置。图片字节在当前页面内缓存，重启后从受控消息附件接口重新读取；授权边界见 [Companion transcript journal](domain-companion.md#51-ward-facing-transcript-journal)。
+
 #### 2. 正文 Markdown + LaTeX 混排渲染机制（`ChatMarkdownBody`）
 - **双轨渲染与解析管线**：位于 `lib/shared/chat_markdown.dart`，基于纯 Dart `package:markdown` AST 与 `flutter_math_fork`（`Math.tex`）原生渲染正文与公式，无需引入 WebView；
 - **公式语法与横向滚动**：支持行内 `$...$`（单行、闭合、首尾无多余空白）与 `\(...\)`（`MathStyle.text` + `WidgetSpan`），以及块级 `$$...$$` 与 `\[...\]`（`MathStyle.display` + 横向 `SingleChildScrollView`）；

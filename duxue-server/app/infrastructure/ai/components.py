@@ -95,6 +95,13 @@ class ComponentRegistry:
 COMPONENTS = ComponentRegistry(
     # --- protected: child-safety path -------------------------------------
     ComponentSpec(
+        component_id="tutoring.image-target", version="v1", operation="tutor_image_target",
+        agent_label="tutoring", risk_tier="protected", model=REPLY_FLASH,
+        prompt=PROMPTS["tutoring.image-target.system.v1"],
+        input_contract="image-target-input.v1", output_contract="image-target.v1",
+        max_tokens=160, temperature=0,
+    ),
+    ComponentSpec(
         component_id="tutoring.turn", version="v19", operation="tutor_turn",
         agent_label="tutoring", risk_tier="protected", model=PLUS,
         prompt=PROMPTS["tutoring.turn.system.v19"],
@@ -109,12 +116,13 @@ COMPONENTS = ComponentRegistry(
         max_tokens=1100, temperature=0.2,
     ),
     ComponentSpec(
-        component_id="tutoring.leak-judge", version="v6", operation="tutor_leak_check",
-        agent_label="tutoring", risk_tier="protected", model=TEXT_PLUS,
-        prompt=PROMPTS["tutoring.leak-judge.system.v6"],
-        input_contract="leak-judge-input.v5", output_contract="leak-judge-verdict.v2",
+        component_id="tutoring.leak-judge", version="v8", operation="tutor_leak_check",
+        # REPLY_FLASH is registered and exercised on the compatible Chat Completions
+        # endpoint with multimodal inputs; it stays independent from the primary tutor.
+        agent_label="tutoring", risk_tier="protected", model=REPLY_FLASH,
+        prompt=PROMPTS["tutoring.leak-judge.system.v7"],
+        input_contract="leak-judge-input.v6", output_contract="leak-judge-verdict.v2",
         max_tokens=80, temperature=0,
-        accepts_images=False,
     ),
     ComponentSpec(
         component_id="tutoring.visual-leak-judge", version="v5", operation="tutor_visual_leak_check",
@@ -126,9 +134,9 @@ COMPONENTS = ComponentRegistry(
     ),
     # --- standard ----------------------------------------------------------
     ComponentSpec(
-        component_id="companion.intent", version="v6", operation="intent_proposal",
+        component_id="companion.intent", version="v7", operation="intent_proposal",
         agent_label="planning", risk_tier="standard", model=TEXT_FLASH,
-        prompt=PROMPTS["companion.intent.system.v6"],
+        prompt=PROMPTS["companion.intent.system.v7"],
         input_contract="intent-input.v1", output_contract="intent-proposal.v1",
         max_tokens=60, temperature=0,
         accepts_images=False,

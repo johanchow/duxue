@@ -100,6 +100,28 @@ def test_instruction_text_never_embeds_pixels():
     assert "current_image_ids=[2]" in text
 
 
+def test_old_image_selector_receives_request_local_numbers_without_storage_path(monkeypatch):
+    from app.infrastructure.ai import components
+
+    seen = {}
+
+    def fake_invoke(*, spec, user):
+        seen["spec"] = spec.component_id
+        seen["user"] = user
+        return {"target_image_ids": [1], "ambiguous": False}
+
+    monkeypatch.setattr(components, "invoke_json_component", fake_invoke)
+    result = TutoringWorkflow._select_image_target(
+        [{"author": "ward", "text": "第一张", "image_urls": [PIXELS]}], "第一张有没有做对？",
+    )
+    assert result["target_image_ids"] == [1]
+    assert seen["spec"] == "tutoring.image-target"
+    payload = json.loads(seen["user"][0]["text"])
+    assert payload["recent_utterances"][0]["image_ids"] == [1]
+    assert sum(part["type"] == "image_url" for part in seen["user"]) == 1
+    assert "base64" not in seen["user"][0]["text"]
+
+
 def test_tutoring_sends_window_and_current_pictures_to_every_model_call(db, monkeypatch):
     ward = create_ward(db)
     thread = ConversationThread(ward_id=ward.id)
@@ -115,18 +137,58 @@ def test_tutoring_sends_window_and_current_pictures_to_every_model_call(db, monk
         thread_version=1, author_type="ward", content="这是第一页", attachment_refs=[old_key],
     ))
     db.commit()
-    monkeypatch.setattr(
-        "app.application.queries.run_transcript._default_reader", lambda key: f"data:image/jpeg;base64,{key[-7:-4]}",
-    )
+    read_keys = []
+
+    def reader(key):
+        read_keys.append(key)
+        return f"data:image/jpeg;base64,{key[-7:-4]}"
+
+    monkeypatch.setattr("app.application.queries.run_transcript._default_reader", reader)
     model = StaticTutorModel()
     TutoringWorkflow(db, turn_model=model).invoke(RunInvocation(
         run_id=uid(), thread_id=thread.id, ward_id=ward.id, agent_type="tutoring",
         turn={"content": "这一页第三题怎么做", "tutoring_directive": "ask", "attachment_keys": [new_key]},
     ))
     call = model.calls[0]
-    assert call["recent_utterances"][0]["image_urls"] == ["data:image/jpeg;base64,old"]
+    assert "image_urls" not in call["recent_utterances"][0]
     assert call["current_images"] == ["data:image/jpeg;base64,new"]
+    assert read_keys == [new_key]
     assert "had_image" not in call["instruction"] and "base64" not in call["instruction"]
+
+
+def test_ambiguous_two_picture_question_stops_before_tutor_model(db, monkeypatch):
+    ward = create_ward(db)
+    thread = ConversationThread(ward_id=ward.id)
+    db.add(thread)
+    db.flush()
+    command = CompanionCommand(id=uid(), ward_id=ward.id, thread_id=thread.id, payload_digest="prior")
+    db.add(command)
+    db.flush()
+    old_key = f"ward/{ward.id}/companion/old.jpg"
+    second_key = f"ward/{ward.id}/companion/second.jpg"
+    db.add(CompanionMessage(
+        ward_id=ward.id, thread_id=thread.id, command_id=command.id, turn_id=uid(), attempt=1,
+        thread_version=1, author_type="ward", content="第一张", attachment_refs=[old_key],
+    ))
+    second_command = CompanionCommand(id=uid(), ward_id=ward.id, thread_id=thread.id, payload_digest="second")
+    db.add(second_command)
+    db.flush()
+    db.add(CompanionMessage(
+        ward_id=ward.id, thread_id=thread.id, command_id=second_command.id, turn_id=uid(), attempt=1,
+        thread_version=2, author_type="ward", content="第二张", attachment_refs=[second_key],
+    ))
+    db.commit()
+    monkeypatch.setattr("app.application.queries.run_transcript._default_reader", lambda _key: PIXELS)
+    model = StaticTutorModel()
+    outcome = TutoringWorkflow(
+        db, turn_model=model,
+        image_target_selector=lambda *_: {"target_image_ids": [], "ambiguous": True},
+    ).invoke(RunInvocation(
+        run_id=uid(), thread_id=thread.id, ward_id=ward.id, agent_type="tutoring",
+        turn={"content": "这张题目对吗", "tutoring_directive": "ask", "attachment_keys": []},
+    ))
+    assert outcome.next_interaction["reason"] == "image_target_ambiguous"
+    assert model.calls == []
 
 
 def test_other_wards_current_pictures_are_not_read():

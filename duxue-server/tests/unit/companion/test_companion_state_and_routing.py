@@ -160,7 +160,7 @@ def test_invalid_model_payload_becomes_unclear():
 
 
 def test_intent_prompt_covers_the_three_scene_boundaries():
-    prompt = PROMPTS["companion.intent.system.v6"].text
+    prompt = PROMPTS["companion.intent.system.v7"].text
     for action in ("新增", "修改", "删除", "安排时间"):
         assert action in prompt
     assert "具体任务" in prompt
@@ -174,6 +174,10 @@ def test_intent_prompt_covers_the_three_scene_boundaries():
     assert "怎么避免" in prompt
     assert "自己的学习或工作" in prompt
     assert "一般方法" in prompt
+    # 作业图片核验是答疑；“看一看”本身绝不能被当作复盘信号。
+    assert "照片里的题目有没有都做对" in prompt
+    assert "不得仅因“看一看”“检查”“全部”" in prompt
+    assert "明确要求复盘或总结" in prompt
 
 
 def test_planning_reply_prompt_requires_markdown_for_all_visible_text():

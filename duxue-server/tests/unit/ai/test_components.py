@@ -64,7 +64,7 @@ def test_registry_lists_every_call_with_stable_identity():
     assert ids == {
         "tutoring.turn", "tutoring.turn-backup", "tutoring.leak-judge", "tutoring.visual-leak-judge", "companion.intent",
         "planning.reply", "planning.intake", "task.intake",
-        "evaluation.review-aspects",
+        "evaluation.review-aspects", "tutoring.image-target",
     }
     for spec in COMPONENTS.all():
         assert spec.version.startswith("v") and spec.model and spec.input_contract and spec.output_contract
@@ -107,7 +107,7 @@ def test_invoke_sends_static_prompt_as_system_and_uses_spec(spans):
     assert call["messages"][0] == {"role": "system", "content": spec.prompt.text}
     assert call["messages"][1] == {"role": "user", "content": "hi"}
     assert spans["span"]["component_id"] == "companion.intent"
-    assert spans["span"]["component_version"] == "v6"
+    assert spans["span"]["component_version"] == "v7"
     assert spans["span"]["prompt_id"] == spec.prompt.id
     assert spans["span"]["model_source"] == "registry"
 
@@ -213,6 +213,18 @@ def test_tutoring_components_keep_existing_success_and_failure_boundaries(monkey
     }
     assert seen == ["tutoring.turn", "tutoring.leak-judge"]
 
+    captured: dict = {}
+    monkeypatch.setattr(
+        tutor_turn_model.components, "invoke_json_component",
+        lambda **kwargs: captured.update(kwargs) or {"leaks": False, "reason": "none"},
+    )
+    assert tutor_turn_model.QwenLeakJudge().leaks(
+        text="你写的答案对吗？", task_title=None, problem_summary=None,
+        images=["data:image/jpeg;base64,authorized"],
+    ) == {"leaks": False, "reason": "none"}
+    assert isinstance(captured["user"], list)
+    assert captured["user"][-1]["image_url"]["url"] == "data:image/jpeg;base64,authorized"
+
     monkeypatch.setattr(
         tutor_turn_model.components, "invoke_json_component",
         lambda **_kwargs: {"leaks": True, "reason": "premature_conclusion"},
@@ -270,8 +282,9 @@ def test_model_assignment_matrix():
     }
     assert matrix == {
         "tutoring.turn": ("qwen3.7-plus-2026-05-26", True),
+        "tutoring.image-target": ("qwen3.8-flash", True),
         "tutoring.turn-backup": ("qwen3.8-flash", True),
-        "tutoring.leak-judge": ("qwen-plus", False),
+        "tutoring.leak-judge": ("qwen3.8-flash", True),
         "tutoring.visual-leak-judge": ("qwen-plus", False),
         "companion.intent": ("qwen-flash", False),
         "planning.reply": ("qwen3.8-flash", True),
@@ -298,6 +311,10 @@ def test_text_only_components_never_send_image_parts(spans):
 
     client = _Client("{}")
     invoke_json_component(spec=COMPONENTS.get("tutoring.turn"), user=user, client=client, settings_obj=_settings())
+    assert client.calls[0]["messages"][1]["content"] == user
+
+    client = _Client('{"leaks": false, "reason": "none"}')
+    invoke_json_component(spec=COMPONENTS.get("tutoring.leak-judge"), user=user, client=client, settings_obj=_settings())
     assert client.calls[0]["messages"][1]["content"] == user
 
 

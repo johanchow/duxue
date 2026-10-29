@@ -122,6 +122,21 @@ def test_locked_refuses_a_solution_and_writes_nothing(db):
     assert db.query(TutoringProblem).count() == 0
 
 
+def test_protected_image_turn_passes_only_authorized_current_image_to_leak_judge(db, monkeypatch):
+    _, session = _setup(db)
+    key = f"ward/{session.ward_id}/companion/homework.jpg"
+    monkeypatch.setattr(
+        "app.application.queries.run_transcript._default_reader",
+        lambda object_key: "data:image/jpeg;base64,authorized" if object_key == key else None,
+    )
+    judge = StaticLeakJudge(False)
+    workflow, _ = _workflow(db, ATTEMPT, judge=judge)
+
+    _ask(db, workflow, session, "看看我图片里写的答案对不对", attachment_keys=[key])
+
+    assert judge.images == [["data:image/jpeg;base64,authorized"]]
+
+
 def test_repeated_attempts_never_unlock_the_next_round(db):
     _, session = _setup(db)
     workflow, model = _workflow(db, ATTEMPT)

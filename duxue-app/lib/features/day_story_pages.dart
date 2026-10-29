@@ -16,6 +16,7 @@ import '../shared/app_ui.dart';
 import '../shared/chat_markdown.dart';
 import '../shared/voice_composer.dart';
 import 'home_task_card.dart';
+import 'chat_image_viewer.dart';
 import 'pronunciation_player.dart';
 import 'start_cue_card.dart';
 import 'visual_block.dart';
@@ -207,6 +208,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   final planMessages = <_ChatLine>[];
   final historyMessages = <_ChatLine>[];
   final rememberedImages = <String, Uint8List>{};
+  final _imageLoads = <String, Future<Uint8List>>{};
   final ScrollController _chatScrollController = ScrollController();
   String? companionThreadId;
   int? companionThreadVersion;
@@ -1631,7 +1633,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
       if (!mounted || !stagedImages.contains(staged)) return;
       setState(() {
         staged.key = key;
-        rememberedImages[key] = staged.bytes;
+        _cacheChatImage(key, staged.bytes);
       });
     } catch (_) {
       if (!mounted || !stagedImages.contains(staged)) return;
@@ -2021,6 +2023,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         threadVersion: item['thread_version'] as int?,
         label: item['author_type'] == 'ward' ? '我' : '读学 AI',
         content: item['content'] as String,
+        imageRefs: refs.toList(),
         images: [
           for (final ref in refs)
             if (rememberedImages[ref] != null) rememberedImages[ref]!,
@@ -2107,6 +2110,10 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
                 label: message.label,
                 text: message.content,
                 images: message.images,
+                imageCount: message.imageRefs.length,
+                loadImage: message.imageRefs.isEmpty
+                    ? null
+                    : (index) => _loadChatImage(message, index),
                 visual: message.visual),
             if (message.intentActions.isNotEmpty &&
                 message.threadId == companionThreadId &&
@@ -2139,6 +2146,31 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
           ],
         ),
       );
+
+  Future<Uint8List> _loadChatImage(_ChatLine message, int index) {
+    final key = message.imageRefs[index];
+    final cached = rememberedImages[key];
+    if (cached != null) return Future.value(cached);
+    return _imageLoads.putIfAbsent(key, () async {
+      try {
+        final bytes = await ref
+            .read(apiProvider)
+            .companionMessageImage(message.id!, index);
+        _cacheChatImage(key, bytes);
+        return bytes;
+      } finally {
+        _imageLoads.remove(key);
+      }
+    });
+  }
+
+  void _cacheChatImage(String key, Uint8List bytes) {
+    rememberedImages.remove(key);
+    rememberedImages[key] = bytes;
+    while (rememberedImages.length > 48) {
+      rememberedImages.remove(rememberedImages.keys.first);
+    }
+  }
 
   void _scrollToChatBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -2409,6 +2441,7 @@ class _ChatLine {
     required this.label,
     required this.content,
     this.images = const [],
+    this.imageRefs = const [],
     this.visual,
     this.lessons = const [],
     this.intentActions = const [],
@@ -2420,6 +2453,7 @@ class _ChatLine {
   final String label;
   final String content;
   final List<Uint8List> images;
+  final List<String> imageRefs;
   final Map<String, dynamic>? visual;
   final List<Map<String, dynamic>> lessons;
   final List<Map<String, dynamic>> intentActions;
@@ -2445,6 +2479,7 @@ class _ChatLine {
         label: label,
         content: content,
         images: images,
+        imageRefs: imageRefs,
         visual: visual,
         lessons: lessons ?? this.lessons,
         intentActions: intentActions,
@@ -2471,16 +2506,23 @@ class _ChatBubble extends StatelessWidget {
     required this.label,
     required this.text,
     this.images = const [],
+    this.imageCount = 0,
+    this.loadImage,
     this.visual,
   });
   final String label;
   final String text;
   final List<Uint8List> images;
+  final int imageCount;
+  final Future<Uint8List> Function(int index)? loadImage;
   final Map<String, dynamic>? visual;
 
   @override
   Widget build(BuildContext context) {
     final isWard = label == '我';
+    final count = imageCount > 0 ? imageCount : images.length;
+    Future<Uint8List> imageAt(int index) =>
+        loadImage?.call(index) ?? Future.value(images[index]);
     return LayoutBuilder(builder: (context, constraints) {
       final maxWidth =
           isWard ? constraints.maxWidth * 2 / 3 : constraints.maxWidth;
@@ -2508,26 +2550,54 @@ class _ChatBubble extends StatelessWidget {
                               fontSize: 11,
                               fontWeight: FontWeight.w700,
                               color: Colors.blueGrey)),
-                    if (images.isNotEmpty) ...[
+                    if (count > 0) ...[
                       const SizedBox(height: 6),
                       Wrap(spacing: 6, runSpacing: 6, children: [
-                        for (var index = 0; index < images.length; index++)
-                          ClipRRect(
+                        for (var index = 0; index < count; index++)
+                          GestureDetector(
+                            onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) => ChatImageViewer(
+                                  imageCount: count,
+                                  initialIndex: index,
+                                  loadImage: imageAt,
+                                ),
+                              ),
+                            ),
+                            child: ClipRRect(
                               borderRadius: BorderRadius.circular(8),
-                              child: Image.memory(images[index],
-                                  key: ValueKey('sent-chat-image-$index'),
-                                  width: 72,
-                                  height: 72,
-                                  fit: BoxFit.cover,
-                                  cacheWidth: chatImageCachePixels(72,
-                                      MediaQuery.devicePixelRatioOf(context)),
-                                  cacheHeight: chatImageCachePixels(72,
-                                      MediaQuery.devicePixelRatioOf(context)),
-                                  gaplessPlayback: true)),
+                              child: FutureBuilder<Uint8List>(
+                                future: imageAt(index),
+                                builder: (context, snapshot) => snapshot.hasData
+                                    ? Image.memory(snapshot.data!,
+                                        key: ValueKey('sent-chat-image-$index'),
+                                        width: 72,
+                                        height: 72,
+                                        fit: BoxFit.cover,
+                                        cacheWidth: chatImageCachePixels(
+                                            72,
+                                            MediaQuery.devicePixelRatioOf(
+                                                context)),
+                                        cacheHeight: chatImageCachePixels(
+                                            72,
+                                            MediaQuery.devicePixelRatioOf(
+                                                context)),
+                                        gaplessPlayback: true)
+                                    : Container(
+                                        key: ValueKey('sent-chat-image-$index'),
+                                        width: 72,
+                                        height: 72,
+                                        color: const Color(0xffe2e8f0),
+                                        child: Icon(snapshot.hasError
+                                            ? Icons.broken_image_outlined
+                                            : Icons.image_outlined)),
+                              ),
+                            ),
+                          ),
                       ]),
                     ],
                     if (text.isNotEmpty &&
-                        !(images.isNotEmpty && text == '请看这张图片。')) ...[
+                        !(count > 0 && text == '请看这张图片。')) ...[
                       const SizedBox(height: 4),
                       ChatMarkdownBody(text: text),
                     ],

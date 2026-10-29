@@ -597,3 +597,56 @@ def test_companion_messages_supports_current_thread_lookup_cursor_pagination_and
     assert [m["content"] for m in prev_thread_page["messages"]] == ["旧会话问题1", "请回答"]
     assert prev_thread_page["next_before_thread_version"] is None
     assert prev_thread_page["previous_thread_id"] is None
+
+
+def test_companion_message_image_requires_owned_visible_attachment(db, monkeypatch):
+    from app.api.v1.common import Principal
+    from app.api.v1.companion import companion_message_image
+    from app.infrastructure.persistence.models import CompanionMessage
+
+    ward = create_ward(db)
+    other = create_ward(db)
+    db.commit()
+    result = CompanionCoordinator(db, classifier=StaticIntentClassifier("unclear")).handle(
+        ward_id=ward.id, content="看这张图", thread_id=None,
+        expected_thread_version=0, route_hint=None,
+    )
+    message = db.query(CompanionMessage).filter_by(thread_id=result.thread_id, author_type="ward").first()
+    key = f"ward/{ward.id}/companion/photo.png"
+    message.attachment_refs = [key]
+    db.commit()
+
+    class FakeStorage:
+        def exists(self, object_key):
+            return object_key == key
+
+        def read_bytes(self, object_key):
+            assert object_key == key
+            return b"image-bytes"
+
+    monkeypatch.setattr("app.api.v1.companion.storage", FakeStorage())
+    response = companion_message_image(message.id, 0, Principal(role="ward", user_id=ward.id), db)
+    assert response.body == b"image-bytes"
+    assert response.media_type == "image/png"
+    for principal, index in [
+        (Principal(role="ward", user_id=other.id), 0),
+        (Principal(role="ward", user_id=ward.id), 1),
+    ]:
+        with pytest.raises(HTTPException) as error:
+            companion_message_image(message.id, index, principal, db)
+        assert error.value.status_code == 404
+    message.attachment_refs = [f"ward/{other.id}/companion/photo.png"]
+    db.commit()
+    with pytest.raises(HTTPException) as error:
+        companion_message_image(message.id, 0, Principal(role="ward", user_id=ward.id), db)
+    assert error.value.status_code == 404
+    message.attachment_refs = [f"ward/{ward.id}/companion/../../private.png"]
+    db.commit()
+    with pytest.raises(HTTPException) as error:
+        companion_message_image(message.id, 0, Principal(role="ward", user_id=ward.id), db)
+    assert error.value.status_code == 404
+    message.attachment_refs = [f"ward/{ward.id}/companion/missing.png"]
+    db.commit()
+    with pytest.raises(HTTPException) as error:
+        companion_message_image(message.id, 0, Principal(role="ward", user_id=ward.id), db)
+    assert error.value.status_code == 404

@@ -1,8 +1,9 @@
-"""Probe the production text leak judge on first-turn image homework questions.
+"""Probe the production leak judge on first-turn image homework questions.
 
 Run from duxue-server/: python -m evals.judge_boundary [--samples 3]
-By default the reference transcription is used for labeling only. The
---with-reference counterfactual explicitly sends it to the judge.
+By default the reference transcription is used for labeling only. A case may
+also name one local authorized image asset, which is sent directly to the
+judge. The --with-reference counterfactual explicitly sends the reference text.
 """
 
 from __future__ import annotations
@@ -18,6 +19,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
+from evals.dataset import ASSETS_DIR
+from evals.runner import read_asset
+from evals.schema import ASSET_NAME
+
 os.environ["OTEL_SDK_DISABLED"] = "true"
 
 DATA = Path(__file__).parent / "judge_data" / "first_image.jsonl"
@@ -29,7 +34,7 @@ def load_cases(path: Path = DATA) -> list[dict]:
     cases = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
     ids: set[str] = set()
     for case in cases:
-        if set(case) - {"id", "reference_problem", "reply", "expected_leaks", "rationale", "pair"}:
+        if set(case) - {"id", "reference_problem", "reply", "expected_leaks", "rationale", "pair", "image"}:
             raise ValueError(f"unexpected fields in {case.get('id')}")
         if not all(isinstance(case.get(key), str) and case[key] for key in
                    ("id", "reference_problem", "reply", "rationale")):
@@ -38,6 +43,8 @@ def load_cases(path: Path = DATA) -> list[dict]:
             raise ValueError(f"invalid label: {case['id']}")
         if case["id"] in ids:
             raise ValueError(f"duplicate id: {case['id']}")
+        if "image" in case and (not isinstance(case["image"], str) or not ASSET_NAME.match(case["image"])):
+            raise ValueError(f"invalid image asset: {case['id']}")
         ids.add(case["id"])
     if not cases:
         raise ValueError("empty judge dataset")
@@ -65,7 +72,10 @@ def run_cases(
         try:
             case_summary = (f"第1题：{case['reference_problem']}\n{problem_summary}"
                             if with_reference else problem_summary)
-            verdict = judge(text=case["reply"], task_title=TASK_TITLE, problem_summary=case_summary)
+            images = [read_asset(ASSETS_DIR / case["image"])] if case.get("image") else None
+            verdict = judge(
+                text=case["reply"], task_title=TASK_TITLE, problem_summary=case_summary, images=images,
+            )
             if not isinstance(verdict, dict) or type(verdict.get("leaks")) is not bool:
                 return {"leaks": None, "reason": "judge_unavailable", "latency_ms": round((time.monotonic()-started)*1000)}
             return {"leaks": verdict["leaks"], "reason": verdict.get("reason"),

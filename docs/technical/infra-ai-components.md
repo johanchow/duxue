@@ -167,8 +167,9 @@ class ComponentSpec:
 | Component | 风险 | 调用点 | 保留的调用方边界 |
 | --- | --- | --- | --- |
 | `tutoring.turn@v19` | protected | 答疑主调用（契约 `tutor-turn.v4`；作业图尽量只摆已知量，最终待求变量用 `?`；二维竖式必须返回 `visual`） | `TutorTurnCandidate`、结构恢复与三道出口检查；误用 TeX 竖式时重画 |
+| `tutoring.image-target@v1` | protected | 本轮无新图且窗口有多张旧图时，按本轮原话与窗口选择图片编号 | 无关文字问题可不选图；非法、不可读或不确定的编号追问 |
 | `tutoring.turn-backup@v2` | protected | 主模型文字泄露重试仍因同一原因失败，或 TeX 竖式重画失败时，用 `qwen3.8-flash` 再生成一次 | 与主调用共用出口检查；仍失败则保留安全文字 |
-| `tutoring.leak-judge@v6` | protected | 作业答案泄露审核（`problem` 包含有界的学生先前原话；v6：区分引用已有结果与替学生完成计算/核验，返回单个审核原因） | `None` 由 Workflow fail-closed；越界重试仍经完整出口检查 |
+| `tutoring.leak-judge@v8` | protected | 作业答案泄露审核；仅当既有出口规则已经要求审核且本轮/可见同线程窗口有授权图片时，用独立、低延迟的 `qwen3.8-flash` 查看原图。图片不是题图假设，也不构成额外权限；无图仍是文本审核 | `None` 由 Workflow fail-closed；越界重试仍经完整出口检查；图片字节不写入可观测性载荷 |
 | `tutoring.visual-leak-judge@v5` | protected | 配图是否替孩子完成了作业；允许少量过程描述，但不能暴露最终待求变量，除法竖式的商位也按未知量检查 | 泄露时重画一次并复审；复审未过、超时或异常都只丢弃 `visual` |
 | `companion.intent@v1` | standard | 场景路由提议 | 非法或失败映射为 `unclear` |
 | `planning.reply@v2` | standard | `QwenAgentModelGateway.generate` | `AgentTextCandidate` 校验，失败走确定性降级 |

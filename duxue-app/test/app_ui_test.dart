@@ -406,6 +406,13 @@ class _WardHomeApi extends ApiClient {
   final Map<String, Map<String, dynamic>> threadTranscriptOverrides = {};
   final List<({String threadId, int? beforeThreadVersion, int limit})>
       transcriptCalls = [];
+  final imageCalls = <String>[];
+
+  @override
+  Future<Uint8List> companionMessageImage(String messageId, int index) async {
+    imageCalls.add('$messageId:$index');
+    return Uint8List.fromList(_tinyPng);
+  }
 
   @override
   Future<Map<String, dynamic>> currentCompanionMessages({
@@ -1315,6 +1322,76 @@ void main() {
     expect(find.byKey(const Key('staged-image-strip')), findsNothing);
     expect(find.byKey(const ValueKey('sent-chat-image-0')), findsOneWidget);
     expect(find.text('请看这张图片。'), findsNothing);
+  });
+
+  testWidgets('chat image opens full screen and returns to the same bubble',
+      (tester) async {
+    FlutterSecureStoragePlatform.instance =
+        TestFlutterSecureStoragePlatform({});
+    final api = _WardHomeApi();
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiProvider.overrideWithValue(api)],
+      child: MaterialApp(
+          home: WardDayPage(
+              wardId: 'ward-1',
+              pickChatImage: () async => PickedChatImage(
+                  bytes: Uint8List.fromList(_tinyPng), extension: 'png'))),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('拍照'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('发送'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('sent-chat-image-0')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('chat-image-viewer')), findsOneWidget);
+    expect(find.byType(InteractiveViewer), findsOneWidget);
+    await tester.tap(find.byTooltip('关闭图片'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('chat-image-viewer')), findsNothing);
+    expect(find.byKey(const ValueKey('sent-chat-image-0')), findsOneWidget);
+  });
+
+  testWidgets('reloaded historical images open at the tapped page',
+      (tester) async {
+    FlutterSecureStoragePlatform.instance =
+        TestFlutterSecureStoragePlatform({});
+    final api = _WardHomeApi()
+      ..currentTranscriptOverride = {
+        'thread_id': 'thread-1',
+        'thread_version': 1,
+        'messages': [
+          {
+            'id': 'historical-1',
+            'thread_id': 'thread-1',
+            'thread_version': 1,
+            'author_type': 'ward',
+            'content': '看看这两张图',
+            'attachment_refs': [
+              'ward/ward-1/companion/one.png',
+              'ward/ward-1/companion/two.png',
+            ],
+          },
+        ],
+      };
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiProvider.overrideWithValue(api)],
+      child: const MaterialApp(home: WardDayPage(wardId: 'ward-1')),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('说出你的任何想法、问题、安排'));
+    await tester.pumpAndSettle();
+
+    expect(api.imageCalls, ['historical-1:0', 'historical-1:1']);
+    await tester.tap(find.byKey(const ValueKey('sent-chat-image-1')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('chat-image-viewer')), findsOneWidget);
+    expect(find.text('2/2'), findsOneWidget);
+    expect(api.imageCalls, ['historical-1:0', 'historical-1:1']);
+    await tester.drag(find.byType(PageView), const Offset(500, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('1/2'), findsOneWidget);
   });
 
   testWidgets('ward messages sit on the right within two thirds and omit 我',

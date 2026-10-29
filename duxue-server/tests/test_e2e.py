@@ -572,6 +572,21 @@ class EndToEndTest(unittest.TestCase):
             [("ward", "帮我安排明天的复习"), ("companion", "我还需要一点信息，才能继续帮你安排。")],
         )
         self.assertEqual(transcript.json()["messages"][0]["attachment_refs"], [attachment])
+        message_id = transcript.json()["messages"][0]["id"]
+        image = self.request(
+            "GET", f"/companion/messages/{message_id}/attachments/0", token=ward_token
+        )
+        self.assertEqual(image.status_code, 200, image.text)
+        self.assertEqual(image.content, b"plan-image")
+        self.assertEqual(image.headers["content-type"], "image/jpeg")
+        missing_image = self.request(
+            "GET", f"/companion/messages/{message_id}/attachments/1", token=ward_token
+        )
+        self.assertEqual(missing_image.status_code, 404)
+        malformed_image = self.request(
+            "GET", "/companion/messages/invalid-id/attachments/0", token=ward_token
+        )
+        self.assertEqual(malformed_image.status_code, 404)
 
         other_guardian = self.request(
             "POST", "/auth/register",
@@ -589,6 +604,10 @@ class EndToEndTest(unittest.TestCase):
             "GET", f"/companion/threads/{first['thread_id']}/messages", token=other_ward_token
         )
         self.assertEqual(denied.status_code, 404)
+        denied_image = self.request(
+            "GET", f"/companion/messages/{message_id}/attachments/0", token=other_ward_token
+        )
+        self.assertEqual(denied_image.status_code, 404)
 
         ambiguous = self.request(
             "POST",

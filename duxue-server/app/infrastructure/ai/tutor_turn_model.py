@@ -9,7 +9,7 @@ import json
 
 from app.infrastructure.ai import components
 from app.infrastructure.ai.errors import ModelGatewayError
-from app.infrastructure.ai.utterance_window import user_content
+from app.infrastructure.ai.utterance_window import image_parts, user_content
 
 
 class QwenTutorTurnGateway:
@@ -41,23 +41,33 @@ class QwenLeakJudge:
     def __init__(self, settings_obj=None):
         self._settings = settings_obj  # offline evaluation only; production passes nothing
 
-    def leaks(self, *, text: str, task_title: str | None, problem_summary: str | None) -> dict | None:
+    def leaks(
+        self, *, text: str, task_title: str | None, problem_summary: str | None,
+        images: list[str] | None = None,
+    ) -> dict | None:
+        body = {"task_title": task_title, "problem": problem_summary, "reply": text}
+        # A visual review happens only after Application has authorized these images
+        # and the exit policy already requires a leak check. No image => preserve the
+        # compact text request used by offline evaluation and ordinary turns.
+        user: str | list[dict] = json.dumps(body, ensure_ascii=False)
+        if images:
+            user = [{"type": "text", "text": json.dumps(body, ensure_ascii=False)}, *image_parts([], images)]
         return self._judge(
-            "tutoring.leak-judge", {"task_title": task_title, "problem": problem_summary, "reply": text},
-            with_reason=True,
+            "tutoring.leak-judge", user, with_reason=True,
         )
 
     def visual_leaks(self, *, text: str, task_title: str | None, problem_summary: str | None) -> bool | None:
         """``text`` 是 ``describe(visual)``。独立的提示词与组件，不与文字判官共用。"""
         return self._judge(
-            "tutoring.visual-leak-judge", {"task_title": task_title, "problem": problem_summary, "visual": text},
+            "tutoring.visual-leak-judge",
+            json.dumps({"task_title": task_title, "problem": problem_summary, "visual": text}, ensure_ascii=False),
         )
 
-    def _judge(self, component_id: str, body: dict, *, with_reason: bool = False) -> bool | dict | None:
+    def _judge(self, component_id: str, user: str | list[dict], *, with_reason: bool = False) -> bool | dict | None:
         try:
             payload = components.invoke_json_component(
                 spec=components.COMPONENTS.get(component_id),
-                user=json.dumps(body, ensure_ascii=False), settings_obj=self._settings,
+                user=user, settings_obj=self._settings,
             )
         except ModelGatewayError:
             return None

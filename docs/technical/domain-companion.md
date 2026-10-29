@@ -104,7 +104,9 @@ flowchart TB
 
 `ContextSpec.utterance_scope` 固定为 `thread`。凡是要理解本轮 Ward 原句的模型调用，都带上这条 Thread 的最近原句窗口：当前 Turn 之外、按原样保留的最近 8 句，超预算时丢掉更早的句子，不改写成摘要。Run 边界不挡住上一句。学生看到的是对话记录，不是 Run。对象存储路径不写进这个窗口的文本。
 
-窗口里的图片和原句一起带入，不用 `had_image` 之类的标记代替。凡是读这个窗口的模型调用，包括场景路由、答疑主调用与泄露检查、计划整理、复盘建议和发音，都把窗口中当前 Ward 的已授权图片读成 `data:<mime>;base64,...`，放进同一条用户消息的 `image_url`；每句只在文本里列出它的 `image_ids`，同编号图片随后附上，本轮新图用 `current_image_ids`。窗口最多带最近 8 张。不属于当前 Ward 的图片只跳过、不发送。读不出来的图片告诉模型「无法读取」，不让它猜内容；只有发音在窗口图片读不出来时整轮失败。
+窗口里的图片和原句一起带入，不用 `had_image` 之类的标记代替。读窗口的模型调用，包括场景路由、计划整理、复盘建议、发音和答疑图片目标解析，都按需把窗口中当前 Ward 的已授权图片读成 `data:<mime>;base64,...`，放进同一条用户消息的 `image_url`；每句只在文本里列出它的 `image_ids`，同编号图片随后附上，本轮新图用 `current_image_ids`。窗口最多带最近 8 张。不属于当前 Ward 的图片只跳过、不发送。读不出来的图片告诉模型「无法读取」，不让它猜内容；只有发音在窗口图片读不出来时整轮失败。答疑主调用、泄露检查和重试的图片范围由下段目标解析收窄。
+
+答疑进入主模型前按本次调用的图片编号确定目标：本轮有可读新图时直接选全部新图，不调用选择模型；答疑目标组装只读历史文字，不再读取旧图像素，旧图也不进入主调用和泄露检查。本轮无新图且窗口只有一张旧图时直接选它；有多张旧图时才由受控多模态模型按本轮原话与窗口选择编号。若这句与照片无关，选择空集并照常回答文字问题；若在问照片却选不准、返回越界或不可读编号、调用失败，则追问。显式 `tutoring_intent=compare_previous_image` 可在本轮新图外加入最近一张可读旧图；不通过关键词或正则推断比较意图。选定后只把目标图送入答疑主调用、泄露检查与重试，历史文字仍保留。Trace 只记候选数量、本次调用的图片编号和歧义状态，不记图片字节。要求检查全部题目时，答疑应逐题说明实际检查范围；看不清或未检查的题不得概括为正确。
 
 「他们」「刚才那句」「上面那个」这类指代，只能在这 8 句里确定对象。窗口里对不上、或有多个同样可能的对象时，模型必须追问是哪一句，不得自己补一个对象。完整 transcript 不得进入 Memory、Trace 或 Checkpoint，也不得跨 Ward。Run 仍只拥有本次工作流的 checkpoint，确认后关闭。
 
@@ -443,6 +445,7 @@ Workflow 必须声明版本化 `ContextSpec`：Memory 范围、近期会话窗�
 目标读取接口为 `GET /companion/threads/{thread_id}/messages?before_thread_version=&limit=`（以及无本地 `thread_id` 时恢复最近对话的 `GET /companion/threads/current/messages`）；当单 Thread 游标到顶（`next_before_thread_version=null`）且该 Ward 存在更早的非空历史 Thread 时返回 `previous_thread_id`，供客户端无缝往前翻阅全部历史消息，而 LLM 上下文窗口始终由 `select_recent_utterances` 独立限制在当前 Thread 最近 8 条内。客户端以
 `command_id` 将乐观 Ward 气泡与服务端投影合并，重试同一命令不得产生重复气泡。当前实现仍用较宽松的
 `content`、`turn: dict` 和元数据响应；上述为目标契约，迁移必须保持兼容或显式版本化。
+历史图片通过 `GET /companion/messages/{message_id}/attachments/{index}` 按需读取。接口只接受当前 Ward 的可见消息及其已记录的附件序号，校验对象位于该 Ward 的 Companion 路径；客户端仅在聊天视口构建缩略图时请求图片，点击后用原图字节全屏展示，不把完整历史图片注入模型上下文。
 `WorkflowFailure` 至少含稳定 `code`、面向 Trace 的脱敏 `detail`、`retriable` 与失败来源
 （`model`、`tool`、`validator`、`budget`、`transport`）；`failure` 只在 `outcome_type=failure`
 时必填，`resume_action` 必须与 Run 状态机允许的转换一致。

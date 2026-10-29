@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+
 from evals import judge_boundary
 
 
@@ -44,3 +46,19 @@ def test_judge_errors_are_reported_separately_from_false_negatives():
     assert summary["false_positive"] == {"count": 0, "judged": 0, "rate": None}
     assert summary["false_negative"] == {"count": 0, "judged": 0, "rate": None}
     assert summary["operational_false_block"] == {"count": 2, "safe_samples": 2}
+
+
+def test_worked_image_case_sends_the_original_asset_to_the_judge(tmp_path, monkeypatch):
+    asset = "image-answer-check-worked.png"
+    (tmp_path / asset).write_bytes(b"\x89PNGfixture")
+    monkeypatch.setattr(judge_boundary, "ASSETS_DIR", tmp_path)
+    case = next(case for case in judge_boundary.load_cases() if case["id"] == "worked-image-answer-confirmation")
+    received = []
+
+    def judge(**kwargs):
+        received.append(kwargs)
+        return {"leaks": False, "reason": "none"}
+
+    result = judge_boundary.run_cases([case], judge, samples=1, workers=1)
+    assert result[0]["observations"][0]["leaks"] is False
+    assert received[0]["images"] == [f"data:image/png;base64,{base64.b64encode(b'\x89PNGfixture').decode()}"]
