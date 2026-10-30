@@ -492,10 +492,11 @@ class EndToEndTest(unittest.TestCase):
             [item["name"] for item in profile.json()["guardians"]], ["林妈妈"]
         )
 
+    @patch("app.application.process_managers.companion_coordinator.ModelSceneSwitchVerifier")
     @patch("app.application.process_managers.companion_coordinator.ModelIntentClassifier")
     @patch("app.application.process_managers.companion_coordinator.PlanningWorkflowAdapter")
     def test_companion_coordinator_routes_one_run_and_records_a_redacted_trace(
-        self, adapter_class, classifier_class
+        self, adapter_class, classifier_class, verifier_class
     ):
         from app.application.ports.companion import IntentProposal, WorkflowOutcome
 
@@ -513,6 +514,7 @@ class EndToEndTest(unittest.TestCase):
             return IntentProposal(intent=intent)
 
         classifier_class.return_value.propose.side_effect = propose
+        verifier_class.return_value.confirm.return_value = True
 
         adapter_class.return_value.invoke.return_value = WorkflowOutcome(
             run_status="waiting_for_ward",

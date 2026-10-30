@@ -71,6 +71,20 @@ _INTENT_SYSTEM = (
     "不得调用工具，不得回答问题本身，不得输出其它字段。"
 )
 
+_SCENE_SWITCH_SYSTEM = (
+    "你是独立的场景切换核查器。只返回 JSON：{\"allow_switch\":true} 或 {\"allow_switch\":false}。"
+    "输入包含孩子本轮原句、当前场景、初次模型提议的新场景，以及最近对话。"
+    "初次提议只是待核查候选，不是证据。根据本轮要做的事和最近对话判断是否明确离开当前场景。"
+    "孩子在回答上一轮的问题、补充解题步骤或提交答案时，继续当前答疑场景；"
+    "不能因为提到‘结果’或已完成一道题，就把答疑当成学习复盘。"
+    "明确要求管理具体任务或时间安排时可切到 planning；"
+    "明确要求总结、回忆自己的学习经历或基于经历反思改进时可切到 reflection；"
+    "明确提出知识问题、作业题求助或闲聊时可切到 tutoring。"
+    "只有本轮意图支持所提议的新场景时才返回 true；证据不足、无法读图或多个场景并列而主动作不明时返回 false。"
+    + WINDOW_RULE +
+    "不得回答孩子，不得调用工具，不得输出其它字段。"
+)
+
 _IMAGE_TARGET_SYSTEM = (
     "你只判断孩子本轮是否在问窗口里的旧照片，以及具体哪张。输入没有本轮新图。"
     "recent_utterances 的 image_ids 对应随后编号的图片。只返回 JSON，字段为 target_image_ids 和 ambiguous。"
@@ -218,6 +232,7 @@ PROMPTS = {
     prompt.id: prompt
     for prompt in (
         PromptTemplate("companion.intent.system.v7", _INTENT_SYSTEM),
+        PromptTemplate("companion.scene-switch.system.v1", _SCENE_SWITCH_SYSTEM),
         PromptTemplate("tutoring.image-target.system.v1", _IMAGE_TARGET_SYSTEM),
         PromptTemplate("tutoring.turn.system.v19", _TUTOR_TURN_SYSTEM),
         PromptTemplate("tutoring.leak-judge.system.v7", _LEAK_SYSTEM),

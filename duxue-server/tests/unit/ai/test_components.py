@@ -62,7 +62,7 @@ def spans(monkeypatch):
 def test_registry_lists_every_call_with_stable_identity():
     ids = {spec.component_id for spec in COMPONENTS.all()}
     assert ids == {
-        "tutoring.turn", "tutoring.turn-backup", "tutoring.leak-judge", "tutoring.visual-leak-judge", "companion.intent",
+        "tutoring.turn", "tutoring.turn-backup", "tutoring.leak-judge", "tutoring.visual-leak-judge", "companion.intent", "companion.scene-switch",
         "planning.reply", "planning.intake", "task.intake",
         "evaluation.review-aspects", "tutoring.image-target",
     }
@@ -287,6 +287,7 @@ def test_model_assignment_matrix():
         "tutoring.leak-judge": ("qwen3.8-flash", True),
         "tutoring.visual-leak-judge": ("qwen-plus", False),
         "companion.intent": ("qwen-flash", False),
+        "companion.scene-switch": ("qwen3.8-flash", True),
         "planning.reply": ("qwen3.8-flash", True),
         "planning.intake": ("qwen3.7-plus-2026-05-26", True),
         "task.intake": ("qwen3.7-plus-2026-05-26", True),

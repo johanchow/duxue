@@ -26,6 +26,7 @@ class IntentRouter:
         focus_run: object | None,
         proposal: IntentProposal | None = None,
         has_image: bool = False,
+        switch_allowed: bool | None = None,
     ) -> RouteDecision:
         if self.blocks_for_safety(content):
             return RouteDecision(
@@ -64,6 +65,18 @@ class IntentRouter:
                 mode="clarify",
                 confidence=0.4,
                 route_reason="insufficient_route_confidence",
+            )
+
+        if active_type is not None and active_type != intent and switch_allowed is not True:
+            return RouteDecision(
+                target=active_type,
+                mode="continue",
+                confidence=0.7,
+                active_session_id=active_id,
+                route_reason=(
+                    "scene_switch_rejected" if switch_allowed is False
+                    else "scene_switch_unavailable"
+                ),
             )
 
         mode = (

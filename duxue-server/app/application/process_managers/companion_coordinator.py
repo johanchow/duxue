@@ -14,12 +14,14 @@ from app.application.ports.companion import (
     IntentClassifier,
     RouteDecision,
     RunInvocation,
+    SceneSwitchVerifier,
     WorkflowOutcome,
 )
 from app.application.queries.run_transcript import current_turn_images
 from app.application.workflows.planning_adapter import PlanningWorkflowAdapter
 from app.contexts.companion.domain.intent_router import IntentRouter
 from app.infrastructure.ai.intent_classifier import ModelIntentClassifier
+from app.infrastructure.ai.scene_switch_verifier import ModelSceneSwitchVerifier
 from app.infrastructure.observability.telemetry import (
     agent_step_span,
     agent_workflow_span,
@@ -68,10 +70,12 @@ class CompanionCoordinator:
     def __init__(
         self, db: Session, router: IntentRouter | None = None, dispatcher=None,
         classifier: IntentClassifier | None = None,
+        switch_verifier: SceneSwitchVerifier | None = None,
     ):
         self.db = db
         self.router = router or IntentRouter()
         self.classifier = classifier or ModelIntentClassifier()
+        self.switch_verifier = switch_verifier or ModelSceneSwitchVerifier()
         self.dispatcher = dispatcher or SqlAlchemyWorkflowDispatcher(db, planning_factory=PlanningWorkflowAdapter)
 
     @staticmethod
@@ -302,6 +306,7 @@ class CompanionCoordinator:
             visible_content = f"选择：{matching[0]['label']}"
         focus_run = self._focus_run(thread)
         proposal = None
+        switch_allowed = None
         with agent_step_span("route", "intent_route") as route_span:
             set_observation_payload(route_span, input={
                 "content": content, "route_hint": route_hint,
@@ -312,17 +317,38 @@ class CompanionCoordinator:
                     load_visible_utterances,
                 )
 
+                recent_utterances = load_visible_utterances(
+                    self.db, ward_id=ward_id, thread_id=thread.id, exclude_turn_id=None,
+                )
+                images = current_turn_images(ward_id, attachment_keys)
                 proposal = self.classifier.propose(
                     content=content, focus_agent_type=getattr(focus_run, "agent_type", None),
-                    recent_utterances=load_visible_utterances(
-                        self.db, ward_id=ward_id, thread_id=thread.id, exclude_turn_id=None,
-                    ),
-                    current_images=current_turn_images(ward_id, attachment_keys),
+                    recent_utterances=recent_utterances,
+                    current_images=images,
                 )
+                if (
+                    focus_run is not None and proposal.intent in _VALID_HINTS
+                    and proposal.intent != focus_run.agent_type
+                ):
+                    with agent_step_span("route", "switch_confirm") as switch_span:
+                        set_observation_payload(switch_span, input={
+                            "content": content,
+                            "current_agent_type": focus_run.agent_type,
+                            "proposed_agent_type": proposal.intent,
+                        })
+                        switch_allowed = self.switch_verifier.confirm(
+                            content=content, current_agent_type=focus_run.agent_type,
+                            proposed_agent_type=proposal.intent,
+                            recent_utterances=recent_utterances, current_images=images,
+                        )
+                        set_observation_payload(switch_span, output={"allow_switch": switch_allowed})
             decision = self.router.decide(
                 content=content, route_hint=route_hint, focus_run=focus_run, proposal=proposal,
                 has_image=bool(attachment_keys),
+                switch_allowed=switch_allowed,
             )
+            if proposal is not None:
+                route_span.set_attribute("agent.initial_intent", proposal.intent)
             route_span.set_attribute("agent.proposed_target", decision.target)
             route_span.set_attribute("agent.proposed_mode", decision.mode)
             set_observation_payload(route_span, output=decision.model_dump(mode="json"))

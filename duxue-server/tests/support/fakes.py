@@ -145,6 +145,14 @@ class StaticIntentClassifier:
         return IntentProposal(intent=self.intent)
 
 
+class StaticSceneSwitchVerifier:
+    def __init__(self, allowed: bool | None = True):
+        self.allowed = allowed
+
+    def confirm(self, **kwargs) -> bool | None:
+        return self.allowed
+
+
 class FakeWorkflowDispatcher:
     def __init__(self, default_outcome: WorkflowOutcome | None = None):
         self.default_outcome = default_outcome or WorkflowOutcome(

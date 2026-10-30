@@ -32,6 +32,15 @@ class IntentClassifier(Protocol):
         """
 
 
+class SceneSwitchVerifier(Protocol):
+    def confirm(
+        self, *, content: str, current_agent_type: AgentType,
+        proposed_agent_type: AgentType, recent_utterances: list[dict],
+        current_images: list[str | None],
+    ) -> bool | None:
+        """True permits a scene switch; False rejects it; None means verification failed."""
+
+
 class RouteDecision(BaseModel):
     target: RouteTarget
     mode: Literal["start", "continue", "handoff", "clarify"]

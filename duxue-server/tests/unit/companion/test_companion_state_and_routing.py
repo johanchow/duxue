@@ -13,6 +13,7 @@ from app.infrastructure.ai.intent_classifier import (
 )
 from app.infrastructure.ai.model_gateway import ModelGatewayError
 from app.infrastructure.ai.prompts import PROMPTS
+from app.infrastructure.ai.scene_switch_verifier import ModelSceneSwitchVerifier
 
 
 @pytest.fixture
@@ -96,10 +97,78 @@ def test_different_proposal_hands_off(router):
         route_hint=None,
         focus_run=focus_run,
         proposal=IntentProposal(intent="tutoring"),
+        switch_allowed=True,
     )
     assert decision.target == "tutoring"
     assert decision.mode == "handoff"
     assert decision.active_session_id == "run-plan-1"
+
+
+def test_unconfirmed_scene_switch_keeps_tutoring_focus(router):
+    focus_run = SimpleNamespace(agent_type="tutoring", id="run-tutor-1")
+    decision = router.decide(
+        content="最后结果二百三十八。",
+        route_hint=None,
+        focus_run=focus_run,
+        proposal=IntentProposal(intent="reflection"),
+        switch_allowed=False,
+    )
+    assert decision.target == "tutoring"
+    assert decision.mode == "continue"
+    assert decision.active_session_id == "run-tutor-1"
+    assert decision.route_reason == "scene_switch_rejected"
+
+
+def test_unavailable_scene_switch_check_keeps_focus(router):
+    decision = router.decide(
+        content="总结一下今天学了什么",
+        route_hint=None,
+        focus_run=SimpleNamespace(agent_type="tutoring", id="run-tutor-1"),
+        proposal=IntentProposal(intent="reflection"),
+        switch_allowed=None,
+    )
+    assert decision.target == "tutoring"
+    assert decision.route_reason == "scene_switch_unavailable"
+
+
+@pytest.mark.parametrize("payload, expected", [
+    ({"allow_switch": True}, True),
+    ({"allow_switch": False}, False),
+    ({"allow_switch": "true"}, None),
+    ({"allow_switch": True, "intent": "reflection"}, None),
+    ({}, None),
+])
+def test_scene_switch_verifier_requires_a_strict_boolean(monkeypatch, payload, expected):
+    from app.infrastructure.ai import scene_switch_verifier
+
+    calls = []
+    def invoke(**kwargs):
+        calls.append(kwargs)
+        return payload
+
+    monkeypatch.setattr(scene_switch_verifier.components, "invoke_json_component", invoke)
+    result = ModelSceneSwitchVerifier().confirm(
+        content="最后结果二百三十八。", current_agent_type="tutoring",
+        proposed_agent_type="reflection",
+        recent_utterances=[{"author": "companion", "text": "最终答案是多少？"}],
+        current_images=[],
+    )
+    assert result is expected
+    assert calls[0]["spec"].component_id == "companion.scene-switch"
+    assert "最终答案是多少" in calls[0]["user"][0]["text"]
+
+
+def test_scene_switch_verifier_fails_closed_on_model_error(monkeypatch):
+    from app.infrastructure.ai import scene_switch_verifier
+
+    def unavailable(**kwargs):
+        raise ModelGatewayError("model_transport_error")
+
+    monkeypatch.setattr(scene_switch_verifier.components, "invoke_json_component", unavailable)
+    assert ModelSceneSwitchVerifier().confirm(
+        content="总结今天的学习", current_agent_type="tutoring",
+        proposed_agent_type="reflection", recent_utterances=[], current_images=[],
+    ) is None
 
 
 def test_image_without_explicit_intent_starts_planning(router):

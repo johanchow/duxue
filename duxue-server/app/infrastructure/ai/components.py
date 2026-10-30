@@ -142,6 +142,13 @@ COMPONENTS = ComponentRegistry(
         accepts_images=False,
     ),
     ComponentSpec(
+        component_id="companion.scene-switch", version="v1", operation="scene_switch_check",
+        agent_label="tutoring", risk_tier="standard", model=REPLY_FLASH,
+        prompt=PROMPTS["companion.scene-switch.system.v1"],
+        input_contract="scene-switch-input.v1", output_contract="scene-switch-verdict.v1",
+        max_tokens=40, temperature=0,
+    ),
+    ComponentSpec(
         component_id="planning.reply", version="v2", operation="agent_text",
         agent_label="planning", risk_tier="standard", model=REPLY_FLASH,
         prompt=PROMPTS["companion.agent-text.system.v2"],

@@ -224,6 +224,8 @@ Repository/ORM 或创建多 Context 全局事务。
 也不能自行决定 `mode` 或创建 Run。`HandleCompanionTurn` 校验该提议属于这个闭集；非法 JSON、
 闭集之外的值、提供者关闭或调用失败都视为 `unclear`。
 
+已有 focus 且提议指向另一业务场景时，Coordinator 额外调用独立的场景切换核查组件，核对本轮原句、最近已授权对话、当前场景与提议目标。初次提议不作为切换证据；只有核查明确允许才切换，否决、非法输出或调用失败均继续原 focus，并分别记录 `scene_switch_rejected` / `scene_switch_unavailable`。同场景续接、无 focus、安全短路和已验证 UI 动作不调用该组件。组件本身不创建 Run、不回答孩子，也不替代原意图模型。图片继续按已授权窗口提供给核查组件，不向 Trace 写入图片字节。
+
 代码按固定优先级把已校验提议变成 `RouteDecision`：
 
 
@@ -233,7 +235,8 @@ Repository/ORM 或创建多 Context 全局事务。
 | 2   | 已验证 UI        | `route_hint` 属于 `planning` / `tutoring` / `reflection` | 该目标，`mode=start`，不调用模型         |
 | 3   | 模型提议 + Domain | `unclear` 或没有有效提议                                      | `clarify`，不建 Run；无明确意图的图片且无焦点或焦点为 Planning 时进入 Planning |
 | 4   | 模型提议 + Domain | 提议与 focus 的场景相同                                        | `continue`                     |
-| 5   | 模型提议 + Domain | 提议是另一个业务场景，或没有 focus                                   | 有 focus 时 `handoff`，否则 `start` |
+| 5   | 模型提议 + Domain | 没有 focus，或异场景提议经独立核查允许                                   | 无 focus 时 `start`，核查允许时 `handoff` |
+| 6   | 独立核查 + Domain | 异场景提议被否决或核查不可用                                   | `continue` 原 focus |
 
 
 同时出现多个业务意图时，模型必须提议 `unclear`，由代码进入澄清，不得猜测其中一个。
@@ -247,7 +250,7 @@ Repository/ORM 或创建多 Context 全局事务。
 
 | 触发                   | Interface                                 | Use Case / Process Manager                      | 本地行为                                                                                                                              | 后续                                   | 一致性、幂等与失败                                                              |
 | -------------------- | ----------------------------------------- | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ | ---------------------------------------------------------------------- |
-| Ward 文本、ASR 或 UI 动作  | `POST /companion/turn`                    | `HandleCompanionTurn`                           | load Thread → 安全或已验证 `route_hint` 短路，否则一次意图模型调用 → `route()` → start/resume Link → version++ → append accepted Ward journal record | `RunRouted`、最小 Trace、`RunInvocation` | optimistic lock；`command_id` 重试返原结果；澄清/安全不建 Run，但写入已校验的 Ward-facing 回复 |
+| Ward 文本、ASR 或 UI 动作  | `POST /companion/turn`                    | `HandleCompanionTurn`                           | load Thread → 安全或已验证 `route_hint` 短路，否则意图模型调用，异场景提议按需独立核查 → `route()` → start/resume Link → version++ → append accepted Ward journal record | `RunRouted`、最小 Trace、`RunInvocation` | optimistic lock；`command_id` 重试返原结果；澄清/安全不建 Run，但写入已校验的 Ward-facing 回复 |
 | focus Run 续接         | 同上                                        | `ResumeAgentRun`                                | 校验状态和 checkpoint/policy → `resume()`                                                                                              | 新 attempt 的 Invocation               | `run_id + turn_id` 唯一；不兼容返回重新审阅                                        |
 | 明确新目标或受验证 UI         | 同上                                        | `HandoffRun`                                    | 原 Link pause/close，创建/恢复目标 Link，更新 focus                                                                                          | `RunHandedOff`                       | 同一 Thread 事务；没有明确意图则澄清                                                 |
 | Workflow 返回结果        | completion adapter                        | `RecordWorkflowOutcome`                         | fence `run_id + attempt + focus` → `record_outcome()` → append validated companion journal record                                 | Trace / 可恢复引用                        | 重复无副作用；迟到 Outcome 不夺回回复权或写可见消息                                         |
