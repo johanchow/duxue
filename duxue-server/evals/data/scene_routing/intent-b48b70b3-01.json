@@ -1,0 +1,51 @@
+{
+  "id": "intent-b48b70b3-01",
+  "component": "companion.intent",
+  "conversation_id": "b48b70b3",
+  "turn_index": 1,
+  "history": [
+    {
+      "author": "ward",
+      "text": "为什么会有？打雷的情况。",
+      "images": []
+    },
+    {
+      "author": "companion",
+      "text": "我还没分清你是想安排学习、问一个问题，还是复盘今天。你直接说一件就好。",
+      "images": []
+    }
+  ],
+  "student_said": "我就是直接问问，不是任务问。",
+  "images": [],
+  "context": {
+    "problem": null,
+    "task_title": null,
+    "task_active": false,
+    "tutoring_intent": null,
+    "focus_agent_type": null
+  },
+  "expect": {
+    "outcome_in": [],
+    "outcome_not_in": [
+      "fallback"
+    ],
+    "lesson_source_contains_any": [],
+    "content_contains_any": [],
+    "content_not_contains": [],
+    "intent_in": [
+      "tutoring"
+    ]
+  },
+  "tags": [
+    "intent",
+    "regression-unclear"
+  ],
+  "source": "real",
+  "flags": [
+    "intent_unclear"
+  ],
+  "label_status": "proposed",
+  "reviewed_by": null,
+  "note": "同一线程的追问：孩子已经说明是在问问题。 首批复核：结合上一轮打雷问题，判断追问是否仍属答疑；当前标注有争议",
+  "review_batch": "seed-v1"
+}

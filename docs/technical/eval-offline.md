@@ -1,6 +1,6 @@
 # 读学系统 — 答疑离线评测设计
 
-> 状态：单步 62 条（57 `proposed`、5 `needs_decision`）+ 多轮 2 段（均 `proposed`）；其中 `seed-v1` 为 16 单步 + 2 多轮，0 条 `confirmed` · 版本：v1.4
+> 状态：单步 16 条 + 多轮 2 段，全部为 `review_batch: seed-v1` 且 `proposed`，0 条 `confirmed` · 版本：v1.5
 > 范围：对 AI Component（首批为 `tutoring.turn`、`companion.intent`）的离线回放、判分、报告与数据集治理。  
 > 关联：[Agent 配置设计](design-agent.md) · [Tutoring Domain](domain-tutoring.md) · [Companion 编排](domain-companion.md) · 决策笔记 `.agent/notes/117-tutoring-offline-eval.md`
 
@@ -53,7 +53,7 @@ flowchart LR
         R --> I[ModelIntentClassifier]
         I --> C2[complete_intent]
         C2 --> C
-        D[(evals/data/*.jsonl)] --> R
+        D[(evals/data/*/*.json)] --> R
         R --> S[Grader + Report]
         S --> O[(var/evals/*.json)]
     end
@@ -91,27 +91,27 @@ flowchart LR
 
 ### 5.1 记录：一个决策点
 
-JSONL，一行一条，位于 `duxue-server/evals/data/<类别>/`。每条单步用例只有一个主类别目录，交叉维度仍用 `tags`；`multi_turn/episodes.jsonl` 使用独立的会话 schema，不进入单步通过率。
+每个类别一个目录。每条用例一个缩进排版的 JSON 文件，文件名与 `id` 相同，便于继续追加而不把一个文件越写越长。交叉维度仍用 `tags`；`multi_turn/` 里每个文件是一段会话，使用独立 schema，不进入单步通过率。
 
 | 主类别目录 | 单步条数 | 主测问题 |
 | --- | ---: | --- |
-| `scene_routing/` | 13 | 场景意图与上下文追问；含询问最近问过什么不得进复盘 |
-| `real_regression/` | 17 | 真实线程故障回归 |
-| `answer_protection/` | 7 | 作业答案、代做、计算题确认与选择题试探 |
-| `pronunciation_context/` | 3 | 发音与上下文指代 |
-| `visual/` | 9 | 图文展示与图中泄题；含真实除法竖式重画回归 |
-| `fact_vs_reasoning/` | 9 | 事实直答和推理题保护 |
+| `scene_routing/` | 2 | 场景意图与上下文追问 |
+| `real_regression/` | 2 | 真实线程故障回归 |
+| `answer_protection/` | 2 | 作业答案保护与计算题确认 |
+| `pronunciation_context/` | 2 | 发音与上下文指代 |
+| `visual/` | 2 | 图文展示与图中泄题 |
+| `fact_vs_reasoning/` | 2 | 事实直答和推理题保护 |
 | `teaching_quality/` | 2 | 错误认可与新证据后的引导 |
 | `safety/` | 2 | 自伤求助、欺凌与伤人风险的主组件安全动作 |
 | `multi_turn/` | 2 段 | 六轮内根据学生新证据调整引导 |
 
-保留上轮扩充前父版本的 49 条单步历史用例，另保留首批候选中新增的 8 条单步及 2 段多轮；本轮针对新确认口径另补 1 条选择题试探单步用例（`turn-protect-06`，未进入 `seed-v1`）。公开数据只借鉴教学维度和失败形态，不收录其原文。CoMTA 原文不得进入仓库。
+入库的只有 `review_batch: seed-v1`。公开数据只借鉴教学维度和失败形态，不收录其原文。CoMTA 原文不得进入仓库。
 
 ### 首批分层人工复核候选
 
 种子身份直接写在用例的 `review_batch: "seed-v1"`，复核要点写在该用例的 `note`，不另建选例清单。九个角度各 2 个，共 16 个单步 + 2 段多轮；覆盖产品的提问路由、真实故障、答案保护、发音指代、图文、事实/推理、教学质量、多轮调整及儿童安全。`review_batch` 与 `label_status` 正交：前者是复核批次，后者才表示人工是否确认。选例不是随机样本，不得把其通过率外推到线上。
 
-人工确认时先核对原题、上下文、期望动作和正向教学要求，再看失败输出。新口径：计算题、问答题在孩子提出完整答案且能够独立核验时可以确认或纠错；选择题、判断题等可逐项试探的题不能逐项确认。`turn-protect-05` 可确认正确的 `x=4`，`turn-protect-06` 不能确认猜中的 B；`turn-rubric-00` 把错误 `x=7` 说对仍是缺陷。多轮 `episode-socrateach-uncertain-correct` 不再以字面出现 `42` 判失败。以上准确性、试探变体与引导质量都不能由字面断言代替，须人工复核；`intent-b48b70b3-01` 的路由语义也待复核。存在争议时保留 `proposed` 或改 `needs_decision`，不得为了提高通过率直接放宽标注。人工复核完成后，才由复核人填写 `reviewed_by` 并改为 `confirmed`；答案泄露、儿童安全、明显学科错误宜由产品/教研和技术双人核对。
+人工确认时先核对原题、上下文、期望动作和正向教学要求，再看失败输出。新口径：计算题、问答题在孩子提出完整答案且能够独立核验时可以确认或纠错；选择题、判断题等可逐项试探的题不能逐项确认。`turn-protect-05` 可确认正确的 `x=4`；`turn-rubric-00` 把错误 `x=7` 说对仍是缺陷。多轮 `episode-socrateach-uncertain-correct` 不再以字面出现 `42` 判失败。以上准确性、试探变体与引导质量都不能由字面断言代替，须人工复核；`intent-b48b70b3-01` 的路由语义也待复核。存在争议时保留 `proposed` 或改 `needs_decision`，不得为了提高通过率直接放宽标注。人工复核完成后，才由复核人填写 `reviewed_by` 并改为 `confirmed`；答案泄露、儿童安全、明显学科错误宜由产品/教研和技术双人核对。
 
 新增 `safety/` 两例只重放主答疑组件对风险输入是否产生 `act=safety`（评测结果 `blocked`）。当前 runner 不经过生产的独立输入/输出安全审核端口，也不验证 Guardian 通知，因此这两例**不能**作为儿童安全全链路通过证明；全链路验证需另补集成/生产级评测。
 
@@ -164,11 +164,11 @@ JSONL，一行一条，位于 `duxue-server/evals/data/<类别>/`。每条单步
 
    flag 只用于挑选和提示，是启发式，不是真值。
 3. **补全**：人工填 `expect`、`tags`、`context`。`context` 里无法从对话还原的部分（开放作业题状态等）必须手工补；`task_active` 由回复中是否出现"回任务"提醒推断。
-4. **复核**：人工确认后设 `confirmed` 与 `reviewed_by`，把行并入 `evals/data/`。导出的候选在 `var/evals/candidates/`，不入库。
+4. **复核**：人工确认后设 `confirmed` 与 `reviewed_by`，按 `id` 存成对应类别目录里的一个 JSON 文件。导出的候选在 `var/evals/candidates/`，不入库。
 
 ### 5.4 合成哨兵（guard）
 
-≤6 条带 `guard` 标签的作业答案保护 Case（直接要答案、要完整解法、反复卡住、换说法套答案、发音夹带答案）。它们不是线上故障，只用于：改发音/澄清契约时，同时确认答案保护没有退化——对应论文中"优化一个指标容易误伤另一个"的教训。必须明确标注来源，不与真实 Case 混算。
+带 `guard` 标签的作业答案保护 Case 不超过 6 条（直接要答案、要完整解法、反复卡住、换说法套答案、发音夹带答案）。当前保留 `turn-guard-01`。它们不是线上故障，只用于：改发音/澄清契约时，同时确认答案保护没有退化——对应论文中"优化一个指标容易误伤另一个"的教训。必须明确标注来源，不与真实 Case 混算。
 
 另保留 2 条 `rubric` 标签的合成 Case（`proposed`，不占 `guard` 名额）：错误认可和学生给出新证据后的引导。场景维度借自公开数据调研，学生句与历史自行编写。自动断言只覆盖结果类别及部分文本要求，教学正确性仍须人工复核；复核前不计入 primary。
 
@@ -183,19 +183,11 @@ JSONL，一行一条，位于 `duxue-server/evals/data/<类别>/`。每条单步
 
 - 数据集会饱和：高通过率后区间宽到测不出提升，此时**不再往里堆会通过的 Case**，而是从新的线上故障补会失败的。
 - 数据集内容变化即 `dataset_hash` 变化；哈希不同的结果不可比较。
-- 原首批数据集（30 条，已包含在当前 58 条中）：
-
-  | 来源 | 内容 |
-  | --- | --- |
-  | 线程 `ab8f80d3`（8 条） | 鞋→shoe 直答；"这个单词怎么读" ×3（含一次 fallback、一次澄清）；澄清后的编号选择 ×3（`needs_decision`）；带词的发音（对照） |
-  | 线程 `97103aaf`（7 条） | "写日记"（`needs_decision`）；成语、造句（对照）；看图问英文；"这个怎么读"、"第四句"、"是的，是的"（图片发音链） |
-  | 线程 `b48b70b3`（3 条意图） | 打雷提问及两次追问（当时因意图调用 404 被固定澄清） |
-  | 线程 `97103aaf`（7 条意图） | 同一线程的场景判定 |
-  | synthetic（5 条） | 答案保护哨兵 |
+- 当前入库集合就是 `seed-v1` 的 16 条单步和 2 段多轮。不在该批次里的历史单步已移出，避免未复核或口径不一致的用例混入通过率。
 
 ### 5.7 多轮会话
 
-`multi_turn/episodes.jsonl` 每行一段 6 轮会话，包含 `id`、`inspired_by`、`review_batch`、`label_status`、`turns`；每轮给出学生原句、注入的题目上下文、具体 `expect`，可选 `student_on` 按前一轮导师的 `outcome` 选择后续学生句。现保留 MathDial、SocraTeach 场景各 1 段；文本均自行编写，不含公开数据原文。
+`multi_turn/<id>.json` 每文件一段 6 轮会话，包含 `id`、`inspired_by`、`review_batch`、`label_status`、`turns`；每轮给出学生原句、注入的题目上下文、具体 `expect`，可选 `student_on` 按前一轮导师的 `outcome` 选择后续学生句。现保留 MathDial、SocraTeach 场景各 1 段；文本均自行编写，不含公开数据原文。
 
 Runner 顺序调用与生产单步相同的组件路径，把**实际展示的导师回复**写入后续窗口（最多 8 句）；一轮失败即停止该次会话，避免继续喂入与回复不连贯的预写学生句。每段默认采样 3 次，报告逐段 `stable_pass`、`any_pass` 和失败轮次，与单步报告分开。当前学生输入由脚本及有限的 `student_on` 分支驱动，题目上下文按标注注入；这能检验连续回复与窗口一致性，**不等于完整生产 Aggregate 的状态迁移，也不能单靠字面断言证明教学质量**。教学递进、解释正确性和学生状态适应仍需人工复核；引入自动 judge 前须建立中文校准集。
 
@@ -297,8 +289,8 @@ LLM judge 有自己的假阳/假阴率；论文也承认连自家的 Math Error 
 在 `duxue-server/` 下（`PYTHONPATH=.`）：
 
 ```
-python -m evals validate                                     # 校验数据集；无网络、无需密钥
-python -m evals validate --batch seed-v1                     # 校验 16 单步 + 2 多轮人工复核候选
+python -m evals validate                                     # 校验全部 16 单步 + 2 多轮；无网络、无需密钥
+python -m evals validate --batch seed-v1                     # 与上一行相同，当前数据集只有这一批
 python -m evals validate --category teaching_quality         # 只校验一个单步类别
 python -m evals run --samples 5                              # 两个组件基线；联网
 python -m evals run --batch seed-v1 --samples 5               # 只跑候选单步；联网
@@ -320,7 +312,7 @@ python -m evals compare var/evals/<A>.json var/evals/<B>.json
 
 **通过阈值（v1）**：不设自动硬门槛。下列改动发布前必须人工跑一次并留存结果：换模型、改 `tutoring.turn` / `companion.intent` 的 prompt、改 `tutor-turn` 契约或出口检查。要求：`confirmed` 集稳定通过的 Case 数不低于上次基线，fallback 率不升，guard 不退化；落在区间内的变化一律按噪声处理。待 `confirmed` 集足够大后再收紧为自动门槛，不为小数据集固化百分比。
 
-新增保留的 10 个评测单元仍全是 `proposed`，不得用于发布放行。人工复核后，答案泄露、儿童安全、明显学科错误按单次失败人工排查；普通单步先以 5 次采样至少 4 次符合具体断言为候选标准，多轮先以 3 次至少 2 次整段通过为候选标准，并与上次基线比较。只有复核和基线足够稳定后才把这些候选标准设成自动门槛；阶段编号单调递增不是通过条件，困惑时退回更小目标可以是正确教学。
+当前 16 条单步与 2 段多轮全是 `proposed`，不得用于发布放行。人工复核后，答案泄露、儿童安全、明显学科错误按单次失败人工排查；普通单步先以 5 次采样至少 4 次符合具体断言为候选标准，多轮先以 3 次至少 2 次整段通过为候选标准，并与上次基线比较。只有复核和基线足够稳定后才把这些候选标准设成自动门槛；阶段编号单调递增不是通过条件，困惑时退回更小目标可以是正确教学。
 
 ## 十、局限与风险
 

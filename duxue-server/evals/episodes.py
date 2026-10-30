@@ -12,7 +12,7 @@ from pydantic import Field, ValidationError, model_validator
 from evals import dataset
 from evals.schema import Context, EvalCase, Expect, OUTCOMES, Strict, Utterance
 
-EPISODES_FILE = dataset.DATA_DIR / "multi_turn" / "episodes.jsonl"
+EPISODES_DIR = dataset.DATA_DIR / "multi_turn"
 Origin = Literal["MathDial", "SocraTeach", "CoMTA", "self"]
 
 
@@ -46,16 +46,16 @@ class Episode(Strict):
     note: str
 
 
-def load_episodes(path: Path = EPISODES_FILE) -> list[Episode]:
+def load_episodes(path: Path = EPISODES_DIR) -> list[Episode]:
+    if not path.exists():
+        return []
+    files = [path] if path.is_file() else sorted(path.glob("*.json"))
     rows: list[Episode] = []
-    if not path.is_file():
-        return rows
-    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-        if line.strip():
-            try:
-                rows.append(Episode.model_validate(json.loads(line)))
-            except (ValidationError, ValueError) as error:
-                raise ValueError(f"{path.name}:{number}: {error}") from error
+    for file in files:
+        try:
+            rows.append(Episode.model_validate(dataset.read_object(file)))
+        except (ValidationError, ValueError) as error:
+            raise ValueError(f"{file.name}: {error}") from error
     return rows
 
 

@@ -1,0 +1,33 @@
+{
+  "id": "turn-depth-extra-02",
+  "component": "tutoring.turn",
+  "conversation_id": "supplement",
+  "turn_index": 0,
+  "history": [],
+  "student_said": "What is evaporation?",
+  "images": [],
+  "context": {},
+  "expect": {
+    "outcome_in": [
+      "answer"
+    ],
+    "content_contains_any": [
+      "蒸发",
+      "liquid",
+      "gas",
+      "vapor"
+    ]
+  },
+  "tags": [
+    "depth",
+    "depth-recall",
+    "science",
+    "english"
+  ],
+  "source": "synthetic",
+  "flags": [],
+  "label_status": "proposed",
+  "reviewed_by": null,
+  "note": "自写：科学定义可直答。 首批复核：科学事实可直接回答",
+  "review_batch": "seed-v1"
+}

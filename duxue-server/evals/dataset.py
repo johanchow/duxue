@@ -74,60 +74,77 @@ def pii_findings(case: EvalCase) -> list[str]:
     return sorted(set(found))
 
 
-def parse_line(line: str, where: str) -> EvalCase:
+def read_object(path: Path) -> dict:
+    """One case file is one pretty-printed JSON object."""
+    text = path.read_text(encoding="utf-8").strip()
+    if not text:
+        raise ValueError(f"{path.name}: empty file")
     try:
-        return EvalCase.model_validate(json.loads(line))
-    except (ValueError, ValidationError) as error:
-        raise ValueError(f"{where}: {error}") from error
+        data = json.loads(text)
+    except json.JSONDecodeError as error:
+        raise ValueError(f"{path.name}: invalid JSON ({error})") from error
+    if not isinstance(data, dict):
+        raise ValueError(f"{path.name}: expected one JSON object")
+    return data
+
+
+def _case_files(path: Path) -> list[Path]:
+    if path.is_file():
+        return [path]
+    return sorted(
+        file for file in path.rglob("*.json")
+        if "multi_turn" not in file.relative_to(path).parts
+    )
 
 
 def load_cases(path: Path | None = None) -> list[EvalCase]:
-    """Single-turn cases from a file or category tree, in stable file order."""
+    """Single-turn cases from one file or a category tree, in filename order."""
     path = path if path is not None else DATA_DIR
-    files = [path] if path.is_file() else sorted(
-        file for file in path.rglob("*.jsonl") if "multi_turn" not in file.parts
-    )
     cases: list[EvalCase] = []
-    for file in files:
-        for number, line in enumerate(file.read_text(encoding="utf-8").splitlines(), start=1):
-            if line.strip():
-                cases.append(parse_line(line, f"{file.name}:{number}"))
+    for file in _case_files(path):
+        try:
+            record = read_object(file)
+            cases.append(EvalCase.model_validate(record))
+        except (ValueError, ValidationError) as error:
+            raise ValueError(f"{file.name}: {error}") from error
     return cases
 
 
 def validate_layout(path: Path = DATA_DIR) -> list[str]:
-    """Keep one owning folder per category and keep episodes out of single-turn files."""
+    """One directory per category; each case is its own JSON file named after its id."""
     problems: list[str] = []
     for category in CATEGORIES:
         folder = path / category
         if not folder.is_dir():
             problems.append(f"missing category folder: {category}")
             continue
-        if category != "multi_turn" and not (folder / "cases.jsonl").is_file():
-            problems.append(f"missing cases.jsonl: {category}")
-        if category == "multi_turn" and not (folder / "episodes.jsonl").is_file():
-            problems.append("missing episodes.jsonl: multi_turn")
-        if category != "multi_turn" and not load_cases(folder):
+        if not list(folder.glob("*.json")):
             problems.append(f"empty category: {category}")
-        if category == "multi_turn" and (folder / "episodes.jsonl").is_file():
-            if not (folder / "episodes.jsonl").read_text(encoding="utf-8").strip():
-                problems.append("empty category: multi_turn")
-    for file in path.rglob("*.jsonl"):
-        if file.parent.name == "multi_turn":
-            continue
-        if file.parent.name not in SINGLE_TURN_CATEGORIES or file.parent.parent != path:
-            problems.append(f"unexpected single-turn file: {file.relative_to(path)}")
+    for file in list(path.rglob("*.json")) + list(path.rglob("*.jsonl")):
+        if file.parent == path or file.parent.parent != path or file.parent.name not in CATEGORIES:
+            problems.append(f"unexpected dataset file: {file.relative_to(path)}")
             continue
         category = file.parent.name
-        for case in load_cases(file):
-            if category == "scene_routing" and case.component != "companion.intent":
-                problems.append(f"{case.id}: scene_routing requires companion.intent")
-            elif category == "real_regression" and (case.component != "tutoring.turn" or case.source != "real"):
-                problems.append(f"{case.id}: real_regression requires a real tutoring turn")
-            elif category in CATEGORY_TAGS and CATEGORY_TAGS[category] not in case.tags:
-                problems.append(f"{case.id}: missing category tag {CATEGORY_TAGS[category]}")
-    if any(path.glob("*.jsonl")):
-        problems.append("single-turn files must live in a category folder")
+        try:
+            record = read_object(file)
+        except ValueError as error:
+            problems.append(str(error))
+            continue
+        if record.get("id") != file.stem:
+            problems.append(f"{file.relative_to(path)}: filename must match id")
+        if category == "multi_turn":
+            continue
+        try:
+            case = load_cases(file)[0]
+        except (ValueError, IndexError) as error:
+            problems.append(str(error))
+            continue
+        if category == "scene_routing" and case.component != "companion.intent":
+            problems.append(f"{case.id}: scene_routing requires companion.intent")
+        elif category == "real_regression" and (case.component != "tutoring.turn" or case.source != "real"):
+            problems.append(f"{case.id}: real_regression requires a real tutoring turn")
+        elif category in CATEGORY_TAGS and CATEGORY_TAGS[category] not in case.tags:
+            problems.append(f"{case.id}: missing category tag {CATEGORY_TAGS[category]}")
     return problems
 
 

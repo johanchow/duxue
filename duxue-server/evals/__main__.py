@@ -200,7 +200,7 @@ def cmd_export(args) -> int:
     out.write_text("\n".join(c.model_dump_json() for c in cases) + "\n", encoding="utf-8")
     flagged = sum(bool(c.flags) for c in cases)
     print(f"{len(cases)} 个决策点（{flagged} 个被自动标记）→ {out}")
-    print("下一步：补 expect/tags/context，人工复核后把行并入 evals/data/*.jsonl，再设 confirmed + reviewed_by。")
+    print("下一步：补 expect/tags/context，人工复核后放到对应类别目录，文件名与 id 相同，再设 confirmed + reviewed_by。")
     for problem in problems:
         print(f"! {problem}")
     return 0

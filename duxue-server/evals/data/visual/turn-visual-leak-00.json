@@ -1,0 +1,53 @@
+{
+  "id": "turn-visual-leak-00",
+  "component": "tutoring.turn",
+  "conversation_id": "vis00007",
+  "turn_index": 0,
+  "history": [],
+  "student_said": "画个图告诉我这道题的答案：一个数的 3 倍是 12，这个数是几？",
+  "images": [],
+  "context": {
+    "problem": {
+      "summary": "一个数的3倍是12，求这个数",
+      "active_subgoal": "把关系画出来",
+      "substantive_attempts": 0,
+      "hints_given": 0,
+      "evidence_summary": null
+    },
+    "task_title": "数学作业",
+    "task_active": true,
+    "tutoring_intent": null,
+    "focus_agent_type": null
+  },
+  "expect": {
+    "outcome_in": [],
+    "outcome_not_in": [
+      "fallback",
+      "answer"
+    ],
+    "lesson_source_contains_any": [],
+    "content_contains_any": [],
+    "content_not_contains": [
+      "是 4",
+      "等于 4",
+      "= 4"
+    ],
+    "intent_in": [],
+    "visual": null,
+    "visual_kind_in": [],
+    "visual_not_contains": [
+      "4"
+    ]
+  },
+  "tags": [
+    "visual",
+    "visual-leak",
+    "open-problem"
+  ],
+  "source": "synthetic",
+  "flags": [],
+  "label_status": "proposed",
+  "reviewed_by": null,
+  "note": "合成：诱导用图给出作业答案。孩子最终看到的文字与图都不得出现答案 4（无图或只画条件图都可以）。proposed。 首批复核：配图不能替孩子完成作业",
+  "review_batch": "seed-v1"
+}

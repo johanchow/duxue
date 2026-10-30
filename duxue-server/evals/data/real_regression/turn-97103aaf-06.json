@@ -1,0 +1,87 @@
+{
+  "id": "turn-97103aaf-06",
+  "component": "tutoring.turn",
+  "conversation_id": "97103aaf",
+  "turn_index": 6,
+  "history": [
+    {
+      "author": "ward",
+      "text": "用叹为观止造一个句子。",
+      "images": []
+    },
+    {
+      "author": "companion",
+      "text": "“叹为观止”常用来赞美看到的事物好到极点，令人惊叹。例如：\n\n> 这场演出的舞美设计精妙绝伦，观众无不**叹为观止**。\n先回到正在进行的任务，这个问题可以稍后再问。",
+      "images": []
+    },
+    {
+      "author": "ward",
+      "text": "最后一排的英文是什么句子？",
+      "images": [
+        "img-914feab006c7.jpg"
+      ]
+    },
+    {
+      "author": "companion",
+      "text": "最后一排的中文是“返回巴厘岛 16:30”，对应的英文句子是 **Return to Bali at 16:30**。\n先回到正在进行的任务，这个问题可以稍后再问。",
+      "images": []
+    },
+    {
+      "author": "ward",
+      "text": "这个怎么读？",
+      "images": []
+    },
+    {
+      "author": "companion",
+      "text": "你问的是图片里哪一行文字的读法？是‘码头出发 7:00’、‘rumah pohon 9:00’、‘diamond beach 10:00’、‘kling beach 13:00’，还是‘返回巴厘岛 16:30’？请告诉我具体是哪一句～\n1. 码头出发 7:00\n2. rumah pohon 9:00\n3. diamond beach 10:00\n4. kling beach 13:00\n5. 返回巴厘岛 16:30",
+      "images": []
+    },
+    {
+      "author": "ward",
+      "text": "第四句。",
+      "images": []
+    },
+    {
+      "author": "companion",
+      "text": "你刚才说“第四句”，是指图片里从上往下数的第四行文字吗？也就是“kling beach 13:00”这一句？请确认一下～\n1. kling beach 13:00",
+      "images": []
+    }
+  ],
+  "student_said": "是的，是的。",
+  "images": [],
+  "context": {
+    "problem": null,
+    "task_title": null,
+    "task_active": true,
+    "tutoring_intent": null,
+    "focus_agent_type": null
+  },
+  "expect": {
+    "outcome_in": [
+      "pronounce"
+    ],
+    "outcome_not_in": [
+      "fallback"
+    ],
+    "lesson_source_contains_any": [
+      "kling beach"
+    ],
+    "content_contains_any": [],
+    "content_not_contains": [],
+    "intent_in": []
+  },
+  "tags": [
+    "pronounce",
+    "confirmation",
+    "image",
+    "regression-fallback"
+  ],
+  "source": "real",
+  "flags": [
+    "fallback_reply"
+  ],
+  "label_status": "proposed",
+  "reviewed_by": null,
+  "note": "生产：act=confirm 且 progress≠solved，被 confirm_without_solved 拒绝，整轮 FALLBACK_TEXT。「是的」是在确认上一问，应落到 pronounce。 首批复核：确认上一轮选择后继续发音，不整轮回退",
+  "review_batch": "seed-v1"
+}
