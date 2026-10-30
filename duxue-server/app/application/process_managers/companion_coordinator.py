@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
 
+from app.agent_specs.catalog import load_catalog
 from app.application.ports.companion import (
     CoordinatorResult,
     IntentClassifier,
@@ -305,48 +306,61 @@ class CompanionCoordinator:
             turn["structured_command"] = None
             visible_content = f"选择：{matching[0]['label']}"
         focus_run = self._focus_run(thread)
-        proposal = None
-        switch_allowed = None
+        from app.agent_specs.runtime import execute_workflow
+
+        def classify(state):
+            state["proposal"] = None
+            state["switch_allowed"] = None
+            if self.router.blocks_for_safety(content) or route_hint in _VALID_HINTS:
+                return
+            from app.application.queries.run_transcript import load_visible_utterances
+            state["recent_utterances"] = load_visible_utterances(
+                self.db, ward_id=ward_id, thread_id=thread.id, exclude_turn_id=None,
+            )
+            state["images"] = current_turn_images(ward_id, attachment_keys)
+            state["proposal"] = self.classifier.propose(
+                content=content, focus_agent_type=getattr(focus_run, "agent_type", None),
+                recent_utterances=state["recent_utterances"], current_images=state["images"],
+            )
+
+        def cross_scene(state):
+            proposal = state["proposal"]
+            return bool(focus_run is not None and proposal is not None and proposal.intent in _VALID_HINTS
+                        and proposal.intent != focus_run.agent_type)
+
+        def verify_switch(state):
+            from app.agent_specs.runtime import GateDecision
+            with agent_step_span("route", "switch_confirm") as span:
+                set_observation_payload(span, input={
+                    "content": content, "current_agent_type": focus_run.agent_type,
+                    "proposed_agent_type": state["proposal"].intent,
+                })
+                state["switch_allowed"] = self.switch_verifier.confirm(
+                    content=content, current_agent_type=focus_run.agent_type,
+                    proposed_agent_type=state["proposal"].intent,
+                    recent_utterances=state["recent_utterances"], current_images=state["images"],
+                )
+                set_observation_payload(span, output={"allow_switch": state["switch_allowed"]})
+                return GateDecision("allow" if state["switch_allowed"] is True else "deny", "scene_switch")
+
+        def decide(state):
+            return self.router.decide(
+                content=content, route_hint=route_hint, focus_run=focus_run, proposal=state["proposal"],
+                has_image=bool(attachment_keys), switch_allowed=state["switch_allowed"],
+            )
+
         with agent_step_span("route", "intent_route") as route_span:
             set_observation_payload(route_span, input={
                 "content": content, "route_hint": route_hint,
                 "focus_agent_type": getattr(focus_run, "agent_type", None),
             })
-            if not self.router.blocks_for_safety(content) and route_hint not in _VALID_HINTS:
-                from app.application.queries.run_transcript import (
-                    load_visible_utterances,
-                )
-
-                recent_utterances = load_visible_utterances(
-                    self.db, ward_id=ward_id, thread_id=thread.id, exclude_turn_id=None,
-                )
-                images = current_turn_images(ward_id, attachment_keys)
-                proposal = self.classifier.propose(
-                    content=content, focus_agent_type=getattr(focus_run, "agent_type", None),
-                    recent_utterances=recent_utterances,
-                    current_images=images,
-                )
-                if (
-                    focus_run is not None and proposal.intent in _VALID_HINTS
-                    and proposal.intent != focus_run.agent_type
-                ):
-                    with agent_step_span("route", "switch_confirm") as switch_span:
-                        set_observation_payload(switch_span, input={
-                            "content": content,
-                            "current_agent_type": focus_run.agent_type,
-                            "proposed_agent_type": proposal.intent,
-                        })
-                        switch_allowed = self.switch_verifier.confirm(
-                            content=content, current_agent_type=focus_run.agent_type,
-                            proposed_agent_type=proposal.intent,
-                            recent_utterances=recent_utterances, current_images=images,
-                        )
-                        set_observation_payload(switch_span, output={"allow_switch": switch_allowed})
-            decision = self.router.decide(
-                content=content, route_hint=route_hint, focus_run=focus_run, proposal=proposal,
-                has_image=bool(attachment_keys),
-                switch_allowed=switch_allowed,
+            routing = execute_workflow(
+                load_catalog().spec("companion"),
+                handlers={"companion.intent": classify, "companion.scene-switch": verify_switch, "decide": decide},
+                conditions={"cross_scene": cross_scene, "direct": lambda state: not cross_scene(state)},
             )
+            decision = routing["results"]["companion.final_route"]
+            proposal = routing["proposal"]
             if proposal is not None:
                 route_span.set_attribute("agent.initial_intent", proposal.intent)
             route_span.set_attribute("agent.proposed_target", decision.target)

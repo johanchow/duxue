@@ -1,0 +1,93 @@
+{
+  "kind": "workflow",
+  "id": "tutoring-vet",
+  "version": "v1",
+  "handler": "tutoring-vet",
+  "entry": "tutoring-vet.authority",
+  "nodes": [
+    {
+      "id": "tutoring-vet.authority",
+      "kind": "gate",
+      "ref": "tutoring.authority",
+      "trace": "tutoring.authority",
+      "required": true
+    },
+    {
+      "id": "tutoring-vet.text_leak",
+      "kind": "gate",
+      "ref": "tutoring.leak-judge",
+      "trace": "tutoring.text_leak",
+      "required": true
+    },
+    {
+      "id": "tutoring-vet.visual_leak",
+      "kind": "gate",
+      "ref": "tutoring.visual-leak-judge",
+      "trace": "tutoring.visual_leak",
+      "required": true
+    },
+    {
+      "id": "tutoring-vet.complete",
+      "kind": "action",
+      "handler_id": "tutoring.complete_vetting"
+    }
+  ],
+  "edges": [
+    {
+      "from": "START",
+      "to": "tutoring-vet.authority"
+    },
+    {
+      "from": "tutoring-vet.authority",
+      "to": "tutoring-vet.complete",
+      "condition_id": "authority_denied"
+    },
+    {
+      "from": "tutoring-vet.authority",
+      "to": "tutoring-vet.text_leak",
+      "condition_id": "authority_allowed_needs_leak_check"
+    },
+    {
+      "from": "tutoring-vet.authority",
+      "to": "tutoring-vet.complete",
+      "condition_id": "authority_allowed_no_leak_check"
+    },
+    {
+      "from": "tutoring-vet.text_leak",
+      "to": "tutoring-vet.complete",
+      "condition_id": "text_denied"
+    },
+    {
+      "from": "tutoring-vet.text_leak",
+      "to": "tutoring-vet.visual_leak",
+      "condition_id": "text_allowed_with_visual"
+    },
+    {
+      "from": "tutoring-vet.text_leak",
+      "to": "tutoring-vet.complete",
+      "condition_id": "text_allowed_no_visual"
+    },
+    {
+      "from": "tutoring-vet.visual_leak",
+      "to": "tutoring-vet.complete"
+    },
+    {
+      "from": "tutoring-vet.complete",
+      "to": "END"
+    }
+  ],
+  "required_gates": [
+    {
+      "ref": "tutoring.authority",
+      "when": "always"
+    },
+    {
+      "ref": "tutoring.leak-judge",
+      "when": "requires_text_leak"
+    },
+    {
+      "ref": "tutoring.visual-leak-judge",
+      "when": "requires_visual_leak"
+    }
+  ]
+}

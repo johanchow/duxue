@@ -1,0 +1,164 @@
+{
+  "id": "task.intake",
+  "version": "v1",
+  "kind": "agent",
+  "implementation": "llm",
+  "agent_label": "planning",
+  "risk_tier": "standard",
+  "operation": "task_intake",
+  "input_contract": "task-intake-input.v1",
+  "output_contract": "task-intake-result.v1",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "user": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "array"
+          }
+        ]
+      }
+    },
+    "required": [
+      "user"
+    ],
+    "additionalProperties": false
+  },
+  "context_builder_id": "task.intake.context",
+  "prompt": {
+    "id": "task.intake.prompt.v2",
+    "template": "你是读学的任务整理助手。今天是 {{today}}。\n你只能把任务分配给以下监护人已绑定的孩子（只能使用其 id，绝不能创造、猜测或使用其他 id）：\n{{authorized_wards}}\n\n当前候选任务（它们尚未保存，可按本轮对话修改）：\n{{candidate_tasks}}\n\n对话历史：\n{{conversation_history}}\n\n硬规则：\n1. 多个孩子时，只要某项任务的归属没有由监护人或图片明确说明，就必须 clarification_required=true、ready_to_confirm=false，并在 questions 中只追问必要的归属问题。绝不默认复制给所有孩子，不依据年级、历史或名字相似性猜测。\n2. 不补造作业页码、科目、截止日或优先级；日期含糊时在 assistant_text 中说明并保留为空，只有归属和标题明确才可确认。\n3. Guardian 的修正可以引用“第二项”“刚才的任务”；据此更新整个 tasks 清单。\n4. 只输出一个 JSON object：assistant_text、tasks、clarification_required、questions、ready_to_confirm。tasks 每项必须是 ward_id、title、details（可为 null）、due_date（YYYY-MM-DD 或 null）。\n5. 只有每项都属于白名单且 title 非空，且没有待澄清的归属时 ready_to_confirm 才能为 true。",
+    "delivery": "user",
+    "variables": {
+      "today": {
+        "type": "string",
+        "binding": "context.today"
+      },
+      "authorized_wards": {
+        "type": "array",
+        "binding": "context.authorized_wards"
+      },
+      "candidate_tasks": {
+        "type": "array",
+        "binding": "context.candidate_tasks"
+      },
+      "conversation_history": {
+        "type": "array",
+        "binding": "context.conversation_history"
+      }
+    }
+  },
+  "tools": [],
+  "models": [
+    {
+      "component_id": "task.intake",
+      "name": "qwen3.7-plus-2026-05-26",
+      "temperature": 0,
+      "max_output_tokens": 1600,
+      "timeout_ms": 60000
+    }
+  ],
+  "accepts_images": true,
+  "requires_agent_switch": false,
+  "output_schema": {
+    "$defs": {
+      "TaskCandidate": {
+        "properties": {
+          "ward_id": {
+            "minLength": 1,
+            "title": "Ward Id",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Details"
+          },
+          "due_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Due Date"
+          }
+        },
+        "required": [
+          "ward_id",
+          "title"
+        ],
+        "title": "TaskCandidate",
+        "type": "object"
+      }
+    },
+    "properties": {
+      "assistant_text": {
+        "maxLength": 4000,
+        "minLength": 1,
+        "title": "Assistant Text",
+        "type": "string"
+      },
+      "tasks": {
+        "items": {
+          "$ref": "#/$defs/TaskCandidate"
+        },
+        "maxItems": 30,
+        "title": "Tasks",
+        "type": "array"
+      },
+      "clarification_required": {
+        "default": false,
+        "title": "Clarification Required",
+        "type": "boolean"
+      },
+      "questions": {
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 5,
+        "title": "Questions",
+        "type": "array"
+      },
+      "ready_to_confirm": {
+        "default": false,
+        "title": "Ready To Confirm",
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "assistant_text"
+    ],
+    "title": "TaskIntakeResult",
+    "type": "object",
+    "additionalProperties": false
+  },
+  "error_codes": [
+    "agent_execution_failed",
+    "invalid_model_candidate",
+    "model_provider_disabled",
+    "model_provider_not_configured",
+    "model_transport_error"
+  ]
+}

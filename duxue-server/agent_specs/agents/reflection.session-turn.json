@@ -1,0 +1,235 @@
+{
+  "id": "reflection.session-turn",
+  "version": "v1",
+  "kind": "agent",
+  "implementation": "code",
+  "handler_id": "reflection",
+  "input_schema": {
+    "description": "An authorized, single-workflow instruction emitted by the Coordinator.",
+    "properties": {
+      "run_id": {
+        "title": "Run Id",
+        "type": "string"
+      },
+      "thread_id": {
+        "title": "Thread Id",
+        "type": "string"
+      },
+      "ward_id": {
+        "title": "Ward Id",
+        "type": "string"
+      },
+      "agent_type": {
+        "enum": [
+          "planning",
+          "tutoring",
+          "reflection"
+        ],
+        "title": "Agent Type",
+        "type": "string"
+      },
+      "turn": {
+        "additionalProperties": true,
+        "title": "Turn",
+        "type": "object"
+      },
+      "turn_id": {
+        "title": "Turn Id",
+        "type": "string"
+      },
+      "command_id": {
+        "title": "Command Id",
+        "type": "string"
+      },
+      "attempt": {
+        "default": 1,
+        "minimum": 1,
+        "title": "Attempt",
+        "type": "integer"
+      },
+      "context_refs": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Context Refs",
+        "type": "array"
+      },
+      "resume_from_checkpoint": {
+        "default": false,
+        "title": "Resume From Checkpoint",
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "run_id",
+      "thread_id",
+      "ward_id",
+      "agent_type",
+      "turn"
+    ],
+    "title": "RunInvocation",
+    "type": "object"
+  },
+  "output_schema": {
+    "description": "Validated workflow result; it contains no ORM objects or raw prompts.",
+    "properties": {
+      "run_status": {
+        "enum": [
+          "active",
+          "waiting_for_ward",
+          "paused",
+          "closed",
+          "escalated",
+          "failed",
+          "timed_out",
+          "cancelled"
+        ],
+        "title": "Run Status",
+        "type": "string"
+      },
+      "outcome_type": {
+        "anyOf": [
+          {
+            "enum": [
+              "response",
+              "waiting",
+              "completed",
+              "failure",
+              "cancelled",
+              "escalation"
+            ],
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Outcome Type"
+      },
+      "response": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Response"
+      },
+      "next_interaction": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Next Interaction"
+      },
+      "context_refs": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Context Refs",
+        "type": "array"
+      },
+      "checkpoint_ref": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Checkpoint Ref"
+      },
+      "context_snapshot": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Context Snapshot"
+      },
+      "failure": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Failure"
+      },
+      "resume_action": {
+        "default": "none",
+        "enum": [
+          "retry",
+          "resume_from_checkpoint",
+          "restart",
+          "none"
+        ],
+        "title": "Resume Action",
+        "type": "string"
+      },
+      "handoff_suggestion": {
+        "anyOf": [
+          {
+            "enum": [
+              "planning",
+              "tutoring",
+              "reflection"
+            ],
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Handoff Suggestion"
+      },
+      "trace_id": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Trace Id"
+      }
+    },
+    "required": [
+      "run_status"
+    ],
+    "title": "WorkflowOutcome",
+    "type": "object"
+  },
+  "error_codes": [
+    "agent_execution_failed",
+    "invalid_model_candidate",
+    "model_provider_disabled",
+    "model_provider_not_configured",
+    "model_transport_error"
+  ]
+}

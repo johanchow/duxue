@@ -2,7 +2,7 @@
 
 > 状态：v0.2，**首期已实现**（逻辑层 + `steps`/`compare`/`segment`/`number_line`），实现状态与偏差见 [§十四](#十四实现状态与偏差)；其中的数字仍是待校准的假设 · 范围：`tutoring.turn` 面向孩子的 `content` 的结构（逻辑性）与可选配图（视觉化）。
 >
-> 关联：[Tutoring Domain](domain-tutoring.md)（契约 `tutor-turn.v4`、出口检查） · [Companion 交互协议](domain-companion.md#52-companion-interaction-protocol) · [AI Component](infra-ai-components.md) · [答疑离线评测](eval-offline.md) · [App 端设计](design-app.md)
+> 关联：[Tutoring Domain](domain-tutoring.md)（契约 `tutor-turn.v4`、出口检查） · [Companion 交互协议](domain-companion.md#52-companion-interaction-protocol) · [Agent 配置设计](design-agent.md) · [答疑离线评测](eval-offline.md) · [App 端设计](design-app.md)
 >
 > 单一事实源：契约字段、出口检查、交互 `kind` 仍以上述文档为准。本文只写表达层的设计；实现落地时，把契约与协议的变更同步回它们，本文只保留设计理由与验收。
 >
@@ -385,7 +385,7 @@ Then  只记录，回答照常展示，不触发 fallback
 
 - [domain-tutoring.md](domain-tutoring.md)：契约（`visual` 子对象）、出口检查（`visual` 门禁与归类）。
 - [domain-companion.md](domain-companion.md)：交互协议（新 `kind` 与 `visual` part、流式事件说明）。
-- [infra-ai-components.md](infra-ai-components.md)：提示词版本、条件拼接。
+- [Agent 配置设计](design-agent.md)：Prompt 与变量的目标契约；当前 Prompt 版本以 [`prompts.py`](../../duxue-server/app/infrastructure/ai/prompts.py) 为准。
 - [eval-offline.md](eval-offline.md)：新增指标与用例类别。
 - [design-app.md](design-app.md)：`VisualBlock` 与降级规则。
 

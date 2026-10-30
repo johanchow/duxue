@@ -421,12 +421,16 @@ def set_agent_context(*, thread_id: str | None = None, run_id: str | None = None
 
 @contextmanager
 def agent_turn_span() -> Iterator[None]:
+    from app.agent_specs.catalog import load_catalog
+    companion = load_catalog().spec("companion")
     thread_token, run_token = _thread_id.set(None), _run_id.set(None)
     subgoal_token = _pending_subgoal.set(None)
     parent_token = _agent_parent_span.set(trace.get_current_span())
     try:
         with trace.get_tracer("duxue.agent").start_as_current_span(
-            "agent.turn", attributes={"langfuse.observation.type": "agent", "langfuse.trace.name": "companion.turn"},
+            "agent.turn", attributes={"langfuse.observation.type": "agent", "langfuse.trace.name": "companion.turn",
+                                      "agent.workflow.id": companion.id, "agent.workflow.version": companion.version,
+                                      "agent.node_id": companion.entry},
             record_exception=False, set_status_on_exception=False,
         ):
             yield
@@ -450,9 +454,15 @@ def agent_step_span(kind: str, name: str, **attributes: Any) -> Iterator[Any]:
     """A named Agent step; callers attach reviewed input/output payloads."""
     if kind not in {"route", "node", "tool", "check"}:
         raise ValueError("unknown agent step kind")
+    from app.agent_specs.catalog import load_catalog
+
+    identity = load_catalog().step(kind, name)
     with trace.get_tracer("duxue.agent").start_as_current_span(
         f"agent.{kind}",
         attributes={**_agent_context_attrs(), "agent.step": name,
+                    "agent.workflow.id": identity.owner,
+                    "agent.workflow.version": identity.version,
+                    "agent.node_id": identity.node_id,
                     "langfuse.observation.metadata.step": name,
                     "langfuse.observation.type": {"route": "span", "node": "chain", "tool": "tool", "check": "guardrail"}[kind],
                     **_attrs(**attributes)},
@@ -679,10 +689,16 @@ def record_planning_stage(*, stage: str, duration_ms: int | None = None, **extra
 
 @contextmanager
 def planning_stage_span(stage: str, **extra: Any) -> Iterator[None]:
+    from app.agent_specs.catalog import load_catalog
+
+    identity = load_catalog().step("stage", f"planning.{stage}")
     started = perf_counter()
     with trace.get_tracer("duxue.agent").start_as_current_span(
         f"planning.{stage}",
         attributes={**_agent_context_attrs(), "agent.type": "planning", "planning.stage": stage,
+                    "agent.workflow.id": identity.owner,
+                    "agent.workflow.version": identity.version,
+                    "agent.node_id": identity.node_id,
                     "langfuse.observation.type": "chain", **_attrs(**extra)},
         record_exception=False, set_status_on_exception=False,
     ):
@@ -694,9 +710,13 @@ def planning_stage_span(stage: str, **extra: Any) -> Iterator[None]:
 
 @contextmanager
 def agent_workflow_span(*, agent_type: str, run_id: str, thread_id: str) -> Iterator[Any]:
+    from app.agent_specs.catalog import load_catalog
+    workflow = load_catalog().spec(agent_type)
     with trace.get_tracer("duxue.agent").start_as_current_span(
         "agent.workflow",
         attributes={**_agent_context_attrs(), "agent.type": agent_type, "agent.run_id": run_id,
+                    "agent.workflow.id": workflow.id, "agent.workflow.version": workflow.version,
+                    "agent.node_id": workflow.entry,
                     "agent.thread_id": thread_id, "langfuse.session.id": thread_id,
                     "langfuse.observation.type": "agent"},
         record_exception=False, set_status_on_exception=False,
@@ -718,6 +738,16 @@ def model_call_span(*, operation: str, model: str, agent_type: str | None = None
                     prompt_id: str | None = None, model_source: str | None = None,
                     input_payload: Any = None) -> Iterator[dict[str, Any]]:
     started = perf_counter()
+    workflow_attrs = {}
+    if component_id is not None:
+        from app.agent_specs.catalog import load_catalog
+
+        identity = load_catalog().component_identity(component_id)
+        workflow_attrs = {
+            "agent.workflow.id": identity.owner,
+            "agent.workflow.version": identity.version,
+            "agent.node_id": identity.node_id,
+        }
     attrs = {**_agent_context_attrs(), **_attrs(**{
         "llm.operation": operation, "llm.model": model, "agent.type": agent_type,
         "ai.component_id": component_id, "ai.component_version": component_version,
@@ -727,7 +757,7 @@ def model_call_span(*, operation: str, model: str, agent_type: str | None = None
         # also exports the controlled Agent spans enclosing this generation.
         "langfuse.observation.type": "generation",
         "langfuse.observation.model.name": model,
-    })}
+    }), **workflow_attrs}
     with trace.get_tracer("duxue.model").start_as_current_span(
         "llm.request", attributes=attrs, record_exception=False, set_status_on_exception=False,
     ) as span:

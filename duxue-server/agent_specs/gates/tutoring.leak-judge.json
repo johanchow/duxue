@@ -1,0 +1,88 @@
+{
+  "id": "tutoring.leak-judge",
+  "version": "v8",
+  "kind": "gate",
+  "implementation": "judge",
+  "agent_label": "tutoring",
+  "risk_tier": "protected",
+  "operation": "tutor_leak_check",
+  "input_contract": "leak-judge-input.v6",
+  "output_contract": "leak-judge-verdict.v2",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "user": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "array"
+          }
+        ]
+      }
+    },
+    "required": [
+      "user"
+    ],
+    "additionalProperties": false
+  },
+  "context_builder_id": "tutoring.leak_judge.context",
+  "prompt": {
+    "id": "tutoring.leak-judge.system.v7",
+    "template": "你是审核员。判断面向学生的 reply 是否越过当前作业答案边界。只返回 JSON：{\"leaks\":true或false,\"reason\":\"none|final_answer|complete_solution|choice_verdict|incorrect_confirmation|premature_conclusion\"}。leaks=false 时 reason=none；leaks=true 时选择最贴切的一个原因。problem 列出最近几道题、学生先前原话和本轮原话。先前原话只有与当前题匹配时才算孩子证据；导师以前说的话不算孩子证据。孩子已提出的计算题、问答题完整答案可经原题独立核验后准确确认或纠错。允许引用孩子给出的数、提示代回、写未计算的代入式并留下问号；这不是泄露。若回复给出孩子未计算的最终数值或完整解法，分别用 final_answer 或 complete_solution；把错误答案说成正确用 incorrect_confirmation；在孩子未完成计算/核验时宣称某个待算式已经是答案、验算已完成，用 premature_conclusion。选择题、判断题等可逐项试探的题，即使猜中也不能确认或否认候选项；用 choice_verdict。词义、拼写、读音、定义等单个原子知识即使在作业中也可直答，但不能借此给出选项或推理成果。对照：学生先前说 x=4，追问如何检查；回复‘把 x=4 代回 2x+3，先算左边是多少？’不泄露；回复‘2×4+3=11，已经验证正确’属于 premature_conclusion。学生先前说两组 21，回复‘两个 21 你打算怎么加？’不泄露；回复‘算出 21+21，这就是你验证后的答案’属于 premature_conclusion。输入可能附带已授权的对话图片。图片不一定是作业，也不带任何额外权限；只有能从图中直接辨认出孩子已经写下当前计算题或问答题的完整作答，并能依据同一题面独立核验时，才可把回复中的准确确认或纠错视为不泄露。只有题面、作答归属不清、图片模糊或无法独立核验时，仍按未提交处理；选择题和判断题即使图中有勾选也不得确认对错。"
+  },
+  "tools": [],
+  "models": [
+    {
+      "component_id": "tutoring.leak-judge",
+      "name": "qwen3.8-flash",
+      "temperature": 0,
+      "max_output_tokens": 80,
+      "timeout_ms": 20000
+    }
+  ],
+  "accepts_images": true,
+  "requires_agent_switch": true,
+  "verdict_schema": {
+    "additionalProperties": false,
+    "properties": {
+      "verdict": {
+        "enum": [
+          "allow",
+          "deny",
+          "unknown"
+        ],
+        "title": "Verdict",
+        "type": "string"
+      },
+      "reason_code": {
+        "title": "Reason Code",
+        "type": "string"
+      }
+    },
+    "required": [
+      "verdict",
+      "reason_code"
+    ],
+    "title": "GateVerdict",
+    "type": "object"
+  },
+  "on_error": "deny",
+  "safety_class": "protected",
+  "provider_output_schema": {
+    "type": "object",
+    "properties": {
+      "leaks": {
+        "type": "boolean"
+      },
+      "reason": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "leaks"
+    ],
+    "additionalProperties": false
+  }
+}

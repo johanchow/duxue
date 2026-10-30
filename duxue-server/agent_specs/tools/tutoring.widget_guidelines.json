@@ -1,0 +1,26 @@
+{
+  "id": "tutoring.widget_guidelines",
+  "version": "v1",
+  "kind": "tool",
+  "description": "SVG 绘图规范",
+  "input_schema": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "status": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "status"
+    ],
+    "additionalProperties": true
+  },
+  "handler_id": "tutoring.widget_guidelines",
+  "access": "read"
+}

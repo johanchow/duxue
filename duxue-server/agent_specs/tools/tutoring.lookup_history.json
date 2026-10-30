@@ -1,0 +1,32 @@
+{
+  "id": "tutoring.lookup_history",
+  "version": "v1",
+  "kind": "tool",
+  "description": "在已授权历史原句中查找",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "status": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "status"
+    ],
+    "additionalProperties": true
+  },
+  "handler_id": "tutoring.lookup_history",
+  "access": "read"
+}

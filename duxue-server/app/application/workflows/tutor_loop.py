@@ -7,8 +7,6 @@ fallback 与线上完全同源，不另抄一份规则。
 from __future__ import annotations
 
 import json
-from concurrent.futures import ThreadPoolExecutor
-from contextvars import copy_context
 from dataclasses import dataclass, field
 
 from pydantic import ValidationError
@@ -131,7 +129,7 @@ def call_tutor_model(
             if best_candidate is not None:
                 return ModelCall(best_candidate)
             return ModelCall(None, str(error))
-        except Exception as error:
+        except Exception as error:  # noqa: BLE001 - provider boundary uses the safe fallback
             if best_candidate is not None:
                 return ModelCall(best_candidate)
             return ModelCall(None, str(error))
@@ -235,7 +233,7 @@ def _check_visual_leak(leak_judge: LeakJudgePort, text: str, task_title, problem
         })
         try:
             result = judge(text=text, task_title=task_title, problem_summary=problem_summary)
-        except Exception:
+        except Exception:  # noqa: BLE001 - unavailable optional judge drops the visual
             result = None
         span.set_attribute("agent.check.result", "unknown" if result is None else "leak" if result else "pass")
         set_observation_payload(span, output={"leaks": result})
@@ -349,58 +347,92 @@ def vet_candidate(
     candidate: TutorTurnCandidate, *, permit: TutorPermit, leak_judge: LeakJudgePort,
     task_title: str | None, problem_summary: str | None, judge_images: list[str] | None = None,
 ) -> Vetting:
-    """检查 2（越权与一致性）和检查 3（泄露）。只判断，不记录 fallback（由 ``run_tutor_turn`` 按最终结果记）。
+    """Run the configured authority, text and optional visual Gates."""
+    from app.agent_specs.catalog import load_catalog
+    from app.agent_specs.runtime import GateDecision, execute_workflow
 
-    文字（``content``，澄清时连同候选）任一不过，调用方回退固定话术。``fact_gate``
-    仅分类观测，受保护正文都交判官审。图（``visual``）单独判断：不适用、非法、
-    被图判官判为泄露（含超时、结果非法）一律只丢图，文字照常。
-    """
-    verdict = check_authority(candidate, permit)
-    if not verdict.ok:
-        return Vetting(candidate, verdict, verdict.reason)
+    def authority(state: dict) -> GateDecision:
+        with agent_step_span("check", "tutoring.authority") as span:
+            verdict = check_authority(candidate, permit)
+            state["authority"] = verdict
+            span.set_attribute("agent.check.result", "pass" if verdict.ok else "rejected")
+            set_observation_payload(span, output={"ok": verdict.ok, "reason": verdict.reason})
+        if verdict.ok:
+            flags = lint_shape(candidate.act, candidate.content)
+            if candidate.act == "answer" and candidate.depth == "reasoning":
+                flags.append("answer_on_reasoning")
+            if flags:
+                record_tutor_shape_lint(act=candidate.act, flags=flags)
+            state["flags"] = flags
+        return GateDecision("allow" if verdict.ok else "deny", verdict.reason or "ok")
 
-    flags = lint_shape(candidate.act, candidate.content)
-    if candidate.act == "answer" and candidate.depth == "reasoning":
-        # 提示词要求推理题用 guide；不拒绝（泄露检查照跑），只留观测。
-        flags.append("answer_on_reasoning")
-    if flags:
-        record_tutor_shape_lint(act=candidate.act, flags=flags)
+    def text_leak(state: dict) -> GateDecision:
+        record_tutor_fact_gate(outcome=fact_gate(candidate) or "short_fact_reviewed")
+        try:
+            result = _check_text_leak(
+                leak_judge, candidate.shown_text, task_title, problem_summary, list(judge_images or []),
+            )
+        except Exception:  # noqa: BLE001 - a judge failure must reject the candidate
+            result = None
+        state["text_leaks"], state["leak_reason"] = _text_leak_result(result)
+        return GateDecision(
+            "allow" if state["text_leaks"] is False else "deny",
+            "ok" if state["text_leaks"] is False else
+            "leak_check_failed" if state["text_leaks"] is None else "leak_detected",
+        )
 
-    visual, dropped = candidate.visual, candidate.visual_dropped
-    visual_text = describe(visual) if visual is not None else None
+    def visual_leak(state: dict) -> GateDecision:
+        result = _check_visual_leak(leak_judge, state["visual_text"], task_title, problem_summary)
+        if result is not False:
+            state["visual"] = None
+            state["dropped"] = "visual_leak_check_failed" if result is None else "visual_leak_detected"
+        return GateDecision("allow" if result is False else "deny", "ok" if result is False else state["dropped"])
 
-    text_leaks: bool | None = False
-    visual_leaks: bool | None = False
-    if verdict.needs_leak_check:
-        gate = fact_gate(candidate)
-        record_tutor_fact_gate(outcome=gate or "short_fact_reviewed")
-        # The depth/topic labels come from the same model as the reply. A multiple-choice
-        # confirmation can be mislabeled as a short "fact", so those labels cannot bypass
-        # independent review while a problem is protected. Keep the classification metric.
-        judge_text = True
-        jobs = {}
-        # 文字判官与图判官互不依赖，并行发出。
-        with ThreadPoolExecutor(max_workers=2) as pool:
-            if judge_text:
-                jobs["text"] = pool.submit(
-                    copy_context().run, _check_text_leak, leak_judge, text=candidate.shown_text, task_title=task_title,
-                    problem_summary=problem_summary, judge_images=list(judge_images or []),
-                )
-            if visual_text is not None:
-                jobs["visual"] = pool.submit(
-                    copy_context().run, _check_visual_leak, leak_judge, visual_text, task_title, problem_summary,
-                )
-            text_leaks, leak_reason = _text_leak_result(jobs["text"].result()) if "text" in jobs else (False, None)
-            visual_leaks = jobs["visual"].result() if "visual" in jobs else False
-        if text_leaks is False and visual_leaks is not False:
-            visual = None
-            dropped = "visual_leak_check_failed" if visual_leaks is None else "visual_leak_detected"
-    if text_leaks is not False:  # True 泄露；None 判定失败，同样 fail-closed
-        reason = "leak_check_failed" if text_leaks is None else "leak_detected"
-        return Vetting(candidate, None, reason, leak_reason=leak_reason, shape_flags=flags)
-    if dropped:
-        record_tutor_visual_dropped(reason=dropped)
-    return Vetting(candidate, verdict, visual=visual, visual_dropped=dropped, shape_flags=flags)
+    def complete(state: dict) -> Vetting:
+        verdict = state["authority"]
+        if not verdict.ok:
+            return Vetting(candidate, verdict, verdict.reason)
+        if state.get("text_leaks") is not False:
+            reason = "leak_check_failed" if state.get("text_leaks") is None else "leak_detected"
+            return Vetting(candidate, None, reason, leak_reason=state.get("leak_reason"), shape_flags=state["flags"])
+        if state["dropped"]:
+            record_tutor_visual_dropped(reason=state["dropped"])
+        return Vetting(
+            candidate, verdict, visual=state["visual"], visual_dropped=state["dropped"],
+            shape_flags=state["flags"],
+        )
+
+    conditions = {
+        "always": lambda state: True,
+        "authority_denied": lambda state: not state["authority"].ok,
+        "authority_allowed_needs_leak_check": lambda state: state["authority"].ok and state["authority"].needs_leak_check,
+        "authority_allowed_no_leak_check": lambda state: state["authority"].ok and not state["authority"].needs_leak_check,
+        "text_denied": lambda state: state.get("text_leaks") is not False,
+        "text_allowed_with_visual": lambda state: state.get("text_leaks") is False and state["visual_text"] is not None,
+        "text_allowed_no_visual": lambda state: state.get("text_leaks") is False and state["visual_text"] is None,
+        "requires_text_leak": lambda state: state["authority"].ok and state["authority"].needs_leak_check,
+        "requires_visual_leak": lambda state: (
+            state["authority"].ok and state["authority"].needs_leak_check
+            and state.get("text_leaks") is False and state["visual_text"] is not None
+        ),
+    }
+    state = execute_workflow(
+        load_catalog().spec("tutoring-vet"),
+        handlers={
+            "tutoring.authority": authority,
+            "tutoring.leak-judge": text_leak,
+            "tutoring.visual-leak-judge": visual_leak,
+            "tutoring.complete_vetting": complete,
+        },
+        conditions=conditions,
+        initial_state={
+            "visual": candidate.visual,
+            "visual_text": describe(candidate.visual) if candidate.visual is not None else None,
+            "dropped": candidate.visual_dropped,
+            "text_leaks": False,
+        },
+    )
+    return state["results"]["tutoring-vet.complete"]
 
 
 @dataclass(frozen=True)
@@ -465,57 +497,89 @@ def run_tutor_turn(
             })
             return proposal, review
 
-    call, vetting = attempt(model, "primary")
-    if call.candidate is None:
-        record_llm_fallback(operation="tutor_turn", reason=call.failure or INVALID_CANDIDATE)
-        return TurnResult(call, None)
-    assert vetting is not None
-    retried = False
-    if vetting.failure in LEAK_RETRY_REASONS:
-        original_failure, original_reason = vetting.failure, vetting.leak_reason
-        retried = True
-        record_tutor_leak_retry(reason=vetting.failure)
-        retry, retry_review = attempt(model, "repair", repair_error=_leak_repair(vetting))
-        if retry_review is not None:
-            call, vetting = retry, retry_review
-        if (
-            backup_model is not None
-            and vetting.failure == original_failure == "leak_detected"
-            and vetting.leak_reason == original_reason
-        ):
-            backup, backup_review = attempt(backup_model, "backup", repair_error=_leak_repair(vetting))
-            if backup_review is not None:
-                call, vetting = backup, backup_review
-    if vetting.failure is None and vetting.visual_dropped == "visual_leak_detected":
-        redraw, redrawn = attempt(model, "visual_redraw", repair_error=_visual_leak_repair(vetting))
-        if (
-            redrawn is not None and redrawn.failure is None and redrawn.visual is not None
-            and redrawn.candidate.act == vetting.candidate.act
-            and redrawn.candidate.content == vetting.candidate.content
-            and redrawn.candidate.turn == vetting.candidate.turn
-        ):
-            call, vetting = redraw, redrawn
-    if (
-        vetting.failure is None and vetting.visual is None
-        and _TEXT_DIAGRAM_TEX in vetting.candidate.content
-    ):
-        repair = _missing_visual_repair(vetting)
-        for retry_model in (model, backup_model):
-            if retry_model is None:
-                continue
-            redrawn_call, redrawn = attempt(
-                retry_model, "missing_visual_redraw", repair_error=repair,
-                preload_svg_guidelines=True,
-            )
-            if redrawn is None:
-                continue
-            if (
-                redrawn.failure is None and redrawn.visual is not None
-                and redrawn.visual.kind == "svg"
-                and _TEXT_DIAGRAM_TEX not in redrawn.candidate.content
-            ):
-                call, vetting = redrawn_call, redrawn
-                break
-    if vetting.failure is not None:
-        record_llm_fallback(operation="tutor_turn", reason=vetting.failure)
-    return TurnResult(call, vetting, retried)
+    from app.agent_specs.catalog import load_catalog
+    from app.agent_specs.runtime import execute_workflow
+
+    def primary(state):
+        state["call"], state["vetting"] = attempt(model, "primary")
+
+    def repair(state):
+        review = state["vetting"]
+        state["original_failure"], state["original_reason"] = review.failure, review.leak_reason
+        state["retried"] = True
+        record_tutor_leak_retry(reason=review.failure)
+        proposal, checked = attempt(model, "repair", repair_error=_leak_repair(review))
+        if checked is not None:
+            state["call"], state["vetting"] = proposal, checked
+
+    def backup(state):
+        proposal, checked = attempt(backup_model, "backup", repair_error=_leak_repair(state["vetting"]))
+        if checked is not None:
+            state["call"], state["vetting"] = proposal, checked
+
+    def redraw(state):
+        review = state["vetting"]
+        proposal, checked = attempt(model, "visual_redraw", repair_error=_visual_leak_repair(review))
+        if (checked is not None and checked.failure is None and checked.visual is not None
+                and checked.candidate.act == review.candidate.act
+                and checked.candidate.content == review.candidate.content
+                and checked.candidate.turn == review.candidate.turn):
+            state["call"], state["vetting"] = proposal, checked
+
+    def missing(state, current_model):
+        proposal, checked = attempt(
+            current_model, "missing_visual_redraw", repair_error=state["missing_repair"],
+            preload_svg_guidelines=True,
+        )
+        state["missing_fixed"] = bool(
+            checked is not None and checked.failure is None and checked.visual is not None
+            and checked.visual.kind == "svg" and _TEXT_DIAGRAM_TEX not in checked.candidate.content
+        )
+        if state["missing_fixed"]:
+            state["call"], state["vetting"] = proposal, checked
+
+    def missing_decision(state):
+        if state["vetting"] is not None:
+            state["missing_repair"] = _missing_visual_repair(state["vetting"])
+
+    def finish(state):
+        call, review = state["call"], state["vetting"]
+        failure = review.failure if review is not None else call.failure or INVALID_CANDIDATE
+        if failure:
+            record_llm_fallback(operation="tutor_turn", reason=failure)
+        return TurnResult(call, review, state["retried"])
+
+    def same_leak(state):
+        review = state["vetting"]
+        return (backup_model is not None and review.failure == state["original_failure"] == "leak_detected"
+                and review.leak_reason == state["original_reason"])
+
+    def needs_redraw(state):
+        review = state["vetting"]
+        return review.failure is None and review.visual_dropped == "visual_leak_detected"
+
+    def needs_missing(state):
+        review = state["vetting"]
+        return review.failure is None and review.visual is None and _TEXT_DIAGRAM_TEX in review.candidate.content
+
+    state = execute_workflow(
+        load_catalog().spec("tutoring-retry"), initial_state={"retried": False},
+        handlers={
+            "primary": primary, "repair": repair, "backup": backup,
+            "visual_decision": lambda state: None, "visual_redraw": redraw,
+            "missing_decision": missing_decision,
+            "missing_primary": lambda state: missing(state, model),
+            "missing_backup": lambda state: missing(state, backup_model), "finish": finish,
+        },
+        conditions={
+            "no_candidate": lambda state: state["call"].candidate is None,
+            "retry_leak": lambda state: state["vetting"] is not None and state["vetting"].failure in LEAK_RETRY_REASONS,
+            "candidate_without_retry": lambda state: state["vetting"] is not None and state["vetting"].failure not in LEAK_RETRY_REASONS,
+            "same_leak_with_backup": same_leak, "no_backup_needed": lambda state: not same_leak(state),
+            "needs_visual_redraw": needs_redraw, "no_visual_redraw": lambda state: not needs_redraw(state),
+            "needs_missing_visual": needs_missing, "no_missing_visual": lambda state: not needs_missing(state),
+            "retry_missing_with_backup": lambda state: not state["missing_fixed"] and backup_model is not None,
+            "missing_attempt_done": lambda state: state["missing_fixed"] or backup_model is None,
+        },
+    )
+    return state["results"]["tutoring-retry.finish"]

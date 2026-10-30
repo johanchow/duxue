@@ -1,18 +1,8 @@
-"""The one table of every LLM call the server makes, plus its single invocation path.
+"""Invoke configured model components through one observable gateway.
 
-Read ``COMPONENTS`` below to see all model calls: id, version, default model,
-risk tier, prompt, contracts and generation parameters.  Prompt bodies live in
-``prompts.py`` and are referenced from here, never copied.
-
-What this module owns: which model/prompt/parameters a call uses, and making the
-call identifiable and observable.  What it does not own: workflow routing,
-context authorization, domain policy or fallbacks; the caller keeps its own
-output validation and fallback.
-
-Secrets and endpoints are deployment settings (``settings.dashscope_api_key``
-etc.), never part of a spec.  The default model is part of behaviour, so it is
-reviewed code here.  ``AI_MODEL_OVERRIDES`` is an emergency switch that may
-only target ``standard`` components; ``protected`` ones need a code change.
+Model parameters and Prompt bodies come from agent_specs/agents and gates.
+Secrets and provider endpoints remain deployment settings. The emergency
+AI_MODEL_OVERRIDES switch applies only to standard components.
 """
 
 from __future__ import annotations
@@ -22,6 +12,10 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Literal
 
+from jsonschema.exceptions import ValidationError as JSONSchemaValidationError
+
+from app.agent_specs.contracts import validate_input, validate_output
+from app.agent_specs.definitions import load_definitions
 from app.bootstrap.settings import settings
 from app.infrastructure.ai.errors import ModelGatewayError
 from app.infrastructure.ai.prompts import PROMPTS, DynamicPrompt, PromptTemplate
@@ -29,13 +23,6 @@ from app.infrastructure.observability.telemetry import (
     model_call_span,
     record_model_response,
 )
-
-# DashScope model ids (see docs/technical/infra-ai-components.md §4.2.3).
-# Thinking is turned off at the call: these calls return JSON on a latency budget.
-PLUS = "qwen3.7-plus-2026-05-26"  # vision + instruction following: tutoring, intake
-REPLY_FLASH = "qwen3.8-flash"     # short multimodal replies on the wait path
-TEXT_FLASH = "qwen-flash"         # closed routing; a decision model needs another protocol
-TEXT_PLUS = "qwen-plus"           # leak judge; must stay a different model from PLUS
 
 RiskTier = Literal["protected", "standard"]
 AgentLabel = Literal["planning", "tutoring", "reflection"]
@@ -92,95 +79,32 @@ class ComponentRegistry:
         return tuple(self._specs.values())
 
 
-COMPONENTS = ComponentRegistry(
-    # --- protected: child-safety path -------------------------------------
-    ComponentSpec(
-        component_id="tutoring.image-target", version="v1", operation="tutor_image_target",
-        agent_label="tutoring", risk_tier="protected", model=REPLY_FLASH,
-        prompt=PROMPTS["tutoring.image-target.system.v1"],
-        input_contract="image-target-input.v1", output_contract="image-target.v1",
-        max_tokens=160, temperature=0,
-    ),
-    ComponentSpec(
-        component_id="tutoring.turn", version="v19", operation="tutor_turn",
-        agent_label="tutoring", risk_tier="protected", model=PLUS,
-        prompt=PROMPTS["tutoring.turn.system.v19"],
-        input_contract="tutor-turn.v4", output_contract="tutor-turn-candidate.v4",
-        max_tokens=1100, temperature=0.2,
-    ),
-    ComponentSpec(
-        component_id="tutoring.turn-backup", version="v2", operation="tutor_turn_backup",
-        agent_label="tutoring", risk_tier="protected", model=REPLY_FLASH,
-        prompt=PROMPTS["tutoring.turn.system.v19"],
-        input_contract="tutor-turn.v4", output_contract="tutor-turn-candidate.v4",
-        max_tokens=1100, temperature=0.2,
-    ),
-    ComponentSpec(
-        component_id="tutoring.leak-judge", version="v8", operation="tutor_leak_check",
-        # REPLY_FLASH is registered and exercised on the compatible Chat Completions
-        # endpoint with multimodal inputs; it stays independent from the primary tutor.
-        agent_label="tutoring", risk_tier="protected", model=REPLY_FLASH,
-        prompt=PROMPTS["tutoring.leak-judge.system.v7"],
-        input_contract="leak-judge-input.v6", output_contract="leak-judge-verdict.v2",
-        max_tokens=80, temperature=0,
-    ),
-    ComponentSpec(
-        component_id="tutoring.visual-leak-judge", version="v5", operation="tutor_visual_leak_check",
-        agent_label="tutoring", risk_tier="protected", model=TEXT_PLUS,
-        prompt=PROMPTS["tutoring.visual-leak-judge.system.v5"],
-        input_contract="visual-leak-judge-input.v2", output_contract="leak-judge-verdict.v1",
-        max_tokens=40, temperature=0.2,
-        accepts_images=False,
-    ),
-    # --- standard ----------------------------------------------------------
-    ComponentSpec(
-        component_id="companion.intent", version="v7", operation="intent_proposal",
-        agent_label="planning", risk_tier="standard", model=TEXT_FLASH,
-        prompt=PROMPTS["companion.intent.system.v7"],
-        input_contract="intent-input.v1", output_contract="intent-proposal.v1",
-        max_tokens=60, temperature=0,
-        accepts_images=False,
-    ),
-    ComponentSpec(
-        component_id="companion.scene-switch", version="v1", operation="scene_switch_check",
-        agent_label="tutoring", risk_tier="standard", model=REPLY_FLASH,
-        prompt=PROMPTS["companion.scene-switch.system.v1"],
-        input_contract="scene-switch-input.v1", output_contract="scene-switch-verdict.v1",
-        max_tokens=40, temperature=0,
-    ),
-    ComponentSpec(
-        component_id="planning.reply", version="v2", operation="agent_text",
-        agent_label="planning", risk_tier="standard", model=REPLY_FLASH,
-        prompt=PROMPTS["companion.agent-text.system.v2"],
-        input_contract="agent-text-input.v1", output_contract="agent-text-candidate.v1",
-        max_tokens=450, temperature=0.2,
-    ),
-    ComponentSpec(
-        component_id="evaluation.review-aspects", version="v1", operation="review_aspects",
-        agent_label="reflection", risk_tier="standard", model=TEXT_FLASH,
-        prompt=PROMPTS["evaluation.review-aspects.system.v1"],
-        input_contract="review-expression.v1", output_contract="review-aspects-candidate.v1",
-        max_tokens=900, temperature=0,
-        accepts_images=False,
-    ),
-    ComponentSpec(
-        component_id="planning.intake", version="v2", operation="plan_intake",
-        agent_label="planning", risk_tier="standard", model=PLUS,
-        prompt=PROMPTS["planning.intake.prompt.v2"],
-        input_contract="plan-intake-input.v1", output_contract="plan-intake-result.v1",
-        max_tokens=1600, temperature=0, requires_agent_switch=False,
-        timeout_seconds=60,
-    ),
-    ComponentSpec(
-        component_id="task.intake", version="v1", operation="task_intake",
-        agent_label="planning", risk_tier="standard", model=PLUS,
-        prompt=PROMPTS["task.intake.prompt.v1"],
-        input_contract="task-intake-input.v1", output_contract="task-intake-result.v1",
-        max_tokens=1600, temperature=0, requires_agent_switch=False,
-        timeout_seconds=60,
-    ),
-)
+def _load_components() -> ComponentRegistry:
+    from app.agent_specs.definitions import load_definitions
 
+    specs = []
+    for unit in load_definitions().units.values():
+        for model in unit.models:
+            specs.append(ComponentSpec(
+                component_id=model.component_id,
+                version=model.version or unit.version,
+                operation=model.operation or unit.operation,
+                agent_label=unit.agent_label,
+                risk_tier=unit.risk_tier,
+                model=model.name,
+                prompt=PROMPTS[unit.prompt.id],
+                input_contract=unit.input_contract,
+                output_contract=unit.output_contract,
+                max_tokens=model.max_output_tokens,
+                temperature=model.temperature,
+                accepts_images=unit.accepts_images,
+                timeout_seconds=model.timeout_ms // 1000,
+                requires_agent_switch=unit.requires_agent_switch,
+            ))
+    return ComponentRegistry(*specs)
+
+
+COMPONENTS = _load_components()
 
 @lru_cache(maxsize=8)
 def _parse_overrides(raw: str) -> dict[str, str]:
@@ -233,6 +157,8 @@ def invoke_json_component(*, spec: ComponentSpec, user, client=None, settings_ob
     stable ``ModelGatewayError`` vocabulary so application fallbacks keep their
     prior semantics.
     """
+    unit, _model_index = load_definitions().component(spec.component_id)
+    validate_input(unit, user)
     runtime_settings = settings_obj or settings
     if settings_obj is None and spec.requires_agent_switch:
         if not runtime_settings.agent_model_enabled:
@@ -272,12 +198,32 @@ def invoke_json_component(*, spec: ComponentSpec, user, client=None, settings_ob
                 component_id=spec.component_id, component_version=spec.version,
             )
             payload = json.loads(raw)
-    except (ValueError, KeyError, TypeError, IndexError, AttributeError) as error:
+            if not isinstance(payload, dict):
+                raise TypeError("model returned a non-object")
+            validate_output(unit, payload)
+    except (ValueError, KeyError, TypeError, IndexError, AttributeError, JSONSchemaValidationError) as error:
         raise ModelGatewayError("invalid_model_candidate") from error
     except ModelGatewayError:
         raise
     except Exception as error:
         raise ModelGatewayError("model_transport_error") from error
-    if not isinstance(payload, dict):
-        raise ModelGatewayError("invalid_model_candidate")
     return payload
+
+
+def invoke_agent_component(*, spec: ComponentSpec, user, client=None, settings_obj=None):
+    """Wrap validated Agent data; adapters may unwrap to preserve existing ports."""
+    from app.agent_specs.results import AgentResult, completed, validate_result
+    unit, _ = load_definitions().component(spec.component_id)
+    if unit.kind != "agent":
+        raise ValueError(f"{unit.id}: Judge calls use the Gate protocol")
+    options = {}
+    if client is not None:
+        options["client"] = client
+    if settings_obj is not None:
+        options["settings_obj"] = settings_obj
+    try:
+        payload = invoke_json_component(spec=spec, user=user, **options)
+    except ModelGatewayError as error:
+        code = str(error) if str(error) in unit.error_codes else "agent_execution_failed"
+        return validate_result(AgentResult(status="failed", error_code=code))
+    return completed(payload, needs_input=payload.get("clarification_required") is True or payload.get("act") == "clarify")

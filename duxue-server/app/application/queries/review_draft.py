@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-import json
-
 from fastapi import HTTPException
 
+from app.agent_specs.catalog import load_catalog
+from app.agent_specs.contexts import build_context
+from app.agent_specs.runtime import execute_workflow
+from app.application.commands.self_reviews import DIMENSIONS
 from app.infrastructure.ai import components
 from app.infrastructure.ai.errors import ModelGatewayError
-from app.application.commands.self_reviews import DIMENSIONS
 
 
 def propose_review_aspects(raw_expression: str) -> list[dict]:
@@ -16,10 +17,15 @@ def propose_review_aspects(raw_expression: str) -> list[dict]:
     if not raw or len(raw) > 4000:
         raise HTTPException(422, "summary must contain 1 to 4000 characters")
     try:
-        candidate = components.invoke_json_component(
-            spec=components.COMPONENTS.get("evaluation.review-aspects"),
-            user=json.dumps({"raw_expression": raw}, ensure_ascii=False),
+        catalog = load_catalog()
+        state = execute_workflow(
+            catalog.spec("review-aspects"),
+            handlers={"evaluation.review-aspects": lambda _state: components.invoke_agent_component(
+                spec=catalog.component("review-aspects", "run"),
+                user=build_context("evaluation.review-aspects", raw_expression=raw),
+            )},
         )
+        candidate = state["results"]["review-aspects.run"].unwrap()
     except ModelGatewayError:
         return []
     rows = candidate.get("aspects") if isinstance(candidate, dict) else None

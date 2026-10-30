@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
+from app.agent_specs.catalog import load_catalog
+from app.agent_specs.definitions import load_definitions
 from app.application.workflows.teaching_skills import history_candidates
 from app.infrastructure.observability.telemetry import (
     agent_step_span,
@@ -14,9 +16,10 @@ from app.infrastructure.observability.telemetry import (
 )
 from app.infrastructure.persistence.models import TutoringMessage, TutoringProblem
 
-MAX_TOOL_CALLS = 3
-MAX_MODEL_CALLS = 4
-TOOL_NAMES = ("get_task_context", "get_attempt_summary", "lookup_history", "widget_guidelines")
+_SPEC = load_catalog().spec("tutoring")
+MAX_TOOL_CALLS = _SPEC.limits["tool_calls"]
+MAX_MODEL_CALLS = _SPEC.limits["model_calls"]
+TOOL_NAMES = tuple(tool_id.split(".", 1)[1] for tool_id in load_definitions().units["tutoring.turn"].tools)
 _HISTORY_LIMIT = 3
 
 SVG_WIDGET_GUIDELINES = """# SVG Visualizer Design System
@@ -76,12 +79,15 @@ class TutorToolbox:
                              **{"agent.tool.source": "model_request"}) as span:
             args = args if isinstance(args, dict) else {}
             set_observation_payload(span, input=args)
-            handler = {
+            handlers = {
                 "get_task_context": self._task_context,
                 "get_attempt_summary": self._attempt_summary,
                 "lookup_history": self._lookup_history,
                 "widget_guidelines": self._widget_guidelines,
-            }.get(name)
+            }
+            if set(handlers) != set(TOOL_NAMES):
+                raise ValueError("tutoring tool handlers differ from Agent definition")
+            handler = handlers.get(name)
             if handler is None:
                 span.set_attribute("agent.tool.status", "tool_error")
                 result = {"tool": name, "status": "tool_error", "detail": "unknown_tool"}

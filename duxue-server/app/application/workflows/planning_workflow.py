@@ -3,9 +3,11 @@ from __future__ import annotations
 from datetime import date
 from typing import Literal, TypedDict
 
-from langgraph.graph import END, START, StateGraph
+from langgraph.graph import StateGraph
 from langgraph.types import interrupt
 
+from app.agent_specs.catalog import load_catalog
+from app.agent_specs.runtime import wire_langgraph
 from app.infrastructure.observability.telemetry import (
     agent_step_span,
     set_observation_payload,
@@ -25,6 +27,7 @@ class PlanningState(TypedDict, total=False):
     ready_for_confirmation: bool
     outcome: dict
     prepared_draft_id: str
+    confirmation_command: object
 
 
 def build_planning_graph(service: PlanningDomainService):
@@ -63,6 +66,10 @@ def build_planning_graph(service: PlanningDomainService):
         # version or alter the snapshot Ward approved.
         view = service.plan_draft_view(state["ward_id"], state["draft_id"])
         command = interrupt({"type": "plan_review", **view})
+        return {"confirmation_command": command}
+
+    def confirmation_gate(state: PlanningState) -> dict:
+        command = state.get("confirmation_command")
         with agent_step_span("check", "planning.confirmation_gate") as check_span:
             set_observation_payload(check_span, input={"command": command, "draft_id": state["draft_id"]})
             if not isinstance(command, dict) or command.get("action") != "confirm":
@@ -83,12 +90,13 @@ def build_planning_graph(service: PlanningDomainService):
         }
 
     graph = StateGraph(PlanningState)
-    graph.add_node("prepare_review", prepare_review)
-    graph.add_node("wait_for_confirmation", wait_for_confirmation)
-    graph.add_edge(START, "prepare_review")
-    graph.add_conditional_edges(
-        "prepare_review", route_after_prepare,
-        {"review": "wait_for_confirmation", "finish": END},
+    wire_langgraph(
+        graph, load_catalog().spec("planning"),
+        handlers={
+            "prepare_review": prepare_review,
+            "wait_for_confirmation": wait_for_confirmation,
+            "planning.confirmation_gate": confirmation_gate,
+        },
+        routers={"route_after_prepare": route_after_prepare},
     )
-    graph.add_edge("wait_for_confirmation", END)
     return graph

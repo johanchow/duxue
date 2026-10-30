@@ -1,0 +1,85 @@
+{
+  "id": "companion.scene-switch",
+  "version": "v1",
+  "kind": "gate",
+  "implementation": "judge",
+  "agent_label": "tutoring",
+  "risk_tier": "standard",
+  "operation": "scene_switch_check",
+  "input_contract": "scene-switch-input.v1",
+  "output_contract": "scene-switch-verdict.v1",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "user": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "array"
+          }
+        ]
+      }
+    },
+    "required": [
+      "user"
+    ],
+    "additionalProperties": false
+  },
+  "context_builder_id": "companion.scene_switch.context",
+  "prompt": {
+    "id": "companion.scene-switch.system.v1",
+    "template": "你是独立的场景切换核查器。只返回 JSON：{\"allow_switch\":true} 或 {\"allow_switch\":false}。输入包含孩子本轮原句、当前场景、初次模型提议的新场景，以及最近对话。初次提议只是待核查候选，不是证据。根据本轮要做的事和最近对话判断是否明确离开当前场景。孩子在回答上一轮的问题、补充解题步骤或提交答案时，继续当前答疑场景；不能因为提到‘结果’或已完成一道题，就把答疑当成学习复盘。明确要求管理具体任务或时间安排时可切到 planning；明确要求总结、回忆自己的学习经历或基于经历反思改进时可切到 reflection；明确提出知识问题、作业题求助或闲聊时可切到 tutoring。只有本轮意图支持所提议的新场景时才返回 true；证据不足、无法读图或多个场景并列而主动作不明时返回 false。recent_utterances 是同一条对话到上一轮为止的最近原句，从旧到新。「他们」「刚才那句」「上面那个」只能根据这些原句确定对象。对不上，或有多句都可能时，追问是哪一句，不要自己补一个对象，也不要把孩子这句中文当成待解释的外语。某句带有 image_ids 时，同编号的图片会随后附在同一条消息里，那就是这句话发出的图片，请直接看图；current_image_ids 是本轮学生发来的图片。标明无法读取的图片不要猜内容。不得回答孩子，不得调用工具，不得输出其它字段。"
+  },
+  "tools": [],
+  "models": [
+    {
+      "component_id": "companion.scene-switch",
+      "name": "qwen3.8-flash",
+      "temperature": 0,
+      "max_output_tokens": 40,
+      "timeout_ms": 20000
+    }
+  ],
+  "accepts_images": true,
+  "requires_agent_switch": true,
+  "on_error": "deny",
+  "safety_class": "standard",
+  "provider_output_schema": {
+    "type": "object",
+    "properties": {
+      "allow_switch": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "allow_switch"
+    ],
+    "additionalProperties": false
+  },
+  "verdict_schema": {
+    "additionalProperties": false,
+    "properties": {
+      "verdict": {
+        "enum": [
+          "allow",
+          "deny",
+          "unknown"
+        ],
+        "title": "Verdict",
+        "type": "string"
+      },
+      "reason_code": {
+        "title": "Reason Code",
+        "type": "string"
+      }
+    },
+    "required": [
+      "verdict",
+      "reason_code"
+    ],
+    "title": "GateVerdict",
+    "type": "object"
+  }
+}

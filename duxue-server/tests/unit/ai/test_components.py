@@ -149,7 +149,7 @@ def test_real_generation_export_keeps_sent_messages_prompt_id_and_raw_reply(monk
 
 def test_invoke_dynamic_prompt_has_no_system_message_and_records_override(spans):
     spec = COMPONENTS.get("task.intake")
-    client = _Client("{}")
+    client = _Client('{"assistant_text":"已整理。"}')
     invoke_json_component(
         spec=spec, user=[{"type": "text", "text": "rendered"}], client=client,
         settings_obj=_settings(json.dumps({"task.intake": "model-x"})),
@@ -169,7 +169,7 @@ def test_invalid_provider_output_maps_to_stable_error(content):
 
 
 def test_provider_failure_maps_to_transport_error():
-    client = _Client("{}")
+    client = _Client('{"act":"chat","content":"先说说你的想法。"}')
     client.chat.completions.create = lambda **_: (_ for _ in ()).throw(RuntimeError("boom"))
     with pytest.raises(ModelGatewayError, match="model_transport_error"):
         invoke_json_component(spec=COMPONENTS.get("companion.intent"), user="u", client=client, settings_obj=_settings())
@@ -310,7 +310,7 @@ def test_text_only_components_never_send_image_parts(spans):
     assert all(part["type"] == "text" for part in sent)
     assert "data:secret" not in json.dumps(sent)
 
-    client = _Client("{}")
+    client = _Client('{"act":"chat","content":"先说说你的想法。"}')
     invoke_json_component(spec=COMPONENTS.get("tutoring.turn"), user=user, client=client, settings_obj=_settings())
     assert client.calls[0]["messages"][1]["content"] == user
 
