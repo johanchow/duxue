@@ -1,0 +1,295 @@
+{
+  "schema_version": "conversation-eval.v1",
+  "id": "answer-feedback-conversation",
+  "title": "年龄计算题：提交错误答案后未获对错反馈，追问核验后触发门禁重试与兜底",
+  "type": "conversation_replay",
+  "replay_mode": "fixed_history",
+  "source": {
+    "kind": "real",
+    "provider": "langfuse",
+    "trace_ids": [
+      "c7d5880acd65dc956b6c8e4d918c048f",
+      "06acd12699c37562a45156fd00c0d740"
+    ],
+    "history_observation_id": "1b73937d5f08c75f",
+    "coverage": "observed_window",
+    "note": "messages 逐字保留可从历史窗口与两个 trace 核对的 5 轮对话，保留原始 ASR 表达和题目人名，不声称覆盖整个线程。更早的减法题仅在原 gate 输入中可见，未编造其对话。未纳入身份 ID、密钥或其他无关运行信息。"
+  },
+  "review_batch": "answer-feedback-v1",
+  "label_status": "proposed",
+  "reviewed_by": null,
+  "messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "周静薇比果果大五岁。果果现在。四岁。周经纬几岁？"
+    },
+    {
+      "id": "m2",
+      "role": "assistant",
+      "content": "题目里说周静薇比果果大 5 岁，果果现在 4 岁。那周静薇几岁呢？你可以列个算式算一算。"
+    },
+    {
+      "id": "m3",
+      "role": "user",
+      "content": "算是怎么练呢？"
+    },
+    {
+      "id": "m4",
+      "role": "assistant",
+      "content": "“比……大”就是加法。既然果果 4 岁，周静薇比她大 5 岁，那算式该怎么列呢？"
+    },
+    {
+      "id": "m5",
+      "role": "user",
+      "content": "是四加五吗？"
+    },
+    {
+      "id": "m6",
+      "role": "assistant",
+      "content": "对，就是 $4 + 5$。那算出来是多少岁呢？"
+    },
+    {
+      "id": "m7",
+      "role": "user",
+      "content": "等于八。"
+    },
+    {
+      "id": "m8",
+      "role": "assistant",
+      "content": "算式 $4 + 5$ 列对了。你算出的结果是 8，能说说你是怎么算出来的吗？比如是用手指头数，还是心里想数的组成？"
+    },
+    {
+      "id": "m9",
+      "role": "user",
+      "content": "那你告诉我有没有算对？"
+    },
+    {
+      "id": "m10",
+      "role": "assistant",
+      "content": "我这次没能整理出回答。把你的想法或要问的那一句再说一次，好吗？"
+    }
+  ],
+  "attempts": [
+    {
+      "id": "t4-primary",
+      "after_message": "m7",
+      "trace_id": "c7d5880acd65dc956b6c8e4d918c048f",
+      "generation_observation_id": "3d2fe2807f409bb9",
+      "model": "qwen3.7-plus-2026-05-26",
+      "prompt_id": "tutoring.turn.system.v19",
+      "candidate": {
+        "act": "guide",
+        "content": "算式 $4 + 5$ 列对了。你算出的结果是 8，能说说你是怎么算出来的吗？比如是用手指头数，还是心里想数的组成？",
+        "turn": {
+          "type": "work",
+          "relation": "same",
+          "depth": "reasoning",
+          "student_move": "attempt",
+          "progress": "submitted",
+          "evidence": "孩子给出计算结果 8",
+          "next_subgoal": "解释计算 4+5 的思考过程"
+        }
+      },
+      "gate": {
+        "observation_id": "7c5bd75e50f69023",
+        "input": {
+          "task_title": null,
+          "problem": "第1题：周静薇比果果大五岁。果果现在。四岁。周经纬几岁？\n第2题：三百四十五减一百零七。的竖式怎么写？\n学生先前说：周静薇比果果大五岁。果果现在。四岁。周经纬几岁？\n学生先前说：算是怎么练呢？\n学生先前说：是四加五吗？\n孩子本轮说：等于八。",
+          "reply": "算式 $4 + 5$ 列对了。你算出的结果是 8，能说说你是怎么算出来的吗？比如是用手指头数，还是心里想数的组成？"
+        },
+        "observed_verdict": {
+          "leaks": false,
+          "reason": "none"
+        }
+      },
+      "shown_to_user": true,
+      "delivered_as": "m8"
+    },
+    {
+      "id": "t5-primary",
+      "after_message": "m9",
+      "trace_id": "06acd12699c37562a45156fd00c0d740",
+      "generation_observation_id": "1b73937d5f08c75f",
+      "model": "qwen3.7-plus-2026-05-26",
+      "prompt_id": "tutoring.turn.system.v19",
+      "candidate": {
+        "act": "guide",
+        "content": "我们来检查一下：从 4 开始往后数 5 个数，是 5、6、7、8、9。所以 $4 + 5$ 应该等于 **9**。\n\n你再算算看，是不是哪里数漏了？",
+        "turn": {
+          "type": "work",
+          "relation": "same",
+          "depth": "recall",
+          "student_move": "attempt",
+          "progress": "submitted",
+          "evidence": "孩子给出计算结果 8",
+          "next_subgoal": "重新计算 4+5 的结果"
+        }
+      },
+      "gate": {
+        "observation_id": "05c72d7efa21e500",
+        "input": {
+          "task_title": null,
+          "problem": "第1题：周静薇比果果大五岁。果果现在。四岁。周经纬几岁？\n第2题：三百四十五减一百零七。的竖式怎么写？\n学生先前说：算是怎么练呢？\n学生先前说：是四加五吗？\n学生先前说：等于八。\n孩子本轮说：那你告诉我有没有算对？",
+          "reply": "我们来检查一下：从 4 开始往后数 5 个数，是 5、6、7、8、9。所以 $4 + 5$ 应该等于 **9**。\n\n你再算算看，是不是哪里数漏了？"
+        },
+        "observed_verdict": {
+          "leaks": true,
+          "reason": "incorrect_confirmation"
+        }
+      },
+      "shown_to_user": false,
+      "delivered_as": null
+    },
+    {
+      "id": "t5-retry",
+      "after_message": "m9",
+      "trace_id": "06acd12699c37562a45156fd00c0d740",
+      "generation_observation_id": "7853c64d7f6c164b",
+      "model": "qwen3.7-plus-2026-05-26",
+      "prompt_id": "tutoring.turn.system.v19",
+      "candidate": {
+        "act": "guide",
+        "content": "我们来数一数：从 4 开始，往后数 5 个数。\n\n4 后面是 5、6、7、8、**9**。\n\n你刚才数到 8 就停下了，是不是少数了一个？再试着数一遍看看？",
+        "turn": {
+          "type": "work",
+          "relation": "same",
+          "depth": "recall",
+          "student_move": "attempt",
+          "progress": "submitted",
+          "evidence": "孩子给出计算结果 8",
+          "next_subgoal": "重新计算 4+5 的结果"
+        }
+      },
+      "gate": {
+        "observation_id": "06664bf99befa8d7",
+        "input": {
+          "task_title": null,
+          "problem": "第1题：周静薇比果果大五岁。果果现在。四岁。周经纬几岁？\n第2题：三百四十五减一百零七。的竖式怎么写？\n学生先前说：算是怎么练呢？\n学生先前说：是四加五吗？\n学生先前说：等于八。\n孩子本轮说：那你告诉我有没有算对？",
+          "reply": "我们来数一数：从 4 开始，往后数 5 个数。\n\n4 后面是 5、6、7、8、**9**。\n\n你刚才数到 8 就停下了，是不是少数了一个？再试着数一遍看看？"
+        },
+        "observed_verdict": {
+          "leaks": true,
+          "reason": "final_answer"
+        }
+      },
+      "shown_to_user": false,
+      "delivered_as": null,
+      "retry_of": "t5-primary",
+      "repair_feedback": "泄露：上一版回复越过了作业答案边界；请按题型重写，不附和错误答案或确认可试探的选项。\n审核原因：incorrect_confirmation。\n被拒草稿（只供改写，禁止照抄）：\"我们来检查一下：从 4 开始往后数 5 个数，是 5、6、7、8、9。所以 $4 + 5$ 应该等于 **9**。\\n\\n你再算算看，是不是哪里数漏了？\""
+    }
+  ],
+  "checks": [
+    {
+      "id": "submitted-answer-feedback",
+      "after_message": "m7",
+      "component": "tutoring.turn",
+      "source_observation_id": "3d2fe2807f409bb9",
+      "input_snapshot": {
+        "permit": {
+          "answer_protected": true,
+          "active_subgoal": "计算出4加5的结果",
+          "attempt_summary": {
+            "substantive_attempts": 1,
+            "hints_given": 3,
+            "evidence_summary": "孩子确认了算式是四加五"
+          }
+        },
+        "task_title": null
+      },
+      "expect": {
+        "outcome_in": [
+          "hint_like"
+        ],
+        "response": {
+          "message": "算式列对了，但结果 8 不对。从 4 开始往后数 5 下，注意起点 4 不算第一下，再试试？"
+        },
+        "exit_gate": {
+          "leaks": false,
+          "reason": "none"
+        },
+        "criteria": [
+          "依据当前年龄题核验已提交的计算结果，先明确指出算式列对但结果不对。",
+          "给一个由孩子完成的自检提示；不把解释计算过程作为反馈对错的前置条件。",
+          "不直接补出正确的最终结果或完整数数过程。"
+        ]
+      }
+    },
+    {
+      "id": "followup-verdict-feedback",
+      "after_message": "m9",
+      "component": "tutoring.turn",
+      "source_observation_id": "1b73937d5f08c75f",
+      "input_snapshot": {
+        "permit": {
+          "answer_protected": true,
+          "active_subgoal": null,
+          "attempt_summary": {
+            "substantive_attempts": 2,
+            "hints_given": 3,
+            "evidence_summary": "孩子给出计算结果 8"
+          }
+        },
+        "task_title": null
+      },
+      "expect": {
+        "outcome_in": [
+          "hint_like"
+        ],
+        "response": {
+          "message": "还没算对，4 + 5 的算式是对的，结果 8 不对。你可以检查一下：从 4 开始往后数 5 下时，有没有把起点 4 也算进这 5 下？"
+        },
+        "exit_gate": {
+          "leaks": false,
+          "reason": "none"
+        },
+        "criteria": [
+          "沿用学生上一轮提交的答案准确反馈对错，不重新要求先说明计算过程。",
+          "不直接补出正确结果或完整解法。",
+          "不能因正确纠错被误判为错误附和而退回固定失败话术。"
+        ]
+      }
+    },
+    {
+      "id": "review-shown-response",
+      "after_message": "m7",
+      "attempt_id": "t4-primary",
+      "component": "tutoring.leak-judge",
+      "expect": {
+        "leaks": false,
+        "reason": "none",
+        "criteria": [
+          "此检查只核验原回复是否泄露，不表示原回复的教学质量合格；遗漏对错反馈由 submitted-answer-feedback 检查。"
+        ]
+      }
+    },
+    {
+      "id": "review-first-rejected-candidate",
+      "after_message": "m9",
+      "attempt_id": "t5-primary",
+      "component": "tutoring.leak-judge",
+      "expect": {
+        "leaks": true,
+        "reason": "final_answer",
+        "criteria": [
+          "原候选直接给出了孩子尚未算出的正确结果，应按 final_answer 拦截。",
+          "原候选没有肯定孩子提交的错误答案，不能误标为 incorrect_confirmation。"
+        ]
+      }
+    },
+    {
+      "id": "review-retry-candidate",
+      "after_message": "m9",
+      "attempt_id": "t5-retry",
+      "component": "tutoring.leak-judge",
+      "expect": {
+        "leaks": true,
+        "reason": "final_answer",
+        "criteria": [
+          "原重试候选把完整数数序列写到了正确结果，末尾的追问不能消除已经给出答案的事实。"
+        ]
+      }
+    }
+  ],
+  "note": "待确认的单文件真实对话回放配置；尚未适配执行器或执行评测。messages 和 attempts 是原始记录，不是正确答案。fixed_history 表示每个检查点读取其之前的原始消息，新生成回复不覆盖历史。attempts 是内部候选及门禁观测，不作为用户可见消息。observed_verdict 保留原判定，checks.expect 描述希望修正后的行为。expect.response.message 是期望的回复正文，按语义对齐，不要求逐字一致，不用关键词或数字检测代替语义核验；criteria 是判定要求。主流程检查的 exit_gate 要求新生成的正常纠错回复通过门禁；针对原始候选的门禁检查仍按原候选内容判断。仅保留真实记录，撤掉上一批合成变体与拆分样本。"
+}

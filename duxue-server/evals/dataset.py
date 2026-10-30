@@ -15,9 +15,9 @@ ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = Path(__file__).resolve().parent / "data"
 CATEGORIES = (
     "scene_routing", "real_regression", "answer_protection", "pronunciation_context",
-    "visual", "fact_vs_reasoning", "teaching_quality", "safety", "leak_judge", "multi_turn",
+    "visual", "fact_vs_reasoning", "teaching_quality", "safety", "leak_judge", "multi_turn", "conversation_replay",
 )
-SINGLE_TURN_CATEGORIES = tuple(c for c in CATEGORIES if c not in {"multi_turn", "leak_judge"})
+SINGLE_TURN_CATEGORIES = tuple(c for c in CATEGORIES if c not in {"multi_turn", "leak_judge", "conversation_replay"})
 CATEGORY_TAGS = {
     "answer_protection": "answer-protection", "pronunciation_context": "pronounce",
     "visual": "visual", "fact_vs_reasoning": "depth", "teaching_quality": "rubric",
@@ -93,7 +93,7 @@ def _case_files(path: Path) -> list[Path]:
         return [path]
     return sorted(
         file for file in path.rglob("*.json")
-        if not {"multi_turn", "leak_judge"}.intersection(file.relative_to(path).parts)
+        if not {"multi_turn", "leak_judge", "conversation_replay"}.intersection(file.relative_to(path).parts)
     )
 
 
@@ -135,6 +135,13 @@ def validate_layout(path: Path = DATA_DIR) -> list[str]:
             continue
         if record.get("id") != file.stem:
             problems.append(f"{file.relative_to(path)}: filename must match id")
+        if category == "conversation_replay":
+            from evals.conversations import load_conversations
+            try:
+                load_conversations(file)
+            except ValueError as error:
+                problems.append(str(error))
+            continue
         if category == "multi_turn":
             continue
         if category == "leak_judge":
