@@ -138,6 +138,8 @@ class _WardHomeApi extends ApiClient {
     Map<String, dynamic>? structuredCommand,
     List<String> attachmentKeys = const [],
   }) async {
+    submittedThreads.add(threadId);
+    if (delayedTurn != null) return delayedTurn!.future;
     lastStructuredCommand = structuredCommand;
     lastRouteHint = routeHint;
     lastTutoringIntent = tutoringIntent;
@@ -402,6 +404,27 @@ class _WardHomeApi extends ApiClient {
     return Uint8List.fromList([9, 9, 9]);
   }
 
+  final clearCommands = <String>[];
+  bool clearFails = false;
+  Completer<Map<String, dynamic>>? delayedTurn;
+  Completer<Map<String, dynamic>>? delayedHistory;
+  final submittedThreads = <String?>[];
+
+  @override
+  Future<Map<String, dynamic>> clearCompanionHistory(String commandId) async {
+    clearCommands.add(commandId);
+    if (clearFails) throw StateError('offline');
+    currentTranscriptOverride = {
+      'thread_id': null,
+      'thread_version': 0,
+      'messages': <dynamic>[],
+      'next_before_thread_version': null,
+      'previous_thread_id': null,
+    };
+    threadTranscriptOverrides.clear();
+    return {'history_generation': 1};
+  }
+
   Map<String, dynamic>? currentTranscriptOverride;
   final Map<String, Map<String, dynamic>> threadTranscriptOverrides = {};
   final List<({String threadId, int? beforeThreadVersion, int limit})>
@@ -442,6 +465,7 @@ class _WardHomeApi extends ApiClient {
       beforeThreadVersion: beforeThreadVersion,
       limit: limit,
     ));
+    if (delayedHistory != null) return delayedHistory!.future;
     if (showIntentChoice) {
       final choiceActions = [
         for (final choice in [
@@ -1813,6 +1837,144 @@ void main() {
 
     expect(find.text('传递作业、通知或留言'), findsOneWidget);
     expect(find.text('获取绑定码'), findsOneWidget);
+  });
+
+  for (final failFirst in [false, true]) {
+    testWidgets('clear history confirms, retries and starts fresh ($failFirst)',
+        (tester) async {
+      FlutterSecureStoragePlatform.instance =
+          TestFlutterSecureStoragePlatform({});
+      final api = _WardHomeApi()
+        ..clearFails = failFirst
+        ..currentTranscriptOverride = {
+          'thread_id': 'old-thread',
+          'thread_version': 2,
+          'next_before_thread_version': null,
+          'previous_thread_id': 'older-thread',
+          'messages': [
+            {
+              'id': 'old-message',
+              'thread_id': 'old-thread',
+              'thread_version': 2,
+              'author_type': 'companion',
+              'content': '需要清空的旧回答',
+              'attachment_refs': <String>[]
+            },
+          ],
+        };
+      await tester.pumpWidget(ProviderScope(
+        overrides: [apiProvider.overrideWithValue(api)],
+        child: const MaterialApp(home: WardDayPage(wardId: 'ward-1')),
+      ));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('说出你的任何想法、问题、安排'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('清空历史对话'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('历史数据仍由系统保存'), findsOneWidget);
+      await tester.tap(find.text('取消'));
+      await tester.pumpAndSettle();
+      expect(api.clearCommands, isEmpty);
+      expect(find.text('需要清空的旧回答'), findsOneWidget);
+      await tester.tap(find.byTooltip('清空历史对话'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('清空并重新开始'));
+      await tester.pumpAndSettle();
+      if (failFirst) {
+        expect(find.text('需要清空的旧回答'), findsOneWidget);
+        api.clearFails = false;
+        await tester.tap(find.byTooltip('清空历史对话'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('清空并重新开始'));
+        await tester.pumpAndSettle();
+        expect(api.clearCommands[0], api.clearCommands[1]);
+      }
+      expect(find.text('需要清空的旧回答'), findsNothing);
+      expect(find.byKey(const Key('load-older-messages-button')), findsNothing);
+      expect(await const TokenStorage().companionThreadId, isNull);
+      expect(find.text('数学练习册'), findsWidgets);
+      final send = tester
+          .widget<VoiceComposer>(find.byType(VoiceComposer))
+          .onVoiceFinal('新问题');
+      await tester.pumpAndSettle();
+      await send;
+      expect(api.submittedThreads.last, isNull);
+    });
+  }
+
+  testWidgets('clear discards an in-flight older history page', (tester) async {
+    FlutterSecureStoragePlatform.instance =
+        TestFlutterSecureStoragePlatform({});
+    final pending = Completer<Map<String, dynamic>>();
+    final api = _WardHomeApi()
+      ..delayedHistory = pending
+      ..currentTranscriptOverride = {
+        'thread_id': 'old-thread',
+        'thread_version': 2,
+        'messages': <dynamic>[],
+        'next_before_thread_version': 2,
+        'previous_thread_id': null,
+      };
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiProvider.overrideWithValue(api)],
+      child: const MaterialApp(home: WardDayPage(wardId: 'ward-1')),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('说出你的任何想法、问题、安排'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('load-older-messages-button')));
+    await tester.pump();
+    await tester.tap(find.byTooltip('清空历史对话'));
+    await tester.pump();
+    await tester.tap(find.text('清空并重新开始'));
+    await tester.pumpAndSettle();
+    pending.complete({
+      'messages': [
+        {
+          'id': 'late-history',
+          'author_type': 'companion',
+          'content': '迟到的历史页面',
+          'attachment_refs': <String>[]
+        }
+      ],
+      'next_before_thread_version': 1,
+      'previous_thread_id': 'older-thread',
+    });
+    await tester.pumpAndSettle();
+    expect(find.text('迟到的历史页面'), findsNothing);
+    expect(find.byKey(const Key('load-older-messages-button')), findsNothing);
+  });
+
+  testWidgets('clear during sending discards late reply and thread storage',
+      (tester) async {
+    FlutterSecureStoragePlatform.instance =
+        TestFlutterSecureStoragePlatform({});
+    final pending = Completer<Map<String, dynamic>>();
+    final api = _WardHomeApi()..delayedTurn = pending;
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiProvider.overrideWithValue(api)],
+      child: const MaterialApp(home: WardDayPage(wardId: 'ward-1')),
+    ));
+    await tester.pumpAndSettle();
+    final send = tester
+        .widget<VoiceComposer>(find.byType(VoiceComposer))
+        .onVoiceFinal('旧问题');
+    await tester.pump();
+    await tester.tap(find.byTooltip('清空历史对话'));
+    await tester.pump();
+    await tester.tap(find.text('清空并重新开始'));
+    await tester.pumpAndSettle();
+    pending.complete({
+      'thread_id': 'late-thread',
+      'thread_version': 2,
+      'interaction': {'kind': 'text', 'content': '迟到的旧回答'}
+    });
+    await tester.pumpAndSettle();
+    await send;
+    expect(await const TokenStorage().companionThreadId, isNull);
+    expect(find.text('迟到的旧回答'), findsNothing);
+    expect(tester.widget<VoiceComposer>(find.byType(VoiceComposer)).enabled,
+        isTrue);
   });
 
   testWidgets(

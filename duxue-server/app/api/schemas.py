@@ -216,6 +216,16 @@ class StructuredWardCommand(BaseModel):
         return self
 
 
+class CompanionHistoryClearRequest(BaseModel):
+    command_id: str = Field(min_length=32, max_length=36)
+
+    @field_validator("command_id")
+    @classmethod
+    def validate_command_id(cls, value: str) -> str:
+        from uuid import UUID
+        return str(UUID(value))
+
+
 class AgentRunCancelRequest(BaseModel):
     command_id: str = Field(default_factory=lambda: str(uuid4()))
     expected_thread_version: int | None = Field(default=None, ge=0)

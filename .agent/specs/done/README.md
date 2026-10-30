@@ -30,3 +30,4 @@
 | [confirm-companion-handoff.md](confirm-companion-handoff.md) | 2026-10-30 |
 | [agent-runtime-contracts.md](agent-runtime-contracts.md) | 2026-10-30 |
 | [declarative-agent-workflows.md](declarative-agent-workflows.md) | 2026-10-30 |
+| [clear-companion-history.md](clear-companion-history.md) | 2026-10-30 |

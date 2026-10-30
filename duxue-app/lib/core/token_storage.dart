@@ -1,8 +1,24 @@
+import 'dart:async';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class TokenStorage {
   const TokenStorage();
   static const _storage = FlutterSecureStorage();
+  static Future<void>? _companionWrites;
+
+  Future<void> _writeCompanion(Future<void> Function() write) async {
+    final previous = _companionWrites;
+    final done = Completer<void>();
+    _companionWrites = done.future;
+    try {
+      if (previous != null) await previous;
+      await write();
+    } finally {
+      done.complete();
+      if (identical(_companionWrites, done.future)) _companionWrites = null;
+    }
+  }
+
   Future<String?> get access => _storage.read(key: 'access_token');
   Future<String?> get refresh => _storage.read(key: 'refresh_token');
   Future<String?> get wardId => _storage.read(key: 'ward_id');
@@ -27,15 +43,20 @@ class TokenStorage {
     await _storage.write(key: 'access_token', value: access);
     await _storage.write(key: 'refresh_token', value: refresh);
     await _storage.write(key: 'ward_id', value: wardId);
-    await _storage.delete(key: 'companion_thread_id');
-    await _storage.delete(key: 'companion_thread_version');
+    await clearCompanionThread();
   }
 
-  Future<void> saveCompanionThread(String threadId, int threadVersion) async {
-    await _storage.write(key: 'companion_thread_id', value: threadId);
-    await _storage.write(
-        key: 'companion_thread_version', value: '$threadVersion');
-  }
+  Future<void> saveCompanionThread(String threadId, int threadVersion) =>
+      _writeCompanion(() async {
+        await _storage.write(key: 'companion_thread_id', value: threadId);
+        await _storage.write(
+            key: 'companion_thread_version', value: '$threadVersion');
+      });
+
+  Future<void> clearCompanionThread() => _writeCompanion(() async {
+        await _storage.delete(key: 'companion_thread_id');
+        await _storage.delete(key: 'companion_thread_version');
+      });
 
   Future<void> clear() => _storage.deleteAll();
 }

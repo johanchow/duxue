@@ -75,6 +75,7 @@ class Ward(Base):
     __tablename__ = "user_wards"
     id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True)
     display_name: Mapped[str] = mapped_column(String(100))
+    history_generation: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     grade_stage: Mapped[str] = mapped_column(String(20), default="primary")
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     analysis_profile_id: Mapped[str | None] = mapped_column(ForeignKey("analysis_profiles.id"), nullable=True)
@@ -450,6 +451,7 @@ class ConversationThread(Base):
     # Kept as a validated reference instead of an FK to avoid a circular
     # thread/run dependency; AgentRun.thread_id remains the authoritative FK.
     focus_run_ref: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    history_generation: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     version: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)

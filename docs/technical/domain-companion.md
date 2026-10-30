@@ -453,6 +453,16 @@ Workflow 必须声明版本化 `ContextSpec`：Memory 范围、近期会话窗�
 （`model`、`tool`、`validator`、`budget`、`transport`）；`failure` 只在 `outcome_type=failure`
 时必填，`resume_action` 必须与 Run 状态机允许的转换一致。
 
+#### 清空历史与会话边界
+
+`POST /companion/history/clear` 接受认证 Ward 的 UUID `command_id`，返回 `history_generation`。Ward 持有当前历史代次，新 Thread 创建时继承该代次；只有代次相同的 Thread 对 Ward 可见。清空事务递增 Ward 代次，解除旧 Thread 的 focus 并递增版本，将旧可恢复 Run 标记 cancelled；不删除原始消息、附件、Checkpoint 或 Trace，不修改任务、计划、StudySession、学习事实或长期记忆。
+
+输入接受、清空、Outcome 提交及命令完成以同一 Ward 行锁协调。模型工作流调用在入口提交释放锁后执行；Outcome 提交时重新加载 ORM 状态，并校验代次及既有 focus/attempt/turn fence。清空期间尚未提交的旧回复被拒绝，不返回可展示的成功交互。已完成的旧输入/取消命令也不能通过幂等重放恢复旧内容。清空命令单独以 `CompanionCommand` 记录且不绑定 Thread；同一个命令重试返回原结果，不再次推进代次，以免误清后续新消息。
+
+`current` 恢复、指定 Thread 查询、前序 Thread 游标、消息图片与 Run 事件均只读当前代次；旧引用返回 404，旧命令重放返回 409。原始记录仅保留在系统存储中，不通过这些 Ward 接口读取。新 Thread 的最近原句窗口为空，后续按既有规则增长；独立的长期记忆召回继续生效。
+
+App 在服务端确认后递增本地请求代次并清空聊天状态、图片缓存、交互卡、分页游标和本地 Thread 引用；异步输入结果、历史页及图片结果必须检查本地代次，不能复活旧会话。发送与清空互斥启动，但允许主动清空正在生成的对话；旧发送 finally 不得更改新会话的发送态。Thread 的本地存储写入和清除按序完成，避免迟到写入重新保存旧引用。
+
 SSE（目标能力）必须绑定 `thread_id`、`run_id`、`turn_id`、`attempt`、Policy 版本与单调
 `sequence`。客户端只展示当前 focus Run/attempt 的事件；重连按最后确认 sequence 恢复。流式文本
 不是写模型，也不为每个 delta 写 transcript journal：客户端可暂时显示增量，只有最终且通过 fence/

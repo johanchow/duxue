@@ -459,6 +459,11 @@ class ApiClient {
       }))
           .data as Map);
 
+  Future<Map<String, dynamic>> clearCompanionHistory(String commandId) async =>
+      Map<String, dynamic>.from((await dio.post('/companion/history/clear',
+              data: {'command_id': commandId}))
+          .data as Map);
+
   Future<Map<String, dynamic>> currentCompanionMessages({
     int? beforeThreadVersion,
     int limit = 50,
