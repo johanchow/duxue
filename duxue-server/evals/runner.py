@@ -19,7 +19,7 @@ from app.application.workflows.teaching_skills import history_candidates
 from app.application.workflows.tutor_loop import judge_problem_summary, run_tutor_turn
 from app.application.workflows.tutor_tools import TutorToolbox
 from app.application.workflows.tutor_turn import build_tutor_instruction
-from app.contexts.tutoring.domain.tutor_permit import ProblemState, TutorPermitPolicy
+from app.contexts.tutoring.domain.tutor_permit import ProblemState, TutorPermit, TutorPermitPolicy
 from app.infrastructure.ai.errors import ModelGatewayError
 from app.infrastructure.ai.intent_classifier import ModelIntentClassifier
 from evals.dataset import ASSETS_DIR
@@ -89,7 +89,7 @@ def build_input(case: EvalCase, assets_dir: Path) -> tuple[list[dict], list[str 
     return window, [read_asset(assets_dir / name) for name in case.images]
 
 
-def _observe_tutor(case: EvalCase, backends: Backends, window: list[dict], images: list) -> Observation:
+def _observe_tutor(case: EvalCase, backends: Backends, window: list[dict], images: list, *, permit_override: TutorPermit | None = None) -> Observation:
     context = case.context
     problem = context.problem
     state = (
@@ -100,7 +100,7 @@ def _observe_tutor(case: EvalCase, backends: Backends, window: list[dict], image
         )
         if problem else None
     )
-    permit = TutorPermitPolicy.permit(state)
+    permit = permit_override if permit_override is not None else TutorPermitPolicy.permit(state)
     instruction = build_tutor_instruction(
         content=case.student_said, permit=permit, history_candidates=history_candidates(window),
         tutoring_intent=context.tutoring_intent,
@@ -147,10 +147,11 @@ def _observe_intent(case: EvalCase, backends: Backends, window: list[dict], imag
     return Observation(proposal.intent, error=errors[0] if errors else None)
 
 
-def run_sample(case: EvalCase, backends: Backends, window: list[dict], images: list) -> Sample:
+def run_sample(case: EvalCase, backends: Backends, window: list[dict], images: list, *, permit_override: TutorPermit | None = None) -> Sample:
     start = time.perf_counter()
     observe = _observe_intent if case.component == "companion.intent" else _observe_tutor
-    observation = observe(case, backends, window, images)
+    observation = (observe(case, backends, window, images) if case.component == "companion.intent"
+                   else observe(case, backends, window, images, permit_override=permit_override))
     latency = (time.perf_counter() - start) * 1000
     return Sample(observation, grade(case, observation), round(latency, 1))
 

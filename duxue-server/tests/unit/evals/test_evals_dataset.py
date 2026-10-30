@@ -19,16 +19,16 @@ def _case(**fields) -> EvalCase:
 
 def test_committed_dataset_is_valid_and_not_empty():
     cases = dataset.load_cases()
-    assert len(cases) == 21
+    assert len(cases) == 16
     assert dataset.validate(cases) == []
     assert dataset.validate_layout() == []
 
 
 def test_each_category_owns_its_cases_and_multi_turn_is_separate():
     expected = {
-        "scene_routing": 2, "real_regression": 4, "answer_protection": 4,
+        "scene_routing": 2, "real_regression": 2, "answer_protection": 2,
         "pronunciation_context": 2, "visual": 2, "fact_vs_reasoning": 2,
-        "teaching_quality": 3, "safety": 2,
+        "teaching_quality": 2, "safety": 2,
     }
     for category, count in expected.items():
         assert len(dataset.load_cases(dataset.DATA_DIR / category)) == count

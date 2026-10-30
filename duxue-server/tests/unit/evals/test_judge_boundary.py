@@ -85,24 +85,24 @@ def test_case_problem_is_replayed_and_wrong_reason_is_counted(tmp_path):
 def test_answer_feedback_diagnostic_turns_validate_without_changing_seed():
     from evals import dataset
     cases = dataset.load_cases()
-    assert len([row for row in cases if row.review_batch == "answer-feedback-v1"]) == 5
+    assert len([row for row in cases if row.review_batch == "answer-feedback-v1"]) == 0
     seed = [row for row in cases if row.review_batch == "seed-v1"]
     assert len(seed) == 16
     assert dataset.dataset_hash(seed) == "7084bc6835908cf9"
-    assert len([row for row in judge_boundary.load_cases() if row["review_batch"] == "answer-feedback-v1"]) == 11
+    assert len([row for row in judge_boundary.load_cases() if row["review_batch"] == "answer-feedback-v1"]) == 0
 
 
 def test_judge_cases_are_individual_formatted_json_objects():
     from evals import dataset
     folder = dataset.DATA_DIR / 'leak_judge'
     files = list(folder.glob('*.json'))
-    assert len(files) == 26
+    assert len(files) == 15
     for file in files:
         record = dataset.read_object(file)
         assert record['id'] == file.stem
         assert record['component'] == 'tutoring.leak-judge'
         assert '\n  "' in file.read_text()
-    assert len(judge_boundary.load_cases(folder)) == 26
+    assert len(judge_boundary.load_cases(folder)) == 15
     assert not list(dataset.DATA_DIR.rglob('*.jsonl'))
 
 
@@ -110,7 +110,9 @@ def test_answer_feedback_uses_the_common_runner_and_batch():
     from evals import dataset
     from evals.__main__ import main
     cases = [row for row in dataset.load_cases() if row.review_batch == 'answer-feedback-v1']
-    assert len(cases) == 5
+    assert cases == []
+    from evals.conversations import load_conversations
+    assert len([row for row in load_conversations() if row.review_batch == "answer-feedback-v1"]) == 1
     assert main(['validate', '--batch', 'answer-feedback-v1']) == 0
     assert not (dataset.ROOT / 'evals' / 'answer_feedback.py').exists()
 

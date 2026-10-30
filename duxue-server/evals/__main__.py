@@ -15,7 +15,7 @@ from datetime import datetime, timezone  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 # No app import at module level: `validate` must work without runtime secrets.
-from evals import dataset, episodes  # noqa: E402
+from evals import dataset, episodes, conversations  # noqa: E402
 
 COMPONENTS = ("tutoring.turn", "companion.intent")
 VARIANT_NAMES = ("baseline", "drop-no-guess-clause")  # kept in sync with evals.variants.VARIANTS (tested)
@@ -48,7 +48,10 @@ def cmd_validate(args) -> int:
     path = Path(args.path) if args.path else (dataset.DATA_DIR / args.category if args.category else dataset.DATA_DIR)
     judge_only = (args.category == "leak_judge" or path.name == "leak_judge"
                   or (path.is_file() and dataset.read_object(path).get("component") == "tutoring.leak-judge"))
-    cases = [] if judge_only else dataset.load_cases(path)
+    conversation_only = (args.category == "conversation_replay" or path.name == "conversation_replay"
+                         or (path.is_file() and dataset.read_object(path).get("type") == "conversation_replay"))
+    replays = conversations.load_conversations(path) if conversation_only else []
+    cases = [] if judge_only or conversation_only else dataset.load_cases(path)
     problems = dataset.validate(cases)
     judges = judge_boundary.load_cases(path) if judge_only else []
     if not args.path and not args.category:
@@ -56,19 +59,55 @@ def cmd_validate(args) -> int:
         multi = episodes.load_episodes()
         problems.extend(episodes.validate_episodes(multi))
         judges = judge_boundary.load_cases()
+        replays = conversations.load_conversations()
     else:
         multi = []
     if args.batch:
         cases = [case for case in cases if case.review_batch == args.batch]
         multi = [row for row in multi if row.review_batch == args.batch]
         judges = [row for row in judges if row.get("review_batch") == args.batch]
-    if not cases and not multi and not judges:
+        replays = [row for row in replays if row.review_batch == args.batch]
+    if not cases and not multi and not judges and not replays:
         problems.append("no matching cases or episodes")
     for problem in problems:
         print(f"! {problem}")
     by_status = {s: sum(c.label_status == s for c in cases) for s in ("confirmed", "proposed", "needs_decision")}
-    print(f"{len(cases)} cases + {len(multi)} episodes + {len(judges)} judge cases  {by_status}  hash={dataset.dataset_hash(cases)}")
+    print(f"{len(cases)} cases + {len(multi)} episodes + {len(judges)} judge cases + {len(replays)} conversations  {by_status}  hash={dataset.dataset_hash(cases)}")
     return 1 if problems else 0
+
+
+def cmd_run_conversations(args) -> int:
+    if args.samples < 1:
+        print("--samples 必须大于 0", file=sys.stderr)
+        return 2
+    rows = [row for row in conversations.load_conversations(Path(args.path) if args.path else conversations.DIRECTORY)
+            if row.label_status in args.status.split(",")
+            and (not args.case or row.id in args.case) and (not args.batch or row.review_batch == args.batch)]
+    if not rows:
+        print("没有符合筛选条件的 conversation", file=sys.stderr)
+        return 2
+    live, runner, variants = _load_app("evals.live", "evals.conversation_runner", "evals.variants")
+    live.preflight()
+    spec = variants.resolve_spec("tutoring.turn", model=args.model, variant=args.variant)
+    from app.infrastructure.ai.components import COMPONENTS as registry
+    gate = registry.get("tutoring.leak-judge")
+    results = runner.run_conversations(rows, live.build_backends(spec), samples=args.samples)
+    summary = runner.summarize(results)
+    payload = {
+        "meta": {"type": "conversation_replay", "replay_mode": "fixed_history",
+                 "component": spec.component_id, "component_version": spec.version, "model": spec.model,
+                 "prompt_digest": spec.prompt.digest, "variant": args.variant, "samples": args.samples,
+                 "judge_version": gate.version, "judge_model": gate.model, "judge_prompt_digest": gate.prompt.digest,
+                 "dataset_hash": conversations.conversations_hash(rows), "review_batch": args.batch,
+                 "git_sha": _git_sha(), "at": datetime.now(timezone.utc).isoformat()},
+        "summary": summary, "conversations": results,
+    }
+    out = Path(args.out) if args.out else dataset.RESULTS_DIR / f"{datetime.now():%Y%m%d-%H%M%S}-conversations.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(json.dumps(summary, ensure_ascii=False))
+    print(f"结果：{out}")
+    return 1 if summary["failed"] else 0
 
 
 def cmd_run_judges(args) -> int:
@@ -251,7 +290,7 @@ def main(argv: list[str] | None = None) -> int:
 
     p = sub.add_parser("validate", help="校验数据集（无网络）")
     p.add_argument("--path")
-    p.add_argument("--category", choices=(*dataset.SINGLE_TURN_CATEGORIES, "leak_judge"))
+    p.add_argument("--category", choices=(*dataset.SINGLE_TURN_CATEGORIES, "leak_judge", "conversation_replay"))
     p.add_argument("--batch", help="仅统计指定人工复核批次，如 seed-v1")
     p.set_defaults(func=cmd_validate)
 
@@ -279,6 +318,17 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--out")
     p.add_argument("--with-reference", action="store_true", help="诊断对照：额外注入人工题面参考")
     p.set_defaults(func=cmd_run_judges)
+
+    p = sub.add_parser("run-conversations", help="固定原始历史回放真实对话及门禁候选（联网）")
+    p.add_argument("--path")
+    p.add_argument("--samples", type=int, default=3)
+    p.add_argument("--model")
+    p.add_argument("--variant", default="baseline", choices=VARIANT_NAMES)
+    p.add_argument("--status", default="confirmed,proposed,needs_decision")
+    p.add_argument("--case", action="append")
+    p.add_argument("--batch")
+    p.add_argument("--out")
+    p.set_defaults(func=cmd_run_conversations)
 
     p = sub.add_parser("run-episodes", help="用真实模型连续运行多轮场景（联网，不进 CI）")
     p.add_argument("--samples", type=int, default=3)
