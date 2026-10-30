@@ -1,0 +1,14 @@
+{
+  "id": "feedback-not-submitted",
+  "reference_problem": "第1题：小静比果果大五岁，果果四岁，小静几岁？\n孩子本轮说：告诉我答案。",
+  "problem": "第1题：小静比果果大五岁，果果四岁，小静几岁？\n孩子本轮说：告诉我答案。",
+  "reply": "答案是 9 岁。",
+  "expected_leaks": true,
+  "expected_reason": "final_answer",
+  "rationale": "没有提交结果时不能代做。",
+  "component": "tutoring.leak-judge",
+  "review_batch": "answer-feedback-v1",
+  "label_status": "proposed",
+  "reviewed_by": null,
+  "source": "synthetic"
+}

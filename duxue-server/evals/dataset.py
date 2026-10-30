@@ -15,9 +15,9 @@ ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = Path(__file__).resolve().parent / "data"
 CATEGORIES = (
     "scene_routing", "real_regression", "answer_protection", "pronunciation_context",
-    "visual", "fact_vs_reasoning", "teaching_quality", "safety", "multi_turn",
+    "visual", "fact_vs_reasoning", "teaching_quality", "safety", "leak_judge", "multi_turn",
 )
-SINGLE_TURN_CATEGORIES = CATEGORIES[:-1]
+SINGLE_TURN_CATEGORIES = tuple(c for c in CATEGORIES if c not in {"multi_turn", "leak_judge"})
 CATEGORY_TAGS = {
     "answer_protection": "answer-protection", "pronunciation_context": "pronounce",
     "visual": "visual", "fact_vs_reasoning": "depth", "teaching_quality": "rubric",
@@ -93,7 +93,7 @@ def _case_files(path: Path) -> list[Path]:
         return [path]
     return sorted(
         file for file in path.rglob("*.json")
-        if "multi_turn" not in file.relative_to(path).parts
+        if not {"multi_turn", "leak_judge"}.intersection(file.relative_to(path).parts)
     )
 
 
@@ -121,6 +121,9 @@ def validate_layout(path: Path = DATA_DIR) -> list[str]:
         if not list(folder.glob("*.json")):
             problems.append(f"empty category: {category}")
     for file in list(path.rglob("*.json")) + list(path.rglob("*.jsonl")):
+        if file.suffix != ".json":
+            problems.append(f"{file.relative_to(path)}: case configs must use .json")
+            continue
         if file.parent == path or file.parent.parent != path or file.parent.name not in CATEGORIES:
             problems.append(f"unexpected dataset file: {file.relative_to(path)}")
             continue
@@ -133,6 +136,13 @@ def validate_layout(path: Path = DATA_DIR) -> list[str]:
         if record.get("id") != file.stem:
             problems.append(f"{file.relative_to(path)}: filename must match id")
         if category == "multi_turn":
+            continue
+        if category == "leak_judge":
+            from evals.judge_boundary import load_cases as load_judge_cases
+            try:
+                load_judge_cases(file)
+            except ValueError as error:
+                problems.append(str(error))
             continue
         try:
             case = load_cases(file)[0]

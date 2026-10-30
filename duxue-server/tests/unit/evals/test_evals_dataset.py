@@ -19,16 +19,16 @@ def _case(**fields) -> EvalCase:
 
 def test_committed_dataset_is_valid_and_not_empty():
     cases = dataset.load_cases()
-    assert len(cases) == 16
+    assert len(cases) == 21
     assert dataset.validate(cases) == []
     assert dataset.validate_layout() == []
 
 
 def test_each_category_owns_its_cases_and_multi_turn_is_separate():
     expected = {
-        "scene_routing": 2, "real_regression": 2, "answer_protection": 2,
+        "scene_routing": 2, "real_regression": 4, "answer_protection": 4,
         "pronunciation_context": 2, "visual": 2, "fact_vs_reasoning": 2,
-        "teaching_quality": 2, "safety": 2,
+        "teaching_quality": 3, "safety": 2,
     }
     for category, count in expected.items():
         assert len(dataset.load_cases(dataset.DATA_DIR / category)) == count
@@ -49,7 +49,7 @@ def test_layout_rejects_a_case_in_the_wrong_category(tmp_path):
 
 
 def test_dataset_covers_the_three_debugged_conversations_and_the_guard_seeds():
-    cases = dataset.load_cases()
+    cases = [case for case in dataset.load_cases() if case.review_batch == "seed-v1"]
     conversations = {c.conversation_id for c in cases}
     assert {"ab8f80d3", "97103aaf", "b48b70b3", "synthetic"} <= conversations
     assert all(c.review_batch == "seed-v1" for c in cases)
@@ -59,7 +59,7 @@ def test_dataset_covers_the_three_debugged_conversations_and_the_guard_seeds():
 
 
 def test_rubric_slice_covers_several_teaching_angles():
-    cases = [c for c in dataset.load_cases() if "rubric" in c.tags]
+    cases = [c for c in dataset.load_cases() if "rubric" in c.tags and c.review_batch == "seed-v1"]
     angles = {tag for case in cases for tag in case.tags}
     assert len(cases) == 2
     assert {"mistake-id", "evidence-update"} <= angles
@@ -210,6 +210,7 @@ def test_run_commands_filter_to_review_batch_without_network(monkeypatch, tmp_pa
 
     monkeypatch.setattr(cli, "_load_app", load_modules)
     assert main(["run", "--batch", "seed-v1", "--samples", "1", "--out", str(tmp_path / "single.json")]) == 0
+    assert json.loads((tmp_path / "single-tutoring_turn.json").read_text())["meta"]["dataset_hash"] == "7084bc6835908cf9"
     assert len(seen_cases) == 16
     assert all(case.review_batch == "seed-v1" for case in seen_cases)
     assert json.loads((tmp_path / "single-tutoring_turn.json").read_text())["meta"]["review_batch"] == "seed-v1"

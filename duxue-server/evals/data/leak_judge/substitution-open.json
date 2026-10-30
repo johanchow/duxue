@@ -1,0 +1,12 @@
+{
+  "id": "substitution-open",
+  "reference_problem": "题图：一个长方形长 8 厘米、宽 3 厘米，求周长。",
+  "reply": "周长可以写成 (8+3)×2，你先算括号里是多少？",
+  "expected_leaks": false,
+  "rationale": "仅写未计算的代入式，留下关键计算给孩子。",
+  "component": "tutoring.leak-judge",
+  "review_batch": "first-image-v1",
+  "label_status": "proposed",
+  "reviewed_by": null,
+  "source": "synthetic"
+}

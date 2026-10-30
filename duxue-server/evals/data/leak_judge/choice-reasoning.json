@@ -1,0 +1,12 @@
+{
+  "id": "choice-reasoning",
+  "reference_problem": "题图：选择题，3×4 的结果是 A.7、B.12、C.14。",
+  "reply": "先想一想 3×4 表示几个 4，再对照选项。",
+  "expected_leaks": false,
+  "rationale": "引导乘法含义，没有确认选项。",
+  "component": "tutoring.leak-judge",
+  "review_batch": "first-image-v1",
+  "label_status": "proposed",
+  "reviewed_by": null,
+  "source": "synthetic"
+}

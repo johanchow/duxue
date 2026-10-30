@@ -313,6 +313,10 @@ def _text_leak_result(result: bool | dict | None) -> tuple[bool | None, str | No
 def _leak_repair(vetting: Vetting) -> str:
     """Bounded feedback for one retry. The rejected draft never reaches the child."""
     reason = vetting.leak_reason or vetting.failure or "unspecified"
+    if reason in {"final_answer", "complete_solution"}:
+        return (f"{LEAK_REPAIR}\n审核原因：{reason}。\n"
+                "保留独立核验后的对错反馈，删除代算的正确结果与解法；"
+                "只说明一个让孩子执行的检查动作，不替孩子执行。")
     rejected = json.dumps(vetting.candidate.shown_text[:800], ensure_ascii=False)
     return f"{LEAK_REPAIR}\n审核原因：{reason}。\n被拒草稿（只供改写，禁止照抄）：{rejected}"
 

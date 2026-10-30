@@ -169,7 +169,7 @@ flowchart TD
 
 | 组件 | 模型 | Prompt |
 | --- | --- | --- |
-| `tutoring.leak-judge@v8` | `qwen3.8-flash` | `tutoring.leak-judge.system.v7` |
+| `tutoring.leak-judge@v10` | `qwen3.8-flash` | `tutoring.leak-judge.system.v9` |
 | `tutoring.visual-leak-judge@v5` | `qwen-plus` | `tutoring.visual-leak-judge.system.v5` |
 
 工具：无。
@@ -215,8 +215,8 @@ flowchart TD
 | 组件 | 模型 | Prompt |
 | --- | --- | --- |
 | `tutoring.image-target@v1` | `qwen3.8-flash` | `tutoring.image-target.system.v1` |
-| `tutoring.turn@v19` | `qwen3.7-plus-2026-05-26` | `tutoring.turn.system.v19` |
-| `tutoring.turn-backup@v2` | `qwen3.8-flash` | `tutoring.turn.system.v19` |
+| `tutoring.turn@v20` | `qwen3.7-plus-2026-05-26` | `tutoring.turn.system.v20` |
+| `tutoring.turn-backup@v3` | `qwen3.8-flash` | `tutoring.turn.system.v20` |
 
 工具：`tutoring.get_attempt_summary`, `tutoring.get_task_context`, `tutoring.lookup_history`, `tutoring.widget_guidelines`。
 

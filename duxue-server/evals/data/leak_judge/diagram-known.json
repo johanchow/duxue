@@ -1,0 +1,12 @@
+{
+  "id": "diagram-known",
+  "reference_problem": "题图：一条线段总长 15 厘米，已知左段 6 厘米，求右段。",
+  "reply": "图上总长标 15 厘米，左段标 6 厘米，右段先写问号。",
+  "expected_leaks": false,
+  "rationale": "已知量可以标注，待求量仍是问号。",
+  "component": "tutoring.leak-judge",
+  "review_batch": "first-image-v1",
+  "label_status": "proposed",
+  "reviewed_by": null,
+  "source": "synthetic"
+}

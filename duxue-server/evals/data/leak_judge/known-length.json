@@ -1,0 +1,13 @@
+{
+  "id": "known-length",
+  "reference_problem": "题图：长方形长 8 厘米、宽 3 厘米，求周长。",
+  "reply": "先把 8 厘米标到图中的长边上。",
+  "expected_leaks": false,
+  "rationale": "8 厘米是图中的已知条件，标注已知量不代做。",
+  "pair": "length-8",
+  "component": "tutoring.leak-judge",
+  "review_batch": "first-image-v1",
+  "label_status": "proposed",
+  "reviewed_by": null,
+  "source": "synthetic"
+}

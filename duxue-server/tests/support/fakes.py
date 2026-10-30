@@ -178,3 +178,11 @@ class FakeClock:
         from datetime import timedelta
         self._current_time += timedelta(**kwargs)
         return self._current_time
+
+
+def leak_judge_facts(**changes):
+    result = dict(student_answer_correct=None, affirms_student_answer=False,
+                  new_final_answer=False, complete_solution=False,
+                  choice_verdict=False, premature_conclusion=False)
+    result.update(changes)
+    return result

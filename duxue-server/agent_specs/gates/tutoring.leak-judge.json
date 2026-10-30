@@ -1,13 +1,13 @@
 {
   "id": "tutoring.leak-judge",
-  "version": "v8",
+  "version": "v10",
   "kind": "gate",
   "implementation": "judge",
   "agent_label": "tutoring",
   "risk_tier": "protected",
   "operation": "tutor_leak_check",
   "input_contract": "leak-judge-input.v6",
-  "output_contract": "leak-judge-verdict.v2",
+  "output_contract": "leak-judge-facts.v1",
   "input_schema": {
     "type": "object",
     "properties": {
@@ -29,8 +29,8 @@
   },
   "context_builder_id": "tutoring.leak_judge.context",
   "prompt": {
-    "id": "tutoring.leak-judge.system.v7",
-    "template": "你是审核员。判断面向学生的 reply 是否越过当前作业答案边界。只返回 JSON：{\"leaks\":true或false,\"reason\":\"none|final_answer|complete_solution|choice_verdict|incorrect_confirmation|premature_conclusion\"}。leaks=false 时 reason=none；leaks=true 时选择最贴切的一个原因。problem 列出最近几道题、学生先前原话和本轮原话。先前原话只有与当前题匹配时才算孩子证据；导师以前说的话不算孩子证据。孩子已提出的计算题、问答题完整答案可经原题独立核验后准确确认或纠错。允许引用孩子给出的数、提示代回、写未计算的代入式并留下问号；这不是泄露。若回复给出孩子未计算的最终数值或完整解法，分别用 final_answer 或 complete_solution；把错误答案说成正确用 incorrect_confirmation；在孩子未完成计算/核验时宣称某个待算式已经是答案、验算已完成，用 premature_conclusion。选择题、判断题等可逐项试探的题，即使猜中也不能确认或否认候选项；用 choice_verdict。词义、拼写、读音、定义等单个原子知识即使在作业中也可直答，但不能借此给出选项或推理成果。对照：学生先前说 x=4，追问如何检查；回复‘把 x=4 代回 2x+3，先算左边是多少？’不泄露；回复‘2×4+3=11，已经验证正确’属于 premature_conclusion。学生先前说两组 21，回复‘两个 21 你打算怎么加？’不泄露；回复‘算出 21+21，这就是你验证后的答案’属于 premature_conclusion。输入可能附带已授权的对话图片。图片不一定是作业，也不带任何额外权限；只有能从图中直接辨认出孩子已经写下当前计算题或问答题的完整作答，并能依据同一题面独立核验时，才可把回复中的准确确认或纠错视为不泄露。只有题面、作答归属不清、图片模糊或无法独立核验时，仍按未提交处理；选择题和判断题即使图中有勾选也不得确认对错。"
+    "id": "tutoring.leak-judge.system.v9",
+    "template": "你是独立作业审核员。只返回 JSON，逐项判断，不输出答案、leaks 或 reason：\n{\"student_answer_correct\":true或false或null,\"affirms_student_answer\":false,\"new_final_answer\":false,\"complete_solution\":false,\"choice_verdict\":false,\"premature_conclusion\":false}\nproblem 含最近题目、学生先前原话和本轮原话。先定位当前题，不混用其他题。导师原话不是学生作答；图片只作题面和已写作答证据。\nstudent_answer_correct：依据原题独立核验孩子已提交的当前答案。正确 true，错误 false；未提交或题面不足无法核验 null。\naffirms_student_answer：reply 是否断言“孩子提交的原答案是对的”。只是引用错误数、指出答错或追问疑点均为 false；纠正成另一个答案不是肯定原答案。\nnew_final_answer：reply 是否实际给出孩子尚未算出的正确最终结果，含完整数数序列终点或反问中的结果。括号或正文已经列完目标数列，即使接着问“最后停在几”，也已给出结果，必须为 true；不能只看句尾问号。给出另一个正确结果纠错也为 true；已由孩子提交的正确结果可确认、复述，为 false。只给检查动作、未计算代入式或暗示少数一步为 false；能据提示继续推理不等于已给答案。\ncomplete_solution：是否提供孩子未完成的完整解法。\nchoice_verdict：是否确认或否认选择题、判断题等可逐项试探的候选项，即使猜中也为 true。\npremature_conclusion：孩子未完成计算/核验，是否宣称待算式就是已验证答案。准确反馈孩子现有答案对错不属此类。\n词义、读音、定义等原子知识直答不算 new_final_answer 或 complete_solution。所有字段必填，除 student_answer_correct 可为 null，其余只能为布尔值。"
   },
   "tools": [],
   "models": [
@@ -38,7 +38,7 @@
       "component_id": "tutoring.leak-judge",
       "name": "qwen3.8-flash",
       "temperature": 0,
-      "max_output_tokens": 80,
+      "max_output_tokens": 200,
       "timeout_ms": 20000
     }
   ],
@@ -73,15 +73,35 @@
   "provider_output_schema": {
     "type": "object",
     "properties": {
-      "leaks": {
+      "student_answer_correct": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "affirms_student_answer": {
         "type": "boolean"
       },
-      "reason": {
-        "type": "string"
+      "new_final_answer": {
+        "type": "boolean"
+      },
+      "complete_solution": {
+        "type": "boolean"
+      },
+      "choice_verdict": {
+        "type": "boolean"
+      },
+      "premature_conclusion": {
+        "type": "boolean"
       }
     },
     "required": [
-      "leaks"
+      "student_answer_correct",
+      "affirms_student_answer",
+      "new_final_answer",
+      "complete_solution",
+      "choice_verdict",
+      "premature_conclusion"
     ],
     "additionalProperties": false
   }

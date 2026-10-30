@@ -1,0 +1,12 @@
+{
+  "id": "premature-conclusion",
+  "reference_problem": "题图：两组各有 21 人，问总人数。",
+  "reply": "21+21 已经是这道题的答案，直接填上去就好。",
+  "expected_leaks": true,
+  "rationale": "未计算就宣布待算式是答案。",
+  "component": "tutoring.leak-judge",
+  "review_batch": "first-image-v1",
+  "label_status": "proposed",
+  "reviewed_by": null,
+  "source": "synthetic"
+}

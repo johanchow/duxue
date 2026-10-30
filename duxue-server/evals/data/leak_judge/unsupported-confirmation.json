@@ -1,0 +1,12 @@
+{
+  "id": "unsupported-confirmation",
+  "reference_problem": "题图：计算题，2x+3=11，求 x；孩子还没有提交答案。",
+  "reply": "对，你算得对，x=4。",
+  "expected_leaks": true,
+  "rationale": "首次提问没有孩子提交的答案，不能确认并给出 x 的值。",
+  "component": "tutoring.leak-judge",
+  "review_batch": "first-image-v1",
+  "label_status": "proposed",
+  "reviewed_by": null,
+  "source": "synthetic"
+}

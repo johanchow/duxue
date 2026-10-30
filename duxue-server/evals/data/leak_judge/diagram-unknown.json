@@ -1,0 +1,12 @@
+{
+  "id": "diagram-unknown",
+  "reference_problem": "题图：一条线段总长 15 厘米，已知左段 6 厘米，求右段。",
+  "reply": "右段标 9 厘米，整张图就填好了。",
+  "expected_leaks": true,
+  "rationale": "直接在待求位置填入未经计算的值。",
+  "component": "tutoring.leak-judge",
+  "review_batch": "first-image-v1",
+  "label_status": "proposed",
+  "reviewed_by": null,
+  "source": "synthetic"
+}

@@ -1,4 +1,5 @@
 from __future__ import annotations
+from tests.support.fakes import leak_judge_facts
 
 import json
 from types import SimpleNamespace
@@ -204,19 +205,19 @@ def test_tutoring_components_keep_existing_success_and_failure_boundaries(monkey
 
     def succeed(**kwargs):
         seen.append(kwargs["spec"].component_id)
-        return {"act": "hint"} if kwargs["spec"].component_id == "tutoring.turn" else {"leaks": False}
+        return {"act": "hint"} if kwargs["spec"].component_id == "tutoring.turn" else leak_judge_facts()
 
     monkeypatch.setattr(tutor_turn_model.components, "invoke_json_component", succeed)
     assert tutor_turn_model.QwenTutorTurnGateway().complete(envelope={}, instruction="说明") == {"act": "hint"}
     assert tutor_turn_model.QwenLeakJudge().leaks(text="提示", task_title=None, problem_summary=None) == {
-        "leaks": False, "reason": None,
+        "leaks": False, "reason": "none",
     }
     assert seen == ["tutoring.turn", "tutoring.leak-judge"]
 
     captured: dict = {}
     monkeypatch.setattr(
         tutor_turn_model.components, "invoke_json_component",
-        lambda **kwargs: captured.update(kwargs) or {"leaks": False, "reason": "none"},
+        lambda **kwargs: captured.update(kwargs) or leak_judge_facts(),
     )
     assert tutor_turn_model.QwenLeakJudge().leaks(
         text="你写的答案对吗？", task_title=None, problem_summary=None,
@@ -227,7 +228,7 @@ def test_tutoring_components_keep_existing_success_and_failure_boundaries(monkey
 
     monkeypatch.setattr(
         tutor_turn_model.components, "invoke_json_component",
-        lambda **_kwargs: {"leaks": True, "reason": "premature_conclusion"},
+        lambda **_kwargs: leak_judge_facts(premature_conclusion=True),
     )
     assert tutor_turn_model.QwenLeakJudge().leaks(text="这是答案", task_title=None, problem_summary=None) == {
         "leaks": True, "reason": "premature_conclusion",
@@ -314,7 +315,7 @@ def test_text_only_components_never_send_image_parts(spans):
     invoke_json_component(spec=COMPONENTS.get("tutoring.turn"), user=user, client=client, settings_obj=_settings())
     assert client.calls[0]["messages"][1]["content"] == user
 
-    client = _Client('{"leaks": false, "reason": "none"}')
+    client = _Client(json.dumps(leak_judge_facts()))
     invoke_json_component(spec=COMPONENTS.get("tutoring.leak-judge"), user=user, client=client, settings_obj=_settings())
     assert client.calls[0]["messages"][1]["content"] == user
 

@@ -1,0 +1,12 @@
+{
+  "id": "atomic-fact",
+  "reference_problem": "题图：英语词义题，问 apple 的中文意思。",
+  "reply": "apple 是苹果。",
+  "expected_leaks": false,
+  "rationale": "按产品口径，单个词义属于可直答的原子知识。",
+  "component": "tutoring.leak-judge",
+  "review_batch": "first-image-v1",
+  "label_status": "proposed",
+  "reviewed_by": null,
+  "source": "synthetic"
+}

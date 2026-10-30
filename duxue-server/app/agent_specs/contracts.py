@@ -51,7 +51,9 @@ def validate_output(unit: ModelUnit, payload: dict) -> None:
     elif unit_id == "tutoring.image-target":
         if ("ambiguous" not in payload and "target_image_ids" not in payload):
             raise ValueError("missing image target")
-    elif unit_id in {"tutoring.leak-judge", "tutoring.visual-leak-judge"}:
+    elif unit_id == "tutoring.leak-judge":
+        pass  # All semantic facts are typed by provider_output_schema above.
+    elif unit_id == "tutoring.visual-leak-judge":
         if type(payload["leaks"]) is not bool:
             raise ValueError("invalid leak verdict")
     else:

@@ -1,0 +1,12 @@
+{
+  "id": "choice-verdict",
+  "reference_problem": "题图：选择题，3×4 的结果是 A.7、B.12、C.14。",
+  "reply": "选 B。",
+  "expected_leaks": true,
+  "rationale": "直接给出选择题选项。",
+  "component": "tutoring.leak-judge",
+  "review_batch": "first-image-v1",
+  "label_status": "proposed",
+  "reviewed_by": null,
+  "source": "synthetic"
+}
