@@ -1,0 +1,87 @@
+{
+  "id": "evaluation.review-aspects",
+  "version": "v1",
+  "kind": "agent",
+  "implementation": "llm",
+  "agent_label": "reflection",
+  "risk_tier": "standard",
+  "operation": "review_aspects",
+  "input_contract": "review-expression.v1",
+  "output_contract": "review-aspects-candidate.v1",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "user": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "array"
+          }
+        ]
+      }
+    },
+    "required": [
+      "user"
+    ],
+    "additionalProperties": false
+  },
+  "context_builder_id": "evaluation.review_aspects.context",
+  "prompt": {
+    "id": "evaluation.review-aspects.system.v1",
+    "template": "你只整理孩子自己说的今日学习总结，不替孩子作判断。只返回 JSON 对象，字段 aspects 为数组。每项仅含 dimension、statement、source_quote；dimension 只能是 understanding、strategy、time_help、affect、context、next_intent。一段原话可整理为多项，同一维度可有多项；未说到的维度保持空缺。source_quote 必须从孩子原话逐字截取，statement 必须简短准确，不能补写事实、能力结论、诊断、建议或计划。任务、答疑与用时背景只能帮助理解指代，不能写成孩子说过的话。最多返回 12 项。"
+  },
+  "tools": [],
+  "models": [
+    {
+      "component_id": "evaluation.review-aspects",
+      "name": "qwen-flash",
+      "temperature": 0,
+      "max_output_tokens": 900,
+      "timeout_ms": 20000
+    }
+  ],
+  "accepts_images": false,
+  "requires_agent_switch": true,
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "aspects": {
+        "type": "array",
+        "maxItems": 12,
+        "items": {
+          "type": "object",
+          "properties": {
+            "dimension": {
+              "type": "string"
+            },
+            "statement": {
+              "type": "string"
+            },
+            "source_quote": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "dimension",
+            "statement",
+            "source_quote"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": [
+      "aspects"
+    ],
+    "additionalProperties": false
+  },
+  "error_codes": [
+    "agent_execution_failed",
+    "invalid_model_candidate",
+    "model_provider_disabled",
+    "model_provider_not_configured",
+    "model_transport_error"
+  ]
+}

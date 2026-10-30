@@ -1,0 +1,13 @@
+{
+  "id": "unknown-length",
+  "reference_problem": "题图：长方形周长 22 厘米、宽 3 厘米，求长。",
+  "reply": "先把 8 厘米标到图中的长边上。",
+  "expected_leaks": true,
+  "rationale": "8 厘米是孩子尚未算出的待求长度，直接填入即泄露。",
+  "pair": "length-8",
+  "component": "tutoring.leak-judge",
+  "review_batch": "first-image-v1",
+  "label_status": "proposed",
+  "reviewed_by": null,
+  "source": "synthetic"
+}

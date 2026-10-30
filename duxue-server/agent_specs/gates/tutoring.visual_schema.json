@@ -1,0 +1,36 @@
+{
+  "id": "tutoring.visual_schema",
+  "version": "v1",
+  "kind": "gate",
+  "implementation": "code",
+  "handler_id": "tutoring.visual_schema",
+  "safety_class": "protected",
+  "on_error": "deny",
+  "input_schema": {
+    "type": "object"
+  },
+  "verdict_schema": {
+    "additionalProperties": false,
+    "properties": {
+      "verdict": {
+        "enum": [
+          "allow",
+          "deny",
+          "unknown"
+        ],
+        "title": "Verdict",
+        "type": "string"
+      },
+      "reason_code": {
+        "title": "Reason Code",
+        "type": "string"
+      }
+    },
+    "required": [
+      "verdict",
+      "reason_code"
+    ],
+    "title": "GateVerdict",
+    "type": "object"
+  }
+}

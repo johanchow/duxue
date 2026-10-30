@@ -3,14 +3,16 @@ from __future__ import annotations
 
 import base64
 import json
-from datetime import date
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, Field, ValidationError
 
+from app.agent_specs.contexts import build_context
+from app.api.schemas import TaskCandidate, TaskIntakeRequest
 from app.infrastructure.ai import components
 from app.infrastructure.ai.errors import ModelGatewayError
-from app.api.schemas import TaskCandidate, TaskIntakeRequest
 from app.infrastructure.storage.object_storage import storage
 
 
@@ -34,22 +36,16 @@ def _data_url(key: str) -> str:
 
 
 def _prompt(wards: list[dict], request: TaskIntakeRequest) -> str:
-    return f"""你是读学的任务整理助手。今天是 {date.today().isoformat()}。
-你只能把任务分配给以下监护人已绑定的孩子（只能使用其 id，绝不能创造、猜测或使用其他 id）：
-{json.dumps(wards, ensure_ascii=False)}
+    from app.infrastructure.ai.prompts import PROMPTS, DynamicPrompt
 
-当前候选任务（它们尚未保存，可按本轮对话修改）：
-{json.dumps([task.model_dump(mode='json') for task in request.tasks], ensure_ascii=False)}
-
-对话历史：
-{json.dumps([message.model_dump() for message in request.history], ensure_ascii=False)}
-
-硬规则：
-1. 多个孩子时，只要某项任务的归属没有由监护人或图片明确说明，就必须 clarification_required=true、ready_to_confirm=false，并在 questions 中只追问必要的归属问题。绝不默认复制给所有孩子，不依据年级、历史或名字相似性猜测。
-2. 不补造作业页码、科目、截止日或优先级；日期含糊时在 assistant_text 中说明并保留为空，只有归属和标题明确才可确认。
-3. Guardian 的修正可以引用“第二项”“刚才的任务”；据此更新整个 tasks 清单。
-4. 只输出一个 JSON object：assistant_text、tasks、clarification_required、questions、ready_to_confirm。tasks 每项必须是 ward_id、title、details（可为 null）、due_date（YYYY-MM-DD 或 null）。
-5. 只有每项都属于白名单且 title 非空，且没有待澄清的归属时 ready_to_confirm 才能为 true。"""
+    prompt = PROMPTS["task.intake.prompt.v2"]
+    assert isinstance(prompt, DynamicPrompt)
+    return prompt.render({
+        "today": datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat(),
+        "authorized_wards": wards,
+        "candidate_tasks": [task.model_dump(mode="json") for task in request.tasks],
+        "conversation_history": [message.model_dump() for message in request.history],
+    })
 
 
 class TaskIntakeService:
@@ -57,9 +53,17 @@ class TaskIntakeService:
         if not request.content and not request.attachment_keys:
             raise TaskIntakeError("请先输入文字或添加图片")
         try:
-            content: list[dict] = [{"type": "text", "text": _prompt(wards, request) + "\n\n本轮监护人消息：\n" + request.content}]
-            content.extend({"type": "image_url", "image_url": {"url": _data_url(key)}} for key in request.attachment_keys)
-            payload = components.invoke_json_component(spec=components.COMPONENTS.get("task.intake"), user=content)
+            content = build_context("task.intake", wards=wards, request=request)
+            from app.agent_specs.catalog import load_catalog
+            from app.agent_specs.runtime import execute_workflow
+            catalog = load_catalog()
+            state = execute_workflow(
+                catalog.spec("task-intake"),
+                handlers={"task.intake": lambda _state: components.invoke_agent_component(
+                    spec=catalog.component("task-intake", "run"), user=content,
+                )},
+            )
+            payload = state["results"]["task-intake.run"].unwrap()
             result = TaskIntakeResult.model_validate(payload)
         except (ValidationError, ValueError, json.JSONDecodeError) as error:
             raise TaskIntakeError("任务解析结果格式异常，请换一种说法重试") from error

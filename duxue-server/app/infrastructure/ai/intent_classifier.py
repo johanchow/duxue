@@ -5,10 +5,11 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 
+from app.agent_specs.catalog import load_catalog
+from app.agent_specs.contexts import build_context
 from app.application.ports.companion import IntentProposal
 from app.infrastructure.ai import components
 from app.infrastructure.ai.errors import ModelGatewayError
-from app.infrastructure.ai.utterance_window import user_content
 
 _LABELS = {"planning", "tutoring", "reflection", "unclear"}
 def parse_intent_payload(raw: str) -> IntentProposal:
@@ -31,13 +32,13 @@ def complete_intent(
     *, content: str, focus_agent_type: str | None, recent_utterances: list[dict] | None = None,
     current_images: list[str | None] | None = None, spec=None, settings_obj=None,
 ) -> str:
-    user = user_content(
-        {"content": content, "focus_agent_type": focus_agent_type},
-        recent_utterances, current_images,
+    user = build_context(
+        "companion.intent", content=content, focus_agent_type=focus_agent_type,
+        recent_utterances=recent_utterances, current_images=current_images,
     )
-    payload = components.invoke_json_component(
-        spec=spec or components.COMPONENTS.get("companion.intent"), user=user, settings_obj=settings_obj,
-    )
+    payload = components.invoke_agent_component(
+        spec=spec or load_catalog().component("companion", "intent_route"), user=user, settings_obj=settings_obj,
+    ).unwrap()
     return json.dumps(payload, ensure_ascii=False)
 
 

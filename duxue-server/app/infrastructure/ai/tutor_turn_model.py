@@ -5,11 +5,11 @@
 
 from __future__ import annotations
 
-import json
-
+from app.agent_specs.catalog import load_catalog
+from app.agent_specs.contexts import build_context
+from app.agent_specs.verdicts import normalize_judge
 from app.infrastructure.ai import components
 from app.infrastructure.ai.errors import ModelGatewayError
-from app.infrastructure.ai.utterance_window import image_parts, user_content
 
 
 class QwenTutorTurnGateway:
@@ -25,16 +25,13 @@ class QwenTutorTurnGateway:
         current_images: list[str | None] | None = None, repair_error: str | None = None,
         observations: list[dict] | None = None,
     ) -> dict:
-        payload: dict = {"contract": "tutor-turn.v4", "instruction": instruction, "context": envelope}
-        if observations:
-            payload["observations"] = observations
-        if repair_error:
-            payload["repair_error"] = repair_error
-        user = user_content(payload, recent_utterances, list(current_images or []))
-        return components.invoke_json_component(
-            spec=self._spec or components.COMPONENTS.get("tutoring.turn"), user=user,
+        user = build_context("tutoring.turn", envelope=envelope, instruction=instruction,
+                             observations=observations, repair_error=repair_error,
+                             recent_utterances=recent_utterances, current_images=current_images)
+        return components.invoke_agent_component(
+            spec=self._spec or load_catalog().component("tutoring", "attempt"), user=user,
             settings_obj=self._settings,
-        )
+        ).unwrap()
 
 
 class QwenLeakJudge:
@@ -45,13 +42,11 @@ class QwenLeakJudge:
         self, *, text: str, task_title: str | None, problem_summary: str | None,
         images: list[str] | None = None,
     ) -> dict | None:
-        body = {"task_title": task_title, "problem": problem_summary, "reply": text}
         # A visual review happens only after Application has authorized these images
         # and the exit policy already requires a leak check. No image => preserve the
         # compact text request used by offline evaluation and ordinary turns.
-        user: str | list[dict] = json.dumps(body, ensure_ascii=False)
-        if images:
-            user = [{"type": "text", "text": json.dumps(body, ensure_ascii=False)}, *image_parts([], images)]
+        user = build_context("tutoring.leak-judge", text=text, task_title=task_title,
+                             problem_summary=problem_summary, images=images)
         return self._judge(
             "tutoring.leak-judge", user, with_reason=True,
         )
@@ -60,20 +55,22 @@ class QwenLeakJudge:
         """``text`` 是 ``describe(visual)``。独立的提示词与组件，不与文字判官共用。"""
         return self._judge(
             "tutoring.visual-leak-judge",
-            json.dumps({"task_title": task_title, "problem": problem_summary, "visual": text}, ensure_ascii=False),
+            build_context("tutoring.visual-leak-judge", text=text, task_title=task_title,
+                          problem_summary=problem_summary),
         )
 
     def _judge(self, component_id: str, user: str | list[dict], *, with_reason: bool = False) -> bool | dict | None:
         try:
             payload = components.invoke_json_component(
-                spec=components.COMPONENTS.get(component_id),
+                spec=load_catalog().component_by_id("tutoring-vet", component_id),
                 user=user, settings_obj=self._settings,
             )
         except ModelGatewayError:
             return None
-        value = payload.get("leaks")
-        if not isinstance(value, bool):
+        verdict = normalize_judge(component_id, payload)
+        if verdict.verdict == "unknown":
             return None
+        value = verdict.verdict == "deny"
         if with_reason:
-            return {"leaks": value, "reason": payload.get("reason")}
+            return {"leaks": value, "reason": verdict.reason_code}
         return value

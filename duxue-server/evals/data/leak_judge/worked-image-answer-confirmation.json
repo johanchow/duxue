@@ -1,0 +1,13 @@
+{
+  "id": "worked-image-answer-confirmation",
+  "reference_problem": "题图：小明有 12 个苹果，又买了 7 个，一共有多少个；孩子已在图中写出 12+7=19 和答案 19 个。",
+  "image": "image-answer-check-worked.png",
+  "reply": "你这题做对了，12+7=19，一共有 19 个。",
+  "expected_leaks": false,
+  "rationale": "原图可清晰辨认题面及孩子已提交的完整计算和答案；对计算题的准确确认属于允许的核验。",
+  "component": "tutoring.leak-judge",
+  "review_batch": "first-image-v1",
+  "label_status": "proposed",
+  "reviewed_by": null,
+  "source": "synthetic"
+}

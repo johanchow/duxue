@@ -105,9 +105,9 @@ class TutoringWorkflow:
 
     def _backup_model(self) -> TutorModelPort | None:
         if self.backup_model is None and self._live_turn_model:
-            from app.infrastructure.ai import components
+            from app.agent_specs.catalog import load_catalog
             from app.infrastructure.ai.tutor_turn_model import QwenTutorTurnGateway
-            self.backup_model = QwenTutorTurnGateway(spec=components.COMPONENTS.get("tutoring.turn-backup"))
+            self.backup_model = QwenTutorTurnGateway(spec=load_catalog().component("tutoring", "attempt", 1))
         return self.backup_model
 
     def _judge(self) -> LeakJudgePort:
@@ -249,11 +249,12 @@ class TutoringWorkflow:
 
     @staticmethod
     def _select_image_target(window: list[dict], content: str) -> dict:
-        from app.infrastructure.ai.components import COMPONENTS, invoke_json_component
-        from app.infrastructure.ai.utterance_window import user_content
+        from app.agent_specs.catalog import load_catalog
+        from app.agent_specs.contexts import build_context
+        from app.infrastructure.ai.components import invoke_agent_component
 
-        user = user_content({"student_said": content}, window)
-        return invoke_json_component(spec=COMPONENTS.get("tutoring.image-target"), user=user)
+        user = build_context("tutoring.image-target", content=content, window=window)
+        return invoke_agent_component(spec=load_catalog().component("tutoring", "image_target"), user=user).unwrap()
 
     @traced_agent_node("tutoring.turn")
     def _turn(self, invocation: RunInvocation) -> WorkflowOutcome:

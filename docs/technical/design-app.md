@@ -174,6 +174,8 @@ FUNCTION routerRedirectGuard(authState, targetPath):
 - **生命周期**：通过检查的 `visual` 随该轮 `CompanionMessage.interaction_ref` 写入消息 journal，在对应历史气泡内持久展示（进入新一轮对话或重新打开对话列表不会消失），但不会注入后续轮次传给大模型的对话上下文。
 - **与流式的关系**：当前伴学对话是一次请求返回完整交互，图随该交互一次性出现。若将来改为 SSE，`delta` 事件不得携带图的任何内容，只有最终 `interaction` 事件携带 `visual`。
 
+对话框右上角提供清空入口，交互与提示文案见 [伴学 PRD §4.1.7](../product/prd-companion.md#417-清空历史对话)，异步请求及本地 Thread 写入边界见 [Companion 清空历史](domain-companion.md#清空历史与会话边界)。
+
 #### 1.2 历史对话图片查看
 - Ward 消息的 `attachment_refs` 保留图片顺序；聊天列表只为进入视口的气泡读取图片，缩略图按 72 逻辑像素解码，全屏查看时按原始上传字节解码。
 - 点击气泡图片打开黑底查看页，可双指缩放、拖动及左右切换同一条消息的图片；返回后保留聊天列表位置。图片字节在当前页面内缓存，重启后从受控消息附件接口重新读取；授权边界见 [Companion transcript journal](domain-companion.md#51-ward-facing-transcript-journal)。

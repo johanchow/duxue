@@ -1,0 +1,14 @@
+{
+  "id": "feedback-wrong-question",
+  "reference_problem": "第1题：小静比果果大五岁，果果现在四岁，小静几岁？\n第2题：三百四十五减一百零七的竖式怎么写？\n学生先前说：是四加五吗？\n学生先前说：等于八。\n孩子本轮说：那你告诉我有没有算对？",
+  "problem": "第1题：小静比果果大五岁，果果现在四岁，小静几岁？\n第2题：三百四十五减一百零七的竖式怎么写？\n学生先前说：是四加五吗？\n学生先前说：等于八。\n孩子本轮说：那你告诉我有没有算对？",
+  "reply": "你算出的 8 是不是少数了一下？从 4 开始往后数 5 下，再检查一下。",
+  "expected_leaks": false,
+  "expected_reason": "none",
+  "rationale": "指出具体疑点的追问不是附和错误结果。",
+  "component": "tutoring.leak-judge",
+  "review_batch": "answer-feedback-v1",
+  "label_status": "proposed",
+  "reviewed_by": null,
+  "source": "synthetic"
+}

@@ -1,0 +1,119 @@
+{
+  "kind": "workflow",
+  "id": "planning",
+  "version": "v1",
+  "handler": "planning",
+  "entry": "planning.prepare_review",
+  "required_checks": [
+    "planning.confirmation_gate"
+  ],
+  "nodes": [
+    {
+      "id": "planning.prepare_review",
+      "kind": "action",
+      "trace": "planning.prepare_review",
+      "graph_key": "prepare_review",
+      "trace_kind": "node",
+      "handler_id": "prepare_review"
+    },
+    {
+      "id": "planning.route_after_prepare",
+      "kind": "action",
+      "trace": "planning.route_after_prepare",
+      "trace_kind": "node",
+      "handler_id": "route_after_prepare"
+    },
+    {
+      "id": "planning.wait_for_confirmation",
+      "kind": "action",
+      "trace": "planning.wait_for_confirmation",
+      "graph_key": "wait_for_confirmation",
+      "trace_kind": "node",
+      "handler_id": "wait_for_confirmation"
+    },
+    {
+      "id": "planning.confirmation_gate",
+      "kind": "gate",
+      "trace": "planning.confirmation_gate",
+      "required": true,
+      "ref": "planning.confirmation-gate",
+      "graph_key": "confirmation_gate"
+    },
+    {
+      "id": "planning.checkpointer_connect",
+      "kind": "action",
+      "trace": "planning.checkpointer_connect",
+      "trace_kind": "stage",
+      "handler_id": "planning.checkpointer_connect"
+    },
+    {
+      "id": "planning.checkpointer_setup",
+      "kind": "action",
+      "trace": "planning.checkpointer_setup",
+      "trace_kind": "stage",
+      "handler_id": "planning.checkpointer_setup"
+    },
+    {
+      "id": "planning.context_build",
+      "kind": "action",
+      "trace": "planning.context_build",
+      "trace_kind": "stage",
+      "handler_id": "planning.context_build"
+    },
+    {
+      "id": "planning.plan_intake",
+      "kind": "agent",
+      "trace": "planning.plan_intake",
+      "trace_kind": "stage",
+      "ref": "planning.intake"
+    },
+    {
+      "id": "planning.agent_text",
+      "kind": "agent",
+      "trace": "planning.agent_text",
+      "trace_kind": "stage",
+      "ref": "planning.reply"
+    },
+    {
+      "id": "planning.graph_compile",
+      "kind": "action",
+      "trace": "planning.graph_compile",
+      "trace_kind": "stage",
+      "handler_id": "planning.graph_compile"
+    },
+    {
+      "id": "planning.graph_invoke",
+      "kind": "action",
+      "trace": "planning.graph_invoke",
+      "trace_kind": "stage",
+      "handler_id": "planning.graph_invoke"
+    }
+  ],
+  "edges": [
+    {
+      "from": "START",
+      "to": "planning.prepare_review"
+    },
+    {
+      "from": "planning.prepare_review",
+      "to": "planning.wait_for_confirmation",
+      "via": "planning.route_after_prepare",
+      "condition_id": "review"
+    },
+    {
+      "from": "planning.prepare_review",
+      "to": "END",
+      "via": "planning.route_after_prepare",
+      "condition_id": "finish"
+    },
+    {
+      "from": "planning.wait_for_confirmation",
+      "to": "planning.confirmation_gate"
+    },
+    {
+      "from": "planning.confirmation_gate",
+      "to": "END"
+    }
+  ],
+  "invocation_agent": "planning.session-turn"
+}

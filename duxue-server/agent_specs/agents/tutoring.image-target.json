@@ -1,0 +1,69 @@
+{
+  "id": "tutoring.image-target",
+  "version": "v1",
+  "kind": "agent",
+  "implementation": "llm",
+  "agent_label": "tutoring",
+  "risk_tier": "protected",
+  "operation": "tutor_image_target",
+  "input_contract": "image-target-input.v1",
+  "output_contract": "image-target.v1",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "user": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "array"
+          }
+        ]
+      }
+    },
+    "required": [
+      "user"
+    ],
+    "additionalProperties": false
+  },
+  "context_builder_id": "tutoring.image_target.context",
+  "prompt": {
+    "id": "tutoring.image-target.system.v1",
+    "template": "你只判断孩子本轮是否在问窗口里的旧照片，以及具体哪张。输入没有本轮新图。recent_utterances 的 image_ids 对应随后编号的图片。只返回 JSON，字段为 target_image_ids 和 ambiguous。若孩子明确指到某张或某几张，返回这些给定的整数编号，ambiguous=false。若在问照片但多张旧图都可能是目标，返回空数组且 ambiguous=true。若问题与照片无关，返回空数组且 ambiguous=false，让答疑直接回答文字问题。不得生成新编号，不得回答题目本身。"
+  },
+  "tools": [],
+  "models": [
+    {
+      "component_id": "tutoring.image-target",
+      "name": "qwen3.8-flash",
+      "temperature": 0,
+      "max_output_tokens": 160,
+      "timeout_ms": 20000
+    }
+  ],
+  "accepts_images": true,
+  "requires_agent_switch": true,
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "ambiguous": {
+        "type": "boolean"
+      },
+      "target_image_ids": {
+        "type": "array",
+        "items": {
+          "type": "integer"
+        }
+      }
+    },
+    "additionalProperties": false
+  },
+  "error_codes": [
+    "agent_execution_failed",
+    "invalid_model_candidate",
+    "model_provider_disabled",
+    "model_provider_not_configured",
+    "model_transport_error"
+  ]
+}

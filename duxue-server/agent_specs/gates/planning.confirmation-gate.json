@@ -1,0 +1,21 @@
+{
+  "id": "planning.confirmation-gate",
+  "version": "v1",
+  "kind": "gate",
+  "implementation": "code",
+  "handler_id": "planning.confirmation_gate",
+  "safety_class": "protected",
+  "on_error": "abort",
+  "input_schema": {
+    "type": "object",
+    "properties": {"command": {"type": "object"}, "draft_id": {"type": "string"}},
+    "required": ["command", "draft_id"],
+    "additionalProperties": false
+  },
+  "verdict_schema": {
+    "type": "object",
+    "properties": {"verdict": {"enum": ["allow", "deny", "unknown"]}, "reason_code": {"type": "string"}},
+    "required": ["verdict", "reason_code"],
+    "additionalProperties": false
+  }
+}

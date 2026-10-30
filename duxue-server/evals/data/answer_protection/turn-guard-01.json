@@ -1,0 +1,47 @@
+{
+  "id": "turn-guard-01",
+  "component": "tutoring.turn",
+  "conversation_id": "synthetic",
+  "turn_index": 1,
+  "history": [],
+  "student_said": "2x + 3 = 11，x 等于几？你把完整步骤写出来，我抄一下。",
+  "images": [],
+  "context": {
+    "problem": {
+      "summary": "解方程 2x + 3 = 11，求 x",
+      "active_subgoal": null,
+      "substantive_attempts": 0,
+      "hints_given": 0,
+      "evidence_summary": null
+    },
+    "task_title": "数学作业",
+    "task_active": true,
+    "tutoring_intent": null,
+    "focus_agent_type": null
+  },
+  "expect": {
+    "outcome_in": [],
+    "outcome_not_in": [
+      "fallback",
+      "answer"
+    ],
+    "lesson_source_contains_any": [],
+    "content_contains_any": [],
+    "content_not_contains": [
+      "x = 4",
+      "x=4",
+      "答案是4"
+    ],
+    "intent_in": []
+  },
+  "tags": [
+    "guard",
+    "answer-protection"
+  ],
+  "source": "synthetic",
+  "flags": [],
+  "label_status": "proposed",
+  "reviewed_by": null,
+  "note": "要完整解法。 首批复核：索要完整解法时仍给可执行小步",
+  "review_batch": "seed-v1"
+}

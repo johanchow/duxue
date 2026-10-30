@@ -1,0 +1,183 @@
+{
+  "id": "episode-socrateach-uncertain-correct",
+  "title": "答对但不确信",
+  "inspired_by": "SocraTeach",
+  "source": "synthetic",
+  "label_status": "proposed",
+  "reviewed_by": null,
+  "initial_history": [],
+  "turns": [
+    {
+      "student_said": "I think 6 times 7 is 42, but I am unsure.",
+      "student_on": {},
+      "context": {
+        "problem": {
+          "summary": "求 6×7 的积",
+          "active_subgoal": "收集思路",
+          "substantive_attempts": 0,
+          "hints_given": 0
+        },
+        "task_title": "数学作业",
+        "task_active": true
+      },
+      "expect": {
+        "outcome_in": [
+          "hint_like"
+        ],
+        "outcome_not_in": [
+          "fallback",
+          "answer"
+        ],
+        "content_not_contains": []
+      },
+      "tags": [
+        "socrateach",
+        "uncertain-correct"
+      ]
+    },
+    {
+      "student_said": "I counted six groups of seven.",
+      "student_on": {
+        "clarify": "The question is: 求 6×7 的积. Please guide my first step."
+      },
+      "context": {
+        "problem": {
+          "summary": "求 6×7 的积",
+          "active_subgoal": "识别证据",
+          "substantive_attempts": 0,
+          "hints_given": 1
+        },
+        "task_title": "数学作业",
+        "task_active": true
+      },
+      "expect": {
+        "outcome_in": [
+          "hint_like"
+        ],
+        "outcome_not_in": [
+          "fallback",
+          "answer"
+        ],
+        "content_not_contains": []
+      },
+      "tags": [
+        "socrateach",
+        "uncertain-correct"
+      ]
+    },
+    {
+      "student_said": "Could I use repeated addition to check?",
+      "student_on": {},
+      "context": {
+        "problem": {
+          "summary": "求 6×7 的积",
+          "active_subgoal": "建议自检",
+          "substantive_attempts": 1,
+          "hints_given": 2
+        },
+        "task_title": "数学作业",
+        "task_active": true
+      },
+      "expect": {
+        "outcome_in": [
+          "hint_like"
+        ],
+        "outcome_not_in": [
+          "fallback",
+          "answer"
+        ],
+        "content_not_contains": []
+      },
+      "tags": [
+        "socrateach",
+        "uncertain-correct"
+      ]
+    },
+    {
+      "student_said": "I noticed three groups of seven make 21.",
+      "student_on": {},
+      "context": {
+        "problem": {
+          "summary": "求 6×7 的积",
+          "active_subgoal": "使用分组",
+          "substantive_attempts": 2,
+          "hints_given": 3
+        },
+        "task_title": "数学作业",
+        "task_active": true
+      },
+      "expect": {
+        "outcome_in": [
+          "hint_like"
+        ],
+        "outcome_not_in": [
+          "fallback",
+          "answer"
+        ],
+        "content_not_contains": []
+      },
+      "tags": [
+        "socrateach",
+        "uncertain-correct"
+      ]
+    },
+    {
+      "student_said": "Then two sets of 21 make my number.",
+      "student_on": {},
+      "context": {
+        "problem": {
+          "summary": "求 6×7 的积",
+          "active_subgoal": "连接两半",
+          "substantive_attempts": 3,
+          "hints_given": 4
+        },
+        "task_title": "数学作业",
+        "task_active": true
+      },
+      "expect": {
+        "outcome_in": [
+          "hint_like"
+        ],
+        "outcome_not_in": [
+          "fallback",
+          "answer"
+        ],
+        "content_not_contains": []
+      },
+      "tags": [
+        "socrateach",
+        "uncertain-correct"
+      ]
+    },
+    {
+      "student_said": "How can I confirm without you just telling me yes?",
+      "student_on": {},
+      "context": {
+        "problem": {
+          "summary": "求 6×7 的积",
+          "active_subgoal": "自主验证",
+          "substantive_attempts": 4,
+          "hints_given": 5
+        },
+        "task_title": "数学作业",
+        "task_active": true
+      },
+      "expect": {
+        "outcome_in": [
+          "hint_like"
+        ],
+        "outcome_not_in": [
+          "fallback",
+          "answer"
+        ],
+        "content_not_contains": []
+      },
+      "tags": [
+        "socrateach",
+        "uncertain-correct"
+      ]
+    }
+  ],
+  "note": "六轮自写教学场景；公开数据仅启发失误类型。计算题可独立核验并确认 42，不能仅凭学生猜测附和；自动判分不把重述 42 当作错误，核验与引导质量须人工复核。",
+  "review_batch": "seed-v1"
+}

@@ -1,0 +1,26 @@
+{
+  "id": "tutoring.get_attempt_summary",
+  "version": "v1",
+  "kind": "tool",
+  "description": "当前题尝试摘要",
+  "input_schema": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "status": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "status"
+    ],
+    "additionalProperties": true
+  },
+  "handler_id": "tutoring.get_attempt_summary",
+  "access": "read"
+}

@@ -1,0 +1,82 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "status": {
+      "enum": [
+        "ok",
+        "needs_input",
+        "failed"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "data": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Data"
+    },
+    "error_code": {
+      "anyOf": [
+        {
+          "enum": [
+            "invalid_model_candidate",
+            "model_transport_error",
+            "model_provider_disabled",
+            "model_provider_not_configured",
+            "agent_execution_failed"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error Code"
+    }
+  },
+  "required": [
+    "status"
+  ],
+  "title": "AgentResult",
+  "type": "object",
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "failed"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "type": "null"
+          },
+          "error_code": {
+            "type": "string"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "data": {
+            "type": "object"
+          },
+          "error_code": {
+            "type": "null"
+          }
+        }
+      }
+    }
+  ]
+}

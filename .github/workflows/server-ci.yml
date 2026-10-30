@@ -5,6 +5,8 @@ on:
   pull_request:
     paths:
       - "duxue-server/**"
+      - "docs/technical/design-agent.md"
+      - "docs/technical/agent-flow-current.md"
       - ".github/workflows/server-ci.yml"
 permissions:
   contents: read

@@ -27,3 +27,7 @@
 | [visual-leak-judge-images.md](visual-leak-judge-images.md) | 2026-10-29 |
 | [resolve-multiphoto-reference.md](resolve-multiphoto-reference.md) | 2026-10-29 |
 | [chat-history-image-viewer.md](chat-history-image-viewer.md) | 2026-10-29 |
+| [confirm-companion-handoff.md](confirm-companion-handoff.md) | 2026-10-30 |
+| [agent-runtime-contracts.md](agent-runtime-contracts.md) | 2026-10-30 |
+| [declarative-agent-workflows.md](declarative-agent-workflows.md) | 2026-10-30 |
+| [clear-companion-history.md](clear-companion-history.md) | 2026-10-30 |

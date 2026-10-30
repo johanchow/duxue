@@ -1,0 +1,25 @@
+{
+  "id": "feedback-incomplete-problem",
+  "component": "tutoring.turn",
+  "conversation_id": "answer-feedback-regression",
+  "turn_index": 0,
+  "history": [],
+  "student_said": "是不是等于八？",
+  "context": {},
+  "expect": {
+    "outcome_in": [
+      "clarify"
+    ],
+    "outcome_not_in": [
+      "fallback"
+    ]
+  },
+  "tags": [
+    "answer-feedback",
+    "rubric"
+  ],
+  "source": "synthetic",
+  "label_status": "proposed",
+  "note": "对照：题面不足不得猜对错，应澄清题目。 人名脱敏，教学语义须人工/独立Judge复核，不用字面关键词判分。",
+  "review_batch": "answer-feedback-v1"
+}

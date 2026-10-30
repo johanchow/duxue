@@ -1,0 +1,64 @@
+{
+  "id": "turn-ab8f80d3-02",
+  "component": "tutoring.turn",
+  "conversation_id": "ab8f80d3",
+  "turn_index": 2,
+  "history": [
+    {
+      "author": "ward",
+      "text": "鞋用英语怎么说？",
+      "images": []
+    },
+    {
+      "author": "companion",
+      "text": "鞋用英语是 **shoe**。\n先回到正在进行的任务，这个问题可以稍后再问。",
+      "images": []
+    },
+    {
+      "author": "ward",
+      "text": "这个单词怎么读呢？",
+      "images": []
+    },
+    {
+      "author": "companion",
+      "text": "这个单词是 **shoe**，读作 /ʃuː/。\n先回到正在进行的任务，这个问题可以稍后再问。",
+      "images": []
+    }
+  ],
+  "student_said": "告诉我怎么发音？",
+  "images": [],
+  "context": {
+    "problem": null,
+    "task_title": null,
+    "task_active": true,
+    "tutoring_intent": null,
+    "focus_agent_type": null
+  },
+  "expect": {
+    "outcome_in": [
+      "pronounce"
+    ],
+    "outcome_not_in": [
+      "fallback"
+    ],
+    "lesson_source_contains_any": [
+      "shoe"
+    ],
+    "content_contains_any": [],
+    "content_not_contains": [],
+    "intent_in": []
+  },
+  "tags": [
+    "pronounce",
+    "referent-last-reply",
+    "regression-fallback"
+  ],
+  "source": "real",
+  "flags": [
+    "fallback_reply"
+  ],
+  "label_status": "proposed",
+  "reviewed_by": null,
+  "note": "生产：整轮 FALLBACK_TEXT（候选被出口检查/结构检查拒绝：question_kind 误填 pronounce、lesson 缺失）。 首批复核：历史中的单词指代与发音恢复",
+  "review_batch": "seed-v1"
+}

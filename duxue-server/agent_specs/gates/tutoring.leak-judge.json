@@ -1,0 +1,108 @@
+{
+  "id": "tutoring.leak-judge",
+  "version": "v10",
+  "kind": "gate",
+  "implementation": "judge",
+  "agent_label": "tutoring",
+  "risk_tier": "protected",
+  "operation": "tutor_leak_check",
+  "input_contract": "leak-judge-input.v6",
+  "output_contract": "leak-judge-facts.v1",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "user": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "array"
+          }
+        ]
+      }
+    },
+    "required": [
+      "user"
+    ],
+    "additionalProperties": false
+  },
+  "context_builder_id": "tutoring.leak_judge.context",
+  "prompt": {
+    "id": "tutoring.leak-judge.system.v9",
+    "template": "你是独立作业审核员。只返回 JSON，逐项判断，不输出答案、leaks 或 reason：\n{\"student_answer_correct\":true或false或null,\"affirms_student_answer\":false,\"new_final_answer\":false,\"complete_solution\":false,\"choice_verdict\":false,\"premature_conclusion\":false}\nproblem 含最近题目、学生先前原话和本轮原话。先定位当前题，不混用其他题。导师原话不是学生作答；图片只作题面和已写作答证据。\nstudent_answer_correct：依据原题独立核验孩子已提交的当前答案。正确 true，错误 false；未提交或题面不足无法核验 null。\naffirms_student_answer：reply 是否断言“孩子提交的原答案是对的”。只是引用错误数、指出答错或追问疑点均为 false；纠正成另一个答案不是肯定原答案。\nnew_final_answer：reply 是否实际给出孩子尚未算出的正确最终结果，含完整数数序列终点或反问中的结果。括号或正文已经列完目标数列，即使接着问“最后停在几”，也已给出结果，必须为 true；不能只看句尾问号。给出另一个正确结果纠错也为 true；已由孩子提交的正确结果可确认、复述，为 false。只给检查动作、未计算代入式或暗示少数一步为 false；能据提示继续推理不等于已给答案。\ncomplete_solution：是否提供孩子未完成的完整解法。\nchoice_verdict：是否确认或否认选择题、判断题等可逐项试探的候选项，即使猜中也为 true。\npremature_conclusion：孩子未完成计算/核验，是否宣称待算式就是已验证答案。准确反馈孩子现有答案对错不属此类。\n词义、读音、定义等原子知识直答不算 new_final_answer 或 complete_solution。所有字段必填，除 student_answer_correct 可为 null，其余只能为布尔值。"
+  },
+  "tools": [],
+  "models": [
+    {
+      "component_id": "tutoring.leak-judge",
+      "name": "qwen3.8-flash",
+      "temperature": 0,
+      "max_output_tokens": 200,
+      "timeout_ms": 20000
+    }
+  ],
+  "accepts_images": true,
+  "requires_agent_switch": true,
+  "verdict_schema": {
+    "additionalProperties": false,
+    "properties": {
+      "verdict": {
+        "enum": [
+          "allow",
+          "deny",
+          "unknown"
+        ],
+        "title": "Verdict",
+        "type": "string"
+      },
+      "reason_code": {
+        "title": "Reason Code",
+        "type": "string"
+      }
+    },
+    "required": [
+      "verdict",
+      "reason_code"
+    ],
+    "title": "GateVerdict",
+    "type": "object"
+  },
+  "on_error": "deny",
+  "safety_class": "protected",
+  "provider_output_schema": {
+    "type": "object",
+    "properties": {
+      "student_answer_correct": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "affirms_student_answer": {
+        "type": "boolean"
+      },
+      "new_final_answer": {
+        "type": "boolean"
+      },
+      "complete_solution": {
+        "type": "boolean"
+      },
+      "choice_verdict": {
+        "type": "boolean"
+      },
+      "premature_conclusion": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "student_answer_correct",
+      "affirms_student_answer",
+      "new_final_answer",
+      "complete_solution",
+      "choice_verdict",
+      "premature_conclusion"
+    ],
+    "additionalProperties": false
+  }
+}

@@ -44,27 +44,45 @@ def _git_sha() -> str:
 
 
 def cmd_validate(args) -> int:
+    from evals import judge_boundary
     path = Path(args.path) if args.path else (dataset.DATA_DIR / args.category if args.category else dataset.DATA_DIR)
-    cases = dataset.load_cases(path)
+    judge_only = (args.category == "leak_judge" or path.name == "leak_judge"
+                  or (path.is_file() and dataset.read_object(path).get("component") == "tutoring.leak-judge"))
+    cases = [] if judge_only else dataset.load_cases(path)
     problems = dataset.validate(cases)
-    if not cases:
-        problems.append(f"no single-turn cases found: {path}")
+    judges = judge_boundary.load_cases(path) if judge_only else []
     if not args.path and not args.category:
         problems.extend(dataset.validate_layout())
         multi = episodes.load_episodes()
         problems.extend(episodes.validate_episodes(multi))
+        judges = judge_boundary.load_cases()
     else:
         multi = []
     if args.batch:
         cases = [case for case in cases if case.review_batch == args.batch]
         multi = [row for row in multi if row.review_batch == args.batch]
-        if not cases and not multi:
-            problems.append(f"no cases or episodes in review batch: {args.batch}")
+        judges = [row for row in judges if row.get("review_batch") == args.batch]
+    if not cases and not multi and not judges:
+        problems.append("no matching cases or episodes")
     for problem in problems:
         print(f"! {problem}")
     by_status = {s: sum(c.label_status == s for c in cases) for s in ("confirmed", "proposed", "needs_decision")}
-    print(f"{len(cases)} cases + {len(multi)} episodes  {by_status}  hash={dataset.dataset_hash(cases)}")
+    print(f"{len(cases)} cases + {len(multi)} episodes + {len(judges)} judge cases  {by_status}  hash={dataset.dataset_hash(cases)}")
     return 1 if problems else 0
+
+
+def cmd_run_judges(args) -> int:
+    from evals import judge_boundary
+    options = ["--samples", str(args.samples), "--workers", str(args.workers), "--status", args.status]
+    for option in ("batch", "out"):
+        value = getattr(args, option)
+        if value:
+            options.extend(["--" + option, value])
+    for case_id in args.case or []:
+        options.extend(["--case", case_id])
+    if args.with_reference:
+        options.append("--with-reference")
+    return judge_boundary.main(options)
 
 
 def cmd_run_episodes(args) -> int:
@@ -156,7 +174,7 @@ def cmd_run(args) -> int:
         meta = {
             "component": component, "component_version": spec.version, "model": spec.model,
             "variant": args.variant, "prompt_digest": spec.prompt.digest[:12] if hasattr(spec.prompt, "digest") else None,
-            "samples": args.samples, "dataset_hash": dataset.dataset_hash(cases), "cases_run": len(subset),
+            "samples": args.samples, "dataset_hash": dataset.dataset_hash(selected), "cases_run": len(subset),
             "category": args.category,
             "review_batch": args.batch,
             "git_sha": _git_sha(), "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -200,7 +218,7 @@ def cmd_export(args) -> int:
     out.write_text("\n".join(c.model_dump_json() for c in cases) + "\n", encoding="utf-8")
     flagged = sum(bool(c.flags) for c in cases)
     print(f"{len(cases)} 个决策点（{flagged} 个被自动标记）→ {out}")
-    print("下一步：补 expect/tags/context，人工复核后把行并入 evals/data/*.jsonl，再设 confirmed + reviewed_by。")
+    print("下一步：补 expect/tags/context，人工复核后放到对应类别目录，文件名与 id 相同，再设 confirmed + reviewed_by。")
     for problem in problems:
         print(f"! {problem}")
     return 0
@@ -233,7 +251,7 @@ def main(argv: list[str] | None = None) -> int:
 
     p = sub.add_parser("validate", help="校验数据集（无网络）")
     p.add_argument("--path")
-    p.add_argument("--category", choices=dataset.SINGLE_TURN_CATEGORIES)
+    p.add_argument("--category", choices=(*dataset.SINGLE_TURN_CATEGORIES, "leak_judge"))
     p.add_argument("--batch", help="仅统计指定人工复核批次，如 seed-v1")
     p.set_defaults(func=cmd_validate)
 
@@ -251,6 +269,16 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--min-pass", type=float, help="confirmed 全部采样都通过的 case 占比低于它则退出码 1")
     p.add_argument("--out")
     p.set_defaults(func=cmd_run)
+
+    p = sub.add_parser("run-judges", help="重放独立判官用例（联网）")
+    p.add_argument("--samples", type=int, default=3)
+    p.add_argument("--workers", type=int, default=4)
+    p.add_argument("--status", default="confirmed,proposed,needs_decision")
+    p.add_argument("--case", action="append")
+    p.add_argument("--batch")
+    p.add_argument("--out")
+    p.add_argument("--with-reference", action="store_true", help="诊断对照：额外注入人工题面参考")
+    p.set_defaults(func=cmd_run_judges)
 
     p = sub.add_parser("run-episodes", help="用真实模型连续运行多轮场景（联网，不进 CI）")
     p.add_argument("--samples", type=int, default=3)

@@ -219,3 +219,15 @@ def test_choice_confirmation_still_retries_when_semantic_judge_rejects_it():
     assert result.leak_retried
     assert result.vetting.failure is None
     assert result.call.candidate.content == HINT["content"]
+
+
+def test_final_answer_retry_does_not_echo_the_rejected_result(monkeypatch):
+    class ExplainsLeak(StaticLeakJudge):
+        def leaks(self, *, text, **_kwargs):
+            return {'leaks': text == LEAKY['content'], 'reason': 'final_answer' if text == LEAKY['content'] else 'none'}
+    model = StaticTutorModel(LEAKY, HINT)
+    result, _ = _run(model, ExplainsLeak(True), monkeypatch)
+    assert result.vetting.failure is None
+    feedback = model.calls[1]['repair_error']
+    assert 'final_answer' in feedback
+    assert LEAKY['content'] not in feedback

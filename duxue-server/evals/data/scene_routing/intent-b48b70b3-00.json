@@ -1,0 +1,40 @@
+{
+  "id": "intent-b48b70b3-00",
+  "component": "companion.intent",
+  "conversation_id": "b48b70b3",
+  "turn_index": 0,
+  "history": [],
+  "student_said": "为什么会有？打雷的情况。",
+  "images": [],
+  "context": {
+    "problem": null,
+    "task_title": null,
+    "task_active": false,
+    "tutoring_intent": null,
+    "focus_agent_type": null
+  },
+  "expect": {
+    "outcome_in": [],
+    "outcome_not_in": [
+      "fallback"
+    ],
+    "lesson_source_contains_any": [],
+    "content_contains_any": [],
+    "content_not_contains": [],
+    "intent_in": [
+      "tutoring"
+    ]
+  },
+  "tags": [
+    "intent",
+    "regression-unclear"
+  ],
+  "source": "real",
+  "flags": [
+    "intent_unclear"
+  ],
+  "label_status": "proposed",
+  "reviewed_by": null,
+  "note": "生产当时：意图调用 404 → 一律 unclear → 固定澄清语。模型可用后应判 tutoring。 首批复核：首次学科提问是否进入答疑",
+  "review_batch": "seed-v1"
+}

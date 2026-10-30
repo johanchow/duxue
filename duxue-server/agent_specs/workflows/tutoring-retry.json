@@ -1,0 +1,131 @@
+{
+  "kind": "workflow",
+  "id": "tutoring-retry",
+  "version": "v1",
+  "handler": "tutoring-retry",
+  "entry": "tutoring-retry.primary",
+  "nodes": [
+    {
+      "id": "tutoring-retry.primary",
+      "kind": "action",
+      "handler_id": "primary"
+    },
+    {
+      "id": "tutoring-retry.repair",
+      "kind": "action",
+      "handler_id": "repair"
+    },
+    {
+      "id": "tutoring-retry.backup",
+      "kind": "action",
+      "handler_id": "backup"
+    },
+    {
+      "id": "tutoring-retry.visual_decision",
+      "kind": "action",
+      "handler_id": "visual_decision"
+    },
+    {
+      "id": "tutoring-retry.visual_redraw",
+      "kind": "action",
+      "handler_id": "visual_redraw"
+    },
+    {
+      "id": "tutoring-retry.missing_decision",
+      "kind": "action",
+      "handler_id": "missing_decision"
+    },
+    {
+      "id": "tutoring-retry.missing_primary",
+      "kind": "action",
+      "handler_id": "missing_primary"
+    },
+    {
+      "id": "tutoring-retry.missing_backup",
+      "kind": "action",
+      "handler_id": "missing_backup"
+    },
+    {
+      "id": "tutoring-retry.finish",
+      "kind": "action",
+      "handler_id": "finish"
+    }
+  ],
+  "edges": [
+    {
+      "from": "START",
+      "to": "tutoring-retry.primary"
+    },
+    {
+      "from": "tutoring-retry.primary",
+      "to": "tutoring-retry.finish",
+      "condition_id": "no_candidate"
+    },
+    {
+      "from": "tutoring-retry.primary",
+      "to": "tutoring-retry.repair",
+      "condition_id": "retry_leak"
+    },
+    {
+      "from": "tutoring-retry.primary",
+      "to": "tutoring-retry.visual_decision",
+      "condition_id": "candidate_without_retry"
+    },
+    {
+      "from": "tutoring-retry.repair",
+      "to": "tutoring-retry.backup",
+      "condition_id": "same_leak_with_backup"
+    },
+    {
+      "from": "tutoring-retry.repair",
+      "to": "tutoring-retry.visual_decision",
+      "condition_id": "no_backup_needed"
+    },
+    {
+      "from": "tutoring-retry.backup",
+      "to": "tutoring-retry.visual_decision"
+    },
+    {
+      "from": "tutoring-retry.visual_decision",
+      "to": "tutoring-retry.visual_redraw",
+      "condition_id": "needs_visual_redraw"
+    },
+    {
+      "from": "tutoring-retry.visual_decision",
+      "to": "tutoring-retry.missing_decision",
+      "condition_id": "no_visual_redraw"
+    },
+    {
+      "from": "tutoring-retry.visual_redraw",
+      "to": "tutoring-retry.missing_decision"
+    },
+    {
+      "from": "tutoring-retry.missing_decision",
+      "to": "tutoring-retry.missing_primary",
+      "condition_id": "needs_missing_visual"
+    },
+    {
+      "from": "tutoring-retry.missing_decision",
+      "to": "tutoring-retry.finish",
+      "condition_id": "no_missing_visual"
+    },
+    {
+      "from": "tutoring-retry.missing_primary",
+      "to": "tutoring-retry.missing_backup",
+      "condition_id": "retry_missing_with_backup"
+    },
+    {
+      "from": "tutoring-retry.missing_primary",
+      "to": "tutoring-retry.finish",
+      "condition_id": "missing_attempt_done"
+    },
+    {
+      "from": "tutoring-retry.missing_backup",
+      "to": "tutoring-retry.finish"
+    },
+    {
+      "from": "tutoring-retry.finish",
+      "to": "END"
+    }
+  ]
+}

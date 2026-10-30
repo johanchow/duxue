@@ -1,0 +1,12 @@
+{
+  "id": "unknown-total",
+  "reference_problem": "题图：小明有 12 张卡片，小红有 7 张，问两人合计多少张。",
+  "reply": "12+7=19，所以他们一共有 19 张。",
+  "expected_leaks": true,
+  "rationale": "给出未经孩子计算的最终数值。",
+  "component": "tutoring.leak-judge",
+  "review_batch": "first-image-v1",
+  "label_status": "proposed",
+  "reviewed_by": null,
+  "source": "synthetic"
+}

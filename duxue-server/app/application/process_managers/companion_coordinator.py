@@ -9,17 +9,21 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
 
+from app.application.commands.companion_history import history_is_visible, lock_history
+from app.agent_specs.catalog import load_catalog
 from app.application.ports.companion import (
     CoordinatorResult,
     IntentClassifier,
     RouteDecision,
     RunInvocation,
+    SceneSwitchVerifier,
     WorkflowOutcome,
 )
 from app.application.queries.run_transcript import current_turn_images
 from app.application.workflows.planning_adapter import PlanningWorkflowAdapter
 from app.contexts.companion.domain.intent_router import IntentRouter
 from app.infrastructure.ai.intent_classifier import ModelIntentClassifier
+from app.infrastructure.ai.scene_switch_verifier import ModelSceneSwitchVerifier
 from app.infrastructure.observability.telemetry import (
     agent_step_span,
     agent_workflow_span,
@@ -68,10 +72,12 @@ class CompanionCoordinator:
     def __init__(
         self, db: Session, router: IntentRouter | None = None, dispatcher=None,
         classifier: IntentClassifier | None = None,
+        switch_verifier: SceneSwitchVerifier | None = None,
     ):
         self.db = db
         self.router = router or IntentRouter()
         self.classifier = classifier or ModelIntentClassifier()
+        self.switch_verifier = switch_verifier or ModelSceneSwitchVerifier()
         self.dispatcher = dispatcher or SqlAlchemyWorkflowDispatcher(db, planning_factory=PlanningWorkflowAdapter)
 
     @staticmethod
@@ -80,15 +86,16 @@ class CompanionCoordinator:
         return hashlib.sha256(raw).hexdigest()
 
     def _thread(self, *, ward_id: str, thread_id: str | None, expected_version: int | None) -> ConversationThread:
+        ward = lock_history(self.db, ward_id)
         if thread_id is None:
             if expected_version not in {None, 0}:
                 raise HTTPException(409, "new thread must use version 0")
-            thread = ConversationThread(ward_id=ward_id)
+            thread = ConversationThread(ward_id=ward_id, history_generation=ward.history_generation)
             self.db.add(thread)
             self.db.flush()
             return thread
         thread = self.db.get(ConversationThread, thread_id)
-        if thread is None or thread.ward_id != ward_id:
+        if thread is None or thread.ward_id != ward_id or thread.history_generation != ward.history_generation:
             raise HTTPException(404, "conversation thread not found")
         if expected_version is not None and thread.version != expected_version:
             raise HTTPException(409, "conversation thread has changed; refresh before retrying")
@@ -147,6 +154,8 @@ class CompanionCoordinator:
             return None
         if command.ward_id != ward_id or command.payload_digest != digest:
             raise HTTPException(409, "command_id was already used with a different payload")
+        if command.thread_id and not history_is_visible(self.db, ward_id, command.thread_id):
+            raise HTTPException(409, "conversation history has been cleared")
         if command.completed_at is None:
             raise HTTPException(409, "command is already in progress")
         return CoordinatorResult.model_validate(command.result)
@@ -252,6 +261,7 @@ class CompanionCoordinator:
             "structured_command": structured_command,
         }
         digest = self._digest({"thread_id": thread_id, "expected_version": expected_thread_version, "route_hint": route_hint, "turn": turn})
+        lock_history(self.db, ward_id)
         cached = self._restore_idempotent(command_id, ward_id, digest)
         if cached is not None:
             set_agent_context(thread_id=cached.thread_id)
@@ -301,28 +311,63 @@ class CompanionCoordinator:
             turn["structured_command"] = None
             visible_content = f"选择：{matching[0]['label']}"
         focus_run = self._focus_run(thread)
-        proposal = None
+        from app.agent_specs.runtime import execute_workflow
+
+        def classify(state):
+            state["proposal"] = None
+            state["switch_allowed"] = None
+            if self.router.blocks_for_safety(content) or route_hint in _VALID_HINTS:
+                return
+            from app.application.queries.run_transcript import load_visible_utterances
+            state["recent_utterances"] = load_visible_utterances(
+                self.db, ward_id=ward_id, thread_id=thread.id, exclude_turn_id=None,
+            )
+            state["images"] = current_turn_images(ward_id, attachment_keys)
+            state["proposal"] = self.classifier.propose(
+                content=content, focus_agent_type=getattr(focus_run, "agent_type", None),
+                recent_utterances=state["recent_utterances"], current_images=state["images"],
+            )
+
+        def cross_scene(state):
+            proposal = state["proposal"]
+            return bool(focus_run is not None and proposal is not None and proposal.intent in _VALID_HINTS
+                        and proposal.intent != focus_run.agent_type)
+
+        def verify_switch(state):
+            from app.agent_specs.runtime import GateDecision
+            with agent_step_span("route", "switch_confirm") as span:
+                set_observation_payload(span, input={
+                    "content": content, "current_agent_type": focus_run.agent_type,
+                    "proposed_agent_type": state["proposal"].intent,
+                })
+                state["switch_allowed"] = self.switch_verifier.confirm(
+                    content=content, current_agent_type=focus_run.agent_type,
+                    proposed_agent_type=state["proposal"].intent,
+                    recent_utterances=state["recent_utterances"], current_images=state["images"],
+                )
+                set_observation_payload(span, output={"allow_switch": state["switch_allowed"]})
+                return GateDecision("allow" if state["switch_allowed"] is True else "deny", "scene_switch")
+
+        def decide(state):
+            return self.router.decide(
+                content=content, route_hint=route_hint, focus_run=focus_run, proposal=state["proposal"],
+                has_image=bool(attachment_keys), switch_allowed=state["switch_allowed"],
+            )
+
         with agent_step_span("route", "intent_route") as route_span:
             set_observation_payload(route_span, input={
                 "content": content, "route_hint": route_hint,
                 "focus_agent_type": getattr(focus_run, "agent_type", None),
             })
-            if not self.router.blocks_for_safety(content) and route_hint not in _VALID_HINTS:
-                from app.application.queries.run_transcript import (
-                    load_visible_utterances,
-                )
-
-                proposal = self.classifier.propose(
-                    content=content, focus_agent_type=getattr(focus_run, "agent_type", None),
-                    recent_utterances=load_visible_utterances(
-                        self.db, ward_id=ward_id, thread_id=thread.id, exclude_turn_id=None,
-                    ),
-                    current_images=current_turn_images(ward_id, attachment_keys),
-                )
-            decision = self.router.decide(
-                content=content, route_hint=route_hint, focus_run=focus_run, proposal=proposal,
-                has_image=bool(attachment_keys),
+            routing = execute_workflow(
+                load_catalog().spec("companion"),
+                handlers={"companion.intent": classify, "companion.scene-switch": verify_switch, "decide": decide},
+                conditions={"cross_scene": cross_scene, "direct": lambda state: not cross_scene(state)},
             )
+            decision = routing["results"]["companion.final_route"]
+            proposal = routing["proposal"]
+            if proposal is not None:
+                route_span.set_attribute("agent.initial_intent", proposal.intent)
             route_span.set_attribute("agent.proposed_target", decision.target)
             route_span.set_attribute("agent.proposed_mode", decision.mode)
             set_observation_payload(route_span, output=decision.model_dump(mode="json"))
@@ -407,6 +452,9 @@ class CompanionCoordinator:
         self.db.expire_all()
 
         if run is None:
+            lock_history(self.db, ward_id)
+            if not history_is_visible(self.db, ward_id, thread.id):
+                raise HTTPException(409, "conversation history has been cleared")
             result = CoordinatorResult(thread_id=thread.id, thread_version=version, decision=decision,
                                        interaction=intent_choice, command_id=command_id)
             command = self.db.get(CompanionCommand, command_id)
@@ -459,12 +507,17 @@ class CompanionCoordinator:
                 resume_action="restart",
             )
         duration_ms = round((perf_counter() - started) * 1000)
-        self.record_outcome(
+        accepted = self.record_outcome(
             run_id=invocation.run_id, thread_id=invocation.thread_id, ward_id=ward_id,
             turn_id=invocation.turn_id, attempt=invocation.attempt, outcome=outcome,
             decision=decision, duration_ms=duration_ms, command_id=command_id,
         )
+        if not accepted:
+            raise HTTPException(409, "conversation changed before reply completed")
         record_agent_outcome(agent_type=run.agent_type, status=outcome.run_status, duration_ms=duration_ms)
+        lock_history(self.db, ward_id)
+        if not history_is_visible(self.db, ward_id, invocation.thread_id):
+            raise HTTPException(409, "conversation history has been cleared")
         run = self.db.get(AgentRun, invocation.run_id)
         thread = self.db.get(ConversationThread, invocation.thread_id)
         result = CoordinatorResult(
@@ -480,12 +533,14 @@ class CompanionCoordinator:
     def record_outcome(self, *, run_id: str, thread_id: str, ward_id: str, turn_id: str, attempt: int,
                        outcome: WorkflowOutcome, decision: RouteDecision, duration_ms: int,
                        command_id: str | None = None) -> bool:
+        ward = lock_history(self.db, ward_id)
+        self.db.expire_all()
         run = self.db.get(AgentRun, run_id)
         thread = self.db.get(ConversationThread, thread_id)
         if run is None or thread is None or run.ward_id != ward_id or run.thread_id != thread.id:
             self.db.rollback()
             return False
-        if run.attempt != attempt or run.current_turn_id != turn_id or thread.focus_run_ref != run.run_ref:
+        if thread.history_generation != ward.history_generation or run.attempt != attempt or run.current_turn_id != turn_id or thread.focus_run_ref != run.run_ref:
             self.db.rollback()
             current_thread = self.db.get(ConversationThread, thread_id)
             current_run = self.db.get(AgentRun, run_id)
@@ -562,6 +617,7 @@ class CompanionCoordinator:
 
     def cancel(self, *, ward_id: str, run_id: str, command_id: str, expected_thread_version: int | None = None) -> CoordinatorResult:
         digest = self._digest({"operation": "cancel", "run_id": run_id, "expected_version": expected_thread_version})
+        lock_history(self.db, ward_id)
         cached = self._restore_idempotent(command_id, ward_id, digest)
         if cached is not None:
             return cached
@@ -569,6 +625,8 @@ class CompanionCoordinator:
         if run is None or run.ward_id != ward_id:
             raise HTTPException(404, "agent run not found")
         thread = self.db.get(ConversationThread, run.thread_id)
+        if not history_is_visible(self.db, ward_id, thread.id):
+            raise HTTPException(404, "conversation thread not found")
         if expected_thread_version is not None and thread.version != expected_thread_version:
             raise HTTPException(409, "conversation thread has changed; refresh before retrying")
         if run.status not in _ACTIVE_STATUSES:

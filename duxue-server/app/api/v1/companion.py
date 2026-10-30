@@ -1,4 +1,6 @@
 from .common import *
+from app.api.schemas import CompanionHistoryClearRequest
+from app.application.commands.companion_history import clear_history, history_is_visible, visible_threads
 from uuid import UUID
 from app.infrastructure.persistence.models import PlanDraft
 from app.application.workflows.planning_domain_service import PlanningDomainService
@@ -86,6 +88,8 @@ def companion_message_image(
     message = db.get(CompanionMessage, message_id)
     if message is None or message.ward_id != principal.user_id or message.author_type != "ward":
         raise HTTPException(404, "companion image not found")
+    if not history_is_visible(db, principal.user_id, message.thread_id):
+        raise HTTPException(404, "companion image not found")
     refs = message.attachment_refs or []
     if index < 0 or index >= len(refs):
         raise HTTPException(404, "companion image not found")
@@ -115,7 +119,7 @@ def _serialize_message(row: CompanionMessage) -> dict:
 
 def _previous_thread_with_messages(db: Session, ward_id: str, current_thread: ConversationThread) -> ConversationThread | None:
     candidates = (
-        db.query(ConversationThread)
+        visible_threads(db, ward_id)
         .filter(
             ConversationThread.ward_id == ward_id,
             ConversationThread.id != current_thread.id,
@@ -176,15 +180,16 @@ def current_companion_messages(
 ):
     latest_msg = (
         db.query(CompanionMessage)
-        .filter_by(ward_id=principal.user_id)
+        .join(ConversationThread, ConversationThread.id == CompanionMessage.thread_id)
+        .join(Ward, Ward.id == CompanionMessage.ward_id)
+        .filter(CompanionMessage.ward_id == principal.user_id, ConversationThread.history_generation == Ward.history_generation)
         .order_by(CompanionMessage.created_at.desc(), CompanionMessage.thread_version.desc())
         .first()
     )
     thread = db.get(ConversationThread, latest_msg.thread_id) if latest_msg is not None else None
     if thread is None:
         thread = (
-            db.query(ConversationThread)
-            .filter_by(ward_id=principal.user_id)
+            visible_threads(db, principal.user_id)
             .order_by(ConversationThread.updated_at.desc(), ConversationThread.created_at.desc())
             .first()
         )
@@ -213,8 +218,8 @@ def companion_messages(
     principal: Principal = Depends(current_ward),
     db: Session = Depends(get_db),
 ):
-    thread = db.get(ConversationThread, thread_id)
-    if thread is None or thread.ward_id != principal.user_id:
+    thread = visible_threads(db, principal.user_id).filter(ConversationThread.id == thread_id).first()
+    if thread is None:
         raise HTTPException(404, "conversation thread not found")
     return _thread_messages_payload(
         db,
@@ -223,6 +228,19 @@ def companion_messages(
         before_thread_version=before_thread_version,
         limit=limit,
     )
+
+@router.post("/companion/history/clear")
+def clear_companion_history(
+    body: CompanionHistoryClearRequest,
+    principal: Principal = Depends(current_ward),
+    db: Session = Depends(get_db),
+):
+    try:
+        return clear_history(db, ward_id=principal.user_id, command_id=body.command_id)
+    except Exception:
+        db.rollback()
+        raise
+
 
 @router.post("/companion/turn")
 def companion_turn(body: CompanionTurnRequest, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
@@ -308,6 +326,8 @@ def replay_companion_events(
     """
     run = db.get(AgentRun, run_id)
     if run is None or run.ward_id != principal.user_id:
+        raise HTTPException(404, "agent run not found")
+    if not history_is_visible(db, principal.user_id, run.thread_id):
         raise HTTPException(404, "agent run not found")
     selected_attempt = attempt or run.attempt
     if selected_attempt != run.attempt:

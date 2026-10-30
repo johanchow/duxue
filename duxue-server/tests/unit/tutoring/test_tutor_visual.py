@@ -245,7 +245,7 @@ def test_every_json_example_in_the_tutor_prompt_is_a_valid_candidate():
 
     from app.infrastructure.ai.prompts import PROMPTS
 
-    text = PROMPTS["tutoring.turn.system.v19"].text
+    text = PROMPTS["tutoring.turn.system.v20"].text
     decoder, found, start = json.JSONDecoder(), [], 0
     while (index := text.find("例如 {", start)) != -1:
         example, end = decoder.raw_decode(text, index + 3)
@@ -261,7 +261,7 @@ def test_every_json_example_in_the_tutor_prompt_is_a_valid_candidate():
 def test_the_prompt_offers_exactly_the_kinds_the_contract_accepts():
     from app.infrastructure.ai.prompts import PROMPTS
 
-    text = PROMPTS["tutoring.turn.system.v19"].text
+    text = PROMPTS["tutoring.turn.system.v20"].text
     for kind in ("steps", "compare", "segment", "number_line", "svg"):
         assert f'"kind":"{kind}"' in text
     assert "widget_guidelines" in text

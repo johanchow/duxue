@@ -4,7 +4,7 @@
 >
 > 范围：Ward 在 Agent 对话中提出想系统了解某个知识主题；Tutoring 先与 Ward 协商大纲，再异步调研、编剧并制作最长 6 分钟的交互式讲解视频。Ward 可按时间、区间、画面或文字描述定位内容，继续追问或发起修订。
 >
-> 关联：[陪伴与答疑 PRD](../product/prd-companion.md) · [DDD Overview](ddd-overview.md) · [Companion 编排](domain-companion.md) · [Tutoring](domain-tutoring.md) · [Memory](domain-memory.md) · [AI Component](infra-ai-components.md) · [答疑表达设计](domain-tutoring-presentation.md) · [离线评测](eval-offline.md) · [部署](../deployment.md)
+> 关联：[陪伴与答疑 PRD](../product/prd-companion.md) · [DDD Overview](ddd-overview.md) · [Companion 编排](domain-companion.md) · [Tutoring](domain-tutoring.md) · [Memory](domain-memory.md) · [Agent 配置设计](design-agent.md) · [答疑表达设计](domain-tutoring-presentation.md) · [离线评测](eval-offline.md) · [部署](../deployment.md)
 >
 > 文档定位：这是 [domain-tutoring.md](domain-tutoring.md) 的专题补充，**不是另一个 Domain 或 Bounded Context**。Tutoring 的边界、教学红线和会话聚合以主文档为准；Thread/Run 和交互信封以 [domain-companion.md](domain-companion.md) 为准；物理表、留存与删除以 [design-server.md](design-server.md) 为准；AI 调用的 id / 版本 / 模型以 `app/infrastructure/ai/components.py` 为准。本文只细化专题视频回答、交互式播放协议、内容定位、修订和验收。
 

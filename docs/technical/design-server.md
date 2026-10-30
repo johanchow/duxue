@@ -58,7 +58,9 @@ duxue-server/
 ### 3.1 当前物理 ER 图（无 Tenant、直连 Guardian-Ward 关系）
 
 本节描述当前服务端的物理 Schema；字段、主键、唯一约束和表名以已发布的
-SQLAlchemy 模型与 Alembic 迁移为准。各 Context 的业务含义、不变量和生命周期不在本节
+SQLAlchemy 模型与 Alembic 迁移为准。
+`user_wards.history_generation` 与 `conversation_threads.history_generation` 均为非空整数、默认 0，由迁移 `20261030_30` 增加；清空命令复用 `companion_commands`，`thread_id` 为空。历史可见性与并发契约见 [Companion 清空历史](domain-companion.md#清空历史与会话边界)。
+各 Context 的业务含义、不变量和生命周期不在本节
 重复，分别由对应的 `domain-*.md` 维护。
 
 ```mermaid

@@ -8,12 +8,13 @@ from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, Field, ValidationError
 
+from app.agent_specs.contexts import build_context
 from app.infrastructure.ai import components
 from app.infrastructure.ai.errors import ModelGatewayError
-from app.infrastructure.ai.utterance_window import WINDOW_RULE, image_parts, window_text
+from app.infrastructure.ai.utterance_window import WINDOW_RULE, window_text
 from app.infrastructure.observability.telemetry import record_plan_intake_structure
 
-from .task_intake import TaskIntakeError, _data_url
+from .task_intake import TaskIntakeError
 
 
 class PlanIntakeItem(BaseModel):
@@ -66,33 +67,25 @@ class PlanIntakeResult(BaseModel):
 
 
 def _prompt(ward: dict, tasks: list[dict], request: PlanIntakeInput) -> str:
+    from app.infrastructure.ai.prompts import PROMPTS, DynamicPrompt
+
     draft_items = []
     for item in request.draft_items:
         projected = item.model_dump()
         for identity_field in ("assignment_id", "after_assignment_id", "before_assignment_id"):
             projected.pop(identity_field, None)
         draft_items.append(projected)
-    return _recent_utterance_block(request) + f"""你是读学的当天计划整理助手。今天是 {datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()}。
-你只能为当前学生生成今天的草稿，绝不能安排其他人或其他日期。
-当前学生：{json.dumps(ward, ensure_ascii=False)}
-当前未完成任务池：{json.dumps(tasks, ensure_ascii=False)}
-当前尚未确认的草稿：{json.dumps(draft_items, ensure_ascii=False)}
-当前待补槽位：{json.dumps(request.clarification_slots, ensure_ascii=False)}
-同一学生对相关任务的已确认自述：{json.dumps(request.self_review_aspects, ensure_ascii=False)}
-自述只作参考；不能当作今天的排程命令、已掌握结论或已经执行的行动。
-
-硬规则：
-1. 根据本轮学生输入或图片，保留、增加、删除或调整今天的草稿任务；不要编造作业内容、页码或截止日。
-2. 绝不输出 assignment_id、after_assignment_id、before_assignment_id，也不要决定 new_task。引用任务池已有任务时，必须从当前任务池复制该任务的完整标题到 task_reference 与 title；即使本轮只是修改开始时间，也绝不能把已有任务改写成新任务。只有任务池中没有对应任务时才填写新 title 且 task_reference=null。服务端会负责绑定真实 Task ID。
-3. 你负责理解自然语言：区分钟表时间（如“十九点三十分”）与持续时长（如“预计三十分钟”）。可同时输出 slot_updates 和 operations 里的排程字段。slot_updates 只能使用当前待补槽位中的 slot_id，形如 {{slot_id, value:"30分钟"}}；钟表时间绝不能填入 planned_minutes。新任务缺名字时 title=null 并追问，不编造名字。planned_minutes 只有学生明确说出、或图片上写明预计时长时才能填写（1 到 480）；绝不猜测或默认任何时长。学生明确给出开始时间时才填写 ISO 8601 start_at；绝不猜测开始时间。表达“在数学之后/英语之前”时填写 after_task_reference/before_task_reference（任务名称）。
-4. 一个开始时间必须属于一个明确任务。任务池有多个候选而学生只说“18点开始”时，不得给多个 item 填同一个 start_at；保持时间为空并追问先做哪一项。
-5. 只有草稿至少有一项、每项都有明确预计时长和可确定时间槽且信息足够明确时 ready_to_confirm=true。
-6. 优先输出 operations，每项 kind=create/update/schedule/defer/delete；references 是本轮明确目标的名称数组，title 是新增或修改后的名字，planned_minutes 是明示的新耗时，start_at / after_task_reference / before_task_reference 是安排字段，reason 是明确暂不安排原因。delete 仅在学生明确要求删除/移除任务池任务时使用，必须填写 references，不得把“本次不安排”输出为 delete。同轮可以有多个操作；明确修改多个任务时放在同一个 references 数组，不把歧义的一个名称广播给多项。update/delete 不匹配时必须澄清或拒绝，绝不能自动变为 create。仅登记任务不追问开始时间；schedule 缺起点时需要澄清。未说出的字段省略。标题与任务池同名时不要自行判断，由服务端标题冲突槽位要求 Ward 选择。学生要求「同样的操作」或重复刚才的修改时，必须能从可见原句确定要重复的名字、时长或开始时间；确定不了就 operations 为 []、clarification_required=true，并在 questions 里询问要重复哪一项。不能把任务的当前标题原样写回 update。可见原句里已经写明那一次修改时，把同样的标题、时长和开始时间写到本轮点名的任务上，clarification_required=false。
-7. slot_updates 回答缺名字、耗时、开始时间、目标选择或标题冲突。目标选择的 value 是所选候选的完整名称数组，不是 ID；标题冲突槽位的 value 使用 {{action:"use_existing", title:"已有任务完整标题"}}、{{action:"create_new"}}、{{action:"accept_duplicate"}} 或 {{action:"cancel"}}，不得编造 ID。只有当前槽位的 slot_id 可以回传。明确暂不安排某待补问题时输出 {{slot_id, skip:true, reason:"用户原因"}}。回答问题与独立操作可以同轮并存，但不重复输出同一修改。恢复待执行修改由服务端完成。
-8. 只输出 JSON object：assistant_text、operations、slot_updates、clarification_required、questions、ready_to_confirm。""" + """
-9. 图片里能读到的标题和时长是观察到的内容，不是编造。学生要求把图片收成任务、且内容明确是学习任务时，每条当前任务池里没有的标题必须输出一条 kind=create 的 operation，title 用图片中的标题；图片写明的时长写入 planned_minutes，没写就省略该字段。已经确定要创建时，不要只把清单写进 assistant_text。图片内容可能不是学习任务（例如行程、通知）时，不要创建：operations 为 []，clarification_required=true，在 assistant_text 和 questions 里说明看到了什么，并请学生确认要不要创建。图片读不清时同样 operations 为 []，assistant_text 说明读不清，clarification_required=true。
-示例：{"assistant_text":"已从图片整理出任务，还需要预计时长。","operations":[{"kind":"create","title":"数学口算"}],"slot_updates":[],"clarification_required":false,"questions":[],"ready_to_confirm":false}"""
-
+    prompt = PROMPTS["planning.intake.prompt.v3"]
+    assert isinstance(prompt, DynamicPrompt)
+    return prompt.render({
+        "today": datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat(),
+        "recent_utterance_block": _recent_utterance_block(request),
+        "ward": ward,
+        "tasks": tasks,
+        "draft_items": draft_items,
+        "clarification_slots": request.clarification_slots,
+        "self_review_aspects": request.self_review_aspects,
+    })
 
 def _recent_utterance_block(request: PlanIntakeInput) -> str:
     rows, current_ids = window_text(request.recent_utterances, len(request.attachment_keys))
@@ -133,11 +126,11 @@ class PlanIntakeService:
         if not request.content and not request.attachment_keys:
             raise TaskIntakeError("请先输入文字、说话或添加图片")
         try:
-            content: list[dict] = [{"type": "text", "text": _prompt(ward, tasks, request) + "\n\n本轮学生消息：\n" + request.content}]
-            content.extend(image_parts(
-                request.recent_utterances, [_data_url(key) for key in request.attachment_keys],
-            ))
-            payload = components.invoke_json_component(spec=components.COMPONENTS.get("planning.intake"), user=content)
+            content = build_context("planning.intake", ward=ward, tasks=tasks, request=request)
+            from app.agent_specs.catalog import load_catalog
+            payload = components.invoke_agent_component(
+                spec=load_catalog().component("planning", "plan_intake"), user=content,
+            ).unwrap()
             result = PlanIntakeResult.model_validate(payload)
             record_plan_intake_structure(
                 has_image=bool(request.attachment_keys),

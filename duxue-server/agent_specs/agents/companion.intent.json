@@ -1,0 +1,71 @@
+{
+  "id": "companion.intent",
+  "version": "v7",
+  "kind": "agent",
+  "implementation": "llm",
+  "agent_label": "planning",
+  "risk_tier": "standard",
+  "operation": "intent_proposal",
+  "input_contract": "intent-input.v1",
+  "output_contract": "intent-proposal.v1",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "user": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "array"
+          }
+        ]
+      }
+    },
+    "required": [
+      "user"
+    ],
+    "additionalProperties": false
+  },
+  "context_builder_id": "companion.intent.context",
+  "prompt": {
+    "id": "companion.intent.system.v7",
+    "template": "你只判断孩子这句话要进入哪个学习场景。只返回一个 JSON 对象，字段只有 intent。intent 只能是 planning、tutoring、reflection、unclear 之一。按本轮要执行的动作区分三个场景：planning 处理具体任务或作业的新增、记录作业、修改、删除、查询已有任务及安排时间。例如‘记录一下这些任务作业’‘把图片里的作业创建成任务’‘把数学作业改成二十分钟’‘删除这项任务’‘今晚七点安排英语作业’。缺少预计时长或开始时间仍是 planning；咨询作业题的知识或解法不属于任务管理。reflection 只能用于孩子明确要求复盘或总结，或回忆某天自己的学习或工作经历、过程、表现或感受，或者孩子已叙述自己的学习或工作经历、错误或目标，并询问将来怎么做、怎么做更好、怎么避免再犯。两种条件都不满足时，不得选 reflection。例如‘回忆昨天我是怎么学习的’‘总结今天做作业的表现’‘我今天做题总漏单位，下次怎么避免这个错误？’。tutoring 处理其余咨询、知识提问、作业题讨论、探讨、举例和闲聊；例如‘这道作业题怎么做’‘你觉得这个故事怎么样’‘随便聊聊’。单纯询问最近问过什么，或请教一般方法而没有回顾自己的经历，选 tutoring；记录作业或创建任务选 planning。检查、核对、讲解或订正作业题，包含‘照片里的题目有没有都做对’‘看一看图片中的全部题目’‘检查答案’，一律选 tutoring。不得仅因“看一看”“检查”“全部”或图片附件而选 reflection。只有话语无法理解或同一轮同时要求多个不同场景且无法确定主要动作时才选 unclear。当前 focus 只用于理解省略和指代；本轮明确要做另一件事时按本轮意图切换，延续原场景时才再次返回该场景名。recent_utterances 是同一条对话到上一轮为止的最近原句，从旧到新。「他们」「刚才那句」「上面那个」只能根据这些原句确定对象。对不上，或有多句都可能时，追问是哪一句，不要自己补一个对象，也不要把孩子这句中文当成待解释的外语。某句带有 image_ids 时，同编号的图片会随后附在同一条消息里，那就是这句话发出的图片，请直接看图；current_image_ids 是本轮学生发来的图片。标明无法读取的图片不要猜内容。场景仍然按这句话要做的事判断；对不上的指代不要猜成另一个场景。不得调用工具，不得回答问题本身，不得输出其它字段。"
+  },
+  "tools": [],
+  "models": [
+    {
+      "component_id": "companion.intent",
+      "name": "qwen-flash",
+      "temperature": 0,
+      "max_output_tokens": 60,
+      "timeout_ms": 20000
+    }
+  ],
+  "accepts_images": false,
+  "requires_agent_switch": true,
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "intent": {
+        "enum": [
+          "planning",
+          "tutoring",
+          "reflection",
+          "unclear"
+        ]
+      }
+    },
+    "required": [
+      "intent"
+    ],
+    "additionalProperties": false
+  },
+  "error_codes": [
+    "agent_execution_failed",
+    "invalid_model_candidate",
+    "model_provider_disabled",
+    "model_provider_not_configured",
+    "model_transport_error"
+  ]
+}

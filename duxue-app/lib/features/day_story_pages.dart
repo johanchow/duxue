@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
@@ -228,6 +229,11 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   List<Map<String, dynamic>> pronunciationLessons = const [];
   SpeechPlayback? _speechPlayback;
   bool planSending = false;
+  bool clearingHistory = false;
+  bool get _chatBusy => planSending || clearingHistory;
+  int _chatGeneration = 0;
+  String? _pendingClearCommand;
+
   bool planListOpen = false;
   bool planChatOpen = false;
   String? chatSubject;
@@ -568,7 +574,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   }
 
   bool get _canSendDraft {
-    if (planSending) return false;
+    if (_chatBusy) return false;
     if (stagedImages.any((image) => image.key == null && !image.failed)) {
       return false;
     }
@@ -605,7 +611,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
             voiceFactory: widget.voiceFactory,
             holdToTalkText: '说出你的任何想法、问题、安排',
             helperText: '按住说话',
-            enabled: !planSending,
+            enabled: !_chatBusy,
             onTap: _openPlanChat,
             onBeforeRecording: () => ref.read(apiProvider).ensureValidAccess(),
             onPickImage: _pickPlanImage,
@@ -658,7 +664,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
                           backgroundColor: const Color(0xff0c1222),
                           foregroundColor: Colors.white,
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-                      onPressed: planSending
+                      onPressed: _chatBusy
                           ? null
                           : () => setState(() => stagedImages.remove(image)),
                       icon: const Icon(Icons.close, size: 14))),
@@ -830,7 +836,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
             SizedBox(
                 width: double.infinity,
                 child: FilledButton(
-                    onPressed: planSending || planConfirmAction == null
+                    onPressed: _chatBusy || planConfirmAction == null
                         ? null
                         : _confirmPlanDraft,
                     child: const Text('确认这个计划'))),
@@ -879,7 +885,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
       ),
       for (final message in historyMessages) _chatMessage(message),
       for (final message in planMessages) _chatMessage(message),
-      if (planSending)
+      if (_chatBusy)
         const Padding(
           padding: EdgeInsets.only(top: 14),
           child: Center(child: CircularProgressIndicator()),
@@ -892,9 +898,8 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
                 child: Text('这条消息暂未送达。',
                     style: TextStyle(fontSize: 12, color: Colors.redAccent))),
             TextButton(
-                onPressed: planSending
-                    ? null
-                    : () => _submitPlanInput(failedPlanText!),
+                onPressed:
+                    _chatBusy ? null : () => _submitPlanInput(failedPlanText!),
                 child: const Text('重试')),
           ]),
         ),
@@ -921,6 +926,17 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
       subtitle: '你先说；我记录并检查冲突，确认后才生效。',
       bottomInset: stagedImages.isNotEmpty ? 164 : 92,
       onClose: () => setState(() => planChatOpen = false),
+      action: IconButton(
+        key: const Key('clear-chat-history-button'),
+        tooltip: '清空历史对话',
+        onPressed: clearingHistory ? null : _clearChatHistory,
+        icon: clearingHistory
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2))
+            : const Icon(Icons.cleaning_services_outlined),
+      ),
       child: ListView.builder(
         key: const Key('companion-chat-list'),
         controller: _chatScrollController,
@@ -929,6 +945,79 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         itemBuilder: (context, index) => items[index],
       ),
     );
+  }
+
+  Future<void> _clearChatHistory() async {
+    if (clearingHistory) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('清空历史对话？'),
+        content: const Text('清空对话列表并重新开始。已保存的任务、计划、学习记录和长期记忆会保留，历史数据仍由系统保存。'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('清空并重新开始')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted || clearingHistory) return;
+    _pendingClearCommand ??=
+        List.generate(16, (_) => Random.secure().nextInt(256))
+            .map((value) => value.toRadixString(16).padLeft(2, '0'))
+            .join();
+    setState(() => clearingHistory = true);
+    var serverCleared = false;
+    try {
+      await ref.read(apiProvider).clearCompanionHistory(_pendingClearCommand!);
+      serverCleared = true;
+      if (!mounted) return;
+      setState(() {
+        _chatGeneration++;
+        _pendingClearCommand = null;
+        planSending = false;
+        planMessages.clear();
+        historyMessages.clear();
+        rememberedImages.clear();
+        _imageLoads.clear();
+        stagedImages.clear();
+        planAttachments.clear();
+        companionThreadId = null;
+        companionThreadVersion = null;
+        historyCursorThreadId = null;
+        nextBeforeThreadVersion = null;
+        previousThreadId = null;
+        loadingOlderMessages = false;
+        _userScrolledAwayFromTop = false;
+        planDraft = [];
+        planAdviceItems = [];
+        planClarificationSlots = [];
+        dismissedPlanSuggestions.clear();
+        planFeedback = null;
+        planInteractionKind = null;
+        planConfirmAction = null;
+        planSuggestionAction = null;
+        planClarifyAction = null;
+        planDraftId = null;
+        planDraftVersion = null;
+        failedPlanText = null;
+        pronunciationLessons = const [];
+        chatSubject = null;
+      });
+      await ref.read(tokenStorageProvider).clearCompanionThread();
+      await _speechPlayback?.stop();
+      if (mounted) showMessage(context, '对话已清空，可以重新开始');
+    } catch (_) {
+      if (mounted) {
+        showMessage(
+            context, serverCleared ? '对话已清空，本地同步未完成，请重新打开页面' : '清空失败，请稍后重试');
+      }
+    } finally {
+      if (mounted) setState(() => clearingHistory = false);
+    }
   }
 
   void _openPlanList() => setState(() {
@@ -964,7 +1053,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   }
 
   Future<void> _sendDraft({String? spoken, bool pronunciation = false}) async {
-    if (planSending) return;
+    if (_chatBusy) return;
     if (stagedImages.any((image) => image.key == null && !image.failed)) {
       showMessage(context, '图片还在上传，请稍候再发送');
       return;
@@ -1613,13 +1702,20 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   }
 
   Future<void> _pickPlanImage() async {
+    if (clearingHistory) return;
+    final generation = _chatGeneration;
     _openPlanChat();
     if (stagedImages.length >= 8) {
       showMessage(context, '一次最多添加 8 张图片');
       return;
     }
     final image = await (widget.pickChatImage ?? _defaultPickChatImage)();
-    if (image == null || !mounted) return;
+    if (image == null ||
+        !mounted ||
+        generation != _chatGeneration ||
+        clearingHistory) {
+      return;
+    }
     if (!const {'jpg', 'jpeg', 'png', 'webp'}.contains(image.extension)) {
       showMessage(context, '暂只支持 JPG、PNG 或 WebP 图片');
       return;
@@ -1644,13 +1740,14 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
 
   Future<void> _submitPlanInput(String text,
       {bool pronunciation = false}) async {
-    if (planSending) return;
+    if (_chatBusy) return;
     planAttachments
       ..clear()
       ..addAll([
         for (final image in stagedImages)
           if (image.key != null) image.key!,
       ]);
+    final generation = _chatGeneration;
     setState(() {
       planSending = true;
     });
@@ -1662,25 +1759,29 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
           attachmentKeys: List<String>.from(planAttachments),
           routeHint: pronunciation ? 'tutoring' : null,
           tutoringIntent: pronunciation ? 'pronunciation' : null);
-      if (!mounted) return;
+      if (!mounted || generation != _chatGeneration) return;
       await _applyPlanTurnResult(result);
     } catch (_) {
-      if (mounted) {
+      if (!mounted || generation != _chatGeneration) return;
+      if (mounted && generation == _chatGeneration) {
         setState(() => failedPlanText = text);
         showMessage(context, '暂时无法整理今天的计划，请重试');
       }
     } finally {
-      if (mounted) setState(() => planSending = false);
+      if (mounted && generation == _chatGeneration) {
+        setState(() => planSending = false);
+      }
     }
   }
 
   Future<void> _chooseIntent(
       _ChatLine message, Map<String, dynamic> action) async {
-    if (planSending ||
+    if (_chatBusy ||
         message.threadId != companionThreadId ||
         message.threadVersion != companionThreadVersion) {
       return;
     }
+    final generation = _chatGeneration;
     setState(() => planSending = true);
     try {
       final result = await ref.read(apiProvider).companionTurn(
@@ -1693,25 +1794,37 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
           'payload': action['payload'],
         },
       );
-      if (!mounted) return;
+      if (!mounted || generation != _chatGeneration) return;
       await _applyPlanTurnResult(result);
     } on DioException catch (error) {
+      if (!mounted || generation != _chatGeneration) return;
       if (error.response?.statusCode == 409) {
         try {
+          if (!mounted || generation != _chatGeneration) return;
           await _refreshTranscript();
-        } catch (_) {}
-        if (mounted) showMessage(context, '这个选择已过期，请重新说明。');
-      } else if (mounted) {
+        } catch (_) {
+          if (!mounted || generation != _chatGeneration) return;
+        }
+        if (mounted && generation == _chatGeneration) {
+          showMessage(context, '这个选择已过期，请重新说明。');
+        }
+      } else if (mounted && generation == _chatGeneration) {
         showMessage(context, '选择没有送达，请重试');
       }
     } catch (_) {
-      if (mounted) showMessage(context, '选择没有送达，请重试');
+      if (!mounted || generation != _chatGeneration) return;
+      if (mounted && generation == _chatGeneration) {
+        showMessage(context, '选择没有送达，请重试');
+      }
     } finally {
-      if (mounted) setState(() => planSending = false);
+      if (mounted && generation == _chatGeneration) {
+        setState(() => planSending = false);
+      }
     }
   }
 
   Future<void> _applyPlanTurnResult(Map<String, dynamic> result) async {
+    final generation = _chatGeneration;
     final interaction =
         Map<String, dynamic>.from(result['interaction'] as Map? ?? const {});
     companionThreadId = result['thread_id'] as String?;
@@ -1721,6 +1834,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
           .read(tokenStorageProvider)
           .saveCompanionThread(companionThreadId!, companionThreadVersion!);
     }
+    if (!mounted || generation != _chatGeneration) return;
     final objectRef = Map<String, dynamic>.from(
         interaction['object_ref'] as Map? ?? const {});
     final actions = (interaction['actions'] as List? ?? const [])
@@ -1739,6 +1853,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
           .read(apiProvider)
           .pronunciationLesson(objectRef['object_id'] as String);
     }
+    if (!mounted || generation != _chatGeneration) return;
     final nextDraftId = draft?['draft_id'] as String?;
     final nextDraftVersion = draft?['object_version'] as int?;
     setState(() {
@@ -1801,6 +1916,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     // projections immediately so an unscheduled task is visible in its
     // actual task-pool home, not only in this transient chat card.
     await _load();
+    if (!mounted || generation != _chatGeneration) return;
     await _refreshTranscript();
   }
 
@@ -1842,7 +1958,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
             if (canAccept)
               TextButton(
                 key: Key('accept-plan-suggestion-$key'),
-                onPressed: planSending
+                onPressed: _chatBusy
                     ? null
                     : () => _acceptPlanSuggestion(target, kind),
                 child: const Text('采用建议'),
@@ -1860,7 +1976,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
 
   Future<void> _acceptPlanSuggestion(
       Map<String, dynamic> target, String kind) async {
-    if (planSending || planDraftId == null || planDraftVersion == null) return;
+    if (_chatBusy || planDraftId == null || planDraftVersion == null) return;
     final action =
         kind == 'clarification' ? planClarifyAction : planSuggestionAction;
     if (action == null) return;
@@ -1883,6 +1999,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
             'expected_fingerprint':
                 (target['${kind}_suggestion'] as Map)['fingerprint'],
           };
+    final generation = _chatGeneration;
     setState(() => planSending = true);
     try {
       final result = await ref.read(apiProvider).companionTurn(
@@ -1895,11 +2012,12 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
           'payload': payload,
         },
       );
-      if (!mounted) return;
+      if (!mounted || generation != _chatGeneration) return;
       await _applyPlanTurnResult(result);
     } on DioException catch (error) {
+      if (!mounted || generation != _chatGeneration) return;
       if (error.response?.statusCode == 409) {
-        if (mounted) {
+        if (mounted && generation == _chatGeneration) {
           setState(() {
             planDraft = [];
             planAdviceItems = [];
@@ -1909,26 +2027,35 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
           });
         }
         await _load();
+        if (!mounted || generation != _chatGeneration) return;
         await _refreshTranscript(restoreReviewAction: false);
-        if (mounted) showMessage(context, '计划已变化，请重新说明或审阅。');
-      } else if (mounted) {
+        if (mounted && generation == _chatGeneration) {
+          showMessage(context, '计划已变化，请重新说明或审阅。');
+        }
+      } else if (mounted && generation == _chatGeneration) {
         showMessage(context, '采用建议失败，请稍后重试');
       }
     } catch (_) {
-      if (mounted) showMessage(context, '采用建议失败，请稍后重试');
+      if (!mounted || generation != _chatGeneration) return;
+      if (mounted && generation == _chatGeneration) {
+        showMessage(context, '采用建议失败，请稍后重试');
+      }
     } finally {
-      if (mounted) setState(() => planSending = false);
+      if (mounted && generation == _chatGeneration) {
+        setState(() => planSending = false);
+      }
     }
   }
 
   Future<void> _confirmPlanDraft() async {
     if (planDraft.isEmpty ||
-        planSending ||
+        _chatBusy ||
         planConfirmAction == null ||
         planDraftId == null ||
         planDraftVersion == null) {
       return;
     }
+    final generation = _chatGeneration;
     setState(() => planSending = true);
     try {
       final result = await ref.read(apiProvider).companionTurn(
@@ -1943,6 +2070,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
               'expected_draft_version': planDraftVersion,
             },
           });
+      if (!mounted || generation != _chatGeneration) return;
       final interaction =
           Map<String, dynamic>.from(result['interaction'] as Map? ?? const {});
       final confirmed = result['run_status'] == 'closed' &&
@@ -1956,6 +2084,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
             .read(tokenStorageProvider)
             .saveCompanionThread(companionThreadId!, companionThreadVersion!);
       }
+      if (!mounted || generation != _chatGeneration) return;
       planAttachments.clear();
       planDraft = [];
       planAdviceItems = [];
@@ -1969,11 +2098,15 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
       planDraftId = null;
       planDraftVersion = null;
       await _load();
+      if (!mounted || generation != _chatGeneration) return;
       await _refreshTranscript();
-      if (mounted) showMessage(context, '今天计划已确认');
+      if (mounted && generation == _chatGeneration) {
+        showMessage(context, '今天计划已确认');
+      }
     } on DioException catch (error) {
+      if (!mounted || generation != _chatGeneration) return;
       if (error.response?.statusCode == 409) {
-        if (mounted) {
+        if (mounted && generation == _chatGeneration) {
           setState(() {
             planDraft = [];
             planAdviceItems = [];
@@ -1991,18 +2124,26 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         // recovery message or leave the stale card on screen.
         try {
           await _load();
+          if (!mounted || generation != _chatGeneration) return;
           await _refreshTranscript(restoreReviewAction: false);
-        } catch (_) {}
-        if (mounted) {
+        } catch (_) {
+          if (!mounted || generation != _chatGeneration) return;
+        }
+        if (mounted && generation == _chatGeneration) {
           showMessage(context, '计划已变化，已刷新，请重新说明或确认。');
         }
-      } else if (mounted) {
+      } else if (mounted && generation == _chatGeneration) {
         showMessage(context, '确认计划失败，请稍后重试');
       }
     } catch (_) {
-      if (mounted) showMessage(context, '确认计划失败，请稍后重试');
+      if (!mounted || generation != _chatGeneration) return;
+      if (mounted && generation == _chatGeneration) {
+        showMessage(context, '确认计划失败，请稍后重试');
+      }
     } finally {
-      if (mounted) setState(() => planSending = false);
+      if (mounted && generation == _chatGeneration) {
+        setState(() => planSending = false);
+      }
     }
   }
 
@@ -2125,7 +2266,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
                     OutlinedButton(
                       key: ValueKey(
                           'intent-choice-${(action['payload'] as Map)['intent']}'),
-                      onPressed: planSending || action['enabled'] != true
+                      onPressed: _chatBusy || action['enabled'] != true
                           ? null
                           : () => _chooseIntent(message, action),
                       child: Text(action['label'] as String),
@@ -2148,6 +2289,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
       );
 
   Future<Uint8List> _loadChatImage(_ChatLine message, int index) {
+    final generation = _chatGeneration;
     final key = message.imageRefs[index];
     final cached = rememberedImages[key];
     if (cached != null) return Future.value(cached);
@@ -2156,7 +2298,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         final bytes = await ref
             .read(apiProvider)
             .companionMessageImage(message.id!, index);
-        _cacheChatImage(key, bytes);
+        if (generation == _chatGeneration) _cacheChatImage(key, bytes);
         return bytes;
       } finally {
         _imageLoads.remove(key);
@@ -2205,7 +2347,8 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   }
 
   Future<void> _loadOlderMessages() async {
-    if (loadingOlderMessages || !_hasOlderHistory) return;
+    if (clearingHistory || loadingOlderMessages || !_hasOlderHistory) return;
+    final generation = _chatGeneration;
     final targetThreadId = nextBeforeThreadVersion != null
         ? (historyCursorThreadId ?? companionThreadId)
         : previousThreadId;
@@ -2223,7 +2366,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
             targetThreadId,
             beforeThreadVersion: beforeVersion,
           );
-      if (!mounted) return;
+      if (!mounted || generation != _chatGeneration) return;
       final rawMessages = page['messages'] as List? ?? const [];
       final olderLines = rawMessages.map(_parseChatLine).toList();
       final existingIds = <String>{
@@ -2244,7 +2387,11 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
       });
       if (hadClients && deduped.isNotEmpty) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted || !_chatScrollController.hasClients) return;
+          if (!mounted ||
+              generation != _chatGeneration ||
+              !_chatScrollController.hasClients) {
+            return;
+          }
           final newMaxExtent = _chatScrollController.position.maxScrollExtent;
           final delta = newMaxExtent - oldMaxExtent;
           if (delta > 0) {
@@ -2255,11 +2402,14 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     } catch (_) {
       // Ignore transient network errors when paginating history.
     } finally {
-      if (mounted) setState(() => loadingOlderMessages = false);
+      if (mounted && generation == _chatGeneration) {
+        setState(() => loadingOlderMessages = false);
+      }
     }
   }
 
   Future<void> _refreshTranscript({bool restoreReviewAction = true}) async {
+    final generation = _chatGeneration;
     final Map<String, dynamic> transcript;
     if (companionThreadId != null) {
       transcript =
@@ -2271,7 +2421,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         (transcript['thread_id'] as String?) ?? companionThreadId;
     final version = transcript['thread_version'] as int?;
     final messages = transcript['messages'] as List? ?? const [];
-    if (!mounted) return;
+    if (!mounted || generation != _chatGeneration) return;
     final latestLines = messages.map(_parseChatLine).toList();
     final latestIds = <String>{
       for (final m in latestLines)
@@ -2332,10 +2482,11 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   }
 
   Future<void> _restoreCompanionThread() async {
+    final generation = _chatGeneration;
     final tokens = ref.read(tokenStorageProvider);
     final threadId = await tokens.companionThreadId;
     final version = await tokens.companionThreadVersion;
-    if (!mounted) return;
+    if (!mounted || generation != _chatGeneration) return;
     if (threadId != null && version != null) {
       companionThreadId = threadId;
       companionThreadVersion = version;
@@ -2343,7 +2494,9 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     try {
       await _refreshTranscript();
     } on DioException catch (error) {
-      if (error.response?.statusCode == 404 && mounted) {
+      if (error.response?.statusCode == 404 &&
+          mounted &&
+          generation == _chatGeneration) {
         companionThreadId = null;
         companionThreadVersion = null;
         try {
@@ -2381,12 +2534,14 @@ class _HomeOverlay extends StatelessWidget {
     required this.onClose,
     required this.child,
     this.bottomInset = 82,
+    this.action,
   });
   final String title;
   final String subtitle;
   final VoidCallback onClose;
   final Widget child;
   final double bottomInset;
+  final Widget? action;
 
   @override
   Widget build(BuildContext context) => Positioned.fill(
@@ -2423,6 +2578,7 @@ class _HomeOverlay extends StatelessWidget {
                                                 fontSize: 12,
                                                 color: Colors.blueGrey)),
                                       ])),
+                                  if (action != null) action!,
                                   IconButton(
                                       onPressed: onClose,
                                       tooltip: '关闭',

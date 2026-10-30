@@ -224,6 +224,8 @@ Repository/ORM 或创建多 Context 全局事务。
 也不能自行决定 `mode` 或创建 Run。`HandleCompanionTurn` 校验该提议属于这个闭集；非法 JSON、
 闭集之外的值、提供者关闭或调用失败都视为 `unclear`。
 
+已有 focus 且提议指向另一业务场景时，Coordinator 额外调用独立的场景切换核查组件，核对本轮原句、最近已授权对话、当前场景与提议目标。初次提议不作为切换证据；只有核查明确允许才切换，否决、非法输出或调用失败均继续原 focus，并分别记录 `scene_switch_rejected` / `scene_switch_unavailable`。同场景续接、无 focus、安全短路和已验证 UI 动作不调用该组件。组件本身不创建 Run、不回答孩子，也不替代原意图模型。图片继续按已授权窗口提供给核查组件，不向 Trace 写入图片字节。
+
 代码按固定优先级把已校验提议变成 `RouteDecision`：
 
 
@@ -233,7 +235,8 @@ Repository/ORM 或创建多 Context 全局事务。
 | 2   | 已验证 UI        | `route_hint` 属于 `planning` / `tutoring` / `reflection` | 该目标，`mode=start`，不调用模型         |
 | 3   | 模型提议 + Domain | `unclear` 或没有有效提议                                      | `clarify`，不建 Run；无明确意图的图片且无焦点或焦点为 Planning 时进入 Planning |
 | 4   | 模型提议 + Domain | 提议与 focus 的场景相同                                        | `continue`                     |
-| 5   | 模型提议 + Domain | 提议是另一个业务场景，或没有 focus                                   | 有 focus 时 `handoff`，否则 `start` |
+| 5   | 模型提议 + Domain | 没有 focus，或异场景提议经独立核查允许                                   | 无 focus 时 `start`，核查允许时 `handoff` |
+| 6   | 独立核查 + Domain | 异场景提议被否决或核查不可用                                   | `continue` 原 focus |
 
 
 同时出现多个业务意图时，模型必须提议 `unclear`，由代码进入澄清，不得猜测其中一个。
@@ -247,7 +250,7 @@ Repository/ORM 或创建多 Context 全局事务。
 
 | 触发                   | Interface                                 | Use Case / Process Manager                      | 本地行为                                                                                                                              | 后续                                   | 一致性、幂等与失败                                                              |
 | -------------------- | ----------------------------------------- | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ | ---------------------------------------------------------------------- |
-| Ward 文本、ASR 或 UI 动作  | `POST /companion/turn`                    | `HandleCompanionTurn`                           | load Thread → 安全或已验证 `route_hint` 短路，否则一次意图模型调用 → `route()` → start/resume Link → version++ → append accepted Ward journal record | `RunRouted`、最小 Trace、`RunInvocation` | optimistic lock；`command_id` 重试返原结果；澄清/安全不建 Run，但写入已校验的 Ward-facing 回复 |
+| Ward 文本、ASR 或 UI 动作  | `POST /companion/turn`                    | `HandleCompanionTurn`                           | load Thread → 安全或已验证 `route_hint` 短路，否则意图模型调用，异场景提议按需独立核查 → `route()` → start/resume Link → version++ → append accepted Ward journal record | `RunRouted`、最小 Trace、`RunInvocation` | optimistic lock；`command_id` 重试返原结果；澄清/安全不建 Run，但写入已校验的 Ward-facing 回复 |
 | focus Run 续接         | 同上                                        | `ResumeAgentRun`                                | 校验状态和 checkpoint/policy → `resume()`                                                                                              | 新 attempt 的 Invocation               | `run_id + turn_id` 唯一；不兼容返回重新审阅                                        |
 | 明确新目标或受验证 UI         | 同上                                        | `HandoffRun`                                    | 原 Link pause/close，创建/恢复目标 Link，更新 focus                                                                                          | `RunHandedOff`                       | 同一 Thread 事务；没有明确意图则澄清                                                 |
 | Workflow 返回结果        | completion adapter                        | `RecordWorkflowOutcome`                         | fence `run_id + attempt + focus` → `record_outcome()` → append validated companion journal record                                 | Trace / 可恢复引用                        | 重复无副作用；迟到 Outcome 不夺回回复权或写可见消息                                         |
@@ -449,6 +452,16 @@ Workflow 必须声明版本化 `ContextSpec`：Memory 范围、近期会话窗�
 `WorkflowFailure` 至少含稳定 `code`、面向 Trace 的脱敏 `detail`、`retriable` 与失败来源
 （`model`、`tool`、`validator`、`budget`、`transport`）；`failure` 只在 `outcome_type=failure`
 时必填，`resume_action` 必须与 Run 状态机允许的转换一致。
+
+#### 清空历史与会话边界
+
+`POST /companion/history/clear` 接受认证 Ward 的 UUID `command_id`，返回 `history_generation`。Ward 持有当前历史代次，新 Thread 创建时继承该代次；只有代次相同的 Thread 对 Ward 可见。清空事务递增 Ward 代次，解除旧 Thread 的 focus 并递增版本，将旧可恢复 Run 标记 cancelled；不删除原始消息、附件、Checkpoint 或 Trace，不修改任务、计划、StudySession、学习事实或长期记忆。
+
+输入接受、清空、Outcome 提交及命令完成以同一 Ward 行锁协调。模型工作流调用在入口提交释放锁后执行；Outcome 提交时重新加载 ORM 状态，并校验代次及既有 focus/attempt/turn fence。清空期间尚未提交的旧回复被拒绝，不返回可展示的成功交互。已完成的旧输入/取消命令也不能通过幂等重放恢复旧内容。清空命令单独以 `CompanionCommand` 记录且不绑定 Thread；同一个命令重试返回原结果，不再次推进代次，以免误清后续新消息。
+
+`current` 恢复、指定 Thread 查询、前序 Thread 游标、消息图片与 Run 事件均只读当前代次；旧引用返回 404，旧命令重放返回 409。原始记录仅保留在系统存储中，不通过这些 Ward 接口读取。新 Thread 的最近原句窗口为空，后续按既有规则增长；独立的长期记忆召回继续生效。
+
+App 在服务端确认后递增本地请求代次并清空聊天状态、图片缓存、交互卡、分页游标和本地 Thread 引用；异步输入结果、历史页及图片结果必须检查本地代次，不能复活旧会话。发送与清空互斥启动，但允许主动清空正在生成的对话；旧发送 finally 不得更改新会话的发送态。Thread 的本地存储写入和清除按序完成，避免迟到写入重新保存旧引用。
 
 SSE（目标能力）必须绑定 `thread_id`、`run_id`、`turn_id`、`attempt`、Policy 版本与单调
 `sequence`。客户端只展示当前 focus Run/attempt 的事件；重连按最后确认 sequence 恢复。流式文本
@@ -676,7 +689,7 @@ Context Fact 通过目标 Outbox 最终一致进入 Memory。
 `command_id` 幂等、Run/turn/attempt/focus fence、取消命令与可重放 SSE 事件。Memory Fact 的异步
 投递由 Outbox Consumer/Celery Worker 处理。Planning、Tutoring、Reflection 通过类型化 Qwen
 Gateway 各允许每 Turn 一个候选调用，模型、prompt 与参数由
-[AI Component Registry](infra-ai-components.md) 统一声明；只有 `AGENT_MODEL_ENABLED=true` 才会发送脱敏 `ContextEnvelope`。
+[当前 AI Component Registry](../../duxue-server/app/infrastructure/ai/components.py) 统一声明；只有 `AGENT_MODEL_ENABLED=true` 才会发送脱敏 `ContextEnvelope`。
 外部工具仍为零预算。候选必须通过 Policy/Validator；失败时确定性降级，且不得作为业务写入。
 `CompanionMessage` journal 由 Coordinator 在短事务中追加，`CompanionTranscriptView` 通过 Ward 专属
 分页 API 读取；Ward 首页只经 `/companion/turn` 写入统一入口。

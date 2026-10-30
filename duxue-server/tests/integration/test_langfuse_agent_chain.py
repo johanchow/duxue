@@ -40,7 +40,12 @@ def test_thread_session_contains_two_tutoring_turns_then_planning_handoff(db, mo
     db.commit()
     classifier = StaticIntentClassifier("tutoring")
     dispatcher = FakeWorkflowDispatcher()
-    coordinator = CompanionCoordinator(db, dispatcher=dispatcher, classifier=classifier)
+    from tests.support.fakes import StaticSceneSwitchVerifier
+
+    coordinator = CompanionCoordinator(
+        db, dispatcher=dispatcher, classifier=classifier,
+        switch_verifier=StaticSceneSwitchVerifier(),
+    )
 
     first = coordinator.handle(
         ward_id=ward.id, content="这题我不会", thread_id=None, expected_thread_version=0, route_hint=None,
@@ -76,8 +81,11 @@ def test_thread_session_contains_two_tutoring_turns_then_planning_handoff(db, mo
         None,
     ]
     routes = [s for s in exporter.get_finished_spans() if s.name == "agent.route"]
-    assert len(routes) == 8
+    assert len(routes) == 9
     assert all(s.attributes["langfuse.session.id"] == first.thread_id for s in routes)
+    switch = next(s for s in routes if s.attributes["agent.step"] == "switch_confirm")
+    assert json.loads(switch.attributes["langfuse.observation.output"]) == {"allow_switch": True}
+    assert json.loads(switch.attributes["langfuse.observation.input"])["proposed_agent_type"] == "planning"
     first_route = next(s for s in routes if s.attributes["agent.step"] == "intent_route")
     assert json.loads(first_route.attributes["langfuse.observation.input"])["content"] == "这题我不会"
     assert json.loads(first_route.attributes["langfuse.observation.output"])["target"] == "tutoring"

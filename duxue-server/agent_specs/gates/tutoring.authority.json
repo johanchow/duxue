@@ -1,0 +1,27 @@
+{
+  "id": "tutoring.authority",
+  "version": "v1",
+  "kind": "gate",
+  "implementation": "code",
+  "handler_id": "tutoring.check_authority",
+  "safety_class": "protected",
+  "on_error": "deny",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "candidate": {"type": "object"},
+      "permit": {"type": "object"}
+    },
+    "required": ["candidate", "permit"],
+    "additionalProperties": false
+  },
+  "verdict_schema": {
+    "type": "object",
+    "properties": {
+      "verdict": {"enum": ["allow", "deny", "unknown"]},
+      "reason_code": {"type": "string"}
+    },
+    "required": ["verdict", "reason_code"],
+    "additionalProperties": false
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "id": "turn-visual-concept-00",
+  "component": "tutoring.turn",
+  "conversation_id": "vis00001",
+  "turn_index": 0,
+  "history": [],
+  "student_said": "水是怎么循环的？",
+  "images": [],
+  "context": {
+    "problem": null,
+    "task_title": null,
+    "task_active": true,
+    "tutoring_intent": null,
+    "focus_agent_type": null
+  },
+  "expect": {
+    "outcome_in": [
+      "answer"
+    ],
+    "outcome_not_in": [
+      "fallback"
+    ],
+    "lesson_source_contains_any": [],
+    "content_contains_any": [],
+    "content_not_contains": [],
+    "intent_in": [],
+    "visual": "present",
+    "visual_kind_in": [
+      "steps"
+    ],
+    "visual_not_contains": []
+  },
+  "tags": [
+    "visual",
+    "visual-concept"
+  ],
+  "source": "synthetic",
+  "flags": [],
+  "label_status": "proposed",
+  "reviewed_by": null,
+  "note": "合成：过程类概念，应配 steps。proposed，待教研复核。 首批复核：概念图文表达是否帮助理解",
+  "review_batch": "seed-v1"
+}

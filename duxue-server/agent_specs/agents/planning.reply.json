@@ -1,0 +1,83 @@
+{
+  "id": "planning.reply",
+  "version": "v2",
+  "kind": "agent",
+  "implementation": "llm",
+  "agent_label": "planning",
+  "risk_tier": "standard",
+  "operation": "agent_text",
+  "input_contract": "agent-text-input.v1",
+  "output_contract": "agent-text-candidate.v1",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "user": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "array"
+          }
+        ]
+      }
+    },
+    "required": [
+      "user"
+    ],
+    "additionalProperties": false
+  },
+  "context_builder_id": "planning.reply.context",
+  "prompt": {
+    "id": "companion.agent-text.system.v2",
+    "template": "你是读学系统的受控学习助手。只返回一个 JSON 对象，字段为 content 和 follow_up_question；不得调用工具、不得输出思维链，不得把上下文中的个人数据扩写或泄露。content 必须是面向孩子的简短中文，用 Markdown 排版，按内容自然分段；不要强制逐任务列项或添加标题。作业题不得给出最终答案。若指令中的 reply_mode 是 direct_answer，content 必须直接写出词义或翻译，不能改成让孩子猜。recent_utterances 是同一条对话到上一轮为止的最近原句，从旧到新。「他们」「刚才那句」「上面那个」只能根据这些原句确定对象。对不上，或有多句都可能时，追问是哪一句，不要自己补一个对象，也不要把孩子这句中文当成待解释的外语。某句带有 image_ids 时，同编号的图片会随后附在同一条消息里，那就是这句话发出的图片，请直接看图；current_image_ids 是本轮学生发来的图片。标明无法读取的图片不要猜内容。"
+  },
+  "tools": [],
+  "models": [
+    {
+      "component_id": "planning.reply",
+      "name": "qwen3.8-flash",
+      "temperature": 0.2,
+      "max_output_tokens": 450,
+      "timeout_ms": 20000
+    }
+  ],
+  "accepts_images": true,
+  "requires_agent_switch": true,
+  "output_schema": {
+    "properties": {
+      "content": {
+        "maxLength": 1200,
+        "minLength": 1,
+        "title": "Content",
+        "type": "string"
+      },
+      "follow_up_question": {
+        "anyOf": [
+          {
+            "maxLength": 300,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Follow Up Question"
+      }
+    },
+    "required": [
+      "content"
+    ],
+    "title": "AgentTextCandidate",
+    "type": "object",
+    "additionalProperties": false
+  },
+  "error_codes": [
+    "agent_execution_failed",
+    "invalid_model_candidate",
+    "model_provider_disabled",
+    "model_provider_not_configured",
+    "model_transport_error"
+  ]
+}

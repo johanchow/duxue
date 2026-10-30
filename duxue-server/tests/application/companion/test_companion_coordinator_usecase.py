@@ -24,6 +24,69 @@ from tests.support.factories import create_task, create_ward
 from tests.support.fakes import FakeWorkflowDispatcher, StaticIntentClassifier
 
 
+@pytest.mark.parametrize("allowed, expected_target, expected_mode", [
+    (False, "tutoring", "continue"),
+    (True, "reflection", "handoff"),
+])
+def test_coordinator_confirms_a_proposed_scene_switch(db, allowed, expected_target, expected_mode):
+    ward = create_ward(db)
+    db.commit()
+    dispatcher = FakeWorkflowDispatcher()
+
+    class RecordingVerifier:
+        def __init__(self):
+            self.calls = []
+
+        def confirm(self, **kwargs):
+            self.calls.append(kwargs)
+            return allowed
+
+    verifier = RecordingVerifier()
+    coordinator = CompanionCoordinator(
+        db, dispatcher=dispatcher, classifier=StaticIntentClassifier("reflection"),
+        switch_verifier=verifier,
+    )
+    first = coordinator.handle(
+        ward_id=ward.id, content="三百四十五减一百零七的竖式怎么写？",
+        thread_id=None, expected_thread_version=0, route_hint="tutoring",
+    )
+    second = coordinator.handle(
+        ward_id=ward.id, content="最后结果二百三十八。",
+        thread_id=first.thread_id, expected_thread_version=first.thread_version,
+        route_hint=None,
+    )
+    assert second.decision.target == expected_target
+    assert second.decision.mode == expected_mode
+    assert len(verifier.calls) == 1
+    assert verifier.calls[0]["current_agent_type"] == "tutoring"
+    assert verifier.calls[0]["proposed_agent_type"] == "reflection"
+    assert verifier.calls[0]["recent_utterances"][0]["text"] == "三百四十五减一百零七的竖式怎么写？"
+    assert dispatcher.invocations[-1].agent_type == expected_target
+    assert db.query(AgentTrace).filter_by(thread_id=first.thread_id).order_by(AgentTrace.created_at.desc()).first().route_target == expected_target
+
+
+def test_coordinator_skips_switch_verifier_for_same_scene_and_ui_hint(db):
+    ward = create_ward(db)
+    db.commit()
+
+    class NeverVerifier:
+        def confirm(self, **kwargs):
+            raise AssertionError("switch verifier should not run")
+
+    coordinator = CompanionCoordinator(
+        db, dispatcher=FakeWorkflowDispatcher(), classifier=StaticIntentClassifier("tutoring"),
+        switch_verifier=NeverVerifier(),
+    )
+    first = coordinator.handle(ward_id=ward.id, content="怎么列竖式？", thread_id=None,
+                               expected_thread_version=0, route_hint=None)
+    second = coordinator.handle(ward_id=ward.id, content="个位是八", thread_id=first.thread_id,
+                                expected_thread_version=first.thread_version, route_hint=None)
+    assert second.decision.mode == "continue"
+    third = coordinator.handle(ward_id=ward.id, content="总结今天的学习", thread_id=first.thread_id,
+                               expected_thread_version=second.thread_version, route_hint="reflection")
+    assert third.decision.target == "reflection"
+
+
 def test_coordinator_handles_turn_and_records_trace_and_stream_event(db):
     """协调器编排用例：分配 Thread/Run，调用工作流，更新版本，写入审计 Trace 与流事件。"""
     ward = create_ward(db)
