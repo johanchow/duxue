@@ -73,7 +73,7 @@ flowchart TD
 
 #### 时长与计划时间的软建议
 
-实现验收与边界见 [planning-time-suggestions spec](../../.agent/specs/done/planning-time-suggestions.md)。`GetPlanDraft` 在只读投影中附带两种建议，不能把建议当作 Ward 已输入的值，也不能因建议阻止确认。
+`GetPlanDraft` 在只读投影中附带两种建议，不能把建议当作 Ward 已输入的值，也不能因建议阻止确认。写代码时的边界见 [计划笔记](../../.agent/notes/planning.md)。
 
 - **预计时长：** 查询当前 Ward 在草稿 `plan_date` 截止的近 15 个上海本地日内，已完成且绑定同名 Task 的 StudySession。标题按现有规范化规则等价，同一 Task 最多贡献一次；有效实际计时至少来自 3 个不同 Task，才以中位数舍入到 5 分钟并返回样本数与依据。`active_seconds` 来自客户端计时，不代表客观专注时长。新候选缺时长时，建议写在 `planned_minutes` 澄清 Slot 上，采纳仍通过 `clarify_reply` 登记；已有任务只有差异至少 10 分钟且达到当前预计时长的 25% 才在草稿项上展示。采纳已有任务建议走版本绑定的 `accept_plan_suggestion(kind=duration)`，复用草稿内容修改与冲突重验。
 - **开始与结束：** 所有 Ward 统一以 `Asia/Shanghai` 的 07:00–22:00 作为产品默认建议时段，不根据历史作息推断。开始早于 07:00，或由开始时间加预计时长推得的结束晚于 22:00 时，在草稿项给原因；只有确定性校验无冲突时才给可采纳的新开始/结束。结束时间只由开始与时长推导，不独立写入。采纳走 `accept_plan_suggestion(kind=time)`；忽略不改草稿和正式计划。

@@ -14,10 +14,10 @@
    - 每完成一项，把对应 `- [ ]` 改成 `- [x]`（**完成度即进度**）。
    - 工具链以本仓库为准（`.nvmrc` / `pnpm` / `npm`），不绕过。
 4. **收敛 + 验收**：验收标准全绿 **且** 清单全 `[x]` → **Gate 2（验收）**，等用户确认。
-5. **归档（收工）**：spec 顶部 `status: draft` → `done`；`bash .agent/scripts/archive-spec.sh <slug>`；`git diff` review 后文档与代码同一 commit。
+5. **归档（收工）**：spec 顶部 `status: draft` → `done`；把仍有效的决策并入 `.agent/notes/` 对应领域文件；`bash .agent/scripts/archive-spec.sh <slug>` 删除 spec。`git diff` review 后文档与代码同一 commit。
 
 ## 硬约束
 
 - 测试全绿是退出硬门槛，不许自评「做完了」。
-- 不归档 = 未收工（spec 不得遗留在 `.agent/specs/`）。
-- 单一事实源：spec 文件是唯一真相，别处只链接。
+- 不归档 = 未收工（完成后的 spec 不得留在 `.agent/specs/`）。历史 spec 不保留全文。
+- 进行中的 spec 是该 feature 的验收清单。收工后决策在 `.agent/notes/`，设计全文在 `docs/`。

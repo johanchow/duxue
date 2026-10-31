@@ -12,7 +12,7 @@ Workflow 节点统一为 `agent/gate/action`，代码步骤使用 `handler_id`�
 
 Judge 的 `provider_output_schema` 描述模型原始协议，`verdict_schema` 描述适配后的 `allow/deny/unknown` 与 `reason_code`。Agent 使用 `status/data/error_code` 结果封套，由 `schemas/agent-result.json` 和 Python 契约共同验证；现有领域 Port 通过解包适配保持原返回协议，封套由代码生成，不改变模型输出 Prompt。
 
-答疑循环按原实现保留 `workflows/tutoring.json` 的 `limits.model_calls=4`、`limits.tool_calls=3`，表示每次生成尝试内的调用次数，不是金额。工具请求和结构修复都计入模型调用次数，外层重试另由 Workflow 条件路径控制。字段归属与到限行为见[设计契约 4.1](../../docs/technical/design-agent.md)。进度与验收见 [迁移 spec](../../.agent/specs/done/agent-runtime-contracts.md)。
+答疑循环按原实现保留 `workflows/tutoring.json` 的 `limits.model_calls=4`、`limits.tool_calls=3`，表示每次生成尝试内的调用次数，不是金额。工具请求和结构修复都计入模型调用次数，外层重试另由 Workflow 条件路径控制。字段归属与到限行为见[设计契约 4.1](../../docs/technical/design-agent.md)。运行约定见 [平台笔记](../../.agent/notes/platform.md)。
 
 ```bash
 cd duxue-server

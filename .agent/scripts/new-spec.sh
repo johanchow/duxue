@@ -55,4 +55,4 @@ EOF
 echo "已创建 $dir"
 echo "  front-matter: slug=$slug created=$created author=$author"
 echo ""
-echo "下一步: 填『验收标准』+『实现计划』 → 等确认(Gate1) → 小步实现每步配测 → 勾 [x] → 验收(Gate2) → bash .agent/scripts/archive-spec.sh $slug"
+echo "下一步: 填『验收标准』+『实现计划』 → 等确认(Gate1) → 小步实现每步配测 → 勾 [x] → 验收(Gate2) → 决策并入 .agent/notes/ → bash .agent/scripts/archive-spec.sh $slug"
