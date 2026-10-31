@@ -57,14 +57,14 @@ duxue/                          # 项目根目录
 
 | 文档 | 路径 | 内容摘要 |
 |------|------|---------|
-| 产品架构（模块地图 + OpenSpec 规格） | [`docs/product/ARCHITECTURE.md`](docs/product/ARCHITECTURE.md) | 产品愿景与三大目标、ward/guardian 角色、五场景闭环、按角色划分的模块地图（§四）、各能力的 Requirement/Scenario 规格（§五） |
-| 用户与首页导航 PRD | [`docs/product/prd-user.md`](docs/product/prd-user.md) | 用户角色选择、登录、家庭绑定、Ward/Guardian 首页与各 Tab 导航设计 |
-| 协商式计划 PRD | [`docs/product/prd-schedule.md`](docs/product/prd-schedule.md) | Ward 任务池汇总、多模态意图表达、AI 计划草稿生成、可视化审阅确认与权限边界 |
-| 陪伴执行与 AI 陪学问答 PRD | [`docs/product/prd-companion.md`](docs/product/prd-companion.md) | 沉浸伴学工作台、启发式分步答疑、好奇心/兴趣信号捕获、轻量成就收尾与安全护栏 |
-| 结果评估与复盘引导 PRD | [`docs/product/prd-evaluate.md`](docs/product/prd-evaluate.md) | 今日即时自评先行、AI 客观行为双轨对比、专注归因与行动锦囊、家长正面沟通建议 |
-| 学习观察与行为采集 PRD | [`docs/product/prd-supervise.md`](docs/product/prd-supervise.md) | 读学Eye Android 闲置机接入、稀疏定时抓拍（15s/帧）直传 OSS、Room 断网补传、健康心跳与 45° 机位隐私防护 |
-| 孩子理解引擎与记忆系统 PRD | [`docs/product/prd-memory.md`](docs/product/prd-memory.md) | 纯系统智能底座、三层记忆架构（短期工作/近5天事件/长期画像）、抽取与衰减管道、跨模块上下文注入 |
-| 用户核心价值与故事 | [`docs/product/user-story.md`](docs/product/user-story.md) | Jobs-to-be-Done 框架、小宇与林女士的用户旅程故事 |
+| 产品架构（模块地图 + 领域路由） | [`docs/product/ARCHITECTURE.md`](docs/product/ARCHITECTURE.md) | 三大核心目标（专注提效/引导思考/解放家长时间）、弱约束三层架构（L0/L1/L2）、To C 家庭与 To B2C 晚托机构双轨定位及可度量核心交付物 |
+| 用户与首页导航 PRD | [`docs/product/prd-user.md`](docs/product/prd-user.md) | 角色选择、登录、家庭与 B2C 伴学师共管绑定、Ward 横轨计划+底部唯一 `VoiceComposer` 首页、Guardian/Coach 实况单与解题凭证中心 |
+| 协商式计划 PRD | [`docs/product/prd-schedule.md`](docs/product/prd-schedule.md) | 弱约束可选增强定位、任务池与入日程分离、一句话语音排期、AI 软建议与 Ward 单按钮确认 |
+| 陪伴执行与 AI 启发答疑 PRD | [`docs/product/prd-companion.md`](docs/product/prd-companion.md) | 零门槛随时提问、答案保护红线与独立裁判、分步启发配图/发音、对话内微验证产出《独立解题凭证》 |
+| 结果评估、原话总结与晚间交付 PRD | [`docs/product/prd-evaluate.md`](docs/product/prd-evaluate.md) | Guardian/Coach 端必达交付（《伴学闭环实况单》+《独立解题凭证》）、Ward 自由语音/文字原话总结（六维逐字溯源、不写 Memory） |
+| 学习观察与行为采集 PRD | [`docs/product/prd-supervise.md`](docs/product/prd-supervise.md) | L0 零操作感知底座、读学Eye 闲置机接入、15s/帧直传 OSS、Room 断网补传、健康心跳与 45° 机位隐私防护 |
+| 孩子理解引擎与记忆系统 PRD | [`docs/product/prd-memory.md`](docs/product/prd-memory.md) | 纯后端智能底座、只收客观事实（严格隔离主观自述）、三层记忆架构与时间衰减演进 |
+| 用户核心价值与故事 | [`docs/product/user-story.md`](docs/product/user-story.md) | 三方角色 JTBD、L0/L1 零线上计划全纸质作业闭环故事、L2 自主排期故事与 B2C 晚托班 1对15 赋能故事 |
 | 摄像设备接入与操作手册 | [`docs/camera-setup-guide.md`](docs/camera-setup-guide.md) | 摄像方案选型（A/B/C）、机位指引、设备绑定操作步骤、设备类 FAQ |
 | 全系统技术架构概览 | [`docs/technical/ARCHITECTURE.md`](docs/technical/ARCHITECTURE.md) | 四端分工、领域模型（限界上下文）、会话即时分析管线、Guardian-Ward 绑定与权限模型 |
 | 可观测性方案 | [`docs/observability.md`](docs/observability.md) | 三端日志/链路/指标统一方案，Grafana + Loki + Tempo |
