@@ -105,7 +105,7 @@ duxue/                          # 项目根目录
 
 ## 铁律（不可违反）
 
-1. **先读后写**：动手前必读相关 spec（`.agent/specs/`）+ 相关笔记（`.agent/notes/`）。
+1. **先读后写**：动手前先读 [`.agent/notes/00-index.md`](.agent/notes/00-index.md) 里对应的领域笔记；进行中的验收清单在 `.agent/specs/`。设计全文以 `docs/` 为准，笔记不复述。
 2. **测试是退出条件**：改行为必带测试；测试全绿才算完，不许自评「我觉得做完了」。
 3. **单一事实源**：一类知识只在唯一归属处写一份，别处只**链接**、不 copy。
 4. **收工必沉淀**：loop 结束前把决策 / 坑记进 `.agent/notes/`，否则不算收工。
@@ -119,7 +119,7 @@ duxue/                          # 项目根目录
 |-------|------------|
 | 开新 feature | `/feature-spec` skill（或读 `.agent/loops/feature.md`） |
 | 修 bug | `.agent/loops/bugfix.md` |
-| 记决策 / 踩坑 | `.agent/notes/`（新建 `NNN-<topic>.md`） |
+| 记决策 / 踩坑 | 追加到 `.agent/notes/` 里对应领域文件（见 `00-index.md`），不新建编号笔记 |
 
 ## 干活的标准流程
 
@@ -128,6 +128,5 @@ duxue/                          # 项目根目录
 
 ## 多 spec 管理
 
-- spec 文件：`.agent/specs/<slug>.md`（单文件，含验收 + 计划 + 清单）。
-- 完成归档：`.agent/specs/done/<slug>.md`（跑 `archive-spec.sh`）。
-- 新建：`bash .agent/scripts/new-spec.sh <slug>`；归档：`bash .agent/scripts/archive-spec.sh <slug>`。
+- 进行中：`.agent/specs/<slug>.md`（验收 + 计划 + 清单）。新建：`bash .agent/scripts/new-spec.sh <slug>`。
+- 收工：`status: done` 后把仍有效的决策并入 `.agent/notes/`，再跑 `archive-spec.sh` 删除 spec。不保留 `done/` 全文，历史在 git。

@@ -69,12 +69,51 @@ def test_model_span_includes_langfuse_generation_input_and_output(monkeypatch):
         telemetry.record_model_response(agent_type="tutoring", model="qwen-test", content='{"reply":"模型原文"}')
 
     assert captured.attributes["langfuse.observation.type"] == "generation"
+    assert captured.attributes["langfuse.observation.metadata.kind"] == "agent"
+    assert captured.attributes["langfuse.observation.metadata.kind_id"] == "tutoring.turn"
+    assert captured.attributes["agent.unit.id"] == "tutoring.turn"
+    assert captured.attributes["langfuse.observation.metadata.component_id"] == "tutoring.turn"
     assert captured.attributes["langfuse.observation.model.name"] == "qwen-test"
     assert json.loads(captured.attributes["langfuse.observation.usage_details"]) == {"input": 12, "output": 34}
     assert json.loads(captured.attributes["langfuse.observation.input"]) == [
         {"role": "user", "content": "孩子的题目"},
     ]
     assert captured.attributes["langfuse.observation.output"] == '{"reply":"模型原文"}'
+
+
+def test_leak_judge_generation_is_labeled_as_its_gate(monkeypatch):
+    from contextlib import contextmanager
+
+    from app.infrastructure.observability import telemetry
+
+    class Span:
+        def __init__(self):
+            self.attributes = {}
+
+        def set_attribute(self, key, value):
+            self.attributes[key] = value
+
+        def set_status(self, _status):
+            raise AssertionError("unexpected model error")
+
+    captured = Span()
+
+    class Tracer:
+        @contextmanager
+        def start_as_current_span(self, _name, attributes, **_kwargs):
+            captured.attributes.update(attributes)
+            yield captured
+
+    monkeypatch.setattr(telemetry.trace, "get_tracer", lambda _name: Tracer())
+    with telemetry.model_call_span(
+        operation="tutor_leak_check", model="qwen-judge", component_id="tutoring.leak-judge",
+    ):
+        pass
+    assert captured.attributes["langfuse.observation.metadata.kind"] == "gate"
+    assert captured.attributes["langfuse.observation.metadata.kind_id"] == "tutoring.leak-judge"
+    assert captured.attributes["langfuse.observation.metadata.node_id"] == "tutoring-vet.text_leak"
+    assert captured.attributes["langfuse.observation.metadata.workflow_id"] == "tutoring-vet"
+    assert captured.attributes["agent.unit.kind"] == "gate"
 
 
 def test_langfuse_model_payload_keeps_image_for_media_upload_and_grafana_omits_bytes():
@@ -183,6 +222,14 @@ def test_agent_session_includes_route_and_model_before_run_and_root_text(monkeyp
     assert by_name["llm.request"].parent.span_id == by_name["agent.route"].context.span_id
     assert by_name["agent.tool"].parent.span_id == by_name["agent.workflow"].context.span_id
     exported = str([(s.attributes, [(e.name, e.attributes) for e in s.events]) for s in spans])
+    assert by_name["agent.turn"].attributes["langfuse.observation.metadata.kind"] == "workflow"
+    assert by_name["agent.turn"].attributes["langfuse.observation.metadata.kind_id"] == "companion"
+    assert by_name["agent.route"].attributes["langfuse.observation.metadata.kind_id"] == "companion.intent"
+    assert by_name["agent.workflow"].attributes["langfuse.observation.metadata.kind_id"] == "tutoring"
+    assert by_name["agent.tool"].attributes["langfuse.observation.metadata.kind"] == "tool"
+    assert by_name["agent.tool"].attributes["langfuse.observation.metadata.kind_id"] == "tutoring.get_task_context"
+    assert by_name["llm.request"].attributes["langfuse.observation.metadata.kind"] == "external"
+    assert by_name["llm.request"].attributes["langfuse.observation.metadata.kind_id"] == "intent"
     assert by_name["agent.turn"].attributes["langfuse.observation.input"] == "孩子的原话"
     assert by_name["agent.turn"].attributes["langfuse.observation.output"] == "展示给孩子的回复"
     assert "input.text" not in str(by_name["agent.turn"].events)

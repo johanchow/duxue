@@ -278,7 +278,7 @@ Server 端 OTEL SDK 完整支持通过环境变量配置，无需改动代码：
 
 Langfuse 默认关闭。需要 AI trace 时，在同一份服务端环境文件配置 `LANGFUSE_ENABLED=true`、`LANGFUSE_PUBLIC_KEY`、`LANGFUSE_SECRET_KEY` 与区域对应的 `LANGFUSE_BASE_URL`。它作为同一 Python 进程中的第二个 OpenTelemetry span processor 工作；Grafana 仍使用已有的 OTLP exporter，因此不需要 Alloy、Compose override 或额外容器。
 
-Langfuse 导出采用显式 span allow-list：只接收 `duxue.agent` 创建的 turn、route、workflow、node、tool、check span，以及 `duxue.model` 创建的 `llm.request` generation。HTTP、SQL、Redis、Celery 等自动 span 不进入 Langfuse。Thread ID 从意图分类前传播为 `session_id`；Run ID 是可筛选的执行关联字段。根轮次有 Ward 输入、上传图片和展示回复；模型 generation 有实际消息、图片与原始回复；工具有参数与结果。Langfuse SDK 将图片数据提取为 Media 引用，异常原文与认证/API key 不主动采集。
+Langfuse 导出采用显式 span allow-list：只接收 `duxue.agent` 创建的 turn、route、workflow、node、tool、check span，以及 `duxue.model` 创建的 `llm.request` generation。HTTP、SQL、Redis、Celery 等自动 span 不进入 Langfuse。每条导出的 observation 都有 metadata `kind`、`kind_id`、`kind_version`，用来回到 Workflow、Agent、Gate、Tool 或代码步骤；字段含义见 [Agent 配置设计](technical/design-agent.md) 第五节。Thread ID 从意图分类前传播为 `session_id`；Run ID 是可筛选的执行关联字段。根轮次有 Ward 输入、上传图片和展示回复；模型 generation 有实际消息、图片与原始回复；工具有参数与结果。Langfuse SDK 将图片数据提取为 Media 引用，异常原文与认证/API key 不主动采集。
 
 路由 observation 记录本轮输入和路由决定；workflow 记录授权调用和返回的 Outcome；node 记录节点参数与结果（数据库 Session、模型客户端等对象只记类型）；check 记录实际检查输入与通过、拒绝或跳过的结果。节点已有专用业务投影时优先保留它，例如 `tutoring.apply_problem` 的目标写回。执行异常只记类型，不把异常消息写进 observation。新增字段仅对部署后的新 trace 生效。
 
