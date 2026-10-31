@@ -28,6 +28,13 @@ def test_catalog_covers_route_business_nodes_gates_tools_and_components():
     assert catalog.component_by_id("tutoring-vet", "tutoring.leak-judge").component_id == "tutoring.leak-judge"
     assert catalog.step("check", "tutoring.text_leak").required
     assert catalog.component_identity("companion.intent").node_id == "companion.intent_route"
+    leak = catalog.step("check", "tutoring.text_leak")
+    assert (leak.unit_kind, leak.unit_id, leak.node_id) == ("gate", "tutoring.leak-judge", "tutoring-vet.text_leak")
+    assert leak.unit_version == load_definitions().units["tutoring.leak-judge"].version
+    attempt = catalog.step("node", "tutoring.attempt")
+    assert (attempt.unit_kind, attempt.unit_id, attempt.node_id) == ("agent", "tutoring.turn", "tutoring.attempt")
+    tool = catalog.step("tool", "get_attempt_summary")
+    assert (tool.unit_kind, tool.unit_id) == ("tool", "tutoring.get_attempt_summary")
     assert catalog.component("task-intake", "run").component_id == "task.intake"
     assert catalog.component("review-aspects", "run").component_id == "evaluation.review-aspects"
 

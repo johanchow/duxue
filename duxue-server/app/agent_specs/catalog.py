@@ -170,6 +170,28 @@ class StepIdentity(BaseModel):
     node_id: str
     kind: str
     required: bool
+    # The configured object this step executes. Distinct from ``kind``, which is
+    # only the trace shape (route, node, stage, check, tool).
+    unit_kind: Literal["agent", "gate", "tool", "action"]
+    unit_id: str
+    unit_version: str
+
+
+def _configured_unit(ref: str) -> tuple[str, str, str]:
+    """Return the definition kind, stable id and version for an Agent, Gate or Tool."""
+    definitions = load_definitions()
+    for collection in (definitions.units, definitions.code_agents, definitions.code_gates, definitions.tools):
+        item = collection.get(ref)
+        if item is not None:
+            return item.kind, item.id, item.version
+    raise ValueError(f"unknown configured unit {ref}")
+
+
+def _node_unit(spec: AgentSpec, node: NodeSpec) -> tuple[str, str, str]:
+    """An action lives only in its Workflow; an Agent or Gate keeps its own version."""
+    if node.kind == "action":
+        return "action", node.id, spec.version
+    return _configured_unit(node.ref or "")
 
 
 def _node_components(node: NodeSpec) -> list[str]:
@@ -210,31 +232,39 @@ class AgentCatalog:
                     referenced.add(component_id)
                     if component_id in self._components:
                         raise ValueError(f"component assigned to multiple nodes: {component_id}")
+                    unit_kind, unit_id, unit_version = _node_unit(spec, node)
                     self._components[component_id] = StepIdentity(
                         owner=spec.id, version=spec.version, node_id=node.id,
                         kind=node.kind, required=node.required,
+                        unit_kind=unit_kind, unit_id=unit_id, unit_version=unit_version,
                     )
                 if node.trace:
                     kind = node.trace_kind or ("check" if node.kind == "gate" else "node")
                     key = (kind, node.trace)
                     if key in self._steps:
                         raise ValueError(f"duplicate trace step {key}")
+                    unit_kind, unit_id, unit_version = _node_unit(spec, node)
                     self._steps[key] = StepIdentity(
                         owner=spec.id, version=spec.version, node_id=node.id,
                         kind=kind, required=node.required,
+                        unit_kind=unit_kind, unit_id=unit_id, unit_version=unit_version,
                     )
         missing_components = {item.component_id for item in COMPONENTS.all()} - referenced
         if missing_components:
             raise ValueError(f"unlisted components: {sorted(missing_components)}")
+        tutoring = self.spec("tutoring")
         for tool_id in load_definitions().units["tutoring.turn"].tools:
             trace_name = tool_id.split(".", 1)[1]
+            unit_kind, unit_id, unit_version = _configured_unit(tool_id)
             self._steps["tool", trace_name] = StepIdentity(
-                owner="tutoring", version=self.spec("tutoring").version,
+                owner="tutoring", version=tutoring.version,
                 node_id=tool_id, kind="tool", required=False,
+                unit_kind=unit_kind, unit_id=unit_id, unit_version=unit_version,
             )
         self._steps["tool", "unknown_tool"] = StepIdentity(
-            owner="tutoring", version=self.spec("tutoring").version,
+            owner="tutoring", version=tutoring.version,
             node_id="tutoring.unknown_tool", kind="tool", required=False,
+            unit_kind="tool", unit_id="tutoring.unknown_tool", unit_version=tutoring.version,
         )
         for agent, checks in _REQUIRED_CHECKS.items():
             spec = self.spec(agent)

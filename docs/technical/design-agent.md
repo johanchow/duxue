@@ -181,4 +181,4 @@ Tool 文件的 `kind` 固定为 `tool`，声明 `id`、`version`、`description`
 
 按项目当前 DDD 约定，Domain 是拥有业务语义、模型和规则的边界；Workflow 和 Agent 是 Application/Infrastructure 的运行角色，不是新的 Domain 或 Aggregate。Companion 只维护 Thread/Run 连续性并路由受权调用；Planning、Tutoring、Evaluation 各自裁决并写入自己的业务状态。配置目录集中的是**运行描述**，不是跨 Domain 的共享业务模型。装配器应处于应用组合层，领域模块不读取配置，也不依赖模型或工具实现。
 
-Trace 中的 Workflow/Agent/Gate/Tool 均记录稳定 ID、配置版本、节点 ID、结果和受控耗时指标，便于从 Grafana、Langfuse 回到具体定义。Prompt 变量与工具结果按现有儿童数据策略脱敏；配置、图和观测统计不能替代业务审计或学习事实。
+每条导出到 Langfuse 的 observation 都带可筛选 metadata：`kind`、`kind_id`、`kind_version`，并同时写到 span attribute `agent.unit.kind`、`agent.unit.id`、`agent.unit.version`。`kind` 是配置类别，取 `workflow`、`agent`、`gate`、`tool`、`action`；不在该目录中的模型调用（如摄像分析）记为 `external`，`kind_id` 用操作名。`kind_id` 是定义的稳定 ID：Agent、Gate、Tool 用文件里的 `id`，Workflow 用 Workflow `id`，代码步骤 `action` 用 Workflow 节点 ID，版本取该定义自己的 `version`（action 取所在 Workflow 的版本）。同一条 observation 另有 `workflow_id` 与 `node_id`：节点 ID 和被引用的 Agent/Gate ID 可以不同，例如节点 `tutoring-vet.text_leak` 引用 Gate `tutoring.leak-judge`。模型 generation 再带 `component_id`，用来区分同一 Agent 的主模型和备用模型。Prompt 变量与工具结果按现有儿童数据策略脱敏；配置、图和观测统计不能替代业务审计或学习事实。

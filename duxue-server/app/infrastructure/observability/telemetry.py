@@ -395,6 +395,45 @@ def _span_event(name: str, attributes: dict[str, Any]) -> None:
         span.add_event(name, attributes=attributes)
 
 
+def _unit_attrs(*, kind: str, kind_id: str, kind_version: str | None = None,
+                workflow_id: str | None = None, workflow_version: str | None = None,
+                node_id: str | None = None, component_id: str | None = None) -> dict[str, str]:
+    """Identity a Langfuse observation can be filtered by.
+
+    ``kind`` / ``kind_id`` name the configured object. ``workflow_id`` / ``node_id``
+    name where that object ran. A Gate node id is not the Gate's definition id.
+    """
+    return _attrs(**{
+        "agent.unit.kind": kind,
+        "agent.unit.id": kind_id,
+        "agent.unit.version": kind_version,
+        "agent.workflow.id": workflow_id,
+        "agent.workflow.version": workflow_version,
+        "agent.node_id": node_id,
+        "ai.component_id": component_id,
+        "langfuse.observation.metadata.kind": kind,
+        "langfuse.observation.metadata.kind_id": kind_id,
+        "langfuse.observation.metadata.kind_version": kind_version,
+        "langfuse.observation.metadata.workflow_id": workflow_id,
+        "langfuse.observation.metadata.node_id": node_id,
+        "langfuse.observation.metadata.component_id": component_id,
+    })
+
+
+def _step_unit_attrs(identity: Any) -> dict[str, str]:
+    return _unit_attrs(
+        kind=identity.unit_kind, kind_id=identity.unit_id, kind_version=identity.unit_version,
+        workflow_id=identity.owner, workflow_version=identity.version, node_id=identity.node_id,
+    )
+
+
+def _workflow_unit_attrs(workflow: Any) -> dict[str, str]:
+    return _unit_attrs(
+        kind="workflow", kind_id=workflow.id, kind_version=workflow.version,
+        workflow_id=workflow.id, workflow_version=workflow.version, node_id=workflow.entry,
+    )
+
+
 def _agent_context_attrs() -> dict[str, str]:
     thread_id, run_id = _thread_id.get(), _run_id.get()
     return _attrs(**{
@@ -429,8 +468,7 @@ def agent_turn_span() -> Iterator[None]:
     try:
         with trace.get_tracer("duxue.agent").start_as_current_span(
             "agent.turn", attributes={"langfuse.observation.type": "agent", "langfuse.trace.name": "companion.turn",
-                                      "agent.workflow.id": companion.id, "agent.workflow.version": companion.version,
-                                      "agent.node_id": companion.entry},
+                                      **_workflow_unit_attrs(companion)},
             record_exception=False, set_status_on_exception=False,
         ):
             yield
@@ -460,9 +498,7 @@ def agent_step_span(kind: str, name: str, **attributes: Any) -> Iterator[Any]:
     with trace.get_tracer("duxue.agent").start_as_current_span(
         f"agent.{kind}",
         attributes={**_agent_context_attrs(), "agent.step": name,
-                    "agent.workflow.id": identity.owner,
-                    "agent.workflow.version": identity.version,
-                    "agent.node_id": identity.node_id,
+                    **_step_unit_attrs(identity),
                     "langfuse.observation.metadata.step": name,
                     "langfuse.observation.type": {"route": "span", "node": "chain", "tool": "tool", "check": "guardrail"}[kind],
                     **_attrs(**attributes)},
@@ -696,9 +732,7 @@ def planning_stage_span(stage: str, **extra: Any) -> Iterator[None]:
     with trace.get_tracer("duxue.agent").start_as_current_span(
         f"planning.{stage}",
         attributes={**_agent_context_attrs(), "agent.type": "planning", "planning.stage": stage,
-                    "agent.workflow.id": identity.owner,
-                    "agent.workflow.version": identity.version,
-                    "agent.node_id": identity.node_id,
+                    **_step_unit_attrs(identity),
                     "langfuse.observation.type": "chain", **_attrs(**extra)},
         record_exception=False, set_status_on_exception=False,
     ):
@@ -715,8 +749,7 @@ def agent_workflow_span(*, agent_type: str, run_id: str, thread_id: str) -> Iter
     with trace.get_tracer("duxue.agent").start_as_current_span(
         "agent.workflow",
         attributes={**_agent_context_attrs(), "agent.type": agent_type, "agent.run_id": run_id,
-                    "agent.workflow.id": workflow.id, "agent.workflow.version": workflow.version,
-                    "agent.node_id": workflow.entry,
+                    **_workflow_unit_attrs(workflow),
                     "agent.thread_id": thread_id, "langfuse.session.id": thread_id,
                     "langfuse.observation.type": "agent"},
         record_exception=False, set_status_on_exception=False,
@@ -738,16 +771,17 @@ def model_call_span(*, operation: str, model: str, agent_type: str | None = None
                     prompt_id: str | None = None, model_source: str | None = None,
                     input_payload: Any = None) -> Iterator[dict[str, Any]]:
     started = perf_counter()
-    workflow_attrs = {}
     if component_id is not None:
         from app.agent_specs.catalog import load_catalog
 
         identity = load_catalog().component_identity(component_id)
-        workflow_attrs = {
-            "agent.workflow.id": identity.owner,
-            "agent.workflow.version": identity.version,
-            "agent.node_id": identity.node_id,
-        }
+        workflow_attrs = _unit_attrs(
+            kind=identity.unit_kind, kind_id=identity.unit_id, kind_version=identity.unit_version,
+            workflow_id=identity.owner, workflow_version=identity.version, node_id=identity.node_id,
+            component_id=component_id,
+        )
+    else:
+        workflow_attrs = _unit_attrs(kind="external", kind_id=operation)
     attrs = {**_agent_context_attrs(), **_attrs(**{
         "llm.operation": operation, "llm.model": model, "agent.type": agent_type,
         "ai.component_id": component_id, "ai.component_version": component_version,
