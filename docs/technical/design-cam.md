@@ -1,320 +1,132 @@
-# 读学Eye（Cam App）— 端侧详细技术架构设计 (design-cam.md)
+# 读学Eye — 标准摄像头与采集网关技术设计
 
-> 版本：v3.0  
-> 适用平台：Android 8.0+ (API 26 ~ 34+)  
-> 核心技术栈：Kotlin · Jetpack CameraX · Foreground Service · Room · WorkManager · OkHttp / Retrofit · Jetpack Compose · Android Keystore  
-> 系统定位：读学系统的物理感知采集专用端，架设在书桌侧后方 45° 俯拍，负责低功耗稀疏抓拍、OSS 预签名直传、断网持久化队列与设备健康心跳。
+> 版本 v4.0 · 更新日期：2026-10-31
+> 状态：已确定技术路线，网关尚未实现；本文是采集接入的目标设计。
+> 定位：机构采用标准网络摄像头 + 共享本地采集网关；家庭 Wi-Fi 单摄像头实验验证同一条链路。
+> 本文替代原手机采集端设计。`design-cam.md` 保留为采集设计的稳定入口；旧 Android 采集程序及其 CI/发布流程已移除，网关尚待实现。
 
----
+## 一、产品边界与技术取舍
 
-## 〇、架构演进与核心设计原则
+- 每工位一个固定机位摄像头，侧后方约 45° 俯拍桌面与双手，尽量规避正脸；该机位降低正脸暴露概率，不等于图像已匿名化。
+- 一个场地共用一个网关。摄像头提供标准图像接口，网关负责定时采图、缓存、上传和运行诊断，服务端负责行为理解、会话还原与报告。
+- 默认每 15 秒保留一张 JPEG，不采集音频、不上传完整视频、不向 Guardian/Coach 提供实时画面。网关可在局域网内读取 RTSP，仅用于抽帧。
+- 不依赖线上计划或孩子点击学习开始/结束。观察时段由管理者预先配置；在已启用的观察时段持续采集，学习会话由云端推断。初次验证可由操作员启动/停止网关。
+- 首选直接拉取 JPEG 快照；仅有 RTSP 时使用 FFmpeg 解码取帧。没有必要先录制视频文件再抽帧。
+- 先固定一个经过验证的摄像头型号和固件，不承诺兼容全部 ONVIF 摄像头。家庭免网关的摄像头主动直传方案属于后续厂商适配，不是当前实验前提。
 
-### 1. 抓拍直传而非持续推流（Sparse Capture vs. Streaming）
-- **带宽与算力解放**：每 15 秒抓拍一张 640×480 JPEG，单设备上行带宽降至 ~80 kbps（比 720p 持续视频流降低 95%），闲置老旧手机零发热、零风扇噪音；
-- **传输架构精简**：废弃 SRS 流媒体服务器、RTMP 编码管线与推流状态机，通过 OSS 预签名 PUT 直传，二进制图片流直达对象存储，不占用 API 网关带宽。
-
-### 2. 端层极致轻量与零本地 AI（Zero-Inference Edge）
-- **职责单一纯粹**：采集端不运行任何人形检测、姿态估计或边缘计算模型，避免因低端机算力不足导致的发热降频与进程被杀；
-- **算法云端收敛**：所有 VLM 特征提取与行为分类收敛在服务端，模型升级客户端完全无感。
-
-### 3. 机位内建物理隐私保护（Privacy by Physical Angle）
-- **天然物理脱敏**：设备架设在学生侧后方 45° 略高于头顶俯拍，取景仅覆盖桌面、手部与上半身轮廓，**物理规避正脸**；
-- **杜绝实时监工**：App 不提供实时视频推流能力，杜绝向监护人提供“实时监控直播画面”，坚定守护学生心理安全底线。
-
-### 4. 离线韧性与断网容灾（Offline Resilience）
-- **生产者-消费者完全解耦**：抓拍协程只负责写入本地 Room 数据库与沙盒存储，独立上传协程消费队列；断网期间抓拍不中断，网络恢复后按时间戳自动补传。
-
----
-
-## 一、端侧技术选型矩阵
-
-| 模块分类 | 选型组件 / 库 | 版本基线 | 决策理由与场景 |
-|---|---|---|---|
-| **开发语言** | Kotlin | 1.9+ / 2.0+ | Android 官方第一语言，原生协程（Coroutines）与 Flow 异步流支持 |
-| **相机操作** | Jetpack CameraX | 1.3+ | 官方推荐相机库，屏蔽各厂商 Camera2 碎片化底层差异；单用例绑定 `ImageCapture` |
-| **后台保活** | Foreground Service | `camera` 类型 | Android 8.0~14+ 后台使用摄像头的官方唯一合规机制，挂载常驻通知 |
-| **资源锁** | WakeLock + WifiLock | Android SDK | `PARTIAL_WAKE_LOCK` 保证 CPU 锁屏不休眠；`WIFI_MODE_FULL_HIGH_PERF` 保证网络常连 |
-| **本地离线队列** | Room Database | 2.6+ | SQLite 抽象层，持久化待上传帧元数据，支持断电/进程杀死后零丢帧 |
-| **补传兜底** | Jetpack WorkManager | 2.9+ | 挂载 `NetworkType.CONNECTED` 约束，在服务被系统异常回收后于联网时自动拉起补传 |
-| **网络请求** | OkHttp 4 + Retrofit 2 | 最新稳定版 | 支持 HTTP PUT 大文件直传、连接池复用与指数退避重试 |
-| **凭证存储** | EncryptedSharedPreferences | Security-Crypto 1.1+ | 结合 Android Keystore 硬件级加密存储 `device_token`，防止明文提取 |
-| **配置存储** | Jetpack DataStore | 1.1+ | 异步非阻塞存储抓拍间隔、单调时钟偏移量与运行偏好 |
-| **UI 框架** | Jetpack Compose | 1.6+ | 声明式极简 UI，降低 APK 包体积与内存占用 |
-| **二维码扫描** | ML Kit Barcode Scanning | 17.2+ | Google 本地离线识别模型，秒级扫描家长端绑定码 |
-
----
-
-## 二、模块架构与目录拓扑
-
-项目采用清晰的分层与职责划分：
+## 二、部署拓扑
 
 ```text
-duxue-cam/
-├── src/main/java/com/duxue/cam/
-│   ├── service/                     # 前台采集核心服务 (Service Layer)
-│   │   ├── CaptureService.kt        # Foreground Service 核心：生命周期、保活与状态分发
-│   │   ├── CaptureScheduler.kt      # 15s 定时调度器 (基于协程单调时钟)
-│   │   └── SystemLockManager.kt     # WakeLock / WifiLock 的安全申请与释放
-│   │
-│   ├── capture/                     # 视觉采集模块 (Capture Layer)
-│   │   ├── CameraXManager.kt        # ImageCapture 用例封装、Session 管理与 JPEG 输出
-│   │   └── MonotonicClock.kt        # SystemClock.elapsedRealtime 采集与时钟校正
-│   │
-│   ├── upload/                      # 上传与离线队列 (Upload & Queue Layer)
-│   │   ├── UploadQueueManager.kt    # Room 队列管理者 (入队、出队、容量超限 FIFO 淘汰)
-│   │   ├── DirectOssUploader.kt     # 申请预签名 URL ──▶ PUT 直传 OSS ──▶ 提交元数据
-│   │   └── BackfillWorker.kt        # WorkManager 联网兜底补传作业
-│   │
-│   ├── data/                        # 数据与持久化层 (Data Layer)
-│   │   ├── db/                      # Room 实体 (FrameEntity) 与 DAO
-│   │   ├── repository/              # 设备配置与本地文件存储 Repository
-│   │   ├── api/                     # Retrofit 接口定义 (Bind, Presigned, Meta, Heartbeat)
-│   │   └── security/                # Android Keystore 凭证安全存储
-│   │
-│   ├── receiver/                    # 系统广播接收器 (Receiver Layer)
-│   │   └── BootCompletedReceiver.kt # 开机广播：检查绑定状态并下发常驻点击恢复通知
-│   │
-│   └── ui/                          # 极简 UI 展现层 (Jetpack Compose)
-│       ├── bind/                    # 扫码与输码绑定页
-│       ├── monitor/                 # 运行状态仪表盘 (已上传数、队列积压、一键开关)
-│       └── calibration/             # 45° 俯拍机位校准页 (临时开启 Preview 辅助调角)
+工位摄像头 A ─┐
+工位摄像头 B ─┼─ 局域网快照 / RTSP → 共享采集网关 → HTTPS → OSS
+工位摄像头 N ─┘                       │
+                                      └─ HTTPS → 读学 API（绑定、上传地址、帧元数据、心跳）
 ```
 
----
+家庭实验：一台摄像头 + 同一 Wi-Fi 下的现有电脑 + Python 后台程序。无需购买网关硬件，无需公网 IP、端口映射或对外提供 HTTP 服务。摄像头本地接口必须能在外网中断时工作，Wi-Fi 不得开启阻断两台设备通信的客户端隔离。
 
-## 三、核心业务流程与时序架构
+机构部署：固定型号摄像头 + 插电常开的 Linux 小主机，优先使用已有有线网络或 PoE，Wi-Fi 需实测覆盖与并发。网关通过出站 HTTPS 访问 API 和 OSS。网关是场地采集程序，与云端 Nginx/API 网关是两个不同组件。
 
-### 3.1 一次性邀请码绑定与 Keystore 凭证颁发
+## 三、摄像头采购与接入验收
 
-```mermaid
-sequenceDiagram
-    autonumber
-    actor User as 家长/监护人
-    participant Cam as 读学Eye (Android)
-    participant Server as FastAPI Server
-    participant Keystore as Android Keystore
+| 项目 | 要求 |
+|---|---|
+| 图像接口 | 优先支持 ONVIF `GetSnapshotUri` 对应的可用 JPEG 快照；备选 RTSP，首期限定已验证的 H.264 子码流 |
+| 本地运行 | 支持本地独立账号与密码；采图不依赖云订阅，不要求摄像头暴露到公网 |
+| 供电与安装 | 持续供电、稳定支架，机构优先已有 PoE 条件；不选依靠休眠节电的电池型号 |
+| 成像 | 桌面、双手与书本轮廓清晰；先以约 640×480 JPEG 验证，保留宽高比，必要时提高分辨率 |
+| 恢复能力 | 重启后保留配置与账号，网关能重连；通过 DHCP 保留地址降低地址变化成本 |
+| 数据与控制 | 关闭非必要云上传、音频和自动追踪；具备可理解的采集指示与停止方式 |
 
-    User->>Cam: 1. 打开 App，扫描家长 App 上的设备绑定码
-    Cam->>Server: 2. POST /api/v1/devices/bind { invite_code: "A3F9K2" }
-    Server->>Server: 3. 校验邀请码 (10分钟有效/一次性)，绑定至指定 Ward
-    Server-->>Cam: 4. 200 OK { device_token, ward_name, capture_interval_seconds: 15 }
-    Cam->>Keystore: 5. 将 device_token 硬件加密存储
-    Cam->>Cam: 6. 采样初始单调时钟基准 (elapsedRealtime)
-    Cam-->>User: 7. 绑定成功，进入监控工作台，提示开始监控
-```
+“支持 ONVIF/RTSP”不等于“支持定时主动上传到 OSS”。采购前必须在具体型号与固件上验证认证、快照新鲜度、重连和配置持久性；不把营销规格当作验收结果。
 
----
+## 四、最小网关实现
 
-### 3.2 抓拍、预签名直传与元数据上报（解耦管道）
+### 4.1 组件与实现位置
 
-抓拍与上传采用**双独立协程并发管道**，互不阻塞：
+建议在未来的 `duxue-gateway/` 独立目录实现，本次仅更新设计，不创建网关代码。
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Timer as 抓拍调度协程
-    participant CamX as CameraX (ImageCapture)
-    participant Disk as 本地沙盒 + Room DB
-    participant Uploader as 异步上传协程
-    participant Server as FastAPI Server
-    participant OSS as 阿里云 OSS
+| 组件 | 最小选型与职责 |
+|---|---|
+| 运行时 | Python 单进程，版本与依赖管理在实现时按仓库约定固定；无需 Web 框架、消息总线或本地 AI |
+| 摄像头配置 | 本地配置文件，记录摄像头编号、接口地址、凭证引用、绑定设备 ID 与观察时段；不提交真实凭证 |
+| 快照采集 | HTTP 客户端，支持已验机型的认证；ONVIF 只用于获取能力与地址，首期可手动填地址 |
+| RTSP 适配 | FFmpeg 子进程，TCP 传输、低分辨率子码流，关闭音频；持续解码取最新帧，设置读超时和重连 |
+| 持久队列 | SQLite 元数据 + 私有目录 JPEG，采集与上传分离 |
+| 云端客户端 | 复用现有设备绑定、上传 URL、帧提交和心跳接口，具体路径见 [服务端接口](design-server.md#72-采集设备接入-devices--frames) |
+| 运行管理 | 实验在电脑前台运行；机构使用 systemd 或容器重启策略，并将配置、队列和日志持久化 |
 
-    %% 抓拍入队循环 (独立运行)
-    loop 每 15 秒 (动态可配置)
-        Timer->>CamX: 1. 触发 takePicture()
-        CamX-->>Disk: 2. 生成 JPEG (640×480) 写入内部存储
-        Timer->>Disk: 3. 插入待传记录 (FrameEntity: file_path, captured_at, monotonic_ms)
-    end
+RTSP 即使每 15 秒只输出一帧，也可能持续接收、解码码流；降低保存帧率不等于降低摄像头到网关的带宽或解码负载。多机容量必须用实际子码流测试。
 
-    %% 消费上传循环 (独立消费)
-    loop 持续消费队列
-        Uploader->>Disk: 4. 查询最早待传帧 (FIFO)
-        Uploader->>Server: 5. POST /api/v1/devices/presigned-url (批量申请 1~20 帧)
-        Server-->>Uploader: 6. 返回预签名 PUT URL 数组 (有效 5min)
-        Uploader->>OSS: 7. PUT 二进制 JPEG 直传 OSS (不走业务服务器)
-        OSS-->>Uploader: 8. 200 OK
-        Uploader->>Server: 9. POST /api/v1/devices/frames/meta (oss_key, captured_at, monotonic_ms)
-        Server-->>Uploader: 10. 200 OK (元数据入库)
-        Uploader->>Disk: 11. 删除 Room 记录与本地 JPEG 文件
-    end
-```
+### 4.2 身份、工位与学生绑定
 
-#### 管道解耦核心控制（精简伪代码）
+最小实验复用现有 `Device → Ward` 关系：Guardian 生成一次性绑定码，操作员在网关输入绑定码，由网关换取并保管该摄像头的 `device_token`。一台物理摄像头对应一个逻辑 Device、一份凭证；一个网关可代理多台摄像头，不能把多名孩子的帧混用同一设备凭证。
 
-```text
-CLASS FramePipeline:
-    // 生产者：固定 15s 定时抓拍入队
-    ASYNC METHOD startCaptureLoop(intervalSeconds):
-        WHILE isRunning:
-            imageBytes = AWAIT cameraManager.takePicture()
-            monotonicMs = SystemClock.elapsedRealtime()
-            filePath = saveToInternalStorage(imageBytes)
-            
-            roomDb.frameDao.insert(FrameEntity(filePath, now(), monotonicMs))
-            AWAIT delay(intervalSeconds * 1000)
+摄像头本地账号仅用于局域网采图；读学设备凭证仅用于云端 API；OSS 长期密钥只保留在服务端。网关按返回的预签名 URL 及 headers 上传，不持有 OSS 长期密钥。实验初期人工登记摄像头编号与设备 ID，无需先开发自动发现或批量管理后台。
 
-    // 消费者：持续拉取待传帧直传 OSS
-    ASYNC METHOD startUploadLoop():
-        WHILE isRunning:
-            pendingFrames = roomDb.frameDao.getOldestPending(limit=10)
-            IF pendingFrames IS EMPTY THEN:
-                AWAIT delay(2000)
-                CONTINUE
+机构换座会改变工位与 Ward 的关系。最小实验固定工位与学生；产品化必须支持带生效时间的换座配置，切换时暂停该工位采集并处理旧队列，旧帧必须保留原归属。不得根据上传时的当前学生重写离线帧归属。Coach 权限及批量绑定尚未落地，不能绕过现有 Guardian 授权。
 
-            urls = AWAIT api.getPresignedUrls(count=len(pendingFrames))
-            FOR (frame, presignedUrl) IN zip(pendingFrames, urls):
-                AWAIT okHttp.putDirectToOss(presignedUrl, frame.filePath)
-                AWAIT api.submitFrameMeta(frame.ossKey, frame.capturedAt, frame.monotonicMs)
-                
-                deleteFile(frame.filePath)
-                roomDb.frameDao.delete(frame)
-```
+### 4.3 采集与上传流程
 
----
+1. 用单调时钟调度采样，每个摄像头独立执行，超时不阻塞其他摄像头；不因一次耗时而累积调度漂移。
+2. 拉取快照，或从 RTSP 取最新帧。检测请求超时、解码失败及过期缓存；不能把静态桌面内容重复本身认定为故障。
+3. 将 JPEG 原子写入本地文件，再将本地帧 ID、设备 ID、采集时间、文件路径和大小写入 SQLite。重启时清理/恢复不一致文件，不声称文件系统与数据库可共同原子提交。
+4. 独立上传任务申请预签名 URL，将图片 PUT 至 OSS，再提交帧元数据。提交成功后才删除文件与队列记录。
+5. 保存首次申请得到的 `oss_key`，元数据重试使用同一 key，复用服务端现有去重能力。仅在尚未成功上传且 URL 已过期时重新申请，并更新队列状态；不能每次元数据失败都重新申请、上传新对象。
+6. 失败指数退避并增加抖动，保留重试状态；鉴权失效时提示重新绑定，不能无限快速重试。
 
-### 3.3 断网离线队列、容量淘汰与 WorkManager 兜底
+队列记录必须固化采集时的设备身份与绑定版本；生产版需要服务端验证旧帧归属与凭证轮换边界。
 
-为确保设备在家庭 Wi-Fi 抖动或断网时稳定工作，端侧设计了严格的容灾与容量上限控制：
+### 4.4 时间、断网与容量
 
-```text
-┌────────────────────────────────────────────────────────────────────────┐
-│                        离线队列容量治理与淘汰规则                      │
-├─────────────────────┬──────────────────┬───────────────────────────────┤
-│ 规则指标            │ 阈值设定         │ 触发动作                      │
-├─────────────────────┼──────────────────┼───────────────────────────────┤
-│ **队列帧数上限**    │ 2,000 张         │ 约覆盖 8.3 小时连续断网数据   │
-├─────────────────────┼──────────────────┼───────────────────────────────┤
-│ **存储容量上限**    │ 500 MB           │ 防止占满闲置手机内部存储沙盒  │
-├─────────────────────┼──────────────────┼───────────────────────────────┤
-│ **超限淘汰策略**    │ FIFO 淘汰最旧帧  │ 删除最早未上传记录及对应文件，│
-│                     │ (Drop Oldest)    │ 优先保障最近行为数据的完整性  │
-├─────────────────────┼──────────────────┼───────────────────────────────┤
-│ **进程被杀兜底**    │ WorkManager      │ 注册 NetworkType.CONNECTED    │
-│                     │ 周期任务         │ 约束，联网时自动唤醒补传积压帧│
-└─────────────────────┴──────────────────┴───────────────────────────────┘
-```
+- 实验由已同步系统时间的网关记录 UTC `captured_at`，代表网关获取图像的时间，存在网络与编码延迟，不宣称是精确曝光时间。
+- 当前协议允许不传 `elapsed_realtime`。首期省略该字段，不把网关进程的单调时间套入其他启动周期的校时锚点。服务端现有时间修正对超过 24 小时的帧会回退接收时间，因此本实验缓存最长 12 小时；更长补传需要先修改时间契约并测试。
+- 外网断开但局域网可用：继续采图并排队。摄像头断电或局域网中断：该时段无法采图，只能记录缺口，不能承诺事后恢复。
+- 初始建议上限：每摄像头 2,000 帧、12 小时 TTL、网关总缓存 1 GB，任一上限触发则淘汰最旧帧并记录数量。2,000 帧在 15s/帧下约覆盖 8.3 小时；上限需随设备数与磁盘预算调整。
+- 对最新帧与历史补传设置配额，避免长时间补传阻塞当下观察；服务端按采集时间组织证据，迟到帧如何重算报告由 [Evaluation](domain-evaluation.md) 的证据版本契约约束。
 
----
+### 4.5 健康与可观测性
 
-### 3.4 60 秒心跳上报与单调时钟时间戳防篡改校正
+实验复用每设备 60 秒心跳，证明网关能访问云端；现有接口没有上报摄像头故障明细的能力，不能据此将摄像头标成采集正常。网关本地必须记录每台设备最后成功采图、最后成功提交、队列帧数/字节数、丢弃数、错误原因与重连次数。
 
-#### 1. 独立存活心跳（Heartbeat）
-- **存活信号解耦**：抓拍上传不能作为存活信号（若画面全黑或网络阻塞可能无帧上传）。`CaptureService` 独立开启每 60 秒定时器执行 `POST /api/v1/devices/heartbeat`，携带当前电量百分比、网络状态与队列积压数；
-- **服务端超时判定**：服务端连续 180 秒（3次心跳周期）未收到心跳即判定设备 `offline`，触发向家长端推送离线告警。
+产品化需新增网关独立身份和每摄像头健康上报，分别显示“网关离线、摄像头不可达、上传故障、正常采集”。云端主动通知需实现后验收，现有设备列表能推算在线状态不代表推送已经落地。
 
-#### 2. 单调时钟时间戳防篡改校正（Monotonic Clock Sync）
-- **问题**：客户端系统时间（Wall Clock）可能因用户手动修改、时区错误或 NTP 未同步而出现跳变；
-- **解决机制**：
-  1. 抓拍时记录 Android 单调时钟 `SystemClock.elapsedRealtime()`（设备开机后单调递增，无法被用户修改）；
-  2. 设备首次绑定及每次心跳时，服务端记录 `(ServerTime, MonotonicTime)` 锚点；
-  3. 服务端计算时间偏移：\( \text{RealCapturedAt} = \text{ServerAnchor} + (\text{MonotonicTime} - \text{MonotonicAnchor}) \)；
-  4. 彻底杜绝时间篡改导致的行为时间轴错乱。
+日志不包含图片、摄像头密码、设备 Token 或完整预签名 URL。取景校准仅在现场受控使用，不开放远程监控流。
 
----
+## 五、最小实验与验收
 
-## 四、Android 系统保活与前台服务合规 (Android 14+)
+准备：一个通过本地接口验收的摄像头、同网电脑、已绑定 Ward，以及实际使用 OSS 后端的读学服务端。服务端本地文件存储只能验证协议，不能作为 OSS 直传通过的证据。
 
-闲置手机长期挂机采集的最大的挑战在于应对 Android 系统的激进杀后台策略：
-
-### 4.1 前台服务合规声明 (Android 14+ 适配)
-- 在 `AndroidManifest.xml` 中严格声明 `android:foregroundServiceType="camera"` 并申请 `FOREGROUND_SERVICE_CAMERA` 权限；
-- 在 `Service.onCreate()` / `onStartCommand()` 中必须在 **5 秒内调用 `startForeground()`**，挂载常驻通知栏（通知文案展示“读学Eye 正在守护专注中”，附带今日抓拍总数及停止按钮）。
-
-### 4.2 硬件与系统资源锁（WakeLock & WifiLock）
-```text
-CLASS SystemLockManager:
-    METHOD acquireLocks(context):
-        // 1. CPU 保活：防止锁屏后 CPU 进入深度休眠中断协程调度
-        wakeLock = PowerManager.newWakeLock(PARTIAL_WAKE_LOCK, "DuxueCam:CaptureCpuLock")
-        wakeLock.acquire()
-
-        // 2. WiFi 高性能锁：防止锁屏时 WiFi 芯片降频或休眠断网
-        wifiLock = WifiManager.createWifiLock(WIFI_MODE_FULL_HIGH_PERF, "DuxueCam:UploadWifiLock")
-        wifiLock.acquire()
-
-    METHOD releaseLocks():
-        IF wakeLock.isHeld THEN wakeLock.release()
-        IF wifiLock.isHeld THEN wifiLock.release()
-```
-
-### 4.3 开机自启合规化改造（通知引导路径）
-- **系统限制**：Android 12+ 严禁后台启动 Service；Android 14 明确禁止在 `BOOT_COMPLETED` 广播中直接启动 `camera` 类型前台服务（会抛出 `ForegroundServiceStartNotAllowedException`）；
-- **合规降级方案**：
-  ```text
-  [手机开机] ──▶ BootCompletedReceiver 收到广播
-                         │
-                         ▼
-             检查本地是否存在有效 device_token
-                         │
-                         ├──【存在】──▶ 弹出高优先级系统通知：「读学Eye 已就绪，点击开始监控」
-                         │             (用户点击通知从 Activity 合规启动前台服务)
-                         └──【不存在】─▶ 忽略广播
-  ```
-
-### 4.4 相机 Session 保持与低功耗策略
-- **Session 常开策略**：相机绑定 `ImageCapture` 用例后保持 Session 常开，避免每 15 秒重复初始化相机硬件带来的百毫秒延迟与机械磨损；
-- **预览通道物理关闭**：日常采集模式下**坚决不绑定 `Preview` 用例**，关闭 GPU 渲染通道与屏幕显示，功耗降低 70%，手机持续运行不发热。
-
----
-
-## 五、极简 UI 与机位校准交互 (Jetpack Compose)
-
-App 仅保留 3 个极简页面，遵循“架好即忘（Set and Forget）”原则：
-
-```text
-┌────────────────────────────────────────────────────────────────────────┐
-│                          读学Eye 界面与状态流转                        │
-├───────────────────┬────────────────────────────────────────────────────┤
-│ 页面名称          │ 核心功能与交互规范                                 │
-├───────────────────┼────────────────────────────────────────────────────┤
-│ **1. 绑定配置页** │ - 首次打开展示：ML Kit 极速取景扫码框 + 手动 6 位输码│
-│    (BindScreen)   │ - 扫码成功自动存储 Token 并引导去架设机位          │
-├───────────────────┼────────────────────────────────────────────────────┤
-│ **2. 监控工作台** │ - 核心大卡片：显示已绑定 Ward 姓名（如：小宇）     │
-│  (MonitorScreen)  │ - 运行状态指示灯（🟢 采集正常 / 🟡 断网排队中 / 🔴 异常）│
-│                   │ - 统计数据：今日已传帧数、本地积压帧数、心跳延迟    │
-│                   │ - 底部巨大「开始/暂停监控」控制按钮                │
-├───────────────────┼────────────────────────────────────────────────────┤
-│ **3. 机位校准页** │ - 临时动态绑定 CameraX `Preview` 用例辅助取景      │
-│ (CalibrationPage) │ - 屏幕叠加 45° 辅助虚线框（指引包含桌面与手部，避开正脸）│
-│                   │ - 调节完毕退出页面即刻销毁 `Preview` 节省电量      │
-└───────────────────┴────────────────────────────────────────────────────┘
-```
-
----
-
-## 六、API 接口对接规范 (RESTful Client)
-
-所有请求通过 HTTPS 进行，以 `Authorization: Bearer <device_token>` 作为身份凭据（绑定接口除外）：
-
-| 接口端点 | Method | 请求参数 / Body | 响应结构 | 触发时机与调用频率 |
-|---|---|---|---|---|
-| `/api/v1/devices/bind` | `POST` | `{ "invite_code": "A3F9K2" }` | `{ "device_token": "...", "ward_name": "小宇", "capture_interval_seconds": 15 }` | 首次扫码绑定时调用 1 次 |
-| `/api/v1/devices/presigned-url` | `POST` | `{ "count": 10 }` | `{ "urls": [{ "oss_key": "...", "upload_url": "https://oss..." }] }` | 批量上传前申请，URL 5分钟有效 |
-| `{upload_url}` | `PUT` | `JPEG 二进制流` (`Content-Type: image/jpeg`) | `200 OK` (OSS 响应) | 拿到 URL 后直传 OSS，**不走后端服务器** |
-| `/api/v1/devices/frames/meta` | `POST` | `[{ "oss_key": "...", "captured_at": "...", "monotonic_ms": 123456 }]` | `{ "success_count": 10 }` | 帧直传 OSS 成功后批量提交元数据 |
-| `/api/v1/devices/heartbeat` | `POST` | `{ "battery_level": 85, "network_type": "WIFI", "pending_queue_count": 0, "monotonic_ms": 123456 }` | `{ "server_time": "..." }` | 每 60 秒定期上报存活心跳 |
-
----
-
-## 七、性能指标与稳定性基线 (SLO)
-
-| 场景 / 指标项 | 目标基线 | 技术保障手段 |
+| 编号 | 验证 | 通过标准 |
 |---|---|---|
-| **单帧抓拍与入库延迟** | P90 < 200ms | CameraX 后台异步生成 JPEG，直接写入内部私有目录 |
-| **单帧预签名上传完成** | P90 < 1.5s | 阿里云 OSS 就近 CDN 加速上传，预签名直连 |
-| **单设备持续运行功耗** | 功耗 < 1.2W (不插电可运行 6h+) | 零端侧 AI、常闭 Preview 屏幕、纯单张定时抓拍 |
-| **连续挂机无故障时间 (MTBF)** | > 72 小时连续运行无崩溃 | 资源锁（WakeLock/WifiLock）、`START_STICKY` 服务自动重启 |
-| **断网补传丢包率** | 0% (队列上限内) | Room 持久化事务保证，网络恢复后顺序重试 |
-| **敏感凭证防泄漏** | 硬件级安全 (Keystore) | `device_token` 存入加密沙盒，禁止明文导出 |
+| AC-G01 | 快照或 RTSP 接入 | 获取新鲜 JPEG，机位与清晰度合格，不采音频 |
+| AC-G02 | 默认 15s 采集，连续运行 3 小时 | 约 720 个计划采样点；记录成功、失败与缺口，完整链路成功率目标 ≥98%，不以重复旧帧充数 |
+| AC-G03 | 真实 OSS 直传与帧登记 | OSS 对象可读取，服务端 Frame 的设备、Ward、采集时间与对象 key 一致；无计划、无 StudySession 也可入库 |
+| AC-G04 | 仅断外网 10 分钟后恢复 | 约 40 帧进入本地队列，恢复后补传；确认原采集时间、归属和清理结果 |
+| AC-G05 | 摄像头断电后恢复 | 自动重连，缺失区间有记录，不误报完整采集 |
+| AC-G06 | 强制结束网关进程后重启 | 待传帧继续上传；模拟 OSS 成功、元数据响应丢失，重试不重复创建 Frame |
+| AC-G07 | 容量限制与凭证失效 | 达上限可控淘汰、留痕；失效凭证明确提示，无忙循环 |
+| AC-G08 | 扩展两台摄像头 | 设备与 Ward 归属隔离；一台失联不阻塞另一台 |
 
----
+先完成单摄像头链路，再做双摄像头故障隔离，最后以目标 15 路压测网关 CPU、内存、网络、磁盘与恢复速度。未经测试不承诺一台网关支持 15 路。
 
-## 八、全系统文档导航索引
+本实验验收的是采集可靠性，不是行为判断准确度。15s 单帧能否区分持续书写、思考与停滞仍需标注样本验证；报告必须体现覆盖率与不确定性，缺口不能算作离座或不专注。
 
-- **全系统技术架构概览**：[`docs/technical/ARCHITECTURE.md`](ARCHITECTURE.md)
-- **服务端详细技术设计**：[`docs/technical/design-server.md`](design-server.md)
-- **App 端详细技术设计**：[`docs/technical/design-app.md`](design-app.md)
-- **学习观察与行为采集 PRD**：[`docs/product/prd-supervise.md`](../product/prd-supervise.md)
-- **摄像设备接入与操作手册**：[`docs/camera-setup-guide.md`](../camera-setup-guide.md)
-- **全系统可观测性方案**：[`docs/observability.md`](../observability.md)
+## 六、产品化演进
+
+| 阶段 | 交付 | 进入下一阶段的条件 |
+|---|---|---|
+| 家庭最小实验 | 标准摄像头 + 电脑网关，配置文件启动 | 本文单机链路与恢复验收通过 |
+| 机构试点 | 固定型号摄像头 + 预配置共享网关；增加身份、工位映射、健康与远程运维 | 多路稳定性、授权、换座、断网与可控更新/回滚通过 |
+| 家庭规模化 | 与成熟 OEM/ODM 合作，将采样、缓存和出站上传能力部署到摄像头固件 | 厂商接口、费用、配网、绑定、离线能力及运维可验证；无需每户额外网关 |
+
+家庭直传复用云端接入与证据契约，不自研摄像头硬件；不把普通 ONVIF 摄像头当作具备自定义云上传能力的产品。
+
+## 七、实现状态与参考
+
+- 已有：服务端按 Ward 绑定设备、预签名上传、帧登记、按 OSS key 去重、可空 StudySession、基础心跳。
+- 待实现：本地网关、摄像头适配及持久队列；机构批量管理、网关独立身份和精细健康状态。
+- 待修正：现有 `Device.device_type` 默认值仍是历史值，绑定 API 未接收类型；实现网关时明确 `ip_camera` 类型与迁移方案，不把文档变更当成数据库迁移。
+- 产品文档、接入手册与部署导航已同步；旧程序已移除，硬件接入与网关仍须按本文实现和验收。
+
+协议参考：[ONVIF Media Service（GetSnapshotUri）](https://www.onvif.org/specs/srv/media/ONVIF-Media-Service-Spec-v242a.pdf)、[FFmpeg RTSP 协议](https://ffmpeg.org/ffmpeg-protocols.html#rtsp)。

@@ -18,5 +18,4 @@ fi
 
 api_base_url="${api_base_url%/}"
 
-(cd duxue-cam && gradle :app:assembleRelease -PapiBaseUrl="$api_base_url")
 (cd duxue-app && flutter build appbundle --release --dart-define=API_BASE_URL="$api_base_url")

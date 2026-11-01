@@ -6,8 +6,6 @@
 |---|---|---|
 | `server-ci.yml` | Server 相关 PR | Pytest、构建 Docker 镜像 |
 | `server-deploy.yml` | Server 相关 `main` 推送或手动触发 | 推送 GHCR 镜像、远端迁移、启动 API/Worker/Beat、健康检查 |
-| `cam-ci.yml` | Cam 相关 PR | Kotlin 单测、Lint、Debug APK |
-| `cam-release.yml` | Cam 相关 `main` 推送、`cam-v*` Tag 或手动触发 | 签名 Release APK、更新正式下载包；Tag 额外创建 GitHub Release |
 | `app-ci.yml` | Guardian 相关 PR，或被 `app-release.yml` 调用 | Flutter 静态检查与测试 |
 | `app-release.yml` | Guardian 相关 `main` 推送或手动触发 | 签名 Release APK，挂到该次 Actions 的 Artifacts |
 | `sites-pages.yml` | `sites/**` 合入 `main` 或手动触发 | 将演示目录发布到 GitHub Pages |
@@ -70,17 +68,6 @@ https://$DEPLOY_SERVER_HOST/api/health
 
 部署顺序：拉取镜像 → Alembic 迁移 → 启动 api/worker/beat → `GET https://$HOST/api/health`。
 
-### Cam release
-
-| Secret | 用途 |
-|---|---|
-| `API_BASE_URL` | 打进 APK 的公开 HTTPS API 地址，建议 `https://$DEPLOY_SERVER_HOST/api/` |
-| `KEYSTORE_BASE64`、`KEYSTORE_PASSWORD`、`KEY_ALIAS`、`KEY_PASSWORD` | Android release 签名 |
-| `DEPLOY_SSH_PRIVATE_KEY`、`DEPLOY_SERVER_HOST` | 与 Server 相同的 SSH 目标 |
-| `DEPLOY_APK_PATH` | 远端 APK 目录，例如 `/var/www/duxue/downloads`（供 Nginx 静态下载） |
-
-`DEPLOY_SERVER_USER` / `DEPLOY_SERVER_PORT` 已写死在 `cam-release.yml`。
-
 ### Guardian APK
 
 合进 `main` 且改动碰到 `duxue-app/**` 时自动签名打包；也可在 Actions 里对 `main` 手动 Run workflow。APK 只挂在该次运行的 Artifacts，不上传到 ECS。包内 API 地址固定为 `https://duxuelai.xyz/api`。
@@ -94,4 +81,4 @@ https://$DEPLOY_SERVER_HOST/api/health
 
 本地没有 `KEYSTORE_FILE` 时，release 构建仍用 debug 签名，方便 `flutter run --release`。
 
-三端 CI 仅在 PR 阶段运行。Server 与 Cam 的相关改动合并到 `main` 后直接部署到 `production`，不会再次运行 CI。Guardian 相关改动合并到 `main` 后打签名 APK。Cam 的 `cam-v*` Tag 额外创建带版本 APK 的 GitHub Release，便于回退。开发和测试仅在本地进行，不设远端 staging。
+Server 与 App 的 CI/CD 由上述工作流维护。标准摄像头采集网关尚未实现，部署方案见 [采集设计](technical/design-cam.md)，当前没有网关发布工作流。

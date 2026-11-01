@@ -28,3 +28,5 @@
 - 业务 `AgentTrace` / Checkpoint 在 PostgreSQL，不是 OTEL trace。
 - Grafana MCP 配置含令牌，不能提交。
 - 首次联网回放不能当成主生成已修好。
+
+- 2026-11-01 旧 Android 采集工程已移除，可观测文档改为待实现的共享 Python 网关；不再配置采集 APK 的 BuildConfig 或签名。网关心跳与摄像头采集健康需分别验收，不能把云端连通当作有新帧。

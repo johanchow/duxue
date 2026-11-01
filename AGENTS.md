@@ -11,7 +11,7 @@
 ### 用户简单
 
 - **guardian（监护人）** 无需任何技术背景，只需扫码绑定摄像设备，报告自动生成
-- **摄像设备** 使用家里闲置的 Android 手机即可，零额外硬件成本
+- **摄像设备** 采用标准网络摄像头与共享采集网关，家庭实验先用电脑运行网关
 - 所有分析配置有合理默认值，不配置也能正常工作
 
 ### 方案简单
@@ -33,8 +33,7 @@
 ```
 duxue/                          # 项目根目录
 ├── docs/                       # 全系统级文档
-├── duxue-cam/                  # 读学Eye：Android 摄像端
-│   └── docs/
+├── duxue-gateway/              # 标准摄像头采集网关（待实现）
 ├── duxue-app/                  # 读学App：Guardian 端（Flutter）
 │   └── docs/
 ├── duxue-admin/                # Admin Web：运营后台（待建设）
@@ -44,7 +43,7 @@ duxue/                          # 项目根目录
 
 | 端 | 目录 | 角色 | 技术栈 |
 |----|------|------|--------|
-| 读学Eye | `duxue-cam/` | Android 采集端，定时抓拍上传 | Kotlin · CameraX · Foreground Service · Room |
+| 读学Eye | 标准摄像头 + `duxue-gateway/`（待实现） | 共享网关采图与上传 | ONVIF / RTSP · Python · SQLite · OSS |
 | 读学App | `duxue-app/` | Guardian 端，查看报告 | Flutter · Riverpod · fl_chart |
 | Admin Web | `duxue-admin/` | 运营后台，机构管理 | 待定 |
 | Server | `duxue-server/` | REST API · AI 推理编排 · 数据存储 | FastAPI · PostgreSQL · Celery · OSS |
@@ -62,10 +61,10 @@ duxue/                          # 项目根目录
 | 协商式计划 PRD | [`docs/product/prd-schedule.md`](docs/product/prd-schedule.md) | 弱约束可选增强定位、任务池与入日程分离、一句话语音排期、AI 软建议与 Ward 单按钮确认 |
 | 陪伴执行与 AI 启发答疑 PRD | [`docs/product/prd-companion.md`](docs/product/prd-companion.md) | 零门槛随时提问、答案保护红线与独立裁判、分步启发配图/发音、对话内微验证产出《独立解题凭证》 |
 | 结果评估、原话总结与晚间交付 PRD | [`docs/product/prd-evaluate.md`](docs/product/prd-evaluate.md) | Guardian/Coach 端必达交付（《伴学闭环实况单》+《独立解题凭证》）、Ward 自由语音/文字原话总结（六维逐字溯源、不写 Memory） |
-| 学习观察与行为采集 PRD | [`docs/product/prd-supervise.md`](docs/product/prd-supervise.md) | L0 零操作感知底座、读学Eye 闲置机接入、15s/帧直传 OSS、Room 断网补传、健康心跳与 45° 机位隐私防护 |
+| 学习观察与行为采集 PRD | [`docs/product/prd-supervise.md`](docs/product/prd-supervise.md) | L0 零操作感知底座、标准摄像头与共享网关、稀疏帧直传 OSS、持久队列补传、健康心跳与 45° 机位隐私防护 |
 | 孩子理解引擎与记忆系统 PRD | [`docs/product/prd-memory.md`](docs/product/prd-memory.md) | 纯后端智能底座、只收客观事实（严格隔离主观自述）、三层记忆架构与时间衰减演进 |
 | 用户核心价值与故事 | [`docs/product/user-story.md`](docs/product/user-story.md) | 三方角色 JTBD、L0/L1 零线上计划全纸质作业闭环故事、L2 自主排期故事与 B2C 晚托班 1对15 赋能故事 |
-| 摄像设备接入与操作手册 | [`docs/camera-setup-guide.md`](docs/camera-setup-guide.md) | 摄像方案选型（A/B/C）、机位指引、设备绑定操作步骤、设备类 FAQ |
+| 摄像设备接入与操作手册 | [`docs/camera-setup-guide.md`](docs/camera-setup-guide.md) | 标准摄像头采购、机位指引、家庭单机实验步骤与验收 |
 | 全系统技术架构概览 | [`docs/technical/ARCHITECTURE.md`](docs/technical/ARCHITECTURE.md) | 四端分工、领域模型（限界上下文）、会话即时分析管线、Guardian-Ward 绑定与权限模型 |
 | 可观测性方案 | [`docs/observability.md`](docs/observability.md) | 三端日志/链路/指标统一方案，Grafana + Loki + Tempo |
 
@@ -84,12 +83,11 @@ duxue/                          # 项目根目录
 | 孩子理解与记忆 Domain 设计 | [`docs/technical/domain-memory.md`](docs/technical/domain-memory.md) | 事实事件账本、Signal/Claim、三层记忆与表映射、更新/衰减、答疑情境记忆与数据删除边界 |
 | VLM 分析指南 | [`duxue-server/docs/qwen3vl-student-behavior-guide.md`](duxue-server/docs/qwen3vl-student-behavior-guide.md) | Qwen3-VL 行为分析 Prompt 设计与字段定义 |
 
-### 读学Eye（duxue-cam）
+### 读学Eye（标准摄像头 + 采集网关）
 
 | 文档 | 路径 | 内容摘要 |
 |------|------|---------|
-| Cam 端详细技术设计 (v3.0) | [`docs/technical/design-cam.md`](docs/technical/design-cam.md) | 稀疏抓拍与预签名直传、零端侧推理、Room 离线容灾队列、Android 14+ 前台服务保活与 60s 单调时钟心跳 |
-| CI/CD 方案 | [`duxue-cam/docs/ci_cd.md`](duxue-cam/docs/ci_cd.md) | GitHub Actions 流水线、Keystore 管理、APK 自托管分发、接入准备步骤 |
+| 摄像头与网关设计 | [`docs/technical/design-cam.md`](docs/technical/design-cam.md) | 标准摄像头接入、共享网关、OSS 直传、持久队列与实验验收；网关待实现 |
 
 ### 读学App（duxue-app）
 
