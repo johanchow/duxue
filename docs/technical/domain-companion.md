@@ -521,10 +521,29 @@ App 按 `kind` 选择组件；当前操作所需的业务数字用 `object_ref` 
 | `self_review`       | 盲评自评卡             | `object_ref`           | `submit_review`                                 | Evaluation 盲评投影                     |
 | `achievement`       | 任务收官轻量成就          | `text`                 | `close`                                         | StudySession 结算                     |
 | `start_cue`  | 到点后的开始邀请          | `text` + `object_ref`  | `start_due_task`、`continue_current`、`pause_current_and_start_due`、`snooze_once`（仅 `StartCueView` 允许的子集） | [StartCueView](domain-study.md#四query) |
+| `help_offer`（目标扩展，未实现） | 递梯子或温和回归邀请 | `text` + `object_ref`，可附受控 prompt_id | `accept_help`、`decline_help`，映射 Study 的 accept/decline Command，具体行为由 kind 决定 | [HelpOffer](domain-study.md#九观察触发的求助邀请目标扩展) |
 | `failure`           | 可恢复失败             | `text`                 | `retry` / `restart`（仅 Outcome 允许时）              | 无                                   |
 
 
 没有 `generative_ui`、`custom_widget`、`tool_call_card`。首期发音不扩展 `MediaRef.kind=audio`：`pronunciation_lesson` 通过 `object_ref` 读取目标 View，App 再用其中的 `speech_ref + rate` 请求按需音频。待实现的视频回答同样通过 Tutoring 的 `object_ref` 读取授权媒体引用，不将任意 URL 作为 `MediaRef`；本节代码块为当前 `companion-interaction.v1` 契约，增加 `video_answer` 前须升协议版本并同步 App allow-list。
+
+`help_offer` 同样只属于后续协议版本，不能直接发进当前 v1 allow-list。目标 `object_ref={context: study, object_type: help_offer, object_id: offer_id}`；动作携带 `offer_id, expected_version, command_id` 和受控呈现回执。Companion 的 `PresentHelpOffer` Command 负责重查邀请有效性、最新观察、有效陪伴通道与回复安全点，经既有账本追加入口去重登记消息；活动 Run 未释放回复权时排队，过期丢弃。正文不插入答疑半轮，不改变 focus 或凭空构造 Ward 问题；只有 Ward 主动开启 handsfree 通道后才允许 App 播放受控短语音。
+
+目标通道接口如下，均由本人 Ward 身份绑定 device/channel，不授予 Guardian 代开设备麦克风或播音权限：
+
+| Interface → Application | 输入 / 输出 | 作用与失败行为 |
+|---|---|---|
+| `POST /api/v1/companion/support-channels` → OpenSupportChannel | `{device_id, mode: card\|handsfree, command_id}` → `{channel_id, expires_at}` | 显式建立陪伴通道；租约 90 秒，绑定当前认证会话 |
+| `POST /api/v1/companion/support-channels/{id}/heartbeat` → RenewSupportChannel | `{sequence, foreground, mode}` → `{expires_at}` | 每 30 秒续期；后台/会话撤销立即停止出声资格；旧 sequence 不延长租约 |
+| `GET /api/v1/companion/support-channels/{id}/events` → Query event stream | SSE `{offer_id, offer_version, kind, expires_at, prompt_id?}` | 仅发送当前授权且未过期交互引用；最多一个本人设备持有 handsfree 呈现资格，多端不重复出声 |
+| `POST /api/v1/companion/support-channels/{id}/receipts` → ConfirmSupportPresentation | `{offer_id, offer_version, receipt_id, medium: card_rendered\|speech_completed\|speech_suppressed, presented_at}` → `{presentation_receipt?}` | 校验通道、版本、实际呈现时刻；失败/抑制不签播报成功；写回执和 Outbox 同事务 |
+| `DELETE /api/v1/companion/support-channels/{id}` → CloseSupportChannel | 本人通道引用 → 204 | 关闭运行时租约；重复关闭幂等；不结束学习或答疑 |
+
+这些通道 Commands 只协调 Infrastructure 的临时能力租约，不增加业务 Aggregate；活动资格以会话/device 的短租约及递增代次原子互斥管理，恢复后重查授权。到期无需业务补偿，不能因为 Redis 失效而默认允许播音。现有交互/命令幂等/Outbox 承担持久呈现记录；语音去重同时在 App 按 offer_id 保存，断线恢复不重新播报。API 返回未认证 401、无权通道 403/404、失效/旧代次 409；请求格式非法 422。连接/心跳失败时 App 停止新的语音，卡片仍须检查有效期。
+
+客户端只播放随 App 发布的两个合法 prompt_id 对应短语音，不接收任意可执行脚本或音频 URL；实际播放门禁和抑制场景见 Study §9.6。卡片已显示可产生 card_rendered，完整播放后才产生 speech_completed；后者也不能证明孩子听见。Companion 校验呈现回执后，与 `HelpOfferPresented.v1` Outbox 同事务保存，payload 增加 `medium`；仅卡片/语音成功时发布该事件，speech_suppressed 仅进诊断。语音播放、网络重试和日志不得采集环境音频。通道建立不等于开启麦克风，孩子提问仍使用已有 VoiceComposer 操作。
+
+求助业务状态和邀请额度唯一见 Study §九；offer_help 接受后由孩子自主提问，invite_return 接受后回纸面。实现时升协议、同步 App allow-list、通道租约、音频播放与回执，不能仅添加本表一行即视为支持。
 
 #### 5.2.3 信封与动作契约
 
