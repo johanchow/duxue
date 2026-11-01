@@ -30,16 +30,19 @@ type Config struct {
 	MinFreeBytes    uint64         `yaml:"min_free_bytes"`
 }
 type CameraHealth struct {
-	CapturedCount int        `json:"captured_frames"`
-	Reconnects    int64      `json:"reconnects"`
-	CameraID      string     `json:"camera_id"`
-	LastCapture   *time.Time `json:"last_capture_at"`
-	LastSubmit    *time.Time `json:"last_submit_at"`
-	QueueFrames   int        `json:"queue_frames"`
-	QueueBytes    int64      `json:"queue_bytes"`
-	Dropped       int        `json:"dropped_count"`
-	Gaps          int        `json:"capture_gaps"`
-	Error         string     `json:"last_error_code,omitempty"`
+	GatewayAuth        string     `json:"gateway_auth,omitempty"`
+	CaptureDetail      string     `json:"capture_error_detail,omitempty"`
+	UnattributedLosses int        `json:"unattributed_recovery_losses,omitempty"`
+	CapturedCount      int        `json:"captured_frames"`
+	Reconnects         int64      `json:"reconnects"`
+	CameraID           string     `json:"camera_id"`
+	LastCapture        *time.Time `json:"last_capture_at"`
+	LastSubmit         *time.Time `json:"last_submit_at"`
+	QueueFrames        int        `json:"queue_frames"`
+	QueueBytes         int64      `json:"queue_bytes"`
+	Dropped            int        `json:"dropped_count"`
+	Gaps               int        `json:"capture_gaps"`
+	Error              string     `json:"last_error_code,omitempty"`
 }
 type Target struct {
 	Key       string            `json:"oss_key"`
@@ -75,6 +78,8 @@ type Repository interface {
 	Prune(time.Time) error
 	Health() ([]CameraHealth, error)
 	CaptureHealth(string, time.Time, bool, string) error
+	CaptureDiagnostic(string, string) error
+	SetGatewayAuth(string) error
 	AddDiagnostics(string, int, int64) error
 	DropCamera(string, string) error
 	Close() error

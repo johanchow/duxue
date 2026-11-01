@@ -25,7 +25,14 @@ from sqlalchemy.orm import sessionmaker
 from app.application.commands.gateway_ingestion import GatewayCommands, GatewayPrincipal
 from app.contexts.ingestion.domain.gateway import Evidence
 from app.infrastructure.persistence.gateway_repository import SqlCaptureRepository
-from app.infrastructure.persistence.models import Device, Frame, OutboxEvent, User, Ward
+from app.infrastructure.persistence.models import (
+    Device,
+    Frame,
+    GatewayUploadReservation,
+    OutboxEvent,
+    User,
+    Ward,
+)
 
 
 @pytest.fixture(scope="module")
@@ -255,3 +262,7 @@ def test_postgres_frame_and_fact_rollback_together(migrated_engine, monkeypatch)
             )
     with factory() as db:
         assert db.query(Frame).filter_by(ward_id=ward_id).count() == 0
+        assert (
+            db.query(GatewayUploadReservation).filter_by(gateway_id=gateway).count()
+            == 1
+        )

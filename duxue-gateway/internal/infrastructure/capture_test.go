@@ -2,7 +2,12 @@ package infrastructure
 
 import (
 	"context"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
+
+	"github.com/johanchow/duxue/duxue-gateway/internal/application"
 	"testing"
 	"time"
 )
@@ -55,5 +60,62 @@ func TestFailedFFmpegRestartIsBoundedAndCounted(t *testing.T) {
 	}
 	if err := stream.Close(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRTSPCredentialsNeverAppearInFFmpegArguments(t *testing.T) {
+	root := t.TempDir()
+	binary := filepath.Join(root, "fake-ffmpeg")
+	argsFile := filepath.Join(root, "args")
+	t.Setenv("TMPDIR", root)
+	t.Setenv("TEST_CAMERA_USER", "private-camera-user")
+	t.Setenv("TEST_CAMERA_PASSWORD", "private-password")
+	if err := os.WriteFile(binary, []byte("#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$TMPDIR/args\"\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	source, err := SourceFactory(binary)(context.Background(), application.CameraConfig{Source: application.SourceConfig{Kind: "rtsp", URL: "rtsp://127.0.0.1/live", UsernameEnv: "TEST_CAMERA_USER", PasswordEnv: "TEST_CAMERA_PASSWORD"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer source.Close()
+	for range 100 {
+		b, err := os.ReadFile(argsFile)
+		if err == nil {
+			if strings.Contains(string(b), "private-password") || strings.Contains(string(b), "private-camera-user") {
+				t.Fatal("camera credentials exposed in child argv")
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("FFmpeg not launched")
+}
+func TestFFmpegFailureHasActionableDiagnostic(t *testing.T) {
+	stream := NewStream(context.Background(), "/bin/sh", []string{"-c", "echo 'method DESCRIBE failed: 401 Unauthorized' >&2; exit 1"})
+	defer stream.Close()
+	time.Sleep(100 * time.Millisecond)
+	_, _, err := stream.Latest(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "401 Unauthorized") {
+		t.Fatalf("camera error discarded: %v", err)
+	}
+}
+
+func TestCaptureDiagnosticRedactsAcrossChunksAndBoundsOutput(t *testing.T) {
+	d := &captureDiagnostic{secrets: []string{"secret-password"}}
+	for _, chunk := range []string{"401 Unauthorized rtsp://user:secret-", "password@camera/live?token=private ", "secret-pass", "word\n"} {
+		_, _ = d.Write([]byte(chunk))
+		if strings.Contains(d.Text(), "secret") || strings.Contains(d.Text(), "private") {
+			t.Fatal("partial secret exposed")
+		}
+	}
+	if !strings.Contains(d.Text(), "401 Unauthorized") {
+		t.Fatal("actionable error missing")
+	}
+	_, _ = d.Write([]byte(strings.Repeat("x", 4093) + "secret-password\n"))
+	if strings.Contains(d.Text(), "password") {
+		t.Fatal("truncated secret exposed")
+	}
+	if len(d.Text()) > 2048 {
+		t.Fatal("diagnostic unbounded")
 	}
 }

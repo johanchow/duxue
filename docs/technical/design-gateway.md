@@ -324,7 +324,7 @@ stateDiagram-v2
 
 | Trigger / 入口 | Command 与输入 | 聚合行为 / 事务与事件 | 幂等、失败及后续 |
 |---|---|---|---|
-| 操作员启动 CLI → 云端 HTTP Interface | RegisterCamera(camera_id, ward_id) | 云端事务加载/创建 CameraRegistration，调用assert_assignment或首次构造，Application保存CameraRegistered | 唯一 `(gateway_id,camera_id)`；同归属返回原值；401/403 停止初始化，409 要求修正配置；成功后本地保存登记快照 |
+| 操作员启动 CLI → 云端 HTTP Interface | RegisterCamera(camera_id, ward_id) | 云端事务加载/创建 CameraRegistration，调用assert_assignment或首次构造，Application保存CameraRegistered | 唯一 `(gateway_id,camera_id)`；同归属返回原值；401退避重试、连续3次确认后退出78；403跳过该摄像头，409要求修正配置；成功后本地保存登记快照 |
 | 15s 定时器（Infrastructure） | QueueFrame(camera_id, sample_time) | CapturePort 取新图；先安全落文件，再本地事务创建 FrameDelivery.queue 与 FrameQueued | 本地唯一 `(camera_id,captured_at_ns)`；帧创建后以frame_id固定身份；取图失败记缺口；文件失败不入队；无图时不造帧 |
 | 本地上传 Worker（Infrastructure） | PrepareUpload(frame_id) | 加载 FrameDelivery，经 CloudPort 调用 ReserveUpload；本地事务 assign_target 并固化 key | 请求结果未知按 frame_id 重试；领取上传租约后操作，网络调用不持有 SQLite 事务 |
 | 云端上传地址 HTTP Interface | ReserveUpload(camera_id, ward_id, revision, frame_id, captured_at, sha256, size) | 校验 CameraRegistration；独立事务保存 upload_reservations 基础设施记录，返回相同目标 | 唯一 `(gateway_id,frame_id)`；相同请求续签同 key；异内容409；对象大小超限413；不产生业务 Domain Event |
@@ -469,13 +469,13 @@ sequenceDiagram
 | Port（所有者） | Adapter 与配置边界 | 超时 / 重试 / 错误处理 |
 |---|---|---|
 | CapturePort（Application） | FFmpeg RTSP TCP / JPEG HTTP；摄像头本地凭证；返回图像与接收时间的 ACL | RTSP使用原生timeout=5000000微秒，单次取图预算5s；无新图记缺口，连接按1s起退避、上限60s加抖动；一台故障不阻塞其他台 |
-| CloudPort（Application） | HTTPS API，独立网关 Bearer 凭证 | 连接5s，总请求15s；1s起指数退避至60s加抖动，遵守429；鉴权/配置错误阻塞并提示 |
+| CloudPort（Application） | HTTPS API，独立网关 Bearer 凭证 | 连接5s，总请求15s；1s起指数退避至60s加抖动，遵守429；单次401暂停上传并退避心跳探测，成功自动恢复；连续3次401确认后退出78等待修复；配置错误阻塞并提示 |
 | ObjectStoragePort（Application） | HTTPS PUT，仅预签名 URL/headers | 连接5s，总请求30s；重试同 key；URL 过期续签；未知写入结果按同内容安全覆盖 |
 | 三个 Repository Port（Domain） | 本地 SQLite / 云端现有 PostgreSQL ORM 扩展 | 短事务，本地单写队列；SQLITE_BUSY有界重试；数据库故障不确认成功；无外部网络等待 |
 | EvidenceFilePort（Application） | 私有目录，临时JPEG+manifest、flush/fsync 后原子 rename | 写失败记存储故障，不入队；路径由 frame_id 生成；启动恢复孤儿/缺失文件 |
 | FactPublisherPort（Application） | 云端事务 Outbox 与消费者适配器 | 沿用既有LearningFact Outbox；消费策略与边界见§4.6；本地无需消息中间件 |
 
-首期摄像头只有一个有效采图任务，上传并发上限2；RTSP 每摄像头只保留一个最新解码帧，内存不能无限积攒。由持续输出的帧序号/解码接收时间判断新鲜度，连续5s无新帧视为不可用；不能因相同图像内容就判断故障。低采样率不等于低 RTSP 带宽/解码负载。FFmpeg 无音频，进程退出自动回收重启；stderr、启动参数必须脱敏，含密码的实际 URL/进程参数只允许受限本机运维访问。
+首期摄像头只有一个有效采图任务，上传并发上限2；RTSP 每摄像头只保留一个最新解码帧，内存不能无限积攒。由持续输出的帧序号/解码接收时间判断新鲜度，连续5s无新帧视为不可用；不能因相同图像内容就判断故障。低采样率不等于低 RTSP 带宽/解码负载。FFmpeg 无音频，进程退出自动回收重启；RTSP地址与凭证以单文件concat描述经继承的私有FD3管道传入（-i pipe:3），不出现在argv、不写临时凭证文件，也不继承应用凭证和FFREPORT环境。concat逐文件选项保留RTSP TCP与5s超时；读取结果仍是单路实时视频。stderr按完整行收集，超长行丢弃，先移除URL/账号/密码再保留最多2KiB诊断，供本地status/log排查认证与解码错误；诊断原文不随心跳上传。此隔离消除普通进程参数泄露，不承诺阻止同UID调试或管理员读取进程内存/描述符。
 
 不另加熔断框架：每摄像头重连退避、全局有界并发、鉴权阻塞与 next_attempt_at 已构成首期有界故障策略；必要时以实测决定引入。当前HTTP快照适配支持Basic认证，Digest/ONVIF自动协商未实现；RTSP认证交由FFmpeg。
 
@@ -540,10 +540,10 @@ erDiagram
 
 - `local_frame_deliveries` 支撑 FrameDelivery；`local_domain_events` 为本地域事件审计，跟随同帧事务写入。索引 `(state,next_attempt_at,captured_at)`，唯一 `(camera_id,captured_at_ns)`；JPEG 路径/字节数及租约也是持久化字段，ER 仅展示关键结构。
 - 云端 `cloud_devices` / `cloud_frames` 是图中逻辑名，扩展现有 `devices` / `frames`，分别支撑 CameraRegistration / AcceptedFrame；不新建重复设备、帧表。新增 `(gateway_id,camera_id)`、`(gateway_id,frame_id)` 唯一约束；旧数据新增字段可空，兼容旧接口。
-- `cloud_upload_reservations` 是 Infrastructure 幂等预约记录，非业务聚合；指纹包含完整归属和帧内容。预约时锁定设备登记行，接收时在写事务内复核 enabled/revision/授权；避免核验后撤销仍入库。对象网络校验在事务外，事务内核对预约未改变。
+- `cloud_upload_reservations` 是 Infrastructure 幂等预约记录，非业务聚合；指纹包含完整归属和帧内容。预约时锁定设备登记行，接收时在写事务内复核 enabled/revision/授权；Frame、审计、Outbox与删除预约在同一事务提交，重复接收仅依赖Frame唯一键，成功后的续签也不重建预约；避免核验后撤销仍入库。对象网络校验在事务外，事务内核对预约未改变。
 - 健康query store、租约、现有Outbox 是 Infrastructure 数据；实现时与上表一起迁移，非额外领域模型。云端健康 store 唯一 `(gateway_id,camera_id)`，本地健康store唯一camera_id；Outbox 沿用现有基础设施并验证既有来源幂等约束。
 - 启动持有 state_dir 单进程锁；SQLite 用 WAL、外键启用、可靠同步；租约到期可重新领取。磁盘总配额淘汰前必须取得受害帧租约，禁止边上传边删除。
-- 文件/数据库不能共同原子提交：先写包含归属快照和 frame_id 的 manifest/JPEG；数据库成功前崩溃按 manifest 恢复；只有数据库指向缺失文件则标记损坏并记录缺口。已交付/丢弃但文件未删，启动继续清理。恢复命令按帧幂等，不能仅凭文件名猜 Ward。
+- 文件/数据库不能共同原子提交：先写包含归属快照和 frame_id 的 manifest/JPEG；数据库成功前崩溃按 manifest 恢复；数据库指向缺失文件则标记损坏并记录缺口。孤儿manifest不可读、格式损坏或归属不匹配时，先写幂等recovery_losses缺口记录，再删除该目录并继续恢复其他帧；无法可靠识别摄像头时不猜Ward，各路status的unattributed_recovery_losses是同一个网关级未归属缺口计数，不能按摄像头求和。该诊断保留24h；真正数据库读写故障仍报错退出。已交付/丢弃但文件未删，启动继续清理。恢复命令按帧幂等，不能仅凭文件名猜 Ward。
 
 迁移次序：先扩展服务端 schema/索引及网关授权配置 → 部署新 API（旧接口仍工作）→ 部署网关。旧 Device 不自动认领为 camera-01，不把默认历史类型批量改成 ip_camera；只给新登记写正确类型。回滚先停网关、保留队列，再回滚应用；含新帧数据的 schema 不自动降级删除，备份后前向修复。迁移与唯一约束必须在 PostgreSQL 验证，SQLite 不能代替服务端迁移测试。
 
@@ -553,14 +553,16 @@ erDiagram
 - 初始上限：每摄像头2000帧、12h TTL、网关总JPEG缓存1GB；任一触发淘汰最旧的无租约待传帧。2000帧约8.3小时；TTL是上限，不保证能保留12小时。TTL从captured_at计算，不因重试延长；部署环境须同步系统时钟；采样拒绝过期或明显未来的帧，云端另校验采集时间窗口。SQLite、事件、manifest、日志独立轮转，预留100MB磁盘余量；不足则停采并记录存储故障。
 - 最新帧与补传按1:3轮询配额调度，无积压时不空等；每摄像头公平轮询，不能一台相机独占。停机后不补造图像。外网断而局域网正常可继续排队；摄像头/局域网断开只能记录缺口。
 - 终态帧和本地事件保留24h后批量清理；积压受TTL约束，清理先落终态及计数再删JPEG，不把删除日志当作完整图像证据。
-- OSS已上传但未登记成功可能形成孤儿对象；服务端按过期预约（最晚24h）对账，先锁定预约阻止并发提交，确认无Frame引用后删除孤儿；不能删除已登记对象。有效接收帧留存遵循系统数据治理，不在网关另定云端保留期。
+- OSS已上传但未登记成功可能形成孤儿对象；服务端按过期预约（最晚24h）对账，先锁定预约阻止并发提交，确认无Frame引用后删除孤儿；不能删除已登记对象。清理按gateway_id/frame_id游标每批最多500行，不一次加载全部历史预约；旧版本残留的已接收预约只删记录、不删对象。有效接收帧留存遵循系统数据治理，不在网关另定云端保留期。
 - 云端 Query 可由健康上报重建；本地队列不可由日志重建。禁止将查询缓存当作交付成功依据。
 
 #### 安全、治理与可观测性
 
 目录0700、配置与状态文件0600；秘密从环境/受限凭证存储读取，不提交仓库。日志不打印图片、RTSP密码、Bearer Token、完整预签名URL或原始认证错误。网关只向明确配置的API及返回的OSS上传目标出站；不跟随会携带认证头的跨域重定向。
 
-授权撤销立即阻止新上传目标和帧登记；已发预签名URL在短有效期内仍可能PUT，但不得接收为证据，按孤儿规则清理。网关不可覆盖URL有效期最多300s；清除数据时保留purging预约记录作为晚到PUT删除跟踪，不因删掉记录而遗失清理责任。删除Ward同时移除采集白名单/停用登记，按既有删除契约清理云端证据；网关收到WARD_DELETED或WARD_DATA_ERASED时停止该源并清理对应待传缓存；一般403只暂停上传，不能推断为数据已清除。现有 `/wards/{id}/data` 清除历史数据但保留Ward身份；云端保留gateway_erased权限标记并从设备列表隐藏，防止旧配置自动重新登记。若操作员需重新启用，应显式配置新的camera_id；旧帧不会归入新登记。网关运行但外网离线时由12h TTL清理；关机或进程停止期间无法执行物理删除，重启时先清理过期数据再恢复上传。不能保证离线机器的远程即时删除。
+授权撤销立即阻止新上传目标和帧登记；已发预签名URL在短有效期内仍可能PUT，但不得接收为证据，按孤儿规则清理。网关不可覆盖URL有效期最多300s；清除数据时保留purging预约记录作为晚到PUT删除跟踪，不因删掉记录而遗失清理责任。删除Ward同时移除采集白名单/停用登记，按既有删除契约清理云端证据；网关收到WARD_DELETED或WARD_DATA_ERASED时停止该源并清理对应待传缓存；一般403也取消对应采集上下文、关闭FFmpeg并停止该源上传，但保留其待传帧至TTL，不能推断为数据已清除。心跳遇403逐路重新核验登记，以定位并关闭对应摄像头，不停止其他合法源。现有 `/wards/{id}/data` 清除历史数据但保留Ward身份；云端保留gateway_erased权限标记并从设备列表隐藏，防止旧配置自动重新登记。若操作员需重新启用，应显式配置新的camera_id；旧帧不会归入新登记。网关运行但外网离线时由12h TTL清理；关机或进程停止期间无法执行物理删除，重启时先清理过期数据再恢复上传。不能保证离线机器的远程即时删除。
+
+网关API发生401时先持久标记gateway_auth=retrying、暂停上传并退避发送心跳探测；探测成功清除状态、恢复原帧重试。连续3次探测401则标记required、取消全部源并以78退出，需修复凭证后重启；systemd设置RestartPreventExitStatus=78。对象存储401/403仅续签，不计入网关鉴权。SQLite队列schema从1自动迁移至2，新增诊断与鉴权状态列和缺口账本；保留原帧，升级后不降级旧二进制。
 
 关联键 `gateway_id/camera_id/frame_id/request_id`；传播受限 trace context。记录采图成功/失败、端到端提交成功率、积压帧/字节与最老年龄、重试/重连/丢弃、摄像头最后新帧时间、云端最后心跳时间。首期输出脱敏结构化日志和本地状态，不要求先搭完整监控后台；积压接近TTL、磁盘不足、授权失败必须有可见提示。采集缺口不能转成“不专注”。
 
@@ -611,4 +613,4 @@ erDiagram
 
 自动化证据：[Go恢复/故障测试](../../duxue-gateway/internal/infrastructure/store_test.go)、[上传重试](../../duxue-gateway/internal/infrastructure/cloud_test.go)、[FFmpeg](../../duxue-gateway/internal/infrastructure/capture_test.go)、[生产取图路径的合成RTSP/RTP测试](../../duxue-gateway/internal/infrastructure/rtsp_test.go)、[云端契约](../../duxue-server/tests/contract/api/test_gateway_ingestion.py)、[PostgreSQL](../../duxue-server/tests/integration/test_gateway_postgres.py)、[真实进程本地联调](../../duxue-server/tests/integration/test_gateway_binary.py)。
 
-协议参考：[ONVIF规范](https://www.onvif.org/specs/)、[FFmpeg RTSP](https://ffmpeg.org/ffmpeg-protocols.html#rtsp)、[纯Go SQLite](https://pkg.go.dev/modernc.org/sqlite)。依赖版本以项目锁文件为准。
+协议参考：[ONVIF规范](https://www.onvif.org/specs/)、[FFmpeg RTSP](https://ffmpeg.org/ffmpeg-protocols.html#rtsp)、[FFmpeg concat描述与逐文件选项](https://ffmpeg.org/ffmpeg-formats.html#concat)、[纯Go SQLite](https://pkg.go.dev/modernc.org/sqlite)。依赖版本以项目锁文件为准。

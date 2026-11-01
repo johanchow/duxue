@@ -256,3 +256,81 @@ func TestClaimsAreFairAndReserveFreshFrameQuotaForEachCamera(t *testing.T) {
 		}
 	}
 }
+
+func TestRecoverySkipsBrokenOrphanManifestAndKeepsHealthyFrame(t *testing.T) {
+	for _, damage := range []string{"missing", "invalid", "unknown_assignment"} {
+		t.Run(damage, func(t *testing.T) {
+			s, err := OpenStore(testConfig(t), false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer s.Close()
+			broken := testFrame(t, s, "broken", time.Now().UTC())
+			healthy := testFrame(t, s, "healthy", time.Now().UTC())
+			if _, err = s.db.Exec("DELETE FROM frames WHERE id=?", broken.ID); err != nil {
+				t.Fatal(err)
+			}
+			manifest := filepath.Join(s.bundle(broken.ID), "manifest.json")
+			switch damage {
+			case "missing":
+				err = os.Remove(manifest)
+			case "invalid":
+				err = os.WriteFile(manifest, []byte("{broken"), 0600)
+			default:
+				broken.WardID = "unexpected"
+				b, _ := json.Marshal(broken)
+				err = os.WriteFile(manifest, b, 0600)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = s.Recover(time.Now()); err != nil {
+				t.Fatalf("one broken orphan stopped gateway: %v", err)
+			}
+			f, _, ok, err := s.Claim(time.Now())
+			if err != nil || !ok || f.ID != healthy.ID {
+				t.Fatalf("healthy frame unavailable: %+v %v", f, err)
+			}
+			if _, err = os.Stat(s.bundle(broken.ID)); !os.IsNotExist(err) {
+				t.Fatal("corrupt bundle retained")
+			}
+			if err = s.Recover(time.Now()); err != nil {
+				t.Fatal(err)
+			}
+			var losses int
+			if err = s.db.QueryRow("SELECT count(*) FROM recovery_losses").Scan(&losses); err != nil || losses != 1 {
+				t.Fatalf("loss not recorded exactly once: %d %v", losses, err)
+			}
+		})
+	}
+}
+
+func TestQueueSchemaOneUpgradesWithoutLosingFrames(t *testing.T) {
+	c := testConfig(t)
+	s, err := OpenStore(c, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := testFrame(t, s, "cam", time.Now().UTC())
+	_, err = s.db.Exec("ALTER TABLE health DROP COLUMN capture_detail;ALTER TABLE health DROP COLUMN gateway_auth;DROP TABLE recovery_losses;PRAGMA user_version=1;")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	s, err = OpenStore(c, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	var version int
+	if err = s.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 2 {
+		t.Fatalf("version %d: %v", version, err)
+	}
+	if err = s.Recover(time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	loaded, _, ok, err := s.Claim(time.Now())
+	if err != nil || !ok || loaded.ID != f.ID {
+		t.Fatal("upgrade lost pending evidence")
+	}
+}

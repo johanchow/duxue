@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -69,7 +70,7 @@ func OpenStore(c application.Config, readOnly bool) (*Store, error) {
 	if err = s.db.QueryRow("PRAGMA user_version").Scan(&schemaVersion); err != nil {
 		return fail(err)
 	}
-	if schemaVersion > 1 {
+	if schemaVersion > 2 {
 		return fail(errors.New("queue schema is newer than this gateway; do not downgrade"))
 	}
 	if !readOnly {
@@ -77,9 +78,19 @@ func OpenStore(c application.Config, readOnly bool) (*Store, error) {
 CREATE INDEX IF NOT EXISTS frames_pending ON frames(state,next_attempt,captured);
 CREATE TABLE IF NOT EXISTS registrations(camera TEXT PRIMARY KEY,body BLOB NOT NULL);
 CREATE TABLE IF NOT EXISTS health(camera TEXT PRIMARY KEY,captured TEXT,submitted TEXT,dropped INTEGER NOT NULL DEFAULT 0,gaps INTEGER NOT NULL DEFAULT 0,capture_count INTEGER NOT NULL DEFAULT 0,reconnects INTEGER NOT NULL DEFAULT 0,error TEXT NOT NULL DEFAULT '',upload_error TEXT NOT NULL DEFAULT '');
-CREATE TABLE IF NOT EXISTS domain_events(id INTEGER PRIMARY KEY,frame_id TEXT NOT NULL REFERENCES frames(id) ON DELETE CASCADE,event_type TEXT NOT NULL,occurred INTEGER NOT NULL);PRAGMA user_version=1;`)
+CREATE TABLE IF NOT EXISTS domain_events(id INTEGER PRIMARY KEY,frame_id TEXT NOT NULL REFERENCES frames(id) ON DELETE CASCADE,event_type TEXT NOT NULL,occurred INTEGER NOT NULL);`)
 		if err != nil {
 			return fail(err)
+		}
+		if schemaVersion < 2 {
+			_, err = s.db.Exec(`BEGIN;
+ALTER TABLE health ADD COLUMN capture_detail TEXT NOT NULL DEFAULT '';
+ALTER TABLE health ADD COLUMN gateway_auth TEXT NOT NULL DEFAULT '';
+CREATE TABLE recovery_losses(id TEXT PRIMARY KEY,camera TEXT,reason TEXT NOT NULL,occurred INTEGER NOT NULL);
+PRAGMA user_version=2; COMMIT;`)
+			if err != nil {
+				return fail(err)
+			}
 		}
 		if err = os.Chmod(filepath.Join(c.StateDir, "queue.db"), 0600); err != nil {
 			return fail(err)
@@ -361,17 +372,34 @@ func (s *Store) Recover(at time.Time) error {
 		if !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
-		b, err := os.ReadFile(filepath.Join(path, "manifest.json"))
-		if err != nil {
-			return errors.New("cannot recover frame manifest")
+		file, openErr := os.Open(filepath.Join(path, "manifest.json"))
+		var b []byte
+		if openErr == nil {
+			b, openErr = io.ReadAll(io.LimitReader(file, 65537))
+			_ = file.Close()
+		}
+		if openErr != nil {
+			if err = s.discardOrphan(entry.Name(), "manifest_unreadable", at); err != nil {
+				return err
+			}
+			continue
 		}
 		var f domain.Frame
 		if len(b) > 65536 || json.Unmarshal(b, &f) != nil || f.ID != entry.Name() {
-			return errors.New("corrupt frame manifest")
+			if err = s.discardOrphan(entry.Name(), "manifest_corrupt", at); err != nil {
+				return err
+			}
+			continue
 		}
 		r, err := s.Registration(f.CameraID)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
 		if err != nil || r != f.Registration {
-			return errors.New("recovered frame has unknown assignment")
+			if err = s.discardOrphan(entry.Name(), "assignment_unknown", at); err != nil {
+				return err
+			}
+			continue
 		}
 		if err = s.Save(f); err != nil {
 			return err
@@ -412,6 +440,9 @@ func (s *Store) Recover(at time.Time) error {
 	return s.Prune(at)
 }
 func (s *Store) Prune(at time.Time) error {
+	if _, err := s.db.Exec("DELETE FROM recovery_losses WHERE occurred<?", at.Add(-24*time.Hour).Unix()); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	rows, err := s.db.Query("SELECT body,lease FROM frames WHERE state IN ('queued','put_pending','uploaded') ORDER BY captured")
@@ -472,14 +503,14 @@ func (s *Store) Prune(at time.Time) error {
 }
 func (s *Store) CaptureHealth(camera string, at time.Time, success bool, reason string) error {
 	if success {
-		_, err := s.db.Exec("UPDATE health SET captured=?,capture_count=capture_count+1,error='' WHERE camera=?", at.UTC().Format(time.RFC3339Nano), camera)
+		_, err := s.db.Exec("UPDATE health SET captured=?,capture_count=capture_count+1,error='',capture_detail='' WHERE camera=?", at.UTC().Format(time.RFC3339Nano), camera)
 		return err
 	}
 	_, err := s.db.Exec("UPDATE health SET gaps=gaps+1,error=? WHERE camera=?", reason, camera)
 	return err
 }
 func (s *Store) Health() ([]application.CameraHealth, error) {
-	rows, err := s.db.Query(`SELECT h.camera,h.captured,h.submitted,h.dropped,h.gaps,h.capture_count,h.reconnects,CASE WHEN h.error!='' THEN h.error ELSE h.upload_error END,COALESCE(p.count,0),COALESCE(p.bytes,0) FROM health h LEFT JOIN (SELECT camera,count(*) AS count,sum(size) AS bytes FROM frames WHERE state IN ('queued','put_pending','uploaded') GROUP BY camera) p ON p.camera=h.camera ORDER BY h.camera`)
+	rows, err := s.db.Query(`SELECT h.camera,h.captured,h.submitted,h.dropped,h.gaps,h.capture_count,h.reconnects,CASE WHEN h.gateway_auth!='' THEN 'gateway_auth_'||h.gateway_auth WHEN h.error!='' THEN h.error ELSE h.upload_error END,COALESCE(p.count,0),COALESCE(p.bytes,0),h.gateway_auth,h.capture_detail,(SELECT count(*) FROM recovery_losses WHERE camera IS NULL) FROM health h LEFT JOIN (SELECT camera,count(*) AS count,sum(size) AS bytes FROM frames WHERE state IN ('queued','put_pending','uploaded') GROUP BY camera) p ON p.camera=h.camera ORDER BY h.camera`)
 	if err != nil {
 		return nil, err
 	}
@@ -488,7 +519,7 @@ func (s *Store) Health() ([]application.CameraHealth, error) {
 	for rows.Next() {
 		var h application.CameraHealth
 		var capture, submit sql.NullString
-		if err = rows.Scan(&h.CameraID, &capture, &submit, &h.Dropped, &h.Gaps, &h.CapturedCount, &h.Reconnects, &h.Error, &h.QueueFrames, &h.QueueBytes); err != nil {
+		if err = rows.Scan(&h.CameraID, &capture, &submit, &h.Dropped, &h.Gaps, &h.CapturedCount, &h.Reconnects, &h.Error, &h.QueueFrames, &h.QueueBytes, &h.GatewayAuth, &h.CaptureDetail, &h.UnattributedLosses); err != nil {
 			return nil, err
 		}
 		if capture.Valid {
@@ -551,5 +582,23 @@ func (s *Store) String() string { return fmt.Sprintf("gateway queue at %s", s.ro
 
 func (s *Store) AddDiagnostics(camera string, gaps int, reconnects int64) error {
 	_, err := s.db.Exec("UPDATE health SET gaps=gaps+?,reconnects=reconnects+? WHERE camera=?", gaps, reconnects, camera)
+	return err
+}
+
+// Corrupt orphan metadata has no trustworthy camera identity. Keep a durable,
+// idempotent loss marker before deleting bytes; never invent Ward attribution.
+func (s *Store) discardOrphan(id, reason string, at time.Time) error {
+	if _, err := s.db.Exec("INSERT OR IGNORE INTO recovery_losses(id,reason,occurred) VALUES(?,?,?)", id, reason, at.Unix()); err != nil {
+		return err
+	}
+	slog.Warn("unattributed frame discarded during recovery", "frame_id", id, "reason", reason)
+	return os.RemoveAll(s.bundle(id))
+}
+func (s *Store) CaptureDiagnostic(camera, detail string) error {
+	_, err := s.db.Exec("UPDATE health SET capture_detail=? WHERE camera=?", detail, camera)
+	return err
+}
+func (s *Store) SetGatewayAuth(state string) error {
+	_, err := s.db.Exec("UPDATE health SET gateway_auth=?", state)
 	return err
 }

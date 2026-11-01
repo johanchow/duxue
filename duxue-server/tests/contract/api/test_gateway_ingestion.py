@@ -85,11 +85,17 @@ def test_gateway_upload_retries_keep_key_and_single_fact(client, gateway, db):
         "/gateway/frames", headers=headers, json={**body, "oss_key": target["oss_key"]}
     )
     assert committed.status_code == 201, committed.text
+    from app.infrastructure.persistence.models import GatewayUploadReservation
+
+    assert db.query(GatewayUploadReservation).count() == 0
     repeated = client.post(
         "/gateway/frames", headers=headers, json={**body, "oss_key": target["oss_key"]}
     )
     assert repeated.status_code == 200, repeated.text
     assert repeated.json()["id"] == committed.json()["id"]
+    renewed = client.post("/gateway/frames/upload-url", headers=headers, json=body)
+    assert renewed.status_code == 200
+    assert db.query(GatewayUploadReservation).count() == 0
     assert db.query(Frame).filter_by(ward_id=ward).count() == 1
     assert (
         db.query(OutboxEvent).filter_by(event_type="LearningFactRecorded.v1").count()
@@ -388,3 +394,70 @@ def test_erasing_ward_data_cannot_silently_reactivate_gateway(client, gateway, d
         == 1
     )
     assert not storage.exists(target["oss_key"])
+
+
+def test_cleanup_pages_old_reservations_and_retires_legacy_accepted_rows(db):
+    from datetime import timedelta
+
+    from app.application.commands.gateway_ingestion import CleanupGatewayUploads
+    from app.infrastructure.persistence.gateway_repository import SqlCaptureRepository
+    from app.infrastructure.persistence.models import GatewayUploadReservation
+
+    ward = Ward(id=str(uuid4()), display_name="cleanup", grade_stage="primary")
+    db.add(ward)
+    db.flush()
+    device = Device(ward_id=ward.id, gateway_id="cleanup", camera_id="cam")
+    db.add(device)
+    db.flush()
+    old = datetime.now(timezone.utc) - timedelta(hours=25)
+    reservations = [
+        GatewayUploadReservation(
+            gateway_id="cleanup",
+            frame_id=str(uuid4()),
+            device_id=device.id,
+            oss_key=f"cleanup/{i}",
+            fingerprint="0" * 64,
+            created_at=old,
+        )
+        for i in range(1007)
+    ]
+    accepted = reservations[0]
+    db.add_all(reservations)
+    db.add(
+        Frame(
+            gateway_id="cleanup",
+            gateway_frame_id=accepted.frame_id,
+            device_id=device.id,
+            ward_id=ward.id,
+            oss_key=accepted.oss_key,
+            captured_at=old,
+            purge_after=old + timedelta(days=90),
+        )
+    )
+    db.commit()
+
+    class RecordingStorage:
+        def __init__(self):
+            self.deleted = []
+
+        def delete(self, key):
+            self.deleted.append(key)
+
+    repository = SqlCaptureRepository(db)
+    original = repository.orphan_candidates
+    batches = []
+
+    def candidates(*args, **kwargs):
+        batch = original(*args, **kwargs)
+        batches.append(len(batch))
+        return batch
+
+    repository.orphan_candidates = candidates
+    storage = RecordingStorage()
+    assert (
+        CleanupGatewayUploads(repository, storage).run(datetime.now(timezone.utc))
+        == 1006
+    )
+    assert accepted.oss_key not in storage.deleted
+    assert batches == [500, 500, 7, 0]
+    assert db.query(GatewayUploadReservation).count() == 0

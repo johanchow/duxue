@@ -124,12 +124,12 @@ func (s *erasureSource) Latest(ctx context.Context) ([]byte, time.Time, error) {
 	s.calls++
 	if s.calls == 2 {
 		close(s.started)
+		defer close(s.returned)
 		select {
 		case <-ctx.Done():
 			return nil, time.Time{}, ctx.Err()
 		case <-s.release:
 		}
-		close(s.returned)
 	}
 	return []byte{255, 216, 1, 255, 217}, time.Now().UTC(), nil
 }
@@ -255,5 +255,144 @@ func TestDisabledRegistrationDoesNotPreventOtherCameraStarting(t *testing.T) {
 	health, err := store.Health()
 	if err != nil || len(health) != 1 || health[0].CapturedCount < 1 {
 		t.Fatalf("healthy camera failed to capture: %+v %v", health, err)
+	}
+}
+
+type closeObservedSource struct {
+	constantSource
+	closed chan struct{}
+	once   sync.Once
+}
+
+func (s *closeObservedSource) Close() error { s.once.Do(func() { close(s.closed) }); return nil }
+func TestRevocationClosesSourceBeforeGatewayShutdown(t *testing.T) {
+	c := testConfig(t)
+	c.IntervalSeconds = 1
+	c.Cameras = []application.CameraConfig{{ID: "cam", WardID: "ward"}}
+	store, err := OpenStore(c, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	source := &closeObservedSource{closed: make(chan struct{})}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/gateway/cameras":
+			_ = json.NewEncoder(w).Encode(map[string]any{"gateway_id": "home", "device_id": "device", "ward_id": "ward", "assignment_revision": 1})
+		case "/gateway/heartbeat":
+			w.WriteHeader(200)
+		default:
+			w.WriteHeader(403)
+			_, _ = w.Write([]byte(`{"error_code":"CAMERA_DISABLED"}`))
+		}
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	runner := application.Runner{Config: c, Repository: store, Cloud: NewCloud(server.URL, "token"), Sources: func(context.Context, application.CameraConfig) (application.Source, error) { return source, nil }, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	done := make(chan error, 1)
+	go func() { done <- runner.Run(ctx) }()
+	select {
+	case <-source.closed:
+	case <-time.After(3 * time.Second):
+		cancel()
+		<-done
+		t.Fatal("revoked source still streaming")
+	}
+	cancel()
+	if err = <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestTransientAPIUnauthorizedRecoversWithoutRestart(t *testing.T) {
+	c := testConfig(t)
+	c.IntervalSeconds = 1
+	c.Cameras = []application.CameraConfig{{ID: "cam", WardID: "ward"}}
+	store, err := OpenStore(c, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	var mu sync.Mutex
+	requests, commits := 0, 0
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/gateway/cameras":
+			_ = json.NewEncoder(w).Encode(map[string]any{"gateway_id": "home", "device_id": "device", "ward_id": "ward", "assignment_revision": 1})
+		case "/gateway/heartbeat":
+			w.WriteHeader(200)
+		case "/gateway/frames/upload-url":
+			mu.Lock()
+			requests++
+			n := requests
+			mu.Unlock()
+			if n == 1 {
+				w.WriteHeader(401)
+				return
+			}
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			_ = json.NewEncoder(w).Encode(application.Target{Key: "key/" + body["frame_id"].(string), URL: server.URL + "/object", ExpiresAt: time.Now().Add(time.Minute)})
+		case "/object":
+			w.WriteHeader(204)
+		case "/gateway/frames":
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			mu.Lock()
+			commits++
+			mu.Unlock()
+			_ = json.NewEncoder(w).Encode(application.Receipt{ID: "accepted", FrameID: body["frame_id"].(string)})
+		}
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+	runner := application.Runner{Config: c, Repository: store, Cloud: NewCloud(server.URL, "token"), Sources: func(context.Context, application.CameraConfig) (application.Source, error) {
+		return constantSource{}, nil
+	}, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	if err = runner.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if commits == 0 {
+		t.Fatal("a single 401 permanently froze uploads")
+	}
+}
+
+func TestPersistentUnauthorizedIsVisibleAndStopsAllCapture(t *testing.T) {
+	c := testConfig(t)
+	c.IntervalSeconds = 1
+	c.Cameras = []application.CameraConfig{{ID: "cam", WardID: "ward"}}
+	store, err := OpenStore(c, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	source := &closeObservedSource{closed: make(chan struct{})}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/gateway/cameras" {
+			_ = json.NewEncoder(w).Encode(map[string]any{"gateway_id": "home", "device_id": "device", "ward_id": "ward", "assignment_revision": 1})
+			return
+		}
+		w.WriteHeader(401)
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+	defer cancel()
+	runner := application.Runner{Config: c, Repository: store, Cloud: NewCloud(server.URL, "token"), Sources: func(context.Context, application.CameraConfig) (application.Source, error) { return source, nil }, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	if err = runner.Run(ctx); err == nil {
+		t.Fatal("persistent bad credentials did not stop gateway")
+	}
+	select {
+	case <-source.closed:
+	default:
+		t.Fatal("capture remained running after auth failure")
+	}
+	health, err := store.Health()
+	if err != nil || len(health) != 1 || health[0].GatewayAuth != "required" || health[0].Error != "gateway_auth_required" {
+		t.Fatalf("authentication state not explicit: %+v %v", health, err)
 	}
 }

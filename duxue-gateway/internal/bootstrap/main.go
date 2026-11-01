@@ -19,6 +19,9 @@ func Execute(ctx context.Context, args []string, out, stderr io.Writer) int {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(stderr, nil)))
 	if err := execute(ctx, args, out); err != nil {
 		fmt.Fprintln(stderr, err)
+		if errors.Is(err, application.ErrGatewayAuthentication) {
+			return 78
+		}
 		return 1
 	}
 	return 0

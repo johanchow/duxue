@@ -49,6 +49,7 @@ class CaptureRepository(Protocol):
         *,
         require_existing: bool = False,
     ) -> None: ...
+    def delete_reservation(self, gateway_id: str, frame_id: str) -> None: ...
     def heartbeat(
         self,
         gateway_id: str,
@@ -130,7 +131,8 @@ class GatewayCommands:
             existing = self.frames.accepted(evidence)
             if existing:
                 existing.assert_same(evidence, key)
-            self.repository.reserve(camera, evidence, key)
+            else:
+                self.repository.reserve(camera, evidence, key)
         url, expires, headers = self.storage.upload_url(
             key, base_url, "image/jpeg", immutable=True
         )
@@ -180,11 +182,11 @@ class GatewayCommands:
             camera = self._camera(
                 actor, evidence.camera_id, evidence.ward_id, evidence.revision
             )
-            self.repository.reserve(camera, evidence, key, require_existing=True)
             existing = self.frames.accepted(evidence)
             if existing:
                 existing.assert_same(evidence, key)
                 return existing, False
+            self.repository.reserve(camera, evidence, key, require_existing=True)
             frame = self.frames.add_frame(camera, evidence, key)
             self.repository.audit("FrameAccepted", frame.id, evidence.ward_id)
             self.repository.publish_fact(
@@ -196,6 +198,7 @@ class GatewayCommands:
                 source="cam",
                 payload={"device_id": camera.device_id},
             )
+            self.repository.delete_reservation(actor.gateway_id, evidence.frame_id)
             return frame, True
 
     def heartbeat(
@@ -228,15 +231,17 @@ class CleanupGatewayUploads:
         from datetime import timedelta
 
         removed = 0
-        for gateway_id, frame_id, key in self.repository.orphan_candidates(
-            current - timedelta(hours=24)
+        cursor = None
+        while batch := self.repository.orphan_candidates(
+            current - timedelta(hours=24), after=cursor, limit=500
         ):
-            with self.repository.transaction(f"frame:{gateway_id}:{frame_id}"):
-                claimed = self.repository.mark_orphan(gateway_id, frame_id)
-            if not claimed:
-                continue
-            self.storage.delete(key)
-            with self.repository.transaction(f"frame:{gateway_id}:{frame_id}"):
-                self.repository.delete_reservation(gateway_id, frame_id)
-            removed += 1
+            for gateway_id, frame_id, key in batch:
+                with self.repository.transaction(f"frame:{gateway_id}:{frame_id}"):
+                    claimed = self.repository.mark_orphan(gateway_id, frame_id)
+                if claimed:
+                    self.storage.delete(key)
+                    with self.repository.transaction(f"frame:{gateway_id}:{frame_id}"):
+                        self.repository.delete_reservation(gateway_id, frame_id)
+                    removed += 1
+            cursor = batch[-1][:2]
         return removed

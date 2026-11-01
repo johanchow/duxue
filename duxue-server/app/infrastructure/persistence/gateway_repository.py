@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from dataclasses import asdict
 from datetime import timezone
 
-from sqlalchemy import text
+from sqlalchemy import and_, or_, text
 
 from app.application.commands.gateway_ingestion import GatewayError
 from app.contexts.ingestion.domain.gateway import (
@@ -206,13 +206,29 @@ class SqlCaptureRepository:
             )
             device.last_heartbeat_at = current
 
-    def orphan_candidates(self, cutoff):
-        return [
-            (r.gateway_id, r.frame_id, r.oss_key)
-            for r in self.db.query(GatewayUploadReservation)
-            .filter(GatewayUploadReservation.created_at < cutoff)
+    def orphan_candidates(self, cutoff, *, after=None, limit=500):
+        query = self.db.query(
+            GatewayUploadReservation.gateway_id,
+            GatewayUploadReservation.frame_id,
+            GatewayUploadReservation.oss_key,
+        ).filter(GatewayUploadReservation.created_at < cutoff)
+        if after:
+            query = query.filter(
+                or_(
+                    GatewayUploadReservation.gateway_id > after[0],
+                    and_(
+                        GatewayUploadReservation.gateway_id == after[0],
+                        GatewayUploadReservation.frame_id > after[1],
+                    ),
+                )
+            )
+        return (
+            query.order_by(
+                GatewayUploadReservation.gateway_id, GatewayUploadReservation.frame_id
+            )
+            .limit(limit)
             .all()
-        ]
+        )
 
     def mark_orphan(self, gateway_id, frame_id):
         row = self.db.get(GatewayUploadReservation, (gateway_id, frame_id))
@@ -224,13 +240,15 @@ class SqlCaptureRepository:
             .first()
         )
         if existing:
+            # Retire reservations left by an older server, never its object.
+            self.delete_reservation(gateway_id, frame_id)
             return False
         row.purging = True
         return True
 
     def delete_reservation(self, gateway_id, frame_id):
         self.db.query(GatewayUploadReservation).filter_by(
-            gateway_id=gateway_id, frame_id=frame_id, purging=True
+            gateway_id=gateway_id, frame_id=frame_id
         ).delete(synchronize_session=False)
 
     def audit(self, event_type, aggregate_id, ward_id):

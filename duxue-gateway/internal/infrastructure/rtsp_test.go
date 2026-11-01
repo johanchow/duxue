@@ -83,6 +83,10 @@ func serveSyntheticRTSP(parent context.Context, conn net.Conn, nals [][]byte) {
 			return
 		}
 		method, _, _ := strings.Cut(line, " ")
+		if headers.Get("Authorization") != "Basic "+base64.StdEncoding.EncodeToString([]byte("fixture-user:password'with:@/plus+")) {
+			_, _ = fmt.Fprintf(conn, "RTSP/1.0 401 Unauthorized\r\nCSeq: %s\r\nWWW-Authenticate: Basic realm=\"fixture\"\r\nContent-Length: 0\r\n\r\n", headers.Get("Cseq"))
+			continue
+		}
 		body := ""
 		extra := ""
 		switch method {
@@ -178,7 +182,9 @@ func TestRTSPProductionAdapterDecodesSyntheticH264(t *testing.T) {
 	acceptDone := make(chan struct{})
 	go func() { defer close(acceptDone); syntheticRTSP(ctx, listener, nals, &sessions) }()
 	defer func() { cancel(); listener.Close(); <-acceptDone; sessions.Wait() }()
-	source, err := SourceFactory(ffmpeg)(ctx, application.CameraConfig{Source: application.SourceConfig{Kind: "rtsp", URL: "rtsp://" + listener.Addr().String() + "/stream"}})
+	t.Setenv("FIXTURE_CAMERA_USER", "fixture-user")
+	t.Setenv("FIXTURE_CAMERA_PASSWORD", "password'with:@/plus+")
+	source, err := SourceFactory(ffmpeg)(ctx, application.CameraConfig{Source: application.SourceConfig{Kind: "rtsp", URL: "rtsp://" + listener.Addr().String() + "/stream", UsernameEnv: "FIXTURE_CAMERA_USER", PasswordEnv: "FIXTURE_CAMERA_PASSWORD"}})
 	if err != nil {
 		t.Fatal(err)
 	}

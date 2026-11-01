@@ -12,16 +12,21 @@ import (
 	"github.com/johanchow/duxue/duxue-gateway/internal/domain"
 )
 
+var ErrGatewayAuthentication = errors.New("gateway authentication required; update credentials and restart")
+
 type Runner struct {
-	Config     Config
-	Repository Repository
-	Cloud      Cloud
-	Sources    SourceFactory
-	Log        *slog.Logger
-	blocked    atomic.Bool
-	mu         sync.Mutex
-	stopped    map[string]bool
-	gatewayID  string
+	Config        Config
+	Repository    Repository
+	Cloud         Cloud
+	Sources       SourceFactory
+	Log           *slog.Logger
+	blocked       atomic.Bool
+	mu            sync.Mutex
+	stopped       map[string]bool
+	gatewayID     string
+	sourceCancels map[string]context.CancelFunc
+	authWake      chan struct{}
+	fatal         chan error
 }
 
 func wait(ctx context.Context, d time.Duration) bool {
@@ -39,7 +44,15 @@ func (r *Runner) stoppedCamera(id string) bool {
 	defer r.mu.Unlock()
 	return r.stopped[id]
 }
-func (r *Runner) stopCamera(id string) { r.mu.Lock(); defer r.mu.Unlock(); r.stopped[id] = true }
+func (r *Runner) stopCamera(id string) {
+	r.mu.Lock()
+	r.stopped[id] = true
+	cancel := r.sourceCancels[id]
+	r.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+}
 func (r *Runner) Run(parent context.Context) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -47,6 +60,10 @@ func (r *Runner) Run(parent context.Context) error {
 		r.Log = slog.Default()
 	}
 	r.stopped = map[string]bool{}
+	r.sourceCancels = map[string]context.CancelFunc{}
+	r.authWake = make(chan struct{}, 1)
+	r.fatal = make(chan error, 1)
+	r.blocked.Store(false)
 	regs := map[string]domain.Registration{}
 	// Restore orphan bundles before contacting the API, so erasure also covers them.
 	for _, cam := range r.Config.Cameras {
@@ -62,8 +79,11 @@ func (r *Runner) Run(parent context.Context) error {
 	// Revalidate registration; a source-specific revocation does not stop peers.
 	for _, cam := range r.Config.Cameras {
 		cached, cacheErr := r.Repository.Registration(cam.ID)
-		reg, err := r.Cloud.Register(ctx, cam)
+		reg, err := r.register(ctx, cam)
 		if err != nil {
+			if errors.Is(err, ErrGatewayAuthentication) {
+				return err
+			}
 			var remote *RemoteError
 			if errors.As(err, &remote) && (remote.Code == "WARD_DELETED" || remote.Code == "WARD_DATA_ERASED") {
 				if purgeErr := r.Repository.DropCamera(cam.ID, "ward_erased"); purgeErr != nil {
@@ -93,19 +113,24 @@ func (r *Runner) Run(parent context.Context) error {
 	if len(regs) == 0 {
 		return errors.New("no authorized cameras; remove inactive sources or explicitly configure a new camera ID")
 	}
+	if err := r.Repository.SetGatewayAuth(""); err != nil {
+		return err
+	}
 	var wg sync.WaitGroup
 	start := func(f func()) { wg.Add(1); go func() { defer wg.Done(); f() }() }
 	for _, cam := range r.Config.Cameras {
 		if r.stoppedCamera(cam.ID) {
 			continue
 		}
-		source, err := r.Sources(ctx, cam)
+		sourceCtx, sourceCancel := context.WithCancel(ctx)
+		r.sourceCancels[cam.ID] = sourceCancel
+		source, err := r.Sources(sourceCtx, cam)
 		if err != nil {
 			cancel()
 			wg.Wait()
 			return err
 		}
-		start(func() { defer source.Close(); r.collect(ctx, cam, regs[cam.ID], source) })
+		start(func() { defer source.Close(); r.collect(sourceCtx, cam, regs[cam.ID], source) })
 	}
 	for range 2 {
 		start(func() { r.upload(ctx) })
@@ -118,9 +143,14 @@ func (r *Runner) Run(parent context.Context) error {
 			}
 		}
 	})
-	<-ctx.Done()
+	var result error
+	select {
+	case <-ctx.Done():
+	case result = <-r.fatal:
+	}
+	cancel()
 	wg.Wait()
-	return nil
+	return result
 }
 func (r *Runner) collect(ctx context.Context, cam CameraConfig, reg domain.Registration, source Source) {
 	interval := time.Duration(r.Config.IntervalSeconds) * time.Second
@@ -147,12 +177,17 @@ func (r *Runner) collect(ctx context.Context, cam CameraConfig, reg domain.Regis
 			}
 		}
 		if r.stoppedCamera(cam.ID) {
-			continue
+			return
 		}
 		data, at, err := source.Latest(ctx)
 		if err != nil {
+			if ctx.Err() != nil {
+				return
+			}
 			_ = r.Repository.CaptureHealth(cam.ID, time.Now(), false, "capture_failed")
-			r.Log.Warn("camera capture failed", "camera_id", cam.ID)
+			// Source errors are bounded and redacted by the capture adapter.
+			_ = r.Repository.CaptureDiagnostic(cam.ID, err.Error())
+			r.Log.Warn("camera capture failed", "camera_id", cam.ID, "detail", err.Error())
 			continue
 		}
 		if at.IsZero() || time.Since(at) > 5*time.Second || at.After(time.Now().Add(time.Second)) {
@@ -266,7 +301,9 @@ func (r *Runner) upload(ctx context.Context) {
 				delay = remote.RetryAfter
 			}
 			if remote.Status == 401 && remote.Origin != "object" {
-				r.blocked.Store(true)
+				permanent = false
+				code = "gateway_auth_retrying"
+				r.pauseAuthentication()
 			}
 			if remote.Status == 403 && remote.Origin != "object" {
 				r.stopCamera(frame.CameraID)
@@ -279,37 +316,104 @@ func (r *Runner) upload(ctx context.Context) {
 		r.Log.Warn("frame delivery deferred", "camera_id", frame.CameraID, "frame_id", frame.ID, "blocked", permanent)
 	}
 }
+func (r *Runner) register(ctx context.Context, cam CameraConfig) (domain.Registration, error) {
+	for attempt := 1; ; attempt++ {
+		reg, err := r.Cloud.Register(ctx, cam)
+		var remote *RemoteError
+		if !errors.As(err, &remote) || remote.Status != 401 || remote.Origin == "object" {
+			return reg, err
+		}
+		_ = r.Repository.SetGatewayAuth("retrying")
+		if attempt >= 3 {
+			_ = r.Repository.SetGatewayAuth("required")
+			return reg, ErrGatewayAuthentication
+		}
+		if !wait(ctx, retryBackoff(attempt)) {
+			return reg, ctx.Err()
+		}
+	}
+}
+func (r *Runner) pauseAuthentication() {
+	r.blocked.Store(true)
+	_ = r.Repository.SetGatewayAuth("retrying")
+	select {
+	case r.authWake <- struct{}{}:
+	default:
+	}
+}
 func (r *Runner) heartbeat(ctx context.Context) {
 	boot := domain.UUID()
 	sequence := 0
+	failures := 0
+	unauthorized := 0
 	for ctx.Err() == nil {
-		if !r.blocked.Load() {
-			health, err := r.Repository.Health()
-			if err == nil {
-				// Only active configuration is reported; removed sources may have historical queues.
-				active := map[string]bool{}
-				for _, c := range r.Config.Cameras {
-					active[c.ID] = true
+		health, err := r.Repository.Health()
+		if err == nil {
+			active := map[string]bool{}
+			for _, c := range r.Config.Cameras {
+				active[c.ID] = true
+			}
+			filtered := []CameraHealth{}
+			for _, h := range health {
+				if active[h.CameraID] && !r.stoppedCamera(h.CameraID) {
+					filtered = append(filtered, h)
 				}
-				filtered := []CameraHealth{}
-				for _, h := range health {
-					if active[h.CameraID] && !r.stoppedCamera(h.CameraID) {
-						filtered = append(filtered, h)
+			}
+			sequence++
+			err = r.Cloud.Heartbeat(ctx, boot, sequence, filtered)
+		}
+		delay := 60 * time.Second
+		if err == nil {
+			failures = 0
+			unauthorized = 0
+			_ = r.Repository.SetGatewayAuth("")
+			r.blocked.Store(false)
+		} else {
+			failures++
+			var remote *RemoteError
+			if errors.As(err, &remote) && remote.Status == 401 && remote.Origin != "object" {
+				unauthorized++
+				r.blocked.Store(true)
+				_ = r.Repository.SetGatewayAuth("retrying")
+				if unauthorized >= 3 {
+					_ = r.Repository.SetGatewayAuth("required")
+					r.Log.Error("gateway authentication rejected repeatedly; update credentials and restart")
+					select {
+					case r.fatal <- ErrGatewayAuthentication:
+					case <-ctx.Done():
+					}
+					return
+				}
+			} else {
+				unauthorized = 0
+			}
+			if errors.As(err, &remote) && remote.Status == 403 {
+				// Heartbeat may contain multiple cameras; revalidate to identify the revoked one.
+				for _, cam := range r.Config.Cameras {
+					if r.stoppedCamera(cam.ID) {
+						continue
+					}
+					_, checkErr := r.Cloud.Register(ctx, cam)
+					var denied *RemoteError
+					if errors.As(checkErr, &denied) && denied.Status == 403 {
+						r.stopCamera(cam.ID)
+						if denied.Code == "WARD_DELETED" || denied.Code == "WARD_DATA_ERASED" {
+							_ = r.Repository.DropCamera(cam.ID, "ward_erased")
+						}
 					}
 				}
-				sequence++
-				err = r.Cloud.Heartbeat(ctx, boot, sequence, filtered)
-				var remote *RemoteError
-				if errors.As(err, &remote) && remote.Status == 401 {
-					r.blocked.Store(true)
-				}
 			}
-			if err != nil {
-				r.Log.Warn("gateway heartbeat failed")
-			}
+			delay = retryBackoff(failures)
+			r.Log.Warn("gateway heartbeat failed", "auth_paused", r.blocked.Load())
 		}
-		if !wait(ctx, 60*time.Second) {
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
 			return
+		case <-r.authWake:
+			timer.Stop()
+		case <-timer.C:
 		}
 	}
 }

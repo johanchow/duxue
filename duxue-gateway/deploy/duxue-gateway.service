@@ -12,6 +12,7 @@ WorkingDirectory=/var/lib/duxue-gateway
 EnvironmentFile=/etc/duxue-gateway/credentials.env
 ExecStart=/opt/duxue-gateway/duxue-gateway run -config /etc/duxue-gateway/config.yaml
 Restart=on-failure
+RestartPreventExitStatus=78
 RestartSec=5
 TimeoutStopSec=20
 UMask=0077
