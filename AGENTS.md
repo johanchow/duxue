@@ -87,7 +87,7 @@ duxue/                          # 项目根目录
 
 | 文档 | 路径 | 内容摘要 |
 |------|------|---------|
-| 摄像头与网关设计 | [`docs/technical/design-cam.md`](docs/technical/design-cam.md) | 标准摄像头接入、共享网关、OSS 直传、持久队列与实验验收；网关待实现 |
+| 采集网关技术架构 | [`docs/technical/design-gateway.md`](docs/technical/design-gateway.md) | 标准摄像头接入、共享网关、OSS 直传、持久队列与实验验收；网关待实现 |
 
 ### 读学App（duxue-app）
 

@@ -80,7 +80,7 @@ duxue-app/
 │       ├── guardian_pass/           # 家长端：作业与通知传递、多模态智能拆解
 │       ├── guardian_action/         # 家长端：睡前正向沟通建议、协商发起
 │       ├── guardian_coguardian/     # 家长端：共管邀请生成、扫码预览接受、成员治理
-│       └── device/                  # 设备管理：摄像头绑定码、网关代理接入与采集状态（见 design-cam.md）
+│       └── device/                  # 设备管理：摄像头绑定码、网关代理接入与采集状态（见 design-gateway.md）
 ```
 
 ---
@@ -377,7 +377,7 @@ graph TD
 | `authNotifierProvider` | `Notifier<AuthState>` | 无 | 全局认证状态、角色持久化与退出注销 |
 | `currentWardNotifierProvider` | `Notifier<Ward?>` | 无 | Guardian 模式下当前激活的学生实体 |
 | `guardianDailyReportProvider` | `FutureProvider` | `wardId`, `date` | 按日期缓存拉取双轨复盘报告，自评提交后自动失效更新 |
-| `deviceHeartbeatStreamProvider`| `StreamProvider` | `wardId` | 每 60 秒轮询设备接入状态；当前心跳只证明网关到云端可达，摄像头采集健康明细待扩展（见 design-cam.md） |
+| `deviceHeartbeatStreamProvider`| `StreamProvider` | `wardId` | 每 60 秒轮询设备接入状态；当前心跳只证明网关到云端可达，摄像头采集健康明细待扩展（见 design-gateway.md） |
 | `tutoringStreamProvider` | `StreamNotifier` | `sessionId` | 伴学问答 SSE 流式打字机控制器与当前交互状态 |
 
 ---

@@ -157,7 +157,7 @@ Python 端使用 OTEL Log Bridge，structlog 日志经 OTLP 导出到 Loki，每
 
 ### 4.2 采集网关（待实现）
 
-网关需要记录逐摄像头采图成功/失败、上传与重试、队列帧数/字节数、丢弃帧数和最后成功时间。指标与健康语义见 [采集设计](technical/design-cam.md#45-健康与可观测性)。先落地本地诊断，再按运维需要接入 OTEL；现有心跳不支持上传这些明细。
+网关需要记录逐摄像头采图成功/失败、上传与重试、队列帧数/字节数、丢弃帧数和最后成功时间。指标与健康语义见 [采集设计](technical/design-gateway.md#47-infrastructure-design-card)。先落地本地诊断，再按运维需要接入 OTEL；现有心跳不支持上传这些明细。
 
 ### 4.3 duxue-app（Flutter / Dart）
 
@@ -283,7 +283,7 @@ Grafana 的 HTTP 父 span、OTLP log / stdout JSON 日志包含运行关联 ID�
 
 ### 7.2 采集网关配置（待实现）
 
-网关使用运行时配置与受限凭证存储，部署时再确定 OTLP endpoint、认证与采样参数；不将敏感配置编译进移动端 APK。具体实现以 [采集设计](technical/design-cam.md) 为准。
+网关使用运行时配置与受限凭证存储，部署时再确定 OTLP endpoint、认证与采样参数；不将敏感配置编译进移动端 APK。具体实现以 [采集设计](technical/design-gateway.md) 为准。
 
 ### 7.3 duxue-app（Flutter 环境变量 / dart-define）
 

@@ -813,21 +813,21 @@ graph TD
 
 ### 7.2 采集设备接入 (Devices & Frames)
 
-目标拓扑为标准摄像头 + 本地共享网关。采集方式、队列、时间与验收唯一维护于 [采集设计](design-cam.md)。以下为当前 `app/api/v1/device_ingestion.py` 已注册接口，路径相对 `/api/v1`；本次仅更新设计，未修改接口实现。
+目标拓扑为标准摄像头 + 本地共享网关。采集方式、队列、时间与验收唯一维护于 [采集设计](design-gateway.md)。家庭验证目标已改为人工配置摄像头与 Ward、统一网关认证，无绑定码；目标协议唯一见 [采集设计 §4.5](design-gateway.md#45-interface目标云端协议全部待实现)，尚未实现。以下只记录当前 `app/api/v1/device_ingestion.py` 已注册的逐设备认证接口，路径相对 `/api/v1`；本次仅更新设计，未修改接口实现。
 
-| 接口 | 当前行为与网关复用方式 |
+| 接口 | 当前行为（旧逐设备认证方式） |
 |---|---|
 | `POST /wards/{ward_id}/devices/invite` | Guardian 为已授权 Ward 生成一次性绑定码与逻辑 Device |
-| `POST /devices/bind` | 网关输入该摄像头绑定码，换取 `device_id`、`device_token` 和采样间隔；`elapsed_realtime` 可省略 |
+| `POST /devices/bind` | 旧采集客户端输入该摄像头绑定码，换取 `device_id`、`device_token` 和采样间隔；`elapsed_realtime` 可省略 |
 | `GET /wards/{ward_id}/devices` | 返回已绑定设备及心跳推算的在线状态，当前不包含摄像头采图健康明细 |
 | `DELETE /devices/{device_id}` | Guardian 撤销该设备凭证 |
 | `POST /frames/upload-url` | 使用该摄像头设备凭证，逐帧申请预签名 URL、OSS key 和上传 headers；当前不是批量接口 |
 | `POST /frames` | OSS 上传完成后提交 `oss_key`、UTC `captured_at`；`elapsed_realtime`、`study_session_id` 可省略；按 OSS key 去重 |
-| `POST /devices/heartbeat` | 网关逐设备每 60s 调用；当前无请求体，只刷新接入存活并返回采样间隔及服务端时间 |
+| `POST /devices/heartbeat` | 旧采集客户端逐设备每 60s 调用；当前无请求体，只刷新接入存活并返回采样间隔及服务端时间 |
 
-**当前可复用边界**：每个摄像头一份设备凭证，网关按对应凭证调用接口。帧不要求有显式学习会话。网关不持有 OSS 长期密钥。上传和提交失败后须保存对象 key 继续重试，不能重复上传生成新证据。
+**当前可复用边界**：OSS 存储适配、Frame 模型、可空 StudySession 与既有事实发布基础设施可复用；当前认证和上传请求不能直接接受网关 Token 或由客户端自报 Ward。旧接口维持兼容，目标接口并行新增。
 
-**产品化待实现**：网关独立身份与摄像头关联、批量配置、逐摄像头采集健康、工位换座生效区间和凭证轮换授权。`Device.device_type` 目前默认历史值，绑定请求无法指定类型，实施时需要补充类型与迁移；不将目标字段写成当前数据库已实现能力。现有 24h 时间修正和跨设备 key 所有权校验仍需在扩大部署前完善；最小实验限制历史缓存时长并使用可信网关。
+**实施范围**：网关认证、摄像头登记、幂等上传预约、Frame 接收、健康上报及数据库迁移，以 [采集设计](design-gateway.md) 的领域与基础设施契约为准；本节不复制其目标字段和协议。旧类型默认值、时间修正与对象所有权校验差异须在实施中显式处理，文档更新不代表迁移完成。
 
 ### 7.3 伴学与启发答疑 (Companion & Tutoring)
 - `POST /api/v1/companion/tutoring-sessions`：开启某任务的答疑会话；

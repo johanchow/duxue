@@ -81,4 +81,4 @@ https://$DEPLOY_SERVER_HOST/api/health
 
 本地没有 `KEYSTORE_FILE` 时，release 构建仍用 debug 签名，方便 `flutter run --release`。
 
-Server 与 App 的 CI/CD 由上述工作流维护。标准摄像头采集网关尚未实现，部署方案见 [采集设计](technical/design-cam.md)，当前没有网关发布工作流。
+Server 与 App 的 CI/CD 由上述工作流维护。标准摄像头采集网关尚未实现，部署方案见 [采集设计](technical/design-gateway.md)，当前没有网关发布工作流。

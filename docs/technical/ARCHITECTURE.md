@@ -22,12 +22,12 @@
 
 | 端 / 模块 | 实现位置 | 职责与关键设计 |
 |---|---|---|
-| **读学Eye：摄像头与共享采集网关** | 标准摄像头 + 待实现的 `duxue-gateway/` | 局域网采图、持久缓存、OSS 直传；配置与验收唯一维护于 [采集设计](design-cam.md) |
+| **读学Eye：摄像头与共享采集网关** | 标准摄像头 + 待实现的 `duxue-gateway/` | 局域网采图、持久缓存、OSS 直传；配置与验收唯一维护于 [采集设计](design-gateway.md) |
 | **读学App** | `duxue-app/` | Ward 按需答疑、可选计划与自由总结；Guardian 查看设备健康和晚间报告，Coach 工作台按产品路线演进 |
 | **Server** | `duxue-server/` | 接入鉴权、行为分析、启发答疑、客观报告与记忆底座 |
 | **Admin** | `duxue-admin/`（待建设） | 内部运维、算法验证和数据治理工具 |
 
-> 本文采集拓扑为目标设计，网关尚未实现。现有设备 API 可复用，机构批量管理与无计划自动会话还原需分别实现和验收。产品文档与接入手册已同步采集路线。
+> 本文采集拓扑为目标设计，网关尚未实现。现有 OSS/Frame 基础设施可复用；家庭验证采用人工配置摄像头与 Ward、统一网关认证，其新增接口尚待实现，协议见 [采集设计](design-gateway.md)。机构批量管理与无计划自动会话还原需分别实现和验收。产品文档与接入手册已同步采集路线。
 
 ---
 
@@ -157,7 +157,7 @@ async def verify_ward_access(
                            当晚实况单 + 独立解题凭证
 ```
 
-采集验收、采样预算和恢复边界见 [采集设计](design-cam.md#五最小实验与验收)。行为分析与自动会话分段属于云端后续实现；报告版本与主客观隔离见 [Evaluation](domain-evaluation.md)。现有任务完成事件可作为增强触发，不能成为零计划场景的唯一入口。
+采集验收、采样预算和恢复边界见 [采集设计](design-gateway.md#五最小实验与验收)。行为分析与自动会话分段属于云端后续实现；报告版本与主客观隔离见 [Evaluation](domain-evaluation.md)。现有任务完成事件可作为增强触发，不能成为零计划场景的唯一入口。
 
 ## 六、关键技术决策
 
@@ -177,7 +177,7 @@ async def verify_ward_access(
    - 服务端提取的 `structured_fields`、`frame_predictions`、`behavior_segments` 体积极小且无生物特征，长期保留；
    - 语音提问的音频切片在内存转写后，**24 小时内物理销毁**。
 2. **防作弊与安全防护**：
-   - 网关按摄像头隔离保存 `device_token`，使用受限文件权限或系统凭证存储；摄像头本地密码不传云端，OSS 长期密钥仅服务端持有；
+   - 家庭实验网关使用一份受限云端凭证，服务端校验 Ward 白名单；凭证使用受限文件权限或系统凭证存储。摄像头本地密码不传云端，OSS 长期密钥仅服务端持有；配置与授权契约见 [采集设计](design-gateway.md)；
    - 预签名 PUT URL 使用短有效期并绑定 Object Key；文件类型和大小限制需在上传策略与帧入库校验中落实，不能只依靠客户端配置；
    - 启发式答疑网关由答案保护规则与出口检查约束，100% 拦截“直接要答案/整篇代写”等作弊请求；引导方式按孩子的实际卡点判断，不设固定等级。
 3. **法定监护人知情与被遗忘权**：
@@ -195,5 +195,5 @@ async def verify_ward_access(
 - **孩子理解引擎与记忆系统 PRD**：[`docs/product/prd-memory.md`](../product/prd-memory.md)
 - **服务端详细技术设计**：[`docs/technical/design-server.md`](design-server.md)
 - **App端详细技术设计**：[`docs/technical/design-app.md`](design-app.md)
-- **标准摄像头与采集网关详细技术设计**：[`docs/technical/design-cam.md`](design-cam.md)
+- **标准摄像头与采集网关详细技术设计**：[`docs/technical/design-gateway.md`](design-gateway.md)
 - **摄像设备接入与操作手册**：[`docs/camera-setup-guide.md`](../camera-setup-guide.md)
