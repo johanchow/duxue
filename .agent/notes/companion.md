@@ -11,6 +11,7 @@ Ward 可见对话是 Companion 的 append-only 账本，统一走 `/companion/tu
 - 已落地：消息账本、协议信封、确认卡、历史分页、按需看图、清空可见历史、场景切换核查、三选一澄清、按住说话。
 - 流式增量不落库；只有通过检查的最终结果写入一条回复。
 - `tutoring_messages` 未并入本账本。
+- 2026-11-01 `help_offer` 为[目标协议扩展](../../docs/technical/domain-companion.md#522-关闭的-kind-清单)，未进入当前 v1 allow-list；送达必须遵循回复权和前台回执，求助策略由 Study 拥有。
 
 ## 决策
 

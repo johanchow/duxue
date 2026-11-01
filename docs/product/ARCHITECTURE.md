@@ -194,7 +194,7 @@ graph TB
 | **启发式答疑与表达** | [`prd-companion.md`](prd-companion.md) | [`domain-tutoring.md`](../technical/domain-tutoring.md)<br/>[`domain-tutoring-presentation.md`](../technical/domain-tutoring-presentation.md)<br/>[`eval-offline.md`](../technical/eval-offline.md) | **主链路已落地**。含答案保护许可、独立泄露裁判、5 种结构化配图、发音 `pronounce` 与离线评测。 |
 | **协商式计划** | [`prd-schedule.md`](prd-schedule.md) | [`domain-planning.md`](../technical/domain-planning.md) | **已落地**。任务池与入日程分离，定位为**弱约束可选增强**，不阻塞答疑与观察报告交付。 |
 | **学习执行与到点邀请** | [`prd-companion.md`](prd-companion.md) | [`domain-study.md`](../technical/domain-study.md) | **已落地**。含 `StudySession` 状态机与 `StartCue` 到点开始邀请卡片。 |
-| **学习观察与行为采集** | [`prd-supervise.md`](prd-supervise.md) | [`design-gateway.md`](../technical/design-gateway.md) | **Go采集主链路已实现，待家庭现场验收**。标准摄像头 + 共享采集网关；家庭采用手动摄像头/Ward配置与统一网关认证，云端新接入接口已实现。 |
+| **学习观察与行为采集** | [`prd-supervise.md`](prd-supervise.md) | [`design-gateway.md`](../technical/design-gateway.md)<br/>[`domain-behavior.md`](../technical/domain-behavior.md) | Go采集主链路已实现，真实摄像头/OSS待现场验收；云端窗口解释、无计划观察学段与版本化观察已有目标设计，尚未实现。求助邀请与晚间报告扩展分别归 Study / Evaluation。 |
 | **结果评估与复盘引导** | [`prd-evaluate.md`](prd-evaluate.md) | [`domain-evaluation.md`](../technical/domain-evaluation.md) | **部分落地**。Ward 自由语音/文字总结（六维条目）已落地，旧版“单选题盲评+自动专注锦囊”已退役；客观证据版本化报告待完善。 |
 | **孩子理解与记忆系统** | [`prd-memory.md`](prd-memory.md) | [`domain-memory.md`](../technical/domain-memory.md) | **底座已落地**。严格区分客观教学/行为事实与主观自述（自述不写入 Memory）。 |
 | *历史归档与外部分享* | — | — | **已取消独立模块**。坚决不做任务结束拍照上传作业的形式主义打卡。 |

@@ -41,6 +41,14 @@
 
 - 2026-11-01 用户确认采集网关采用Go + FFmpeg + SQLite，在同仓库独立module实现；服务端继续Python。技术选型已同步[网关架构](../../docs/technical/design-gateway.md)，实现计划见[进行中spec](../specs/go-camera-gateway.md)，Gate 1已确认，现已实现；实际测试证据与家庭现场验收进度保留在该spec。
 
+- 2026-11-01 产品目标与采图链路分析：现有 `legacy_services.analyze_and_generate` 缺模型结果时仍写默认在座字段并标记 analyzed，`RuleClassifier` 使用关键词且默认归为走神/玩耍，不能作为可靠客观报告的依据；后续行为分析设计需保留未知/缺失，开放语义交模型判断。现有每日批处理不足以支持学习中卡壳提示；无计划观察学段应与显式 StudySession 区分。另需协调 [Evaluation](../../docs/technical/domain-evaluation.md) 的自述确认后报告流程与[产品架构](../../docs/product/ARCHITECTURE.md)的零自述晚间必达要求；本轮仅分析，未修改业务行为或确认新实现方案。
+
+- 2026-11-01 按 DDD skill 编写云端观察目标方案，事实源：[Behavior Analysis](../../docs/technical/domain-behavior.md)。窗口解释/观察日分别为事务边界；接入依赖目标证据 Query，不增加网关分析事件；求助邀请归 Study，零自述报告归 Evaluation，交互协议归 Companion。DDD 总览已改为单层 Domain 命名。设计未实现，默认阈值待标注验证；后续实施需独立 spec，勿将本轮文档或并行中的网关改动视为云端能力完成。
+- 2026-11-01 用户要求 Aggregate Root 统一用域内数量及边界/职责汇总，取消逐 Root 的 Identity/子实体等清单；已同步 [DDD skill](../../.cursor/skills/domain-driven-design/SKILL.md) 和模板。观察设计已明确分钟解释、当天连续归并与故障对账的区别；帮助候选扩展为 SupportCandidate，语义判断与阈值累计分开，细节仍归对应领域设计。
+- 2026-11-01 观察方案复核：术语统一为分析任务；取消独立五分钟全量比对，正常链路以原子任务/Outbox 即时推动，每分钟仅恢复到期或失效租约任务。连续性累计、语义评估与实际呈现门禁分开，详见 [Behavior §2.5/§3.2](../../docs/technical/domain-behavior.md#25-持续状态累计与帮助机会判定)；新增的是设计与伪代码，服务端尚无自动递梯子/回归邀请实现。
+- 2026-11-01 用户要求直白说明持续时间筛选；已补时间顺序示例及[帮助机会模型 inputSchema/outputSchema](../../docs/technical/domain-behavior.md#帮助机会评估的-inputschema-和-outputschema)。Schema 区分真实多模态图片与 image_ref，模型只给候选建议；来源/评估版本由服务端维护，仍非已实现组件。
+- 2026-11-01 用户要求在方案末尾补充[上线前测试验证方法论](../../docs/technical/domain-behavior.md#九上线前测试验证方法论)：代码规则、独立真实回放、静默观察、封闭试用分阶段验证；标注“适合/不适合/无法判断”，禁止未来信息泄漏，指标按机会去重并区分拟邀请与实际呈现。该方法尚待实施，不代表已有验证结果。
+
 - 2026-11-01 Go网关落地：统一网关principal/白名单、幂等预约与不可覆盖OSS对象、本地SQLite/JPEG恢复、CLI及三平台包；实际入口与运行方式见[网关架构](../../docs/technical/design-gateway.md)和[接入手册](../../docs/camera-setup-guide.md)。现场RTSP/OSS长测待验收，不能以合成快照测试替代。新增迁移20261101_31只在临时PostgreSQL验证，未动开发/生产库。
 - 网关迁移测试发现历史migration 02从空PostgreSQL重建Guardian表会遭遇已有FK依赖；本次未改无关旧迁移。新增迁移测试以当前schema降到30形成前一版本基线，再升31，覆盖并发幂等和Frame/Outbox原子回滚。云端新代码遵循独立聚合Repository ports，旧设备撤销入口仍属于兼容ORM路径。
 
@@ -54,5 +62,4 @@
 - RTSP凭证不再出现在FFmpeg argv：使用单文件concat描述经FD3管道输入，逐文件TCP/timeout选项；不落地凭证，不继承应用密钥/FFREPORT。stderr完整行脱敏后保留2KiB，丢弃超长行；诊断仅本地status/log。403取消对应源上下文并关闭FFmpeg；心跳403逐路核验。单次API401暂停上传后退避探测，成功恢复；连续3次401以78退出并关闭全部采集，systemd禁止对此自动重启。对象401/403只续签。已补各项复现/回归及带特殊字符密码的实际合成RTSP认证测试。
 
 - 上述复核验证：服务端全量742通过，Go全量竞态/静态检查、三平台重建通过；真实摄像头/OSS长测仍待现场验收。
-
 - 2026-11-01 摄像头帧改入 `OSS_BUCKET_CAMERA`，对象键为 `{ward_id}/{UTC日期}/{frame_id}.jpg`。`OSS_BUCKET_NAME` 继续给陪伴附件等对象。网关帧的读取、到期删除和数据清除走摄像头桶；旧逐设备帧仍在原桶。

@@ -54,19 +54,19 @@ flowchart LR
     TS -.->|study_session_id，受权 Query| SS
 ```
 
-本 Context 有两个写 Aggregate：`StudySession` 与 `StartCue`，只通过 ID 关联。`StartCue` 不拥有 `StudySession`。`TutoringSession` 属于 Tutoring，只持有 `study_session_id`。
+本 Domain 的目标设计共有 **3 个 Aggregate Root**；StudySession/StartCue 已有实现，HelpOfferBudget 为未实现扩展。统一边界如下：
+
+| Aggregate Root | 边界 | 职责 |
+|---|---|---|
+| StudySession | 一次显式执行及其计时区间 | 管理开始、暂停、继续、完成、放弃；不以视觉观察自动完成任务 |
+| StartCue | 一次到点开始邀请及允许动作 | 询问是否开始到点任务；不改排期、不拥有其他会话 |
+| HelpOfferBudget | 一个 Ward 一个本地晚上的干预额度及所属邀请 | 原子限制递梯子/温和回归邀请的次数、间隔和生命周期，见 §九 |
+
+各 Root 只通过 ID 或受权 Query 关联。TutoringSession 归 Tutoring，仅引用 study_session_id。
 
 ### 2.1 `StudySession`
 
-| 项目 | 设计 |
-|---|---|
-| Identity | `study_session_id`，归属 `ward_id` |
-| 子实体 | `StudyInterval` |
-| 值对象 | `SessionWindow` |
-| 不变量 | 归属当前 Ward；`task_id` 可空；时间区间不重叠；结束后不再计时；无任务会话不能完成任务 |
-| 行为 | `start()`、`pause()`、`resume()`、`finish()`、`abandon()` |
-| 本地事件 | `StudySessionStarted`、`StudySessionPaused`、`StudySessionResumed`、`StudySessionFinished`、`StudySessionAbandoned` |
-| Repository | `StudySessionRepository` |
+StudySession 保证执行区间不重叠、关闭后停止计时；task_id 可空，但无任务会话不能发布完成任务的事实。StudyInterval 是其内部 Entity，SessionWindow 是值对象；字段与合法转移见下方 Entity Inventory、状态图和命令契约。
 
 `finish()` 只接受 Ward 的完成命令。单次执行达到 180 分钟时，调度适配器调用 `PauseStudySession`，会话进入 `paused`，不自动完成。`abandon()` 表示 Ward 退出且不完成；不发布 `StudySessionCompleted.v1`。
 
@@ -97,15 +97,7 @@ stateDiagram-v2
 
 `StartCue` 没有子实体。现场标签和允许动作都是值对象，因此不另画聚合内部类图；生命周期见下面的状态图。
 
-| 项目 | 设计 |
-|---|---|
-| Identity | `start_cue_id`；业务幂等键为 `ward_id + due_task_id + schedule_id + schedule_version + start_at` |
-| 值对象 | `SceneRead`、`CueAllowance`、邀请窗口（打开时记下的 `start_at` / `end_at`） |
-| 引用 | `due_task_id`、`schedule_id`、可选的其他未结束 `study_session_id`、更早仍未开始的 `task_id` 列表 |
-| 不变量 | 归属当前 Ward；刚到点的任务已经有进行中或暂停会话则不打开；其他任务仍在进行不影响打开；每名 Ward 同时只留一张未关闭邀请；`snooze()` 最多一次；`present()` 的动作必须属于已保存的 `CueAllowance`；`no_observation` 时正文不得声称看见书桌；接受后才可以在同一事务里开始或暂停会话 |
-| 行为 | `open()`、`apply_assessment()`、`present()`、`accept()`、`snooze()`、`expire()`、`supersede()` |
-| 本地事件 | `StartCueOpened`、`StartCueHeld`、`StartCueReadied`、`StartCuePresented`、`StartCueAccepted`、`StartCueSnoozed`、`StartCueExpired`、`StartCueSuperseded` |
-| Repository | `StartCueRepository` |
+StartCue 保证同一 Ward 同时只有一张未关闭邀请、最多推迟一次，且动作必须属于已保存的 CueAllowance。没有观察时不得声称看见书桌；接受后才允许按授权动作开始/暂停会话。其身份与幂等映射见命令和持久化契约，避免在此重复字段清单。
 
 `SceneRead.label` 只取 `already_working`、`settling_in`、`other_activity`、`away`、`unclear`、`no_observation`。没有设备、没有观察授权或没有帧，由端口在分类前返回缺席，标签为 `no_observation`，`gap_reason` 只取 `no_device`、`lease_denied`、`no_frames`。分类失败、空结果或无法归类，映射为已有的 `unclear`，不再另设失败标签。`away` 表示看见空座位。
 
@@ -349,3 +341,202 @@ Given StudySession 没有 task_id
 When Ward 调用 FinishStudySession
 Then 命令被拒绝，不发布 StudySessionCompleted.v1
 ```
+
+## 九、观察触发的求助邀请（目标扩展）
+
+> 2026-11-01 设计草案，未实现。触发证据见 [Behavior Analysis](domain-behavior.md)，不是 StartCue 的新状态，也不依赖 Plan 或 StudySession。本文本节唯一拥有邀请策略与生命周期；Companion 只拥有交互协议和实际送达。
+
+### 9.1 边界与语言
+
+`HelpOffer` 是“要不要一起看看”的一次求助邀请，不是遇到难题的诊断、任务开始命令或 TutoringSession。邀请有两种 `kind`：`offer_help` 针对持续停滞，`invite_return` 针对连续可见活动偏离。前者询问“这题需要一点提示吗？”，后者询问“要不要回到刚才这一步？”。接受后分别聚焦提问入口或让孩子继续纸面学习；都不自动发题、开会话或改任务。默认 shadow，获授权观察并由 Ward 在 App 开启陪伴模式后才真实呈现。正式运行支持卡片与可选轻声提示；App 不可触达时保持静默，不能声称已经完成干预。
+
+Study 的 `HelpOfferPolicy` 只接收 Behavior Query 的停滞/活动偏离候选和受权上下文快照，不直接解释图片；校验本人开启、具有有效陪伴通道、观察够新、当前在桌、无答疑 Run/确认操作/主动休息、无 StartCue 待呈现、未达频次上限。没有授权、通道缺席或 Query 失败即跳过且不占额度。StartCue 有优先权，两种邀请共享 Companion 安全呈现点。
+
+### 9.2 聚合规则与对象关系
+
+本域三个 Aggregate Root 的边界已在 §二统一说明。HelpOfferBudget 将同一晚的频次、间隔与 HelpOffer 子实体放在一个事务边界内。`consider`、`mark_presented`、`respond`、`expire` 是唯一修改入口；默认最多两次 reserve、间隔至少 20 分钟，同时只能有一个活动邀请。同一连续候选不因观察 revision 变化而重复邀请，过期或关闭后不能复活。
+
+频次和间隔均为实验默认值，锁定 policy_version；reserve 即消耗本晚额度，不因失败自动返还，避免重试造成重复打扰。`CandidateRef` 的 range 与上次邀请重叠时认为同一候选，即使 revision 不同也不重新邀请；只有可靠活动恢复后形成的新候选才可能再邀请。
+
+| 对象 | Canonical type | Identity | 决策属性 / 行为 | 不变量责任 |
+|---|---|---|---|---|
+| HelpOfferBudget | Aggregate Root | budget_id | policy、reserved_count、last_reserved_at；consider/respond/expire | 额度、间隔、单个活动邀请、同停滞去重 |
+| HelpOffer | Entity | offer_id | kind、candidate_ref、status、expires_at、presented_at、version；通过 Root 转移状态 | Root 控制合法响应和过期 |
+| CandidateRef | Value Object | 无 | day/revision/range、fresh_until | 来源可追溯，不随新报告覆盖 |
+| EligibilitySnapshot | Value Object | 无 | observed_at、setting_version、interaction_state_version | 快照过期时不允许据此呈现 |
+
+```mermaid
+classDiagram
+    class HelpOfferBudget {
+      budget_id
+      ward_id
+      local_date
+      reserved_count
+      last_reserved_at
+      consider(candidate, eligibility, now)
+      mark_presented(offer_id, receipt)
+      respond(offer_id, action)
+      expire(now)
+    }
+    class HelpOffer {
+      offer_id
+      kind
+      status
+      expires_at
+      candidate_ref
+      version
+    }
+    HelpOfferBudget "1" *-- "0..2" HelpOffer
+```
+
+新增 Root 与现有 StudySession/StartCue 仅经 ID/受权上下文关联，不组成大 Aggregate：
+
+```mermaid
+flowchart LR
+    SS[StudySession / Aggregate Root]
+    SC[StartCue / Aggregate Root]
+    HB[HelpOfferBudget / Aggregate Root]
+    Q[Study interaction context / Query]
+    SS --> Q
+    SC --> Q
+    Q -.只提供抑制上下文.-> HB
+```
+
+```mermaid
+stateDiagram-v2
+    [*] --> Ready: consider 通过并占额度
+    Ready --> Presented: 真实前台呈现回执
+    Ready --> Expired: 超时/证据过期/设置撤销
+    Presented --> Accepted: Ward 接受
+    Presented --> Declined: Ward 暂不需要
+    Presented --> Expired: 60 秒无响应
+    Accepted --> [*]
+    Declined --> [*]
+    Expired --> [*]
+```
+
+### 9.3 Command Cards 与触发矩阵
+
+共用输入 `actor/system_scope, command_id, expected_version`；每条只改本域 Root，Domain Event 和需要的 Outbox 同事务保存。模型只在 Behavior 侧评估帮助机会；Study 用确定性策略决定是否允许干预。两类邀请使用受控短句，不生成“你走神了”“你不会做”等心理归因。
+
+| Trigger → Adapter | Command / 额外输入 | 授权 / 前置条件 | 本地事务与行为 | 事件 / 后续 | 幂等与失败 |
+|---|---|---|---|---|---|
+| ObservationRevisionPublished.v1 → Study consumer Interface | ConsiderHelpOffer(day_id, revision) | 系统 scope；schema 校验；Query 读取当前候选/设置/交互上下文；证据过期跳过 | Budget.consider，expected_version 防并发超额 | HelpOfferReadied；Outbox HelpOfferReady.v1 | inbox + day/revision；不同 revision 由 range 再去重；查询失败不邀请 |
+| Companion 回执事件 → Study consumer Interface | MarkHelpOfferPresented(offer_id, presented_at, receipt_id) | schema、同 Ward/offer、回执签发来源合法；呈现发生在有效期内 | Budget.mark_presented | HelpOfferPresented；更新 Query | receipt_id 唯一；迟到回执只记真实呈现审计，不复活已关闭邀请 |
+| Ward 点击 → HTTP Interface | RespondHelpOffer(offer_id, action=accept/decline) | Ward 本人；expected offer version；未过期且已呈现 | Budget.respond | HelpOfferAccepted/Declined；offer_help 接受后聚焦 VoiceComposer；invite_return 接受后收起邀请回纸面 | command_id 唯一；409 刷新，禁止自动重放；重复同命令返回原响应 |
+| 到期计时/设置关闭 → Timer Infrastructure | ExpireHelpOffers(budget_id, now) | 系统 scope | Budget.expire | HelpOfferExpired；Query 关闭按钮 | 每 Root/version 幂等；不撤回已发生的呈现事实 |
+
+### 9.4 Query、协议和异步送达
+
+`GetHelpOffer(actor, ward_id, offer_id) -> {offer_id, version, kind, status, text, allowed_actions, expires_at}`：只供 Ward 本人和 Companion 系统使用，Root 提交后可读；不对 Guardian 展示孩子的实时状态。`GET /api/v1/study/help-offers/{id}`、`POST /api/v1/study/help-offers/{id}/respond`，后者输入 `{action, expected_version, command_id}`。403/404 授权失败、422 非法动作、409 过期或版本冲突。
+
+动作还需携带 Companion 签发的 `presentation_receipt`。若前台确认事件尚未被 Study 消费，RespondHelpOffer 可先验证该回执、在同一 Budget 事务调用 mark_presented 再 respond，避免“孩子已点击但异步回执未到”的竞态。回执绑定 Ward/offer/version/presented_at、短有效期且不可伪造；随后重复回执无副作用。expected_version 对准回执引用的邀请版本，已被其他命令关闭的邀请仍拒绝。
+
+`HelpOfferReady.v1` payload：`{ward_id, budget_id, offer_id, offer_version, expires_at, source_revision_ref, kind}`；公共 envelope、schema_version、event_id、occurred_at 必填。Companion consumer 调自己的 `PresentHelpOffer` Command：按 offer_id + version 去重，重新 Query 有效邀请与最新观察/设置/Run 状态；只在有效陪伴通道和回复安全点写入登记过的交互，实际通道规则见 §9.6。当前没有安全点或未建立有效陪伴通道就等待，过期丢弃。初次送达/实际显示时均检查 expires_at，避免离线缓存迟到弹出。
+
+Companion 保存交互消息与待发布回执同事务；`HelpOfferPresented.v1` payload 为 `{ward_id, offer_id, offer_version, receipt_id, presented_at, medium}`，由 App 前台呈现确认后签发，不将入队或写消息当作孩子已看到。Study inbox 按 receipt_id 去重。用户点击是新授权动作，走 Study Command；Companion 不自动构造孩子的提问。回执可区分 card_rendered 与 speech_completed，前者证明卡片已显示、后者证明播报已完成，二者均不证明孩子听见或理解；同一 offer 的第二种媒介回执只补充审计，不再次转移 Presented 状态或增加额度。
+
+两事件允许重复/乱序；待呈现版本失效即丢弃，回执不改变已终结 Root。瞬时失败沿用 Outbox 退避，死信后对账；过期邀请不重放。跨域没有全局事务，不承诺 exactly-once 物理显示，客户端也按 offer_id 去重，前后台切换不重复播报。
+
+| 参与者 | Canonical type | 职责 |
+|---|---|---|
+| Study/Companion consumers、HTTP | Interface | 翻译事件、鉴权、调用所属 Command |
+| Consider / Respond / Present / MarkPresented | Command | 本域授权、事务与 Query Port 协调 |
+| HelpOfferBudget | Aggregate Root | 邀请、额度、响应状态 |
+| Companion 交互账本 | Aggregate Root | 仅负责本域交互登记与去重，既有模型见 Companion 设计 |
+| Outbox / App foreground receipt | Infrastructure / Actor | 可靠交付 / 真实呈现确认 |
+| HelpOfferReadied / HelpOfferPresented | Domain Event | Study 本地事实 |
+
+```mermaid
+sequenceDiagram
+    participant BI as Study consumer / Interface
+    participant C as ConsiderHelpOffer / Command
+    participant B as HelpOfferBudget
+    participant O as Outbox / Infrastructure
+    participant CI as Companion consumer / Interface
+    participant P as PresentHelpOffer / Command
+    participant L as Companion ledger
+    participant W as Ward App / Actor
+    participant R as MarkPresented / Command
+    BI->>C: 观察版本通知
+    C->>B: consider(候选与受权上下文)
+    B-->>C: HelpOfferReadied
+    C->>O: T1 保存 Budget、事件、HelpOfferReady.v1
+    O->>CI: 至少一次投递
+    CI->>P: offer_ref
+    P->>P: Query 最新状态；检查回复权/前台/有效期
+    P->>L: T2 登记 help_offer 交互并去重
+    L-->>W: 安全点呈现
+    W->>P: 前台呈现确认 receipt_id
+    P->>O: T3 保存呈现确认与 HelpOfferPresented.v1
+    O->>R: 经 Study consumer 校验后调用
+    R->>B: mark_presented，T4 保存本地事件
+```
+
+图源：本文 §9；上述时序仅为目标扩展，不表示既有账本已有这些方法。
+
+### 9.5 Infrastructure Design Card
+
+| 项目 | 设计 |
+|---|---|
+| Ports/adapters | HelpOfferBudgetRepository → PostgreSQL；Observation/Settings/InteractionQueryPort → 所属域授权 Query ACL；Publisher → 平台 Outbox；均在 bootstrap 装配 |
+| 超时/失败 | Query 2 秒、最多一次瞬时重试；失败跳过，不用旧快照猜；DB 锁超时 3 秒，冲突重读至多 3 次；跨域消息按平台退避/死信。固定文案与预置短语音无在线生成依赖，无语音模型熔断需求 |
+| 持久化 | help_offer_budgets 唯一(ward_id, local_date)；help_offers PK offer_id、FK budget_id；Root/version 乐观锁、同事务写额度与 Entity；每 Root 一个 Repository |
+| 迁移/恢复 | 先增表、Companion kind 与 App allow-list、前台回执，再 shadow 后受控启用；回滚关 flag/过期邀请，保留审计。旧 StartCue 不迁移为求助邀请 |
+| 授权/删除 | 图片不复制到邀请；仅保留来源引用。Ward 删除时清理预算/邀请，取消待送达，重放检查删除 fence。设置撤销后客户端/送达端立即抑制 |
+| 指标/trace | shadow 拟触发数、实际呈现/接受/拒绝/过期数、限流与抑制原因、重复去重；关联 offer/day/command/event ID；不记录题面明文 |
+
+```mermaid
+erDiagram
+    help_offer_budgets ||--o{ help_offers : "聚合内邀请"
+    help_offer_budgets {
+      uuid id PK
+      uuid ward_id "外域 ID"
+      date local_date
+      string timezone
+      int version
+      int reserved_count
+      timestamp last_reserved_at
+    }
+    help_offers {
+      uuid id PK
+      uuid budget_id FK
+      string kind
+      string candidate_ref
+      string status
+      int version
+      timestamp expires_at
+    }
+```
+
+ER 图源：本文 §9.5；budgets/offer 表分别支撑 Root/Entity，没有新增 Query 表。其余 Study 表见既有物理设计，本图仅画本次扩展；物理迁移前须同步 design-server。
+
+验收：同晚并发多个候选也不超额度；旧版本重复通知不重复邀请；正常思考静止只产生拟候选而不作诊断；答疑 Run 中不插话；断网补传不当前提醒；后台未触达不算已帮助；拒绝/忽略不追问；点击接受后不自动开题、不自动完成任务。Domain 测策略、PostgreSQL 测并发与 inbox/Outbox、协议测试测 App 前台去重及过期拒绝。
+
+
+### 9.6 “卡壳递梯子”和温和回归的实际执行
+
+持续状态如何累计、模型判定依据、代码如何自动启动邀请，分别见 [Behavior §2.5](domain-behavior.md#25-持续状态累计与帮助机会判定) 和 [§3.2](domain-behavior.md#32-目标代码调用链谁启动递梯子与回归邀请)。本节只定义实际干预。
+
+两种触发共用 HelpOfferBudget，不各自额外申请两次额度：
+
+| 场景 | Behavior 提供的证据 | Study 允许的动作 | 实际交互与后续 |
+|---|---|---|---|
+| 疑似卡壳超时 | 连续约 4 分钟 still_with_material、覆盖充分，语义评估支持 offer_help；不能据此确定真的遇到难题 | 邀请一次求助 | 卡片和可选轻声“这题需要一点提示吗？”；接受后使用 VoiceComposer 拍题/说卡点，既有 Tutoring 分步启发与微验证接手 |
+| 持续活动偏离 | 连续约 2 分钟 other_visible_activity，模型结合多帧和可选学习上下文支持 invite_return；转头、单次停笔、查资料或原因不明不触发 | 一次自主回归邀请 | 卡片和可选轻声“要不要回到刚才这一步？”；可接受或暂不需要，不给分心标签，不通知家长 |
+| 阅读、正常思考或原因不明 | reading_material、uncertain、unknown 或存在采集缺口 | 不干预 | 保持观察，不用静止时长代替语义判断 |
+| 已进入主动休息、离座、正在答疑或有确认操作 | 最新受权状态表明不适合介入 | 抑制或使待呈现邀请过期 | 不追问、不积压到后来突然播报 |
+
+具体例子：19:00—19:04 连续停笔且学习材料仍在使用，Day 更新产生 offer_help 候选；Study 通过频次和现场检查；Companion 在安全点询问；孩子回应需要后主动拍题；Tutoring 引导下一步并记录验证状态。若 19:04:15 已恢复书写，送达前重查应丢弃邀请。对活动偏离使用相同链路，只更换候选 kind 与邀请动作。
+
+“走神提醒”在此对应 **可选择、无指责的回归邀请**，仍遵循产品禁止实时分心红字、扣分和蜂鸣警告的边界。视觉不写入“孩子走神”事实，模型无把握就不提醒。
+
+Companion 的 `support-channel`（目标协议）补齐实际触达：
+
+- Ward 无需创建计划或点击学习开始，在 App 打开一次陪伴模式即可建立本人设备的短租约通道；`card` 仅显示卡片，主动开启 `handsfree` 才可播报。App 保持可运行的陪伴界面；不依赖网关播放声音，也不假设操作系统允许后台出声。
+- 该通道是可失效的运行时能力租约，不新增业务 Aggregate。绑定 Ward/device/channel，租约 90 秒、每 30 秒心跳；切后台、关闭陪伴模式或断开后禁止新的播报。SSE 只送已授权、未过期交互引用，不传桌面图片。
+- App 内预置两句对应 prompt_id 的短语音，离线可播放，无须临时调 TTS。用户允许声音、App 在前台、无正在播放/录音/答疑输出、邀请和最新观察仍有效时，只播放一次；静音、不可播放或未开启 handsfree 则保留卡片，并标记 speech_suppressed，不能算已播报。
+- App 按 offer_id 持久化去重；断线重连可恢复有效卡片，不重播已尝试的语音。播放完成才回 `speech_completed`；异常中断记失败，不为获取回执反复播音。卡片显示单独回 card_rendered。
+- 邀请在有效期内无人回应即过期；孩子继续学习、忽略或暂不需要均不追加催促。接受只改变本次邀请，之后是否恢复可观察活动供实验统计，不能直接宣称“已提升专注”或“难题已解决”。
+
+通道 API、呈现回执及动作协议由 [Companion](domain-companion.md#522-关闭的-kind-清单) 唯一维护。交付约束：**无在线可运行 App/出声通道，只能保证记录和晚间报告，不能保证即时递梯子。** 正式验收必须覆盖纸质作业中不看屏幕、音频开关、前后台切换、断线重连与播放失败；shadow 阶段只验证拟触发，不冒充已完成干预。

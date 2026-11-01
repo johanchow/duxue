@@ -57,8 +57,8 @@ graph TB
     subgraph ASYNC_PIPELINE["异步计算与推理管道 (Celery Pipeline)"]
         WORKER_SESSION["行为分析 Worker<br/>(增量观察 / 会话与晚间聚合，目标)"]
         WORKER_BEAT["定时调度 Beat<br/>(心跳巡检 · 90天留存清理)"]
-        VLM_ENGINE["视觉行为分析引擎<br/>(Qwen3-VL 结构化解析)"]
-        CLS_ENGINE["轻量分类与平滑归并<br/>(加权匹配 · 时序滤波)"]
+        VLM_ENGINE["视觉观察引擎<br/>(目标：多帧物理活动结构化解析)"]
+        CLS_ENGINE["窗口解释校验与观察学段归并<br/>(目标：未知/缺失分离 · 来源版本锁定)"]
         MEMORY_ENGINE["孩子理解引擎<br/>(三层记忆 · 动态衰减演进)"]
     end
 
@@ -84,9 +84,10 @@ graph TB
 
     %% 异步分析流水线
     WORKER_SESSION --> OSS
-    WORKER_SESSION --> VLM_ENGINE --> CLS_ENGINE --> MEMORY_ENGINE
+    WORKER_SESSION --> VLM_ENGINE --> CLS_ENGINE
+    API_COMP -.->|既有客观教学事实| MEMORY_ENGINE
     MEMORY_ENGINE --> PG & REDIS
-    CLS_ENGINE -- "生成 BehaviorSegment" --> PG
+    CLS_ENGINE -- "目标：ObservationWindow / ObservationDay" --> PG
 ```
 
 ---
@@ -105,6 +106,7 @@ Runtime，不是 Memory & Understanding 的持久化模型。
 | 当前 Agent 流程图 | [自动生成流程图](agent-flow-current.md) |
 | 学习证据、Episode、Signal 与长期画像 | [Memory & Understanding](domain-memory.md) |
 | 计划、学习执行、复盘的领域规则 | [Planning](domain-planning.md) · [Study](domain-study.md) · [Tutoring](domain-tutoring.md) · [Evaluation](domain-evaluation.md) |
+| 稀疏图片解释、无计划观察学段与增量证据发布 | [Behavior Analysis](domain-behavior.md)（目标设计，未实现；求助邀请和晚间报告分别归 Study / Evaluation） |
 
 ---
 
