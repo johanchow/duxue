@@ -1,0 +1,18 @@
+# Paths are relative to this configuration file. Replace Ward ID and RTSP path.
+api_base_url: http://127.0.0.1:8000
+api_token_env: DUXUE_GATEWAY_TOKEN
+state_dir: ./state
+capture_interval_seconds: 15
+ffmpeg_path: ffmpeg
+max_frames_per_camera: 2000
+max_cache_bytes: 1000000000
+cache_ttl_seconds: 43200
+min_free_bytes: 100000000
+cameras:
+  - camera_id: camera-01
+    ward_id: 00000000-0000-4000-8000-000000000001
+    source:
+      kind: rtsp
+      url: rtsp://192.168.1.50:554/replace-with-verified-substream-path
+      username_env: CAMERA_01_USERNAME
+      password_env: CAMERA_01_PASSWORD

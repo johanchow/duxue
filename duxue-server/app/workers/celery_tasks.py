@@ -39,6 +39,7 @@ def _observed_task(func):
 celery_app = Celery("duxue", broker=settings.redis_url, backend=settings.redis_url)
 celery_app.conf.timezone = "Asia/Shanghai"
 celery_app.conf.beat_schedule = {
+    "cleanup-gateway-orphans": {"task": "duxue.cleanup_gateway_uploads", "schedule": crontab(minute=15)},
     "submit-daily-batches": {"task": "duxue.submit_daily_batches", "schedule": crontab(hour=settings.batch_submit_hour, minute=0)},
     "poll-batches": {"task": "duxue.poll_batches", "schedule": crontab(minute="*/10")},
     "offline-devices": {"task": "duxue.mark_offline_devices", "schedule": crontab(minute="*")},
@@ -126,12 +127,12 @@ def mark_offline_devices() -> int:
 @celery_app.task(name="duxue.purge_expired_frames")
 @_observed_task
 def purge_expired_frames() -> int:
-    from app.infrastructure.storage.object_storage import storage
+    from app.infrastructure.storage.object_storage import camera_storage, storage
     db = SessionLocal()
     try:
         frames = db.query(Frame).filter(Frame.purge_after < now(), Frame.training_candidate.is_(False)).all()
         for frame in frames:
-            storage.delete(frame.oss_key)
+            (camera_storage if frame.gateway_id else storage).delete(frame.oss_key)
             # Keep structured fields for future classifier recomputation; remove only sensitive image reference.
             frame.oss_key = None
         db.commit(); return len(frames)
@@ -186,3 +187,16 @@ def evolve_memory_signals() -> int:
 
 # `celery -A app.workers.celery_tasks worker` expects this name.
 app = celery_app
+
+
+@celery_app.task(name="duxue.cleanup_gateway_uploads")
+@_observed_task
+def cleanup_gateway_uploads() -> int:
+    from app.application.commands.gateway_ingestion import CleanupGatewayUploads
+    from app.infrastructure.persistence.gateway_repository import SqlCaptureRepository
+    from app.infrastructure.storage.object_storage import camera_storage
+    db = SessionLocal()
+    try:
+        return CleanupGatewayUploads(SqlCaptureRepository(db), camera_storage).run(now())
+    finally:
+        db.close()

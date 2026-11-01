@@ -129,6 +129,12 @@ class BehaviorLabelConfig(Base):
 
 class Device(Base):
     __tablename__ = "devices"
+    __table_args__ = (UniqueConstraint("gateway_id", "camera_id", name="uq_device_gateway_camera"),)
+    gateway_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    camera_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    assignment_revision: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    gateway_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    gateway_erased: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
     ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id"), index=True)
     device_type: Mapped[str] = mapped_column(String(30), default="android")
@@ -145,6 +151,11 @@ class Device(Base):
 
 class Frame(Base):
     __tablename__ = "frames"
+    __table_args__ = (UniqueConstraint("gateway_id", "gateway_frame_id", name="uq_frame_gateway_identity"),)
+    gateway_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    gateway_frame_id: Mapped[str | None] = mapped_column(Uuid(as_uuid=False), nullable=True)
+    sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
     device_id: Mapped[str] = mapped_column(ForeignKey("devices.id"), index=True)
     ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id"), index=True)
@@ -158,6 +169,36 @@ class Frame(Base):
     structured_fields: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     training_candidate: Mapped[bool] = mapped_column(Boolean, default=False)
     purge_after: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class GatewayUploadReservation(Base):
+    __tablename__ = "gateway_upload_reservations"
+    gateway_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    frame_id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True)
+    device_id: Mapped[str] = mapped_column(ForeignKey("devices.id", ondelete="CASCADE"), index=True)
+    oss_key: Mapped[str] = mapped_column(String(500), unique=True)
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    purging: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
+
+
+class GatewayHealth(Base):
+    __tablename__ = "gateway_health"
+    gateway_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    boot_id: Mapped[str] = mapped_column(Uuid(as_uuid=False))
+    sequence: Mapped[int] = mapped_column(Integer)
+    retired_boots: Mapped[list] = mapped_column(JSON, default=list)
+    cameras: Mapped[list] = mapped_column(JSON, default=list)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class CaptureAudit(Base):
+    __tablename__ = "capture_audit"
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
+    ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id", ondelete="CASCADE"), index=True)
+    aggregate_id: Mapped[str] = mapped_column(String(64))
+    event_type: Mapped[str] = mapped_column(String(50))
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
 class FramePrediction(Base):

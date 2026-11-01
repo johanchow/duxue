@@ -81,4 +81,4 @@ https://$DEPLOY_SERVER_HOST/api/health
 
 本地没有 `KEYSTORE_FILE` 时，release 构建仍用 debug 签名，方便 `flutter run --release`。
 
-Server 与 App 的 CI/CD 由上述工作流维护。标准摄像头采集网关尚未实现，部署方案见 [采集设计](technical/design-cam.md)，当前没有网关发布工作流。
+Server 与 App 的 CI/CD 由上述工作流维护。Go采集网关已有 [Gateway CI](../.github/workflows/gateway-ci.yml)、本地三平台构建脚本及systemd模板；当前只构建测试与产物，不自动发布或部署。实际配置/运行见[家庭实验手册](camera-setup-guide.md)，架构与依赖边界见[采集设计](technical/design-gateway.md)。

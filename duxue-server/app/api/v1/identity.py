@@ -238,6 +238,8 @@ def patch_ward(ward_id: str, body: WardPatch, principal: Principal = Depends(cur
 @router.delete("/wards/{ward_id}/data", status_code=204)
 def delete_ward_data(ward_id: str, principal: Principal = Depends(current_guardian), db: Session = Depends(get_db)):
     owned_ward(db, principal.user_id, ward_id)
+    # Serialize erasure with in-flight frame commits before removing evidence.
+    db.query(Device).filter_by(ward_id=ward_id).order_by(Device.id).with_for_update().all()
     # Stop derived/runtime state first.  The database deliberately uses NO
     # ACTION FKs, so erasure is explicit and cannot accidentally leave a
     # replayable summary or trace behind.
@@ -279,7 +281,7 @@ def delete_ward_data(ward_id: str, principal: Principal = Depends(current_guardi
 
     frames = db.query(Frame).filter(Frame.ward_id == ward_id).all()
     for frame in frames:
-        storage.delete(frame.oss_key)
+        (camera_storage if frame.gateway_id else storage).delete(frame.oss_key)
     frame_ids = [frame.id for frame in frames]
     if frame_ids:
         db.query(FramePrediction).filter(FramePrediction.frame_id.in_(frame_ids)).delete(synchronize_session=False)
@@ -300,12 +302,33 @@ def delete_ward_data(ward_id: str, principal: Principal = Depends(current_guardi
         db.query(SelfReviewAspect).filter(SelfReviewAspect.review_id.in_(review_ids)).delete(synchronize_session=False)
         db.query(SelfReviewVersion).filter(SelfReviewVersion.review_id.in_(review_ids)).delete(synchronize_session=False)
     db.query(SelfReview).filter(SelfReview.ward_id == ward_id).delete(synchronize_session=False)
-    db.query(PlanDraft).filter(PlanDraft.ward_id == ward_id).delete(synchronize_session=False)
+    from app.infrastructure.persistence.models import PlanDraft as PlanDraftRecord
+    db.query(PlanDraftRecord).filter(PlanDraftRecord.ward_id == ward_id).delete(synchronize_session=False)
     db.query(Task).filter(Task.ward_id == ward_id).delete(synchronize_session=False)
     db.query(DailySchedule).filter(DailySchedule.ward_id == ward_id).delete(synchronize_session=False)
     db.query(WardInvite).filter(WardInvite.ward_id == ward_id).delete(synchronize_session=False)
     db.query(WardRefreshToken).filter(WardRefreshToken.ward_id == ward_id).delete(synchronize_session=False)
     db.query(WardCredential).filter(WardCredential.ward_id == ward_id).delete(synchronize_session=False)
-    db.query(Device).filter(Device.ward_id == ward_id).delete(synchronize_session=False)
+    from app.infrastructure.persistence.models import GatewayUploadReservation, CaptureAudit
+    device_ids = [row[0] for row in db.query(Device.id).filter_by(ward_id=ward_id).all()]
+    if device_ids:
+        for reservation in db.query(GatewayUploadReservation).filter(GatewayUploadReservation.device_id.in_(device_ids)).all():
+            camera_storage.delete(reservation.oss_key)
+            # An already signed PUT may finish after erasure. Keep its deletion
+            # tracker until the orphan job runs beyond the short signature TTL.
+            reservation.purging = True
+    db.query(CaptureAudit).filter_by(ward_id=ward_id).delete(synchronize_session=False)
+    from app.infrastructure.persistence.models import GatewayHealth
+    for device in db.query(Device).filter(Device.ward_id == ward_id, Device.gateway_id.is_not(None)).all():
+        device.gateway_enabled = False
+        device.gateway_erased = True
+        device.device_token_hash = None
+        device.last_heartbeat_at = None
+        device.status = "offline"
+        health = db.query(GatewayHealth).filter_by(gateway_id=device.gateway_id).with_for_update().populate_existing().one_or_none()
+        if health:
+            health.cameras = [status for status in health.cameras if status.get("camera_id") != device.camera_id]
+    # Retain only a permission tombstone; never images or learning facts.
+    db.query(Device).filter(Device.ward_id == ward_id, Device.gateway_id.is_(None)).delete(synchronize_session=False)
     db.commit()
     return Response(status_code=204)

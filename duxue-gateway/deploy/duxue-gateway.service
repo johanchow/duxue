@@ -1,0 +1,25 @@
+[Unit]
+Description=Duxue camera capture gateway
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=duxue-gateway
+Group=duxue-gateway
+StateDirectory=duxue-gateway
+WorkingDirectory=/var/lib/duxue-gateway
+EnvironmentFile=/etc/duxue-gateway/credentials.env
+ExecStart=/opt/duxue-gateway/duxue-gateway run -config /etc/duxue-gateway/config.yaml
+Restart=on-failure
+RestartPreventExitStatus=78
+RestartSec=5
+TimeoutStopSec=20
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

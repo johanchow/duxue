@@ -25,10 +25,34 @@
 
 ## 注意
 
-- 2026-10-31 用户确认采集产品化路线改为标准网络摄像头 + 共享本地网关；单摄像头/家庭 Wi-Fi/电脑先验证。技术事实源已重写为 [采集设计](../../docs/technical/design-cam.md)，旧手机实现不再作为目标方案。网关、机构能力尚未完成。注意现有心跳只反映云端连通，时间修正会改写超过24h的历史帧，元数据重试必须复用同一 OSS key。
+- 2026-10-31 用户确认采集产品化路线改为标准网络摄像头 + 共享本地网关；单摄像头/家庭 Wi-Fi/电脑先验证。技术事实源已重写为 [采集设计](../../docs/technical/design-gateway.md)，旧手机实现不再作为目标方案。网关、机构能力尚未完成。注意现有心跳只反映云端连通，时间修正会改写超过24h的历史帧，元数据重试必须复用同一 OSS key。
 - 测试分层见 design-server。SQLite 不能代替 PostgreSQL 约束与迁移测试。测试必须在导入应用前 `OTEL_SDK_DISABLED=true`，并 mock 外网模型。
 - `alembic check` 里 LangGraph checkpoint 表与应用 ORM 的差异不要当成业务表缺失。
 - `ENV_FILE` 相对 `duxue-server` 根解析。纯文本组件会把图片 part 换成占位文字。
 - 答疑首字延迟在非流式下不满足 P90&lt;1.2s。流式、成本归集、provider 回退未作为完成项。
 
 - 2026-11-01 用户授权移除旧采集实现：删除 Android 采集工程、专用 CI/发布流程及构建脚本依赖，同步接入/部署/产品导航。服务端设备、帧、校时与 OSS 能力为新网关复用，不删除兼容字段或历史迁移；网关仍待实现。移动端构建脚本用隔离的 Flutter 替身做回归测试，避免删除 Cam 后仍访问旧目录。
+
+- 2026-11-01 家庭验证接入简化：用户确认人工配置 camera_id、RTSP 地址/本地账号与 ward_id，取消绑定码/逐摄像头云端 Token，改为预配置网关凭证与 Ward 白名单。已按仓库 DDD skill 重写 [采集架构](../../docs/technical/design-gateway.md) 为唯一目标事实源；网关、新认证/幂等上传/健康 API 与迁移均待实现。不要将旧逐设备认证接口视为支持新配置。
+
+- 2026-11-01 网关设计复核：入口重命名为 [design-gateway](../../docs/technical/design-gateway.md)，按网关自身调用与云端间接数据关系区分领域依赖；移除本次无须新增的分析事件/任务设计，保留现有云端Memory事实契约。模型清单显式列出根实体、值对象、服务/Factory、Repository和事件；不为齐全而虚构Domain Service。
+
+- 2026-11-01 用户要求统一聚合根命名：网关文档与仓库 DDD skill/template 使用 Aggregate Root（聚合根）及其设计，不再使用设计卡片作为表头；聚合仍表示一致性边界，聚合根表示唯一修改入口，两者语义保持区分。
+
+- 2026-11-01 用户确认采集网关采用Go + FFmpeg + SQLite，在同仓库独立module实现；服务端继续Python。技术选型已同步[网关架构](../../docs/technical/design-gateway.md)，实现计划见[进行中spec](../specs/go-camera-gateway.md)，Gate 1已确认，现已实现；实际测试证据与家庭现场验收进度保留在该spec。
+
+- 2026-11-01 Go网关落地：统一网关principal/白名单、幂等预约与不可覆盖OSS对象、本地SQLite/JPEG恢复、CLI及三平台包；实际入口与运行方式见[网关架构](../../docs/technical/design-gateway.md)和[接入手册](../../docs/camera-setup-guide.md)。现场RTSP/OSS长测待验收，不能以合成快照测试替代。新增迁移20261101_31只在临时PostgreSQL验证，未动开发/生产库。
+- 网关迁移测试发现历史migration 02从空PostgreSQL重建Guardian表会遭遇已有FK依赖；本次未改无关旧迁移。新增迁移测试以当前schema降到30形成前一版本基线，再升31，覆盖并发幂等和Frame/Outbox原子回滚。云端新代码遵循独立聚合Repository ports，旧设备撤销入口仍属于兼容ORM路径。
+
+- 网关数据清除边界：原 `/wards/{id}/data` 只清数据、保留Ward身份，不能仅删Device后让长期网关凭证自动重建同一登记。现保留gateway_erased停用标记并隐藏于设备列表，拒绝自动登记；保留purging上传预约作为晚到PUT的删除跟踪。不可覆盖网关URL有效期最多300s，孤儿清理晚于签名窗口。顺带修复原清除路径PlanDraft ORM被同名API DTO覆盖导致500的既有问题；均有回归测试。
+
+- RTSP实际路径测试发现通用rw_timeout参数不适用于当前RTSP取图路径，已改用FFmpeg RTSP demuxer支持的timeout（微秒）。新增本地合成H.264 RTSP/RTP握手与解码测试走SourceFactory生产路径；lavfi解码测试不能替代RTSP协议测试，真实机型/固件仍须现场验收。
+
+- 网关发布打包只枚举二进制、示例配置、systemd模板和依赖说明四类公开文件；不能递归打包可能已运行过的目录，避免携带照片、私有配置与凭证。Application显式决定FrameAccepted审计与既有采集事实发布，Repository负责同事务持久化。
+
+- 2026-11-01 网关复核修复：接收Frame/审计/Outbox与删除预约同事务，重复接收先查Frame；预约清理以500行游标分页，并退役旧成功预约而不删其图片。损坏孤儿manifest只丢该帧，先写幂等缺口记录；无法确定来源不猜Ward。SQLite schema 2兼容升级保留队列，新增脱敏诊断和持久鉴权状态。
+- RTSP凭证不再出现在FFmpeg argv：使用单文件concat描述经FD3管道输入，逐文件TCP/timeout选项；不落地凭证，不继承应用密钥/FFREPORT。stderr完整行脱敏后保留2KiB，丢弃超长行；诊断仅本地status/log。403取消对应源上下文并关闭FFmpeg；心跳403逐路核验。单次API401暂停上传后退避探测，成功恢复；连续3次401以78退出并关闭全部采集，systemd禁止对此自动重启。对象401/403只续签。已补各项复现/回归及带特殊字符密码的实际合成RTSP认证测试。
+
+- 上述复核验证：服务端全量742通过，Go全量竞态/静态检查、三平台重建通过；真实摄像头/OSS长测仍待现场验收。
+
+- 2026-11-01 摄像头帧改入 `OSS_BUCKET_CAMERA`，对象键为 `{ward_id}/{UTC日期}/{frame_id}.jpg`。`OSS_BUCKET_NAME` 继续给陪伴附件等对象。网关帧的读取、到期删除和数据清除走摄像头桶；旧逐设备帧仍在原桶。

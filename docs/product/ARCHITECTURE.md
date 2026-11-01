@@ -66,7 +66,7 @@
 | **ward（学生）** | 被陪伴与赋能的主体。在线下纸质作业场景中按需使用 AI 答疑、自由表达计划意图与今日总结，拥有计划的最终确认权（通过 `duxue-app` 学生角色交互）。 |
 | **guardian（家长/监护人）** | 创建与绑定家庭关系、可选传递外部作业信息、当晚接收《伴学闭环实况单》与《独立解题凭证》（通过 `duxue-app` 家长角色交互）。 |
 | **coach（伴学师/晚托教师 · 演进角色）** | 在晚托班、自习室或督学工作室场景下，同时关联与管理多名 `ward`（1对多工作台），实时掌握全场卡点动态，批量审阅并向对应 `guardian` 交付定制化伴学日报。 |
-| **读学Eye** | 标准网络摄像头与共享本地采集网关。摄像头架设在书桌侧后方约 45°；网关稀疏采图、持久缓存并直传 OSS。网关待实现，详见采集技术设计。 |
+| **读学Eye** | 标准网络摄像头与共享本地采集网关。摄像头架设在书桌侧后方约 45°；网关稀疏采图、持久缓存并直传 OSS。Go网关已实现，真实摄像头/OSS现场验收待完成，详见采集技术设计。 |
 
 ---
 
@@ -110,7 +110,7 @@
 系统采用**“三端物理分离 + 统一伴学对话入口 + 领域严格解耦”**的架构：
 
 - **客户端层**：
-  1. **读学Eye**：采用固定机位标准摄像头与共享采集网关，和学生交互设备物理分离；网关待实现。
+  1. **读学Eye**：采用固定机位标准摄像头与共享采集网关，和学生交互设备物理分离；Go网关已实现，待家庭现场验收。
   2. **`duxue-app` · Ward 端**：以**今日计划横轨**为顶层上下文，底部常驻唯一的 **`VoiceComposer`（统一伴学对话入口）**。无需在多个繁琐 Tab 间跳转，一句话即可由 `Companion` 自动路由至排期（`planning`）、答疑/发音（`tutoring`）或今日总结（`reflection`）。
   3. **`duxue-app` · Guardian 端**：聚焦设备绑定与在线状态、外部作业信息传递、以及每晚查收结构化伴学实况单与难题独立解题凭证。
 - **服务端核心领域（Domain）**：
@@ -125,7 +125,7 @@
 
 | 模块 | 归属 | 约束级别 | 说明 | 对应文档 |
 | :--- | :--- | :--- | :--- | :--- |
-| **桌面稀疏抓拍与离线补传** | 读学Eye | **L0 零操作底座** | 稀疏采图直传 OSS + 网关持久队列 + 健康状态 | [`prd-supervise.md`](prd-supervise.md) / [`design-cam.md`](../technical/design-cam.md) |
+| **桌面稀疏抓拍与离线补传** | 读学Eye | **L0 零操作底座** | 稀疏采图直传 OSS + 网关持久队列 + 健康状态 | [`prd-supervise.md`](prd-supervise.md) / [`design-gateway.md`](../technical/design-gateway.md) |
 | **启发式分步答疑与微验证** | Ward 专属 | **L1 按需触发** | 答案保护红线 + 独立裁判 + 配图/发音 + 对话内微验证 | [`prd-companion.md`](prd-companion.md) / [`domain-tutoring.md`](../technical/domain-tutoring.md) |
 | **统一伴学对话（Companion）** | Ward 专属 | **L1 核心入口** | 底部 `VoiceComposer` 统一承接语音/文字/图片，自动路由三场景 | [`domain-companion.md`](../technical/domain-companion.md) |
 | **晚间伴学实况单与解题凭证** | Guardian 专属 | **L0/L1 必达交付** | 净专注时长、省下陪读时间、难题独立攻克凭证 | [`prd-evaluate.md`](prd-evaluate.md) / [`domain-evaluation.md`](../technical/domain-evaluation.md) |
@@ -142,7 +142,7 @@
 ```mermaid
 graph TB
     subgraph CLIENTS["客户端层（物理职责分离）"]
-        CAM["读学Eye<br/>（标准摄像头 + 共享采集网关，待实现）"]
+        CAM["读学Eye<br/>（标准摄像头 + 共享采集网关）"]
         APPW["duxue-app · 学生端（Ward）<br/>（今日计划横轨 + 底部统一 VoiceComposer）"]
         APPG["duxue-app · 家长/伴学师端（Guardian / Coach）<br/>（晚间闭环实况单 + 独立解题凭证 + 1对多督学日报）"]
     end
@@ -194,7 +194,7 @@ graph TB
 | **启发式答疑与表达** | [`prd-companion.md`](prd-companion.md) | [`domain-tutoring.md`](../technical/domain-tutoring.md)<br/>[`domain-tutoring-presentation.md`](../technical/domain-tutoring-presentation.md)<br/>[`eval-offline.md`](../technical/eval-offline.md) | **主链路已落地**。含答案保护许可、独立泄露裁判、5 种结构化配图、发音 `pronounce` 与离线评测。 |
 | **协商式计划** | [`prd-schedule.md`](prd-schedule.md) | [`domain-planning.md`](../technical/domain-planning.md) | **已落地**。任务池与入日程分离，定位为**弱约束可选增强**，不阻塞答疑与观察报告交付。 |
 | **学习执行与到点邀请** | [`prd-companion.md`](prd-companion.md) | [`domain-study.md`](../technical/domain-study.md) | **已落地**。含 `StudySession` 状态机与 `StartCue` 到点开始邀请卡片。 |
-| **学习观察与行为采集** | [`prd-supervise.md`](prd-supervise.md) | [`design-cam.md`](../technical/design-cam.md) | **路线已确定，网关待实现**。标准摄像头 + 共享采集网关；复用服务端设备与帧接入接口。 |
+| **学习观察与行为采集** | [`prd-supervise.md`](prd-supervise.md) | [`design-gateway.md`](../technical/design-gateway.md) | **Go采集主链路已实现，待家庭现场验收**。标准摄像头 + 共享采集网关；家庭采用手动摄像头/Ward配置与统一网关认证，云端新接入接口已实现。 |
 | **结果评估与复盘引导** | [`prd-evaluate.md`](prd-evaluate.md) | [`domain-evaluation.md`](../technical/domain-evaluation.md) | **部分落地**。Ward 自由语音/文字总结（六维条目）已落地，旧版“单选题盲评+自动专注锦囊”已退役；客观证据版本化报告待完善。 |
 | **孩子理解与记忆系统** | [`prd-memory.md`](prd-memory.md) | [`domain-memory.md`](../technical/domain-memory.md) | **底座已落地**。严格区分客观教学/行为事实与主观自述（自述不写入 Memory）。 |
 | *历史归档与外部分享* | — | — | **已取消独立模块**。坚决不做任务结束拍照上传作业的形式主义打卡。 |

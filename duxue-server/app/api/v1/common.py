@@ -33,7 +33,7 @@ from app.api.schemas import (
 )
 from app.infrastructure.security.tokens import create_access_token, random_token, token_hash
 from app.application.commands.legacy_services import analyze_and_generate, corrected_time, make_invite_code, owned_ward, utc_bounds
-from app.infrastructure.storage.object_storage import LocalStorage, storage
+from app.infrastructure.storage.object_storage import LocalStorage, camera_storage, storage
 from app.application.commands.task_intake import TaskIntakeError, TaskIntakeService
 from app.infrastructure.messaging.outbox import publish_learning_fact
 from app.application.process_managers.companion_coordinator import CompanionCoordinator

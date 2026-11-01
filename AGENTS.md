@@ -33,7 +33,7 @@
 ```
 duxue/                          # 项目根目录
 ├── docs/                       # 全系统级文档
-├── duxue-gateway/              # 标准摄像头采集网关（待实现）
+├── duxue-gateway/              # 标准摄像头采集网关（Go，待家庭现场验收）
 ├── duxue-app/                  # 读学App：Guardian 端（Flutter）
 │   └── docs/
 ├── duxue-admin/                # Admin Web：运营后台（待建设）
@@ -43,7 +43,7 @@ duxue/                          # 项目根目录
 
 | 端 | 目录 | 角色 | 技术栈 |
 |----|------|------|--------|
-| 读学Eye | 标准摄像头 + `duxue-gateway/`（待实现） | 共享网关采图与上传 | ONVIF / RTSP · Python · SQLite · OSS |
+| 读学Eye | 标准摄像头 + `duxue-gateway/` | 共享网关采图与上传 | ONVIF / RTSP · Go · FFmpeg · SQLite · OSS |
 | 读学App | `duxue-app/` | Guardian 端，查看报告 | Flutter · Riverpod · fl_chart |
 | Admin Web | `duxue-admin/` | 运营后台，机构管理 | 待定 |
 | Server | `duxue-server/` | REST API · AI 推理编排 · 数据存储 | FastAPI · PostgreSQL · Celery · OSS |
@@ -87,7 +87,7 @@ duxue/                          # 项目根目录
 
 | 文档 | 路径 | 内容摘要 |
 |------|------|---------|
-| 摄像头与网关设计 | [`docs/technical/design-cam.md`](docs/technical/design-cam.md) | 标准摄像头接入、共享网关、OSS 直传、持久队列与实验验收；网关待实现 |
+| 采集网关技术架构 | [`docs/technical/design-gateway.md`](docs/technical/design-gateway.md) | 标准摄像头接入、共享网关、OSS 直传、持久队列与实验验收；网关已实现，待家庭现场验收 |
 
 ### 读学App（duxue-app）
 

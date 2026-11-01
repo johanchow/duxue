@@ -43,6 +43,7 @@ class Settings:
     secret_key: str = os.getenv("JWT_SECRET_KEY", "").strip() or os.getenv("SECRET_KEY", "").strip()
     access_token_minutes: int = _integer("ACCESS_TOKEN_MINUTES", "15")
     refresh_token_days: int = _integer("REFRESH_TOKEN_DAYS", "30")
+    gateway_credentials: str = os.getenv("GATEWAY_CREDENTIALS_JSON", "[]")
     frame_retention_days: int = _integer("FRAME_RETENTION_DAYS", "90")
     capture_interval_seconds: int = _integer("CAPTURE_INTERVAL_SECONDS", "15")
     heartbeat_timeout_seconds: int = _integer("HEARTBEAT_TIMEOUT_SECONDS", "180")
@@ -58,6 +59,7 @@ class Settings:
     oss_endpoint_internal: str = os.getenv("OSS_ENDPOINT_INTERNAL") or os.getenv("OSS_ENDPOINT_PUBLIC") or os.getenv("OSS_ENDPOINT", "")
     oss_presign_expire_seconds: int = _integer("OSS_PRESIGN_EXPIRE_SECONDS", "300")
     oss_bucket: str = os.getenv("OSS_BUCKET_NAME") or os.getenv("OSS_BUCKET", "")
+    oss_camera_bucket: str = os.getenv("OSS_BUCKET_CAMERA", "")
     oss_access_key_id: str = os.getenv("OSS_ACCESS_KEY_ID", "")
     oss_access_key_secret: str = os.getenv("OSS_ACCESS_KEY_SECRET", "")
     dashscope_api_key: str = os.getenv("VLM_API_KEY") or os.getenv("DASHSCOPE_API_KEY", "")
@@ -118,6 +120,8 @@ class Settings:
                 missing.append("OSS_ENDPOINT_PUBLIC (or OSS_ENDPOINT)")
             if not self.oss_bucket:
                 missing.append("OSS_BUCKET_NAME (or OSS_BUCKET)")
+            if not self.oss_camera_bucket:
+                missing.append("OSS_BUCKET_CAMERA")
             if not self.oss_access_key_id:
                 missing.append("OSS_ACCESS_KEY_ID")
             if not self.oss_access_key_secret:

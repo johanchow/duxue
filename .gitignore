@@ -29,3 +29,8 @@ www.duxuelai.xyz_nginx
 .metadata
 .cursor/mcp.json
 .codex/config.toml
+
+# Offline gateway provisioning outputs contain credentials.
+**/gateway.env
+**/server.env
+**/credentials.env
