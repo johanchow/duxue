@@ -301,10 +301,11 @@ REDIS_PORT=6379
 REDIS_USERNAME=xxx
 REDIS_PASSWORD=xxx
 
-# ── OSS（阿里云对象存储，帧图片）
+# ── OSS（阿里云对象存储）
 OSS_ACCESS_KEY_ID=
 OSS_ACCESS_KEY_SECRET=
-OSS_BUCKET_NAME=duxue-frames-prod
+OSS_BUCKET_NAME=duxue-frames-prod          # 陪伴附件等
+OSS_BUCKET_CAMERA=duxue-camera             # 摄像头网关帧：{ward_id}/{UTC日期}/{frame_id}.jpg
 OSS_ENDPOINT_INTERNAL=oss-cn-hangzhou-internal.aliyuncs.com  # Worker 读帧走内网，免流量费
 OSS_ENDPOINT_PUBLIC=oss-cn-hangzhou.aliyuncs.com             # 预签名 URL 给手机用，走公网
 OSS_PRESIGN_EXPIRE_SECONDS=300                               # 预签名 URL 有效期 5 分钟

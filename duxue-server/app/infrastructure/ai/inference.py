@@ -12,13 +12,13 @@ from app.infrastructure.observability.telemetry import (
     record_vlm_frames,
 )
 from app.infrastructure.persistence.models import Frame
-from app.infrastructure.storage.object_storage import storage
+from app.infrastructure.storage.object_storage import camera_storage, storage
 
 STRUCTURED_PROMPT = """这张图片来自学生侧后方约45度且略高于头顶的摄像头。请仅依据可见的手部、桌面、头部朝向和身体姿态，用合法 JSON 描述行为，不要输出其他文字，也不要依赖正脸、眼睛或表情。输出字段必须是 hand_action、desk_objects、head_orientation、body_pos、seat_status、motion_state、desc_summary。"""
 
 
 def _image_data(frame: Frame) -> str:
-    raw = storage.read_bytes(frame.oss_key)
+    raw = (camera_storage if frame.gateway_id else storage).read_bytes(frame.oss_key)
     suffix = Path(frame.oss_key).suffix.lower()
     mime = {".png": "image/png", ".webp": "image/webp"}.get(suffix, "image/jpeg")
     return f"data:{mime};base64,{base64.b64encode(raw).decode()}"

@@ -44,7 +44,7 @@ class Evidence:
             raise ValueError("capture time outside allowed window")
 
     def object_key(self) -> str:
-        return f"{self.ward_id}/{self.captured_at.date().isoformat()}/{self.gateway_id}/{self.frame_id}.jpg"
+        return f"{self.ward_id}/{self.captured_at.date().isoformat()}/{self.frame_id}.jpg"
 
 
 @dataclass(frozen=True)

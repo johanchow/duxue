@@ -281,7 +281,7 @@ def delete_ward_data(ward_id: str, principal: Principal = Depends(current_guardi
 
     frames = db.query(Frame).filter(Frame.ward_id == ward_id).all()
     for frame in frames:
-        storage.delete(frame.oss_key)
+        (camera_storage if frame.gateway_id else storage).delete(frame.oss_key)
     frame_ids = [frame.id for frame in frames]
     if frame_ids:
         db.query(FramePrediction).filter(FramePrediction.frame_id.in_(frame_ids)).delete(synchronize_session=False)
@@ -313,7 +313,7 @@ def delete_ward_data(ward_id: str, principal: Principal = Depends(current_guardi
     device_ids = [row[0] for row in db.query(Device.id).filter_by(ward_id=ward_id).all()]
     if device_ids:
         for reservation in db.query(GatewayUploadReservation).filter(GatewayUploadReservation.device_id.in_(device_ids)).all():
-            storage.delete(reservation.oss_key)
+            camera_storage.delete(reservation.oss_key)
             # An already signed PUT may finish after erasure. Keep its deletion
             # tracker until the orphan job runs beyond the short signature TTL.
             reservation.purging = True

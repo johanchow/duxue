@@ -363,7 +363,7 @@ stateDiagram-v2
 
 JSON 拒绝未知字段；UUID、UTC 时间、SHA-256 hex 等按确定协议校验。图片首期单张上限 1 MiB，HTTP 请求大小与 OSS 对象校验必须共同落实；不只依赖客户端。
 
-OSS key 由服务端根据已登记的 Ward、原采集日期及稳定帧身份生成：`<ward_id>/<UTC采集日期>/<gateway_id>/<frame_id>.jpg`。Ward/key 不由客户端任意指定；不能仅检查 Ward 前缀就放行。申请目标时保存设备、Ward、revision、摘要、大小、时间；提交时逐项对照，核验实际 OSS 对象大小/类型与 SHA-256（ETag 不等于 SHA-256；首期服务端可流式读图校验），再入库。
+摄像头帧写入环境变量 `OSS_BUCKET_CAMERA` 指定的桶，与陪伴附件等使用的 `OSS_BUCKET_NAME` 分开。OSS key 由服务端根据已登记的 Ward、原采集日期及稳定帧身份生成：`<ward_id>/<UTC采集日期>/<frame_id>.jpg`。Ward/key 不由客户端任意指定；不能仅检查 Ward 前缀就放行。申请目标时保存设备、Ward、revision、摘要、大小、时间；提交时逐项对照，核验实际 OSS 对象大小/类型与 SHA-256（ETag 不等于 SHA-256；首期服务端可流式读图校验），再入库。
 
 预签名 URL 使用独立 HTTPS PUT，OSS 不接收网关 Bearer Token。网关严格使用服务端返回的 headers，API/OSS 使用独立 HTTP 客户端，防止默认认证头跨服务泄漏。OSS PUT 完成不等于服务端已接收证据。
 

@@ -127,12 +127,12 @@ def mark_offline_devices() -> int:
 @celery_app.task(name="duxue.purge_expired_frames")
 @_observed_task
 def purge_expired_frames() -> int:
-    from app.infrastructure.storage.object_storage import storage
+    from app.infrastructure.storage.object_storage import camera_storage, storage
     db = SessionLocal()
     try:
         frames = db.query(Frame).filter(Frame.purge_after < now(), Frame.training_candidate.is_(False)).all()
         for frame in frames:
-            storage.delete(frame.oss_key)
+            (camera_storage if frame.gateway_id else storage).delete(frame.oss_key)
             # Keep structured fields for future classifier recomputation; remove only sensitive image reference.
             frame.oss_key = None
         db.commit(); return len(frames)
@@ -194,9 +194,9 @@ app = celery_app
 def cleanup_gateway_uploads() -> int:
     from app.application.commands.gateway_ingestion import CleanupGatewayUploads
     from app.infrastructure.persistence.gateway_repository import SqlCaptureRepository
-    from app.infrastructure.storage.object_storage import storage
+    from app.infrastructure.storage.object_storage import camera_storage
     db = SessionLocal()
     try:
-        return CleanupGatewayUploads(SqlCaptureRepository(db), storage).run(now())
+        return CleanupGatewayUploads(SqlCaptureRepository(db), camera_storage).run(now())
     finally:
         db.close()

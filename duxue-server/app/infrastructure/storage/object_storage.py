@@ -103,19 +103,19 @@ def server_side_oss_endpoint(*, app_env: str, public_endpoint: str, internal_end
 
 
 class OssStorage:
-    def __init__(self) -> None:
+    def __init__(self, bucket: str) -> None:
         try:
             import oss2
         except ImportError as exc:
             raise RuntimeError("oss2 is required when STORAGE_BACKEND=oss") from exc
         auth = oss2.Auth(settings.oss_access_key_id, settings.oss_access_key_secret)
-        self.public_bucket = oss2.Bucket(auth, settings.oss_endpoint, settings.oss_bucket)
+        self.public_bucket = oss2.Bucket(auth, settings.oss_endpoint, bucket)
         server_endpoint = server_side_oss_endpoint(
             app_env=settings.app_env,
             public_endpoint=settings.oss_endpoint,
             internal_endpoint=settings.oss_endpoint_internal,
         )
-        self.internal_bucket = oss2.Bucket(auth, server_endpoint, settings.oss_bucket)
+        self.internal_bucket = oss2.Bucket(auth, server_endpoint, bucket)
 
     def upload_url(self, key: str, base_url: str, content_type: str, *, immutable: bool = False) -> tuple[str, int, dict]:
         lifetime = min(settings.oss_presign_expire_seconds, 300) if immutable else settings.oss_presign_expire_seconds
@@ -152,4 +152,6 @@ class OssStorage:
             self.internal_bucket.delete_object(key)
 
 
-storage = OssStorage() if settings.storage_backend == "oss" else LocalStorage()
+storage = OssStorage(settings.oss_bucket) if settings.storage_backend == "oss" else LocalStorage()
+# Camera frames use OSS_BUCKET_CAMERA. Local mode shares the upload directory.
+camera_storage = OssStorage(settings.oss_camera_bucket) if settings.storage_backend == "oss" else storage

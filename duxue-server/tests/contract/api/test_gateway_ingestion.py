@@ -77,6 +77,8 @@ def test_gateway_upload_retries_keep_key_and_single_fact(client, gateway, db):
     reservation = client.post("/gateway/frames/upload-url", headers=headers, json=body)
     assert reservation.status_code == 200, reservation.text
     target = reservation.json()
+    captured = datetime.fromisoformat(body["captured_at"])
+    assert target["oss_key"] == f"{ward}/{captured.date().isoformat()}/{body['frame_id']}.jpg"
     again = client.post("/gateway/frames/upload-url", headers=headers, json=body)
     assert again.json()["oss_key"] == target["oss_key"]
     put = client.put(target["upload_url"], headers=target["headers"], content=image)
