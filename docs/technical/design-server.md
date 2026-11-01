@@ -276,14 +276,14 @@ erDiagram
         uuid id PK
         uuid ward_id FK "绑定的被监护学生"
         string device_token_hash "长效设备认证哈希"
-        string device_type "android_phone | ip_camera"
+        string device_type "当前默认历史值；网关接入时迁移为ip_camera，见7.2"
         string status "online | offline"
         string invite_code "6位数字绑定邀请码(10分钟有效)"
         timestamp invite_code_expires_at
         int capture_interval_seconds "默认15秒"
         timestamp last_heartbeat_at "心跳时间戳"
-        string client_version "客户端版本号"
-        timestamp created_at
+        timestamp bound_server_time "绑定时服务端校时锚点，可空"
+        bigint bound_elapsed_realtime "绑定时单调时间，可空"
     }
 
     tasks {
@@ -333,7 +333,6 @@ erDiagram
         uuid study_session_id FK "关联的实际学习会话"
         string oss_key "OSS存储相对路径"
         timestamp captured_at "抓拍时间戳"
-        bigint monotonic_offset_ms "单调时钟偏移量(校正时间偏差)"
         timestamp received_at "服务端入库时间"
         jsonb structured_fields "VLM输出的物理结构化字段"
         bool analyzed "false=待推理, true=已提取特征"
@@ -813,11 +812,22 @@ graph TD
 - `GET /ward/profile`：Ward 查询自己的资料与已绑定 Guardian。
 
 ### 7.2 采集设备接入 (Devices & Frames)
-- `POST /api/v1/devices/generate-code`：App 端生成 6 位 10 分钟一次性绑定邀请码；
-- `POST /api/v1/devices/bind`：Cam 采集端输码绑定，颁发持久 `device_token`；
-- `POST /api/v1/devices/presigned-url`：Cam 端批量申请 OSS 预签名 PUT 直传链接（单次最高 20 帧）；
-- `POST /api/v1/devices/frames/meta`：Cam 直传 OSS 成功后批量提交帧元数据；
-- `POST /api/v1/devices/heartbeat`：Cam 端每 60 秒上报一次设备电量、网络与单调时钟。
+
+目标拓扑为标准摄像头 + 本地共享网关。采集方式、队列、时间与验收唯一维护于 [采集设计](design-cam.md)。以下为当前 `app/api/v1/device_ingestion.py` 已注册接口，路径相对 `/api/v1`；本次仅更新设计，未修改接口实现。
+
+| 接口 | 当前行为与网关复用方式 |
+|---|---|
+| `POST /wards/{ward_id}/devices/invite` | Guardian 为已授权 Ward 生成一次性绑定码与逻辑 Device |
+| `POST /devices/bind` | 网关输入该摄像头绑定码，换取 `device_id`、`device_token` 和采样间隔；`elapsed_realtime` 可省略 |
+| `GET /wards/{ward_id}/devices` | 返回已绑定设备及心跳推算的在线状态，当前不包含摄像头采图健康明细 |
+| `DELETE /devices/{device_id}` | Guardian 撤销该设备凭证 |
+| `POST /frames/upload-url` | 使用该摄像头设备凭证，逐帧申请预签名 URL、OSS key 和上传 headers；当前不是批量接口 |
+| `POST /frames` | OSS 上传完成后提交 `oss_key`、UTC `captured_at`；`elapsed_realtime`、`study_session_id` 可省略；按 OSS key 去重 |
+| `POST /devices/heartbeat` | 网关逐设备每 60s 调用；当前无请求体，只刷新接入存活并返回采样间隔及服务端时间 |
+
+**当前可复用边界**：每个摄像头一份设备凭证，网关按对应凭证调用接口。帧不要求有显式学习会话。网关不持有 OSS 长期密钥。上传和提交失败后须保存对象 key 继续重试，不能重复上传生成新证据。
+
+**产品化待实现**：网关独立身份与摄像头关联、批量配置、逐摄像头采集健康、工位换座生效区间和凭证轮换授权。`Device.device_type` 目前默认历史值，绑定请求无法指定类型，实施时需要补充类型与迁移；不将目标字段写成当前数据库已实现能力。现有 24h 时间修正和跨设备 key 所有权校验仍需在扩大部署前完善；最小实验限制历史缓存时长并使用可信网关。
 
 ### 7.3 伴学与启发答疑 (Companion & Tutoring)
 - `POST /api/v1/companion/tutoring-sessions`：开启某任务的答疑会话；
@@ -886,7 +896,7 @@ FUNCTION verifyWardAccess(wardId, currentUser, db):
    - **预签名签发与元数据入库**：P95 < 50ms；
    - **启发式答疑流式首字（TTFT）**：P90 < 1.2s；
    - **会话结束即时分析全流程**：P90 < 20s，P99 < 30s；
-   - **单台 2C4G 云主机承载能力**：在抓拍直传 OSS 架构下，轻松支撑 2,000+ 台摄像设备并发心跳与上传。
+   - **采集接入容量**：图片由本地网关直传 OSS，API 仅处理凭证与元数据；具体摄像头数量、心跳和帧登记吞吐量以压测为准，不预设单机容量。
 
 ---
 

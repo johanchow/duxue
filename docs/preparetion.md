@@ -16,7 +16,7 @@
 - **网络**：分配公网 IP，带宽 **1~5 Mbps 起步即可**
 - **登录方式**：选"密钥对"（不要用密码登录），创建或导入自己的 SSH 公钥
 
-> **带宽为什么这么小就够**：帧图片由 Cam 端**预签名直传 OSS，不经过 ECS**，ECS 只承担元数据请求（每帧几百字节）与 App 的 API 调用。如果采用视频推流方案，单设备上行约 1500 kbps 且全部流经 ECS，1~5 Mbps 只够 1~2 台设备——带宽会是最先撞墙的地方。
+> **带宽为什么这么小就够**：帧图片由 采集网关**预签名直传 OSS，不经过 ECS**，ECS 只承担元数据请求（每帧几百字节）与 App 的 API 调用。如果采用视频推流方案，单设备上行约 1500 kbps 且全部流经 ECS，1~5 Mbps 只够 1~2 台设备——带宽会是最先撞墙的地方。
 >
 > **2 核是否够**：第一期服务端不做任何本地视觉计算，ECS 只跑 API 与任务编排，2 核绰绰有余。第三期自部署模型时 GPU 走独立的按需启停实例，不占用这台 ECS。
 
@@ -43,8 +43,8 @@
 - **入口**：阿里云控制台 → 对象存储 OSS → 新建 Bucket
 - **Bucket 名称**：如 `duxue-frames-prod`
 - **地域**：与 ECS 同一地域（如华东1-杭州），内网传输免流量费
-- **读写权限**：私有（不公开）。Cam 端通过服务端签发的**预签名 PUT URL** 上传，不下发长期凭证
-- **跨域（CORS）**：需允许 Cam 端发起 PUT 请求，配置允许来源 `*`、允许方法 `PUT`、允许 Header `*`
+- **读写权限**：私有（不公开）。采集网关通过服务端签发的**预签名 PUT URL** 上传，不下发长期凭证
+- **跨域（CORS）**：需允许 采集网关发起 PUT 请求，配置允许来源 `*`、允许方法 `PUT`、允许 Header `*`
 - **生命周期规则**：为帧图片前缀（如 `frames/`）配置 **30 天后自动删除**。这是数据留存策略的执行方式，不要靠应用层逐个删
 - **需记录**：Bucket 名称、Endpoint（内网 + 公网地址）、地域
 
@@ -200,7 +200,7 @@ scp -i ali-ecs.pem .env.prod duxue@47.107.176.107:/home/duxue/duxue-server/.env.
 22    TCP   你的本机IP   SSH（限制来源，不要开放 0.0.0.0/0）
 ```
 
-> **不需要开放 1935**。系统不接收 RTMP 推流，Cam 端通过 HTTPS 上传帧元数据、通过 OSS 预签名 URL 上传图片。少暴露一个明文端口也少一个攻击面。
+> **不需要开放 1935**。系统不接收 RTMP 推流，采集网关通过 HTTPS 上传帧元数据、通过 OSS 预签名 URL 上传图片。少暴露一个明文端口也少一个攻击面。
 
 ---
 
@@ -246,36 +246,15 @@ Batch 支持的视觉模型（见 [批量推理文档](https://help.aliyun.com/z
 | 手段 | 效果 | 落地位置 |
 |------|------|---------|
 | **限制监控时段** | 最有效 | 只在实际需要观察的时段采集（如晚间两小时），而非全天挂机。由 guardian 在 App 中配置 |
-| 采样间隔 15 秒（而非 5 秒） | ÷3 | `CAPTURE_INTERVAL_SECONDS`，服务端下发给 Cam 端 |
+| 采样间隔 15 秒（而非 5 秒） | ÷3 | `CAPTURE_INTERVAL_SECONDS`，服务端下发给 采集网关 |
 | Batch 接口 | ÷2 | `VLM_BATCH_BASE_URL` |
-| 模型档位 flash + 分辨率 640×480 | 量级 | `VLM_MODEL_NAME`、Cam 端设置 |
+| 模型档位 flash + 分辨率 640×480 | 量级 | `VLM_MODEL_NAME`、采集网关设置 |
 
 > 上线后用 `duxue-server/scripts/0_quicktest.py` 按真实素材核算单 ward 的实际日成本。这个数字决定定价模型，也决定第三期自部署的优先级——如果算下来成本可忽略，自部署可以往后放。
 
 ---
 
 ## 五、签名密钥生成（一次性，务必备份）
-
-### 5.1 duxue-cam（Android Cam App）
-
-```bash
-# 在本地执行一次
-keytool -genkeypair \
-  -alias duxue-cam \
-  -keyalg RSA \
-  -keysize 2048 \
-  -validity 10000 \
-  -keystore duxue-cam.keystore
-
-# 编码为 Base64（用于填入 GitHub Secrets）
-base64 -i duxue-cam.keystore | pbcopy
-```
-
-```
-□ 生成 duxue-cam.keystore
-□ 备份到加密网盘（1Password / 飞书保险箱等），不得提交 Git
-□ 将 Base64 内容填入 GitHub Secrets（见第七节）
-```
 
 ### 5.2 duxue-app（Guardian App Android）
 
@@ -344,7 +323,7 @@ VLM_BATCH_FALLBACK_AFTER_HOURS=20      # 超时未完成则降级实时 API
 VLM_REALTIME_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 
 # ── 采集
-CAPTURE_INTERVAL_SECONDS=15            # 下发给 Cam 端的抓拍间隔
+CAPTURE_INTERVAL_SECONDS=15            # 下发给 采集网关的抓拍间隔
 HEARTBEAT_TIMEOUT_SECONDS=180          # 心跳超时即置 offline 并推送通知
 
 # ── 数据留存
@@ -364,7 +343,7 @@ APP_BASE_URL=https://你的域名
 
 ## 七、GitHub Secrets 配置
 
-### 7.1 duxue-server 和 duxue-cam 共用（仓库级别）
+### 7.1 duxue-server（以 [部署文档](deployment.md) 的现行 Secrets 为准）
 
 进入 GitHub 仓库 → **Settings → Secrets and variables → Actions**：
 
@@ -376,15 +355,6 @@ APP_BASE_URL=https://你的域名
 | `ECS_USER` | SSH 登录用户名（如 ubuntu） | |
 | `ECS_SSH_KEY` | 部署用 SSH 私钥内容 | 对应 ECS 上 authorized_keys 的公钥 |
 | `TEST_DATABASE_URL` | CI 测试用数据库连接串 | 连开发环境 RDS |
-
-### 7.2 duxue-cam 专属
-
-| Secret 名称 | 值 |
-|------------|-----|
-| `KEYSTORE_BASE64` | duxue-cam.keystore 的 Base64 编码 |
-| `KEYSTORE_PASSWORD` | Keystore 密码 |
-| `KEY_ALIAS` | `duxue-cam` |
-| `KEY_PASSWORD` | Key 密码 |
 
 ### 7.3 Codemagic 环境变量（duxue-app）
 
@@ -427,7 +397,6 @@ APP_BASE_URL=https://你的域名
 □ 注册 Apple Developer（$99/年，尽早，有审核周期）
 □ 注册 Google Play Console（$25，一次性）
 □ 注册 Codemagic，连接 duxue-app 仓库
-□ 生成 duxue-cam.keystore，备份，编码 Base64
 □ 生成 duxue-app.keystore，备份，上传 Codemagic
 □ 生成 Apple App Store Connect API Key，下载 .p8 备份
 □ 开通阿里云百炼，获取 API Key
@@ -437,12 +406,10 @@ APP_BASE_URL=https://你的域名
 ### 阶段三：CI/CD 配置
 
 ```
-□ 配置 GitHub Secrets（server + cam 共用部分）
-□ 配置 GitHub Secrets（cam 专属签名密钥）
+□ 配置 GitHub Secrets（server 部分）
 □ 配置 Codemagic 环境变量（app 签名 + API 地址）
 □ 编写 .github/workflows/deploy-server.yml
 □ 编写 .github/workflows/rollback-server.yml
-□ 编写 duxue-cam 的 GitHub Actions workflow
 □ 编写 duxue-app 的 codemagic.yaml
 ```
 
@@ -462,10 +429,10 @@ APP_BASE_URL=https://你的域名
 ```
 □ HTTPS 访问 API 域名，返回 200
 □ Guardian App 连接生产环境，完成注册/登录/创建 ward
-□ Cam App 安装 APK，输入邀请码绑定设备
+□ 采集网关实现后配置摄像头，输入邀请码绑定设备（见采集设计验收）
 □ 验证帧上传链路：申请预签名 URL → PUT 到 OSS → 提交元数据 → frames 表有记录
-□ 验证断网补传：飞行模式 5 分钟后恢复，确认积压帧按时间序补齐
-□ 验证心跳掉线：强制停止 Cam App，确认 3 分钟内设备置 offline
+□ 验证断网补传：仅断外网 5 分钟后恢复，保持局域网连通，确认积压帧按时间序补齐
+□ 验证心跳掉线：停止网关进程，确认 3 分钟内设备置 offline
 □ 验证 Batch 链路：手动触发一次批次提交，确认 analysis_batches 状态流转到 completed
 □ 验证报告生成：确认 frame_predictions → behavior_segments → reports 全链路产出
 □ 验证跨租户隔离：用 A 租户账号尝试访问 B 租户的 ward，必须返回 403/404

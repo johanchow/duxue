@@ -1,12 +1,12 @@
 # 读学系统 — 可观测性方案设计
 
-> 版本 v1.0 | 覆盖：duxue-server · duxue-cam · duxue-app
+> 版本 v1.0 | 覆盖：duxue-server · duxue-gateway · duxue-app
 >
 > 全系统架构见：[docs/technical/ARCHITECTURE.md](./technical/ARCHITECTURE.md)
 
-> 实施状态（2026-09-12）：服务端已接入标准 OTLP traces / metrics、FastAPI / SQLAlchemy / Celery / Redis / HTTPX 自动插桩，以及 Agent、LLM/VLM、采集与 Celery 的手工业务遥测。部署、dashboard 与告警模板见 [`ops/observability/`](../ops/observability/)。Flutter 与 Android 的 trace context 接入仍待单独实施。
+> 实施状态（2026-09-12）：服务端已接入标准 OTLP traces / metrics、FastAPI / SQLAlchemy / Celery / Redis / HTTPX 自动插桩，以及 Agent、LLM/VLM、采集与 Celery 的手工业务遥测。部署、dashboard 与告警模板见 [`ops/observability/`](../ops/observability/)。Flutter 与采集端的 trace context 接入当时待单独实施。
 
-> 实施状态（2026-09-13）：Flutter App 已经通过已认证的 Server relay 上报安全的体验 telemetry；`service.name=duxue-app` 与 `service.name=duxue-server` 在 Grafana 中保持独立，且可由 W3C `trace_id` 串联。Android Cam 仍待接入。
+> 实施状态（2026-09-13）：Flutter App 已经通过已认证的 Server relay 上报安全的体验 telemetry；`service.name=duxue-app` 与 `service.name=duxue-server` 在 Grafana 中保持独立，且可由 W3C `trace_id` 串联。采集端改为标准摄像头与网关，网关遥测待实现。
 >
 > 实施状态（2026-10-20）：Server 继续直连 Grafana。可选 Langfuse Cloud 以服务端进程内的第二个
 > OTEL span processor 实现，默认关闭；只接收字段白名单后的 AI trace，不接收 logs、metrics、儿童
@@ -34,7 +34,7 @@ guardian 在 App 查看报告
     ↑
 duxue-server 批量 AI 分析 + 报告聚合
     ↑ REST API（帧元数据 / 心跳）
-duxue-cam 定时抓拍上传（Android 长驻 Foreground Service）
+duxue-gateway 从标准摄像头采图并上传（Python 网关，待实现）
 ```
 
 三端之间存在跨进程、跨网络的依赖，单端日志无法定位跨端问题。可观测性目标：
@@ -63,7 +63,7 @@ duxue-cam 定时抓拍上传（Android 长驻 Foreground Service）
 
 **采用方案 A（纯 OpenTelemetry + Grafana LGTM 栈）**，理由：
 
-1. **三端有标准 SDK**：Python / Android / Flutter 均有官方或官方维护的 OTEL SDK
+1. **三端有标准 SDK**：Python / 网关 Python / Flutter 均有官方或官方维护的 OTEL SDK
 2. **链路天然跨端**：W3C `traceparent` Header 让 App → Server → Worker 的 span 串在同一 trace_id 下，无需额外 hack
 3. **Grafana 三信号联动**：同一界面可以从 Metrics 曲线异常点跳到 Trace，再从 Trace 的 span 跳到对应日志行
 4. **可自托管**：数据不出服务器，满足系统的隐私定位
@@ -78,8 +78,8 @@ duxue-cam 定时抓拍上传（Android 长驻 Foreground Service）
 ┌─────────────────────────────────────────────────────────────┐
 │                        三端 SDK                              │
 │                                                             │
-│  duxue-app (Flutter)    duxue-cam (Android)                 │
-│  opentelemetry-dart     opentelemetry-android               │
+│  duxue-app (Flutter)    duxue-gateway (Python，待实现)                 │
+│  opentelemetry-dart     Python OTEL（待接入）               │
 │  ── Traces ──────────── Traces ────────────                 │
 │  ── Logs (手动 trace_id) Logs (手动 trace_id)                │
 │                    │                   │                    │
@@ -155,22 +155,9 @@ Python 端使用 OTEL Log Bridge，structlog 日志经 OTLP 导出到 Loki，每
 
 > 后两个是**成本指标**，优先级不低于性能指标——它们失效时系统功能完全正常，只是账单翻几倍，没有指标就发现不了。
 
-### 4.2 duxue-cam（Android / Kotlin）
+### 4.2 采集网关（待实现）
 
-Cam App 的可观测性核心是**采集与上传链路的健康度**。OTEL SDK 负责 HTTP 调用链路，本地状态通过手动埋点记录：
-
-| 关键事件 | 上报方式 | 说明 |
-|---------|---------|------|
-| 设备绑定（`/devices/bind`） | HTTP 自动插桩 | Retrofit + OkHttp 自动产生 span |
-| 单帧上传 | HTTP 自动插桩 | 覆盖申请预签名 URL → PUT OSS → 提交元数据三段 |
-| 上传失败与重试 | Span Event | 记录失败原因（网络 / 预签名过期 / 服务端 5xx）与重试次数 |
-| 本地队列积压数 | Gauge（随心跳上报） | **最重要的单项指标**：积压持续增长是网络或服务端问题的最早信号 |
-| 抓拍失败 | Span + 错误标记 | CameraX 异常（摄像头被占用等） |
-| 服务被系统回收 | 手动事件 | 用于评估各厂商机型的保活成功率 |
-
-> 队列积压数建议随心跳一并上报到服务端，而非只靠 OTEL——移动端 OTEL 在应用被杀时可能来不及导出，而心跳是必发请求。
-
-日志：在每条 Timber 日志中手动注入当前 span 的 `trace_id`，通过 Loki 的 derived field 配置实现日志→链路跳转。
+网关需要记录逐摄像头采图成功/失败、上传与重试、队列帧数/字节数、丢弃帧数和最后成功时间。指标与健康语义见 [采集设计](technical/design-cam.md#45-健康与可观测性)。先落地本地诊断，再按运维需要接入 OTEL；现有心跳不支持上传这些明细。
 
 ### 4.3 duxue-app（Flutter / Dart）
 
@@ -294,18 +281,9 @@ Grafana 的 HTTP 父 span、OTLP log / stdout JSON 日志包含运行关联 ID�
 
 模型原文除 Langfuse/Grafana trace 外仍可写在独立审计文件，不进 stdout、普通应用日志或 Loki。非生产环境默认写入 `duxue-server/var/agent-llm-audit.jsonl`；生产环境只有同时设置 `AGENT_DEBUG_AUDIT_ENABLED=true` 和 `AGENT_DEBUG_AUDIT_PATH` 才写入。`AGENT_DEBUG_AUDIT_ENABLED=false` 在任何环境都关闭。每一行带与 stdout 相同的 `trace_id`、`span_id`，`kind` 区分三类记录：`input`（Ward 问话，元数据含 run/thread id）、`output`（模型原文，含操作名、长度和 SHA-256）、`turn_result`（孩子最终看到的文本，元数据为 act、relation、结果、失败原因、配图丢弃原因）。按 `trace_id` 可连接完整一轮。
 
-### 7.2 duxue-cam（Android Build Config）
+### 7.2 采集网关配置（待实现）
 
-Android 端配置通过 `BuildConfig` 字段注入，在 `build.gradle.kts` 的 `buildConfigField` 中区分 debug / release 环境：
-
-| 配置项 | debug 值 | release 值 | 说明 |
-|--------|---------|-----------|------|
-| `OTEL_SERVICE_NAME` | `duxue-cam-debug` | `duxue-cam` | 区分环境 |
-| `OTEL_ENDPOINT` | `http://10.0.2.2:4318`（模拟器） | Grafana Cloud URL | OTLP HTTP 地址 |
-| `OTEL_AUTH_HEADER` | 空（本地无鉴权） | `Basic <base64>` | 生产环境鉴权 |
-| `OTEL_SAMPLE_RATE` | `1.0` | `0.2` | debug 全量采样 |
-
-> `OTEL_AUTH_HEADER` 等敏感值不能提交到 Git，通过 CI/CD 的 Secret 注入到 `local.properties` 或环境变量，再由 Gradle 读取写入 `BuildConfig`。
+网关使用运行时配置与受限凭证存储，部署时再确定 OTLP endpoint、认证与采样参数；不将敏感配置编译进移动端 APK。具体实现以 [采集设计](technical/design-cam.md) 为准。
 
 ### 7.3 duxue-app（Flutter 环境变量 / dart-define）
 
@@ -344,7 +322,7 @@ relay 对每个认证主体限流 120 条/分钟、只接受严格的 name / att
 | 端 | service.name | 说明 |
 |----|-------------|------|
 | duxue-server | `duxue-server` | FastAPI 主进程与 Celery Worker 共用，通过 `service.component` 区分 |
-| duxue-cam | `duxue-cam` | Android 采集端 |
+| duxue-gateway | `duxue-gateway` | 共享采集网关（待实现） |
 | duxue-app | `duxue-app` | Flutter Guardian 端 |
 
 ---
@@ -358,7 +336,7 @@ relay 对每个认证主体限流 120 条/分钟、只接受严格的 name / att
 | **Phase 1** | 注册 Grafana Cloud + Server 端配置环境变量（OTEL 自动插桩） | 半天 | FastAPI/Celery/SQLAlchemy 全链路可见，零代码改动 |
 | **Phase 2** | Server 端成本指标（`vlm.frames_analyzed_daily`、`batch.fallback_ratio`）+ 告警规则 | 半天 | 成本失控可被立刻发现 |
 | **Phase 3** | App 端 dio Interceptor 注入 traceparent + dart-define 配置 | 半天 | App → Server 跨端链路串联 |
-| **Phase 4** | Cam 端上传链路埋点 + 队列积压随心跳上报 | 半天 | 采集异常可追踪 |
+| **Phase 4** | 网关实现后接入采集与上传遥测；健康明细需扩展协议 | 待评估 | 采集异常可追踪 |
 | **Phase 5** | 其余 Server 自定义业务指标 + 完整告警覆盖 | 1 天 | AI 推理性能 + 队列积压告警 |
 
 > Phase 1 全程不改业务代码，只加环境变量，可独立上线验证效果。
