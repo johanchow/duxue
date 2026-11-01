@@ -813,7 +813,7 @@ graph TD
 
 ### 7.2 采集设备接入 (Devices & Frames)
 
-目标拓扑为标准摄像头 + 本地共享网关。采集方式、队列、时间与验收唯一维护于 [采集设计](design-gateway.md)。家庭验证目标已改为人工配置摄像头与 Ward、统一网关认证，无绑定码；目标协议唯一见 [采集设计 §4.5](design-gateway.md#45-interface目标云端协议全部待实现)，尚未实现。以下只记录当前 `app/api/v1/device_ingestion.py` 已注册的逐设备认证接口，路径相对 `/api/v1`；本次仅更新设计，未修改接口实现。
+目标拓扑为标准摄像头 + 本地共享网关。采集方式、队列、时间与验收唯一维护于 [采集设计](design-gateway.md)。家庭验证目标已改为人工配置摄像头与 Ward、统一网关认证，无绑定码；新网关接口已实现，协议唯一见 [采集设计 §4.5](design-gateway.md#45-interface云端网关协议)。以下只记录当前 `app/api/v1/device_ingestion.py` 已注册的逐设备认证接口，路径相对部署API根路径；新入口为 `app/api/v1/gateway_ingestion.py`，旧入口保留兼容。
 
 | 接口 | 当前行为（旧逐设备认证方式） |
 |---|---|
@@ -825,9 +825,9 @@ graph TD
 | `POST /frames` | OSS 上传完成后提交 `oss_key`、UTC `captured_at`；`elapsed_realtime`、`study_session_id` 可省略；按 OSS key 去重 |
 | `POST /devices/heartbeat` | 旧采集客户端逐设备每 60s 调用；当前无请求体，只刷新接入存活并返回采样间隔及服务端时间 |
 
-**当前可复用边界**：OSS 存储适配、Frame 模型、可空 StudySession 与既有事实发布基础设施可复用；当前认证和上传请求不能直接接受网关 Token 或由客户端自报 Ward。旧接口维持兼容，目标接口并行新增。
+**当前可复用边界**：OSS 存储适配、Frame 模型、可空 StudySession 与既有事实发布基础设施可复用；当前认证和上传请求不能直接接受网关 Token 或由客户端自报 Ward。旧接口维持兼容，新网关接口已并行提供。
 
-**实施范围**：网关认证、摄像头登记、幂等上传预约、Frame 接收、健康上报及数据库迁移，以 [采集设计](design-gateway.md) 的领域与基础设施契约为准；本节不复制其目标字段和协议。旧类型默认值、时间修正与对象所有权校验差异须在实施中显式处理，文档更新不代表迁移完成。
+**实施范围**：网关认证、摄像头登记、幂等上传预约、Frame 接收、健康上报及数据库迁移，以 [采集设计](design-gateway.md) 的领域与基础设施契约为准；本节不复制其目标字段和协议。新登记写ip_camera，网关时间校验不沿用旧时间改写逻辑；迁移20261101_31已提供并在临时PostgreSQL验证，尚未部署到开发/生产库。
 
 ### 7.3 伴学与启发答疑 (Companion & Tutoring)
 - `POST /api/v1/companion/tutoring-sessions`：开启某任务的答疑会话；

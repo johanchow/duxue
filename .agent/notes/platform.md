@@ -38,3 +38,14 @@
 - 2026-11-01 网关设计复核：入口重命名为 [design-gateway](../../docs/technical/design-gateway.md)，按网关自身调用与云端间接数据关系区分领域依赖；移除本次无须新增的分析事件/任务设计，保留现有云端Memory事实契约。模型清单显式列出根实体、值对象、服务/Factory、Repository和事件；不为齐全而虚构Domain Service。
 
 - 2026-11-01 用户要求统一聚合根命名：网关文档与仓库 DDD skill/template 使用 Aggregate Root（聚合根）及其设计，不再使用设计卡片作为表头；聚合仍表示一致性边界，聚合根表示唯一修改入口，两者语义保持区分。
+
+- 2026-11-01 用户确认采集网关采用Go + FFmpeg + SQLite，在同仓库独立module实现；服务端继续Python。技术选型已同步[网关架构](../../docs/technical/design-gateway.md)，实现计划见[进行中spec](../specs/go-camera-gateway.md)，Gate 1已确认，现已实现；实际测试证据与家庭现场验收进度保留在该spec。
+
+- 2026-11-01 Go网关落地：统一网关principal/白名单、幂等预约与不可覆盖OSS对象、本地SQLite/JPEG恢复、CLI及三平台包；实际入口与运行方式见[网关架构](../../docs/technical/design-gateway.md)和[接入手册](../../docs/camera-setup-guide.md)。现场RTSP/OSS长测待验收，不能以合成快照测试替代。新增迁移20261101_31只在临时PostgreSQL验证，未动开发/生产库。
+- 网关迁移测试发现历史migration 02从空PostgreSQL重建Guardian表会遭遇已有FK依赖；本次未改无关旧迁移。新增迁移测试以当前schema降到30形成前一版本基线，再升31，覆盖并发幂等和Frame/Outbox原子回滚。云端新代码遵循独立聚合Repository ports，旧设备撤销入口仍属于兼容ORM路径。
+
+- 网关数据清除边界：原 `/wards/{id}/data` 只清数据、保留Ward身份，不能仅删Device后让长期网关凭证自动重建同一登记。现保留gateway_erased停用标记并隐藏于设备列表，拒绝自动登记；保留purging上传预约作为晚到PUT的删除跟踪。不可覆盖网关URL有效期最多300s，孤儿清理晚于签名窗口。顺带修复原清除路径PlanDraft ORM被同名API DTO覆盖导致500的既有问题；均有回归测试。
+
+- RTSP实际路径测试发现通用rw_timeout参数不适用于当前RTSP取图路径，已改用FFmpeg RTSP demuxer支持的timeout（微秒）。新增本地合成H.264 RTSP/RTP握手与解码测试走SourceFactory生产路径；lavfi解码测试不能替代RTSP协议测试，真实机型/固件仍须现场验收。
+
+- 网关发布打包只枚举二进制、示例配置、systemd模板和依赖说明四类公开文件；不能递归打包可能已运行过的目录，避免携带照片、私有配置与凭证。Application显式决定FrameAccepted审计与既有采集事实发布，Repository负责同事务持久化。

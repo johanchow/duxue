@@ -39,6 +39,7 @@ def _observed_task(func):
 celery_app = Celery("duxue", broker=settings.redis_url, backend=settings.redis_url)
 celery_app.conf.timezone = "Asia/Shanghai"
 celery_app.conf.beat_schedule = {
+    "cleanup-gateway-orphans": {"task": "duxue.cleanup_gateway_uploads", "schedule": crontab(minute=15)},
     "submit-daily-batches": {"task": "duxue.submit_daily_batches", "schedule": crontab(hour=settings.batch_submit_hour, minute=0)},
     "poll-batches": {"task": "duxue.poll_batches", "schedule": crontab(minute="*/10")},
     "offline-devices": {"task": "duxue.mark_offline_devices", "schedule": crontab(minute="*")},
@@ -186,3 +187,16 @@ def evolve_memory_signals() -> int:
 
 # `celery -A app.workers.celery_tasks worker` expects this name.
 app = celery_app
+
+
+@celery_app.task(name="duxue.cleanup_gateway_uploads")
+@_observed_task
+def cleanup_gateway_uploads() -> int:
+    from app.application.commands.gateway_ingestion import CleanupGatewayUploads
+    from app.infrastructure.persistence.gateway_repository import SqlCaptureRepository
+    from app.infrastructure.storage.object_storage import storage
+    db = SessionLocal()
+    try:
+        return CleanupGatewayUploads(SqlCaptureRepository(db), storage).run(now())
+    finally:
+        db.close()

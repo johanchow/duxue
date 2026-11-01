@@ -6,7 +6,7 @@
 
 > 实施状态（2026-09-12）：服务端已接入标准 OTLP traces / metrics、FastAPI / SQLAlchemy / Celery / Redis / HTTPX 自动插桩，以及 Agent、LLM/VLM、采集与 Celery 的手工业务遥测。部署、dashboard 与告警模板见 [`ops/observability/`](../ops/observability/)。Flutter 与采集端的 trace context 接入当时待单独实施。
 
-> 实施状态（2026-09-13）：Flutter App 已经通过已认证的 Server relay 上报安全的体验 telemetry；`service.name=duxue-app` 与 `service.name=duxue-server` 在 Grafana 中保持独立，且可由 W3C `trace_id` 串联。采集端改为标准摄像头与网关，网关遥测待实现。
+> 实施状态（2026-09-13）：Flutter App 已经通过已认证的 Server relay 上报安全的体验 telemetry；`service.name=duxue-app` 与 `service.name=duxue-server` 在 Grafana 中保持独立，且可由 W3C `trace_id` 串联。采集端改为标准摄像头与网关，Go网关已实现本地结构化日志/status和云端健康快照；OTEL导出尚未接入。
 >
 > 实施状态（2026-10-20）：Server 继续直连 Grafana。可选 Langfuse Cloud 以服务端进程内的第二个
 > OTEL span processor 实现，默认关闭；只接收字段白名单后的 AI trace，不接收 logs、metrics、儿童
@@ -34,7 +34,7 @@ guardian 在 App 查看报告
     ↑
 duxue-server 批量 AI 分析 + 报告聚合
     ↑ REST API（帧元数据 / 心跳）
-duxue-gateway 从标准摄像头采图并上传（Python 网关，待实现）
+duxue-gateway 从标准摄像头采图并上传（Go网关，本地诊断已实现）
 ```
 
 三端之间存在跨进程、跨网络的依赖，单端日志无法定位跨端问题。可观测性目标：
@@ -63,7 +63,7 @@ duxue-gateway 从标准摄像头采图并上传（Python 网关，待实现）
 
 **采用方案 A（纯 OpenTelemetry + Grafana LGTM 栈）**，理由：
 
-1. **三端有标准 SDK**：Python / 网关 Python / Flutter 均有官方或官方维护的 OTEL SDK
+1. **三端有标准 SDK**：服务端Python与Flutter沿用现有SDK；Go网关先提供结构化日志和状态查询，OTEL导出后续接入
 2. **链路天然跨端**：W3C `traceparent` Header 让 App → Server → Worker 的 span 串在同一 trace_id 下，无需额外 hack
 3. **Grafana 三信号联动**：同一界面可以从 Metrics 曲线异常点跳到 Trace，再从 Trace 的 span 跳到对应日志行
 4. **可自托管**：数据不出服务器，满足系统的隐私定位
@@ -155,9 +155,9 @@ Python 端使用 OTEL Log Bridge，structlog 日志经 OTLP 导出到 Loki，每
 
 > 后两个是**成本指标**，优先级不低于性能指标——它们失效时系统功能完全正常，只是账单翻几倍，没有指标就发现不了。
 
-### 4.2 采集网关（待实现）
+### 4.2 采集网关（本地诊断已实现）
 
-网关需要记录逐摄像头采图成功/失败、上传与重试、队列帧数/字节数、丢弃帧数和最后成功时间。指标与健康语义见 [采集设计](technical/design-gateway.md#47-infrastructure-design-card)。先落地本地诊断，再按运维需要接入 OTEL；现有心跳不支持上传这些明细。
+网关需要记录逐摄像头采图成功/失败、上传与重试、队列帧数/字节数、丢弃帧数和最后成功时间。指标与健康语义见 [采集设计](technical/design-gateway.md#47-infrastructure-design-card)。本地日志/status和新网关健康快照已实现；缺口/重连累计数当前留在本地，OTEL导出与Guardian UI尚未接入。旧逐设备心跳仍仅表示云端连通。
 
 ### 4.3 duxue-app（Flutter / Dart）
 
@@ -281,7 +281,7 @@ Grafana 的 HTTP 父 span、OTLP log / stdout JSON 日志包含运行关联 ID�
 
 模型原文除 Langfuse/Grafana trace 外仍可写在独立审计文件，不进 stdout、普通应用日志或 Loki。非生产环境默认写入 `duxue-server/var/agent-llm-audit.jsonl`；生产环境只有同时设置 `AGENT_DEBUG_AUDIT_ENABLED=true` 和 `AGENT_DEBUG_AUDIT_PATH` 才写入。`AGENT_DEBUG_AUDIT_ENABLED=false` 在任何环境都关闭。每一行带与 stdout 相同的 `trace_id`、`span_id`，`kind` 区分三类记录：`input`（Ward 问话，元数据含 run/thread id）、`output`（模型原文，含操作名、长度和 SHA-256）、`turn_result`（孩子最终看到的文本，元数据为 act、relation、结果、失败原因、配图丢弃原因）。按 `trace_id` 可连接完整一轮。
 
-### 7.2 采集网关配置（待实现）
+### 7.2 采集网关配置（OTEL导出待接入）
 
 网关使用运行时配置与受限凭证存储，部署时再确定 OTLP endpoint、认证与采样参数；不将敏感配置编译进移动端 APK。具体实现以 [采集设计](technical/design-gateway.md) 为准。
 
@@ -322,7 +322,7 @@ relay 对每个认证主体限流 120 条/分钟、只接受严格的 name / att
 | 端 | service.name | 说明 |
 |----|-------------|------|
 | duxue-server | `duxue-server` | FastAPI 主进程与 Celery Worker 共用，通过 `service.component` 区分 |
-| duxue-gateway | `duxue-gateway` | 共享采集网关（待实现） |
+| duxue-gateway | `duxue-gateway` | Go共享采集网关（本地日志已实现，OTEL待接入） |
 | duxue-app | `duxue-app` | Flutter Guardian 端 |
 
 ---

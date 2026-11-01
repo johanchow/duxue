@@ -43,6 +43,7 @@ class Settings:
     secret_key: str = os.getenv("JWT_SECRET_KEY", "").strip() or os.getenv("SECRET_KEY", "").strip()
     access_token_minutes: int = _integer("ACCESS_TOKEN_MINUTES", "15")
     refresh_token_days: int = _integer("REFRESH_TOKEN_DAYS", "30")
+    gateway_credentials: str = os.getenv("GATEWAY_CREDENTIALS_JSON", "[]")
     frame_retention_days: int = _integer("FRAME_RETENTION_DAYS", "90")
     capture_interval_seconds: int = _integer("CAPTURE_INTERVAL_SECONDS", "15")
     heartbeat_timeout_seconds: int = _integer("HEARTBEAT_TIMEOUT_SECONDS", "180")

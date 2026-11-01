@@ -1,0 +1,5 @@
+state/
+/dist/
+/config.yaml
+*.db*
+*.env

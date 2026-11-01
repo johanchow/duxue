@@ -1,0 +1,34 @@
+name: Gateway CI
+on:
+  workflow_call:
+  pull_request:
+    paths:
+      - "duxue-gateway/**"
+      - ".github/workflows/gateway-ci.yml"
+permissions:
+  contents: read
+concurrency:
+  group: gateway-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: duxue-gateway
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: duxue-gateway/go.mod
+          cache-dependency-path: duxue-gateway/go.sum
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: go test -race ./...
+      - run: go vet ./...
+      - run: ./scripts/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: duxue-gateway-packages
+          path: |
+            duxue-gateway/dist/*.tar.gz
+            duxue-gateway/dist/SHA256SUMS

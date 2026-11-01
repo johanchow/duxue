@@ -1,10 +1,10 @@
 # 读学Eye — 采集网关技术架构
 
-> 版本 v5.1 · 更新日期：2026-11-01
-> 状态：目标设计，网关与网关统一认证接口尚未实现；本文不代表可直接执行的部署说明。
+> 版本 v6.0 · 更新日期：2026-11-01
+> 状态：Go网关与云端统一认证/接入已实现；自动化验证与家庭现场验收分开记录，真实摄像头/OSS长时间验收待完成。
 > 方法：遵循 [domain-driven-design skill](../../.cursor/skills/domain-driven-design/SKILL.md)。
 > 事实源：本文唯一维护采集配置、网关领域模型、接入目标协议、可靠性与验收；现有 API 见 [design-server §7.2](design-server.md#72-采集设备接入-devices--frames)。
-> 本次仅编写设计，不实现服务、不修改数据库。既有手机采集工程不作为实现基础。
+> 代码入口：[Go网关](../../duxue-gateway/go.mod)、[云端接口](../../duxue-server/app/api/v1/gateway_ingestion.py)；操作步骤唯一见[接入手册](../camera-setup-guide.md)。既有手机采集工程不作为实现基础。
 
 ## 一、产品边界与技术取舍
 
@@ -18,7 +18,7 @@
 - 本地人工配置 `camera_id`、RTSP 地址、摄像头本地账号和 `ward_id`，不使用绑定码，不为每台摄像头配置云端 Token。
 - 全网关一份受限云端凭证，由部署者配置一次。服务端检查 Ward 白名单；知道 `ward_id` 不等于拥有上传权。
 - 无本地行为 AI、消息总线、Web 管理后台、全品牌自动发现、实时远程监控、摄像头存储卡回取。初期由操作员现场启动、暂停、停止。
-- Python 单进程 + FFmpeg 子进程 + SQLite + JPEG 私有目录；准确版本在实现时按仓库环境固定并锁定依赖，不在设计阶段虚构已有工具链。
+- Go 主进程 + FFmpeg 子进程 + SQLite + JPEG 私有目录；网关独立构建和发布，服务端继续使用 Python。Go工具链及依赖已固定到go.mod/go.sum；当前验证FFmpeg 8.1.2，部署时另记录实际版本。
 
 ### 1.2 Domain Inventory 与关联范围
 
@@ -95,7 +95,45 @@ flowchart TB
     ADAPTER --> EXT
 ```
 
-拟实现目录为 `duxue-gateway/`，按 `interface/`、`application/`、`domain/`、`infrastructure/`、`bootstrap/` 分层。仅 composition root 装配具体客户端。服务端仍放在现有 `duxue-server/app/` 对应层，不引入额外云端微服务。
+### 2.1 Go 独立项目与代码结构
+
+在当前 Git 仓库中新建 `duxue-gateway/`，与 `duxue-server/`、`duxue-app/` 平级。它是独立 Go module，拥有自己的构建、测试与发布产物，不新建仓库，不导入服务端 Python 代码，也不需要本地 HTTP 服务。
+
+项目结构如下；云端与本地各自实现相应职责：
+
+```text
+duxue-gateway/
+├── go.mod / go.sum                  # 工具链与依赖约束
+├── cmd/duxue-gateway/               # CLI 入口
+├── internal/
+│   ├── interfaces/                 # 命令行参数与输出
+│   ├── application/                # Commands、Queries 与外部端口
+│   ├── domain/                     # 本地 FrameDelivery 与值对象
+│   ├── infrastructure/             # FFmpeg、HTTP、SQLite、文件、调度
+│   └── bootstrap/                  # 配置与依赖装配
+├── configs/                        # 无真实凭证的配置示例
+├── deploy/                         # systemd 与本机部署模板
+└── scripts/                        # 可复现构建与发布包生成
+```
+
+仅 composition root 装配具体客户端。CameraRegistration 与 AcceptedFrame 的代码放在现有 `duxue-server/app/` 对应层，使用 Python；它们属于同一业务领域，但不作为网关本地持久聚合复制一份。不引入额外云端微服务。
+
+### 2.2 技术选型与发布边界
+
+| 组件 | 选择与原因 | 需要验证的边界 |
+|---|---|---|
+| 网关主程序 | Go：适合常驻I/O调度、子进程管理和按平台发布编译产物；目标机器不需要Go编译器 | 性能优势不等于已验证多路容量；工具链固定Go 1.27.1 |
+| 摄像头适配 | FFmpeg独立子进程负责RTSP解码/缩放/JPEG；HTTP快照由网关直接请求 | 视频解码成本主要在FFmpeg，换语言不会自动减少；逐路超时、重连、管道背压与进程回收必须测试 |
+| 本地持久化 | SQLite嵌入网关，优先选择支持CGO_ENABLED=0的驱动；JPEG作为独立文件 | 采用modernc.org/sqlite v1.61.1，YAML为go.yaml.in/yaml/v3 v3.0.6；已用真实SQLite事务与重启恢复测试，不以内存队列替代 |
+| 云端通信 | Go HTTP客户端，API与OSS分别持有各自的认证配置 | 不跨域转发Bearer；取消与超时必须释放连接/协程；重试同frame_id/key |
+| 并发模型 | 每摄像头独立采集任务 + 有界上传池，共享单SQLite写入口 | 限制goroutine、缓冲和FFmpeg进程数，不能无界启动重试 |
+| 配置 | YAML文件 + 环境变量凭证引用 | 启动严格校验配置；示例不得含真实摄像头账号或Token |
+| 运行管理 | 家庭先前台运行；Linux支持systemd重启、正常退出与状态目录持久化 | 电脑休眠/断电期间不采图；重启恢复缓存而非补造图像 |
+| 发布 | 先支持macOS arm64、Linux amd64/arm64；网关按目标平台编译 | 构建通过不代表所有平台已运行验证；其他平台后续实测再支持 |
+
+发布包包含网关程序、配置示例、启动/服务模板和依赖说明；FFmpeg可由系统安装，或在确认平台适配和分发许可后随包提供。不能将Go可执行文件说成全部运行依赖。首期不强制Docker，避免家庭实验多维护一层容器环境；容器部署可作为后续运维方式。
+
+选择Go主要改善常驻程序部署与维护方式。Python同样能承担低频采集，但本项目没有本地模型/科学计算需求；网关不共享服务端实现，语言统一带来的收益有限。稳定性最终由持久队列、幂等、超时、资源上限及恢复测试保证。
 
 ## 三、摄像头采购与接入验收
 
@@ -114,7 +152,7 @@ flowchart TB
 
 ### 4.1 配置与身份契约
 
-以下为拟议配置格式，不代表已有程序支持这些命令或字段：
+配置格式如下；完整默认值及可运行示例见[config.example.yaml](../../duxue-gateway/configs/config.example.yaml)，相对路径以配置文件目录为基准：
 
 ```yaml
 api_base_url: https://<读学服务地址>/api/v1
@@ -138,9 +176,11 @@ cameras:
 - 首次联网登记后本地保存 `device_id` 和 `assignment_revision`，以后自动使用，不需人工管理。离线首次启动、尚未登记时不采集，明确提示初始化未完成。已有持久登记快照且本地配置归属一致时，可断外网启动并继续缓存；联网后重新核验授权。
 - 摄像头 IP/密码变更不改变身份和归属。首期禁止原 camera_id 改 Ward：启动校验发现与登记不同即拒绝；需要换孩子时停采、处理旧队列，使用新的 camera_id 显式登记。机构换座版本化是后续能力。
 - 配置更新须停采、验证后重启，不做热更新。系统凭证轮换保持 gateway_id 不变；更换 gateway_id 不能将旧队列冒充为新网关数据。
-- 首期人工启停限定观察时段；定时观察窗口后续增强，不作为家庭首轮验收前提。停止采集时可继续清空待传队列；退出进程保留队列。
+- 首期人工启停限定观察时段；定时观察窗口后续增强，不作为家庭首轮验收前提。本期Ctrl+C/SIGTERM停止采集与上传并保留队列，下次run恢复；独立暂停/排空命令留作后续增强。
 
 ### 4.2 领域模型清单：Entity、Value Object、Service、Event 与 Repository
+
+本节使用领域语义名称，值对象不要求机械地各建一张表或一个类。实际映射：本地FrameDelivery由Go `domain.Frame`承载，Registration是其不可变归属快照；Python云端的CameraRegistration/Evidence/AcceptedFrame位于 `contexts/ingestion/domain/gateway.py`。本地FrameDeliveryRepository与云端CameraRegistrationRepository/AcceptedFrameRepository分别定义写端口；云端SQL适配器可共享Session，但不共享跨领域事务。
 
 #### 4.2.1 聚合边界及必须保持的规则
 
@@ -150,9 +190,9 @@ cameras:
 
 | Aggregate Root（聚合根） | 根实体身份、ID引用与值对象 | 领域行为与不变量 | Domain Event / Repository Port |
 |---|---|---|---|
-| CameraRegistration（云端） | device_id；CameraIdentity、Ward ID、revision、enabled；不持有 Ward 实体 | register() / disable()；同摄像头固定归属，同归属重试不重复登记，改Ward冲突；停用不能恢复为可接收状态 | CameraRegistered、CameraDisabled / CameraRegistrationRepository |
-| FrameDelivery（本地） | frame_id；AssignmentSnapshot、FrameEvidence、DeliveryState、可选UploadTarget、云端确认ID | queue() / assign_target() / mark_uploaded() / acknowledge() / discard()；归属和证据不可变；已有目标续签不能换key；先上传再确认，终态不可复活 | FrameQueued、FrameDelivered、FrameDiscarded / FrameDeliveryRepository |
-| AcceptedFrame（云端） | 现有Frame ID；FrameIdentity、AssignmentSnapshot、FrameEvidence、oss_key | accept() / assert_same_evidence()；已接收事实不可修改；同幂等身份只接收一份内容；外部授权/对象核验由Application在创建前完成 | FrameAccepted / AcceptedFrameRepository |
+| CameraRegistration（云端） | device_id；CameraIdentity、Ward ID、revision、enabled、erased；不持有 Ward 实体 | assert_assignment()；Application登记和兼容停用入口协调同摄像头固定归属，同归属重试不重复登记，改Ward冲突；停用不能恢复为可接收状态 | CameraRegistered、CameraDisabled / CameraRegistrationRepository |
+| FrameDelivery（本地） | frame_id；AssignmentSnapshot、FrameEvidence、DeliveryState、可选UploadTarget、云端确认ID | NewFrame / AssignTarget / MarkUploaded / Acknowledge / Discard；归属和证据不可变；已有目标续签不能换key；先上传再确认，终态不可复活 | FrameQueued、FrameDelivered、FrameDiscarded / FrameDeliveryRepository |
+| AcceptedFrame（云端） | 现有Frame ID；FrameIdentity、AssignmentSnapshot、FrameEvidence、oss_key | 不可变构造 / assert_same()；已接收事实不可修改；同幂等身份只接收一份内容；外部授权/对象核验由Application在创建前完成 | FrameAccepted / AcceptedFrameRepository |
 
 #### 4.2.2 Entity / Value Object Inventory
 
@@ -160,9 +200,9 @@ cameras:
 
 | Object | Kind | Identity | 关键属性 | 领域行为 | 规则责任与归属 |
 |---|---|---|---|---|---|
-| CameraRegistration | Aggregate Root / Entity | device_id | CameraIdentity、ward_id、revision、enabled | register、disable | 固定归属与停用；云端 |
-| FrameDelivery | Aggregate Root / Entity | frame_id | AssignmentSnapshot、FrameEvidence、DeliveryState、UploadTarget、accepted_frame_id | queue、assign_target、mark_uploaded、acknowledge、discard | 交付生命周期、不可变证据；本地 |
-| AcceptedFrame | Aggregate Root / Entity | 云端Frame ID | FrameIdentity、AssignmentSnapshot、FrameEvidence、oss_key | accept、assert_same_evidence | 单帧接收事实及内容一致；云端 |
+| CameraRegistration | Aggregate Root / Entity | device_id | CameraIdentity、ward_id、revision、enabled、erased | assert_assignment；登记/停用由应用入口协调 | 固定归属与停用；云端 |
+| FrameDelivery | Aggregate Root / Entity | frame_id | AssignmentSnapshot、FrameEvidence、DeliveryState、UploadTarget、accepted_frame_id | NewFrame、AssignTarget、MarkUploaded、Acknowledge、Discard | 交付生命周期、不可变证据；本地 |
+| AcceptedFrame | Aggregate Root / Entity | 云端Frame ID | FrameIdentity、AssignmentSnapshot、FrameEvidence、oss_key | 不可变构造、assert_same | 单帧接收事实及内容一致；云端 |
 | CameraIdentity | Value Object | 无，按值比较 | gateway_id、camera_id | 校验标识格式 | 摄像头身份不依赖IP；CameraRegistration持有 |
 | FrameIdentity | Value Object | 无，按值比较 | gateway_id、frame_id | 校验标识格式 | 跨网关帧身份隔离；AcceptedFrame持有 |
 | AssignmentSnapshot | Value Object | 无，按值比较 | gateway_id、camera_id、device_id、ward_id、revision | 校验完整性、比较归属 | 采图时固化，后续不可回填/改写；FrameDelivery和AcceptedFrame持有 |
@@ -179,7 +219,7 @@ CameraSource是Infrastructure配置（接口地址、凭证引用），不是需
 | 类别 | 名称 / 归属 | 职责与边界 |
 |---|---|---|
 | Domain Service | 首期无独立领域服务 | 固定归属、帧不可变与状态转移均能由各根承担；不为凑齐类型新增空壳服务 |
-| Factory | CameraRegistration.register、FrameDelivery.queue、AcceptedFrame.accept | 根的命名创建方法，构造时建立合法初态；无需独立Factory类 |
+| Factory | CameraRegistration/AcceptedFrame的不可变构造、Go domain.NewFrame | 根的命名创建方法，构造时建立合法初态；无需独立Factory类 |
 | Application Command services（本地） | QueueFrame、PrepareUpload、UploadFrame、ConfirmDelivery、DiscardFrame、RecoverLocalState | 调用领域行为、协调本地事务与外部端口；RecoverLocalState负责启动恢复；逐命令卡见§4.3 |
 | Application Command services（云端） | RegisterCamera、ReserveUpload、AcceptFrame、ReportHealth、DisableCamera | 认证后的授权、对象核验、事务和幂等协调；不能把这些职责塞进根 |
 | Application Query services | GetGatewayStatus、GetPendingFrames、GetGatewayHealth | 读取状态并返回脱敏DTO；一致性见§4.4 |
@@ -284,19 +324,19 @@ stateDiagram-v2
 
 | Trigger / 入口 | Command 与输入 | 聚合行为 / 事务与事件 | 幂等、失败及后续 |
 |---|---|---|---|
-| 操作员启动 CLI → 云端 HTTP Interface | RegisterCamera(camera_id, ward_id) | 云端事务加载/创建 CameraRegistration，调用 register，保存 CameraRegistered | 唯一 `(gateway_id,camera_id)`；同归属返回原值；401/403 停止初始化，409 要求修正配置；成功后本地保存登记快照 |
-| 15s 定时器（Infrastructure） | QueueFrame(camera_id, sampling_slot) | CapturePort 取新图；先安全落文件，再本地事务创建 FrameDelivery.queue 与 FrameQueued | 唯一 `(camera_id,sampling_slot)`，slot 是本地持久递增采样序号；同 slot 重试不取新图；取图失败记缺口；文件失败不入队；无图时不造帧 |
+| 操作员启动 CLI → 云端 HTTP Interface | RegisterCamera(camera_id, ward_id) | 云端事务加载/创建 CameraRegistration，调用assert_assignment或首次构造，Application保存CameraRegistered | 唯一 `(gateway_id,camera_id)`；同归属返回原值；401/403 停止初始化，409 要求修正配置；成功后本地保存登记快照 |
+| 15s 定时器（Infrastructure） | QueueFrame(camera_id, sample_time) | CapturePort 取新图；先安全落文件，再本地事务创建 FrameDelivery.queue 与 FrameQueued | 本地唯一 `(camera_id,captured_at_ns)`；帧创建后以frame_id固定身份；取图失败记缺口；文件失败不入队；无图时不造帧 |
 | 本地上传 Worker（Infrastructure） | PrepareUpload(frame_id) | 加载 FrameDelivery，经 CloudPort 调用 ReserveUpload；本地事务 assign_target 并固化 key | 请求结果未知按 frame_id 重试；领取上传租约后操作，网络调用不持有 SQLite 事务 |
 | 云端上传地址 HTTP Interface | ReserveUpload(camera_id, ward_id, revision, frame_id, captured_at, sha256, size) | 校验 CameraRegistration；独立事务保存 upload_reservations 基础设施记录，返回相同目标 | 唯一 `(gateway_id,frame_id)`；相同请求续签同 key；异内容409；对象大小超限413；不产生业务 Domain Event |
 | 获得上传目标 / 重试 Worker | UploadFrame(frame_id) | ObjectStoragePort PUT；成功后本地事务 mark_uploaded；只持久交付进度，无集成事件 | PUT 超时结果未知，重试同 key/相同字节；URL 过期续签同 key；不可因失败换 frame_id |
-| 云端帧提交 HTTP Interface | AcceptFrame(camera_id, ward_id, revision, frame_id, oss_key, captured_at, sha256, size) | 核验授权/登记/目标/对象；事务创建 AcceptedFrame.accept、FrameAccepted 和既有采集事实 Outbox | 唯一 `(gateway_id,frame_id)` 与 oss_key；重复同内容返回原 Frame；冲突409；不存在对象422；数据库失败可重试 |
+| 云端帧提交 HTTP Interface | AcceptFrame(camera_id, ward_id, revision, frame_id, oss_key, captured_at, sha256, size) | 核验授权/登记/目标/对象；事务创建AcceptedFrame，由Application保存FrameAccepted和既有采集事实Outbox | 唯一 `(gateway_id,frame_id)` 与 oss_key；重复同内容返回原 Frame；冲突409；不存在对象422；数据库失败可重试 |
 | 本地已上传 Worker → API 确认返回 | ConfirmDelivery(frame_id) | CloudPort 调用 AcceptFrame；本地事务 acknowledge，保存 FrameDelivered；随后文件清理 | 响应丢失重试 AcceptFrame；确认状态已持久化后才删文件；清理失败由启动恢复继续 |
 | TTL/容量定时器 → 本地 Command | DiscardFrame(frame_id, reason) | 本地事务 discard、FrameDiscarded 与清理任务一起保存；之后删文件 | 不抢占有效上传租约；已终态重复为空操作；无可淘汰项则拒绝新采样并记缺口；不伪报交付 |
 | 进程启动 → 恢复Worker（Infrastructure） | RecoverLocalState(state_dir) | Application核对manifest/SQLite，按原frame_id调用queue/discard，保存FrameQueued/FrameDiscarded与清理结果；每帧独立本地事务 | 持有目录锁；原始归属不可推断；先清理过期/终态文件再恢复上传；同frame_id幂等，不重造已确认帧 |
 | 60s 定时器 → 云端 HTTP Interface | ReportHealth(sequence, cameras[]) | 云端更新健康 query store，无业务聚合/Domain Event；使用服务端接收时间判在线 | sequence 在一次进程 boot_id 内递增，旧序号不覆盖新快照；心跳失败不阻塞采图 |
-| 现场受权运维撤销登记 | DisableCamera(device_id) | 云端事务 CameraRegistration.disable，保存 CameraDisabled | 同状态幂等；后续该登记上传返回403；本地停止采集并按保留规则处理缓存；首期走部署运维流程，无新增 App 页面 |
+| 现场受权运维撤销登记 | DisableCamera(device_id) | 兼容撤销入口在云端事务设置enabled=false并保存CameraDisabled；该旧入口仍直接操作ORM | 同状态幂等；后续该登记上传返回403；本地停止采集并按保留规则处理缓存；首期走部署运维流程，无新增 App 页面 |
 
-`sampling_slot` 分配及已处理 slot 记在本地运行检查点；重启跳过停机期间采样点，不用当前图像补造历史。文件存在但数据库未入队时，恢复流程按 manifest 中的 frame_id/slot 去重恢复。
+定时采样由单调时钟ticker触发，跳过的时点计入缺口；重启不补造历史。文件存在但数据库未入队时，恢复流程按manifest中的frame_id去重恢复；同一摄像头/采集时间也有本地唯一约束。
 
 本地 FrameQueued/Delivered/Discarded 与帧状态同 SQLite 事务保存到有限保留的 domain_events，供审计；不作为上传消息总线。上传 Worker 直接扫描持久帧状态，因此不需再维护一份本地 Outbox。数据库是当前状态存储，非 Event Sourcing。
 
@@ -308,11 +348,11 @@ stateDiagram-v2
 | GetPendingFrames(camera_id, cursor, limit) | frame_id、captured_at、交付状态、next_attempt_at；不返回图片/凭证 | 本地已提交状态；仅运维查询，不作为 Worker 改状态的授权依据 |
 | GetGatewayHealth(gateway_id) | 云端最后心跳接收时间、逐摄像头最后取图/提交时间和积压量 | 最终一致，通常最多60s+网络延迟；超时明确显示陈旧；服务端运维受权查询 |
 
-Query 走独立查询端口，不能改根或刷新在线状态来产生写副作用。在线由最后接收时间派生；心跳正常、摄像头不可达、上传积压需分别展示，不能合并成“工作正常”。不要求为首期增加 Guardian 健康 UI 或推送。
+当前CLI实现GetGatewayStatus；GetPendingFrames与独立云端GetGatewayHealth接口尚未作为公开命令提供，运维可查看持久队列/健康数据。Query走独立查询端口，不能改根或刷新在线状态来产生写副作用。在线由最后接收时间派生；心跳正常、摄像头不可达、上传积压需分别展示，不能合并成“工作正常”。不要求为首期增加 Guardian 健康 UI 或推送。
 
-### 4.5 Interface：目标云端协议（全部待实现）
+### 4.5 Interface：云端网关协议
 
-路径均相对 `/api/v1`；使用 `Authorization: Bearer <gateway_token>`。新路径与现有逐设备认证接口并存；网关不调用 invite/bind，也不配置逐摄像头 device_token。
+路径相对部署API根路径（线上通常为 `/api/v1`，直接运行本仓库FastAPI则无此前缀）；使用 `Authorization: Bearer <gateway_token>`。新路径与现有逐设备认证接口并存；网关不调用 invite/bind，也不配置逐摄像头 device_token。
 
 | 方法 / 路径 | 输入 | 输出与语义 |
 |---|---|---|
@@ -327,11 +367,11 @@ OSS key 由服务端根据已登记的 Ward、原采集日期及稳定帧身份�
 
 预签名 URL 使用独立 HTTPS PUT，OSS 不接收网关 Bearer Token。网关严格使用服务端返回的 headers，API/OSS 使用独立 HTTP 客户端，防止默认认证头跨服务泄漏。OSS PUT 完成不等于服务端已接收证据。
 
-错误响应统一为 `{error_code,message,request_id}`；已授权且曾登记的Ward被删除时返回403与 `WARD_DELETED`，其他未授权请求不披露Ward是否存在。错误：401 凭证无效/失效；403 Ward 未授权、登记停用或授权撤销；409 同摄像头改归属/同帧异内容；413 超限；422 时间/协议错误或对象未准备好；429 按 Retry-After；5xx/网络超时可退避重试。永久错误进入可查询的阻塞状态，人工修复前不忙重试，也不计成功；对象未出现的422允许短期重试后转阻塞。
+错误响应统一为 `{error_code,message,request_id}`；已授权且曾登记的Ward被删除时返回403与 `WARD_DELETED`；历史数据清除禁用原采集登记时返回403与 `WARD_DATA_ERASED`，其他未授权请求不披露Ward是否存在。错误：401 凭证无效/失效；403 Ward 未授权、登记停用或授权撤销；409 同摄像头改归属/同帧异内容；413 超限；422 时间/协议错误或对象未准备好；429 按 Retry-After；5xx/网络超时可退避重试。永久错误进入可查询的阻塞状态，人工修复前不忙重试，也不计成功；对象未出现的422允许短期重试后转阻塞。
 
 时间契约：网关系统同步 UTC，以单调时钟调度而非对墙钟累加 sleep；首期不传 elapsed_realtime。目标接口对超过12h或未来超过5min的采集时间返回422，不静默改成接收时间。现有接口超过24h改写时间的行为不能直接沿用。容量清理由本地 TTL 处理；云端保留原始时间，不用补传时刻计算学习时长。
 
-### 4.6 成功、重试与跨域交付时序
+### 4.6 成功、重试与云端既有事实交付时序
 
 下表适用于本节两个时序图；只列实际参与者。
 
@@ -362,7 +402,7 @@ sequenceDiagram
     participant O as OSS
     participant CDB as Cloud Repository + Outbox
     participant V as GetGatewayStatus
-    T->>Q: 采样 slot
+    T->>Q: 采样时点
     Q->>Q: CapturePort 取新图，文件+manifest落盘
     Q->>F: queue(归属快照, 时间, 摘要)
     F-->>Q: FrameQueued
@@ -378,7 +418,7 @@ sequenceDiagram
     U->>API: 提交帧元数据
     API->>A: AcceptFrame(受权 principal, DTO)
     A->>O: 核验对象与预约
-    A->>R: accept()
+    A->>R: 构造接收事实 / 重试时assert_same
     R-->>A: FrameAccepted
     A->>CDB: 云端事务保存Frame+事件+Outbox
     alt 确认响应正常
@@ -405,7 +445,7 @@ sequenceDiagram
     participant C as Memory Consumer / Infrastructure
     participant H as IngestLearningFact / Memory Command
     participant B as LearningEvidence / Memory Root
-    A->>R: accept()
+    A->>R: 构造接收事实 / 重试时assert_same
     R-->>A: FrameAccepted
     A->>D: 同一事务保存Frame与既有采集事实Outbox
     D-->>A: 接收成功，不等待下游
@@ -428,7 +468,7 @@ sequenceDiagram
 
 | Port（所有者） | Adapter 与配置边界 | 超时 / 重试 / 错误处理 |
 |---|---|---|
-| CapturePort（Application） | FFmpeg RTSP TCP / JPEG HTTP；摄像头本地凭证；返回图像与接收时间的 ACL | 单次取图预算5s；无新图记缺口，连接按1s起退避、上限60s加抖动；一台故障不阻塞其他台 |
+| CapturePort（Application） | FFmpeg RTSP TCP / JPEG HTTP；摄像头本地凭证；返回图像与接收时间的 ACL | RTSP使用原生timeout=5000000微秒，单次取图预算5s；无新图记缺口，连接按1s起退避、上限60s加抖动；一台故障不阻塞其他台 |
 | CloudPort（Application） | HTTPS API，独立网关 Bearer 凭证 | 连接5s，总请求15s；1s起指数退避至60s加抖动，遵守429；鉴权/配置错误阻塞并提示 |
 | ObjectStoragePort（Application） | HTTPS PUT，仅预签名 URL/headers | 连接5s，总请求30s；重试同 key；URL 过期续签；未知写入结果按同内容安全覆盖 |
 | 三个 Repository Port（Domain） | 本地 SQLite / 云端现有 PostgreSQL ORM 扩展 | 短事务，本地单写队列；SQLITE_BUSY有界重试；数据库故障不确认成功；无外部网络等待 |
@@ -437,7 +477,7 @@ sequenceDiagram
 
 首期摄像头只有一个有效采图任务，上传并发上限2；RTSP 每摄像头只保留一个最新解码帧，内存不能无限积攒。由持续输出的帧序号/解码接收时间判断新鲜度，连续5s无新帧视为不可用；不能因相同图像内容就判断故障。低采样率不等于低 RTSP 带宽/解码负载。FFmpeg 无音频，进程退出自动回收重启；stderr、启动参数必须脱敏，含密码的实际 URL/进程参数只允许受限本机运维访问。
 
-不另加熔断框架：每摄像头重连退避、全局有界并发、鉴权阻塞与 next_attempt_at 已构成首期有界故障策略；必要时以实测决定引入。
+不另加熔断框架：每摄像头重连退避、全局有界并发、鉴权阻塞与 next_attempt_at 已构成首期有界故障策略；必要时以实测决定引入。当前HTTP快照适配支持Basic认证，Digest/ONVIF自动协商未实现；RTSP认证交由FFmpeg。
 
 #### 持久化、ER 与事务
 
@@ -473,6 +513,7 @@ erDiagram
         string ward_id
         int assignment_revision
         bool enabled
+        bool erased
     }
     cloud_upload_reservations {
         string gateway_id PK
@@ -497,10 +538,10 @@ erDiagram
     cloud_devices ||--o{ cloud_frames : produces
 ```
 
-- `local_frame_deliveries` 支撑 FrameDelivery；`local_domain_events` 为本地域事件审计，跟随同帧事务写入。索引 `(state,next_attempt_at,captured_at)`，唯一 `(camera_id,sampling_slot)`；JPEG 路径/字节数及租约也是持久化字段，ER 仅展示关键结构。
+- `local_frame_deliveries` 支撑 FrameDelivery；`local_domain_events` 为本地域事件审计，跟随同帧事务写入。索引 `(state,next_attempt_at,captured_at)`，唯一 `(camera_id,captured_at_ns)`；JPEG 路径/字节数及租约也是持久化字段，ER 仅展示关键结构。
 - 云端 `cloud_devices` / `cloud_frames` 是图中逻辑名，扩展现有 `devices` / `frames`，分别支撑 CameraRegistration / AcceptedFrame；不新建重复设备、帧表。新增 `(gateway_id,camera_id)`、`(gateway_id,frame_id)` 唯一约束；旧数据新增字段可空，兼容旧接口。
 - `cloud_upload_reservations` 是 Infrastructure 幂等预约记录，非业务聚合；指纹包含完整归属和帧内容。预约时锁定设备登记行，接收时在写事务内复核 enabled/revision/授权；避免核验后撤销仍入库。对象网络校验在事务外，事务内核对预约未改变。
-- 健康 query store、运行检查点、租约、现有 Outbox 是 Infrastructure 数据；实现时与上表一起迁移，非额外领域模型。云端健康 store 唯一 `(gateway_id,camera_id)`，本地检查点唯一 camera_id；Outbox 沿用现有基础设施并验证既有来源幂等约束。
+- 健康query store、租约、现有Outbox 是 Infrastructure 数据；实现时与上表一起迁移，非额外领域模型。云端健康 store 唯一 `(gateway_id,camera_id)`，本地健康store唯一camera_id；Outbox 沿用现有基础设施并验证既有来源幂等约束。
 - 启动持有 state_dir 单进程锁；SQLite 用 WAL、外键启用、可靠同步；租约到期可重新领取。磁盘总配额淘汰前必须取得受害帧租约，禁止边上传边删除。
 - 文件/数据库不能共同原子提交：先写包含归属快照和 frame_id 的 manifest/JPEG；数据库成功前崩溃按 manifest 恢复；只有数据库指向缺失文件则标记损坏并记录缺口。已交付/丢弃但文件未删，启动继续清理。恢复命令按帧幂等，不能仅凭文件名猜 Ward。
 
@@ -509,7 +550,7 @@ erDiagram
 #### 异步交付、容量和恢复
 
 - 上传由持久帧状态驱动；至少一次尝试，云端业务效果幂等一次。没有跨 OSS、API、SQLite 的“恰好一次”事务。
-- 初始上限：每摄像头2000帧、12h TTL、网关总JPEG缓存1GB；任一触发淘汰最旧的无租约待传帧。2000帧约8.3小时；TTL是上限，不保证能保留12小时。TTL从captured_at计算，不因重试延长；系统时钟异常时停止采样并提示校时。SQLite、事件、manifest、日志独立轮转，预留100MB磁盘余量；不足则停采并记录存储故障。
+- 初始上限：每摄像头2000帧、12h TTL、网关总JPEG缓存1GB；任一触发淘汰最旧的无租约待传帧。2000帧约8.3小时；TTL是上限，不保证能保留12小时。TTL从captured_at计算，不因重试延长；部署环境须同步系统时钟；采样拒绝过期或明显未来的帧，云端另校验采集时间窗口。SQLite、事件、manifest、日志独立轮转，预留100MB磁盘余量；不足则停采并记录存储故障。
 - 最新帧与补传按1:3轮询配额调度，无积压时不空等；每摄像头公平轮询，不能一台相机独占。停机后不补造图像。外网断而局域网正常可继续排队；摄像头/局域网断开只能记录缺口。
 - 终态帧和本地事件保留24h后批量清理；积压受TTL约束，清理先落终态及计数再删JPEG，不把删除日志当作完整图像证据。
 - OSS已上传但未登记成功可能形成孤儿对象；服务端按过期预约（最晚24h）对账，先锁定预约阻止并发提交，确认无Frame引用后删除孤儿；不能删除已登记对象。有效接收帧留存遵循系统数据治理，不在网关另定云端保留期。
@@ -519,13 +560,13 @@ erDiagram
 
 目录0700、配置与状态文件0600；秘密从环境/受限凭证存储读取，不提交仓库。日志不打印图片、RTSP密码、Bearer Token、完整预签名URL或原始认证错误。网关只向明确配置的API及返回的OSS上传目标出站；不跟随会携带认证头的跨域重定向。
 
-授权撤销立即阻止新上传目标和帧登记；已发预签名URL在短有效期内仍可能PUT，但不得接收为证据，按孤儿规则清理。删除Ward同时移除采集白名单/停用登记，按既有删除契约清理云端证据；网关收到已删除Ward的明确错误码时停止该源并清理对应待传缓存；一般403只暂停上传，不能推断为删除。网关运行但外网离线时由12h TTL清理；关机或进程停止期间无法执行物理删除，重启时先清理过期数据再恢复上传。不能保证离线机器的远程即时删除。
+授权撤销立即阻止新上传目标和帧登记；已发预签名URL在短有效期内仍可能PUT，但不得接收为证据，按孤儿规则清理。网关不可覆盖URL有效期最多300s；清除数据时保留purging预约记录作为晚到PUT删除跟踪，不因删掉记录而遗失清理责任。删除Ward同时移除采集白名单/停用登记，按既有删除契约清理云端证据；网关收到WARD_DELETED或WARD_DATA_ERASED时停止该源并清理对应待传缓存；一般403只暂停上传，不能推断为数据已清除。现有 `/wards/{id}/data` 清除历史数据但保留Ward身份；云端保留gateway_erased权限标记并从设备列表隐藏，防止旧配置自动重新登记。若操作员需重新启用，应显式配置新的camera_id；旧帧不会归入新登记。网关运行但外网离线时由12h TTL清理；关机或进程停止期间无法执行物理删除，重启时先清理过期数据再恢复上传。不能保证离线机器的远程即时删除。
 
 关联键 `gateway_id/camera_id/frame_id/request_id`；传播受限 trace context。记录采图成功/失败、端到端提交成功率、积压帧/字节与最老年龄、重试/重连/丢弃、摄像头最后新帧时间、云端最后心跳时间。首期输出脱敏结构化日志和本地状态，不要求先搭完整监控后台；积压接近TTL、磁盘不足、授权失败必须有可见提示。采集缺口不能转成“不专注”。
 
 ## 五、最小实验与验收
 
-准备：具体型号/固件已验收的摄像头、同网电脑、已存在Ward、预配置网关凭证与Ward白名单、实际OSS后端。下表是后续实现的退出条件，本次文档交付不声称已经通过硬件或运行测试。
+准备：具体型号/固件已验收的摄像头、同网电脑、已存在Ward、预配置网关凭证与Ward白名单、实际OSS后端。下表同时定义自动化与现场验收；当前已通过合成H.264 RTSP/RTP握手解码、合成画面解码、真实进程本地联调、Go竞态检查和临时PostgreSQL迁移/并发测试。真实摄像头/OSS长时间与两路现场验收仍待完成。
 
 | 编号 | 验证 | 通过标准 |
 |---|---|---|
@@ -555,15 +596,19 @@ erDiagram
 
 ## 七、实现状态与参考
 
-| 能力 | 当前实际 | 本设计要求 |
+| 能力 | 当前实现 | 待现场验证 / 演进 |
 |---|---|---|
-| 摄像头/网关程序 | 网关待实现 | 新建duxue-gateway，按本文分层 |
-| 云端认证 | 现有设备绑定码 + 每Device Token | 新增统一网关principal与Ward白名单；旧接口兼容保留 |
-| 摄像头登记 | 现有Device缺少网关本地编号契约 | 新增gateway_id/camera_id/revision及唯一约束；新设备类型ip_camera |
-| OSS与Frame | 已有预签名URL、上传完成后登记、按key去重 | 增加frame_id预约/稳定key续签/所有权和摘要校验/事务幂等 |
-| 时间 | 现有旧接口可能改写超过24h的时间 | 新接口显式拒绝超窗，不改原采集时间 |
-| 心跳 | 现有每Device心跳只表示云端连通 | 新增网关/逐摄像头健康快照，与采图状态分别表达 |
-| 云端既有后续处理 | 分析读取Frame；采集LearningFact由Memory消费 | 新接入保持既有事务发布与幂等语义，不新增分析事件/网关直连Memory |
-| 晚间报告 | 客观证据版本化报告尚待完善 | 另按Evaluation设计实现与验收，不扩大网关职责 |
+| Go项目与CLI | 独立module、config-check/run/status、私有状态目录和单实例锁 | 真机长期运行；专用暂停/排空命令后续增强 |
+| 取图与缓存 | FFmpeg子进程重启/新鲜度、Basic HTTP快照、SQLite/JPEG恢复、限额/TTL | 具体摄像头RTSP/认证、机位、断电与断网；不承诺全品牌兼容 |
+| 云端身份 | 预配置网关凭证哈希/Ward白名单；离线凭证生成工具；保留旧设备接口 | 受权测试环境实际配置；不做绑定码或后台 |
+| 云端接入 | 摄像头自动登记、幂等上传预约/续签、不可覆盖对象、摘要核验、Frame+事实事务 | 真实OSS签名/headers/网络验证；本地存储不能代替 |
+| 数据库 | 迁移20261101_31、旧字段兼容、摄像头/帧唯一约束、预约/健康/审计 | 未对开发或生产库运行迁移；只验证临时PostgreSQL新增迁移升降级 |
+| 健康与清理 | 本地状态计数、云端心跳快照、上传退避与阻塞、Celery孤儿对象清理 | Guardian健康UI/主动推送、机构权限和换座另立项 |
+| 构建 | Go 1.27.1，CGO_ENABLED=0，macOS arm64/Linux amd64/arm64包与SHA256SUMS | 当前运行测试在macOS arm64；Linux本地仅交叉构建，CI执行待远程流水线 |
+| 分析/报告 | 网关不直接调用分析或Memory，云端保持既有事实契约 | 自动学习分段、行为准确度和客观报告需独立完成 |
 
-现有实现入口：[device_ingestion.py](../../duxue-server/app/api/v1/device_ingestion.py)、[models.py](../../duxue-server/app/infrastructure/persistence/models.py)。协议参考入口：[ONVIF规范](https://www.onvif.org/specs/)、[FFmpeg RTSP文档](https://ffmpeg.org/ffmpeg-protocols.html#rtsp)；具体版本和参数在实现时按实际依赖验证。
+关键入口：[本地Runtime](../../duxue-gateway/internal/application/runner.go)、[本地队列](../../duxue-gateway/internal/infrastructure/store.go)、[云端Commands](../../duxue-server/app/application/commands/gateway_ingestion.py)、[云端API](../../duxue-server/app/api/v1/gateway_ingestion.py)、[数据库迁移](../../duxue-server/migrations/versions/20261101_31_gateway_capture.py)。
+
+自动化证据：[Go恢复/故障测试](../../duxue-gateway/internal/infrastructure/store_test.go)、[上传重试](../../duxue-gateway/internal/infrastructure/cloud_test.go)、[FFmpeg](../../duxue-gateway/internal/infrastructure/capture_test.go)、[生产取图路径的合成RTSP/RTP测试](../../duxue-gateway/internal/infrastructure/rtsp_test.go)、[云端契约](../../duxue-server/tests/contract/api/test_gateway_ingestion.py)、[PostgreSQL](../../duxue-server/tests/integration/test_gateway_postgres.py)、[真实进程本地联调](../../duxue-server/tests/integration/test_gateway_binary.py)。
+
+协议参考：[ONVIF规范](https://www.onvif.org/specs/)、[FFmpeg RTSP](https://ffmpeg.org/ffmpeg-protocols.html#rtsp)、[纯Go SQLite](https://pkg.go.dev/modernc.org/sqlite)。依赖版本以项目锁文件为准。

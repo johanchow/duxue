@@ -20,13 +20,13 @@ def invite_device(ward_id: str, principal: Principal = Depends(current_guardian)
 def list_devices(ward_id: str, principal: Principal = Depends(current_guardian), db: Session = Depends(get_db)):
     owned_ward(db, principal.user_id, ward_id)
     cutoff = now() - timedelta(seconds=settings.heartbeat_timeout_seconds)
-    devices = db.query(Device).filter(Device.ward_id == ward_id).all()
+    devices = db.query(Device).filter(Device.ward_id == ward_id, Device.gateway_erased.is_(False)).all()
     result = []
     for device in devices:
         seen = device.last_heartbeat_at
         if seen and seen.tzinfo is None:
             seen = seen.replace(tzinfo=timezone.utc)
-        status = "online" if seen and seen >= cutoff else "offline"
+        status = "online" if device.gateway_enabled and seen and seen >= cutoff else "offline"
         if device.status != status:
             device.status = status
         result.append({
@@ -44,6 +44,11 @@ def unbind_device(device_id: str, principal: Principal = Depends(current_guardia
     if device is None:
         raise HTTPException(404, "device not found")
     device.device_token_hash = None
+    was_enabled = device.gateway_enabled
+    device.gateway_enabled = False
+    if device.gateway_id and was_enabled:
+        from app.infrastructure.persistence.models import CaptureAudit
+        db.add(CaptureAudit(ward_id=device.ward_id, aggregate_id=device.id, event_type="CameraDisabled"))
     device.status = "offline"
     db.commit()
     return Response(status_code=204)
@@ -94,16 +99,14 @@ def upload_url(body: UploadUrlRequest, request: Request, device: Device = Depend
 
 
 @router.put("/uploads/{key:path}", status_code=204)
-async def local_upload(key: str, expires: int, signature: str, request: Request):
+async def local_upload(key: str, expires: int, signature: str, request: Request, immutable: bool = False):
     if not isinstance(storage, LocalStorage):
         raise HTTPException(404, "local upload endpoint disabled")
-    storage.verify(key, expires, signature)
+    storage.verify(key, expires, signature, immutable)
     data = await request.body()
     if not data or len(data) > 10 * 1024 * 1024:
         raise HTTPException(413, "image must be between 1 byte and 10 MB")
-    path = storage.path(key)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(data)
+    storage.write_uploaded(key, data, immutable=immutable)
     return Response(status_code=204)
 
 
