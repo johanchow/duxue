@@ -20,6 +20,7 @@ Guardian 用邮箱验证码注册和登录，不保存读学密码。Ward 使用
 - 用户可见错误走 `core/user_error_message.dart`，不展示 URL、响应体或异常字符串。
 - refresh 绑定 `WardCredential.session_version`。再次绑定撤销旧 refresh。只在 refresh 请求本身失败时清会话。刷新成功但原请求仍 401 时保留新凭证。
 - 首页无右上角 AI 入口，无「AI 伙伴」Tab。对话层低于底部 composer。完整计划 sheet 临时隐藏 dock。不改 `VoiceComposer` 的既有交互。
+- 首页精简说明：移除问候区「你先说，我来帮你记录和检查安排」与任务池底部的重复排期/删除说明，并删除随文案占用的间距；任务池标题保留数量与左滑删除提示。
 - 任务卡是读模型：安排状态来自 Task，进行中/暂停来自未结束 StudySession。见 [study.md](study.md)。
 - APK：`duxue-app/**` 变更或手动触发。签名 Secret 在 `production` environment，与 Cam 钥匙分开。包内 API 为 `https://duxuelai.xyz/api`。
 
