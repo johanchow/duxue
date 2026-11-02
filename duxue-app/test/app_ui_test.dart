@@ -905,6 +905,72 @@ class _FakeVoice implements VoiceTranscription {
 }
 
 void main() {
+  testWidgets(
+      'guardian home keeps transfer centered above navigation while scrolling',
+      (tester) async {
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        wardsProvider.overrideWith((ref) async => List.generate(
+            12,
+            (index) => Ward(
+                id: 'ward-$index',
+                displayName: '孩子$index',
+                gradeStage: 'primary'))),
+      ],
+      child: const MaterialApp(home: WardListPage()),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('全部孩子'), findsOneWidget);
+    expect(find.text('我的家庭'), findsNothing);
+    expect(find.text('我的孩子'), findsNothing);
+    expect(find.byType(VoiceComposer), findsOneWidget);
+    expect(find.text('拍照'), findsOneWidget);
+    final button = find.byType(VoiceComposer);
+    final before = tester.getRect(button);
+    final navigation = tester.getRect(find.byType(NavigationBar));
+    expect(before.center.dx, closeTo(navigation.center.dx, 1));
+    expect(navigation.top - before.bottom, closeTo(22, 1));
+
+    await tester.drag(find.byType(ListView).first, const Offset(0, -500));
+    await tester.pumpAndSettle();
+    expect(tester.getRect(button), before);
+    await tester.scrollUntilVisible(find.text('新增孩子档案'), 400);
+    expect(tester.getBottomLeft(find.text('新增孩子档案')).dy, lessThan(before.top));
+
+    await tester.tap(find.text('决策'));
+    await tester.pumpAndSettle();
+    expect(button, findsNothing);
+    await tester.tap(find.text('孩子'));
+    await tester.pumpAndSettle();
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+    expect(find.text('传递任务'), findsOneWidget);
+  });
+
+  testWidgets('guardian composer voice opens transfer with the transcript',
+      (tester) async {
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        wardsProvider.overrideWith((ref) async => const [
+              Ward(id: 'ward-1', displayName: '小宇', gradeStage: 'primary'),
+            ]),
+      ],
+      child: const MaterialApp(home: WardListPage()),
+    ));
+    await tester.pumpAndSettle();
+    final composer = tester.widget<VoiceComposer>(find.byType(VoiceComposer));
+    // The host callback stays pending while its transfer sheet is open.
+    unawaited(composer.onVoiceFinal('小宇明天交数学练习册'));
+    await tester.pumpAndSettle();
+    expect(find.text('传递任务'), findsOneWidget);
+    expect(tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        '小宇明天交数学练习册');
+    expect(find.text('确认传递'), findsOneWidget);
+    Navigator.of(tester.element(find.text('传递任务'))).pop();
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('task-pool item requires confirmation before it starts',
       (tester) async {
     final api = _WardHomeApi();
@@ -1818,7 +1884,7 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    expect(find.text('传递作业、通知或留言'), findsNothing);
+    expect(find.text('传递作业或留言'), findsNothing);
     expect(find.text('还没有孩子档案'), findsOneWidget);
     expect(find.text('新增孩子档案'), findsOneWidget);
 
@@ -1835,7 +1901,7 @@ void main() {
     await tester.tap(find.text('完成'));
     await tester.pumpAndSettle();
 
-    expect(find.text('传递作业、通知或留言'), findsOneWidget);
+    expect(find.text('传递作业或留言'), findsOneWidget);
     expect(find.text('获取绑定码'), findsOneWidget);
   });
 

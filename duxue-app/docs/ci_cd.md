@@ -2,6 +2,8 @@
 
 > 版本 v1.0 | 平台：iOS + Android（Flutter）
 
+> 本文保留 Codemagic 双平台发布规划。当前已落地的是 GitHub Actions 签名 APK；根目录 Codemagic 仅有 PR 质量门禁，iOS / Play 自动发布尚未落地。现行部署与版本规则以 [部署文档](../../docs/deployment.md#app-版本管理) 为准。
+
 ---
 
 ## 一、方案选择：Codemagic
@@ -199,9 +201,7 @@ Codemagic 的生产 workflow 只注入 `API_BASE_URL_PROD`；本地调试时由�
 
 ## 六、版本号管理
 
-- 版本格式遵循 `pubspec.yaml` 的 `version: 1.2.0+12`（`版本名+构建号`）
-- **构建号**（`+12` 部分）由 Codemagic 自动从 `BUILD_NUMBER` 环境变量注入，每次构建单调递增
-- **版本名**（`1.2.0` 部分）由开发者手动更新到 `pubspec.yaml`，遵循语义化版本
+现行规则统一维护在 [部署文档 · App 版本管理](../../docs/deployment.md#app-版本管理)。未来接入 Codemagic / 商店发布时，应沿用版本名来源，并衔接已分发包的构建号，不能直接以新渠道的计数器从头编号。
 
 ---
 

@@ -72,6 +72,15 @@ https://$DEPLOY_SERVER_HOST/api/health
 
 合进 `main` 且改动碰到 `duxue-app/**` 时自动签名打包；也可在 Actions 里对 `main` 手动 Run workflow。APK 只挂在该次运行的 Artifacts，不上传到 ECS。包内 API 地址固定为 `https://duxuelai.xyz/api`。
 
+#### App 版本管理
+
+- **版本名**以 `duxue-app/pubspec.yaml` 的 `version` 为唯一来源。例如 `0.2.0+1` 中的 `0.2.0`；发布功能时更新次版本，发布修复时更新补丁版本。合并代码不会自动修改版本名，也不会回写版本提交。
+- **构建号**由 APK workflow 的 `GITHUB_RUN_NUMBER` 覆盖 pubspec 的 `+1`。同一 workflow 的新 run 递增，失败后重跑同一次 run 保留原号；编号允许有空缺。替换 workflow 或发布渠道时，须保证新构建号高于所有已分发的安装包。
+- 登录页与家长「我的」页读取安装包的真实版本与构建号，CI 另注入短 commit SHA，例如 `版本 0.2.0 (Build 42) · abcdef1`。本地构建默认使用 pubspec 的完整版本，不显示未注入的 SHA。
+- Actions Artifact 与 APK 同名，例如 `guardian-0.2.0+42-abcdef1` / `guardian-0.2.0+42-abcdef1.apk`，便于核对安装包。
+
+日常合并仅产生新的构建号（如 `0.2.0+42` → `0.2.0+43`）；准备下一次版本发布时，在对应 PR 中更新 pubspec 的版本名。CI 不传 `--build-name`，防止覆盖该唯一来源。此策略不引入版本机器人或自动补丁升级。
+
 | Secret | 用途 |
 |---|---|
 | `APP_KEYSTORE_BASE64` | `duxue-app.keystore` 的 Base64 |

@@ -355,10 +355,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
               const _HomeEmptyCard(message: '今天没有待定项了。想加任务，走下方统一入口。')
             else
               ...pool.map((item) => _poolTask(item as Map<String, dynamic>)),
-            const Padding(
-                padding: EdgeInsets.only(top: 8, left: 2, right: 2),
-                child: Text('这些不会自动排进今天。左滑可移除；想调整安排，直接告诉读学。',
-                    style: TextStyle(fontSize: 12, color: Colors.blueGrey))),
             if (planned.isNotEmpty) ...[
               const SizedBox(height: 18),
               FilledButton.tonal(
@@ -386,9 +382,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
           Text('晚上好，${profile?['display_name'] ?? '同学'}',
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                   fontWeight: FontWeight.w700, color: const Color(0xff0c1222))),
-          const SizedBox(height: 5),
-          const Text('你先说，我来帮你记录和检查安排。',
-              style: TextStyle(fontSize: 13, color: Color(0xff5b667a))),
         ])),
       ]));
 

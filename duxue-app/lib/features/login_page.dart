@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../providers.dart';
+import '../shared/app_version_label.dart';
 import 'day_story_pages.dart' show wardBindFailureMessage;
 
 class LoginPage extends ConsumerStatefulWidget {
@@ -222,6 +223,8 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ],
+                  const SizedBox(height: 12),
+                  const AppVersionLabel(),
                 ],
               ),
             ),
