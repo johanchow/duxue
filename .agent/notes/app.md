@@ -27,3 +27,9 @@ Guardian 用邮箱验证码注册和登录，不保存读学密码。Ward 使用
 
 - 邮件接受不等于送达。不能按昵称或邮箱把微信账号自动合并。
 - 未设 `KEYSTORE_FILE` 时本地 release 仍是 debug 签名。debug 覆盖安装不能代替正式渠道。
+
+## 版本发布（2026-11-02）
+
+- 已修复：APK workflow 曾写死 `--build-name=0.1.0`，覆盖 pubspec 版本名。回归测试直接执行 workflow 构建脚本，用替身 Flutter 验证版本来源、CI 构建号、文件名与 commit 注入；界面测试验证安装包版本读取与失败降级。
+- 版本策略唯一归属：[部署文档 · App 版本管理](../../docs/deployment.md#app-版本管理)。Codemagic 双平台发布仍属规划，排查时先看实际 workflow。
+- 验证：112 个 Flutter 测试、静态分析与 workflow YAML 校验通过；带 commit 注入的界面测试通过。Android debug APK 构建成功，aapt 确认版本名来自 pubspec、构建号被覆盖为测试值 42；正式签名流水线待合并后运行。

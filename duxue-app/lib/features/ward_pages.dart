@@ -10,6 +10,7 @@ import '../core/user_error_message.dart';
 import '../core/voice_transcription_service.dart';
 import '../providers.dart';
 import '../shared/app_ui.dart';
+import '../shared/app_version_label.dart';
 
 class WardListPage extends ConsumerStatefulWidget {
   const WardListPage({super.key});
@@ -173,6 +174,8 @@ class _WardListPageState extends ConsumerState<WardListPage> {
             onPressed: () => ref.read(authProvider.notifier).logout(),
             icon: const Icon(Icons.logout),
             label: const Text('退出登录')),
+        const SizedBox(height: 12),
+        const AppVersionLabel(),
       ]);
 
   Future<void> _create() async {
