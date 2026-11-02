@@ -11,6 +11,7 @@ import '../core/voice_transcription_service.dart';
 import '../providers.dart';
 import '../shared/app_ui.dart';
 import '../shared/app_version_label.dart';
+import '../shared/voice_composer.dart';
 
 class WardListPage extends ConsumerStatefulWidget {
   const WardListPage({super.key});
@@ -22,20 +23,17 @@ class _WardListPageState extends ConsumerState<WardListPage> {
   int tab = 0;
   @override
   Widget build(BuildContext context) {
-    final titles = ['孩子', '决策', '我的'];
+    final titles = ['全部孩子', '决策', '我的'];
     return Scaffold(
       appBar: AppBar(
+          centerTitle: false,
           title:
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(titles[tab]),
-        Text(
-            tab == 0
-                ? '我的家庭'
-                : tab == 1
-                    ? '待你回应的事项'
-                    : '账号与家庭',
-            style: Theme.of(context).textTheme.labelSmall)
-      ])),
+            Text(titles[tab]),
+            if (tab != 0)
+              Text(tab == 1 ? '待你回应的事项' : '账号与家庭',
+                  style: Theme.of(context).textTheme.labelSmall)
+          ])),
       body: switch (tab) {
         0 => _children(),
         1 => _decisions(),
@@ -67,43 +65,64 @@ class _WardListPageState extends ConsumerState<WardListPage> {
     return wards.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(child: Text('加载孩子档案失败：${userErrorMessage(e)}')),
-      data: (items) => ListView(padding: const EdgeInsets.all(16), children: [
-        if (items.isNotEmpty) ...[
-          FilledButton.icon(
-              onPressed: () => _transfer(items),
-              icon: const Icon(Icons.add),
-              label: const Text('传递作业、通知或留言')),
-          const SectionLabel('我的孩子'),
-          ...items.map((ward) => Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: _wardCard(ward))),
-          OutlinedButton.icon(
-              onPressed: _create,
-              icon: const Icon(Icons.add),
-              label: const Text('新增孩子档案')),
-        ] else ...[
-          const SectionLabel('我的孩子'),
-          AppCard(
-              child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(children: [
-                    const Icon(Icons.child_care_outlined,
-                        size: 44, color: Color(0xff0f766e)),
-                    const SizedBox(height: 12),
-                    const Text('还没有孩子档案',
-                        style: TextStyle(
-                            fontWeight: FontWeight.w700, fontSize: 16)),
-                    const SizedBox(height: 6),
-                    const Text('创建档案后会自动生成 6 位绑定码，让孩子在学习设备上直接输入进入。',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.blueGrey, fontSize: 13)),
-                    const SizedBox(height: 16),
-                    FilledButton.icon(
-                        onPressed: _create,
-                        icon: const Icon(Icons.add),
-                        label: const Text('新增孩子档案')),
-                  ]))),
-        ],
+      data: (items) => Column(children: [
+        Expanded(
+            child: ListView(padding: const EdgeInsets.all(16), children: [
+          if (items.isNotEmpty) ...[
+            ...items.map((ward) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _wardCard(ward))),
+            OutlinedButton.icon(
+                onPressed: _create,
+                icon: const Icon(Icons.add),
+                label: const Text('新增孩子档案')),
+          ] else ...[
+            AppCard(
+                child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(children: [
+                      const Icon(Icons.child_care_outlined,
+                          size: 44, color: Color(0xff0f766e)),
+                      const SizedBox(height: 12),
+                      const Text('还没有孩子档案',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w700, fontSize: 16)),
+                      const SizedBox(height: 6),
+                      const Text('创建档案后会自动生成 6 位绑定码，让孩子在学习设备上直接输入进入。',
+                          textAlign: TextAlign.center,
+                          style:
+                              TextStyle(color: Colors.blueGrey, fontSize: 13)),
+                      const SizedBox(height: 16),
+                      FilledButton.icon(
+                          onPressed: _create,
+                          icon: const Icon(Icons.add),
+                          label: const Text('新增孩子档案')),
+                    ]))),
+          ],
+        ])),
+        if (items.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: AppCard(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: VoiceComposer(
+                baseUrl: apiBaseUrl,
+                tokens: ref.read(tokenStorageProvider),
+                telemetry: ref.read(telemetryProvider),
+                holdToTalkText: '传递作业或留言',
+                helperText: '按住说话',
+                onTap: () => _transfer(items),
+                onBeforeRecording: () =>
+                    ref.read(apiProvider).ensureValidAccess(),
+                onVoiceFinal: (text) => _transfer(items, initialText: text),
+                onPickImage: () async {
+                  final key = await _pickTransferImage(ImageSource.camera);
+                  if (!mounted || key == null) return;
+                  await _transfer(items, initialAttachmentKey: key);
+                },
+              ),
+            ),
+          ),
       ]),
     );
   }
@@ -236,8 +255,28 @@ class _WardListPageState extends ConsumerState<WardListPage> {
         _ => '小学',
       };
 
-  Future<void> _transfer(List<Ward> wards) async {
-    final task = TextEditingController();
+  Future<String?> _pickTransferImage(ImageSource source) async {
+    try {
+      final image =
+          await ImagePicker().pickImage(source: source, imageQuality: 85);
+      if (image == null || !mounted) return null;
+      final extension = image.name.split('.').last.toLowerCase();
+      if (!const {'jpg', 'jpeg', 'png', 'webp'}.contains(extension)) {
+        showMessage(context, '暂只支持 JPG、PNG 或 WebP 图片');
+        return null;
+      }
+      return await ref
+          .read(apiProvider)
+          .uploadTaskIntakeImage(await image.readAsBytes(), extension);
+    } catch (_) {
+      if (mounted) showMessage(context, '图片上传失败，请重试');
+      return null;
+    }
+  }
+
+  Future<void> _transfer(List<Ward> wards,
+      {String? initialText, String? initialAttachmentKey}) async {
+    final task = TextEditingController(text: initialText);
     final voice = VoiceTranscriptionService(
       baseUrl: apiBaseUrl,
       tokens: ref.read(tokenStorageProvider),
@@ -249,7 +288,9 @@ class _WardListPageState extends ConsumerState<WardListPage> {
     var readyToConfirm = false;
     final history = <Map<String, dynamic>>[];
     var candidates = <Map<String, dynamic>>[];
-    final attachments = <String>[];
+    final attachments = <String>[
+      if (initialAttachmentKey != null) initialAttachmentKey,
+    ];
     Future<void> stopVoice(StateSetter setSheet) async {
       if (!recording) return;
       recordingLimit?.cancel();
@@ -318,6 +359,8 @@ class _WardListPageState extends ConsumerState<WardListPage> {
                         }),
                       ])),
                 const SizedBox(height: 12),
+                if (attachments.isNotEmpty)
+                  Text('已添加 ${attachments.length} 张图片'),
                 Row(children: [
                   GestureDetector(
                     onLongPressStart: (_) async {
