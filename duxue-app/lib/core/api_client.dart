@@ -229,6 +229,19 @@ class ApiClient {
       ((await dio.get('/wards/$wardId/devices')).data as List)
           .map((item) => Device.fromJson(item))
           .toList();
+  Future<List<Map<String, dynamic>>> tutoringEvidence(
+          String wardId, DateTime day) async =>
+      ((await dio.get('/wards/$wardId/tutoring-evidence',
+                  queryParameters: {'date': _day(day)}))
+              .data['items'] as List)
+          .map((item) => Map<String, dynamic>.from(item as Map))
+          .toList();
+  Future<Map<String, dynamic>> tutoringEvidenceDetail(
+          String wardId, DateTime day, String problemId) async =>
+      Map<String, dynamic>.from((await dio.get(
+              '/wards/$wardId/tutoring-evidence/$problemId',
+              queryParameters: {'date': _day(day)}))
+          .data as Map);
   Future<DailyReport> report(String wardId, DateTime date) async {
     final timer = Stopwatch()..start();
     try {

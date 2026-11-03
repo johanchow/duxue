@@ -3,7 +3,11 @@
 当前 MVP 已打通注册、Ward、设备邀请与绑定、预签名上传、帧元数据、分析、日报与周趋势。
 
 ```bash
-# 推荐：读取同目录 `.env`（可用 ENV_FILE=指定其它文件）后启动 FastAPI
+# 在 duxue-server 目录，先使用与启动进程相同的环境配置更新数据库
+# 默认读取同目录 `.env`；使用其它 ENV_FILE 时，迁移与启动都需指定它
+.venv/bin/alembic upgrade head
+
+# 推荐启动方式
 python main.py
 
 # 等价
@@ -14,7 +18,7 @@ python -m unittest tests.test_e2e -v
 
 启动时会自动加载 `duxue-server/.env`（已存在的环境变量优先，不会被覆盖）。启动前会校验数据库、JWT 密钥、Redis 与 VLM API Key；使用 `STORAGE_BACKEND=oss` 时还会校验 OSS endpoint、bucket 与访问密钥，缺失任一项会在进程启动前报错。`STORAGE_BACKEND=local` 可用于测试，不要求 OSS 配置。`/frames/upload-url` 仍遵守“先取预签名 URL、再 PUT、最后提交元数据”的生产契约。
 
-生产环境必须禁用 `AUTO_CREATE_SCHEMA`，然后在启动 API/Worker 前执行：
+开发、测试和生产环境更新代码后，都必须在启动 API/Worker 前运行同一环境的数据库迁移。`create_all()` 不会为已有表补列，不能替代 Alembic；生产环境必须禁用 `AUTO_CREATE_SCHEMA`。迁移命令：
 
 ```bash
 alembic upgrade head

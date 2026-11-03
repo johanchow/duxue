@@ -7,6 +7,8 @@ import tempfile
 import unittest
 from unittest.mock import AsyncMock, patch
 from datetime import datetime, timedelta, timezone
+
+from app.contexts.planning.domain.scheduling import local_plan_date
 from pathlib import Path
 
 
@@ -202,7 +204,7 @@ class EndToEndTest(unittest.TestCase):
         ward_token = self.request(
             "POST", "/ward-auth/bind", json={"invite_code": invite["invite_code"]}
         ).json()["access_token"]
-        day = datetime.now(timezone.utc).date().isoformat()
+        day = local_plan_date().isoformat()
         self.assertEqual(
             self.request(
                 "GET", f"/wards/{ward}/guardian-story/{day}", token=token
@@ -341,7 +343,7 @@ class EndToEndTest(unittest.TestCase):
         ward_token = self.request(
             "POST", "/ward-auth/bind", json={"invite_code": invite["invite_code"]}
         ).json()["access_token"]
-        day = datetime.now(timezone.utc).date().isoformat()
+        day = local_plan_date().isoformat()
         saved_plan = self.request(
                 "PUT",
                 f"/wards/{ward}/plans/{day}",
@@ -355,8 +357,6 @@ class EndToEndTest(unittest.TestCase):
                             "planned_minutes": 30,
                             "start_at": f"{day}T19:00:00",
                         },
-                        {"assignment_id": second, "title": "任务池任务", "planned_minutes": 20,
-                         "unscheduled_reason": "下次安排"}
                     ],
                 },
             )
@@ -398,6 +398,10 @@ class EndToEndTest(unittest.TestCase):
                 json={"active_seconds": 30},
             ).status_code,
             200,
+        )
+        self.assertEqual(
+            next(item for item in self.request("GET", f"/wards/{ward}/assignments", token=ward_token).json()
+                 if item["id"] == second)["status"], "pool"
         )
         pool_session = self.request(
             "POST", f"/assignments/{second}/sessions", token=ward_token

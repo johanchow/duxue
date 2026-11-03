@@ -651,3 +651,24 @@ def test_new_run_without_checkpoint_abandons_leftover_open_problem_on_reused_ses
     db.refresh(leftover)
     assert leftover.status == "abandoned"
 
+
+
+def test_shown_work_turns_bind_evidence_to_the_actual_problem_and_keep_other_topics_out(db):
+    from app.infrastructure.persistence.models import TutoringMessage
+    from app.application.queries.tutoring_evidence import list_evidence, evidence_detail
+    from app.contexts.planning.domain.scheduling import local_plan_date
+
+    ward, session = _setup(db)
+    workflow, _ = _workflow(db, ATTEMPT, ATTEMPT, KNOWLEDGE)
+    _ask(db, workflow, session, "我先把已知条件写出来")
+    problem = db.query(TutoringProblem).one()
+    _ask(db, workflow, session, "我现在把两边相等的量列成等式")
+    rows = db.query(TutoringMessage).filter_by(problem_id=problem.id).all()
+    assert len(rows) == 4
+    assert {row.evidence_kind for row in rows} == {"attempt", "guide"}
+    day = local_plan_date(rows[-1].created_at)
+    assert [item["id"] for item in list_evidence(db, ward.id, day)["items"]] == [problem.id]
+    _ask(db, workflow, session, "diamond beach 是什么意思")
+    detail = evidence_detail(db, ward.id, day, problem.id)
+    assert len(detail["messages"]) == 4
+    assert all(row["content"] != "diamond beach 是什么意思" for row in detail["messages"])

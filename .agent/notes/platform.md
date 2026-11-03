@@ -63,3 +63,7 @@
 
 - 上述复核验证：服务端全量742通过，Go全量竞态/静态检查、三平台重建通过；真实摄像头/OSS长测仍待现场验收。
 - 2026-11-01 摄像头帧改入 `OSS_BUCKET_CAMERA`，对象键为 `{ward_id}/{UTC日期}/{frame_id}.jpg`。`OSS_BUCKET_NAME` 继续给陪伴附件等对象。网关帧的读取、到期删除和数据清除走摄像头桶；旧逐设备帧仍在原桶。
+
+- 2026-11-04 报告页 `frames.gateway_id does not exist` 排查：默认 `.env` 指向远端 `duxue-test`（APP_ENV=test），只读核实当时仍为 revision30，尚缺31网关帧列、32挑战表、33教学关联。打开新首页自动查询报告会立即触发缺列；不是只补33即可。所有环境更新代码后均需以与API相同配置先运行Alembic升级；`create_all`不会ALTER既有表。已补README启动顺序，本次只读诊断、未修改远端库。
+
+- 2026-11-04 用户随后明确授权操作 `.env` 测试库，已执行 Alembic upgrade head：远端 `duxue-test` 从30升级至 `20261104_33`。只读复核全部应用表/列完整，Frame count及Task/Sprint/TutoringMessage ORM查询通过。仅测试库；生产库未操作。

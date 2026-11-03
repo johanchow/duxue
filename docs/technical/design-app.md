@@ -30,6 +30,14 @@
 
 > 2026-11-03 目标交互调整：Ward 首页与计划展示以 [首页 PRD](../product/prd-user.md#六ward-首页与导航架构默认对话流--可选专注挑战--底部唯一-voicecomposer) 和 [计划 PRD](../product/prd-schedule.md) 为准。下文旧版计划/AI Tab、常驻计时及完成结算布局不再作为实现目标；普通任务状态与计时仅按需查看，不常驻当前/下一项；只有明确开启、实际起点与目标时长齐全的 Sprint 展示限时卡，挑战到时与任务完成分离。本轮已完成上述客户端改造，待验收；旧布局只作历史参考。
 
+### Guardian 报告首页（已实现）
+
+产品规则归 [首页 PRD §7.1](../product/prd-user.md#71-核心首页报告直接呈现)。实际入口仍为 `/wards` 的 `WardListPage`，导航改为报告/孩子/我的；旧五 Tab 路由表是历史方案。`GuardianReportView` 共用于首页、孩子报告页和旧 report/story 路由，移除自评门禁与固定建议。
+
+- 日报复用 `reportProvider` / `/reports/daily`，直接渲染已有活动分类与观察时间轴，不在客户端生成因果、净专注或掌握结论。
+- 凭证与展开详情分别使用独立 autoDispose Provider；查询契约见 [Tutoring](domain-tutoring.md#guardian-逐题推导记录查询)。按 wardId/date/problemId 隔离，展开时才读原文；失败独立重试、无数据不占位。
+- 日期按上海日历归一；前台每分钟、恢复前台和下拉刷新均重新读取，跨日仅将原先查看“今天”的页面推进到新日，历史选择保持。移除常驻传递输入和决策页，作业传递保留孩子操作菜单。
+
 ## 一、端侧技术选型与分层架构
 
 ### 1.1 核心技术选型矩阵

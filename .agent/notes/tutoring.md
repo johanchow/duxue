@@ -39,3 +39,6 @@
 - 链接和 Markdown 图片只当纯文本。金额不要写成 `$100`。公式解析失败回退源码。
 - `tests/unit/evals/` 不能放 `__init__.py`。真实模型评测只能走 CLI，导入前禁用 OTEL。字面 `content_not_contains` 会误伤。多轮评测注入的是标注题目状态。合成多轮与真实回放的统计必须分开。
 - 视频未实现前，不要用 `start_cue` 冒充制作完成，也不要新增 `exploration` 意图。
+
+- 本轮补齐 Guardian 逐题推导记录只读 Query，见 [领域契约](../../docs/technical/domain-tutoring.md#guardian-逐题推导记录查询)。出口通过的 work 消息关联实际题目，区分引导与实质尝试；guide后有attempt才可展示，列表不传全对话，展开按题目/上海日期读取。旧无关联消息及空文本图片尝试不补造证据；submitted/“我懂了”不作为verified。迁移33已按用户后续授权应用到测试库，生产未迁移。
+- 清除教学数据顺序必须为 TutoringMessage → TutoringProblem → TutoringSession；新增消息外键后真实PostgreSQL清除回归已覆盖。

@@ -482,12 +482,20 @@ class TutoringWorkflow:
         answer_protected = permit.answer_protected
         hint_index = None
         attempted = False
+        evidence_problem_id = None
         if work:
-            problem_status, hint_index, attempted = self._apply_problem(
+            problem_status, hint_index, attempted, evidence_problem_id = self._apply_problem(
                 tutor, problem_row, candidate, verdict, invocation, has_work_input=bool(content.strip() or images),
                 summary=content,
             )
-        message = TutoringMessage(tutoring_session_id=tutor.id, role="assistant", content=text)
+        if evidence_problem_id:
+            ward_msg.problem_id = evidence_problem_id
+            ward_msg.evidence_kind = "attempt" if attempted else "question"
+        message = TutoringMessage(
+            tutoring_session_id=tutor.id, role="assistant", content=text,
+            problem_id=evidence_problem_id,
+            evidence_kind=("guide" if hint_index is not None else "reply") if evidence_problem_id else None,
+        )
         self.db.add(message)
         self.db.flush()
         payload = {"tutoring_session_id": tutor.id, "study_session_id": session.id}
@@ -541,7 +549,7 @@ class TutoringWorkflow:
         """
         new_problem = candidate.relation == "new"
         if row is not None and not new_problem and row.last_turn_id == invocation.turn_id:
-            return row.status, None, False
+            return row.status, None, False, row.id
         if row is None or new_problem:
             if row is not None:
                 row.status = "abandoned"
@@ -564,7 +572,7 @@ class TutoringWorkflow:
         )
         row.last_turn_id = invocation.turn_id
         hint_index = new.hints_given if new.hints_given > before.hints_given else None
-        return row.status, hint_index, new.substantive_attempts > before.substantive_attempts
+        return row.status, hint_index, new.substantive_attempts > before.substantive_attempts, row.id
 
     def _reply(self, invocation, tutor, refs, envelope, *, text, blocked, permit, problem_status):
         self.db.add(TutoringMessage(tutoring_session_id=tutor.id, role="assistant", content=text, safety_blocked=blocked))

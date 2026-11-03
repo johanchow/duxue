@@ -17,6 +17,7 @@ import '../shared/app_ui.dart';
 import '../shared/chat_markdown.dart';
 import '../shared/voice_composer.dart';
 import 'home_task_card.dart';
+import 'guardian_report_view.dart';
 import 'sprint_card.dart';
 import 'chat_image_viewer.dart';
 import 'pronunciation_player.dart';
@@ -100,64 +101,14 @@ class _WardBindPageState extends ConsumerState<WardBindPage> {
   }
 }
 
-class GuardianStoryPage extends ConsumerStatefulWidget {
+class GuardianStoryPage extends StatelessWidget {
   const GuardianStoryPage({required this.wardId, super.key});
   final String wardId;
   @override
-  ConsumerState<GuardianStoryPage> createState() => _GuardianStoryPageState();
-}
-
-class _GuardianStoryPageState extends ConsumerState<GuardianStoryPage> {
-  final task = TextEditingController();
-  Map<String, dynamic>? story;
-  @override
-  Widget build(BuildContext context) {
-    final s = story;
-    return Scaffold(
-        appBar: AppBar(title: const Text('今晚的学习故事')),
-        body: ListView(padding: const EdgeInsets.all(16), children: [
-          TextField(
-              controller: task,
-              decoration: const InputDecoration(labelText: '交给孩子的作业'),
-              onSubmitted: (_) => _add()),
-          FilledButton(onPressed: _add, child: const Text('交作业')),
-          const SizedBox(height: 16),
-          FilledButton.tonal(onPressed: _load, child: const Text('查看当晚事实报告')),
-          if (s != null)
-            Card(
-                child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: s['status'] == 'locked'
-                        ? const Text('孩子完成自评后，今晚报告会在这里出现。')
-                        : Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                                Text(
-                                    '学习用时：${(s['total_seconds'] as int) ~/ 60} 分钟'),
-                                Text('答疑卡点：${s['stuck_points']} 个'),
-                                const Text('沟通建议',
-                                    style:
-                                        TextStyle(fontWeight: FontWeight.bold)),
-                                ...((s['communication_suggestions'] as List)
-                                    .map((x) => Text('• $x')))
-                              ])))
-        ]));
-  }
-
-  Future<void> _add() async {
-    if (task.text.trim().isEmpty) return;
-    await ref
-        .read(apiProvider)
-        .createAssignment(widget.wardId, task.text.trim());
-    task.clear();
-  }
-
-  Future<void> _load() async {
-    final x = await ref
-        .read(apiProvider)
-        .guardianStory(widget.wardId, DateTime.now());
-    if (mounted) setState(() => story = x);
-  }
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(title: const Text('学习报告')),
+        body: GuardianReportView(wardId: wardId),
+      );
 }
 
 class PickedChatImage {

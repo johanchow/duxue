@@ -997,3 +997,12 @@ API：`GET /sprints/current`；`POST /sprints` 明确 create（现在开启）�
 Sprint 命令以 Ward 行锁串行化，行/幂等回执同事务；轮次到时由读取恢复和15秒 Celery维护共同核算，通知仅通过前台安全点最多领取一次，60秒后不强制补弹。到时不触发任务完成或原会话结束；任务完成声明单独记录 `TaskCompletionDeclared.v1`，无会话时计时为空。
 
 数据清除先删除 Sprint 命令回执与 Sprint，再删除关联 Task；携带 Ward 路由的 Outbox 也清除，避免清除后重放完成声明。已有 Sprint 或学习记录的 Task 不允许物理删除。
+
+
+## Guardian 推导记录查询（迁移33）
+
+领域契约归 [Tutoring](domain-tutoring.md#guardian-逐题推导记录查询)，UI 归 [App](design-app.md#guardian-报告首页已实现)。新增 `20261104_33`，前序为 `20261103_32`；用户授权后测试库已升级至33，生产库未迁移。
+
+`tutoring_messages.problem_id` 为可空 UUID FK 至 tutoring_problems，命名 fk_tutoring_message_problem，带索引；`evidence_kind` 为可空 String(20)。旧消息全部保留空关联，无数据回填，原正文不改写。升降级保留原题目与对话，回退只删除新列、外键及索引。
+
+Query 由 `app/application/queries/tutoring_evidence.py` 承接，鉴权由 Guardian API 检查当前绑定关系；查询仅读已持久化且已展示的教学片段，不触发模型、不创建学习事实、不解锁答案。详情按需读取，客户端展开前不下载正文。账号清除按消息 → 题目 → 答疑会话顺序删，避免外键阻塞；不新建凭证副本或后台重建任务。

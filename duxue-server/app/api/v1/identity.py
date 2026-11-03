@@ -289,7 +289,9 @@ def delete_ward_data(ward_id: str, principal: Principal = Depends(current_guardi
     db.query(Report).filter(Report.ward_id == ward_id).delete(synchronize_session=False)
     tutor_ids = [row[0] for row in db.query(TutoringSession.id).filter_by(ward_id=ward_id).all()]
     if tutor_ids:
+        from app.infrastructure.persistence.models import TutoringProblem
         db.query(TutoringMessage).filter(TutoringMessage.tutoring_session_id.in_(tutor_ids)).delete(synchronize_session=False)
+        db.query(TutoringProblem).filter(TutoringProblem.tutoring_session_id.in_(tutor_ids)).delete(synchronize_session=False)
     db.query(TutoringSession).filter(TutoringSession.ward_id == ward_id).delete(synchronize_session=False)
     db.query(PronunciationLesson).filter(PronunciationLesson.ward_id == ward_id).delete(synchronize_session=False)
     db.query(Frame).filter(Frame.ward_id == ward_id).delete(synchronize_session=False)

@@ -14,7 +14,6 @@ import 'package:duxue_app/features/ward_pages.dart';
 import 'package:duxue_app/main.dart' show routerProvider;
 import 'package:duxue_app/providers.dart';
 import 'package:duxue_app/shared/voice_composer.dart';
-import 'package:duxue_app/shared/input_mode_composer.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/test/test_flutter_secure_storage_platform.dart';
 import 'package:flutter_secure_storage_platform_interface/flutter_secure_storage_platform_interface.dart';
@@ -57,6 +56,19 @@ class _WardHomeApi extends ApiClient {
   Map<String, dynamic>? lastStructuredCommand;
   final deleted = <String>[];
   final turns = <({String content, List<String> attachmentKeys})>[];
+
+  @override
+  Future<DailyReport> report(String wardId, DateTime date) async => DailyReport(
+      status: 'empty',
+      date: date,
+      totalSeconds: 0,
+      breakdown: const {},
+      timeline: const [],
+      profileChanged: false);
+  @override
+  Future<List<Map<String, dynamic>>> tutoringEvidence(
+          String wardId, DateTime date) async =>
+      [];
 
   @override
   Future<Map<String, dynamic>> currentSprint() async =>
@@ -962,105 +974,28 @@ class _DelayedSprintApi extends _SprintApi {
 }
 
 void main() {
-  testWidgets(
-      'guardian switches voice and keyboard while retaining its text draft',
+  testWidgets('guardian task transfer is a secondary child operation',
       (tester) async {
-    await tester.pumpWidget(ProviderScope(
-      overrides: [
-        wardsProvider.overrideWith((ref) async => const [
-              Ward(id: 'ward-1', displayName: '小宇', gradeStage: 'primary'),
-            ]),
-      ],
-      child: const MaterialApp(home: WardListPage()),
-    ));
+    await tester.pumpWidget(ProviderScope(overrides: [
+      apiProvider.overrideWithValue(_WardHomeApi()),
+      wardsProvider.overrideWith((ref) async => const [
+            Ward(id: 'ward-1', displayName: '小宇', gradeStage: 'primary'),
+          ]),
+    ], child: const MaterialApp(home: WardListPage())));
     await tester.pumpAndSettle();
-    expect(find.byIcon(Icons.keyboard_outlined), findsOneWidget);
-    await tester.tap(find.byTooltip('切换到文字输入'));
-    await tester.pumpAndSettle();
+    expect(find.text('报告尚未生成'), findsOneWidget);
     expect(find.byType(VoiceComposer), findsNothing);
-    expect(find.byTooltip('拍照'), findsOneWidget);
-    expect(find.byTooltip('发送'), findsNothing);
-    await tester.enterText(find.byType(TextField), '小宇明天交数学练习册');
-    await tester.tap(find.byTooltip('切换到语音输入'));
-    await tester.pumpAndSettle();
-    expect(find.byType(VoiceComposer), findsOneWidget);
-    await tester.tap(find.byTooltip('切换到文字输入'));
-    await tester.pumpAndSettle();
-    expect(tester.widget<TextField>(find.byType(TextField)).controller!.text,
-        '小宇明天交数学练习册');
-    await tester.tap(find.byTooltip('发送'));
-    await tester.pumpAndSettle();
-    expect(find.text('传递任务'), findsOneWidget);
-    final fields = tester.widgetList<TextField>(find.byType(TextField));
-    expect(fields.last.controller!.text, '小宇明天交数学练习册');
-    Navigator.of(tester.element(find.text('传递任务'))).pop();
-    await tester.pumpAndSettle();
-  });
-
-  testWidgets(
-      'guardian home keeps transfer centered above navigation while scrolling',
-      (tester) async {
-    await tester.pumpWidget(ProviderScope(
-      overrides: [
-        wardsProvider.overrideWith((ref) async => List.generate(
-            12,
-            (index) => Ward(
-                id: 'ward-$index',
-                displayName: '孩子$index',
-                gradeStage: 'primary'))),
-      ],
-      child: const MaterialApp(home: WardListPage()),
-    ));
-    await tester.pumpAndSettle();
-
-    expect(find.text('全部孩子'), findsOneWidget);
-    expect(find.text('我的家庭'), findsNothing);
-    expect(find.text('我的孩子'), findsNothing);
-    expect(find.byType(VoiceComposer), findsOneWidget);
-    expect(find.byTooltip('拍照'), findsOneWidget);
-    final button = find.byType(InputModeComposer);
-    final before = tester.getRect(button);
-    final navigation = tester.getRect(find.byType(NavigationBar));
-    expect(before.center.dx, closeTo(navigation.center.dx, 1));
-    expect(navigation.top - before.bottom, closeTo(22, 1));
-
-    await tester.drag(find.byType(ListView).first, const Offset(0, -500));
-    await tester.pumpAndSettle();
-    expect(tester.getRect(button), before);
-    await tester.scrollUntilVisible(find.text('新增孩子档案'), 400);
-    expect(tester.getBottomLeft(find.text('新增孩子档案')).dy, lessThan(before.top));
-
-    await tester.tap(find.text('决策'));
-    await tester.pumpAndSettle();
-    expect(button, findsNothing);
+    expect(find.text('传递作业'), findsNothing);
     await tester.tap(find.text('孩子'));
     await tester.pumpAndSettle();
-    await tester.tap(button);
+    expect(find.text('全部孩子'), findsOneWidget);
+    expect(find.byType(VoiceComposer), findsNothing);
+    await tester.tap(find.byTooltip('孩子操作'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('传递作业'));
     await tester.pumpAndSettle();
     expect(find.text('传递任务'), findsOneWidget);
-  });
-
-  testWidgets('guardian composer voice opens transfer with the transcript',
-      (tester) async {
-    await tester.pumpWidget(ProviderScope(
-      overrides: [
-        wardsProvider.overrideWith((ref) async => const [
-              Ward(id: 'ward-1', displayName: '小宇', gradeStage: 'primary'),
-            ]),
-      ],
-      child: const MaterialApp(home: WardListPage()),
-    ));
-    await tester.pumpAndSettle();
-    final composer = tester.widget<VoiceComposer>(find.byType(VoiceComposer));
-    // The host callback stays pending while its transfer sheet is open.
-    unawaited(composer.onVoiceFinal('小宇明天交数学练习册'));
-    await tester.pumpAndSettle();
-    expect(find.text('传递任务'), findsOneWidget);
-    expect(tester.widget<TextField>(find.byType(TextField)).controller!.text,
-        '小宇明天交数学练习册');
     expect(find.text('确认传递'), findsOneWidget);
-    Navigator.of(tester.element(find.text('传递任务'))).pop();
-    await tester.pumpAndSettle();
   });
 
   testWidgets('ordinary tasks and active sessions never pin progress to home',
@@ -1845,7 +1780,10 @@ void main() {
     await tester.tap(find.text('完成'));
     await tester.pumpAndSettle();
 
-    expect(find.text('传递作业或留言'), findsOneWidget);
+    expect(find.text('传递作业或留言'), findsNothing);
+    expect(find.text('报告尚未生成'), findsOneWidget);
+    await tester.tap(find.text('孩子'));
+    await tester.pumpAndSettle();
     expect(find.text('获取绑定码'), findsOneWidget);
   });
 
