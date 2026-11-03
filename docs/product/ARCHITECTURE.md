@@ -76,9 +76,9 @@
 
 ```text
 ┌───────────────────────────────────────────────────────────────────────────────┐
-│  L2 自主规划与复盘层（可选增强 · 弱约束）：                                   │
-│  家长顺手转发作业 / Ward 语音排期协商 / 到点 StartCue 邀请 / 课后自由语音总结 │
-│  👉 增量价值：训练时间预估与任务拆解能力、明确科目名称、主客观双轨对照觉察    │
+│  L2 轻量计划与复盘层（可选增强 · 弱约束）：                                   │
+│  按需记事与顺序提示 / 主动开启专注挑战（Sprint） / 自由语音总结       │
+│  👉 增量价值：减少启动负担与遗漏、自主短时挑战、可选估时与同口径回顾│
 ├───────────────────────────────────────────────────────────────────────────────┤
 │  L1 刚需启发答疑层（按需触发 · 零形式负担）：                                 │
 │  纸质作业遇卡点 ──▶ 拍照/语音提问 ──▶ 苏格拉底分步启发 ──▶ 对话内微验证闭环   │
@@ -98,7 +98,7 @@
 | :--- | :--- | :--- | :--- |
 | **① 桌面观察与物理状态感知** | 读学Eye 持续 15s/帧稀疏抓拍；服务端识别桌面物理状态（连续书写、停滞思考、翻页换书、离座空置） | 不推实时流、不拍正脸、不发分心警告；支持与线上任务关联，也支持**无计划下的自动会话分段** | 净专注时长、启动延迟、停滞卡壳时段 |
 | **② 陪伴执行与启发答疑** | Ward 通过统一对话入口（`VoiceComposer`）随时拍照或语音提问；支持到点 `StartCue` 温和邀请开始 | **答案保护红线**：独立裁判拦截答案泄露；每轮只推进最小下一步；收尾通过**对话内微验证**确认独立解出；任务完成无需拍照打卡 | 《独立解题凭证》（原题+卡点诊断+独立推导结果）、好奇心信号（`Interest Signal`） |
-| **③ 协商计划（可选增强）** | Ward 一句话语音/文字新增、修改、排期或暂不安排任务；AI 检查冲突并给软建议，Ward 确认后生效 | 有标题与预计时长即可入任务池，排入当天计划才需开始时间；Guardian 仅可查看或传递任务候选，无权直接修改 Ward 计划 | 当日时间轴计划、预估 vs 实际耗时校准记录 |
+| **③ 轻量计划与专注挑战（可选增强）** | Task 记事、Plan 按需提供顺序提示；Ward 主动开启限时 Sprint | 普通任务不常驻首页；仅明确开启且有实际起点与目标时长的挑战展示卡片，到时不等于任务完成 | 按需作业清单、安排与执行记录、可选 Sprint；规则见 [计划 PRD](prd-schedule.md) |
 | **④ 结果评估与晚间洞察** | 会话结束后当晚聚合客观行为与答疑卡点；Ward 可选通过语音/文字自由表达今日总结（保留原话、可修订） | 退役机械点选问卷与强制锦囊；Ward 自述仅留存 `Evaluation` 域（不直接当成客观能力写入 `Memory`）；当晚向家长推送伴学实况 | Ward 端：原话总结与客观时间轴对照；Guardian 端：《伴学闭环实况单》+《独立解题凭证》 |
 
 ---
@@ -111,12 +111,12 @@
 
 - **客户端层**：
   1. **读学Eye**：采用固定机位标准摄像头与共享采集网关，和学生交互设备物理分离；Go网关已实现，待家庭现场验收。
-  2. **`duxue-app` · Ward 端**：以**今日计划横轨**为顶层上下文，底部常驻唯一的 **`VoiceComposer`（统一伴学对话入口）**。无需在多个繁琐 Tab 间跳转，一句话即可由 `Companion` 自动路由至排期（`planning`）、答疑/发音（`tutoring`）或今日总结（`reflection`）。
+  2. **`duxue-app` · Ward 端**：默认主体为伴学对话流，底部常驻唯一 `VoiceComposer`。普通任务与时间按需查看，不常驻当前/下一项；仅主动开启的限时 Sprint 展示挑战卡。首页规则见 [用户 PRD](prd-user.md#六ward-首页与导航架构默认对话流--可选专注挑战--底部唯一-voicecomposer)。
   3. **`duxue-app` · Guardian 端**：聚焦设备绑定与在线状态、外部作业信息传递、以及每晚查收结构化伴学实况单与难题独立解题凭证。
 - **服务端核心领域（Domain）**：
   - **`Companion`（陪伴编排域）**：Ward 可见对话的唯一 append-only 账本，负责意图路由、跨场景切换核查（`scene-switch`）、确认卡与交互按钮生命周期管理。
-  - **`Planning`（计划与排程域）**：管理已知任务池、日程草稿、半开区间冲突校验、软建议与 Ward 确认版本。
-  - **`Study`（学习执行域）**：管理 `StudySession`（开始/暂停/继续/完成/跨天自动放弃）与到点开始邀请（`StartCue`）。
+  - **`Planning`（轻量计划与任务域）**：保留任务、草稿、当日顺序与可选估时/起点；安排确认与实际执行分离，面向用户按需显露，见 [Planning 设计](../technical/domain-planning.md)。
+  - **`Study`（学习执行域）**：管理 `StudySession`（开始/暂停/继续/完成/跨天自动放弃）与到点开始邀请（`StartCue`）；目标扩展拥有主动专注挑战 `Sprint`，其到时不代表任务完成。
   - **`Tutoring`（辅导答疑域）**：执行答案状态红线（`permit()`）、`TutoringTurnLoop`、多模态配图（`visual`）、发音示范（`pronounce`）及独立泄露裁判。
   - **`Evaluation`（评估与复盘域）**：管理 Ward 今日总结原话与六维结构化条目、证据版本化的客观行为与卡点聚合报告。
   - **`Memory`（孩子理解与记忆域）**：纯后端智能底座，基于客观事实事件账本维护工作记忆、近期事件（`Episodic`）与长期画像（`Claim/Signal`），严守与主观自述的隔离边界。
@@ -129,7 +129,7 @@
 | **启发式分步答疑与微验证** | Ward 专属 | **L1 按需触发** | 答案保护红线 + 独立裁判 + 配图/发音 + 对话内微验证 | [`prd-companion.md`](prd-companion.md) / [`domain-tutoring.md`](../technical/domain-tutoring.md) |
 | **统一伴学对话（Companion）** | Ward 专属 | **L1 核心入口** | 底部 `VoiceComposer` 统一承接语音/文字/图片，自动路由三场景 | [`domain-companion.md`](../technical/domain-companion.md) |
 | **晚间伴学实况单与解题凭证** | Guardian 专属 | **L0/L1 必达交付** | 净专注时长、省下陪读时间、难题独立攻克凭证 | [`prd-evaluate.md`](prd-evaluate.md) / [`domain-evaluation.md`](../technical/domain-evaluation.md) |
-| **协商计划：语音排期与确认** | Ward 专属 | **L2 可选增强** | 任务池与日程分离，AI 软建议，Ward 单按钮确认 | [`prd-schedule.md`](prd-schedule.md) / [`domain-planning.md`](../technical/domain-planning.md) |
+| **轻量计划与任务** | Ward 专属 | **L2 可选增强** | 普通任务按需提示，可选主动 Sprint；无常驻当前/下一项，不要求维护任务管理系统 | [`prd-schedule.md`](prd-schedule.md) / [`domain-planning.md`](../technical/domain-planning.md) |
 | **学习会话与到点邀请（StartCue）** | Ward 专属 | **L2 可选增强** | 任务计时状态机、到点未开始时温和卡片邀请（不自动开课） | [`domain-study.md`](../technical/domain-study.md) |
 | **今日自由总结与主客观对照** | Ward 专属 | **L2 可选增强** | 语音/文字自由回顾经历，保留原话可修订，与客观记录对照 | [`prd-evaluate.md`](prd-evaluate.md) / [`domain-evaluation.md`](../technical/domain-evaluation.md) |
 | **传递外部任务 / 查看计划** | Guardian / Coach | **L2 可选增强** | 转发学校作业信息入池；只读查看 Ward 计划，无权直接修改 | [`prd-schedule.md`](prd-schedule.md) |
@@ -143,7 +143,7 @@
 graph TB
     subgraph CLIENTS["客户端层（物理职责分离）"]
         CAM["读学Eye<br/>（标准摄像头 + 共享采集网关）"]
-        APPW["duxue-app · 学生端（Ward）<br/>（今日计划横轨 + 底部统一 VoiceComposer）"]
+        APPW["duxue-app · 学生端（Ward）<br/>（默认对话流 + 可选 Sprint + VoiceComposer）"]
         APPG["duxue-app · 家长/伴学师端（Guardian / Coach）<br/>（晚间闭环实况单 + 独立解题凭证 + 1对多督学日报）"]
     end
 
@@ -153,9 +153,9 @@ graph TB
         TUT["Tutoring 启发答疑域<br/>（答案红线 + 独立裁判 + 对话内微验证）"]
     end
 
-    subgraph L2_OPT["L2 自主规划与复盘域（弱约束 · 可选增强）"]
-        PLAN["Planning 协商计划域<br/>（任务池 + 排期草稿 + Ward 确认）"]
-        STUDY["Study 学习执行域<br/>（StudySession 计时 + StartCue 邀请）"]
+    subgraph L2_OPT["L2 轻量计划与复盘域（弱约束 · 可选增强）"]
+        PLAN["Planning 轻量计划与任务域<br/>（已知任务 + 顺序草稿 + Ward 确认）"]
+        STUDY["Study 学习执行域<br/>（StudySession + StartCue + 可选 Sprint）"]
         EVAL["Evaluation 评估复盘域<br/>（自由原话总结 + 证据版本化客观报告）"]
     end
 
@@ -189,10 +189,10 @@ graph TB
 
 | 能力域 | 产品规格（PRD） | 领域技术契约（事实源） | 当前状态与关键演进说明 |
 | :--- | :--- | :--- | :--- |
-| **用户、身份与首页** | [`prd-user.md`](prd-user.md) | [`design-app.md`](../technical/design-app.md) | **已落地**。Ward 首页采用横轨计划 + 底部唯一 `VoiceComposer`，取消独立「AI 伙伴」Tab。 |
+| **用户、身份与首页** | [`prd-user.md`](prd-user.md) | [`design-app.md`](../technical/design-app.md) | **身份与统一对话入口已落地**。默认不展示任务进度、仅主动 Sprint 展示限时卡的首页为目标设计，尚待改造。 |
 | **陪伴对话统一入口** | [`prd-companion.md`](prd-companion.md) | [`domain-companion.md`](../technical/domain-companion.md) | **已落地**。统一 `/companion/turn`，支持 `planning`/`tutoring`/`reflection`/`unclear` 路由与跨场景核查。 |
 | **启发式答疑与表达** | [`prd-companion.md`](prd-companion.md) | [`domain-tutoring.md`](../technical/domain-tutoring.md)<br/>[`domain-tutoring-presentation.md`](../technical/domain-tutoring-presentation.md)<br/>[`eval-offline.md`](../technical/eval-offline.md) | **主链路已落地**。含答案保护许可、独立泄露裁判、5 种结构化配图、发音 `pronounce` 与离线评测。 |
-| **协商式计划** | [`prd-schedule.md`](prd-schedule.md) | [`domain-planning.md`](../technical/domain-planning.md) | **已落地**。任务池与入日程分离，定位为**弱约束可选增强**，不阻塞答疑与观察报告交付。 |
+| **轻量计划与任务（原协商式计划 / 点火器）** | [`prd-schedule.md`](prd-schedule.md) | [`domain-planning.md`](../technical/domain-planning.md) | **目标设计已调整，待实现**。普通计划仅按需提示、主动 Sprint 限时展示；后台模型保留，挑战与作业完成分离，尚需改造验收。 |
 | **学习执行与到点邀请** | [`prd-companion.md`](prd-companion.md) | [`domain-study.md`](../technical/domain-study.md) | **已落地**。含 `StudySession` 状态机与 `StartCue` 到点开始邀请卡片。 |
 | **学习观察与行为采集** | [`prd-supervise.md`](prd-supervise.md) | [`design-gateway.md`](../technical/design-gateway.md)<br/>[`domain-behavior.md`](../technical/domain-behavior.md) | Go采集主链路已实现，真实摄像头/OSS待现场验收；云端窗口解释、无计划观察学段与版本化观察已有目标设计，尚未实现。求助邀请与晚间报告扩展分别归 Study / Evaluation。 |
 | **结果评估与复盘引导** | [`prd-evaluate.md`](prd-evaluate.md) | [`domain-evaluation.md`](../technical/domain-evaluation.md) | **部分落地**。Ward 自由语音/文字总结（六维条目）已落地，旧版“单选题盲评+自动专注锦囊”已退役；客观证据版本化报告待完善。 |

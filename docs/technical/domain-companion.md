@@ -502,6 +502,8 @@ Ward 输入     CompanionTurn = TextTurn | StructuredWardCommand + media_refs
 App 按 `kind` 选择组件；当前操作所需的业务数字用 `object_ref` 再拉目标 Query，避免按历史快照执行操作。
 `plan_confirm_list` 在生成时另将该轮卡片的只读条目快照写入 `CompanionMessage.interaction_ref.card_snapshot`，供历史消息按原位置回看；当前确认动作仍以目标 Query 和服务端版本校验为准，历史卡不提供确认按钮。
 
+Sprint 的主动开始、暂停、继续、结束与到时反馈为 Study 目标扩展，见 [Sprint 契约](domain-study.md#24-sprint主动专注挑战目标扩展)。普通 `plan_confirm_list` 确认或 `start_cue` 接受不构成挑战授权；不得用 `achievement` 声称计时到点证明专注成功。首页挑战卡读取 Study 最新版本，不从历史消息或任务预估推导运行状态。新增挑战动作/kind 时需升级协议并同步 App allow-list，当前 v1 不直接开放这些新动作。
+
 #### 5.2.2 关闭的 `kind` 清单
 
 `kind` 只能由目标 Workflow + OutputValidator 产出。新增 `kind` 必须改本协议并同步 App allow-list。
@@ -515,11 +517,11 @@ App 按 `kind` 选择组件；当前操作所需的业务数字用 `object_ref` 
 | `text_visual`       | 文字 + 一张只读配图（`steps`、`compare`、`segment`、`number_line`、`svg`；由 Application 在图通过全部检查后投影，并随 `CompanionMessage.interaction_ref` 保留在历史气泡中） | `text` + `visual`（内联，不用 `object_ref`） | 无                                               | 无                                   |
 | `clarify`           | 单一必要问题、发音原文确认或候选选择 | `text`                 | `reply`                                         | 无或当前 Workflow 等待点                    |
 | `intent_choice`     | 入口意图不明时选择场景             | `text`                 | `choose_intent`（管理任务、总结思考、提问探讨） | 原 Ward 输入的当前 Thread 引用               |
-| `plan_confirm_list` | 全部未完成任务：耗时、开始、结束  | `text` + `object_ref`  | `confirm`（仅 `confirm_enabled`）；调整和恢复原安排通过语音或文字输入 | [PlanDraftView](domain-planning.md) |
+| `plan_confirm_list` | 轻量安排确认卡（名称/顺序，时间仅在用户明确提供时显示） | `text` + `object_ref` | `confirm`（仅 `confirm_enabled`）；快捷安排目标动作 `quick_ignite` 须升级协议后接入，确认不自动开始 | [PlanDraftView](domain-planning.md) |
 | `tutoring_hint`     | 启发式提示卡 + 阶梯       | `text`（Markdown/LaTeX） | `understood`、`more_hint`、`close`                | TutoringInteractionView             |
 | `pronunciation_lesson` | 已校验原文、发音提示与按需播放 | `text` + `object_ref`  | 无                                               | [PronunciationLessonView](domain-tutoring.md#五query) |
 | `self_review`       | 盲评自评卡             | `object_ref`           | `submit_review`                                 | Evaluation 盲评投影                     |
-| `achievement`       | 任务收官轻量成就          | `text`                 | `close`                                         | StudySession 结算                     |
+| `achievement`       | 按需查看的任务收尾记录，默认不自动弹出          | `text`                 | `close`                                         | StudySession 结算                     |
 | `start_cue`  | 到点后的开始邀请          | `text` + `object_ref`  | `start_due_task`、`continue_current`、`pause_current_and_start_due`、`snooze_once`（仅 `StartCueView` 允许的子集） | [StartCueView](domain-study.md#四query) |
 | `help_offer`（目标扩展，未实现） | 递梯子或温和回归邀请 | `text` + `object_ref`，可附受控 prompt_id | `accept_help`、`decline_help`，映射 Study 的 accept/decline Command，具体行为由 kind 决定 | [HelpOffer](domain-study.md#九观察触发的求助邀请目标扩展) |
 | `failure`           | 可恢复失败             | `text`                 | `retry` / `restart`（仅 Outcome 允许时）              | 无                                   |

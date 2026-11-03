@@ -4,7 +4,7 @@
 
 ## 目标
 
-Guardian 用邮箱验证码注册和登录，不保存读学密码。Ward 使用可轮换的 refresh token。Ward 首页以计划为上下文，VoiceComposer 是唯一 AI 输入。
+Guardian 用邮箱验证码注册和登录，不保存读学密码。Ward 使用可轮换的 refresh token。Ward 首页默认为对话流，普通计划按需查看；仅主动 Sprint 展示限时卡，VoiceComposer 是唯一 AI 输入。
 
 ## 状态
 
@@ -37,3 +37,5 @@ Guardian 用邮箱验证码注册和登录，不保存读学密码。Ward 使用
 - 已修复：APK workflow 曾写死 `--build-name=0.1.0`，覆盖 pubspec 版本名。回归测试直接执行 workflow 构建脚本，用替身 Flutter 验证版本来源、CI 构建号、文件名与 commit 注入；界面测试验证安装包版本读取与失败降级。
 - 版本策略唯一归属：[部署文档 · App 版本管理](../../docs/deployment.md#app-版本管理)。Codemagic 双平台发布仍属规划，排查时先看实际 workflow。
 - 验证：112 个 Flutter 测试、静态分析与 workflow YAML 校验通过；带 commit 注入的界面测试通过。Android debug APK 构建成功，aapt 确认版本名来自 pubspec、构建号被覆盖为测试值 42；正式签名流水线待合并后运行。
+
+- 2026-11-03 Ward 首页目标已调整为 [PRD §六](../../docs/product/prd-user.md#六ward-首页与导航架构默认对话流--可选专注挑战--底部唯一-voicecomposer) 的默认对话首页；普通当前/下一项不常驻，仅主动 Sprint 展示限时卡。旧任务池、常驻计时与结算布局属于现有实现，待改造。
