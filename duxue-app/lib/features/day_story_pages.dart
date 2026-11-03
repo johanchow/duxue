@@ -2569,12 +2569,12 @@ class _HomeOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Positioned.fill(
       child: ColoredBox(
-          color: const Color(0x660c1222),
+          color: Theme.of(context).scaffoldBackgroundColor,
           child: SafeArea(
               child: Padding(
-                  padding: EdgeInsets.fromLTRB(10, 10, 10, bottomInset),
+                  padding: EdgeInsets.only(bottom: bottomInset),
                   child: Material(
-                      borderRadius: BorderRadius.circular(24),
+                      color: Theme.of(context).scaffoldBackgroundColor,
                       clipBehavior: Clip.antiAlias,
                       child: Column(children: [
                         Padding(
