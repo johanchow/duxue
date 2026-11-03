@@ -12,6 +12,7 @@ import '../providers.dart';
 import '../shared/app_ui.dart';
 import '../shared/app_version_label.dart';
 import '../shared/voice_composer.dart';
+import '../shared/input_mode_composer.dart';
 
 class WardListPage extends ConsumerStatefulWidget {
   const WardListPage({super.key});
@@ -105,21 +106,23 @@ class _WardListPageState extends ConsumerState<WardListPage> {
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
             child: AppCard(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              child: VoiceComposer(
-                baseUrl: apiBaseUrl,
-                tokens: ref.read(tokenStorageProvider),
-                telemetry: ref.read(telemetryProvider),
-                holdToTalkText: '传递作业或留言',
-                helperText: '按住说话',
-                onTap: () => _transfer(items),
-                onBeforeRecording: () =>
-                    ref.read(apiProvider).ensureValidAccess(),
-                onVoiceFinal: (text) => _transfer(items, initialText: text),
-                onPickImage: () async {
-                  final key = await _pickTransferImage(ImageSource.camera);
-                  if (!mounted || key == null) return;
-                  await _transfer(items, initialAttachmentKey: key);
-                },
+              child: InputModeComposer(
+                hintText: '传递作业或留言',
+                onSubmit: (text) => _transfer(items, initialText: text),
+                onPickImage: (text) =>
+                    _captureTransfer(items, initialText: text),
+                voiceComposer: VoiceComposer(
+                  baseUrl: apiBaseUrl,
+                  tokens: ref.read(tokenStorageProvider),
+                  telemetry: ref.read(telemetryProvider),
+                  holdToTalkText: '传递作业或留言',
+                  helperText: '按住说话',
+                  onTap: () => _transfer(items),
+                  onBeforeRecording: () =>
+                      ref.read(apiProvider).ensureValidAccess(),
+                  onVoiceFinal: (text) => _transfer(items, initialText: text),
+                  onPickImage: () => _captureTransfer(items),
+                ),
               ),
             ),
           ),
@@ -254,6 +257,12 @@ class _WardListPageState extends ConsumerState<WardListPage> {
         'high' => '高中',
         _ => '小学',
       };
+
+  Future<void> _captureTransfer(List<Ward> wards, {String? initialText}) async {
+    final key = await _pickTransferImage(ImageSource.camera);
+    if (!mounted || key == null) return;
+    await _transfer(wards, initialText: initialText, initialAttachmentKey: key);
+  }
 
   Future<String?> _pickTransferImage(ImageSource source) async {
     try {

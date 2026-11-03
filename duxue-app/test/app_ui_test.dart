@@ -14,6 +14,7 @@ import 'package:duxue_app/features/ward_pages.dart';
 import 'package:duxue_app/main.dart' show routerProvider;
 import 'package:duxue_app/providers.dart';
 import 'package:duxue_app/shared/voice_composer.dart';
+import 'package:duxue_app/shared/input_mode_composer.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/test/test_flutter_secure_storage_platform.dart';
 import 'package:flutter_secure_storage_platform_interface/flutter_secure_storage_platform_interface.dart';
@@ -906,6 +907,41 @@ class _FakeVoice implements VoiceTranscription {
 
 void main() {
   testWidgets(
+      'guardian switches voice and keyboard while retaining its text draft',
+      (tester) async {
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        wardsProvider.overrideWith((ref) async => const [
+              Ward(id: 'ward-1', displayName: '小宇', gradeStage: 'primary'),
+            ]),
+      ],
+      child: const MaterialApp(home: WardListPage()),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.byIcon(Icons.keyboard_outlined), findsOneWidget);
+    await tester.tap(find.byTooltip('切换到文字输入'));
+    await tester.pumpAndSettle();
+    expect(find.byType(VoiceComposer), findsNothing);
+    expect(find.byTooltip('拍照'), findsOneWidget);
+    expect(find.byTooltip('发送'), findsNothing);
+    await tester.enterText(find.byType(TextField), '小宇明天交数学练习册');
+    await tester.tap(find.byTooltip('切换到语音输入'));
+    await tester.pumpAndSettle();
+    expect(find.byType(VoiceComposer), findsOneWidget);
+    await tester.tap(find.byTooltip('切换到文字输入'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        '小宇明天交数学练习册');
+    await tester.tap(find.byTooltip('发送'));
+    await tester.pumpAndSettle();
+    expect(find.text('传递任务'), findsOneWidget);
+    final fields = tester.widgetList<TextField>(find.byType(TextField));
+    expect(fields.last.controller!.text, '小宇明天交数学练习册');
+    Navigator.of(tester.element(find.text('传递任务'))).pop();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets(
       'guardian home keeps transfer centered above navigation while scrolling',
       (tester) async {
     await tester.pumpWidget(ProviderScope(
@@ -925,8 +961,8 @@ void main() {
     expect(find.text('我的家庭'), findsNothing);
     expect(find.text('我的孩子'), findsNothing);
     expect(find.byType(VoiceComposer), findsOneWidget);
-    expect(find.text('拍照'), findsOneWidget);
-    final button = find.byType(VoiceComposer);
+    expect(find.byTooltip('拍照'), findsOneWidget);
+    final button = find.byType(InputModeComposer);
     final before = tester.getRect(button);
     final navigation = tester.getRect(find.byType(NavigationBar));
     expect(before.center.dx, closeTo(navigation.center.dx, 1));
@@ -1397,7 +1433,7 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('拍照'));
+    await tester.tap(find.byTooltip('拍照'));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('staged-image-strip')), findsOneWidget);
@@ -1428,7 +1464,7 @@ void main() {
                   bytes: Uint8List.fromList(_tinyPng), extension: 'png'))),
     ));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('拍照'));
+    await tester.tap(find.byTooltip('拍照'));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('发送'));
     await tester.pumpAndSettle();
@@ -1552,7 +1588,7 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('拍照'));
+    await tester.tap(find.byTooltip('拍照'));
     await tester.pumpAndSettle();
     final gesture = await tester
         .startGesture(tester.getCenter(find.text('说出你的任何想法、问题、安排')));
@@ -1578,7 +1614,7 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('拍照'));
+    await tester.tap(find.byTooltip('拍照'));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('移除图片'));
     await tester.pumpAndSettle();
@@ -1615,7 +1651,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 600));
     await gesture.up();
     await tester.pumpAndSettle();
-    await tester.tap(find.text('拍照'));
+    await tester.tap(find.byTooltip('拍照'));
 
     expect(transcript, '今天整理错题');
     expect(imagePressed, isTrue);

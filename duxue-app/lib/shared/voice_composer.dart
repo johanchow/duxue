@@ -266,16 +266,14 @@ class _VoiceComposerState extends State<VoiceComposer> {
           SizedBox(
               width: 64,
               height: 52,
-              child: OutlinedButton(
-                  onPressed:
-                      _recording || !widget.enabled ? null : widget.onPickImage,
-                  style: OutlinedButton.styleFrom(padding: EdgeInsets.zero),
-                  child: const Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.camera_alt_outlined, size: 20),
-                        Text('拍照', style: TextStyle(fontSize: 11)),
-                      ]))),
+              child: Tooltip(
+                  message: '拍照',
+                  child: OutlinedButton(
+                      onPressed: _recording || !widget.enabled
+                          ? null
+                          : widget.onPickImage,
+                      style: OutlinedButton.styleFrom(padding: EdgeInsets.zero),
+                      child: const Icon(Icons.camera_alt_outlined, size: 20)))),
         ],
       ]);
 }

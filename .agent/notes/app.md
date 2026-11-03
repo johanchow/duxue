@@ -21,12 +21,14 @@ Guardian 用邮箱验证码注册和登录，不保存读学密码。Ward 使用
 - refresh 绑定 `WardCredential.session_version`。再次绑定撤销旧 refresh。只在 refresh 请求本身失败时清会话。刷新成功但原请求仍 401 时保留新凭证。
 - 首页无右上角 AI 入口，无「AI 伙伴」Tab。对话层低于底部 composer。完整计划 sheet 临时隐藏 dock。不改 `VoiceComposer` 的既有交互。
 - 首页精简说明：移除问候区「你先说，我来帮你记录和检查安排」与任务池底部的重复排期/删除说明，并删除随文案占用的间距；任务池标题保留数量与左滑删除提示。
-- Guardian 孩子首页左上角统一为「全部孩子」，移除「我的家庭」副标题及列表内「我的孩子」标题。有孩子时底部固定复用 Ward 的 AppCard + VoiceComposer，文案「传递作业或留言」；轻点打开传递面板，语音带入可编辑文字，拍照带入附件。列表独立滚动，无孩子时继续优先引导创建档案。
+- Guardian 孩子首页左上角统一为「全部孩子」，移除「我的家庭」副标题及列表内「我的孩子」标题。有孩子时底部固定显示 AppCard + InputModeComposer，默认语音模式复用 Ward 的 VoiceComposer，文案「传递作业或留言」；左侧图标表示将要切换的模式（键盘 / 麦克风），文字模式支持输入、发送和拍照，切换保留文字草稿。轻点或发送后进入原传递面板，语音/文字带入可编辑内容，拍照同时带入文字草稿与附件。列表独立滚动，无孩子时继续优先引导创建档案。
 - 任务卡是读模型：安排状态来自 Task，进行中/暂停来自未结束 StudySession。见 [study.md](study.md)。
 - APK：`duxue-app/**` 变更或手动触发。签名 Secret 在 `production` environment，与 Cam 钥匙分开。包内 API 为 `https://duxuelai.xyz/api`。
 
 ## 注意
 
+- Guardian 输入模式切换按钮使用 32×44 占位、22 图标与 4 间距，避免默认 IconButton 留白挤占输入区。
+- 共享语音和文字输入组件的拍照入口只显示相机图标，通过 Tooltip 保留「拍照」操作提示。
 - 邮件接受不等于送达。不能按昵称或邮箱把微信账号自动合并。
 - 未设 `KEYSTORE_FILE` 时本地 release 仍是 debug 签名。debug 覆盖安装不能代替正式渠道。
 
