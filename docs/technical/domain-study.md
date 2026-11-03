@@ -207,6 +207,14 @@ classDiagram
 - 到时反馈由 Companion 在回复安全点最多呈现一次，App 不可触达或消息晚到时不强制补弹，不插入答疑半轮。新动作/交互需同步协议与 App allow-list，不能复用任务完成动作代替结束挑战。
 - Sprint 计时与显式学习会话、视觉观察是不同来源，Evaluation 不可相加或将到时算作成功专注。若需要观察佐证，独立引用覆盖与活动证据。
 
+#### 口述挑战预览（已实现，待本轮验收）
+
+`POST /sprints/preview` 仅Ward可用，请求为content及可选previous（topic、target_minutes），不读取任务池、历史对话或改变Thread/Run；它是独立只读整理用例，不是StartSprint命令。`study.sprint-intake.system.v1` / `sprint-intake`工作流通过模型解释当前口述及本轮明确草稿，JSON schema与Python双校验，禁止关键词/数字正则推断语义。
+
+响应status闭集为ready / needs_duration / clarify / cancelled，携带topic、target_minutes与展示message。主题缺省时使用通用“专注挑战”，时长缺失不补默认值；题量/页码/钟点不作持续时长。取消与不明由模型给出结构化判断，模型异常返回可重试502，不伪造候选。
+
+预览没有任何领域写入，不建立Task/StudySession/Sprint。客户端确认后才调用既有Sprint创建/开始命令，使用稳定command_id与现有单轮/版本约束；运行状态读取服务端。客户端代次隔离取消/重新口述后的迟到结果，并将ASR回调绑定录音时的模式，防止取消后误投普通对话。完整展示规则只链接 [用户 PRD §6.2](../product/prd-user.md#62-专注挑战口述只读确认明确开始)。本次无需迁移。
+
 迁移 `20261103_32`、服务端命令/API、按需首页及 Companion v2 挑战动作已实现，物理映射见 [Server 设计](design-server.md)。验证记录见[进行中 spec](../../.agent/specs/lightweight-planning-focus-sprint.md)。验收覆盖普通任务时间齐全不触发挑战、授权与时长缺失、重复开始/并发单轮约束、暂停继续计时、收起与多端恢复、延迟调度到时、提前结束、反馈去重和任务完成隔离。
 
 ## 三、应用用例

@@ -10,6 +10,7 @@ from __future__ import annotations
 from app.infrastructure.ai.prompts import PROMPTS
 
 LOCK = {
+    "study.sprint-intake.system.v1": "490b6927141cb7c49d4471b549484e68599cd8f6428fdf4f0a8b686a2b25dbbc",
     "companion.intent.system.v8": "b89037ebea6c3d767fe2258fb8142680c09ddcad2b1aa43db2983b874dc0fc44",
     "companion.scene-switch.system.v1": "09958512bdcde9c42e0547f4520bfeb80c2476235df60ce12c00fe6bed937e92",
     "tutoring.image-target.system.v1": "99439c3ad7d32dfc3cb4cea6c0646877044ebe586637faa28d15823391a89304",

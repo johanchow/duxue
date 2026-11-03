@@ -4,11 +4,11 @@
 
 ## 目标
 
-Guardian 用邮箱验证码注册和登录，不保存读学密码。Ward 使用可轮换的 refresh token。Ward 首页默认为对话流，普通计划按需查看；仅主动 Sprint 展示限时卡，VoiceComposer 是唯一 AI 输入。
+Guardian 用邮箱验证码注册和登录，不保存读学密码。Ward 使用可轮换的 refresh token。Ward 首页默认安静、对话按需展开，普通计划按需查看；仅主动 Sprint 展示限时卡，VoiceComposer 是唯一 AI 输入。
 
 ## 状态
 
-- 已落地：邮箱验证码、Ward `POST /ward-auth/refresh`、默认对话首页与按需作业入口、通用错误文案、`main` 上 GitHub Actions 签名 APK。
+- 已落地：邮箱验证码、Ward `POST /ward-auth/refresh`、安静首页与按需作业入口、通用错误文案、`main` 上 GitHub Actions 签名 APK。
 - 未做：微信登录。iOS / Play AAB 不在 APK 流水线。
 - 首页左滑删除走服务端，不是只改本地 state。
 
@@ -37,10 +37,18 @@ Guardian 用邮箱验证码注册和登录，不保存读学密码。Ward 使用
 - 版本策略唯一归属：[部署文档 · App 版本管理](../../docs/deployment.md#app-版本管理)。Codemagic 双平台发布仍属规划，排查时先看实际 workflow。
 - 验证：112 个 Flutter 测试、静态分析与 workflow YAML 校验通过；带 commit 注入的界面测试通过。Android debug APK 构建成功，aapt 确认版本名来自 pubspec、构建号被覆盖为测试值 42；正式签名流水线待合并后运行。
 
-- 2026-11-03 Ward 首页目标已调整为 [PRD §六](../../docs/product/prd-user.md#六ward-首页与导航架构默认对话流--可选专注挑战--底部唯一-voicecomposer) 的默认对话首页；普通当前/下一项不常驻，仅主动 Sprint 展示限时卡。旧任务池、常驻计时与结算布局已移除，当前待 Gate 2。
+- 2026-11-03 Ward 首页目标已调整为 [PRD §六](../../docs/product/prd-user.md#六ward-首页与导航架构默认安静首页--按需对话--可选专注挑战) 的默认对话首页；普通当前/下一项不常驻，仅主动 Sprint 展示限时卡。旧任务池、常驻计时与结算布局已移除，当前待 Gate 2。
 
 - 2026-11-03 本轮客户端已按新版首页完成改造，待 Gate 2：默认对话、作业详情按需打开、仅主动 Sprint 显示限时卡；取消旧横轨与虚构时间回退。任务与挑战命令确认后才更新状态，失败不伪称已暂停/开始。验证记录见[实现 spec](../specs/lightweight-planning-focus-sprint.md)。
 
 - Guardian 报告页已实现，用户于2026-11-04确认本轮交付；事实源见 [首页 PRD](../../docs/product/prd-user.md#71-核心首页报告直接呈现)。`GuardianReportView` 共用于首页与旧报告/story路由；日报/凭证/展开原文独立读取，键含Ward/上海日期/题目。前台每分钟、恢复前台与下拉刷新更新；未知为空、失败可重试，不以自评为门禁。
 
 - 2026-11-04 Guardian本轮验证：服务端770通过（1项既有网关测试跳过），Flutter124通过、静态分析无问题。用户确认后已归档spec；测试库已升至33，生产未迁移。历史日期、迟到响应、凭证独立重试及无数据不占位均有回归；真实设备长时间后台尚未人工验收。
+
+- 2026-11-04 用户确认安静首页与ASR挑战方案后，本轮已实现待验收，见 [spec](../specs/ward-quiet-home-voice-sprint.md)。前述“默认对话”属于此前版本；最新产品规则归 [用户PRD §六](../../docs/product/prd-user.md#六ward-首页与导航架构默认安静首页--按需对话--可选专注挑战)。
+- 底部VoiceComposer结构与录音/拍照逻辑未变，宿主按需分派。相机选好图才打开对话，取消保持安静；收起后保存Thread/草稿/在途回复，不被迟到结果重开。
+- 挑战口述使用独立预览，草稿只保存在本轮；取消/重开/改说使旧预览失效。ASR在录音预检时绑定模式与代次，取消后的final不能误发普通聊天。确认创建失败重试保持command_id，活跃挑战恢复不重复开始。
+
+- 本轮自动化验证：服务端776通过（1项既有网关二进制测试跳过）、Flutter137通过、静态分析无问题；7条真实模型口述样例通过。验收记录保留在进行中spec，尚未部署，无新迁移。
+
+- 2026-11-04 用户要求先切换分支后本地提交，本轮分支为 `feat/ward-quiet-home-voice-sprint`；保留验收spec，未授权push。

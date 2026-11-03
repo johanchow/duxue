@@ -91,6 +91,23 @@ flowchart TD
 
 工具：无。
 
+## sprint-intake · v1
+
+```mermaid
+flowchart TD
+  sprint_intake_START([START])
+  sprint_intake_END([END])
+  sprint_intake_run[sprint-intake.run]
+  sprint_intake_START --> sprint_intake_run
+  sprint_intake_run --> sprint_intake_END
+```
+
+| 组件 | 模型 | Prompt |
+| --- | --- | --- |
+| `study.sprint-intake@v1` | `qwen-flash` | `study.sprint-intake.system.v1` |
+
+工具：无。
+
 ## task-intake · v1
 
 ```mermaid

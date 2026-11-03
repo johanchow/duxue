@@ -88,3 +88,17 @@ def test_unknown_task_time_is_reported_unknown_without_fabricating_session(db):
     TaskExecutionService(db).execute(ward.id, task.id, "complete")
     assert task.status == "completed"
     assert db.query(StudySession).count() == 0
+
+
+def test_general_conversation_can_prepare_duration_only_sprint_without_topic_gate(db):
+    ward = create_ward(db)
+    db.commit()
+    coordinator = CompanionCoordinator(db, dispatcher=Dispatcher(db), classifier=StaticIntentClassifier('planning'))
+    with patch('app.application.commands.plan_intake.PlanIntakeService.respond', return_value=PlanIntakeResult(
+        assistant_text='试二十分钟。', study_action={'action':'sprint_prepare','target_minutes':20}
+    )):
+        result = coordinator.handle(ward_id=ward.id, content='试一轮二十分钟专注挑战', thread_id=None,
+                                    expected_thread_version=0, route_hint=None)
+    assert result.interaction['sprint']['topic'] == '专注挑战'
+    assert db.query(Sprint).one().status == 'ready'
+    assert db.query(Task).count() == db.query(StudySession).count() == 0

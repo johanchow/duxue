@@ -556,11 +556,12 @@ class PlanningWorkflowAdapter:
         sprint_service = SprintService(self.db)
         action = proposal.action
         if action == "sprint_prepare":
-            if not proposal.topic or not proposal.target_minutes:
-                return self._study_response(run,"这轮想专心做什么、试多少分钟？你也可以先直接做作业。")
+            if not proposal.target_minutes:
+                return self._study_response(run,"想试多久？")
+            topic = proposal.topic or "专注挑战"
             result = sprint_service.execute(run.ward_id, invocation.command_id, "prepare",
-                topic=proposal.topic, target_minutes=proposal.target_minutes, planned_start_at=proposal.planned_start_at)
-            return self._study_response(run,f"{proposal.topic}，试一轮{proposal.target_minutes}分钟？时间到不代表作业完成。",
+                topic=topic, target_minutes=proposal.target_minutes, planned_start_at=proposal.planned_start_at)
+            return self._study_response(run,f"{topic}，试一轮{proposal.target_minutes}分钟？时间到不代表作业完成。",
                 sprint=result["sprint"], needs_start=True)
         if action.startswith("sprint_"):
             current = sprint_service.current(run.ward_id)["sprint"]

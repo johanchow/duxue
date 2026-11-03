@@ -535,6 +535,13 @@ class ApiClient {
   Future<Map<String, dynamic>> currentSprint() async =>
       (await dio.get('/sprints/current')).data as Map<String, dynamic>;
 
+  Future<Map<String, dynamic>> previewSprint(String content,
+          {Map<String, dynamic>? previous}) async =>
+      Map<String, dynamic>.from((await dio.post('/sprints/preview', data: {
+        'content': content,
+        if (previous != null) 'previous': previous,
+      }))
+          .data as Map);
   Future<Map<String, dynamic>> createSprint(Map<String, dynamic> data) async =>
       (await dio.post('/sprints', data: data)).data as Map<String, dynamic>;
 

@@ -188,3 +188,15 @@ def task_execution(assignment_id: str, body: TaskExecutionAction, principal: Pri
     except Exception:
         db.rollback()
         raise
+
+
+from app.application.queries.sprint_preview import SprintPreviewRequest, preview_spoken_sprint
+from app.application.commands.task_intake import TaskIntakeError
+
+
+@router.post("/sprints/preview")
+def sprint_preview(body: SprintPreviewRequest, principal: Principal = Depends(current_ward)):
+    try:
+        return preview_spoken_sprint(body)
+    except TaskIntakeError as error:
+        raise HTTPException(502, str(error)) from error

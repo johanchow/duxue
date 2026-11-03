@@ -19,7 +19,7 @@
 
 | 能力 | 状态 |
 |------|------|
-| 身份、绑定、Ward/Guardian 首页 | Guardian 报告首页已实现，用户已确认本轮交付；见 [app.md](app.md) |
+| 身份、绑定、Ward/Guardian 首页 | Guardian 报告首页已交付；Ward安静首页与ASR挑战本轮实现待验收，见 [app.md](app.md) |
 | 行为采集（读学 Eye） | Go网关/统一接入已实现；自动化验证通过，真实摄像头/OSS现场验收待完成。见 [design-gateway](../../docs/technical/design-gateway.md) |
 | 轻量计划与主动 Sprint | 本轮已改造实现，待 Gate 2；见 [planning.md](planning.md) 与进行中 spec。测试库已升级至33，生产未迁移 |
 | 陪学答疑与解题凭证 | 主链路已落地。知识讲解视频未做 |

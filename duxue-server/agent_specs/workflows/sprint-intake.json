@@ -1,0 +1,24 @@
+{
+  "kind": "workflow",
+  "id": "sprint-intake",
+  "version": "v1",
+  "handler": "sprint-intake",
+  "entry": "sprint-intake.run",
+  "nodes": [
+    {
+      "id": "sprint-intake.run",
+      "kind": "agent",
+      "ref": "study.sprint-intake"
+    }
+  ],
+  "edges": [
+    {
+      "from": "START",
+      "to": "sprint-intake.run"
+    },
+    {
+      "from": "sprint-intake.run",
+      "to": "END"
+    }
+  ]
+}

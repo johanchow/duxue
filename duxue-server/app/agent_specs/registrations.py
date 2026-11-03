@@ -12,6 +12,7 @@ WORKFLOW_BINDINGS = {'companion': {'conditions': {'direct', 'cross_scene'}, 'han
                            'wait_for_confirmation'}},
  'reflection': {'conditions': set(), 'handlers': {'reflection.turn'}},
  'review-aspects': {'conditions': set(), 'handlers': set()},
+ 'sprint-intake': {'conditions': set(), 'handlers': set()},
  'task-intake': {'conditions': set(), 'handlers': set()},
  'tutoring': {'conditions': {'accepted_work',
                              'candidate',

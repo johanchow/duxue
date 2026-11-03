@@ -64,7 +64,14 @@ def plan_intake(*, ward, tasks, request):
             *image_parts(request.recent_utterances, [_data_url(key) for key in request.attachment_keys])]
 
 
+def sprint_intake(*, request):
+    import json
+    return json.dumps({"utterance": request.content,
+                       "previous": request.previous.model_dump() if request.previous else {}}, ensure_ascii=False)
+
+
 BUILDERS = {
+    "study.sprint_intake.context": sprint_intake,
     "companion.intent.context": intent,
     "companion.scene_switch.context": scene_switch,
     "tutoring.turn.context": tutor_turn,

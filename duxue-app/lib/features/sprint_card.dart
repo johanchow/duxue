@@ -71,7 +71,10 @@ class _SprintCardState extends State<SprintCard> {
             padding: const EdgeInsets.all(12),
             child:
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('${widget.sprint['topic']} · 专注挑战',
+              Text(
+                  widget.sprint['topic'] == '专注挑战'
+                      ? '专注挑战'
+                      : '${widget.sprint['topic']} · 专注挑战',
                   style: const TextStyle(fontWeight: FontWeight.bold)),
               Text(paused ? '本轮已暂停' : '本轮剩余 ${(remaining / 60).ceil()} 分钟'),
               Wrap(children: [
@@ -88,58 +91,4 @@ class _SprintCardState extends State<SprintCard> {
               ]),
             ])));
   }
-}
-
-class SprintSetupDialog extends StatefulWidget {
-  const SprintSetupDialog({this.topic = '学习', this.minutes = 20, super.key});
-  final String topic;
-  final int minutes;
-  @override
-  State<SprintSetupDialog> createState() => _SprintSetupDialogState();
-}
-
-class _SprintSetupDialogState extends State<SprintSetupDialog> {
-  late final topic = TextEditingController(text: widget.topic);
-  late final minutes = TextEditingController(text: '${widget.minutes}');
-  String? error;
-  @override
-  void dispose() {
-    topic.dispose();
-    minutes.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => AlertDialog(
-          title: const Text('试一轮专注挑战'),
-          content: Column(mainAxisSize: MainAxisSize.min, children: [
-            TextField(
-                controller: topic,
-                decoration: const InputDecoration(labelText: '这轮做什么')),
-            TextField(
-                controller: minutes,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: '挑战分钟数（1–180）')),
-            const Text('到时只结束本轮，不代表作业完成。'),
-            if (error != null) Text(error!),
-          ]),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('先不用')),
-            FilledButton(
-                onPressed: () {
-                  final target = int.tryParse(minutes.text);
-                  if (topic.text.trim().isEmpty ||
-                      target == null ||
-                      target < 1 ||
-                      target > 180) {
-                    setState(() => error = '请填写主题与1至180分钟时长');
-                    return;
-                  }
-                  Navigator.pop(
-                      context, {'topic': topic.text.trim(), 'minutes': target});
-                },
-                child: const Text('开始这次挑战'))
-          ]);
 }

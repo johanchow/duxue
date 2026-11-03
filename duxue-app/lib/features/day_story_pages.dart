@@ -159,6 +159,14 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   bool sprintForeground = true;
   Timer? sprintRefresh;
   Map<String, dynamic>? pendingSprintRequest;
+  bool sprintSetupOpen = false;
+  bool sprintPreviewBusy = false;
+  int sprintSetupGeneration = 0;
+  Map<String, dynamic>? spokenSprintDraft, spokenSprintPreview;
+  String sprintSetupMessage = '这轮想做什么，试多久？说给我听。';
+  String? failedSprintSpeech;
+  bool? recordingForSprint;
+  int? recordingSetupGeneration;
   int tab = 0;
   final watch = Stopwatch();
   final planAttachments = <String>[];
@@ -258,7 +266,10 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
       }),
       bottomNavigationBar: NavigationBar(
           selectedIndex: tab,
-          onDestinationSelected: (value) => setState(() => tab = value),
+          onDestinationSelected: (value) => setState(() {
+                if (value != 0) _discardSprintSetup();
+                tab = value;
+              }),
           destinations: const [
             NavigationDestination(
                 icon: Icon(Icons.home_outlined),
@@ -279,11 +290,218 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   Widget _home(BuildContext context) {
     final planned = (plan?['items'] as List? ?? const []).cast<dynamic>();
     return Stack(children: [
-      _planChatOverlay(),
-      if (planListOpen) _planListOverlay(planned),
+      if (planListOpen)
+        _planListOverlay(planned)
+      else if (planChatOpen)
+        _planChatOverlay()
+      else
+        _quietHome(),
       if (!planListOpen)
         Positioned(left: 16, right: 16, bottom: 12, child: _chatEntry()),
     ]);
+  }
+
+  Widget _homeMenu() => PopupMenuButton<String>(
+        tooltip: '更多',
+        onSelected: (value) {
+          switch (value) {
+            case 'tasks':
+              _openPlanList();
+            case 'history':
+              _openPlanChat();
+            case 'sprint':
+              _openSprint();
+            case 'clear':
+              _clearChatHistory();
+          }
+        },
+        itemBuilder: (_) => const [
+          PopupMenuItem(value: 'tasks', child: Text('作业')),
+          PopupMenuItem(value: 'history', child: Text('历史对话')),
+          PopupMenuItem(value: 'sprint', child: Text('专注挑战')),
+          PopupMenuItem(value: 'clear', child: Text('清空历史对话')),
+        ],
+      );
+
+  Widget? _activeSprintCard() =>
+      sprint != null && hiddenSprintId != sprint!['id']
+          ? SprintCard(
+              sprint: sprint!,
+              busy: sprintBusy,
+              onAction: _actSprint,
+              onHide: () =>
+                  setState(() => hiddenSprintId = sprint!['id'] as String),
+              onElapsed: _refreshSprint)
+          : null;
+
+  Widget _quietHome() => Positioned.fill(
+          child: Column(children: [
+        Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 8, 8),
+            child: Row(children: [
+              const Expanded(
+                  child: Text('读学',
+                      style: TextStyle(
+                          fontSize: 20, fontWeight: FontWeight.w700))),
+              _homeMenu(),
+            ])),
+        Expanded(
+            child: SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(
+                    20, 24, 20, stagedImages.isNotEmpty ? 184 : 112),
+                child: Column(children: [
+                  if (sprintSetupOpen)
+                    _spokenSprintCard()
+                  else ...[
+                    if (_activeSprintCard() case final card?)
+                      card
+                    else ...[
+                      const SizedBox(height: 40),
+                      const Icon(Icons.menu_book_outlined,
+                          size: 38, color: Color(0xff0f766e)),
+                      const SizedBox(height: 18),
+                      const Text('先做手边的一小步',
+                          style: TextStyle(
+                              fontSize: 23, fontWeight: FontWeight.w600)),
+                      const SizedBox(height: 8),
+                      const Text('有问题，随时找我。',
+                          style: TextStyle(color: Colors.blueGrey)),
+                      const SizedBox(height: 28),
+                      Tooltip(
+                          message: '专注挑战',
+                          child: OutlinedButton.icon(
+                              onPressed: sprintBusy ? null : _openSprint,
+                              icon: const Icon(Icons.timer_outlined),
+                              label:
+                                  Text(sprint == null ? '试一轮专注挑战' : '查看本轮挑战'))),
+                    ],
+                    if (startCue?['status'] == 'presented') ...[
+                      const SizedBox(height: 20),
+                      StartCueCard(
+                          text: startCue?['text'] as String? ?? '',
+                          tasks: [
+                            for (final row in startCue?['tasks'] as List? ?? [])
+                              Map<String, dynamic>.from(row as Map)
+                          ],
+                          actions: [
+                            for (final row
+                                in startCue?['actions'] as List? ?? [])
+                              Map<String, dynamic>.from(row as Map)
+                          ],
+                          onCommand: _actOnStartCue),
+                    ],
+                    if (historyMessages.isNotEmpty ||
+                        planMessages.isNotEmpty ||
+                        _hasOlderHistory) ...[
+                      const SizedBox(height: 24),
+                      TextButton.icon(
+                          onPressed: _openPlanChat,
+                          icon: const Icon(Icons.chat_bubble_outline, size: 16),
+                          label: const Text('继续上次对话')),
+                    ],
+                  ],
+                ]))),
+      ]));
+
+  Widget _spokenSprintCard() => AppCard(
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Expanded(
+              child: Text('试一轮专注挑战',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700))),
+          TextButton(
+              onPressed:
+                  sprintBusy ? null : () => setState(_discardSprintSetup),
+              child: const Text('先不用')),
+        ]),
+        const SizedBox(height: 12),
+        Text(sprintSetupMessage, style: const TextStyle(height: 1.6)),
+        if (sprintPreviewBusy)
+          const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: LinearProgressIndicator()),
+        if (failedSprintSpeech != null)
+          TextButton(
+              onPressed: sprintPreviewBusy
+                  ? null
+                  : () => _previewSpokenSprint(failedSprintSpeech!),
+              child: const Text('重试整理')),
+        if (spokenSprintPreview?['status'] == 'ready' &&
+            !sprintPreviewBusy) ...[
+          const SizedBox(height: 20),
+          Wrap(spacing: 12, children: [
+            FilledButton(
+                onPressed: sprintBusy ? null : _startSpokenSprint,
+                child: Text(sprintBusy ? '开启中…' : '开始本轮')),
+            TextButton(
+                onPressed: sprintBusy
+                    ? null
+                    : () => setState(() {
+                          sprintSetupGeneration++;
+                          spokenSprintPreview = null;
+                          failedSprintSpeech = null;
+                          sprintSetupMessage = '想改哪里？按住下面的说话按钮，再说一次。';
+                        }),
+                child: const Text('重新说')),
+          ]),
+        ],
+      ]));
+
+  void _discardSprintSetup() {
+    sprintSetupGeneration++;
+    sprintSetupOpen = false;
+    sprintPreviewBusy = false;
+    spokenSprintDraft = spokenSprintPreview = null;
+    failedSprintSpeech = null;
+    pendingSprintRequest = null;
+  }
+
+  Future<void> _previewSpokenSprint(String speech) async {
+    if (!sprintSetupOpen ||
+        sprintPreviewBusy ||
+        sprintBusy ||
+        speech.trim().isEmpty) {
+      return;
+    }
+    final generation = ++sprintSetupGeneration;
+    setState(() {
+      sprintPreviewBusy = true;
+      failedSprintSpeech = null;
+      spokenSprintPreview = null;
+    });
+    try {
+      final result = await ref
+          .read(apiProvider)
+          .previewSprint(speech, previous: spokenSprintDraft);
+      if (!mounted || generation != sprintSetupGeneration || !sprintSetupOpen) {
+        return;
+      }
+      if (result['status'] == 'cancelled') {
+        setState(_discardSprintSetup);
+        return;
+      }
+      setState(() {
+        spokenSprintPreview = result;
+        spokenSprintDraft = {
+          'topic': result['topic'],
+          'target_minutes': result['target_minutes']
+        };
+        sprintSetupMessage = result['message'] as String? ?? '想试多久？';
+      });
+    } catch (_) {
+      if (!mounted || generation != sprintSetupGeneration || !sprintSetupOpen) {
+        return;
+      }
+      setState(() {
+        failedSprintSpeech = speech;
+        sprintSetupMessage = '这次没有整理成功，可以再试一次。';
+      });
+    } finally {
+      if (mounted && generation == sprintSetupGeneration && sprintSetupOpen) {
+        setState(() => sprintPreviewBusy = false);
+      }
+    }
   }
 
   bool get _canSendDraft {
@@ -292,6 +510,26 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
       return false;
     }
     return stagedImages.any((image) => image.key != null);
+  }
+
+  Future<void> _beforeHomeRecording() async {
+    recordingForSprint = sprintSetupOpen;
+    recordingSetupGeneration = sprintSetupGeneration;
+    await ref.read(apiProvider).ensureValidAccess();
+  }
+
+  Future<void> _onHomeVoiceFinal(String text) async {
+    final wasSprint = recordingForSprint;
+    final setupGeneration = recordingSetupGeneration;
+    recordingForSprint = null;
+    recordingSetupGeneration = null;
+    if (wasSprint != null && setupGeneration != sprintSetupGeneration) return;
+    if (wasSprint == true && !sprintSetupOpen) return;
+    if (sprintSetupOpen) {
+      await _previewSpokenSprint(text);
+    } else {
+      await _sendDraft(spoken: text);
+    }
   }
 
   Widget _chatEntry() => AppCard(
@@ -324,11 +562,11 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
             voiceFactory: widget.voiceFactory,
             holdToTalkText: '说出你的任何想法、问题、安排',
             helperText: '按住说话',
-            enabled: !_chatBusy,
-            onTap: _openPlanChat,
-            onBeforeRecording: () => ref.read(apiProvider).ensureValidAccess(),
+            enabled: !_chatBusy && !sprintPreviewBusy && !sprintBusy,
+            onTap: sprintSetupOpen ? null : _openPlanChat,
+            onBeforeRecording: _beforeHomeRecording,
             onPickImage: _pickPlanImage,
-            onVoiceFinal: (text) => _sendDraft(spoken: text)),
+            onVoiceFinal: _onHomeVoiceFinal),
       ]));
 
   Widget _stagedImageStrip() => SizedBox(
@@ -583,40 +821,13 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     ];
 
     return _HomeOverlay(
-      banner: sprint != null && hiddenSprintId != sprint!['id']
-          ? SprintCard(
-              sprint: sprint!,
-              busy: sprintBusy,
-              onAction: _actSprint,
-              onHide: () =>
-                  setState(() => hiddenSprintId = sprint!['id'] as String),
-              onElapsed: _refreshSprint)
-          : null,
+      banner: _activeSprintCard(),
       title: '读学',
       subtitle: '随时提问，需要时再安排。',
       bottomInset: stagedImages.isNotEmpty ? 164 : 92,
-      onClose: null,
-      action: Row(mainAxisSize: MainAxisSize.min, children: [
-        IconButton(
-            tooltip: '作业',
-            onPressed: _openPlanList,
-            icon: const Icon(Icons.assignment_outlined)),
-        IconButton(
-            tooltip: '专注挑战',
-            onPressed: _openSprint,
-            icon: const Icon(Icons.timer_outlined)),
-        IconButton(
-          key: const Key('clear-chat-history-button'),
-          tooltip: '清空历史对话',
-          onPressed: clearingHistory ? null : _clearChatHistory,
-          icon: clearingHistory
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2))
-              : const Icon(Icons.cleaning_services_outlined),
-        )
-      ]),
+      onClose: () => setState(() => planChatOpen = false),
+      closeTooltip: '收起对话',
+      action: _homeMenu(),
       child: ListView.builder(
         key: const Key('companion-chat-list'),
         controller: _chatScrollController,
@@ -701,6 +912,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   }
 
   void _openPlanList() => setState(() {
+        _discardSprintSetup();
         planChatOpen = false;
         planListOpen = true;
       });
@@ -708,6 +920,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   void _openPlanChat([String? subject]) {
     final wasOpen = planChatOpen;
     setState(() {
+      _discardSprintSetup();
       planListOpen = false;
       chatSubject = subject;
       planChatOpen = true;
@@ -862,6 +1075,10 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         readySprint = result['ready'] is Map
             ? Map<String, dynamic>.from(result['ready'] as Map)
             : null;
+        if (sprint != null && sprintSetupOpen && !sprintBusy) {
+          _discardSprintSetup();
+          hiddenSprintId = null;
+        }
       });
       final notice = result['notice'];
       if (!_chatBusy && !sprintBusy && notice is Map) {
@@ -894,22 +1111,38 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   }
 
   Future<void> _openSprint() async {
-    if (sprintBusy) return;
+    if (sprintBusy || _chatBusy) return;
+    final generation = ++sprintSetupGeneration;
+    setState(() {
+      planListOpen = planChatOpen = false;
+      sprintSetupOpen = true;
+      spokenSprintDraft = spokenSprintPreview = null;
+      sprintPreviewBusy = false;
+      failedSprintSpeech = null;
+      sprintSetupMessage = '这轮想做什么，试多久？说给我听。';
+      pendingSprintRequest = null;
+    });
     await _refreshSprint();
-    if (!mounted) return;
-    if (sprint != null) {
-      setState(() => hiddenSprintId = null);
+    if (!mounted || generation != sprintSetupGeneration || !sprintSetupOpen) {
       return;
     }
-    final selection = await showDialog<Map<String, dynamic>>(
-        context: context,
-        builder: (ctx) => SprintSetupDialog(
-            topic: readySprint?['topic'] as String? ?? '学习',
-            minutes: readySprint == null
-                ? 20
-                : (readySprint!['target_seconds'] as num).toInt() ~/ 60));
-    if (selection == null || !mounted) return;
-    final target = selection['minutes'] as int;
+    if (sprint != null) {
+      setState(() {
+        _discardSprintSetup();
+        hiddenSprintId = null;
+      });
+    }
+  }
+
+  Future<void> _startSpokenSprint() async {
+    if (!sprintSetupOpen ||
+        sprintBusy ||
+        spokenSprintPreview?['status'] != 'ready') {
+      return;
+    }
+    final generation = sprintSetupGeneration;
+    final selection = Map<String, dynamic>.from(spokenSprintPreview!);
+    final target = selection['target_minutes'] as int;
     final chosenTopic = selection['topic'] as String;
     final data = <String, dynamic>{
       'action': 'create',
@@ -936,9 +1169,11 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
       } else {
         await ref.read(apiProvider).createSprint(pendingSprintRequest!);
       }
-      pendingSprintRequest = null;
       hiddenSprintId = null;
       await _refreshSprint();
+      if (mounted && generation == sprintSetupGeneration) {
+        setState(_discardSprintSetup);
+      }
     } catch (error) {
       if (mounted) showMessage(context, '挑战未能开启：${userErrorMessage(error)}');
     } finally {
@@ -1499,8 +1734,8 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
 
   Future<void> _pickPlanImage() async {
     if (clearingHistory) return;
+    if (sprintSetupOpen) setState(_discardSprintSetup);
     final generation = _chatGeneration;
-    _openPlanChat();
     if (stagedImages.length >= 8) {
       showMessage(context, '一次最多添加 8 张图片');
       return;
@@ -1516,6 +1751,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
       showMessage(context, '暂只支持 JPG、PNG 或 WebP 图片');
       return;
     }
+    _openPlanChat();
     final staged = _StagedImage(bytes: image.bytes, extension: image.extension);
     setState(() => stagedImages.add(staged));
     try {
@@ -2319,7 +2555,9 @@ class _HomeOverlay extends StatelessWidget {
     this.bottomInset = 82,
     this.action,
     this.banner,
+    this.closeTooltip = '关闭',
   });
+  final String closeTooltip;
   final String title;
   final String subtitle;
   final VoidCallback? onClose;
@@ -2367,7 +2605,7 @@ class _HomeOverlay extends StatelessWidget {
                                   if (onClose != null)
                                     IconButton(
                                         onPressed: onClose,
-                                        tooltip: '关闭',
+                                        tooltip: closeTooltip,
                                         icon: const Icon(Icons.close)),
                                 ])),
                         if (banner != null) banner!,
