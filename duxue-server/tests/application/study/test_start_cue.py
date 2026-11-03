@@ -34,8 +34,8 @@ def test_due_task_without_a_camera_presents_one_card(db):
     math = create_task(db, ward=ward, title="数学", planned_minutes=40, status="scheduled", schedule_id=schedule.id)
     english = create_task(db, ward=ward, title="英语", planned_minutes=20, status="scheduled", schedule_id=schedule.id)
     schedule.items = [
-        {"assignment_id": math.id, "planned_minutes": 40, "start_at": "2026-10-06T19:00:00", "end_at": "2026-10-06T19:40:00"},
-        {"assignment_id": english.id, "planned_minutes": 20, "start_at": "2026-10-06T19:40:00", "end_at": "2026-10-06T20:00:00"},
+        {"slot_source": "ward_explicit", "assignment_id": math.id, "planned_minutes": 40, "start_at": "2026-10-06T19:00:00", "end_at": "2026-10-06T19:40:00"},
+        {"slot_source": "ward_explicit", "assignment_id": english.id, "planned_minutes": 20, "start_at": "2026-10-06T19:40:00", "end_at": "2026-10-06T20:00:00"},
     ]
     db.flush()
 
@@ -56,8 +56,8 @@ def test_completed_task_and_submitted_review_are_not_scheduled_as_notifications(
     done = create_task(db, ward=ward, title="数学", status="completed", schedule_id=schedule.id)
     pending = create_task(db, ward=ward, title="英语", status="scheduled", schedule_id=schedule.id)
     schedule.items = [
-        {"assignment_id": done.id, "start_at": "2026-10-06T19:40:00", "end_at": "2026-10-06T20:00:00"},
-        {"assignment_id": pending.id, "start_at": "2026-10-06T20:00:00", "end_at": "2026-10-06T20:20:00"},
+        {"slot_source": "ward_explicit", "assignment_id": done.id, "start_at": "2026-10-06T19:40:00", "end_at": "2026-10-06T20:00:00"},
+        {"slot_source": "ward_explicit", "assignment_id": pending.id, "start_at": "2026-10-06T20:00:00", "end_at": "2026-10-06T20:20:00"},
     ]
     db.add(SelfReview(ward_id=ward.id, review_date=schedule.schedule_date, feeling="还不错"))
     db.flush()
@@ -75,8 +75,8 @@ def test_previous_task_still_running_offers_continue_or_switch(db):
     english = create_task(db, ward=ward, title="英语", planned_minutes=20, status="scheduled", schedule_id=schedule.id, position=1)
     create_study_session(db, ward=ward, task=math, status="active")
     schedule.items = [
-        {"assignment_id": math.id, "start_at": "2026-10-06T19:00:00", "end_at": "2026-10-06T19:40:00", "planned_minutes": 40},
-        {"assignment_id": english.id, "start_at": "2026-10-06T19:40:00", "end_at": "2026-10-06T20:00:00", "planned_minutes": 20},
+        {"slot_source": "ward_explicit", "assignment_id": math.id, "start_at": "2026-10-06T19:00:00", "end_at": "2026-10-06T19:40:00", "planned_minutes": 40},
+        {"slot_source": "ward_explicit", "assignment_id": english.id, "start_at": "2026-10-06T19:40:00", "end_at": "2026-10-06T20:00:00", "planned_minutes": 20},
     ]
     db.flush()
 
@@ -93,7 +93,7 @@ def test_away_does_not_present_a_card(db):
     schedule = _schedule(db, ward)
     english = create_task(db, ward=ward, title="英语", status="scheduled", schedule_id=schedule.id)
     schedule.items = [{
-        "assignment_id": english.id,
+        "slot_source": "ward_explicit", "assignment_id": english.id,
         "start_at": "2026-10-06T19:40:00",
         "end_at": "2026-10-06T20:00:00",
         "planned_minutes": 20,
@@ -113,8 +113,8 @@ def test_accept_switch_pauses_the_current_session_and_starts_the_due_task(db):
     current = create_study_session(db, ward=ward, task=math, status="active")
     db.add(StudySessionInterval(study_session_id=current.id))
     schedule.items = [
-        {"assignment_id": math.id, "start_at": "2026-10-06T19:00:00", "end_at": "2026-10-06T19:40:00", "planned_minutes": 40},
-        {"assignment_id": english.id, "start_at": "2026-10-06T19:40:00", "end_at": "2026-10-06T20:00:00", "planned_minutes": 20},
+        {"slot_source": "ward_explicit", "assignment_id": math.id, "start_at": "2026-10-06T19:00:00", "end_at": "2026-10-06T19:40:00", "planned_minutes": 40},
+        {"slot_source": "ward_explicit", "assignment_id": english.id, "start_at": "2026-10-06T19:40:00", "end_at": "2026-10-06T20:00:00", "planned_minutes": 20},
     ]
     db.flush()
     service = StartCueService(db)
@@ -131,7 +131,7 @@ def test_second_snooze_is_rejected(db):
     schedule = _schedule(db, ward)
     math = create_task(db, ward=ward, title="数学", status="scheduled", schedule_id=schedule.id)
     schedule.items = [{
-        "assignment_id": math.id,
+        "slot_source": "ward_explicit", "assignment_id": math.id,
         "start_at": "2026-10-06T19:00:00",
         "end_at": "2026-10-06T19:40:00",
         "planned_minutes": 40,
@@ -154,8 +154,8 @@ def test_earlier_unstarted_task_stays_on_the_same_card(db):
     math = create_task(db, ward=ward, title="数学", status="scheduled", schedule_id=schedule.id)
     english = create_task(db, ward=ward, title="英语", status="scheduled", schedule_id=schedule.id)
     schedule.items = [
-        {"assignment_id": math.id, "start_at": "2026-10-06T19:00:00", "end_at": "2026-10-06T19:40:00", "planned_minutes": 40},
-        {"assignment_id": english.id, "start_at": "2026-10-06T19:40:00", "end_at": "2026-10-06T20:00:00", "planned_minutes": 20},
+        {"slot_source": "ward_explicit", "assignment_id": math.id, "start_at": "2026-10-06T19:00:00", "end_at": "2026-10-06T19:40:00", "planned_minutes": 40},
+        {"slot_source": "ward_explicit", "assignment_id": english.id, "start_at": "2026-10-06T19:40:00", "end_at": "2026-10-06T20:00:00", "planned_minutes": 20},
     ]
     db.flush()
     view = StartCueService(db).sync(ward.id, moment=AT_NEXT)
@@ -169,7 +169,7 @@ def test_a_new_schedule_version_expires_the_open_cue(db):
     schedule = _schedule(db, ward)
     math = create_task(db, ward=ward, title="数学", status="scheduled", schedule_id=schedule.id)
     schedule.items = [{
-        "assignment_id": math.id,
+        "slot_source": "ward_explicit", "assignment_id": math.id,
         "start_at": "2026-10-06T19:00:00",
         "end_at": "2026-10-06T19:40:00",
         "planned_minutes": 40,
@@ -182,3 +182,25 @@ def test_a_new_schedule_version_expires_the_open_cue(db):
     second = service.sync(ward.id, moment=AT)
     assert first["id"] != second["id"]
     assert second["status"] == "presented"
+
+
+def test_old_start_invitation_cannot_leave_newer_task_running_in_parallel(db):
+    from app.application.commands.task_execution import TaskExecutionService
+
+    ward = create_ward(db)
+    schedule = _schedule(db, ward)
+    due = create_task(db, ward=ward, title="英语", status="scheduled", schedule_id=schedule.id)
+    other = create_task(db, ward=ward, title="数学")
+    schedule.items = [{"slot_source": "ward_explicit", "assignment_id": due.id,
+                       "start_at": "2026-10-06T19:00:00", "planned_minutes": 40}]
+    db.flush()
+    service = StartCueService(db)
+    view = service.sync(ward.id, moment=AT)
+    assert view["actions"][0]["command"] == "start_due_task"
+    # A second device starts another task after the invitation was rendered.
+    newer = TaskExecutionService(db).execute(ward.id, other.id, "start")["session"]
+    service.act(ward.id, view["id"], "start_due_task", view["version"])
+    assert db.get(StudySession, newer["id"]).status == "paused"
+    active = db.query(StudySession).filter_by(ward_id=ward.id, status="active").all()
+    assert len(active) == 1 and active[0].task_id == due.id
+    assert other.status == "pool"

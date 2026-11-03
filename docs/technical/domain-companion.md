@@ -502,7 +502,7 @@ Ward 输入     CompanionTurn = TextTurn | StructuredWardCommand + media_refs
 App 按 `kind` 选择组件；当前操作所需的业务数字用 `object_ref` 再拉目标 Query，避免按历史快照执行操作。
 `plan_confirm_list` 在生成时另将该轮卡片的只读条目快照写入 `CompanionMessage.interaction_ref.card_snapshot`，供历史消息按原位置回看；当前确认动作仍以目标 Query 和服务端版本校验为准，历史卡不提供确认按钮。
 
-Sprint 的主动开始、暂停、继续、结束与到时反馈为 Study 目标扩展，见 [Sprint 契约](domain-study.md#24-sprint主动专注挑战目标扩展)。普通 `plan_confirm_list` 确认或 `start_cue` 接受不构成挑战授权；不得用 `achievement` 声称计时到点证明专注成功。首页挑战卡读取 Study 最新版本，不从历史消息或任务预估推导运行状态。新增挑战动作/kind 时需升级协议并同步 App allow-list，当前 v1 不直接开放这些新动作。
+Sprint 的主动开始、暂停、继续、结束与到时反馈已由 Study 实现，待验收，见 [Sprint 契约](domain-study.md#24-sprint主动专注挑战已实现待验收)。普通 `plan_confirm_list` 确认或 `start_cue` 接受不构成挑战授权；不得用 `achievement` 声称计时到点证明专注成功。首页挑战卡读取 Study 最新版本，不从历史消息或任务预估推导运行状态。挑战采用 `companion-interaction.v2` 的 `sprint_control` 与服务端签发的 `sprint_command`；任务的普通 v1 交互继续兼容。新客户端支持两者，历史挑战卡不重放动作，未知动作不执行。
 
 #### 5.2.2 关闭的 `kind` 清单
 
@@ -522,6 +522,7 @@ Sprint 的主动开始、暂停、继续、结束与到时反馈为 Study 目标
 | `pronunciation_lesson` | 已校验原文、发音提示与按需播放 | `text` + `object_ref`  | 无                                               | [PronunciationLessonView](domain-tutoring.md#五query) |
 | `self_review`       | 盲评自评卡             | `object_ref`           | `submit_review`                                 | Evaluation 盲评投影                     |
 | `achievement`       | 按需查看的任务收尾记录，默认不自动弹出          | `text`                 | `close`                                         | StudySession 结算                     |
+| `sprint_control`（v2） | 主动挑战的开始确认与结果 | `text` + `sprint` | `sprint_command`（仅服务端签发、绑定目标/版本/动作） | [SprintView](domain-study.md#24-sprint主动专注挑战已实现待验收) |
 | `start_cue`  | 到点后的开始邀请          | `text` + `object_ref`  | `start_due_task`、`continue_current`、`pause_current_and_start_due`、`snooze_once`（仅 `StartCueView` 允许的子集） | [StartCueView](domain-study.md#四query) |
 | `help_offer`（目标扩展，未实现） | 递梯子或温和回归邀请 | `text` + `object_ref`，可附受控 prompt_id | `accept_help`、`decline_help`，映射 Study 的 accept/decline Command，具体行为由 kind 决定 | [HelpOffer](domain-study.md#九观察触发的求助邀请目标扩展) |
 | `failure`           | 可恢复失败             | `text`                 | `retry` / `restart`（仅 Outcome 允许时）              | 无                                   |

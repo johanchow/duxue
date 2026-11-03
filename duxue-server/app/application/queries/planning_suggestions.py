@@ -38,7 +38,11 @@ class DurationSuggestionQuery:
                 continue
             if TaskReferenceResolver.normalise(task.title) != canonical:
                 continue
-            seconds = session.active_seconds
+            if session.started_at is None or session.ended_at is None:
+                continue
+            start = session.started_at.replace(tzinfo=timezone.utc) if session.started_at.tzinfo is None else session.started_at
+            end = session.ended_at.replace(tzinfo=timezone.utc) if session.ended_at.tzinfo is None else session.ended_at
+            seconds = int((end-start).total_seconds())
             if not isinstance(seconds, int) or not 0 < seconds <= 480 * 60:
                 continue
             by_task[task.id] = seconds
@@ -52,6 +56,6 @@ class DurationSuggestionQuery:
             "actual_min_minutes": max(1, round(min(by_task.values()) / 60)),
             "actual_max_minutes": max(1, round(max(by_task.values()) / 60)),
             "actual_median_minutes": max(1, round(minutes)),
-            "basis": "同名任务近15天实际用时",
+            "basis": "同名任务近15天已记录完成经过时间",
             "fingerprint": sha256(json.dumps(sorted(by_task.items())).encode()).hexdigest(),
         }

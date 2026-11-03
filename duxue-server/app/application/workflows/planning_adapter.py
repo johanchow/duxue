@@ -105,6 +105,12 @@ class PlanningWorkflowAdapter:
         items = invocation.turn.get("planning_items")
         structured = invocation.turn.get("structured_command") or {}
         confirm = bool(invocation.turn.get("planning_confirm")) or structured.get("command") == "confirm_plan"
+        if structured.get("command") == "sprint_command":
+            from app.application.commands.sprint import SprintService
+            payload = structured["payload"]
+            result = SprintService(self.db).execute(run.ward_id, invocation.command_id,
+                payload["action"], sprint_id=payload["sprint_id"], expected_version=payload["expected_version"])
+            return self._study_response(run, "已按你的选择更新这轮挑战。", sprint=result["sprint"])
         assistant_text = None
         pending_fields: list[str] = []
         service = PlanningDomainService(self.db)
@@ -159,11 +165,14 @@ class PlanningWorkflowAdapter:
                     tasks=[{"title": task.title, "details": task.details, "planned_minutes": task.planned_minutes,
                             "scheduled": bool(task.schedule_id)} for task in tasks],
                     request=PlanIntakeInput(content=invocation.turn.get("content", ""),
+                        current_sprint=self._current_sprint_context(run.ward_id),
                         draft_items=active_draft.items if active_draft else [], clarification_slots=model_slots,
                         attachment_keys=attachment_keys, recent_utterances=utterances,
                         omitted_utterance_count=omitted_utterances,
                         self_review_aspects=review_aspects),
                 )
+            if extracted.study_action is not None:
+                return self._handle_study_action(run, invocation, extracted.study_action)
             substantive = [op for op in extracted.operations if _operation_changes_task(op, tasks)]
             unchanged_only = bool(extracted.operations) and not substantive
             if (extracted.clarification_required or unchanged_only) and not extracted.slot_updates:
@@ -232,8 +241,6 @@ class PlanningWorkflowAdapter:
             items, target_pending = service.resolve_task_references(
                 run.ward_id, items or [], trust_explicit_ids=True)
             pending_fields = sorted(target_pending)
-            if any(item.get("planned_minutes") is None for item in items):
-                pending_fields.append("planned_minutes")
         model_guidance, model_fallback = None, False
         if not confirm and not pending_fields:
             try:
@@ -529,3 +536,60 @@ class PlanningWorkflowAdapter:
             checkpoint_ref=run.graph_checkpoint_ref,
             context_snapshot=context_snapshot,
         )
+
+    def _study_response(self, run, text, *, sprint=None, needs_start=False):
+        actions = []
+        if needs_start and sprint:
+            actions = [{"id": f"sprint:{run.id}:{run.attempt}:{sprint['id']}:{sprint['version']}",
+                        "name":"start", "command":"sprint_command", "enabled":True,
+                        "label":"开始这次挑战", "payload":{"sprint_id":sprint["id"],
+                            "expected_version":sprint["version"], "action":"start"}}]
+        interaction = {"protocol":"companion-interaction.v2" if sprint else "companion-interaction.v1",
+            "kind":"sprint_control" if sprint else "text", "content":text,
+            "parts":[{"type":"text","text":text}], "actions":actions, "sprint":sprint}
+        return WorkflowOutcome(run_status="waiting_for_ward" if needs_start else "closed",
+            outcome_type="waiting" if needs_start else "completed", response=interaction)
+
+    def _handle_study_action(self, run, invocation, proposal):
+        from app.application.commands.sprint import SprintService
+        from app.application.commands.task_execution import TaskExecutionService
+        sprint_service = SprintService(self.db)
+        action = proposal.action
+        if action == "sprint_prepare":
+            if not proposal.topic or not proposal.target_minutes:
+                return self._study_response(run,"这轮想专心做什么、试多少分钟？你也可以先直接做作业。")
+            result = sprint_service.execute(run.ward_id, invocation.command_id, "prepare",
+                topic=proposal.topic, target_minutes=proposal.target_minutes, planned_start_at=proposal.planned_start_at)
+            return self._study_response(run,f"{proposal.topic}，试一轮{proposal.target_minutes}分钟？时间到不代表作业完成。",
+                sprint=result["sprint"], needs_start=True)
+        if action.startswith("sprint_"):
+            current = sprint_service.current(run.ward_id)["sprint"]
+            if current is None:
+                return self._study_response(run,"当前没有正在运行或暂停的挑战。")
+            verb = {"sprint_pause":"pause", "sprint_resume":"resume", "sprint_end":"end"}[action]
+            result = sprint_service.execute(run.ward_id,invocation.command_id,verb,
+                sprint_id=current["id"],expected_version=current["version"])
+            return self._study_response(run,"本轮挑战已更新；任务完成情况不变。",sprint=result["sprint"])
+        tasks = self.db.query(Task).filter_by(ward_id=run.ward_id).filter(Task.status != "cancelled").all()
+        if action == "task_list":
+            text = "目前已知的作业：\n"+"\n".join("• "+task.title+("（你已声明完成）" if task.status == "completed" else "（完成情况未确认）") for task in tasks)
+            return self._study_response(run,text if tasks else "目前没有已登记作业，也可以直接学习或拍题提问。")
+        matches = TaskReferenceResolver.resolve(proposal.task_reference or "",[{"id":t.id,"title":t.title} for t in tasks])
+        if len(matches) != 1:
+            return self._study_response(run,"你指的是哪项作业？请说一下任务名称。")
+        verb = action.removeprefix("task_")
+        result = TaskExecutionService(self.db).execute(run.ward_id,matches[0]["id"],verb)
+        if verb == "pause" and result.get("session") is None:
+            return self._study_response(run,"没有记录到这项正在运行的会话，任务完成情况不变。")
+        if verb == "time":
+            seconds = result["active_seconds"]
+            text = "没有可靠的执行计时记录。" if seconds is None else f"已记录的显式会话计时约{seconds//60}分钟；这不是净专注时长。"
+        else:
+            text = {"start":"已记录开始。", "pause":"已记录暂停。", "resume":"已记录继续。",
+                    "end":"这次先到这里，任务仍未声明完成。", "complete":"已记录你声明这项作业完成。"}[verb]
+        return self._study_response(run,text)
+
+    def _current_sprint_context(self, ward_id):
+        from app.application.commands.sprint import SprintService
+        current = SprintService(self.db).current(ward_id)["sprint"]
+        return {key:current[key] for key in ("topic","status","remaining_seconds")} if current else {}

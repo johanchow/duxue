@@ -229,7 +229,7 @@ def test_invalid_model_payload_becomes_unclear():
 
 
 def test_intent_prompt_covers_the_three_scene_boundaries():
-    prompt = PROMPTS["companion.intent.system.v7"].text
+    prompt = PROMPTS["companion.intent.system.v8"].text
     for action in ("新增", "修改", "删除", "安排时间"):
         assert action in prompt
     assert "具体任务" in prompt

@@ -10,7 +10,7 @@ from __future__ import annotations
 from app.infrastructure.ai.prompts import PROMPTS
 
 LOCK = {
-    "companion.intent.system.v7": "2e831170f127cf76c5f81280803ac63d676e20b2d556b230defa6e22130e1c1d",
+    "companion.intent.system.v8": "b89037ebea6c3d767fe2258fb8142680c09ddcad2b1aa43db2983b874dc0fc44",
     "companion.scene-switch.system.v1": "09958512bdcde9c42e0547f4520bfeb80c2476235df60ce12c00fe6bed937e92",
     "tutoring.image-target.system.v1": "99439c3ad7d32dfc3cb4cea6c0646877044ebe586637faa28d15823391a89304",
     "tutoring.turn.system.v20": "72e440789c773203aa99843f4730f8a7966f69bc7e49f40cf6f31361643d65c0",
@@ -18,7 +18,7 @@ LOCK = {
     "tutoring.visual-leak-judge.system.v5": "781d3deb79c00b75ea1903c226b05ec9b3de9fd71f0e42fc5a056cab61403c8c",
     "companion.agent-text.system.v2": "3f2d9727250893bcd49643359c428e30f460e969066e44f303accc09e49e54d0",
     "task.intake.prompt.v2": "73995e7f1e1fe5641511300b06e0526d7220434e4a61ab35f8497ae9d5f3a3ad",
-    "planning.intake.prompt.v3": "9aaaf23becfa4cec5b45b20f7f1720d62083109ea678524b565fad794dcf424a",
+    "planning.intake.prompt.v4": "4dcf3e2dc4c632811e77339ea1e3d4eb8edfc20283de62c66aec0ae724126371",
     "evaluation.review-aspects.system.v1": "7558e943f00a2f642a226640487aa9a16cdea1ebcd6c22b8cb8a080684ffa00f",
 }
 

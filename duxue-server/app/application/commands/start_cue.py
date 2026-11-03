@@ -16,13 +16,11 @@ from app.contexts.study.domain.start_cue import (
     admits,
     fallback_text,
 )
-from app.infrastructure.messaging.outbox import publish_learning_fact
 from app.infrastructure.persistence.models import (
     DailySchedule,
     SelfReview,
     StartCueRecord,
     StudySession,
-    StudySessionInterval,
     Task,
     now,
 )
@@ -145,7 +143,7 @@ class StartCueService:
         for item in schedule.items or []:
             task_id = item.get("assignment_id")
             start_raw = item.get("start_at")
-            if not task_id or not start_raw:
+            if not task_id or not start_raw or item.get("slot_source") != "ward_explicit":
                 continue
             task = self.db.get(Task, task_id)
             if task is None or task.ward_id != ward_id:
@@ -155,7 +153,7 @@ class StartCueService:
             if end_raw:
                 end = SchedulingService.instant(end_raw).astimezone(timezone.utc)
             else:
-                end = start + timedelta(minutes=int(item.get("planned_minutes") or task.planned_minutes or 0))
+                end = start + timedelta(minutes=int(item.get("planned_minutes") or task.planned_minutes or 15))
             rows.append({
                 "task_id": task_id,
                 "title": task.title,
@@ -168,6 +166,8 @@ class StartCueService:
         return rows
 
     def act(self, ward_id: str, cue_id: str, command: str, expected_version: int) -> dict:
+        from app.infrastructure.persistence.models import Ward
+        self.db.query(Ward).filter_by(id=ward_id).with_for_update().one()
         cue = self.db.get(StartCueRecord, cue_id)
         if cue is None or cue.ward_id != ward_id:
             raise StartCueError("not_found")
@@ -186,13 +186,7 @@ class StartCueService:
             cue.text = None
             cue.version += 1
             return {"status": "none"}
-        if command == "pause_current_and_start_due":
-            if cue.current_session_id:
-                session = self.db.get(StudySession, cue.current_session_id)
-                if session is not None and session.status == "active":
-                    self._pause(session)
-            self._start(cue.ward_id, cue.due_task_id)
-        elif command == "start_due_task":
+        if command in {"pause_current_and_start_due", "start_due_task"}:
             self._start(cue.ward_id, cue.due_task_id)
         self._accept(cue, command)
         return {"status": "accepted", "command": command}
@@ -221,14 +215,14 @@ class StartCueService:
         for item in schedule.items or []:
             task_id = item.get("assignment_id")
             start_raw = item.get("start_at")
-            if not task_id or not start_raw:
+            if not task_id or not start_raw or item.get("slot_source") != "ward_explicit":
                 continue
             start = SchedulingService.instant(start_raw).astimezone(timezone.utc)
             end_raw = item.get("end_at")
             if end_raw:
                 end = SchedulingService.instant(end_raw).astimezone(timezone.utc)
             else:
-                end = start + timedelta(minutes=int(item.get("planned_minutes") or 0))
+                end = start + timedelta(minutes=int(item.get("planned_minutes") or 15))
             if not (start <= current < end):
                 continue
             task = self.db.get(Task, task_id)
@@ -252,7 +246,7 @@ class StartCueService:
         for item in schedule.items or []:
             task_id = item.get("assignment_id")
             start_raw = item.get("start_at")
-            if not task_id or not start_raw:
+            if not task_id or not start_raw or item.get("slot_source") != "ward_explicit":
                 continue
             start = SchedulingService.instant(start_raw).astimezone(timezone.utc)
             if not (start <= current and start < target_start):
@@ -361,39 +355,9 @@ class StartCueService:
         cue.version += 1
 
     def _start(self, ward_id: str, task_id: str) -> StudySession:
-        existing = self._session(ward_id, task_id)
-        if existing is not None:
-            if existing.status == "paused":
-                existing.status = "active"
-                existing.version += 1
-                self.db.add(StudySessionInterval(study_session_id=existing.id))
-            return existing
-        session = StudySession(ward_id=ward_id, task_id=task_id, status="active")
-        self.db.add(session)
-        self.db.flush()
-        self.db.add(StudySessionInterval(study_session_id=session.id))
-        publish_learning_fact(
-            self.db,
-            ward_id=ward_id,
-            event_type="study_session.started",
-            source_type="study_session",
-            source_id=session.id,
-            payload={"task_id": task_id},
-        )
-        return session
-
-    def _pause(self, session: StudySession) -> None:
-        interval = (
-            self.db.query(StudySessionInterval)
-            .filter_by(study_session_id=session.id, ended_at=None)
-            .one_or_none()
-        )
-        if interval is not None:
-            interval.ended_at = now()
-            interval.end_reason = "paused"
-        session.status = "paused"
-        session.pause_count += 1
-        session.version += 1
+        from app.application.commands.task_execution import TaskExecutionService
+        result = TaskExecutionService(self.db).execute(ward_id, task_id, "start")
+        return self.db.get(StudySession, result["session"]["id"])
 
     def _view(self, cue: StartCueRecord | None) -> dict:
         if cue is None or cue.status in {"expired", "accepted", "superseded"}:

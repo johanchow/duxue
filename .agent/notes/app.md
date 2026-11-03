@@ -8,7 +8,7 @@ Guardian 用邮箱验证码注册和登录，不保存读学密码。Ward 使用
 
 ## 状态
 
-- 已落地：邮箱验证码、Ward `POST /ward-auth/refresh`、首页横轨计划、通用错误文案、`main` 上 GitHub Actions 签名 APK。
+- 已落地：邮箱验证码、Ward `POST /ward-auth/refresh`、默认对话首页与按需作业入口、通用错误文案、`main` 上 GitHub Actions 签名 APK。
 - 未做：微信登录。iOS / Play AAB 不在 APK 流水线。
 - 首页左滑删除走服务端，不是只改本地 state。
 
@@ -38,4 +38,6 @@ Guardian 用邮箱验证码注册和登录，不保存读学密码。Ward 使用
 - 版本策略唯一归属：[部署文档 · App 版本管理](../../docs/deployment.md#app-版本管理)。Codemagic 双平台发布仍属规划，排查时先看实际 workflow。
 - 验证：112 个 Flutter 测试、静态分析与 workflow YAML 校验通过；带 commit 注入的界面测试通过。Android debug APK 构建成功，aapt 确认版本名来自 pubspec、构建号被覆盖为测试值 42；正式签名流水线待合并后运行。
 
-- 2026-11-03 Ward 首页目标已调整为 [PRD §六](../../docs/product/prd-user.md#六ward-首页与导航架构默认对话流--可选专注挑战--底部唯一-voicecomposer) 的默认对话首页；普通当前/下一项不常驻，仅主动 Sprint 展示限时卡。旧任务池、常驻计时与结算布局属于现有实现，待改造。
+- 2026-11-03 Ward 首页目标已调整为 [PRD §六](../../docs/product/prd-user.md#六ward-首页与导航架构默认对话流--可选专注挑战--底部唯一-voicecomposer) 的默认对话首页；普通当前/下一项不常驻，仅主动 Sprint 展示限时卡。旧任务池、常驻计时与结算布局已移除，当前待 Gate 2。
+
+- 2026-11-03 本轮客户端已按新版首页完成改造，待 Gate 2：默认对话、作业详情按需打开、仅主动 Sprint 显示限时卡；取消旧横轨与虚构时间回退。任务与挑战命令确认后才更新状态，失败不伪称已暂停/开始。验证记录见[实现 spec](../specs/lightweight-planning-focus-sprint.md)。

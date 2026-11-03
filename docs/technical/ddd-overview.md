@@ -24,7 +24,7 @@
 | 1 | Identity & Relationship | Generic | 身份、角色资料、Guardian-Ward 关系与凭据；不拥有学习状态 | 向各域提供授权 ACL / Query |
 | 2 | Device & Ingestion | Supporting | CameraRegistration、AcceptedFrame、采集归属与健康；不解释学习行为 | Identity → 本域；向 Behavior 提供受权证据 Query；既有采集事实向 Memory 入账 |
 | 3 | Planning | Core | 轻量计划与任务：Task、PlanDraft、DailySchedule、顺序与可选估时/约定钟点；保留完整状态，仅按需提示，不拥有实际执行或 Sprint | Identity/Memory Query → 本域；PlanConfirmed.v1 → Study；LearningFactRecorded.v1 → Memory |
-| 4 | Study | Core | StudySession、执行区间、StartCue；目标扩展 Sprint 与 HelpOfferBudget/HelpOffer；不拥有图片解释、题目或任务安排 | Planning/Behavior Query 与事件 → 本域；StudySessionCompleted.v1 → Planning/Evaluation；HelpOfferReady.v1 → Companion |
+| 4 | Study | Core | StudySession、执行区间、StartCue；Sprint（本轮实现待验收）；目标扩展 HelpOfferBudget/HelpOffer；不拥有图片解释、题目或任务安排 | Planning/Behavior Query 与事件 → 本域；StudySessionCompleted.v1 → Planning/Evaluation；HelpOfferReady.v1 → Companion |
 | 5 | Tutoring | Core | TutoringSession、ProblemRecord、答案保护、验证尝试、发音；不拥有计时或报告 | Study/Planning/Memory 受权 Query → 本域；教学事实 → Memory；凭证 Query → Evaluation |
 | 6 | Behavior Analysis | Supporting | ObservationWindow、ObservationDay、物理活动与被动学段；不判断主观感受、作业完成或掌握 | Device Query → 本域；ObservationRevisionPublished.v1 + Query ACL → Study/Evaluation |
 | 7 | Evaluation & Reflection | Core | SelfReview、ReviewAspect、ReflectionReport/ReportVersion；自述和客观证据隔离，零自述晚间交付；不反写画像或计划 | Behavior/Study/Tutoring/Planning → 本域；授权报告 Query → Ward/Guardian；当前自述 Query → Companion/Planning/Tutoring |
@@ -121,8 +121,8 @@ API 不操作 ORM；Domain 不调用模型、数据库、队列。Query 是只�
 |---|---|---|
 | Device & Ingestion | [design-gateway](design-gateway.md) | 采集配置/模型/接入目标契约；实际实现进度见进行中 spec |
 | Behavior Analysis | [domain-behavior](domain-behavior.md) | 新目标设计；窗口、观察日、缺口、增量分析和跨域发布未实现 |
-| Planning | [domain-planning](domain-planning.md) | 轻量计划与任务、按需展示、安排确认与执行事实边界（目标设计待改造） |
-| Study | [domain-study](domain-study.md) | 已有会话/StartCue；Sprint 与 HelpOffer 为目标扩展 |
+| Planning | [domain-planning](domain-planning.md) | 轻量计划与任务、按需展示、安排确认与执行事实边界（本轮实现待验收） |
+| Study | [domain-study](domain-study.md) | 已有会话/StartCue；Sprint 本轮实现待验收，HelpOffer 为目标扩展 |
 | Tutoring | [domain-tutoring](domain-tutoring.md) | 启发、答案保护、教学事实；[视频专题](tutoring-video-answer.md)另行演进 |
 | Evaluation & Reflection | [domain-evaluation](domain-evaluation.md) | 已有自述；零输入版本化客观报告为目标扩展 |
 | Memory & Understanding | [domain-memory](domain-memory.md) | 客观证据账本、Episode/Signal/Profile |

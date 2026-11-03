@@ -34,66 +34,38 @@ def test_missing_name_candidate_preserves_duration_and_registers_once(db):
     operate(service, ward, answers=reply, command_id='turn-2')
     assert [(t.title, t.planned_minutes) for t in db.query(Task)] == [('科学阅读', 20)]
     assert not draft.pending_fields
-    assert not service.plan_draft_view(ward.id, draft.id)['confirm_enabled']
+    assert service.plan_draft_view(ward.id, draft.id)['confirm_enabled']
 
 
-def test_repeated_create_while_duration_is_pending_reuses_original_slots(db):
-    ward = create_ward(db)
-    service = PlanningDomainService(db)
-    operations = [
-        {'kind': 'create', 'title': '抄词表'},
-        {'kind': 'create', 'title': '数学小卷'},
-    ]
-    first = operate(service, ward, operations, command_id='image-create')
-    original_version = first.version
-    original_slots = [slot['slot_id'] for slot in
-                      first.working_state['active_clarification_batch']['slots']]
-
-    repeated = operate(service, ward, operations, command_id='acknowledge')
-    assert repeated.version == original_version
-    assert [slot['slot_id'] for slot in repeated.working_state[
-        'active_clarification_batch']['slots']] == original_slots
-    assert len(repeated.working_state['operations']) == 2
-    assert db.query(Task).count() == 0
-
-    completed = operate(service, ward, answers=[
-        {'slot_id': original_slots[0], 'value': '20分钟'},
-        {'slot_id': original_slots[1], 'value': '30分钟'},
-    ], command_id='provide-duration')
-    assert not completed.pending_fields
-    assert sorted((task.title, task.planned_minutes) for task in db.query(Task)) == [
-        ('抄词表', 20), ('数学小卷', 30),
-    ]
+def test_repeat_command_without_duration_does_not_duplicate_tasks(db):
+    ward=create_ward(db);service=PlanningDomainService(db)
+    ops=[{'kind':'create','title':'抄词表'},{'kind':'create','title':'数学小卷'}]
+    first=operate(service,ward,ops,command_id='same')
+    repeated=operate(service,ward,ops,command_id='same')
+    assert repeated.id==first.id and repeated.version==first.version
+    assert db.query(Task).count()==2
+    assert not first.pending_fields
 
 
-def test_repeated_create_with_new_duration_completes_pending_candidate_once(db):
-    ward = create_ward(db)
-    service = PlanningDomainService(db)
-    first = operate(service, ward, [{'kind': 'create', 'title': '抄词表'}],
-                    command_id='first-create')
-    slot_id = first.working_state['active_clarification_batch']['slots'][0]['slot_id']
-
-    completed = operate(service, ward, [
-        {'kind': 'create', 'title': '抄词表', 'planned_minutes': 20},
-    ], command_id='repeat-with-duration')
-    assert not completed.pending_fields
-    assert db.query(Task).count() == 1
-    assert (db.query(Task).one().title, db.query(Task).one().planned_minutes) == ('抄词表', 20)
-    assert slot_id not in [slot['slot_id'] for slot in
-                           (completed.working_state.get('active_clarification_batch') or {}).get('slots', [])]
+def test_optional_duration_update_does_not_recreate_a_task(db):
+    ward=create_ward(db);service=PlanningDomainService(db)
+    operate(service,ward,[{'kind':'create','title':'抄词表'}],command_id='create')
+    updated=operate(service,ward,[{'kind':'update','references':['抄词表'],'planned_minutes':20}],command_id='update')
+    assert not updated.pending_fields
+    assert db.query(Task).count()==1 and db.query(Task).one().planned_minutes==20
 
 
-def test_loop_reports_task_pool_only_when_created_without_start_time(db):
+def test_loop_reports_reviewable_order_without_start_time(db):
     ward = create_ward(db)
     service = PlanningDomainService(db)
     draft = operate(service, ward, [{'kind': 'create', 'title': '数学', 'planned_minutes': 30}])
     view = service.plan_draft_view(ward.id, draft.id)
-    assert loop_status(draft) == 'task_pool_changed_only'
-    assert view['planning_agent_loop']['status'] == 'task_pool_changed_only'
+    assert loop_status(draft) == 'draft_changed'
+    assert view['planning_agent_loop']['status'] == 'draft_changed'
     assert view['operation_results'][0]['status'] == 'applied'
     assert view['items'][0]['title'] == '数学'
     assert 'start_at' not in view['items'][0]
-    assert not view['confirm_enabled']
+    assert view['confirm_enabled']
 
 
 def test_loop_reports_draft_changed_when_explicit_start_time_enters_plan(db):
@@ -115,7 +87,7 @@ def test_loop_reports_partial_success_when_independent_ops_apply_and_others_wait
     service = PlanningDomainService(db)
     draft = operate(service, ward, [
         {'kind': 'create', 'title': '数学', 'planned_minutes': 30},
-        {'kind': 'create', 'title': '英语'},
+        {'kind': 'create', 'title': '英语', 'planned_minutes': 0},
     ])
     statuses = {result['status'] for result in draft.working_state['operation_results']}
     assert loop_status(draft) == 'partial_success'
@@ -123,13 +95,11 @@ def test_loop_reports_partial_success_when_independent_ops_apply_and_others_wait
     assert db.query(Task).count() == 1
 
 
-def test_loop_reports_needs_clarification_when_no_operation_can_apply(db):
-    ward = create_ward(db)
-    service = PlanningDomainService(db)
-    draft = operate(service, ward, [{'kind': 'create', 'title': '英语'}])
-    assert loop_status(draft) == 'needs_clarification'
-    assert draft.pending_fields == ['planned_minutes']
-    assert db.query(Task).count() == 0
+def test_loop_clarifies_missing_title_even_though_duration_is_optional(db):
+    ward=create_ward(db);service=PlanningDomainService(db)
+    draft=operate(service,ward,[{'kind':'create','planned_minutes':20}])
+    assert loop_status(draft)=='needs_clarification'
+    assert db.query(Task).count()==0
 
 
 def test_loop_reports_no_op_for_empty_turn_refresh(db):
@@ -140,13 +110,10 @@ def test_loop_reports_no_op_for_empty_turn_refresh(db):
     assert service.plan_draft_view(ward.id, draft.id)['planning_agent_loop']['status'] == 'no_op'
 
 
-def test_loop_reports_rejected_when_all_operations_are_rejected(db):
-    ward = create_ward(db)
-    create_task(db, ward=ward, title='数学', planned_minutes=30)
-    service = PlanningDomainService(db)
-    draft = operate(service, ward, [{'kind': 'defer', 'references': ['数学']}])
-    assert loop_status(draft) == 'rejected'
-    assert draft.working_state['operation_results'][0]['status'] == 'rejected'
+def test_loop_reports_rejected_for_unknown_update_targets(db):
+    ward=create_ward(db);service=PlanningDomainService(db)
+    draft=operate(service,ward,[{'kind':'update','references':['不存在的作业'],'planned_minutes':20}])
+    assert loop_status(draft)=='rejected'
 
 
 def test_content_patch_preserves_other_slots_and_detects_overlap(db):
@@ -189,14 +156,12 @@ def test_batch_invalid_target_does_not_partially_update(db):
     assert draft.working_state['operation_results'][0]['status'] == 'rejected'
 
 
-def test_explicit_defer_closes_candidate_slot_without_creating_task(db):
-    ward = create_ward(db)
-    service = PlanningDomainService(db)
-    draft = operate(service, ward, [{'kind': 'create', 'title': '英语'}])
-    slot = draft.working_state['active_clarification_batch']['slots'][0]
-    draft = operate(service, ward, answers=[{'slot_id': slot['slot_id'], 'skip': True, 'reason': '下次安排'}], command_id='defer')
-    assert not draft.pending_fields
-    assert db.query(Task).count() == 0
+def test_defer_without_reason_preserves_registered_task(db):
+    ward=create_ward(db);service=PlanningDomainService(db)
+    operate(service,ward,[{'kind':'create','title':'英语'}])
+    draft=operate(service,ward,[{'kind':'defer','references':['英语']}],command_id='defer')
+    assert not draft.pending_fields and db.query(Task).count()==1
+    assert not service.plan_draft_view(ward.id,draft.id)['confirm_enabled']
 
 
 def test_confirmation_rejects_task_changed_since_review(db):
@@ -273,7 +238,7 @@ def test_legacy_http_route_does_not_attach_task_before_confirmation(db):
 def test_content_partial_turn_keeps_independent_changes_and_can_defer_by_name(db):
     ward = create_ward(db)
     service = PlanningDomainService(db)
-    draft = operate(service, ward, [{'kind': 'create', 'title': '英语'},
+    draft = operate(service, ward, [{'kind': 'create', 'title': '英语', 'planned_minutes': 0},
         {'kind': 'create', 'title': '数学', 'planned_minutes': 30, 'start_at': '2026-09-20T19:00:00'}])
     assert draft.pending_fields
     draft = operate(service, ward, [{'kind': 'defer', 'references': ['英语']}], command_id='next')
@@ -281,16 +246,14 @@ def test_content_partial_turn_keeps_independent_changes_and_can_defer_by_name(db
     assert db.query(Task).count() == 1
 
 
-def test_schedule_missing_anchor_then_reply_does_not_duplicate_task(db):
-    ward = create_ward(db)
-    task = create_task(db, ward=ward, title='数学', planned_minutes=30)
-    service = PlanningDomainService(db)
-    draft = operate(service, ward, [{'kind': 'schedule', 'references': ['数学']}])
-    slot = draft.working_state['active_clarification_batch']['slots'][0]
-    assert slot['field'] == 'start_at'
-    draft = operate(service, ward, answers=[{'slot_id': slot['slot_id'], 'value': '2026-09-20T19:00:00'}], command_id='time')
-    assert service.plan_draft_view(ward.id, draft.id)['confirm_enabled']
-    assert draft.items[0]['assignment_id'] == task.id
+def test_schedule_without_clock_and_later_explicit_time_keeps_same_task(db):
+    ward=create_ward(db);task=create_task(db,ward=ward,title='数学',planned_minutes=None)
+    service=PlanningDomainService(db)
+    first=operate(service,ward,[{'kind':'schedule','references':['数学']}])
+    assert service.plan_draft_view(ward.id,first.id)['confirm_enabled']
+    second=operate(service,ward,[{'kind':'schedule','references':['数学'],'start_at':'2026-09-20T19:00:00'}],command_id='time')
+    assert db.query(Task).count()==1
+    assert second.items[0]['assignment_id']==task.id and second.items[0]['planned_minutes'] is None
 
 
 def test_multiselect_cannot_select_foreign_task(db):
@@ -593,8 +556,9 @@ def test_image_create_without_duration_still_asks_instead_of_claiming_recorded(d
 
     assert '没有从这张图片里识别出新任务' not in outcome.next_interaction['content']
     assert '任务已记录在任务池' not in outcome.next_interaction['content']
-    assert db.query(Task).count() == 0
-    assert db.query(PlanDraft).one().working_state['planning_agent_loop']['status'] == 'needs_clarification'
+    assert db.query(Task).count() == 1
+    assert db.query(Task).one().planned_minutes is None
+    assert db.query(PlanDraft).one().working_state['planning_agent_loop']['status'] == 'draft_changed'
 
 
 def test_adapter_model_operations_reach_review_and_confirmation(db, monkeypatch):
@@ -641,17 +605,17 @@ def test_content_edit_recomputes_relative_successor(db):
         {'kind': 'create', 'title': '数学', 'planned_minutes': 40, 'start_at': '2026-09-20T19:00:00'},
         {'kind': 'create', 'title': '英语', 'planned_minutes': 20, 'after_task_reference': '数学'}])
     english = next(i for i in draft.items if i['title'] == '英语')
-    assert english['start_at'].endswith('19:40:00')
+    assert english.get('start_at') is None
     draft = operate(service, ward, [{'kind': 'update', 'references': ['数学'], 'planned_minutes': 60}], command_id='longer')
     english = next(i for i in draft.items if i['title'] == '英语')
-    assert english['start_at'].endswith('20:00:00')
+    assert english.get('start_at') is None
 
 
 def test_clock_time_on_start_slot_is_audited_without_the_raw_value(db, caplog):
     ward = create_ward(db)
     create_task(db, ward=ward, title='数学', planned_minutes=30)
     service = PlanningDomainService(db)
-    draft = operate(service, ward, [{'kind': 'schedule', 'references': ['数学']}])
+    draft = operate(service, ward, [{'kind': 'schedule', 'references': ['数学'], 'start_at': 'not-a-timestamp'}])
     slot = draft.working_state['active_clarification_batch']['slots'][0]
     assert slot['field'] == 'start_at'
     raw = '07:41'
@@ -670,7 +634,7 @@ def test_clock_time_on_start_slot_is_audited_without_the_raw_value(db, caplog):
 def test_slot_invalid_duration_cannot_treat_clock_as_elapsed_minutes(db):
     ward = create_ward(db)
     service = PlanningDomainService(db)
-    draft = operate(service, ward, [{'kind': 'create', 'title': '数学'}])
+    draft = operate(service, ward, [{'kind': 'create', 'title': '数学', 'planned_minutes': 0}])
     slot = draft.working_state['active_clarification_batch']['slots'][0]
     with pytest.raises(HTTPException):
         operate(service, ward, answers=[{'slot_id': slot['slot_id'], 'value': '十九点三十分'}], command_id='clock')
@@ -741,13 +705,13 @@ def test_delete_operation_removes_task_pool_item_and_draft_references(db):
     service = PlanningDomainService(db)
     draft = operate(service, ward, [{'kind': 'schedule', 'references': ['数学'],
                                      'start_at': '2026-09-20T19:00:00'}])
-    assert {item['assignment_id'] for item in draft.items} == {math.id, english.id}
+    assert {item['assignment_id'] for item in draft.items} == {math.id}
 
     draft = operate(service, ward, [{'kind': 'delete', 'references': ['数学']}], command_id='delete-math')
 
     assert db.get(Task, math.id) is None
     assert db.get(Task, english.id) is not None
-    assert {item['assignment_id'] for item in draft.items} == {english.id}
+    assert draft.items == []
     result = draft.working_state['operation_results'][0]
     assert result['status'] == 'applied'
     assert result['kind'] == 'delete'
@@ -1117,16 +1081,13 @@ def test_planning_migration_backfills_confirmed_slots_and_protects_history(db, d
         assert 'items' in {c['name'] for c in inspect(connection).get_columns('daily_schedules')}
 
 
-def test_confirm_body_requires_reviewed_version_and_rejects_missing_time(db):
+def test_confirm_requires_reviewed_version_but_time_is_optional(db):
     from app.api.deps import Principal
-    from app.api.v1.planning import ConfirmDraftRequest, confirm_plan
-    ward = create_ward(db)
-    service = PlanningDomainService(db)
-    draft = service.save_draft(ward.id, DAY, [{'new_task': True, 'title': '数学', 'planned_minutes': 30}])
-    db.commit()
-    with pytest.raises(HTTPException) as exc:
-        confirm_plan(ward.id, DAY, None, Principal(ward.id, 'ward'), db)
-    assert exc.value.status_code == 409
-    with pytest.raises(HTTPException):
-        confirm_plan(ward.id, DAY, ConfirmDraftRequest(draft_id=draft.id, expected_draft_version=draft.version), Principal(ward.id, 'ward'), db)
-    assert db.query(Task).one().schedule_id is None
+    from app.api.v1.planning import ConfirmDraftRequest,confirm_plan
+    ward=create_ward(db);service=PlanningDomainService(db)
+    draft=service.save_draft(ward.id,DAY,[{'new_task':True,'title':'数学'}]);db.commit()
+    with pytest.raises(HTTPException) as error:
+        confirm_plan(ward.id,DAY,None,Principal(ward.id,'ward'),db)
+    assert error.value.status_code==409
+    confirm_plan(ward.id,DAY,ConfirmDraftRequest(draft_id=draft.id,expected_draft_version=draft.version),Principal(ward.id,'ward'),db)
+    assert db.query(Task).one().schedule_id is not None

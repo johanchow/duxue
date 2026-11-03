@@ -374,35 +374,43 @@ class CompanionCoordinator:
         if decision.mode == "start" and focus_run is not None and decision.target not in {"clarify", "safety"}:
             decision.mode = "continue" if focus_run.agent_type == decision.target else "handoff"
         if structured_command and not choice_selected:
-            # A form reply is often intentionally content-less.  Its signed
-            # interaction, rather than lexical routing, selects Planning.
-            if focus_run is not None and focus_run.agent_type == "planning":
+            if structured_command.get("command") == "sprint_command":
+                issued = (focus_run.outcome or {}) if focus_run else {}
+                if (focus_run is None or focus_run.agent_type != "planning"
+                        or structured_command.get("interaction_id") != issued.get("issued_actions", {}).get("sprint_command")
+                        or structured_command.get("payload") != issued.get("issued_payloads", {}).get("sprint_command")):
+                    raise HTTPException(409, "挑战交互已失效，请重新查看")
                 decision.target, decision.mode = "planning", "continue"
-            if decision.target != "planning" or structured_command.get("command") not in {"confirm_plan", "clarify_reply", "accept_plan_suggestion"}:
-                raise HTTPException(409, "当前交互不允许这个动作")
-            if focus_run is None or focus_run.agent_type != "planning":
-                raise HTTPException(409, "计划交互已失效，请重新审阅")
-            payload = structured_command.get("payload") or {}
-            draft = self.db.get(PlanDraft, payload.get("draft_id"))
-            expected = payload.get("expected_draft_version")
-            command_name = structured_command["command"]
-            if command_name in {"confirm_plan", "accept_plan_suggestion"}:
-                interaction_id = f"plan:{focus_run.id}:{focus_run.attempt}:{payload.get('draft_id')}:{expected}"
-                version_valid = draft is not None and draft.version == expected
             else:
-                interaction_id = f"clarify:{focus_run.id}:{focus_run.attempt}:{payload.get('draft_id')}:{draft.version if draft else None}"
-                version_valid = draft is not None
-            if (draft is None or draft.ward_id != ward_id or draft.status != "active"
-                    or not version_valid or structured_command.get("interaction_id") != interaction_id
-                    or (focus_run.outcome or {}).get("issued_actions", {}).get(
-                        command_name,
-                        (focus_run.outcome or {}).get("interaction_id")
-                        if command_name != "accept_plan_suggestion" else None,
-                    ) != interaction_id):
-                raise HTTPException(409, "计划交互已过期，请重新审阅")
-            if (command_name == "accept_plan_suggestion"
-                    and command_name not in (focus_run.outcome or {}).get("allowed_commands", [])):
-                raise HTTPException(409, "当前交互不允许采纳建议")
+                # A form reply is often intentionally content-less.  Its signed
+                # interaction, rather than lexical routing, selects Planning.
+                if focus_run is not None and focus_run.agent_type == "planning":
+                    decision.target, decision.mode = "planning", "continue"
+                if decision.target != "planning" or structured_command.get("command") not in {"confirm_plan", "clarify_reply", "accept_plan_suggestion"}:
+                    raise HTTPException(409, "当前交互不允许这个动作")
+                if focus_run is None or focus_run.agent_type != "planning":
+                    raise HTTPException(409, "计划交互已失效，请重新审阅")
+                payload = structured_command.get("payload") or {}
+                draft = self.db.get(PlanDraft, payload.get("draft_id"))
+                expected = payload.get("expected_draft_version")
+                command_name = structured_command["command"]
+                if command_name in {"confirm_plan", "accept_plan_suggestion"}:
+                    interaction_id = f"plan:{focus_run.id}:{focus_run.attempt}:{payload.get('draft_id')}:{expected}"
+                    version_valid = draft is not None and draft.version == expected
+                else:
+                    interaction_id = f"clarify:{focus_run.id}:{focus_run.attempt}:{payload.get('draft_id')}:{draft.version if draft else None}"
+                    version_valid = draft is not None
+                if (draft is None or draft.ward_id != ward_id or draft.status != "active"
+                        or not version_valid or structured_command.get("interaction_id") != interaction_id
+                        or (focus_run.outcome or {}).get("issued_actions", {}).get(
+                            command_name,
+                            (focus_run.outcome or {}).get("interaction_id")
+                            if command_name != "accept_plan_suggestion" else None,
+                        ) != interaction_id):
+                    raise HTTPException(409, "计划交互已过期，请重新审阅")
+                if (command_name == "accept_plan_suggestion"
+                        and command_name not in (focus_run.outcome or {}).get("allowed_commands", [])):
+                    raise HTTPException(409, "当前交互不允许采纳建议")
         run = None
         if decision.target not in {"clarify", "safety"}:
             run = self._start_or_resume(thread=thread, decision=decision, focus_run=focus_run)
@@ -567,6 +575,8 @@ class CompanionCoordinator:
                                     if action.get("enabled")), None),
             "allowed_commands": [action.get("command") for action in interaction.get("actions", [])
                                  if action.get("enabled")],
+            "issued_payloads": {action.get("command"): action.get("payload")
+                                for action in interaction.get("actions", []) if action.get("enabled")},
             "issued_actions": {action.get("command"): action.get("id")
                                for action in interaction.get("actions", [])
                                if action.get("enabled") and action.get("id")},

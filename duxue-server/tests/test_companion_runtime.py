@@ -279,7 +279,7 @@ class MemoryFacadeTest(unittest.TestCase):
         self.assertEqual(confirmed.run_status, "closed")
         self.assertEqual(confirmed.next_interaction["status"], "confirmed")
 
-    def test_structured_time_suggestion_reenters_review_with_new_version(self):
+    def test_review_does_not_automatically_issue_time_suggestion(self):
         from langgraph.checkpoint.memory import InMemorySaver
 
         task = Task(ward_id=self.ward_id, title="数学", planned_minutes=30)
@@ -298,25 +298,10 @@ class MemoryFacadeTest(unittest.TestCase):
                                         "start_at": f"{planning_today().isoformat()}T06:30:00+08:00"}]},
             turn_id=run.current_turn_id, attempt=1,
         ))
-        action = next(action for action in reviewed.next_interaction["actions"]
-                      if action["command"] == "accept_plan_suggestion")
+        self.assertFalse(any(action["command"] == "accept_plan_suggestion"
+                             for action in reviewed.next_interaction["actions"]))
         draft = self.db.query(PlanDraft).filter_by(ward_id=self.ward_id).one()
-        old_version = draft.version
-        fingerprint = PlanningDomainService(self.db).plan_draft_view(
-            self.ward_id, draft.id)["items"][0]["time_suggestion"]["fingerprint"]
-        run.status, run.current_turn_id = "active", uid()
-        adopted = adapter.invoke(invocation=RunInvocation(
-            run_id=run.id, thread_id=thread.id, ward_id=self.ward_id, agent_type="planning",
-            turn={"structured_command": {"interaction_id": action["id"],
-                  "command": "accept_plan_suggestion", "payload": {
-                      "draft_id": draft.id, "expected_draft_version": old_version,
-                      "kind": "time", "task_id": task.id,
-                      "expected_fingerprint": fingerprint}}},
-            turn_id=run.current_turn_id, attempt=1,
-        ))
-        self.assertEqual(adopted.next_interaction["kind"], "plan_confirm_list")
-        self.assertGreater(draft.version, old_version)
-        self.assertTrue(draft.items[0]["start_at"].endswith("07:00:00+08:00"))
+        self.assertTrue(draft.items[0]["start_at"].endswith("06:30:00+08:00"))
 
     def test_structured_clarification_reenters_review_before_issuing_confirm(self):
         """A slot form must never sign confirm_plan without a graph interrupt."""
@@ -330,12 +315,9 @@ class MemoryFacadeTest(unittest.TestCase):
                        run_ref=f"agent_run:{uid()}", current_turn_id=uid())
         self.db.add(run)
         self.db.flush()
-        draft = PlanningDomainService(self.db).save_draft(
-            self.ward_id, planning_today(), [{
-                "assignment_id": task.id, "new_task": False, "title": task.title,
-                "planned_minutes": None, "start_at": f"{planning_today().isoformat()}T19:30:00",
-            }], pending_fields=["planned_minutes"],
-        )
+        draft = PlanningDomainService(self.db).apply_operations(
+            self.ward_id, planning_today(), [{"kind":"update","references":[task.title],"title":""}],
+            command_id="invalid-title")
         slot_id = draft.working_state["active_clarification_batch"]["slots"][0]["slot_id"]
         self.db.commit()
         adapter = PlanningWorkflowAdapter(self.db, checkpointer=InMemorySaver())
@@ -343,7 +325,7 @@ class MemoryFacadeTest(unittest.TestCase):
         reviewed = adapter.invoke(invocation=RunInvocation(
             run_id=run.id, thread_id=thread.id, ward_id=self.ward_id, agent_type="planning",
             turn={"structured_command": {"command": "clarify_reply", "payload": {
-                "answers": [{"slot_id": slot_id, "value": "30分钟"}],
+                "answers": [{"slot_id": slot_id, "value": "英语听力新标题"}],
             }}}, turn_id=run.current_turn_id, attempt=1,
         ))
         refreshed = self.db.get(PlanDraft, draft.id)
@@ -397,8 +379,8 @@ class MemoryFacadeTest(unittest.TestCase):
             run=run, draft=draft, resolved_count=0, context_snapshot={},
         )
         text = outcome.next_interaction["content"]
-        self.assertIn("**需要补充的信息**", text)
-        self.assertIn("预计时长：抄词表、数学小卷", text)
+        self.assertNotIn("**需要补充的信息**", text)
+        self.assertNotIn("预计时长：抄词表、数学小卷", text)
         self.assertNotIn("- **抄词表**", text)
         self.assertNotIn("待补充：", text)
 

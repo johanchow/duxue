@@ -10,14 +10,14 @@ Context Map 与分层图只在 [ddd-overview.md](ddd-overview.md) 维护。答�
 
 ## 一、边界与语言
 
-### 1.0 轻量计划配套调整（2026-11-03 目标设计，待实现）
+### 1.0 轻量计划配套调整（2026-11-03 已实现待验收）
 
 产品展示与时间口径以 [计划 PRD](../product/prd-schedule.md) 为准。保留本域完整状态和区间记录，普通任务/会话不驱动常驻首页任务条；仅明确开启的限时 Sprint 展示挑战卡。展示开关不修改执行事实。
 
 - `PlanConfirmed.v1` 本身不开始会话；明确开始动作才由本域开始/复用会话。安排确认与执行结果分别回执。
 - 只为 Ward 明确约定的钟点打开 `StartCue`；不为按前项预计时长推算的后项钟点打开邀请。下文已有时间槽调度描述需按此收敛，明确钟点的既有邀请策略仍适用。
 - 暂停后换项保留原任务与执行区间；“本次先到这里”结束执行但不标完成，之后可新开会话继续同一任务。不自动并行计时或自动完成/开始下一项。
-- 没有 active/paused 会话时的明确完成声明为目标扩展：允许记录 Ward 的完成声明并通知 Planning，开始与耗时保留未知，不伪造零时长会话。实现前需扩展完成用例及版本化事件，使消费者区分完成声明与有区间的执行事实；现有完成事件和状态机不代表已支持该路径。
+- 没有 active/paused 会话时的明确完成声明已由 `TaskExecutionService` 转交 Planning `declare_completion`，发布 `TaskCompletionDeclared.v1`；开始与耗时保留未知，不创建会话或发布伪造的 `StudySessionCompleted.v1`。有显式会话时仍保留执行事件。
 - 无线上任务/会话也能使用观察与答疑；视觉只作为独立证据，不能暗中创建或完成显式会话。
 
 本 Context 拥有 `StudySession`、`StudyInterval` 与 `StartCue`：显式执行事实与开始邀请；目标扩展 `Sprint` 拥有主动专注挑战，独立于普通任务完成状态。它不拥有答疑（见 [Tutoring](domain-tutoring.md)）、Thread/Run、长期画像、稳定 Signal、已确认日程，也不拥有帧或摄像行为结论。
@@ -66,14 +66,14 @@ flowchart LR
     TS -.->|study_session_id，受权 Query| SS
 ```
 
-本 Domain 的目标设计共有 **4 个 Aggregate Root**；StudySession/StartCue 已有实现，HelpOfferBudget 与 Sprint 为未实现扩展。统一边界如下：
+本 Domain 的目标设计共有 **4 个 Aggregate Root**；StudySession/StartCue 已有实现，HelpOfferBudget 为未实现扩展，Sprint 已实现待验收。统一边界如下：
 
 | Aggregate Root | 边界 | 职责 |
 |---|---|---|
 | StudySession | 一次显式执行及其计时区间 | 管理开始、暂停、继续、完成、放弃；不以视觉观察自动完成任务 |
 | StartCue | 一次到点开始邀请及允许动作 | 询问是否开始到点任务；不改排期、不拥有其他会话 |
 | HelpOfferBudget | 一个 Ward 一个本地晚上的干预额度及所属邀请 | 原子限制递梯子/温和回归邀请的次数、间隔和生命周期，见 §九 |
-| Sprint（目标扩展） | 一个 Ward 明确开启的一轮限时挑战及区间 | 记录目标持续时间、实际开始与暂停/到时/提前结束，不代表 Task 完成或专注成功，见 §2.4 |
+| Sprint（已实现待验收） | 一个 Ward 明确开启的一轮限时挑战及区间 | 记录目标持续时间、实际开始与暂停/到时/提前结束，不代表 Task 完成或专注成功，见 §2.4 |
 
 各 Root 只通过 ID 或受权 Query 关联。TutoringSession 归 Tutoring，仅引用 study_session_id。
 
@@ -187,7 +187,7 @@ classDiagram
 
 这张图只含 `StudySession` 与 `StudyInterval`。`StartCue` 没有子实体，见 2.2。`StartCuePolicy` 是领域服务，不属于任何一个聚合。
 
-### 2.4 Sprint（主动专注挑战，目标扩展）
+### 2.4 Sprint（主动专注挑战，已实现待验收）
 
 产品开启条件、首页显隐与反馈唯一归属 [计划 PRD §4.4](../product/prd-schedule.md#44-专注挑战sprint)。本域负责运行事实，不把普通安排或有时长的 StudySession 隐式转换为挑战。
 
@@ -207,7 +207,7 @@ classDiagram
 - 到时反馈由 Companion 在回复安全点最多呈现一次，App 不可触达或消息晚到时不强制补弹，不插入答疑半轮。新动作/交互需同步协议与 App allow-list，不能复用任务完成动作代替结束挑战。
 - Sprint 计时与显式学习会话、视觉观察是不同来源，Evaluation 不可相加或将到时算作成功专注。若需要观察佐证，独立引用覆盖与活动证据。
 
-实现时同步物理设计、迁移和 API/协议版本；本节不代表已有新表或命令。验收须覆盖普通任务时间齐全不触发挑战、授权与时长缺失、重复开始/并发单轮约束、暂停继续计时、收起与多端恢复、延迟调度到时、提前结束、反馈去重和任务完成隔离。
+迁移 `20261103_32`、服务端命令/API、按需首页及 Companion v2 挑战动作已实现，物理映射见 [Server 设计](design-server.md)。验证记录见[进行中 spec](../../.agent/specs/lightweight-planning-focus-sprint.md)。验收覆盖普通任务时间齐全不触发挑战、授权与时长缺失、重复开始/并发单轮约束、暂停继续计时、收起与多端恢复、延迟调度到时、提前结束、反馈去重和任务完成隔离。
 
 ## 三、应用用例
 

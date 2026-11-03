@@ -19,49 +19,42 @@ def _open_session(db: Session, *, task_id: str) -> dict | None:
 def start_session(item_id: str, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
     item = db.get(Task, item_id); plan = db.get(DailySchedule, item.schedule_id) if item and item.schedule_id else None
     if plan is None or plan.ward_id != principal.user_id: raise HTTPException(404, "plan task not found")
-    active = _open_session(db, task_id=item.id)
-    if active:
-        StartCueService(db).note_task_started(principal.user_id, item.id)
-        db.commit()
-        return active
-    row = StudySession(ward_id=principal.user_id, task_id=item.id); db.add(row); db.flush(); db.add(StudySessionInterval(study_session_id=row.id))
-    publish_learning_fact(db, ward_id=row.ward_id, event_type="study_session.started", source_type="study_session", source_id=row.id, payload={"task_id": row.task_id})
-    db.commit(); return {"id": row.id, "status": row.status, "active_seconds": 0}
+    from app.application.commands.task_execution import TaskExecutionService
+    result = TaskExecutionService(db).execute(principal.user_id, item.id, "start")
+    StartCueService(db).note_task_started(principal.user_id, item.id)
+    db.commit()
+    return result["session"]
 
 
 @router.post("/assignments/{assignment_id}/sessions", status_code=201)
 def start_assignment_session(assignment_id: str, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
     assignment = db.get(Task, assignment_id)
     if assignment is None or assignment.ward_id != principal.user_id or assignment.status == "completed": raise HTTPException(404, "assignment not found")
-    active = _open_session(db, task_id=assignment.id)
-    if active:
-        StartCueService(db).note_task_started(principal.user_id, assignment.id)
-        db.commit()
-        return active
-    row = StudySession(ward_id=principal.user_id, task_id=assignment.id); db.add(row); db.flush(); db.add(StudySessionInterval(study_session_id=row.id))
-    publish_learning_fact(db, ward_id=row.ward_id, event_type="study_session.started", source_type="study_session", source_id=row.id, payload={"task_id": row.task_id})
-    db.commit(); return {"id": row.id, "status": row.status, "active_seconds": 0}
+    from app.application.commands.task_execution import TaskExecutionService
+    result = TaskExecutionService(db).execute(principal.user_id, assignment.id, "start")
+    StartCueService(db).note_task_started(principal.user_id, assignment.id)
+    db.commit()
+    return result["session"]
 
 
 @router.post("/sessions/{session_id}/resume")
 def resume_session(session_id: str, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
     session = db.get(StudySession, session_id)
     if session is None or session.ward_id != principal.user_id or session.status != "paused": raise HTTPException(404, "paused session not found")
-    session.status="active"; session.version += 1; session.last_activity_at=now()
-    db.add(StudySessionInterval(study_session_id=session.id))
-    publish_learning_fact(db, ward_id=session.ward_id, event_type="study_session.resumed", source_type="study_session", source_id=session.id, source_version=session.version, payload={"task_id": session.task_id})
-    db.commit(); return {"id": session.id, "status": session.status, "active_seconds": session.active_seconds}
+    from app.application.commands.task_execution import TaskExecutionService
+    result = TaskExecutionService(db).execute(principal.user_id, session.task_id, "resume")
+    db.commit()
+    return result["session"]
 
 
 @router.post("/sessions/{session_id}/pause")
 def pause_session(session_id: str, body: SessionPause, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
     session = db.get(StudySession, session_id)
     if session is None or session.ward_id != principal.user_id or session.status != "active": raise HTTPException(404, "active session not found")
-    interval = db.query(StudySessionInterval).filter_by(study_session_id=session.id, ended_at=None).one()
-    interval.ended_at=now(); interval.end_reason="paused"; interval.active_seconds=max(0, body.active_seconds-session.active_seconds)
-    session.status="paused"; session.active_seconds=body.active_seconds; session.pause_count += 1; session.version += 1; session.last_activity_at=interval.ended_at
-    publish_learning_fact(db, ward_id=session.ward_id, event_type="study_session.paused", source_type="study_session", source_id=session.id, source_version=session.version, payload={"task_id": session.task_id, "active_seconds": session.active_seconds})
-    db.commit(); return {"id": session.id, "status": session.status, "active_seconds": session.active_seconds}
+    from app.application.commands.task_execution import TaskExecutionService
+    result = TaskExecutionService(db).execute(principal.user_id, session.task_id, "pause")
+    db.commit()
+    return result["session"]
 
 @router.post("/sessions/{session_id}/messages")
 def tutor(session_id: str, body: MessageCreate, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
@@ -84,13 +77,10 @@ def finish_session(session_id: str, body: SessionFinish, principal: Principal = 
     if session is None or session.ward_id != principal.user_id: raise HTTPException(404, "session not found")
     if session.status not in ("active", "paused"): raise HTTPException(409, "session is already completed")
     if not can_finish(session.task_id): raise HTTPException(409, "a taskless session cannot be finished as a task")
-    if session.status == "active":
-        interval = db.query(StudySessionInterval).filter_by(study_session_id=session.id, ended_at=None).one()
-        interval.ended_at=now(); interval.end_reason="completed"; interval.active_seconds=max(0, body.active_seconds-session.active_seconds)
-    session.status="completed"; session.ended_at=now(); session.active_seconds=body.active_seconds; session.completion_reason="ward_finished"; session.version += 1
-    publish_learning_fact(db, ward_id=session.ward_id, event_type="study_session.completed", source_type="study_session", source_id=session.id, source_version=session.version, payload={"task_id": session.task_id, "active_seconds": session.active_seconds})
-    PlanningDomainService(db).complete_task(session.ward_id, session.task_id)
-    db.commit(); return {"status": "completed"}
+    from app.application.commands.task_execution import TaskExecutionService
+    result = TaskExecutionService(db).execute(principal.user_id, session.task_id, "complete")
+    db.commit()
+    return {"status":result["status"]}
 
 
 def _cue_error(error: StartCueError) -> HTTPException:
@@ -130,3 +120,71 @@ def act_on_start_cue(cue_id: str, body: StartCueCommand, principal: Principal = 
     db.commit()
     return view
 
+
+
+# Explicit Ward actions; a plan confirmation never invokes these commands.
+from typing import Literal
+from uuid import uuid4
+from pydantic import BaseModel, Field
+from app.application.commands.sprint import SprintService
+
+
+class SprintCreate(BaseModel):
+    command_id: str = Field(default_factory=lambda: str(uuid4()), min_length=1, max_length=100)
+    topic: str = Field(min_length=1, max_length=300)
+    target_minutes: int = Field(ge=1, le=180, strict=True)
+    task_id: str | None = None
+    study_session_id: str | None = None
+    planned_start_at: datetime | None = None
+    action: Literal["create", "prepare"]
+
+
+class SprintAction(BaseModel):
+    command_id: str = Field(default_factory=lambda: str(uuid4()), min_length=1, max_length=100)
+    action: Literal["start", "pause", "resume", "end", "cancel", "claim_notice"]
+    expected_version: int = Field(ge=1)
+
+
+@router.get("/sprints/current")
+def current_sprint(principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
+    view = SprintService(db).current(principal.user_id)
+    db.commit()
+    return view
+
+
+@router.post("/sprints", status_code=201)
+def create_sprint(body: SprintCreate, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
+    try:
+        result = SprintService(db).execute(principal.user_id, **body.model_dump())
+        db.commit()
+        return result
+    except Exception:
+        db.rollback()
+        raise
+
+
+@router.post("/sprints/{sprint_id}/commands")
+def sprint_action(sprint_id: str, body: SprintAction, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
+    try:
+        result = SprintService(db).execute(principal.user_id, sprint_id=sprint_id, **body.model_dump())
+        db.commit()
+        return result
+    except Exception:
+        db.rollback()
+        raise
+
+
+class TaskExecutionAction(BaseModel):
+    action: Literal["start", "pause", "resume", "end", "complete", "time"]
+
+
+@router.post("/assignments/{assignment_id}/commands")
+def task_execution(assignment_id: str, body: TaskExecutionAction, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
+    from app.application.commands.task_execution import TaskExecutionService
+    try:
+        result = TaskExecutionService(db).execute(principal.user_id, assignment_id, body.action)
+        db.commit()
+        return result
+    except Exception:
+        db.rollback()
+        raise

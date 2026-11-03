@@ -29,6 +29,7 @@ from app.infrastructure.persistence.models import (
     StudySession,
     StudySessionInterval,
     Task,
+    Sprint,
     TutoringProblem,
     TutoringSession,
     Ward,
@@ -81,32 +82,31 @@ class PlanningDomainService(PlanningOperations):
                     item.pop("end_at", None)
                 pending.add("ambiguous_target_task")
 
-        # Resolve chained before/after expressions only from an already-known
-        # slot; a cycle or missing reference remains a clarification.
-        for _ in range(len(items)):
-            changed = False
-            for item in items:
-                if item.get("start_at"):
-                    continue
-                after = by_id.get(item.get("after_assignment_id"))
-                before = by_id.get(item.get("before_assignment_id"))
-                if after and self._slot(after):
-                    item["start_at"] = after["end_at"]
-                    item["slot_source"] = "deterministic_derived"
-                    changed = True
-                elif before and self._slot(before) and item.get("planned_minutes") is not None:
-                    start = datetime.fromisoformat(before["start_at"]) - timedelta(minutes=int(item["planned_minutes"]))
-                    item["start_at"] = start.isoformat()
-                    item["slot_source"] = "deterministic_derived"
-                    changed = True
-            if not changed:
-                break
+        # Stable topological order, without deriving a promised clock.
+        edges = {ident: set() for ident in by_id}
         for item in items:
-            reference = item.get("after_assignment_id") or item.get("before_assignment_id")
-            if reference and (reference == item.get("assignment_id") or reference not in by_id):
-                pending.add("ambiguous_target_task")
-            if reference and not item.get("start_at"):
-                pending.add("ambiguous_target_task")
+            ident = item.get("assignment_id")
+            for field in ("after_assignment_id", "before_assignment_id"):
+                reference = item.get(field)
+                if not reference:
+                    continue
+                if reference == ident or reference not in by_id:
+                    pending.add("ambiguous_target_task")
+                    continue
+                first, second = (reference, ident) if field == "after_assignment_id" else (ident, reference)
+                edges[second].add(first)
+        ordered, remaining = [], list(items)
+        while remaining:
+            ready = next((i for i in remaining if not edges.get(i.get("assignment_id"))), None)
+            if ready is None:
+                pending.add("cyclic_order")
+                ordered.extend(remaining)
+                break
+            ordered.append(ready)
+            remaining.remove(ready)
+            for deps in edges.values():
+                deps.discard(ready.get("assignment_id"))
+        items[:] = ordered
 
     @staticmethod
     def _normalised_task_name(value: object) -> str:
@@ -198,11 +198,7 @@ class PlanningDomainService(PlanningOperations):
             minutes = copied.get("planned_minutes")
             if not title:
                 raise HTTPException(400, "计划草稿任务不完整")
-            if minutes is None:
-                # A missing duration is a clarification state, not a phantom
-                # PlanDraft item.  It becomes a Task only after Ward supplies it.
-                continue
-            if not 1 <= int(minutes) <= MAX_DAILY_MINUTES:
+            if minutes is not None and not 1 <= int(minutes) <= MAX_DAILY_MINUTES:
                 raise HTTPException(400, "计划草稿任务不完整")
             candidates = [{"id": task.id, "title": task.title}
                           for task in self.db.query(Task).filter_by(ward_id=ward_id).all()
@@ -215,7 +211,7 @@ class PlanningDomainService(PlanningOperations):
                     "candidates": conflicts,
                 })
             task = Task(ward_id=ward_id, title=title, details=copied.get("details"),
-                        planned_minutes=int(minutes), source="ward", status=POOL)
+                        planned_minutes=int(minutes) if minutes is not None else None, source="ward", status=POOL)
             self.db.add(task)
             self.db.flush()
             copied.update({"assignment_id": task.id, "new_task": False,
@@ -226,15 +222,6 @@ class PlanningDomainService(PlanningOperations):
     def _draft_items_for_pool(self, ward_id: str, items: list[dict]) -> list[dict]:
         known = {task.id: task for task in self.db.query(Task).filter_by(ward_id=ward_id).all()}
         by_id = {item.get("assignment_id"): dict(item) for item in items if item.get("assignment_id")}
-        # A review always makes the unfinished pool visible.  Existing scheduled
-        # tasks are intentionally excluded: re-planning them is a separate flow.
-        for task in known.values():
-            if task.status in {"completed", "cancelled"} or task.schedule_id is not None:
-                continue
-            by_id.setdefault(task.id, {
-                "assignment_id": task.id, "new_task": False, "title": task.title,
-                "details": task.details, "planned_minutes": task.planned_minutes,
-            })
         return list(by_id.values())
 
     @staticmethod
@@ -377,6 +364,17 @@ class PlanningDomainService(PlanningOperations):
             self.db.flush()
         return len(rows)
 
+    def declare_completion(self, ward_id, task_id, *, session_id=None, active_seconds=None):
+        task = self.db.get(Task, task_id)
+        changed = task is not None and task.ward_id == ward_id and task.status not in {COMPLETED, CANCELLED}
+        result = self.complete_task(ward_id, task_id)
+        if changed:
+            self.db.add(OutboxEvent(aggregate_type="task", aggregate_id=task_id,
+                event_type="TaskCompletionDeclared.v1", payload={"ward_id":ward_id,"task_id":task_id,
+                "source":"ward_declaration","version":result.version,
+                "study_session_id":session_id,"active_seconds":active_seconds}))
+        return result
+
     def complete_task(self, ward_id: str, task_id: str) -> Task | None:
         """Mark a task completed. Repeat delivery keeps the terminal status."""
         task = self.db.get(Task, task_id)
@@ -387,14 +385,18 @@ class PlanningDomainService(PlanningOperations):
             self.db.flush()
         return task
 
-    def _check_not_started(self, schedule):
-        if not schedule:
+    def _check_not_started(self, schedule, items=None):
+        if not schedule or items is None:
             return
-        tasks = self.db.query(Task).filter_by(schedule_id=schedule.id).all()
-        ids = [t.id for t in tasks]
-        if (any(t.status in {COMPLETED, CANCELLED} for t in tasks)
-                or (ids and self.db.query(StudySession).filter(StudySession.task_id.in_(ids)).first())):
-            raise HTTPException(409, "已开始的计划不能修改")
+        proposed = {i["assignment_id"]: i for i in items}
+        for original in schedule.items or []:
+            ident = original["assignment_id"]
+            if not self.db.query(StudySession).filter_by(task_id=ident).first():
+                continue
+            changed = proposed.get(ident)
+            if changed is None or changed.get("deferred") or any(
+                    changed.get(field) != original.get(field) for field in ("title", "planned_minutes", "start_at")):
+                raise HTTPException(409, "已开始的任务内容与历史时间不能修改")
 
     def delete_task(self, ward_id: str, task_id: str) -> Task:
         self._lock_ward(ward_id)
@@ -402,10 +404,10 @@ class PlanningDomainService(PlanningOperations):
         if task is None or task.ward_id != ward_id:
             raise HTTPException(404, "任务不存在")
         if task.source == "guardian":
-            raise HTTPException(409, "家长确认的必做任务不能删除，可说明原因暂不安排")
+            raise HTTPException(409, "家长传递的任务可移出本轮安排，来源记录保留")
         if task.status in {COMPLETED, CANCELLED}:
             raise HTTPException(409, "任务当前不可删除")
-        if self.db.query(StudySession).filter_by(task_id=task.id).first():
+        if self.db.query(StudySession).filter_by(task_id=task.id).first() or self.db.query(Sprint).filter_by(task_id=task.id).first():
             raise HTTPException(409, "已有学习记录的任务不能删除")
         if task.status == SCHEDULED or task.schedule_id:
             raise HTTPException(409, "已进入计划的任务需要确认后删除")
@@ -458,6 +460,7 @@ class PlanningDomainService(PlanningOperations):
         for item in items:
             item.pop("end_at", None)
         self._resolve_timeline(items, pending)
+        self._check_not_started(self._schedule(draft.ward_id, draft.plan_date), items)
         for item in items:
             if not item.get("deferred"):
                 self._slot(item)
@@ -479,8 +482,7 @@ class PlanningDomainService(PlanningOperations):
                    pending_fields: list[str] | None = None) -> PlanDraft:
         # Compatibility entry: trusted structured items still pass all rules.
         self._lock_ward(ward_id)
-        pending = set(pending_fields or [])
-        original_items = deepcopy(items)
+        pending = set(pending_fields or []) - {"planned_minutes", "start_at", "unscheduled_reason"}
         if sum(int(i["planned_minutes"]) for i in items if i.get("planned_minutes") is not None) > MAX_DAILY_MINUTES:
             raise HTTPException(400, "计划总时长超过当天上限")
         items = self.register_tasks(ward_id, items)
@@ -511,8 +513,6 @@ class PlanningDomainService(PlanningOperations):
                 })
             requested_titles[task.id] = title
             minutes = item.get("planned_minutes")
-            if minutes is None and "planned_minutes" not in pending:
-                raise HTTPException(400, "请补充任务预计时长")
             if minutes is not None and not 1 <= int(minutes) <= MAX_DAILY_MINUTES:
                 raise HTTPException(400, "计划草稿任务不完整")
         draft = self._ensure_draft(ward_id, plan_date)
@@ -526,6 +526,10 @@ class PlanningDomainService(PlanningOperations):
                 clean["slot_source"] = "ward_explicit"
                 current.pop("after_assignment_id", None)
                 current.pop("before_assignment_id", None)
+            if patch.get("planned_minutes") is not None:
+                clean.setdefault("duration_kind", "completion_estimate")
+                clean.setdefault("duration_source", "ward")
+            clean.setdefault("schedule_requested", True)
             current.update(clean)
             if not task.schedule_id and patch.get("planned_minutes") is not None:
                 task.planned_minutes = int(patch["planned_minutes"])
@@ -536,7 +540,7 @@ class PlanningDomainService(PlanningOperations):
                     "title": current["title"], "planned_minutes": current.get("planned_minutes")}
         normalized = self._draft_items_for_pool(ward_id, list(merged.values()))
         existing_batch = self._clarification_batch(draft)
-        batch = self._duration_batch(ward_id, original_items) if "planned_minutes" in pending else None
+        batch = None
         if existing_batch:
             batch = deepcopy(existing_batch)
             pending.update(slot["field"] for slot in batch["slots"])
@@ -544,7 +548,7 @@ class PlanningDomainService(PlanningOperations):
             state["active_clarification_batch"] = batch
         return self._persist_review(draft, normalized, pending, state)
 
-    def plan_draft_view(self, ward_id: str, draft_id: str) -> dict:
+    def plan_draft_view(self, ward_id: str, draft_id: str, *, include_suggestions: bool = False) -> dict:
         draft = self.db.get(PlanDraft, draft_id)
         if draft is None or draft.ward_id != ward_id:
             raise HTTPException(404, "计划草稿不存在")
@@ -555,7 +559,7 @@ class PlanningDomainService(PlanningOperations):
         conflicts = SchedulingService.validate_schedule(items, plan_date=draft.plan_date)
         conflict_ids = {ident for c in conflicts for ident in c["task_ids"]}
         state = draft.working_state or {}
-        pending = set(draft.pending_fields)
+        pending = set(draft.pending_fields) - {"planned_minutes", "start_at", "unscheduled_reason"}
         batch = deepcopy(self._clarification_batch(draft))
         if batch:
             pending.update(slot["field"] for slot in batch["slots"])
@@ -570,23 +574,20 @@ class PlanningDomainService(PlanningOperations):
                     if suggestion:
                         slot["duration_suggestion"] = suggestion
         for item in items:
+            item.setdefault("planned_minutes", None)
             task = self.db.get(Task, item["assignment_id"])
-            if task and task.source == "guardian" and not item.get("start_at") and not item.get("unscheduled_reason") and not pending:
-                pending.add("unscheduled_reason")
-            if item.get("schedule_requested") and not item.get("deferred") and not item.get("start_at"):
-                pending.add("start_at")
+            item["readonly"] = bool(task and task.status in {COMPLETED, CANCELLED})
             item["schedule_conflict"] = item["assignment_id"] in conflict_ids
-            item["will_enter_plan"] = bool(item.get("start_at") and item.get("end_at")
-                                           and not item.get("deferred") and not item["schedule_conflict"])
-            if task and item.get("planned_minutes"):
-                suggestion = duration_query.for_title(
-                    ward_id=ward_id, title=item["title"], plan_date=draft.plan_date,
-                    exclude_task_id=task.id)
-                if suggestion and abs(suggestion["suggested_minutes"] - item["planned_minutes"]) >= max(
-                    10, item["planned_minutes"] * 0.25,
-                ):
-                    item["duration_suggestion"] = suggestion
-            item["time_suggestion"] = suggest_plan_time(item, items, draft.plan_date)
+            item["will_enter_plan"] = bool(item.get("schedule_requested", True)
+                                           and not item.get("deferred") and not item["schedule_conflict"] and not item["readonly"])
+        if include_suggestions:
+            for item in items:
+                if item.get("planned_minutes"):
+                    suggestion = duration_query.for_title(ward_id=ward_id, title=item["title"],
+                        plan_date=draft.plan_date, exclude_task_id=item["assignment_id"])
+                    if suggestion and abs(suggestion["suggested_minutes"]-item["planned_minutes"]) >= max(10,item["planned_minutes"]*.25):
+                        item["duration_suggestion"] = suggestion
+                item["time_suggestion"] = suggest_plan_time(item, items, draft.plan_date)
         schedule = self._schedule(ward_id, draft.plan_date)
         stale = (schedule.version if schedule else 0) != draft.base_schedule_version
         for task_id, version in state.get("task_versions", {}).items():
@@ -621,7 +622,7 @@ class PlanningDomainService(PlanningOperations):
             raise HTTPException(404, "计划草稿不存在")
         if draft.version != expected_draft_version:
             raise HTTPException(409, "计划草稿已变化，请重新审阅")
-        view = self.plan_draft_view(ward_id, draft_id)
+        view = self.plan_draft_view(ward_id, draft_id, include_suggestions=True)
         item = next((row for row in view["items"] if row["assignment_id"] == task_id), None)
         if item is None:
             raise HTTPException(409, "建议目标已失效")
@@ -662,15 +663,16 @@ class PlanningDomainService(PlanningOperations):
             if ident not in tasks or tasks[ident].version != payload.get("task_version"):
                 raise HTTPException(409, "任务已变化，请重新审阅")
             if tasks[ident].source == "guardian":
-                raise HTTPException(409, "家长确认的必做任务不能删除，可说明原因暂不安排")
+                raise HTTPException(409, "家长传递的任务可移出本轮安排，来源记录保留")
         view = self.plan_draft_view(ward_id, draft.id)
         if not view["confirm_enabled"]:
             raise HTTPException(409, {"code": "plan_not_confirmable", "message": "计划草稿仍有待确认信息或时间冲突",
                                       "draft": view})
-        selected = sorted((i for i in draft.items if i.get("start_at") and not i.get("deferred")),
-                          key=lambda i: SchedulingService.instant(i["start_at"]))
+        selected = [i for i in view["items"] if i["will_enter_plan"] or i["readonly"]]
         for item in selected:
             task = tasks.get(item["assignment_id"])
+            if task and item.get("readonly") and schedule and task.schedule_id == schedule.id:
+                continue
             if task is None or not can_schedule(task.status):
                 raise HTTPException(409, "任务当前不可安排")
             if task.schedule_id and (schedule is None or task.schedule_id != schedule.id):
@@ -697,7 +699,10 @@ class PlanningDomainService(PlanningOperations):
                 self.db.delete(task)
         for position, item in enumerate(selected):
             task = tasks[item["assignment_id"]]
-            task.title, task.planned_minutes = item["title"], int(item["planned_minutes"])
+            if item.get("readonly"):
+                continue
+            task.title, task.planned_minutes = item["title"], item.get("planned_minutes")
+            task.duration_kind, task.duration_source = item.get("duration_kind"), item.get("duration_source")
             task.schedule_id, task.position = schedule.id, position
             task.status = SCHEDULED
         schedule.items, schedule.history = deepcopy(selected), history

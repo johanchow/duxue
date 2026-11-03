@@ -1,6 +1,6 @@
 # 读学系统 — Planning Domain Design（轻量计划与任务）
 
-> 状态：目标设计（v2.2 · 普通计划按需提示，挑战执行归 Study；尚未全部实现）
+> 状态：实现待验收（v2.2 · 普通计划按需提示，挑战执行归 Study）
 > 更新日期：2026-11-03
 > 范围：Task、PlanDraft、DailySchedule；实际执行归 Study。
 > 关联：[产品规则与验收](../product/prd-schedule.md) · [Context Map](ddd-overview.md) · [Companion](domain-companion.md) · [Study](domain-study.md) · [Behavior](domain-behavior.md) · [物理设计](design-server.md)
@@ -24,7 +24,7 @@ Planning 负责已知任务、安排顺序、可选估时和约定起点；Study
 | PlanDraft | draft_id、ward_id、plan_date、version、items、基准日程/任务版本 | 待确认的安排或修订；项含真实 task_id 或待创建项引用、title、order_index、可选时长/起点 |
 | DailySchedule | schedule_id、ward_id、plan_date、version、按序 items | 已确认的当日安排；保留已完成项和历史版本供回看 |
 
-时长意图需区分 `completion_estimate`（预计完成耗时）与 `timebox`（打算投入一段时间），并记录 Ward 原估或系统建议被接受的来源。`timebox` 也不自动等于 Sprint：还需 Ward 明确选择挑战并授权开始，执行记录归 Study。具体存储与迁移在实现前同步物理设计，现有必填字段不代表新规则已经落地。
+时长意图需区分 `completion_estimate`（预计完成耗时）与 `timebox`（打算投入一段时间），并记录 Ward 原估或系统建议被接受的来源。`timebox` 也不自动等于 Sprint：还需 Ward 明确选择挑战并授权开始，执行记录归 Study。`Task.duration_kind/duration_source` 及 Sprint 的物理映射见 [Server 设计](design-server.md)，迁移为 `20261103_32`；旧记录类型留空，不回填成孩子估时或挑战。
 
 `confirm_enabled` 要求至少一项可辨认目标、本次拟提交项均合法、目标明确、归属与基准版本有效；缺可选时间不阻塞。多项输入有不明确项时说明待处理项，可由 Ward 明确选择只确认完整部分，不能静默丢项。
 
@@ -68,10 +68,10 @@ stateDiagram-v2
 - 暂停/继续交给 Study；Task 仍为 scheduled。
 - 换项时暂停当前会话，保留当前任务未完成；只有明确开始授权才开启目标项。重复命令幂等，失败返回实际已提交结果。
 - “这次先到这里”关闭本次执行为未完成，不发布完成任务事件；后来可开启新会话继续同一 Task。
-- “写完了”经 Study 显式完成命令结算；Planning 消费 `StudySessionCompleted.v1` 幂等更新 Task。若无 active/paused 会话，须由 Study 承接目标绑定的完成声明，计时保留未知，不能补造零时长执行；该扩展须在实现前同步 Study 事件契约。
+- “写完了”经 Study 显式完成命令结算；Planning 消费 `StudySessionCompleted.v1` 幂等更新 Task。无 active/paused 会话时由明确完成命令调用 Planning 的 `declare_completion`，发布 `TaskCompletionDeclared.v1`，计时保留未知，不创建零时长会话。
 - 用户未点完成且无明确声明时，保持未确认完成；离座、换书、timebox 到点不触发完成。
 
-执行规则唯一归属 [Study](domain-study.md)；上述为跨域协调目标，不代表新增命令已落地。
+执行规则唯一归属 [Study](domain-study.md)，已贯通命令与按需界面，待本轮验收。
 
 ## 四、Query 与交互投影
 
@@ -98,4 +98,4 @@ Companion 的 `plan_confirm_list` 承载安排确认；新增 `quick_ignite` 等
 
 产品场景与验收唯一归属 [PRD §六](../product/prd-schedule.md#六验收标准)。实施需补充领域与协议测试：可空时间、确认不开始、显式开始、暂停换项后的区间保留、无计时完成声明、幂等/旧版本/目标歧义、跨日释放、未完成项按需可查、默认无常驻任务条、普通任务与 Sprint 授权隔离、挑战到时不触发任务完成。
 
-现有代码的必填时长、精确时间槽、显式会话完成等契约不能只改文档就视为兼容；迁移、事件升级和客户端交互改造需在实现中逐项验收。
+本轮实现及实际测试记录见[进行中 spec](../../.agent/specs/lightweight-planning-focus-sprint.md)。旧活动草稿由迁移32失效，旧任务/日程/会话历史保留；旧来源不明钟点不自动触发新邀请。

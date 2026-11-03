@@ -186,7 +186,7 @@ class StructuredWardCommand(BaseModel):
     """A server-issued, allow-listed action; never an arbitrary tool call."""
 
     interaction_id: str = Field(min_length=1, max_length=200)
-    command: str = Field(pattern=r"^(confirm_plan|clarify_reply|accept_plan_suggestion|choose_intent)$")
+    command: str = Field(pattern=r"^(confirm_plan|clarify_reply|accept_plan_suggestion|choose_intent|sprint_command)$")
     payload: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")

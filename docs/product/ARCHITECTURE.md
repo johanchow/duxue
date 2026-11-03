@@ -116,7 +116,7 @@
 - **服务端核心领域（Domain）**：
   - **`Companion`（陪伴编排域）**：Ward 可见对话的唯一 append-only 账本，负责意图路由、跨场景切换核查（`scene-switch`）、确认卡与交互按钮生命周期管理。
   - **`Planning`（轻量计划与任务域）**：保留任务、草稿、当日顺序与可选估时/起点；安排确认与实际执行分离，面向用户按需显露，见 [Planning 设计](../technical/domain-planning.md)。
-  - **`Study`（学习执行域）**：管理 `StudySession`（开始/暂停/继续/完成/跨天自动放弃）与到点开始邀请（`StartCue`）；目标扩展拥有主动专注挑战 `Sprint`，其到时不代表任务完成。
+  - **`Study`（学习执行域）**：管理 `StudySession`（开始/暂停/继续/完成/跨天自动放弃）与到点开始邀请（`StartCue`）；本轮新增主动专注挑战 `Sprint`（待验收），其到时不代表任务完成。
   - **`Tutoring`（辅导答疑域）**：执行答案状态红线（`permit()`）、`TutoringTurnLoop`、多模态配图（`visual`）、发音示范（`pronounce`）及独立泄露裁判。
   - **`Evaluation`（评估与复盘域）**：管理 Ward 今日总结原话与六维结构化条目、证据版本化的客观行为与卡点聚合报告。
   - **`Memory`（孩子理解与记忆域）**：纯后端智能底座，基于客观事实事件账本维护工作记忆、近期事件（`Episodic`）与长期画像（`Claim/Signal`），严守与主观自述的隔离边界。
@@ -189,10 +189,10 @@ graph TB
 
 | 能力域 | 产品规格（PRD） | 领域技术契约（事实源） | 当前状态与关键演进说明 |
 | :--- | :--- | :--- | :--- |
-| **用户、身份与首页** | [`prd-user.md`](prd-user.md) | [`design-app.md`](../technical/design-app.md) | **身份与统一对话入口已落地**。默认不展示任务进度、仅主动 Sprint 展示限时卡的首页为目标设计，尚待改造。 |
+| **用户、身份与首页** | [`prd-user.md`](prd-user.md) | [`design-app.md`](../technical/design-app.md) | **身份与统一对话入口已落地**。默认对话首页、按需作业与主动 Sprint 限时卡已实现，待本轮验收，尚未部署。 |
 | **陪伴对话统一入口** | [`prd-companion.md`](prd-companion.md) | [`domain-companion.md`](../technical/domain-companion.md) | **已落地**。统一 `/companion/turn`，支持 `planning`/`tutoring`/`reflection`/`unclear` 路由与跨场景核查。 |
 | **启发式答疑与表达** | [`prd-companion.md`](prd-companion.md) | [`domain-tutoring.md`](../technical/domain-tutoring.md)<br/>[`domain-tutoring-presentation.md`](../technical/domain-tutoring-presentation.md)<br/>[`eval-offline.md`](../technical/eval-offline.md) | **主链路已落地**。含答案保护许可、独立泄露裁判、5 种结构化配图、发音 `pronounce` 与离线评测。 |
-| **轻量计划与任务（原协商式计划 / 点火器）** | [`prd-schedule.md`](prd-schedule.md) | [`domain-planning.md`](../technical/domain-planning.md) | **目标设计已调整，待实现**。普通计划仅按需提示、主动 Sprint 限时展示；后台模型保留，挑战与作业完成分离，尚需改造验收。 |
+| **轻量计划与任务（原协商式计划 / 点火器）** | [`prd-schedule.md`](prd-schedule.md) | [`domain-planning.md`](../technical/domain-planning.md) | **本轮已实现，待验收**。普通计划按需提示、主动 Sprint 限时展示；后台模型保留，挑战与作业完成分离，迁移32尚未应用到开发/生产库。 |
 | **学习执行与到点邀请** | [`prd-companion.md`](prd-companion.md) | [`domain-study.md`](../technical/domain-study.md) | **已落地**。含 `StudySession` 状态机与 `StartCue` 到点开始邀请卡片。 |
 | **学习观察与行为采集** | [`prd-supervise.md`](prd-supervise.md) | [`design-gateway.md`](../technical/design-gateway.md)<br/>[`domain-behavior.md`](../technical/domain-behavior.md) | Go采集主链路已实现，真实摄像头/OSS待现场验收；云端窗口解释、无计划观察学段与版本化观察已有目标设计，尚未实现。求助邀请与晚间报告扩展分别归 Study / Evaluation。 |
 | **结果评估与复盘引导** | [`prd-evaluate.md`](prd-evaluate.md) | [`domain-evaluation.md`](../technical/domain-evaluation.md) | **部分落地**。Ward 自由语音/文字总结（六维条目）已落地，旧版“单选题盲评+自动专注锦囊”已退役；客观证据版本化报告待完善。 |

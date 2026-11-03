@@ -670,7 +670,7 @@ class _WardDetailPageState extends ConsumerState<WardDetailPage> {
               .map((item) => Padding(
                     padding: const EdgeInsets.only(top: 6),
                     child: Text(
-                        '• ${item['title']} · ${item['planned_minutes']} 分钟'),
+                        '• ${item['title']} · ${item['planned_minutes'] == null ? '未估时' : '${item['planned_minutes']} 分钟'}'),
                   ))),
         ]))
       else

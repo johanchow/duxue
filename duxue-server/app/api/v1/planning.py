@@ -84,13 +84,16 @@ def create_assignment(ward_id: str, body: AssignmentCreate, principal: Principal
     return {"id": row.id, "title": row.title, "status": row.status, "source": row.source}
 
 @router.get("/wards/{ward_id}/assignments")
-def assignments(ward_id: str, principal: Principal = Depends(current_guardian_or_ward), db: Session = Depends(get_db)):
+def assignments(ward_id: str, include_completed: bool = False, principal: Principal = Depends(current_guardian_or_ward), db: Session = Depends(get_db)):
     if principal.role == "ward": _ward_owned(principal, ward_id)
     else: owned_ward(db, principal.user_id, ward_id)
     PlanningDomainService(db).release_unfinished_tasks(ward_id, planning_today())
     db.commit()
-    rows = db.query(Task).filter_by(ward_id=ward_id).filter(Task.status.notin_([COMPLETED, CANCELLED])).all()
-    return [{"id": x.id, "title": x.title, "details": x.details, "due_date": x.due_date, "status": x.status,
+    rows = db.query(Task).filter_by(ward_id=ward_id).filter(Task.status != CANCELLED)
+    if not include_completed:
+        rows = rows.filter(Task.status != COMPLETED)
+    rows = rows.all()
+    return [{"id": x.id, "title": x.title, "details": x.details, "due_date": x.due_date, "status": x.status, "source": x.source, "planned_minutes": x.planned_minutes, "version": x.version, "duration_kind": x.duration_kind, "duration_source": x.duration_source,
              "session": open_session_for_task(db, task_id=x.id)} for x in rows]
 
 
@@ -148,6 +151,6 @@ def get_plan(ward_id: str, plan_date: date, principal: Principal = Depends(curre
     if plan is None: raise HTTPException(404, "plan not found")
     items = db.query(Task).filter_by(schedule_id=plan.id).order_by(Task.position)
     slots = {i["assignment_id"]: i for i in (plan.items or [])}
-    return {"id": plan.id, "version": plan.version, "status": plan.status, "items": [{"id": x.id, "assignment_id": x.id, "title": x.title, "planned_minutes": x.planned_minutes, "status": x.status,
+    return {"id": plan.id, "version": plan.version, "status": plan.status, "items": [{"id": x.id, "assignment_id": x.id, "title": x.title, "planned_minutes": x.planned_minutes, "duration_kind": x.duration_kind, "duration_source": x.duration_source, "status": x.status,
              "start_at": slots.get(x.id, {}).get("start_at"), "end_at": slots.get(x.id, {}).get("end_at"),
              "session": open_session_for_task(db, task_id=x.id)} for x in items]}

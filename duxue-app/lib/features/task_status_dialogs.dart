@@ -450,7 +450,7 @@ class FinishTaskConfirmDialog extends StatelessWidget {
           _buildTaskCard(
             title: taskTitle,
             extraContent: Text(
-              '本次累计专注时长：$durationLabel',
+              '本次会话计时（非净专注）：$durationLabel',
               style: const TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
