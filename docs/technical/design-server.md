@@ -977,3 +977,23 @@ duxue-server/tests/
 
 每项强一致不变量至少具有：一条成功路径、一条拒绝路径，以及一条重复命令、并发冲突或迟到事件路径。
 领域文档新增或修改 Gherkin 验收场景时，必须同步增加对应测试；该测试是该场景实现完成的退出条件。
+
+
+## 轻量任务与专注挑战物理映射（2026-11-03，迁移32）
+
+产品事实源：[计划 PRD](../product/prd-schedule.md)；领域契约：[Planning](domain-planning.md)、[Study Sprint](domain-study.md#24-sprint主动专注挑战已实现待验收)。本轮实现待验收，未对开发/生产库自动执行迁移。
+
+| 表 / 字段 | 物理契约 |
+|---|---|
+| tasks.duration_kind / duration_source | 可空 String(30)，区分 completion_estimate / timebox 与来源；planned_minutes 沿用可空字段，不回填旧记录 |
+| study_sprints | UUID 主键，Ward/可选 Task/StudySession 外键；主题、目标秒数、创建/实际开始/可选约定起点、累计秒数、active_since、JSON区间、状态/结束原因、通知领取标记与乐观版本 |
+| study_sprints 约束 | 正目标秒数、累计在0至目标内、状态闭集；同一 Ward 的 active/paused 由部分唯一索引 uq_sprint_live_ward 保证至多一轮 |
+| study_sprint_commands | UUID 主键、Ward、command_id、请求fingerprint、结果JSON；uq_sprint_command(ward_id,command_id) 确保幂等，重复ID不同内容409 |
+
+迁移 `20261103_32` 在既有31版之上新增以上列/表，并将旧 active PlanDraft 标为 superseded、推进版本，防止旧卡按新语义确认。保留旧 Task、DailySchedule、StudySession；回退只删除本迁移新增的表/列，旧草稿不会重新获得确认权限。
+
+API：`GET /sprints/current`；`POST /sprints` 明确 create（现在开启）或 prepare（仅准备）；`POST /sprints/{id}/commands` 承接带 command_id/expected_version 的 start/pause/resume/end/cancel/claim_notice。任务按需操作使用 `POST /assignments/{id}/commands`，兼容旧会话端点；执行区间由服务端计时，不信任客户端累计秒数。
+
+Sprint 命令以 Ward 行锁串行化，行/幂等回执同事务；轮次到时由读取恢复和15秒 Celery维护共同核算，通知仅通过前台安全点最多领取一次，60秒后不强制补弹。到时不触发任务完成或原会话结束；任务完成声明单独记录 `TaskCompletionDeclared.v1`，无会话时计时为空。
+
+数据清除先删除 Sprint 命令回执与 Sprint，再删除关联 Task；携带 Ward 路由的 Outbox 也清除，避免清除后重放完成声明。已有 Sprint 或学习记录的 Task 不允许物理删除。

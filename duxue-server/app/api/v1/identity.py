@@ -275,7 +275,7 @@ def delete_ward_data(ward_id: str, principal: Principal = Depends(current_guardi
     db.query(LearningEvent).filter(LearningEvent.ward_id == ward_id).delete(synchronize_session=False)
     # Outbox has no Ward FK by design.  Its self-contained envelope is the
     # authoritative routing field for erasure before a worker can replay it.
-    for event in db.query(OutboxEvent).filter(OutboxEvent.event_type == "LearningFactRecorded.v1").all():
+    for event in db.query(OutboxEvent).all():
         if (event.payload or {}).get("ward_id") == ward_id:
             db.delete(event)
 
@@ -293,6 +293,9 @@ def delete_ward_data(ward_id: str, principal: Principal = Depends(current_guardi
     db.query(TutoringSession).filter(TutoringSession.ward_id == ward_id).delete(synchronize_session=False)
     db.query(PronunciationLesson).filter(PronunciationLesson.ward_id == ward_id).delete(synchronize_session=False)
     db.query(Frame).filter(Frame.ward_id == ward_id).delete(synchronize_session=False)
+    from app.infrastructure.persistence.models import Sprint, SprintCommand
+    db.query(SprintCommand).filter_by(ward_id=ward_id).delete(synchronize_session=False)
+    db.query(Sprint).filter_by(ward_id=ward_id).delete(synchronize_session=False)
     session_ids = [row[0] for row in db.query(StudySession.id).filter_by(ward_id=ward_id).all()]
     if session_ids:
         db.query(StudySessionInterval).filter(StudySessionInterval.study_session_id.in_(session_ids)).delete(synchronize_session=False)

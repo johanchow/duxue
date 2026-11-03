@@ -280,6 +280,8 @@ class Task(Base):
     due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     position: Mapped[int | None] = mapped_column(Integer, nullable=True)
     planned_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    duration_kind: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    duration_source: Mapped[str | None] = mapped_column(String(30), nullable=True)
     source: Mapped[str] = mapped_column(String(20), default="guardian")
     status: Mapped[str] = mapped_column(String(20), default="pool")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
@@ -315,6 +317,46 @@ class PlanDraft(Base):
     __mapper_args__: ClassVar[dict] = {"version_id_col": version, "version_id_generator": False}
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+class Sprint(Base):
+    __tablename__ = "study_sprints"
+    __table_args__ = (
+        CheckConstraint("target_seconds > 0", name="ck_sprint_positive_duration"),
+        CheckConstraint("elapsed_seconds >= 0 AND elapsed_seconds <= target_seconds", name="ck_sprint_elapsed"),
+        CheckConstraint("status IN ('ready','active','paused','elapsed','ended','cancelled')", name="ck_sprint_status"),
+        Index("uq_sprint_live_ward", "ward_id", unique=True,
+              postgresql_where=text("status IN ('active','paused')"),
+              sqlite_where=text("status IN ('active','paused')")),
+    )
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
+    ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id"), index=True)
+    task_id: Mapped[str | None] = mapped_column(ForeignKey("tasks.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    study_session_id: Mapped[str | None] = mapped_column(ForeignKey("study_sessions.id"), nullable=True)
+    topic: Mapped[str] = mapped_column(String(300))
+    target_seconds: Mapped[int] = mapped_column(Integer)
+    elapsed_seconds: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(20), default="ready")
+    planned_start_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    active_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    end_reason: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    intervals: Mapped[list] = mapped_column(JSON, default=list)
+    notice_claimed: Mapped[bool] = mapped_column(Boolean, default=False)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    __mapper_args__: ClassVar[dict] = {"version_id_col": version}
+
+
+class SprintCommand(Base):
+    __tablename__ = "study_sprint_commands"
+    __table_args__ = (UniqueConstraint("ward_id", "command_id", name="uq_sprint_command"),)
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
+    ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id"), index=True)
+    command_id: Mapped[str] = mapped_column(String(100))
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    result: Mapped[dict] = mapped_column(JSON)
+
 
 class StudySession(Base):
     __tablename__ = "study_sessions"

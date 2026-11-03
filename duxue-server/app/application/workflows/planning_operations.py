@@ -18,6 +18,7 @@ from app.infrastructure.persistence.models import (
     DailySchedule,
     PlanDraft,
     StudySession,
+    Sprint,
     Task,
 )
 
@@ -137,13 +138,10 @@ class PlanningOperations:
                 remaining_slots.append(slot)
                 continue
             if answer.get('skip'):
-                if any(tasks[i].source == 'guardian' for i in op.get('task_ids', []) if i in tasks) and not answer.get('reason'):
-                    _reject_slot_value(field=slot['field'], code='defer_reason_required', value=answer.get('reason'),
-                                       detail='必做任务暂不安排需要说明原因')
                 op.update(status='deferred', reason=answer.get('reason', '本次暂不安排'))
                 for ident in op.get('task_ids', []):
                     if ident in items:
-                        items[ident].update(deferred=True, unscheduled_reason=op['reason'])
+                        items[ident].update(deferred=True)
                         items[ident].pop('start_at', None)
                         items[ident].pop('end_at', None)
                 continue
@@ -202,7 +200,7 @@ class PlanningOperations:
         for index, raw in enumerate(operations):
             # IDs can only come from issued slot answers, never raw model output.
             op = {k: deepcopy(v) for k, v in raw.items() if k in {
-                'kind', 'references', 'title', 'planned_minutes', 'start_at',
+                'kind', 'references', 'title', 'planned_minutes', 'duration_kind', 'start_at',
                 'after_task_reference', 'before_task_reference', 'reason'}}
             if op.get('kind') not in {'create', 'update', 'schedule', 'defer', 'delete'}:
                 _reject_slot_value(field='operation_kind', code='unknown_plan_operation', value=op.get('kind'),
@@ -295,8 +293,6 @@ class PlanningOperations:
             if kind == 'create':
                 if not str(op.get('title') or '').strip():
                     ask(op_id, op, 'title')
-                if op.get('planned_minutes') is None:
-                    ask(op_id, op, 'planned_minutes')
                 if any(s['operation_id'] == op_id for s in slots):
                     continue
             minutes = op.get('planned_minutes')
@@ -315,13 +311,9 @@ class PlanningOperations:
             if op.get('status') == 'rejected':
                 continue
             if kind == 'defer':
-                if any(t.source == 'guardian' for t in targets) and not op.get('reason'):
-                    op['status'] = 'rejected'
-                    results.append({'operation_id': op_id, 'status': 'rejected', 'reason': '必做任务需暂不安排原因'})
-                    continue
                 for task in targets:
                     item = items.setdefault(task.id, self._task_item(task))
-                    item.update(deferred=True, unscheduled_reason=op.get('reason') or '本次暂不安排')
+                    item.update(deferred=True)
                     for field in ('start_at', 'end_at', 'after_assignment_id', 'before_assignment_id'):
                         item.pop(field, None)
                 # Explicit target deferral closes prior pending operations for these targets.
@@ -333,9 +325,10 @@ class PlanningOperations:
                 if any(task.source == 'guardian' for task in targets):
                     op['status'] = 'rejected'
                     results.append({'operation_id': op_id, 'status': 'rejected',
-                                    'reason': '家长确认的必做任务不能删除，可说明原因暂不安排'})
+                                    'reason': '家长传递的任务可移出本轮安排，来源记录保留'})
                     continue
-                if self.db.query(StudySession).filter(StudySession.task_id.in_(ids)).first():
+                if (self.db.query(StudySession).filter(StudySession.task_id.in_(ids)).first()
+                        or self.db.query(Sprint).filter(Sprint.task_id.in_(ids)).first()):
                     op['status'] = 'rejected'
                     results.append({'operation_id': op_id, 'status': 'rejected',
                                     'reason': '已有学习记录的任务不能删除'})
@@ -417,17 +410,23 @@ class PlanningOperations:
                 for task in targets:
                     item = items.setdefault(task.id, self._task_item(task))
                     item['target_bound'] = True
+                    if kind == 'create':
+                        item['schedule_requested'] = True
                     if kind in {'update', 'create'}:
                         if op.get('title'):
                             item['title'] = op['title'].strip()
                         if minutes is not None:
                             item['planned_minutes'] = minutes
+                            item['duration_kind'] = op.get('duration_kind') or 'completion_estimate'
+                            item['duration_source'] = 'ward'
                         if task.schedule_id:
                             state.setdefault('proposed_task_changes', {})[task.id] = {
                                 'title': item['title'], 'planned_minutes': item.get('planned_minutes')}
                         else:
                             task.title = item['title']
                             task.planned_minutes = item.get('planned_minutes')
+                            task.duration_kind = item.get('duration_kind')
+                            task.duration_source = item.get('duration_source')
                     if timing or kind == 'schedule':
                         item.pop('deferred', None)
                         item['schedule_requested'] = True
@@ -436,8 +435,6 @@ class PlanningOperations:
                         if timing.get('after_assignment_id') or timing.get('before_assignment_id'):
                             item.pop('start_at', None)
                         item.update(timing)
-                    if item.get('schedule_requested') and not item.get('start_at') and not timing:
-                        ask(op_id, op, 'start_at')
             op['status'] = 'waiting' if any(s['operation_id'] == op_id for s in slots) else 'applied'
             result = {'operation_id': op_id, 'status': op['status'], 'task_ids': op.get('task_ids', [])}
             if op.get('requires_confirmation'):
@@ -493,9 +490,7 @@ class PlanningOperations:
         elif not operations and not answers and not statuses:
             status = 'no_op'
         elif has_reviewed_plan_change or has_applied_change and any(
-            (item.get('schedule_requested') and (
-                item.get('start_at') or item.get('after_assignment_id') or item.get('before_assignment_id')
-            ))
+            item.get('schedule_requested')
             for item in items
         ):
             status = 'draft_changed'

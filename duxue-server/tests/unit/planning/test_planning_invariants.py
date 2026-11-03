@@ -80,111 +80,50 @@ def test_task_duration_and_title_validation(db):
     assert exc2.value.status_code == 400
 
 
-def test_missing_task_duration_stays_pending_instead_of_defaulting_to_30_minutes(db):
-    """计划解析缺少预计时长时，必须追问而不是臆定 30 分钟。"""
-    ward = create_ward(db)
-    item = PlanIntakeItem(title="整理错题", new_task=True)
-
-    assert item.planned_minutes is None
-
-    draft = PlanningDomainService(db).save_draft(
-        ward.id,
-        date(2026, 9, 12),
-        [item.model_dump(mode="json")],
-        pending_fields=["planned_minutes"],
-    )
-    assert draft.pending_fields == ["planned_minutes"]
-    assert draft.items == []
-    batch = draft.working_state["active_clarification_batch"]
-    assert batch["slots"][0]["title"] == "整理错题"
-
-
-def test_llm_structured_duration_updates_resolve_slots_and_create_task_pool_records(db):
+def test_missing_duration_is_optional_and_never_defaults(db):
     ward = create_ward(db)
     service = PlanningDomainService(db)
-    draft = service.save_draft(
-        ward.id, date(2026, 9, 18), [
-            {"new_task": True, "title": "数学试卷", "planned_minutes": None},
-            {"new_task": True, "title": "英语作业", "planned_minutes": None},
-        ], pending_fields=["planned_minutes"],
-    )
-    assert len(draft.working_state["active_clarification_batch"]["slots"]) == 2
-
-    slots = draft.working_state["active_clarification_batch"]["slots"]
-    resolved = service.resolve_duration_clarification(
-        ward_id=ward.id, plan_date=date(2026, 9, 18),
-        answers=[{"slot_id": slots[0]["slot_id"], "value": "30分钟"},
-                 {"slot_id": slots[1]["slot_id"], "value": "50分钟"}],
-    )
-    assert resolved is not None
-    updated, count = resolved
-    assert count == 2
-    assert updated.pending_fields == []
-    assert "active_clarification_batch" not in updated.working_state
-    assert {(task.title, task.planned_minutes) for task in db.query(Task).filter_by(ward_id=ward.id)} == {
-        ("数学试卷", 30), ("英语作业", 50),
-    }
+    draft = service.save_draft(ward.id, date(2026,9,12), [{"new_task":True,"title":"整理错题"}])
+    assert not draft.pending_fields
+    assert db.query(Task).one().planned_minutes is None
+    assert service.plan_draft_view(ward.id,draft.id)["confirm_enabled"]
 
 
-def test_service_never_interprets_bare_text_for_multiple_duration_slots(db):
-    ward = create_ward(db)
-    service = PlanningDomainService(db)
-    draft = service.save_draft(
-        ward.id, date(2026, 9, 18), [
-            {"new_task": True, "title": "数学试卷", "planned_minutes": None},
-            {"new_task": True, "title": "英语作业", "planned_minutes": None},
-        ], pending_fields=["planned_minutes"],
-    )
-    result = service.resolve_duration_clarification(ward_id=ward.id, plan_date=date(2026, 9, 18))
-    assert result == (draft, 0)
-    assert len(draft.working_state["active_clarification_batch"]["slots"]) == 2
-    assert db.query(Task).filter_by(ward_id=ward.id).count() == 0
+def test_model_structured_optional_duration_updates_named_tasks(db):
+    ward=create_ward(db); service=PlanningDomainService(db)
+    draft=service.apply_operations(ward.id,date(2026,9,18),[
+        {"kind":"create","title":"数学"},{"kind":"create","title":"英语"}],command_id="create")
+    assert not draft.pending_fields
+    draft=service.apply_operations(ward.id,date(2026,9,18),[
+        {"kind":"update","references":["数学"],"planned_minutes":30},
+        {"kind":"update","references":["英语"],"planned_minutes":50}],command_id="update")
+    assert {(t.title,t.planned_minutes) for t in db.query(Task)} == {("数学",30),("英语",50)}
 
 
-def test_structured_duration_update_binds_to_the_issued_task(db):
-    ward = create_ward(db)
-    task = create_task(db, ward=ward, title="数学试卷", planned_minutes=None)
-    service = PlanningDomainService(db)
-    draft = service.save_draft(
-        ward.id, date(2026, 9, 18),
-        [{"assignment_id": task.id, "new_task": False, "title": task.title, "planned_minutes": None}],
-        pending_fields=["planned_minutes"],
-    )
-    slot_id = draft.working_state["active_clarification_batch"]["slots"][0]["slot_id"]
-    updated, count = service.resolve_duration_clarification(
-        ward_id=ward.id, plan_date=date(2026, 9, 18),
-        answers=[{"slot_id": slot_id, "value": "30分钟"}],
-    )
-    assert count == 1
-    assert updated.pending_fields == []
-    assert task.planned_minutes == 30
+def test_no_duration_slots_or_implicit_task_defaults(db):
+    ward=create_ward(db); service=PlanningDomainService(db)
+    draft=service.save_draft(ward.id,date(2026,9,18),[{"new_task":True,"title":"数学"},{"new_task":True,"title":"英语"}])
+    assert service.resolve_duration_clarification(ward_id=ward.id,plan_date=date(2026,9,18)) is None
+    assert db.query(Task).count()==2
+    assert all(t.planned_minutes is None for t in db.query(Task))
+    assert service.plan_draft_view(ward.id,draft.id)["clarification_batch"] is None
 
 
-def test_scheduling_turn_preserves_unresolved_duration_slot_and_can_become_confirmable(db):
-    ward = create_ward(db)
-    task = create_task(db, ward=ward, title="英语听力", planned_minutes=None)
-    service = PlanningDomainService(db)
-    first = service.save_draft(
-        ward.id, date(2026, 9, 18),
-        [{"assignment_id": task.id, "new_task": False, "title": task.title, "planned_minutes": None}],
-        pending_fields=["planned_minutes"],
-    )
-    slot_id = first.working_state["active_clarification_batch"]["slots"][0]["slot_id"]
+def test_invalid_explicit_duration_answers_remain_bound_to_issued_slot(db):
+    ward=create_ward(db); service=PlanningDomainService(db)
+    draft=service.apply_operations(ward.id,date(2026,9,18),[{"kind":"create","title":"数学","planned_minutes":0}],command_id="invalid")
+    slot=draft.working_state["active_clarification_batch"]["slots"][0]
+    draft=service.apply_operations(ward.id,date(2026,9,18),[],answers=[{"slot_id":slot["slot_id"],"value":30}],command_id="correct")
+    assert db.query(Task).one().planned_minutes==30
+    assert not draft.pending_fields
 
-    # A following scheduling turn must not erase its duration target.
-    second = service.save_draft(
-        ward.id, date(2026, 9, 18),
-        [{"assignment_id": task.id, "new_task": False, "title": task.title,
-          "planned_minutes": None, "start_at": "2026-09-18T19:00:00"}],
-        pending_fields=["planned_minutes"],
-    )
-    assert second.working_state["active_clarification_batch"]["slots"][0]["slot_id"] == slot_id
-    updated, count = service.resolve_duration_clarification(
-        ward_id=ward.id, plan_date=date(2026, 9, 18),
-        answers=[{"slot_id": slot_id, "value": "30分钟"}],
-    )
-    assert count == 1
-    assert service.plan_draft_view(ward.id, updated.id)["confirm_enabled"] is True
+
+def test_start_without_duration_is_confirmable_and_keeps_duration_unknown(db):
+    ward=create_ward(db); service=PlanningDomainService(db)
+    draft=service.save_draft(ward.id,date(2026,9,18),[{"new_task":True,"title":"英语","start_at":"2026-09-18T19:00:00+08:00"}])
+    assert service.plan_draft_view(ward.id,draft.id)["confirm_enabled"]
+    assert draft.items[0].get("planned_minutes") is None
+    assert draft.items[0].get("end_at") is None
 
 
 def test_plan_intake_prompt_renders_slot_update_example_literally():
@@ -239,7 +178,7 @@ def test_cannot_confirm_draft_with_pending_fields(db):
         ward.id,
         date(2026, 9, 12),
         [{"new_task": True, "title": "数学口算", "planned_minutes": 20}],
-        pending_fields=["planned_minutes"],
+        pending_fields=["ambiguous_target_task"],
     )
     db.commit()
 
@@ -307,8 +246,8 @@ def test_after_task_intent_derives_a_non_overlapping_slot(db):
 
     view = PlanningDomainService(db).plan_draft_view(ward.id, draft.id)
     english_item = next(item for item in view["items"] if item["assignment_id"] == english.id)
-    assert english_item["start_at"] == "2026-09-17T18:25:00"
-    assert english_item["slot_source"] == "deterministic_derived"
+    assert english_item.get("start_at") is None
+    assert english_item["after_assignment_id"] == math.id
     assert view["confirm_enabled"] is True
 
 

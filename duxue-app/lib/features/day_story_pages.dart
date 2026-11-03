@@ -17,6 +17,7 @@ import '../shared/app_ui.dart';
 import '../shared/chat_markdown.dart';
 import '../shared/voice_composer.dart';
 import 'home_task_card.dart';
+import 'sprint_card.dart';
 import 'chat_image_viewer.dart';
 import 'pronunciation_player.dart';
 import 'start_cue_card.dart';
@@ -200,6 +201,13 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   List<dynamic> tasks = [];
   Map<String, dynamic>? plan, insight, profile, startCue;
   String? session;
+  Map<String, dynamic>? sprint, readySprint, sprintAction;
+  String? hiddenSprintId;
+  bool sprintBusy = false;
+  int sprintGeneration = 0;
+  bool sprintForeground = true;
+  Timer? sprintRefresh;
+  Map<String, dynamic>? pendingSprintRequest;
   int tab = 0;
   final watch = Stopwatch();
   final planAttachments = <String>[];
@@ -249,6 +257,8 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     _load();
     _restoreCompanionThread();
     _scheduleCueRefresh();
+    sprintRefresh =
+        Timer.periodic(const Duration(seconds: 30), (_) => _refreshSprint());
   }
 
   void _scheduleCueRefresh() {
@@ -269,13 +279,18 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     _chatScrollController.dispose();
     timer?.cancel();
     cueRefresh?.cancel();
+    sprintRefresh?.cancel();
     _speechPlayback?.dispose();
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    sprintForeground = state == AppLifecycleState.resumed;
+    sprintGeneration++;
     if (state == AppLifecycleState.resumed) {
+      setState(() => sprint = null);
+      _refreshSprint();
       _refreshCue();
       _scheduleCueRefresh();
     }
@@ -312,258 +327,12 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
 
   Widget _home(BuildContext context) {
     final planned = (plan?['items'] as List? ?? const []).cast<dynamic>();
-    final plannedAssignmentIds = planned
-        .map((item) => item['assignment_id'])
-        .whereType<String>()
-        .toSet();
-    final pool = tasks
-        .where((item) =>
-            !plannedAssignmentIds.contains(item['id']) &&
-            !removedPoolTaskIds.contains(item['id']))
-        .toList();
     return Stack(children: [
-      ListView(
-          padding: EdgeInsets.fromLTRB(
-              16, 14, 16, stagedImages.isNotEmpty ? 228 : 156),
-          children: [
-            _homeGreeting(context),
-            if (startCue?['status'] == 'presented')
-              StartCueCard(
-                text: startCue?['text'] as String? ?? '',
-                tasks: [
-                  for (final task in (startCue?['tasks'] as List?) ?? const [])
-                    Map<String, dynamic>.from(task as Map),
-                ],
-                actions: [
-                  for (final action
-                      in (startCue?['actions'] as List?) ?? const [])
-                    Map<String, dynamic>.from(action as Map),
-                ],
-                onCommand: _actOnStartCue,
-              ),
-            _contextHeader(
-                plan?['status'] == 'confirmed' ? '已确认 · 今日计划' : '今日计划',
-                action: planned.isEmpty ? null : _openPlanList,
-                actionLabel: '全部'),
-            if (planned.isEmpty)
-              const _HomeEmptyCard(message: '今天还没有确认计划。可以在下方说说你想怎么安排。')
-            else
-              _planRail(planned),
-            const SizedBox(height: 14),
-            _contextHeader('未排期任务', meta: '${pool.length} 项 · 左滑删除'),
-            if (pool.isEmpty)
-              const _HomeEmptyCard(message: '今天没有待定项了。想加任务，走下方统一入口。')
-            else
-              ...pool.map((item) => _poolTask(item as Map<String, dynamic>)),
-            if (planned.isNotEmpty) ...[
-              const SizedBox(height: 18),
-              FilledButton.tonal(
-                  onPressed: _review, child: const Text('完成今日计划，先说说自己的感受')),
-            ],
-          ]),
+      _planChatOverlay(),
       if (planListOpen) _planListOverlay(planned),
-      if (planChatOpen) _planChatOverlay(),
       if (!planListOpen)
         Positioned(left: 16, right: 16, bottom: 12, child: _chatEntry()),
     ]);
-  }
-
-  Widget _homeGreeting(BuildContext context) => Padding(
-      padding: const EdgeInsets.only(bottom: 18),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Expanded(
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(
-              '周${_weekday(DateTime.now())} · ${DateTime.now().month} 月 ${DateTime.now().day} 日',
-              style: const TextStyle(
-                  fontSize: 12, color: Color(0xff8b95a8), letterSpacing: 0.2)),
-          const SizedBox(height: 4),
-          Text('晚上好，${profile?['display_name'] ?? '同学'}',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w700, color: const Color(0xff0c1222))),
-        ])),
-      ]));
-
-  Widget _contextHeader(String title,
-          {String? meta, VoidCallback? action, String? actionLabel}) =>
-      Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: Row(children: [
-            Container(
-              width: 6,
-              height: 6,
-              decoration: const BoxDecoration(
-                color: Color(0xff0f766e),
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Color(0xffe6f4f1),
-                    spreadRadius: 3,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(title.toUpperCase(),
-                style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xff8b95a8),
-                    letterSpacing: 0.8)),
-            const Spacer(),
-            if (meta != null)
-              Text(meta,
-                  style:
-                      const TextStyle(fontSize: 12, color: Color(0xff8b95a8))),
-            if (action != null)
-              TextButton(
-                  onPressed: action,
-                  style: TextButton.styleFrom(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  child: Text(actionLabel ?? '查看',
-                      style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xff0f766e)))),
-          ]));
-
-  Widget _planRail(List<dynamic> planned) => SizedBox(
-      height: 128,
-      child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          itemCount: planned.length,
-          separatorBuilder: (_, __) => const SizedBox(width: 8),
-          itemBuilder: (_, index) {
-            final item = planned[index] as Map<String, dynamic>;
-            final isCurrent = _isItemCurrent(item);
-            final startTime = _formatItemStartTime(item, index, planned);
-            final durationText = _formatPlannedDuration(item);
-            final title = item['title'] as String? ?? '计划项';
-
-            return SizedBox(
-                width: 148,
-                child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                        borderRadius: BorderRadius.circular(16),
-                        onTap: () => _taskTapped(item, true),
-                        child: Ink(
-                            decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(16),
-                                gradient: isCurrent
-                                    ? const LinearGradient(
-                                        begin: Alignment.topLeft,
-                                        end: Alignment.bottomRight,
-                                        colors: [
-                                            Color(0xf2ccfbf1),
-                                            Color(0xe6ffffff),
-                                          ])
-                                    : null,
-                                color: isCurrent ? null : Colors.white,
-                                border: Border.all(
-                                    color: isCurrent
-                                        ? const Color(0x590d9488)
-                                        : const Color(0x1a0f172a)),
-                                boxShadow: const [
-                                  BoxShadow(
-                                      color: Color(0x0c0c1222),
-                                      blurRadius: 10,
-                                      offset: Offset(0, 4)),
-                                ]),
-                            padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
-                            child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(startTime,
-                                      style: TextStyle(
-                                          fontSize: 11,
-                                          fontFeatures: const [
-                                            FontFeature.tabularFigures()
-                                          ],
-                                          fontWeight: FontWeight.w600,
-                                          color: isCurrent
-                                              ? const Color(0xff0f766e)
-                                              : const Color(0xff8b95a8))),
-                                  const SizedBox(height: 4),
-                                  Text(title,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                          fontSize: 13,
-                                          height: 1.25,
-                                          fontWeight: FontWeight.w700,
-                                          color: Color(0xff0c1222))),
-                                  const SizedBox(height: 4),
-                                  Text(durationText,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                          fontSize: 11,
-                                          color: Color(0xff5b667a))),
-                                  const Spacer(),
-                                  Text(
-                                      homeTaskCardLabel(homeTaskCardKind(item)),
-                                      style: TextStyle(
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.w700,
-                                          color: isCurrent
-                                              ? const Color(0xff0f766e)
-                                              : const Color(0xff8b95a8))),
-                                ])))));
-          }));
-
-  Widget _poolTask(Map<String, dynamic> item) {
-    final kind = homeTaskCardKind(item);
-    return Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Dismissible(
-            key: ValueKey('pool-${item['id']}'),
-            direction: DismissDirection.endToStart,
-            background: Container(
-                alignment: Alignment.centerRight,
-                padding: const EdgeInsets.only(right: 22),
-                decoration: BoxDecoration(
-                    color: Colors.red.shade700,
-                    borderRadius: BorderRadius.circular(16)),
-                child: const Icon(Icons.delete_outline, color: Colors.white)),
-            onDismissed: (_) => _removePoolTask(item),
-            child: AppCard(
-                padding: EdgeInsets.zero,
-                onTap: () => _taskTapped(item, false),
-                child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 13),
-                    child: Row(children: [
-                      const Icon(Icons.check_box_outline_blank,
-                          color: Color(0xff94a3b8)),
-                      const SizedBox(width: 12),
-                      Expanded(
-                          child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                            Text(item['title'] as String,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w700)),
-                            Text(item['details'] as String? ?? '任务池 · 尚未安排',
-                                style: const TextStyle(
-                                    fontSize: 12, color: Colors.blueGrey)),
-                          ])),
-                      StatusPill(
-                          text: homeTaskCardLabel(kind),
-                          color: switch (kind) {
-                            HomeTaskCardKind.unscheduled => Colors.deepPurple,
-                            HomeTaskCardKind.paused => Colors.orange,
-                            HomeTaskCardKind.completed => Colors.blueGrey,
-                            HomeTaskCardKind.scheduled ||
-                            HomeTaskCardKind.inProgress =>
-                              brandBlue,
-                          }),
-                    ])))));
   }
 
   bool get _canSendDraft {
@@ -664,140 +433,80 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
             ]);
           }));
 
-  Widget _planListOverlay(List<dynamic> planned) => _PlanSheetOverlay(
-      title: '今日计划',
-      subtitle: '已确认 · 共 ${planned.length} 项 · 你说了算',
-      onClose: () => setState(() => planListOpen = false),
-      child: planned.isEmpty
-          ? const Center(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Text('还没有确认计划。',
-                    style: TextStyle(color: Color(0xff5b667a))),
-              ),
-            )
-          : ListView.builder(
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              itemCount: planned.length,
-              itemBuilder: (_, index) {
-                final item = planned[index] as Map<String, dynamic>;
-                final isCurrent = _isItemCurrent(item);
-                final time = _formatItemStartTime(item, index, planned);
-                final subtitle = _formatPlanItemSubtitle(item);
-                final title = item['title'] as String? ?? '计划项';
+  Widget _planListOverlay(List<dynamic> planned) {
+    final byId = <String, Map<String, dynamic>>{};
+    for (final raw in [...tasks, ...planned]) {
+      final row = Map<String, dynamic>.from(raw as Map);
+      byId[(row['assignment_id'] ?? row['id']).toString()] = row;
+    }
+    return _PlanSheetOverlay(
+        title: '已知作业',
+        subtitle: '按需查看，未确认完成不代表没做',
+        onClose: () => setState(() => planListOpen = false),
+        child: ListView(children: [
+          for (final item in byId.values)
+            ListTile(
+              title: Text(item['title'] as String? ?? '作业'),
+              subtitle: Text(_formatPlannedDuration(item)),
+              onTap: () => _taskTapped(
+                  item,
+                  planned.any((row) =>
+                      (row['assignment_id'] ?? row['id']) ==
+                      (item['assignment_id'] ?? item['id']))),
+              trailing: IconButton(
+                  tooltip: '任务操作',
+                  icon: const Icon(Icons.more_horiz),
+                  onPressed: () => _showTaskActions(item)),
+              onLongPress:
+                  item['source'] == 'ward' ? () => _removePoolTask(item) : null,
+            ),
+          if (byId.isEmpty) const ListTile(title: Text('目前没有已登记作业，可以直接学习或提问。')),
+        ]));
+  }
 
-                return _TimelineRow(
-                    time: time,
-                    title: title,
-                    subtitle: subtitle,
-                    statusLabel: homeTaskCardLabel(homeTaskCardKind(item)),
-                    isCurrent: isCurrent,
-                    isFirst: index == 0,
-                    isLast: index == planned.length - 1,
-                    onTap: () {
-                      setState(() => planListOpen = false);
-                      _taskTapped(item, true);
-                    });
-              }));
-
-  bool _isItemCurrent(Map<String, dynamic> item) {
-    return homeTaskCardKind(item) == HomeTaskCardKind.inProgress;
+  Future<void> _showTaskActions(Map<String, dynamic> item) async {
+    final action = await showModalBottomSheet<String>(
+        context: context,
+        builder: (ctx) => SafeArea(
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+              for (final entry in const {
+                'start': '开始这项',
+                'pause': '暂停',
+                'resume': '继续',
+                'end': '这次先到这里',
+                'complete': '这项写完了',
+                'time': '查看已记录用时'
+              }.entries)
+                ListTile(
+                    title: Text(entry.value),
+                    onTap: () => Navigator.pop(ctx, entry.key)),
+            ])));
+    if (action == null) return;
+    try {
+      final result = await ref.read(apiProvider).taskCommand(
+          (item['assignment_id'] ?? item['id']).toString(), action);
+      if (mounted && action == 'time') {
+        final seconds = result['active_seconds'];
+        showMessage(
+            context,
+            seconds == null
+                ? '没有可靠执行计时记录'
+                : '显式会话计时约 ${(seconds as num) ~/ 60} 分钟，不是净专注时长');
+      }
+      await _load();
+    } catch (error) {
+      if (mounted) showMessage(context, userErrorMessage(error));
+    }
   }
 
   String _formatPlannedDuration(Map<String, dynamic> item) {
-    final details = (item['details'] as String?) ?? '';
-    if (details.contains('固定') || details.contains('不可移动')) {
-      return '固定 · 不可移动';
-    }
     final mins = item['planned_minutes'] as num?;
     if (mins != null && mins > 0) {
-      return '约 ${mins.toInt()} 分钟';
+      return item['duration_kind'] == 'timebox'
+          ? '本次打算投入 ${mins.toInt()} 分钟'
+          : '预计 ${mins.toInt()} 分钟';
     }
-    return '约 30 分钟';
-  }
-
-  String _formatPlanItemSubtitle(Map<String, dynamic> item) {
-    final details = item['details'] as String?;
-    final duration = _formatPlannedDuration(item);
-    if (details != null && details.trim().isNotEmpty) {
-      if (details.contains('固定') || details.contains('不可移动')) {
-        return '固定时间 · 不可移动';
-      }
-      return '$details · $duration';
-    }
-    return duration;
-  }
-
-  String _formatItemStartTime(
-      Map<String, dynamic> item, int index, List<dynamic> planned) {
-    final startAt = item['start_at'] ?? item['start_time'];
-    if (startAt is String && startAt.trim().isNotEmpty) {
-      final parsed = _extractClockTime(startAt);
-      if (parsed != null) return parsed;
-    }
-
-    var baseHour = 19;
-    var baseMinute = 0;
-
-    for (int i = 0; i < planned.length; i++) {
-      final s = (planned[i] as Map<String, dynamic>)['start_at'];
-      if (s is String && s.trim().isNotEmpty) {
-        final clock = _extractClockTime(s);
-        if (clock != null) {
-          final parts = clock.split(':');
-          if (parts.length == 2) {
-            final h = int.tryParse(parts[0]);
-            final m = int.tryParse(parts[1]);
-            if (h != null && m != null) {
-              int totalMinsBefore = 0;
-              for (int k = 0; k < i; k++) {
-                final mins = (planned[k]
-                        as Map<String, dynamic>)['planned_minutes'] as num? ??
-                    30;
-                totalMinsBefore += mins.toInt();
-              }
-              final startMins = (h * 60 + m) - totalMinsBefore;
-              baseHour = (startMins ~/ 60) % 24;
-              baseMinute = startMins % 60;
-              if (baseMinute < 0) {
-                baseMinute += 60;
-                baseHour = (baseHour - 1 + 24) % 24;
-              }
-              break;
-            }
-          }
-        }
-      }
-    }
-
-    int accumulatedMinutes = 0;
-    for (int i = 0; i < index; i++) {
-      final mins =
-          (planned[i] as Map<String, dynamic>)['planned_minutes'] as num? ?? 30;
-      accumulatedMinutes += mins.toInt();
-    }
-
-    final itemTotalMinutes =
-        (baseHour * 60 + baseMinute + accumulatedMinutes) % (24 * 60);
-    final h = (itemTotalMinutes ~/ 60).toString().padLeft(2, '0');
-    final m = (itemTotalMinutes % 60).toString().padLeft(2, '0');
-    return '$h:$m';
-  }
-
-  static String? _extractClockTime(String raw) {
-    final match = RegExp(r'(?:^|[T\s])(\d{1,2}):(\d{2})').firstMatch(raw);
-    if (match != null) {
-      final hour = match.group(1)!.padLeft(2, '0');
-      final minute = match.group(2)!.padLeft(2, '0');
-      return '$hour:$minute';
-    }
-    final dt = DateTime.tryParse(raw);
-    if (dt != null) {
-      final hour = dt.hour.toString().padLeft(2, '0');
-      final minute = dt.minute.toString().padLeft(2, '0');
-      return '$hour:$minute';
-    }
-    return null;
+    return '未估时';
   }
 
   bool get _hasOlderHistory =>
@@ -818,7 +527,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
                 padding: const EdgeInsets.only(bottom: 4),
                 child: Text('• ${item['title']} · '
                     '${_draftSlotLabel(item)} · '
-                    '约 ${item['planned_minutes']} 分钟')),
+                    '${item['planned_minutes'] == null ? '未估时' : '约 ${item['planned_minutes']} 分钟'}')),
             _planSuggestion(item, 'duration',
                 showActions: false, honorDismissal: active),
             _planSuggestion(item, 'time',
@@ -842,14 +551,22 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         planConfirmAction != null &&
         planDraft.isNotEmpty;
     final items = <Widget>[
-      Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-              color: const Color(0xfff0fdfa),
-              borderRadius: BorderRadius.circular(12)),
-          child: Text(_chatContext(),
-              style: const TextStyle(fontSize: 12, color: Color(0xff0f766e)))),
+      if (startCue?['status'] == 'presented')
+        StartCueCard(
+            text: startCue?['text'] as String? ?? '',
+            tasks: [
+              for (final row in startCue?['tasks'] as List? ?? [])
+                Map<String, dynamic>.from(row as Map)
+            ],
+            actions: [
+              for (final row in startCue?['actions'] as List? ?? [])
+                Map<String, dynamic>.from(row as Map)
+            ],
+            onCommand: _actOnStartCue),
+      if (sprintAction != null)
+        FilledButton(
+            onPressed: _chatBusy ? null : _acceptSprintProposal,
+            child: const Text('开始这次挑战')),
       if (loadingOlderMessages)
         const Padding(
           padding: EdgeInsets.only(top: 10),
@@ -873,8 +590,8 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         ),
       const Padding(
         padding: EdgeInsets.only(top: 14),
-        child: _ChatBubble(
-            label: '读学 AI', text: '我不会替你排今天。你说想怎么安排，我帮你记下来，并检查有没有冲突。'),
+        child:
+            _ChatBubble(label: '读学 AI', text: '遇到问题随时问我；需要时也可以查看作业，或试一轮专注挑战。'),
       ),
       for (final message in historyMessages) _chatMessage(message),
       for (final message in planMessages) _chatMessage(message),
@@ -915,21 +632,40 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     ];
 
     return _HomeOverlay(
+      banner: sprint != null && hiddenSprintId != sprint!['id']
+          ? SprintCard(
+              sprint: sprint!,
+              busy: sprintBusy,
+              onAction: _actSprint,
+              onHide: () =>
+                  setState(() => hiddenSprintId = sprint!['id'] as String),
+              onElapsed: _refreshSprint)
+          : null,
       title: '读学',
-      subtitle: '你先说；我记录并检查冲突，确认后才生效。',
+      subtitle: '随时提问，需要时再安排。',
       bottomInset: stagedImages.isNotEmpty ? 164 : 92,
-      onClose: () => setState(() => planChatOpen = false),
-      action: IconButton(
-        key: const Key('clear-chat-history-button'),
-        tooltip: '清空历史对话',
-        onPressed: clearingHistory ? null : _clearChatHistory,
-        icon: clearingHistory
-            ? const SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(strokeWidth: 2))
-            : const Icon(Icons.cleaning_services_outlined),
-      ),
+      onClose: null,
+      action: Row(mainAxisSize: MainAxisSize.min, children: [
+        IconButton(
+            tooltip: '作业',
+            onPressed: _openPlanList,
+            icon: const Icon(Icons.assignment_outlined)),
+        IconButton(
+            tooltip: '专注挑战',
+            onPressed: _openSprint,
+            icon: const Icon(Icons.timer_outlined)),
+        IconButton(
+          key: const Key('clear-chat-history-button'),
+          tooltip: '清空历史对话',
+          onPressed: clearingHistory ? null : _clearChatHistory,
+          icon: clearingHistory
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2))
+              : const Icon(Icons.cleaning_services_outlined),
+        )
+      ]),
       child: ListView.builder(
         key: const Key('companion-chat-list'),
         controller: _chatScrollController,
@@ -1030,12 +766,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     }
   }
 
-  String _chatContext() {
-    if (chatSubject != null) return '语境：关于「${chatSubject!}」——按住下方再说。';
-    final count = (plan?['items'] as List? ?? const []).length;
-    return '已知：今天已确认 $count 项计划；另有 ${tasks.length - removedPoolTaskIds.length} 项待你决定。';
-  }
-
   String _draftSlotLabel(Map<String, dynamic> item) {
     final start = DateTime.tryParse(item['start_at'] as String? ?? '');
     final end = DateTime.tryParse(item['end_at'] as String? ?? '');
@@ -1078,6 +808,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   Widget _growth(BuildContext context) =>
       ListView(padding: const EdgeInsets.all(16), children: [
         const SectionLabel('今天'),
+        TextButton(onPressed: _review, child: const Text('说说今天的感受')),
         if (insight == null)
           const AppCard(
               child: ListTile(
@@ -1160,6 +891,155 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     }
   }
 
+  String _sprintCommandId() =>
+      List.generate(16, (_) => Random.secure().nextInt(256))
+          .map((value) => value.toRadixString(16).padLeft(2, '0'))
+          .join();
+
+  Future<void> _refreshSprint() async {
+    if (!sprintForeground) return;
+    final generation = ++sprintGeneration;
+    try {
+      final result = await ref.read(apiProvider).currentSprint();
+      if (!mounted || generation != sprintGeneration || !sprintForeground) {
+        return;
+      }
+      setState(() {
+        sprint = result['sprint'] is Map
+            ? Map<String, dynamic>.from(result['sprint'] as Map)
+            : null;
+        readySprint = result['ready'] is Map
+            ? Map<String, dynamic>.from(result['ready'] as Map)
+            : null;
+      });
+      final notice = result['notice'];
+      if (!_chatBusy && !sprintBusy && notice is Map) {
+        try {
+          await ref.read(apiProvider).sprintCommand(notice['id'] as String, {
+            'command_id': _sprintCommandId(),
+            'action': 'claim_notice',
+            'expected_version': notice['version']
+          });
+        } catch (_) {
+          return; // Another device may have claimed this notice; keep the verified round.
+        }
+        if (mounted &&
+            !_chatBusy &&
+            sprintForeground &&
+            generation == sprintGeneration) {
+          showMessage(
+              context,
+              notice['status'] == 'ready'
+                  ? '约定的挑战时间到了，想开始时点“专注挑战”。'
+                  : '这轮计时结束了，要继续还是休息？');
+        }
+      }
+    } catch (_) {
+      // A missing/unavailable query is not evidence a round is still running.
+      if (mounted && generation == sprintGeneration) {
+        setState(() => sprint = null);
+      }
+    }
+  }
+
+  Future<void> _openSprint() async {
+    if (sprintBusy) return;
+    await _refreshSprint();
+    if (!mounted) return;
+    if (sprint != null) {
+      setState(() => hiddenSprintId = null);
+      return;
+    }
+    final selection = await showDialog<Map<String, dynamic>>(
+        context: context,
+        builder: (ctx) => SprintSetupDialog(
+            topic: readySprint?['topic'] as String? ?? '学习',
+            minutes: readySprint == null
+                ? 20
+                : (readySprint!['target_seconds'] as num).toInt() ~/ 60));
+    if (selection == null || !mounted) return;
+    final target = selection['minutes'] as int;
+    final chosenTopic = selection['topic'] as String;
+    final data = <String, dynamic>{
+      'action': 'create',
+      'topic': chosenTopic,
+      'target_minutes': target
+    };
+    if (pendingSprintRequest == null ||
+        pendingSprintRequest!['topic'] != chosenTopic ||
+        pendingSprintRequest!['target_minutes'] != target) {
+      pendingSprintRequest = {...data, 'command_id': _sprintCommandId()};
+    }
+    setState(() => sprintBusy = true);
+    try {
+      if (readySprint != null &&
+          readySprint!['topic'] == chosenTopic &&
+          (readySprint!['target_seconds'] as num).toInt() == target * 60) {
+        await ref
+            .read(apiProvider)
+            .sprintCommand(readySprint!['id'] as String, {
+          'command_id': pendingSprintRequest!['command_id'],
+          'action': 'start',
+          'expected_version': readySprint!['version']
+        });
+      } else {
+        await ref.read(apiProvider).createSprint(pendingSprintRequest!);
+      }
+      pendingSprintRequest = null;
+      hiddenSprintId = null;
+      await _refreshSprint();
+    } catch (error) {
+      if (mounted) showMessage(context, '挑战未能开启：${userErrorMessage(error)}');
+    } finally {
+      if (mounted) setState(() => sprintBusy = false);
+    }
+  }
+
+  Future<void> _actSprint(String action) async {
+    if (sprintBusy || sprint == null) return;
+    final row = Map<String, dynamic>.from(sprint!);
+    setState(() => sprintBusy = true);
+    try {
+      await ref.read(apiProvider).sprintCommand(row['id'] as String, {
+        'command_id': _sprintCommandId(),
+        'action': action,
+        'expected_version': row['version']
+      });
+      await _refreshSprint();
+    } catch (error) {
+      await _refreshSprint();
+      if (mounted) showMessage(context, '操作未完成：${userErrorMessage(error)}');
+    } finally {
+      if (mounted) setState(() => sprintBusy = false);
+    }
+  }
+
+  Future<void> _acceptSprintProposal() async {
+    final action = sprintAction;
+    if (action == null || _chatBusy) return;
+    setState(() => planSending = true);
+    try {
+      final result = await ref.read(apiProvider).companionTurn(
+          content: '',
+          threadId: companionThreadId,
+          expectedThreadVersion: companionThreadVersion,
+          routeHint: 'planning',
+          structuredCommand: {
+            'interaction_id': action['id'],
+            'command': 'sprint_command',
+            'payload': action['payload']
+          });
+      if (!mounted) return;
+      sprintAction = null;
+      await _applyPlanTurnResult(result);
+      await _refreshSprint();
+    } catch (error) {
+      if (mounted) showMessage(context, '请重新查看这轮挑战：${userErrorMessage(error)}');
+    } finally {
+      if (mounted) setState(() => planSending = false);
+    }
+  }
+
   Future<void> _load() async {
     tasks = await ref.read(apiProvider).assignments(widget.wardId);
     try {
@@ -1175,6 +1055,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     try {
       startCue = await ref.read(apiProvider).currentStartCue();
       await CueNotifications.replace(startCue?['notifications']);
+      await _refreshSprint();
     } catch (_) {
       startCue = null;
     }
@@ -1613,71 +1494,42 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
 
   Future<void> _pauseSession(
       String taskId, String sessionId, int seconds) async {
-    final previous = {
-      'id': sessionId,
-      'status': 'active',
-      'active_seconds': seconds,
-    };
-    _clearTrackedSession(sessionId);
-    _patchTaskSession(taskId, {
-      'id': sessionId,
-      'status': 'paused',
-      'active_seconds': seconds,
-    });
     try {
-      await ref.read(apiProvider).pauseSession(sessionId, seconds);
+      final result =
+          await ref.read(apiProvider).pauseSession(sessionId, seconds);
+      if (!mounted) return;
+      _clearTrackedSession(sessionId);
+      _patchTaskSession(taskId, result);
       await _load();
     } catch (error) {
-      if (!mounted) return;
-      _patchTaskSession(taskId, previous);
-      _trackSession(sessionId, seconds);
-      showMessage(context, '操作未完成：${userErrorMessage(error)}');
+      if (mounted) showMessage(context, '操作未完成：${userErrorMessage(error)}');
     }
   }
 
   Future<void> _resumeSession(
       String taskId, String sessionId, int seconds) async {
-    _patchTaskSession(taskId, {
-      'id': sessionId,
-      'status': 'active',
-      'active_seconds': seconds,
-    });
-    _trackSession(sessionId, seconds);
     try {
-      await ref.read(apiProvider).resumeSession(sessionId);
+      final result = await ref.read(apiProvider).resumeSession(sessionId);
+      if (!mounted) return;
+      _patchTaskSession(taskId, result);
+      _trackSession(sessionId, (result['active_seconds'] as int?) ?? seconds);
       await _load();
     } catch (error) {
-      if (!mounted) return;
-      _clearTrackedSession(sessionId);
-      _patchTaskSession(taskId, {
-        'id': sessionId,
-        'status': 'paused',
-        'active_seconds': seconds,
-      });
-      showMessage(context, '操作未完成：${userErrorMessage(error)}');
+      if (mounted) showMessage(context, '操作未完成：${userErrorMessage(error)}');
     }
   }
 
   Future<void> _finishSession(String taskId, String sessionId, int seconds,
       {String? taskTitle}) async {
-    _clearTrackedSession(sessionId);
-    _patchTaskSession(taskId, null);
     try {
       await ref.read(apiProvider).finishSession(sessionId, seconds);
-      if (mounted && taskTitle != null) {
-        final minutes = seconds ~/ 60;
-        showMessage(context, '🎉 已完成「$taskTitle」，本次学习累计 $minutes 分钟！');
-      }
+      if (!mounted) return;
+      _clearTrackedSession(sessionId);
+      _patchTaskSession(taskId, null);
+      showMessage(context, '已记录你声明这项作业完成。');
       await _load();
     } catch (error) {
-      if (!mounted) return;
-      _patchTaskSession(taskId, {
-        'id': sessionId,
-        'status': 'active',
-        'active_seconds': seconds,
-      });
-      _trackSession(sessionId, seconds);
-      showMessage(context, '操作未完成：${userErrorMessage(error)}');
+      if (mounted) showMessage(context, '操作未完成：${userErrorMessage(error)}');
     }
   }
 
@@ -1865,9 +1717,14 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
               (interaction['parts'] as List).first as Map)['text'] as String?
           : null;
       planConfirmAction = null;
+      sprintAction = null;
       planSuggestionAction = null;
       planClarifyAction = null;
       for (final action in actions) {
+        if (action['command'] == 'sprint_command' &&
+            action['enabled'] == true) {
+          sprintAction = action;
+        }
         if (action['command'] == 'confirm_plan' && action['enabled'] == true) {
           planConfirmAction = action;
         }
@@ -2500,24 +2357,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
       // Keep local companionThreadId on transient errors so history is not lost.
     }
   }
-
-  String _weekday(DateTime day) =>
-      const ['一', '二', '三', '四', '五', '六', '日'][day.weekday - 1];
-}
-
-class _HomeEmptyCard extends StatelessWidget {
-  const _HomeEmptyCard({required this.message});
-  final String message;
-
-  @override
-  Widget build(BuildContext context) => Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-          color: Colors.white,
-          border: Border.all(color: const Color(0xffe2e8f0)),
-          borderRadius: BorderRadius.circular(16)),
-      child: Text(message, style: const TextStyle(color: Colors.blueGrey)));
 }
 
 class _HomeOverlay extends StatelessWidget {
@@ -2528,13 +2367,15 @@ class _HomeOverlay extends StatelessWidget {
     required this.child,
     this.bottomInset = 82,
     this.action,
+    this.banner,
   });
   final String title;
   final String subtitle;
-  final VoidCallback onClose;
+  final VoidCallback? onClose;
   final Widget child;
   final double bottomInset;
   final Widget? action;
+  final Widget? banner;
 
   @override
   Widget build(BuildContext context) => Positioned.fill(
@@ -2572,11 +2413,13 @@ class _HomeOverlay extends StatelessWidget {
                                                 color: Colors.blueGrey)),
                                       ])),
                                   if (action != null) action!,
-                                  IconButton(
-                                      onPressed: onClose,
-                                      tooltip: '关闭',
-                                      icon: const Icon(Icons.close)),
+                                  if (onClose != null)
+                                    IconButton(
+                                        onPressed: onClose,
+                                        tooltip: '关闭',
+                                        icon: const Icon(Icons.close)),
                                 ])),
+                        if (banner != null) banner!,
                         const Divider(height: 1),
                         Expanded(child: child),
                       ]))))));
@@ -2850,139 +2693,4 @@ class _PlanSheetOverlay extends StatelessWidget {
           ),
         ),
       );
-}
-
-class _TimelineRow extends StatelessWidget {
-  const _TimelineRow({
-    required this.time,
-    required this.title,
-    required this.subtitle,
-    required this.statusLabel,
-    required this.isCurrent,
-    required this.isFirst,
-    required this.isLast,
-    required this.onTap,
-  });
-
-  final String time;
-  final String title;
-  final String subtitle;
-  final String statusLabel;
-  final bool isCurrent;
-  final bool isFirst;
-  final bool isLast;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  width: 44,
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Text(
-                      time,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                        fontWeight: FontWeight.w600,
-                        color: isCurrent
-                            ? const Color(0xff0f766e)
-                            : const Color(0xff5b667a),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                SizedBox(
-                  width: 14,
-                  child: Stack(
-                    alignment: Alignment.topCenter,
-                    children: [
-                      Positioned(
-                        top: isFirst ? 16 : 0,
-                        bottom: isLast ? null : 0,
-                        height: isLast ? 16 : null,
-                        child: Container(
-                          width: 2,
-                          color: const Color(0x1a0f172a),
-                        ),
-                      ),
-                      Positioned(
-                        top: 11,
-                        child: Container(
-                          width: 10,
-                          height: 10,
-                          decoration: BoxDecoration(
-                            color: const Color(0xff0f766e),
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 2),
-                            boxShadow: [
-                              BoxShadow(
-                                color: const Color(0xffe6f4f1),
-                                spreadRadius: isCurrent ? 4 : 2,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 6, bottom: 18),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title,
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: isCurrent
-                                ? const Color(0xff0f766e)
-                                : const Color(0xff0c1222),
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          subtitle,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Color(0xff5b667a),
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          statusLabel,
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            color: isCurrent
-                                ? const Color(0xff0f766e)
-                                : const Color(0xff8b95a8),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 }

@@ -39,6 +39,7 @@ def _observed_task(func):
 celery_app = Celery("duxue", broker=settings.redis_url, backend=settings.redis_url)
 celery_app.conf.timezone = "Asia/Shanghai"
 celery_app.conf.beat_schedule = {
+    "expire-study-sprints": {"task":"duxue.expire_study_sprints", "schedule":15.0},
     "cleanup-gateway-orphans": {"task": "duxue.cleanup_gateway_uploads", "schedule": crontab(minute=15)},
     "submit-daily-batches": {"task": "duxue.submit_daily_batches", "schedule": crontab(hour=settings.batch_submit_hour, minute=0)},
     "poll-batches": {"task": "duxue.poll_batches", "schedule": crontab(minute="*/10")},
@@ -200,3 +201,17 @@ def cleanup_gateway_uploads() -> int:
         return CleanupGatewayUploads(SqlCaptureRepository(db), camera_storage).run(now())
     finally:
         db.close()
+
+
+@celery_app.task(name="duxue.expire_study_sprints")
+@_observed_task
+def expire_study_sprints():
+    from app.application.commands.sprint import SprintService
+    from app.infrastructure.persistence.models import Sprint
+    with SessionLocal() as db:
+        ward_ids = [row[0] for row in db.query(Sprint.ward_id).filter(
+            Sprint.status.in_(("active", "paused", "ready"))).distinct().limit(500)]
+        for ward_id in ward_ids:
+            SprintService(db).current(ward_id)
+            db.commit()
+    return {"wards_checked":len(ward_ids)}

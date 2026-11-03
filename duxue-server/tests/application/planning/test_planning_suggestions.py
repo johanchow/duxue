@@ -17,7 +17,7 @@ def _completed(db, ward, title, minutes, days_ago=1):
     task.status = "completed"
     finished = datetime.combine(TODAY - timedelta(days=days_ago), datetime.min.time(), timezone.utc)
     db.add(StudySession(ward_id=ward.id, task_id=task.id, status="completed",
-                        ended_at=finished, active_seconds=minutes * 60))
+                        started_at=finished-timedelta(minutes=minutes), ended_at=finished, active_seconds=minutes * 60))
     db.flush()
     return task
 
@@ -36,7 +36,7 @@ def test_duration_suggestion_uses_three_same_ward_same_title_recent_completed_ta
 
     assert suggestion["suggested_minutes"] == 25
     assert suggestion["sample_count"] == 3
-    assert suggestion["basis"] == "同名任务近15天实际用时"
+    assert suggestion["basis"] == "同名任务近15天已记录完成经过时间"
 
 
 def test_duration_suggestion_requires_three_distinct_valid_tasks(db):
@@ -85,25 +85,22 @@ def test_draft_view_exposes_only_material_duration_and_soft_time_suggestions(db)
         "title": task.title, "planned_minutes": 10,
         "start_at": "2026-10-22T06:30:00+08:00"}])
 
-    view = service.plan_draft_view(ward.id, draft.id)
+    view = service.plan_draft_view(ward.id, draft.id, include_suggestions=True)
     item = view["items"][-1]
     assert item["duration_suggestion"]["suggested_minutes"] == 30
     assert item["time_suggestion"]["code"] == "too_early"
     assert view["confirm_enabled"]  # Advice never blocks Ward's decision.
 
 
-def test_missing_duration_slot_contains_history_suggestion_without_creating_task(db):
-    ward = create_ward(db)
-    for minutes in (20, 25, 30):
-        _completed(db, ward, "英语阅读", minutes)
-    service = PlanningDomainService(db)
-    draft = service.apply_operations(ward.id, TODAY, [{"kind": "create",
-        "title": "英语阅读"}], command_id="new-task")
-
-    view = service.plan_draft_view(ward.id, draft.id)
-    slot = view["clarification_batch"]["slots"][0]
-    assert slot["field"] == "planned_minutes"
-    assert slot["duration_suggestion"]["suggested_minutes"] == 25
+def test_missing_duration_never_forces_history_estimate_or_clarification(db):
+    ward=create_ward(db)
+    for minutes in (20,25,30): _completed(db,ward,'英语阅读',minutes)
+    service=PlanningDomainService(db)
+    draft=service.apply_operations(ward.id,TODAY,[{'kind':'create','title':'英语阅读'}],command_id='new')
+    view=service.plan_draft_view(ward.id,draft.id)
+    assert view['clarification_batch'] is None and view['confirm_enabled']
+    assert view['items'][0]['planned_minutes'] is None
+    assert 'duration_suggestion' not in view['items'][0]
 
 
 def test_accept_duration_suggestion_updates_task_and_invalidates_old_draft_version(db):
@@ -116,14 +113,14 @@ def test_accept_duration_suggestion_updates_task_and_invalidates_old_draft_versi
         "title": task.title, "planned_minutes": 10,
         "start_at": "2026-10-22T19:00:00+08:00"}])
     old_version = draft.version
-    fingerprint = service.plan_draft_view(ward.id, draft.id)["items"][0]["duration_suggestion"]["fingerprint"]
+    fingerprint = service.plan_draft_view(ward.id, draft.id, include_suggestions=True)["items"][0]["duration_suggestion"]["fingerprint"]
 
     updated = service.accept_suggestion(ward.id, draft.id, old_version,
                                          kind="duration", task_id=task.id,
                                          expected_fingerprint=fingerprint)
     assert updated.version > old_version
     assert task.planned_minutes == 30
-    assert service.plan_draft_view(ward.id, draft.id)["items"][0]["end_at"].endswith("19:30:00+08:00")
+    assert service.plan_draft_view(ward.id, draft.id, include_suggestions=True)["items"][0]["end_at"].endswith("19:30:00+08:00")
     with pytest.raises(HTTPException) as exc:
         service.accept_suggestion(ward.id, draft.id, old_version,
                                   kind="duration", task_id=task.id,
@@ -139,11 +136,11 @@ def test_accept_time_suggestion_moves_slot_without_changing_duration(db):
         "title": task.title, "planned_minutes": 30,
         "start_at": "2026-10-22T06:30:00+08:00"}])
 
-    fingerprint = service.plan_draft_view(ward.id, draft.id)["items"][0]["time_suggestion"]["fingerprint"]
+    fingerprint = service.plan_draft_view(ward.id, draft.id, include_suggestions=True)["items"][0]["time_suggestion"]["fingerprint"]
     service.accept_suggestion(ward.id, draft.id, draft.version,
                               kind="time", task_id=task.id,
                               expected_fingerprint=fingerprint)
-    item = service.plan_draft_view(ward.id, draft.id)["items"][0]
+    item = service.plan_draft_view(ward.id, draft.id, include_suggestions=True)["items"][0]
     assert item["start_at"].endswith("07:00:00+08:00")
     assert item["planned_minutes"] == 30
 
@@ -157,7 +154,7 @@ def test_old_duration_action_rejects_changed_history_without_draft_edit(db):
     draft = service.save_draft(ward.id, TODAY, [{"assignment_id": task.id,
         "title": task.title, "planned_minutes": 10,
         "start_at": "2026-10-22T19:00:00+08:00"}])
-    fingerprint = service.plan_draft_view(ward.id, draft.id)["items"][0]["duration_suggestion"]["fingerprint"]
+    fingerprint = service.plan_draft_view(ward.id, draft.id, include_suggestions=True)["items"][0]["duration_suggestion"]["fingerprint"]
     _completed(db, ward, "数学", 40)
 
     with pytest.raises(HTTPException) as exc:

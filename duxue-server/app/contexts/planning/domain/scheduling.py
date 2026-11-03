@@ -58,11 +58,13 @@ class SchedulingService:
         conflicts = []
         slots = [i for i in items if i.get('start_at') and i.get('end_at') and not i.get('deferred')]
         if plan_date is not None:
-            for item in slots:
+            for item in items:
+                if not item.get("start_at") or item.get("deferred"):
+                    continue
                 if cls.instant(item['start_at']).astimezone(PLAN_TIME_ZONE).date() != plan_date:
                     conflicts.append({'code': 'wrong_plan_date',
                                       'task_ids': [item['assignment_id']],
-                                      'intervals': [[item['start_at'], item['end_at']]]})
+                                      'intervals': [[item['start_at'], item.get('end_at')]]})
         for index, item in enumerate(slots):
             for other in slots[index + 1:]:
                 if (cls.instant(item['start_at']) < cls.instant(other['end_at'])

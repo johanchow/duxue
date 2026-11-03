@@ -503,7 +503,9 @@ class ApiClient {
   }
 
   Future<List<dynamic>> assignments(String wardId) async =>
-      (await dio.get('/wards/$wardId/assignments')).data as List<dynamic>;
+      (await dio.get('/wards/$wardId/assignments',
+              queryParameters: {'include_completed': true}))
+          .data as List<dynamic>;
   Future<void> deleteAssignment(String wardId, String assignmentId) =>
       dio.delete('/wards/$wardId/assignments/$assignmentId');
   Future<Map<String, dynamic>> savePlan(String wardId, DateTime day,
@@ -517,6 +519,21 @@ class ApiClient {
   Future<Map<String, dynamic>> plan(String wardId, DateTime day) async =>
       Map<String, dynamic>.from(
           (await dio.get('/wards/$wardId/plans/${_day(day)}')).data);
+  Future<Map<String, dynamic>> currentSprint() async =>
+      (await dio.get('/sprints/current')).data as Map<String, dynamic>;
+
+  Future<Map<String, dynamic>> createSprint(Map<String, dynamic> data) async =>
+      (await dio.post('/sprints', data: data)).data as Map<String, dynamic>;
+
+  Future<Map<String, dynamic>> sprintCommand(
+          String id, Map<String, dynamic> data) async =>
+      (await dio.post('/sprints/$id/commands', data: data)).data
+          as Map<String, dynamic>;
+
+  Future<Map<String, dynamic>> taskCommand(String id, String action) async =>
+      (await dio.post('/assignments/$id/commands', data: {'action': action}))
+          .data as Map<String, dynamic>;
+
   Future<Map<String, dynamic>> currentStartCue() async =>
       Map<String, dynamic>.from(
           (await dio.get('/start-cues/current')).data as Map);

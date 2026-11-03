@@ -26,6 +26,7 @@ class PlanIntakeItem(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=300)
     details: str | None = Field(default=None, max_length=4000)
     planned_minutes: int | None = Field(default=None, ge=1, le=480)
+    duration_kind: Literal["completion_estimate", "timebox"] | None = None
     start_at: str | None = None
     after_task_reference: str | None = Field(default=None, max_length=300)
     before_task_reference: str | None = Field(default=None, max_length=300)
@@ -39,6 +40,7 @@ class PlanningOperation(BaseModel):
     references: list[str] = Field(default_factory=list, max_length=30)
     title: str | None = Field(default=None, max_length=300)
     planned_minutes: int | None = Field(default=None, ge=1, le=480)
+    duration_kind: Literal["completion_estimate", "timebox"] | None = None
     start_at: str | None = None
     after_task_reference: str | None = None
     before_task_reference: str | None = None
@@ -48,6 +50,7 @@ class PlanningOperation(BaseModel):
 class PlanIntakeInput(BaseModel):
     """Internal Planning workflow input; it is deliberately independent of HTTP."""
 
+    current_sprint: dict = Field(default_factory=dict)
     content: str = Field(default="", max_length=4000)
     draft_items: list[PlanIntakeItem] = Field(default_factory=list, max_length=30)
     clarification_slots: list[dict] = Field(default_factory=list, max_length=30)
@@ -57,6 +60,14 @@ class PlanIntakeInput(BaseModel):
     self_review_aspects: list[dict] = Field(default_factory=list, max_length=4)
 
 
+class StudyActionProposal(BaseModel):
+    action: Literal["sprint_prepare", "sprint_pause", "sprint_resume", "sprint_end", "task_list", "task_time", "task_start", "task_pause", "task_resume", "task_end", "task_complete"]
+    topic: str | None = Field(default=None, max_length=300)
+    target_minutes: int | None = Field(default=None, ge=1, le=180)
+    task_reference: str | None = Field(default=None, max_length=300)
+    planned_start_at: datetime | None = None
+
+
 class PlanIntakeResult(BaseModel):
     assistant_text: str = Field(min_length=1, max_length=4000)
     clarification_required: bool = False
@@ -64,6 +75,7 @@ class PlanIntakeResult(BaseModel):
     ready_to_confirm: bool = False
     slot_updates: list[dict] = Field(default_factory=list, max_length=30)
     operations: list[PlanningOperation] = Field(default_factory=list, max_length=30)
+    study_action: StudyActionProposal | None = None
 
 
 def _prompt(ward: dict, tasks: list[dict], request: PlanIntakeInput) -> str:
@@ -75,9 +87,10 @@ def _prompt(ward: dict, tasks: list[dict], request: PlanIntakeInput) -> str:
         for identity_field in ("assignment_id", "after_assignment_id", "before_assignment_id"):
             projected.pop(identity_field, None)
         draft_items.append(projected)
-    prompt = PROMPTS["planning.intake.prompt.v3"]
+    prompt = PROMPTS["planning.intake.prompt.v4"]
     assert isinstance(prompt, DynamicPrompt)
     return prompt.render({
+        "current_sprint": request.current_sprint,
         "today": datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat(),
         "recent_utterance_block": _recent_utterance_block(request),
         "ward": ward,

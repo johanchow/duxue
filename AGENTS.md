@@ -57,8 +57,8 @@ duxue/                          # 项目根目录
 | 文档 | 路径 | 内容摘要 |
 |------|------|---------|
 | 产品架构（模块地图 + 领域路由） | [`docs/product/ARCHITECTURE.md`](docs/product/ARCHITECTURE.md) | 三大核心目标（专注提效/引导思考/解放家长时间）、弱约束三层架构（L0/L1/L2）、To C 家庭与 To B2C 晚托机构双轨定位及可度量核心交付物 |
-| 用户与首页导航 PRD | [`docs/product/prd-user.md`](docs/product/prd-user.md) | 角色选择、登录、家庭与 B2C 伴学师共管绑定、Ward 横轨计划+底部唯一 `VoiceComposer` 首页、Guardian/Coach 实况单与解题凭证中心 |
-| 协商式计划 PRD | [`docs/product/prd-schedule.md`](docs/product/prd-schedule.md) | 弱约束可选增强定位、任务池与入日程分离、一句话语音排期、AI 软建议与 Ward 单按钮确认 |
+| 用户与首页导航 PRD | [`docs/product/prd-user.md`](docs/product/prd-user.md) | 角色选择、登录、家庭与 B2C 伴学师共管绑定、Ward 默认对话流+可选专注挑战+底部唯一 `VoiceComposer` 首页、Guardian/Coach 实况单与解题凭证中心 |
+| 轻量计划与任务 PRD | [`docs/product/prd-schedule.md`](docs/product/prd-schedule.md) | L2 可选增强、普通计划按需提示、无常驻当前/下一项、主动限时专注挑战（Sprint）与任务完成分离 |
 | 陪伴执行与 AI 启发答疑 PRD | [`docs/product/prd-companion.md`](docs/product/prd-companion.md) | 零门槛随时提问、答案保护红线与独立裁判、分步启发配图/发音、对话内微验证产出《独立解题凭证》 |
 | 结果评估、原话总结与晚间交付 PRD | [`docs/product/prd-evaluate.md`](docs/product/prd-evaluate.md) | Guardian/Coach 端必达交付（《伴学闭环实况单》+《独立解题凭证》）、Ward 自由语音/文字原话总结（六维逐字溯源、不写 Memory） |
 | 学习观察与行为采集 PRD | [`docs/product/prd-supervise.md`](docs/product/prd-supervise.md) | L0 零操作感知底座、标准摄像头与共享网关、稀疏帧直传 OSS、持久队列补传、健康心跳与 45° 机位隐私防护 |
@@ -74,7 +74,7 @@ duxue/                          # 项目根目录
 |------|------|---------|
 | 服务端详细设计 (No-Tenant) | [`docs/technical/design-server.md`](docs/technical/design-server.md) | 分层实现、无租户模型与直连绑定、数据库 ER 图、会话即时分析与伴学记忆引擎 |
 | 陪伴编排 Domain 设计 | [`docs/technical/domain-companion.md`](docs/technical/domain-companion.md) | 统一入口路由、Thread/Run、Handoff、通用 Runtime 与受控写回协议 |
-| 计划与排程 Domain 设计 | [`docs/technical/domain-planning.md`](docs/technical/domain-planning.md) | 已知任务池、计划草稿、Ward 确认与固定协商 Graph |
+| 计划与任务 Domain 设计 | [`docs/technical/domain-planning.md`](docs/technical/domain-planning.md) | 轻量任务与顺序、可选估时/起点、安排确认与执行事实分离、后台完整模型与按需投影 |
 | 学习执行 Domain 设计 | [`docs/technical/domain-study.md`](docs/technical/domain-study.md) | StudySession 计时与完成、到点开始邀请 StartCue |
 | 辅导答疑 Domain 设计 | [`docs/technical/domain-tutoring.md`](docs/technical/domain-tutoring.md) | 答案状态红线、TutoringTurnLoop、发音 act、教学事实与答疑会话结算 |
 | 答疑离线评测设计 | [`docs/technical/eval-offline.md`](docs/technical/eval-offline.md) | 冒烟式离线评测、与生产同源的重放判分、数据集构造与复核、三级指标与不确定性、variant 与发布阈值 |
