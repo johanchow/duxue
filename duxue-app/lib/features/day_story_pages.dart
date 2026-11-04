@@ -159,6 +159,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   int sprintGeneration = 0;
   bool sprintForeground = true;
   Timer? sprintRefresh;
+  late final SprintCountdown sprintCountdown;
   Map<String, dynamic>? pendingSprintRequest;
   bool sprintSetupOpen = false;
   bool sprintPreviewBusy = false;
@@ -212,6 +213,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   @override
   void initState() {
     super.initState();
+    sprintCountdown = SprintCountdown(onElapsed: _refreshSprint);
     WidgetsBinding.instance.addObserver(this);
     _chatScrollController.addListener(_onChatScroll);
     _load();
@@ -240,6 +242,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     timer?.cancel();
     cueRefresh?.cancel();
     sprintRefresh?.cancel();
+    sprintCountdown.dispose();
     _speechPlayback?.dispose();
     super.dispose();
   }
@@ -249,7 +252,11 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     sprintForeground = state == AppLifecycleState.resumed;
     sprintGeneration++;
     if (state == AppLifecycleState.resumed) {
-      setState(() => sprint = null);
+      setState(() {
+        sprint = null;
+        sprintCountdown.update(null);
+        hiddenSprintId = null;
+      });
       _refreshSprint();
       _refreshCue();
       _scheduleCueRefresh();
@@ -267,10 +274,14 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
       }),
       bottomNavigationBar: NavigationBar(
           selectedIndex: tab,
-          onDestinationSelected: (value) => setState(() {
-                if (value != 0) _discardSprintSetup();
-                tab = value;
-              }),
+          onDestinationSelected: (value) {
+            setState(() {
+              if (value != 0) _discardSprintSetup();
+              if (value == 0) hiddenSprintId = null;
+              tab = value;
+            });
+            if (value == 0) _refreshSprint();
+          },
           destinations: const [
             NavigationDestination(
                 icon: Icon(Icons.home_outlined),
@@ -328,12 +339,51 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
       sprint != null && hiddenSprintId != sprint!['id']
           ? SprintCard(
               sprint: sprint!,
+              countdown: sprintCountdown,
               busy: sprintBusy,
               onAction: _actSprint,
               onHide: () =>
                   setState(() => hiddenSprintId = sprint!['id'] as String),
               onElapsed: _refreshSprint)
           : null;
+
+  Widget _sprintHeaderAction({bool inChat = false}) =>
+      ValueListenableBuilder<int>(
+          valueListenable: sprintCountdown,
+          builder: (context, remaining, _) => Tooltip(
+              message: inChat ? '对话内专注挑战' : '查看专注挑战',
+              child: TextButton(
+                  style: TextButton.styleFrom(
+                      foregroundColor:
+                          Theme.of(context).colorScheme.onSurfaceVariant,
+                      minimumSize: const Size(48, 48),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 6)),
+                  onPressed: sprintBusy || _chatBusy ? null : _openSprint,
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.timer_outlined, size: 22),
+                    if (remaining > 0 &&
+                        hiddenSprintId == sprint?['id'] &&
+                        !sprintSetupOpen) ...[
+                      const SizedBox(height: 2),
+                      SizedBox(
+                          width: 64,
+                          child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                  '${sprint?['status'] == 'paused' ? '已暂停 · ' : ''}${sprintTimeLabel(remaining)}',
+                                  key: const Key('sprint-header-countdown'),
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      height: 1.2,
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurfaceVariant,
+                                      fontFeatures: const [
+                                        FontFeature.tabularFigures()
+                                      ])))),
+                    ],
+                  ]))));
 
   Widget _quietHome() => Positioned.fill(
           child: Column(children: [
@@ -344,6 +394,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
                   child: Text('读学',
                       style: TextStyle(
                           fontSize: 20, fontWeight: FontWeight.w700))),
+              if (sprint != null) _sprintHeaderAction(),
               _homeMenu(),
             ])),
         Expanded(
@@ -372,7 +423,8 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
                           message: '专注挑战',
                           child: OutlinedButton.icon(
                               onPressed: sprintBusy ? null : _openSprint,
-                              icon: const Icon(Icons.timer_outlined),
+                              icon: const Icon(
+                                  Icons.local_fire_department_outlined),
                               label:
                                   Text(sprint == null ? '试一轮专注挑战' : '查看本轮挑战'))),
                     ],
@@ -395,20 +447,26 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
                 ]))),
       ]));
 
-  Widget _spokenSprintCard() => AppCard(
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          const Expanded(
-              child: Text('试一轮专注挑战',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700))),
-          TextButton(
-              onPressed:
-                  sprintBusy ? null : () => setState(_discardSprintSetup),
-              child: const Text('先不用')),
-        ]),
-        const SizedBox(height: 12),
-        Text(sprintSetupMessage, style: const TextStyle(height: 1.6)),
+  Widget _spokenSprintCard() => SprintPanel(
+      title: '试一轮专注挑战',
+      closeLabel: '取消专注挑战',
+      onClose: sprintBusy ? null : () => setState(_discardSprintSetup),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+                color:
+                    Theme.of(context).colorScheme.surface.withValues(alpha: .7),
+                borderRadius: BorderRadius.circular(16)),
+            child: Text(sprintSetupMessage,
+                style: TextStyle(
+                    fontSize:
+                        spokenSprintPreview?['status'] == 'ready' ? 16 : 15,
+                    fontWeight: spokenSprintPreview?['status'] == 'ready'
+                        ? FontWeight.w600
+                        : FontWeight.w400,
+                    height: 1.4))),
         if (sprintPreviewBusy)
           const Padding(
               padding: EdgeInsets.symmetric(vertical: 16),
@@ -421,12 +479,13 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
               child: const Text('重试整理')),
         if (spokenSprintPreview?['status'] == 'ready' &&
             !sprintPreviewBusy) ...[
-          const SizedBox(height: 20),
-          Wrap(spacing: 12, children: [
-            FilledButton(
+          const SizedBox(height: 10),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            FilledButton.icon(
                 onPressed: sprintBusy ? null : _startSpokenSprint,
-                child: Text(sprintBusy ? '开启中…' : '开始本轮')),
-            TextButton(
+                icon: const Icon(Icons.play_arrow_rounded, size: 20),
+                label: Text(sprintBusy ? '开启中…' : '开始本轮')),
+            TextButton.icon(
                 onPressed: sprintBusy
                     ? null
                     : () => setState(() {
@@ -435,7 +494,8 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
                           failedSprintSpeech = null;
                           sprintSetupMessage = '想改哪里？按住下面的说话按钮，再说一次。';
                         }),
-                child: const Text('重新说')),
+                icon: const Icon(Icons.mic_none_rounded, size: 20),
+                label: const Text('重新说')),
           ]),
         ],
       ]));
@@ -623,7 +683,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     return _PlanSheetOverlay(
         title: '已知作业',
         subtitle: '按需查看，未确认完成不代表没做',
-        onClose: () => setState(() => planListOpen = false),
+        onClose: _closeHomeOverlay,
         child: ListView(children: [
           for (final item in byId.values)
             ListTile(
@@ -826,16 +886,10 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
       title: '读学',
       subtitle: '随时提问，需要时再安排。',
       bottomInset: stagedImages.isNotEmpty ? 164 : 92,
-      onClose: () => setState(() {
-        _discardSprintSetup();
-        planChatOpen = false;
-      }),
+      onClose: _closeHomeOverlay,
       closeTooltip: '收起对话',
       action: Row(mainAxisSize: MainAxisSize.min, children: [
-        IconButton(
-            tooltip: '对话内专注挑战',
-            onPressed: sprintBusy || _chatBusy ? null : _openSprint,
-            icon: const Icon(Icons.timer_outlined)),
+        _sprintHeaderAction(inChat: true),
         _homeMenu(),
       ]),
       child: ListView.builder(
@@ -919,6 +973,16 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     } finally {
       if (mounted) setState(() => clearingHistory = false);
     }
+  }
+
+  void _closeHomeOverlay() {
+    setState(() {
+      _discardSprintSetup();
+      planListOpen = false;
+      planChatOpen = false;
+      hiddenSprintId = null;
+    });
+    _refreshSprint();
   }
 
   void _openPlanList() => setState(() {
@@ -1087,6 +1151,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         sprint = result['sprint'] is Map
             ? Map<String, dynamic>.from(result['sprint'] as Map)
             : null;
+        sprintCountdown.update(sprint);
         readySprint = result['ready'] is Map
             ? Map<String, dynamic>.from(result['ready'] as Map)
             : null;
@@ -1115,7 +1180,10 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     } catch (_) {
       // A missing/unavailable query is not evidence a round is still running.
       if (mounted && generation == sprintGeneration) {
-        setState(() => sprint = null);
+        setState(() {
+          sprint = null;
+          sprintCountdown.update(null);
+        });
       }
     }
   }
