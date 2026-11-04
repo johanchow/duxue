@@ -51,8 +51,27 @@ _WORK_ACTS = frozenset({"answer", "guide"})
 _LESSON_KEYS = ("source_text", "locale", "introduction", "reading_guide", "notes")
 
 SAFE_TEXT = "这件事需要先告诉身边信任的大人。我们先停一下，等你准备好了再继续学习。"
-FALLBACK_TEXT = "我这次没能整理出回答。把你的想法或要问的那一句再说一次，好吗？"
+FALLBACK_TEXT = "这次暂时没能完成回答，请稍后再试。"
 REMINDER = "先回到正在进行的任务，这个问题可以稍后再问。"
+
+
+def fallback_text(failure: str | None, leak_reason: str | None = None) -> str:
+    """Project trusted failure codes only; never reuse a rejected draft or infer intent.
+
+    A judge outage must use the technical fallback even if an earlier attempt
+    carried a teaching-boundary reason.
+    """
+    if failure == "leak_detected":
+        return {
+            "choice_verdict": "选择题和判断题，我不直接判断选项对错，但可以陪你检查判断依据。你可以选一道题，我们一起看看你的思路。",
+            "final_answer": "这道题的最终答案需要你自己完成。我可以给你提示，你可以告诉我卡在哪一步。",
+            "complete_solution": "这道题的最终答案需要你自己完成。我可以给你提示，你可以告诉我卡在哪一步。",
+            "incorrect_confirmation": "这次还不能可靠地确认答案对不对。你可以选一道题，我们一起核对解题过程。",
+            "premature_conclusion": "这次还不能可靠地确认结论。你可以说说已经做到哪一步，我们一起检查接下来该怎么验证。",
+        }.get(leak_reason, FALLBACK_TEXT)
+    if failure in {"pronounce_without_lesson", "lesson_markup", "segment_not_in_source"}:
+        return "这次没能生成可用的发音内容。你可以指定要读的单词或句子，再试一次。"
+    return FALLBACK_TEXT
 
 
 def _blank_is_absent(value):
