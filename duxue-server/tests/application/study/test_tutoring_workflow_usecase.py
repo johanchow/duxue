@@ -55,11 +55,11 @@ def _workflow(db, *raws, judge=None):
 
 
 @pytest.mark.parametrize("reason,expected", [
-    ("choice_verdict", "选择题和判断题，我不直接判断选项对错，但可以陪你检查判断依据。你可以选一道题，我们一起看看你的思路。"),
-    ("final_answer", "这道题的最终答案需要你自己完成。我可以给你提示，你可以告诉我卡在哪一步。"),
-    ("complete_solution", "这道题的最终答案需要你自己完成。我可以给你提示，你可以告诉我卡在哪一步。"),
-    ("incorrect_confirmation", "这次还不能可靠地确认答案对不对。你可以选一道题，我们一起核对解题过程。"),
-    ("premature_conclusion", "这次还不能可靠地确认结论。你可以说说已经做到哪一步，我们一起检查接下来该怎么验证。"),
+    ("choice_verdict", "这次没能直接给出检查结果，是因为回答中涉及选择题或判断题的选项对错。这部分我可以陪你检查判断依据，你可以选一道题，说说你为什么这样选。"),
+    ("final_answer", "这次回答会直接给出题目的最终答案，这一步需要留给你完成。我可以换成提示，你可以告诉我卡在哪一步。"),
+    ("complete_solution", "这次回答会把整道题的解法直接写完，没有给你留下自己推理的步骤。我可以改为一步提示，你可以告诉我想从哪一步继续。"),
+    ("incorrect_confirmation", "这次回答还没有充分依据确认你的答案是否正确，所以暂时不能给出对错结论。你可以选一道题，我们一起核对解题过程。"),
+    ("premature_conclusion", "这次回答跳过了必要的计算或检查，还不能把结论当作已经验证。你可以说说已经做到哪一步，我们一起补上验证。"),
     (None, "这次暂时没能完成回答，请稍后再试。"),
 ])
 def test_final_failure_explains_reason_without_committing_rejected_work(db, monkeypatch, reason, expected):
