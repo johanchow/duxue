@@ -65,7 +65,7 @@ def test_registry_lists_every_call_with_stable_identity():
     assert ids == {
         "tutoring.turn", "tutoring.turn-backup", "tutoring.leak-judge", "tutoring.visual-leak-judge", "companion.intent", "companion.scene-switch",
         "planning.reply", "planning.intake", "task.intake",
-        "evaluation.review-aspects", "tutoring.image-target",
+        "evaluation.review-aspects", "tutoring.image-target", "study.sprint-intake",
     }
     for spec in COMPONENTS.all():
         assert spec.version.startswith("v") and spec.model and spec.input_contract and spec.output_contract
@@ -108,7 +108,7 @@ def test_invoke_sends_static_prompt_as_system_and_uses_spec(spans):
     assert call["messages"][0] == {"role": "system", "content": spec.prompt.text}
     assert call["messages"][1] == {"role": "user", "content": "hi"}
     assert spans["span"]["component_id"] == "companion.intent"
-    assert spans["span"]["component_version"] == "v8"
+    assert spans["span"]["component_version"] == "v9"
     assert spans["span"]["prompt_id"] == spec.prompt.id
     assert spans["span"]["model_source"] == "registry"
 
@@ -293,6 +293,7 @@ def test_model_assignment_matrix():
         "planning.intake": ("qwen3.7-plus-2026-05-26", True),
         "task.intake": ("qwen3.7-plus-2026-05-26", True),
             "evaluation.review-aspects": ("qwen-flash", False),
+        "study.sprint-intake": ("qwen-flash", False),
     }
     # The judge must not share a model with the generator it audits.
     for judge in ("tutoring.leak-judge", "tutoring.visual-leak-judge"):

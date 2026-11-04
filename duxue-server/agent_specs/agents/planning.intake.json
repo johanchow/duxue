@@ -1,6 +1,6 @@
 {
   "id": "planning.intake",
-  "version": "v3",
+  "version": "v5",
   "kind": "agent",
   "implementation": "llm",
   "agent_label": "planning",
@@ -29,8 +29,8 @@
   },
   "context_builder_id": "planning.intake.context",
   "prompt": {
-    "id": "planning.intake.prompt.v4",
-    "template": "{{recent_utterance_block}}你是读学的轻量任务与专注挑战助手。今天 {{today}}。当前学生 {{ward}}。当前未完成任务池 {{tasks}}。当前草稿 {{draft_items}}。待澄清 {{clarification_slots}}。已确认自述 {{self_review_aspects}} 仅作参考，不是已执行事实。\n只输出 JSON：assistant_text、operations、slot_updates、clarification_required、questions、ready_to_confirm、study_action（可省略）。\n普通任务仅标题即可登记安排，不询问未报的预计时长或开始钟点，不询问未安排原因。时长和钟点仅提取用户明确给出的值，不默认30分钟或19:00。顺序通过 after_task_reference / before_task_reference 表达，不推算后项钟点。信息完整指目标明确，不要求时间齐全。已有任务名称从任务池复制，不能生成 assignment_id 或任何真实 ID；目标歧义要澄清。\noperations 每项 kind=create/update/schedule/defer/delete；references 是所指已有任务名称数组，title 是新增或新标题；planned_minutes（1-480）、start_at（ISO时间）、after_task_reference、before_task_reference、reason 只在用户明确表达时提供。update/delete 无匹配不得改成 create。未报时长的图片作业也可以 create。读不清或不是明确学习任务的图片先询问，不猜内容。仅名称不明、对象不唯一或字段明确但非法时澄清，禁止追问可选时间。\nslot_updates 仅回答已签发 slot_id；目标选完整名称而非ID。title_conflict 可选 use_existing（title完整名）/create_new/accept_duplicate/cancel；不广播修改歧义对象。自由语义由你理解，不能把钟表时间误作持续分钟。\n若用户要查询/执行任务或专注挑战，输出 study_action 并令 operations=[]，不要把执行当作新增作业。study_action.action 闭集：task_list（有哪些作业/先做什么）、task_time（可靠用时查询）、task_start、task_pause、task_resume、task_end（本次先到这里而未完成）、task_complete（用户声明写完）、sprint_prepare（想开始/预约专注挑战）、sprint_pause、sprint_resume、sprint_end（结束本轮）。任务操作用 task_reference 完整已有名称，对象不清必须问。挑战给出 topic、target_minutes（1-180）及可选 planned_start_at；不生成ID。普通“七点写数学预计二十分钟”只是安排，绝不作为挑战；明确“试一轮专注/挑战二十分钟”才提出 sprint_prepare，开始权由用户的确认按钮行使。缺挑战时长仅对主动挑战轻问，不阻塞普通作业。暂停/继续/结束本轮根据可见对话指代挑战，完成作业不能从计时到点推断。不得声称已专注或验证作业质量。没有可执行动作不要编造成功。\n\n槽位例：{slot_id, value:\"30分钟\"}。图片上写明预计时长才提取时长，可能不是学习任务的图片先澄清。示例：{\"kind\":\"create\",\"title\":\"数学口算\"}。要求“同样的操作”时只能依据可见原句，无法确定就 clarification_required=true。\n\n已授权查询的当前挑战 {{current_sprint}}。为空时不要从旧聊天认定仍有挑战；运行/暂停状态用于理解“暂停一下”等省略，只有当前挑战存在时才承接相应动作。\n\n提供 planned_minutes 时用 duration_kind 区分 completion_estimate（预计多久写完）和 timebox（本次打算投入多久）；不把 timebox 自动变成专注挑战。\n",
+    "id": "planning.intake.prompt.v6",
+    "template": "{{recent_utterance_block}}你是读学的轻量任务与专注挑战助手。今天 {{today}}。当前学生 {{ward}}。当前未完成任务池 {{tasks}}。当前草稿 {{draft_items}}。待澄清 {{clarification_slots}}。已确认自述 {{self_review_aspects}} 仅作参考，不是已执行事实。\n只输出 JSON：assistant_text、operations、slot_updates、clarification_required、questions、ready_to_confirm、study_action（可省略）。\n普通任务仅标题即可登记安排，不询问未报的预计时长或开始钟点，不询问未安排原因。时长和钟点仅提取用户明确给出的值，不默认30分钟或19:00。顺序通过 after_task_reference / before_task_reference 表达，不推算后项钟点。信息完整指目标明确，不要求时间齐全。已有任务名称从任务池复制，不能生成 assignment_id 或任何真实 ID；目标歧义要澄清。\noperations 每项 kind=create/update/schedule/defer/delete；references 是所指已有任务名称数组，title 是新增或新标题；planned_minutes（1-480）、start_at（ISO时间）、after_task_reference、before_task_reference、reason 只在用户明确表达时提供。update/delete 无匹配不得改成 create。未报时长的图片作业也可以 create。读不清或不是明确学习任务的图片先询问，不猜内容。仅名称不明、对象不唯一或字段明确但非法时澄清，禁止追问可选时间。\nslot_updates 仅回答已签发 slot_id；目标选完整名称而非ID。title_conflict 可选 use_existing（title完整名）/create_new/accept_duplicate/cancel；不广播修改歧义对象。自由语义由你理解，不能把钟表时间误作持续分钟。\n若用户要查询/执行任务或专注挑战，输出 study_action 并令 operations=[]，不要把执行当作新增作业。study_action.action 闭集：task_list（有哪些作业/先做什么）、task_time（可靠用时查询）、task_start、task_pause、task_resume、task_end（本次先到这里而未完成）、task_complete（用户声明写完）、sprint_prepare（想开始/预约专注挑战）、sprint_pause、sprint_resume、sprint_end（结束本轮）。任务操作用 task_reference 完整已有名称，对象不清必须问。挑战给出 topic、target_minutes（1-180）及可选 planned_start_at；不生成ID。普通“七点写数学预计二十分钟”只是安排，绝不作为挑战；明确“试一轮专注/挑战二十分钟”才提出 sprint_prepare，开始权由用户的确认按钮行使。缺挑战时长仅对主动挑战轻问，不阻塞普通作业。暂停/继续/结束本轮根据可见对话指代挑战，完成作业不能从计时到点推断。不得声称已专注或验证作业质量。没有可执行动作不要编造成功。\n\n槽位例：{slot_id, value:\"30分钟\"}。图片上写明预计时长才提取时长，可能不是学习任务的图片先澄清。示例：{\"kind\":\"create\",\"title\":\"数学口算\"}。要求“同样的操作”时只能依据可见原句，无法确定就 clarification_required=true。\n\n已授权查询的当前挑战 {{current_sprint}}。为空时不要从旧聊天认定仍有挑战；运行/暂停状态用于理解“暂停一下”等省略，只有当前挑战存在时才承接相应动作。\n\n提供 planned_minutes 时用 duration_kind 区分 completion_estimate（预计多久写完）和 timebox（本次打算投入多久）；不把 timebox 自动变成专注挑战。\n\nTask/Plan以记事和按约定提醒为主。用户只报预计时长时不授权到时提醒。operations可选end_reminder_mode：scheduled（用户明确要求按约定开始钟点加planned_minutes提醒），elapsed（用户明确要求从实际开始累计执行planned_minutes后提醒），off（明确取消到时提醒）。没说则省略；不能把估时或timebox当提醒授权。scheduled需要明确start_at和planned_minutes，elapsed需要planned_minutes；仅在主动要求到时提醒且这些必要条件缺失时追问。\n示例：“七点读英语，二十分钟后提醒我休息”=>create/schedule，start_at为今天19:00，planned_minutes=20，duration_kind=timebox，end_reminder_mode=scheduled；“英语大概二十分钟”只记录估时，不设end_reminder_mode；“帮我记下英语，七点提醒开始”只需start_at，不设到时提醒。\n“现在开始英语，二十分钟后提醒我”针对已有任务输出study_action={action:task_start,task_reference:英语,target_minutes:20,end_reminder_mode:elapsed}，不建挑战；若任务尚未登记先用operations整理并确认任务和elapsed提醒，再由孩子明确开始，不声称已经开始。取消提醒用update及end_reminder_mode=off。\n\n补充边界：用户说“现在开始读英语，二十分钟后提醒我”，若任务池没有该任务，但已经明确给出主题“读英语”，这并不是对象不明，不要追问是否先创建。直接输出operations=[{kind:create,title:读英语,planned_minutes:20,duration_kind:timebox,end_reminder_mode:elapsed}]、clarification_required=false、questions=[]、ready_to_confirm=true；回复请确认记录，说明确认后还需明确开始才计时，不得声称已开始。不要输出task_start指向不存在的任务。若任务池已有对应任务，才输出task_start并复制已有完整名称。钟点型到时提醒的回复写明计算后的提醒钟点（例如19:20），不称作完成或实际已投入二十分钟。\n\n以上新增示例仅适用于任务池没有对应任务的情况。必须先核对本次输入的当前任务池：例如任务池已有{title:英语}，学生说“现在开始英语，二十分钟后提醒我”，正确输出operations=[]、study_action={action:task_start,task_reference:英语,target_minutes:20,end_reminder_mode:elapsed}，不创建、不重复确认、不追问已有完整名称。\n",
     "delivery": "user",
     "variables": {
       "today": {
@@ -129,6 +129,39 @@
             "default": null,
             "title": "Planned Minutes"
           },
+          "duration_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "completion_estimate",
+                  "timebox"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Duration Kind"
+          },
+          "end_reminder_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "scheduled",
+                  "elapsed",
+                  "off"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "End Reminder Mode"
+          },
           "start_at": {
             "anyOf": [
               {
@@ -177,23 +210,107 @@
             ],
             "default": null,
             "title": "Reason"
-          },
-          "duration_kind": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "enum": [
-              "completion_estimate",
-              "timebox",
-              null
-            ]
           }
         },
         "required": [
           "kind"
         ],
         "title": "PlanningOperation",
+        "type": "object"
+      },
+      "StudyActionProposal": {
+        "properties": {
+          "action": {
+            "enum": [
+              "sprint_prepare",
+              "sprint_pause",
+              "sprint_resume",
+              "sprint_end",
+              "task_list",
+              "task_time",
+              "task_start",
+              "task_pause",
+              "task_resume",
+              "task_end",
+              "task_complete"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "topic": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Topic"
+          },
+          "target_minutes": {
+            "anyOf": [
+              {
+                "maximum": 180,
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Target Minutes"
+          },
+          "task_reference": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Task Reference"
+          },
+          "planned_start_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Planned Start At"
+          },
+          "end_reminder_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "elapsed",
+                  "off"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "End Reminder Mode"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "title": "StudyActionProposal",
         "type": "object"
       }
     },
@@ -240,66 +357,22 @@
         "type": "array"
       },
       "study_action": {
-        "type": [
-          "object",
-          "null"
-        ],
-        "properties": {
-          "action": {
-            "type": "string",
-            "enum": [
-              "sprint_prepare",
-              "sprint_pause",
-              "sprint_resume",
-              "sprint_end",
-              "task_list",
-              "task_time",
-              "task_start",
-              "task_pause",
-              "task_resume",
-              "task_end",
-              "task_complete"
-            ]
+        "anyOf": [
+          {
+            "$ref": "#/$defs/StudyActionProposal"
           },
-          "topic": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "target_minutes": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "minimum": 1,
-            "maximum": 180
-          },
-          "task_reference": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "planned_start_at": {
-            "type": [
-              "string",
-              "null"
-            ]
+          {
+            "type": "null"
           }
-        },
-        "required": [
-          "action"
         ],
-        "additionalProperties": false
+        "default": null
       }
     },
     "required": [
       "assistant_text"
     ],
     "title": "PlanIntakeResult",
-    "type": "object",
-    "additionalProperties": false
+    "type": "object"
   },
   "error_codes": [
     "agent_execution_failed",

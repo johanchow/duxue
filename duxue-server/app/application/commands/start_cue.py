@@ -18,9 +18,9 @@ from app.contexts.study.domain.start_cue import (
 )
 from app.infrastructure.persistence.models import (
     DailySchedule,
-    SelfReview,
     StartCueRecord,
     StudySession,
+    StudySessionInterval,
     Task,
     now,
 )
@@ -86,57 +86,53 @@ class StartCueService:
         return view
 
     def _upcoming(self, ward_id: str, schedule: DailySchedule | None, current: datetime) -> list[dict]:
-        if schedule is None or schedule.status != "confirmed":
-            return []
+        from app.contexts.study.domain.sprint import utc
+
         notes = []
-        last_end = None
-        for item in self._slots(schedule, ward_id):
-            if last_end is None or item["end"] > last_end:
-                last_end = item["end"]
-            if (item["start"] > current and item["status"] == "scheduled"
-                    and not self._task_in_progress(ward_id, item["task_id"])):
+        slots = self._slots(schedule, ward_id) if schedule and schedule.status == "confirmed" else []
+        for item in slots:
+            if item["status"] != "scheduled":
+                continue
+            if item["start"] > current and not self._task_in_progress(ward_id, item["task_id"]):
                 notes.append({
                     "id": f"start:{item['task_id']}",
                     "fire_at": item["start"].isoformat(),
                     "title": f"{item['title']}到点了",
-                    "body": f"{item['title']} {item['start_label']} 到了。打开读学可以开始。",
+                    "body": f"你约定的{item['title']}开始时间到了，想开始时可以告诉我。",
                     "kind": "start",
                 })
-        session = (
-            self.db.query(StudySession)
-            .filter(StudySession.ward_id == ward_id, StudySession.status == "active", StudySession.task_id.is_not(None))
-            .order_by(StudySession.started_at.desc())
-            .first()
-        )
-        if session is not None and session.task_id:
-            task = self.db.get(Task, session.task_id)
-            started = session.started_at
-            if started.tzinfo is None:
-                started = started.replace(tzinfo=timezone.utc)
-            if task is not None and task.planned_minutes:
-                fire = started + timedelta(minutes=int(task.planned_minutes))
+            task = self.db.get(Task, item["task_id"])
+            if task.end_reminder_mode == "scheduled" and task.planned_minutes:
+                fire = item["start"] + timedelta(minutes=task.planned_minutes)
                 if fire > current:
-                    notes.append({
-                        "id": f"rest:{session.id}",
-                        "fire_at": fire.isoformat(),
-                        "title": "可以休息一下",
-                        "body": f"{task.title}的这段时间到了。可以暂停，也可以继续。",
-                        "kind": "rest",
-                    })
-        has_review = (
-            self.db.query(SelfReview.id)
-            .filter_by(ward_id=ward_id, review_date=schedule.schedule_date)
-            .first() is not None
-        )
-        if last_end is not None and last_end > current and not has_review:
-            notes.append({
-                "id": f"day:{schedule.id}",
-                "fire_at": last_end.isoformat(),
-                "title": "可以总结今天",
-                "body": "今天计划的时间到了。打开读学，先说说自己的感受。",
-                "kind": "day_review",
-            })
+                    notes.append(self._end_notification(
+                        f"task-end:{task.id}", fire, task.title, "约定的提醒时间到了。"))
+        sessions = (self.db.query(StudySession)
+                    .filter_by(ward_id=ward_id, status="active")
+                    .filter(StudySession.task_id.is_not(None)).all())
+        for session in sessions:
+            task = self.db.get(Task, session.task_id)
+            if (task is None or task.ward_id != ward_id or task.status in {"completed", "cancelled"}
+                    or task.end_reminder_mode != "elapsed" or not task.planned_minutes):
+                continue
+            intervals = self.db.query(StudySessionInterval).filter_by(study_session_id=session.id).all()
+            # No intervals means unknown execution, never fabricate a start.
+            if not any(i.ended_at is None for i in intervals):
+                continue
+            seconds = sum(max(0, (min(utc(i.ended_at), current) - utc(i.started_at)).total_seconds())
+                          if i.ended_at else max(0, (current - utc(i.started_at)).total_seconds())
+                          for i in intervals)
+            remaining = task.planned_minutes * 60 - seconds
+            if remaining > 0:
+                notes.append(self._end_notification(
+                    f"task-end:{session.id}", current + timedelta(seconds=remaining), task.title,
+                    "本次执行约定的时长到了，可以继续，也可以休息。"))
         return notes
+
+    @staticmethod
+    def _end_notification(ident, fire, title, body):
+        return {"id": ident, "fire_at": fire.isoformat(), "title": f"{title}到时提醒",
+                "body": body, "kind": "task_end"}
 
     def _slots(self, schedule: DailySchedule, ward_id: str) -> list[dict]:
         rows = []

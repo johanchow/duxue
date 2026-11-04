@@ -504,6 +504,9 @@ App 按 `kind` 选择组件；当前操作所需的业务数字用 `object_ref` 
 
 Sprint 的主动开始、暂停、继续、结束与到时反馈已由 Study 实现，待验收，见 [Sprint 契约](domain-study.md#24-sprint主动专注挑战已实现待验收)。普通 `plan_confirm_list` 确认或 `start_cue` 接受不构成挑战授权；不得用 `achievement` 声称计时到点证明专注成功。首页挑战卡读取 Study 最新版本，不从历史消息或任务预估推导运行状态。挑战采用 `companion-interaction.v2` 的 `sprint_control` 与服务端签发的 `sprint_command`；任务的普通 v1 交互继续兼容。新客户端支持两者，历史挑战卡不重放动作，未知动作不执行。
 
+Ward默认安静首页与按需展开统一归 [用户PRD](../product/prd-user.md#六ward-首页与导航架构默认安静首页--按需对话--可选专注挑战)。主动口述挑战的preview属于Study只读用例，不新建Companion消息或handoff，不覆盖正在答疑的Thread/Run；普通对话中发起挑战仍沿用已签发的v2开始动作。
+
+
 #### 5.2.2 关闭的 `kind` 清单
 
 `kind` 只能由目标 Workflow + OutputValidator 产出。新增 `kind` 必须改本协议并同步 App allow-list。
@@ -784,3 +787,9 @@ When Tutoring 返回 no_match 的 needs_input
 Then Companion 要求裁剪、重拍或输入文字
 And 不呈现空选择题或 pronunciation_lesson
 ```
+
+### 答疑中的挑战插曲（2026-11-04，本轮待验收）
+
+产品入口见[用户PRD §6.3](../product/prd-user.md#63-按需查看与统一对话)。对话内图标使用Study独立preview，不写Thread/Run。自然语言挑战仍走Planning的受控动作：从Tutoring切入Planning时服务端记录原Run引用，只有已返回`sprint_control`的结果才能授权回到该Run；随后进入Tutoring时验证同Ward/Thread且原Run仍paused，恢复原Run/checkpoint。普通Planning切换不据此恢复旧题，历史清空与迟到结果围栏继续生效，客户端不能提供恢复引用。
+
+场景核查须允许明确挑战/提醒动作作为答疑中的短暂插曲，不要求结束原题；单纯估时与提交解题步骤仍留在答疑。自然语言挑战确认按钮紧跟最新对话，不能放在全部历史之前。真实模型边界冒烟可运行 `cd duxue-server && .venv/bin/python -m scripts.check_reminder_sprint_models`，仅使用固定样例，不写数据库。

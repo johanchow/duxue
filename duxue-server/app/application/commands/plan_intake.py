@@ -27,6 +27,7 @@ class PlanIntakeItem(BaseModel):
     details: str | None = Field(default=None, max_length=4000)
     planned_minutes: int | None = Field(default=None, ge=1, le=480)
     duration_kind: Literal["completion_estimate", "timebox"] | None = None
+    end_reminder_mode: Literal["scheduled", "elapsed", "off"] | None = None
     start_at: str | None = None
     after_task_reference: str | None = Field(default=None, max_length=300)
     before_task_reference: str | None = Field(default=None, max_length=300)
@@ -41,6 +42,7 @@ class PlanningOperation(BaseModel):
     title: str | None = Field(default=None, max_length=300)
     planned_minutes: int | None = Field(default=None, ge=1, le=480)
     duration_kind: Literal["completion_estimate", "timebox"] | None = None
+    end_reminder_mode: Literal["scheduled", "elapsed", "off"] | None = None
     start_at: str | None = None
     after_task_reference: str | None = None
     before_task_reference: str | None = None
@@ -66,6 +68,7 @@ class StudyActionProposal(BaseModel):
     target_minutes: int | None = Field(default=None, ge=1, le=180)
     task_reference: str | None = Field(default=None, max_length=300)
     planned_start_at: datetime | None = None
+    end_reminder_mode: Literal["elapsed", "off"] | None = None
 
 
 class PlanIntakeResult(BaseModel):
@@ -87,7 +90,7 @@ def _prompt(ward: dict, tasks: list[dict], request: PlanIntakeInput) -> str:
         for identity_field in ("assignment_id", "after_assignment_id", "before_assignment_id"):
             projected.pop(identity_field, None)
         draft_items.append(projected)
-    prompt = PROMPTS["planning.intake.prompt.v4"]
+    prompt = PROMPTS["planning.intake.prompt.v6"]
     assert isinstance(prompt, DynamicPrompt)
     return prompt.render({
         "current_sprint": request.current_sprint,

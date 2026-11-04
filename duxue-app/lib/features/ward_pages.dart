@@ -6,13 +6,12 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:pretty_qr_code/pretty_qr_code.dart';
 import '../core/models.dart';
+import 'guardian_report_view.dart';
 import '../core/user_error_message.dart';
 import '../core/voice_transcription_service.dart';
 import '../providers.dart';
 import '../shared/app_ui.dart';
 import '../shared/app_version_label.dart';
-import '../shared/voice_composer.dart';
-import '../shared/input_mode_composer.dart';
 
 class WardListPage extends ConsumerStatefulWidget {
   const WardListPage({super.key});
@@ -22,42 +21,63 @@ class WardListPage extends ConsumerStatefulWidget {
 
 class _WardListPageState extends ConsumerState<WardListPage> {
   int tab = 0;
+  String? selectedWardId;
   @override
   Widget build(BuildContext context) {
-    final titles = ['全部孩子', '决策', '我的'];
+    final wards = ref.watch(wardsProvider);
+    final items = wards.valueOrNull ?? const <Ward>[];
+    final selected =
+        items.where((ward) => ward.id == selectedWardId).firstOrNull ??
+            items.firstOrNull;
     return Scaffold(
       appBar: AppBar(
           centerTitle: false,
-          title:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(titles[tab]),
-            if (tab != 0)
-              Text(tab == 1 ? '待你回应的事项' : '账号与家庭',
-                  style: Theme.of(context).textTheme.labelSmall)
-          ])),
+          title: tab == 0 && selected != null
+              ? DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                      value: selected.id,
+                      isDense: true,
+                      items: items
+                          .map((ward) => DropdownMenuItem(
+                              value: ward.id, child: Text(ward.displayName)))
+                          .toList(),
+                      onChanged: (value) =>
+                          setState(() => selectedWardId = value)))
+              : Text(['学习报告', '全部孩子', '我的'][tab])),
       body: switch (tab) {
-        0 => _children(),
-        1 => _decisions(),
-        _ => _profile()
+        0 => wards.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (error, _) => Center(
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Text('加载孩子档案失败：${userErrorMessage(error)}'),
+                  TextButton(
+                      onPressed: () => ref.invalidate(wardsProvider),
+                      child: const Text('重新加载孩子档案')),
+                ])),
+            data: (_) => selected == null
+                ? _children()
+                : GuardianReportView(
+                    key: ValueKey(selected.id), wardId: selected.id)),
+        1 => _children(),
+        _ => _profile(),
       },
       bottomNavigationBar: NavigationBar(
-        selectedIndex: tab,
-        onDestinationSelected: (value) => setState(() => tab = value),
-        destinations: const [
-          NavigationDestination(
-              icon: Icon(Icons.child_care_outlined),
-              selectedIcon: Icon(Icons.child_care),
-              label: '孩子'),
-          NavigationDestination(
-              icon: Icon(Icons.volunteer_activism_outlined),
-              selectedIcon: Icon(Icons.volunteer_activism),
-              label: '决策'),
-          NavigationDestination(
-              icon: Icon(Icons.person_outline),
-              selectedIcon: Icon(Icons.person),
-              label: '我的')
-        ],
-      ),
+          selectedIndex: tab,
+          onDestinationSelected: (value) => setState(() => tab = value),
+          destinations: const [
+            NavigationDestination(
+                icon: Icon(Icons.description_outlined),
+                selectedIcon: Icon(Icons.description),
+                label: '报告'),
+            NavigationDestination(
+                icon: Icon(Icons.child_care_outlined),
+                selectedIcon: Icon(Icons.child_care),
+                label: '孩子'),
+            NavigationDestination(
+                icon: Icon(Icons.person_outline),
+                selectedIcon: Icon(Icons.person),
+                label: '我的'),
+          ]),
     );
   }
 
@@ -101,31 +121,6 @@ class _WardListPageState extends ConsumerState<WardListPage> {
                     ]))),
           ],
         ])),
-        if (items.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: AppCard(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              child: InputModeComposer(
-                hintText: '传递作业或留言',
-                onSubmit: (text) => _transfer(items, initialText: text),
-                onPickImage: (text) =>
-                    _captureTransfer(items, initialText: text),
-                voiceComposer: VoiceComposer(
-                  baseUrl: apiBaseUrl,
-                  tokens: ref.read(tokenStorageProvider),
-                  telemetry: ref.read(telemetryProvider),
-                  holdToTalkText: '传递作业或留言',
-                  helperText: '按住说话',
-                  onTap: () => _transfer(items),
-                  onBeforeRecording: () =>
-                      ref.read(apiProvider).ensureValidAccess(),
-                  onVoiceFinal: (text) => _transfer(items, initialText: text),
-                  onPickImage: () => _captureTransfer(items),
-                ),
-              ),
-            ),
-          ),
       ]),
     );
   }
@@ -145,9 +140,16 @@ class _WardListPageState extends ConsumerState<WardListPage> {
                   Text(ward.displayName,
                       style: const TextStyle(
                           fontWeight: FontWeight.w700, fontSize: 17)),
-                  Text('${_gradeName(ward.gradeStage)} · 查看今日计划与成长报告')
+                  Text('${_gradeName(ward.gradeStage)} · 查看档案与学习记录')
                 ])),
-            const Icon(Icons.chevron_right)
+            PopupMenuButton<String>(
+              tooltip: '孩子操作',
+              onSelected: (value) {
+                if (value == 'transfer') _transfer([ward]);
+              },
+              itemBuilder: (_) =>
+                  const [PopupMenuItem(value: 'transfer', child: Text('传递作业'))],
+            ),
           ]),
           const SizedBox(height: 12),
           Row(children: [
@@ -167,17 +169,6 @@ class _WardListPageState extends ConsumerState<WardListPage> {
           ]),
         ]),
       );
-
-  Widget _decisions() =>
-      ListView(padding: const EdgeInsets.all(16), children: const [
-        Text('系统只在需要你回应时提醒；你可以提出建议，但不能直接改写孩子确认的计划。'),
-        SectionLabel('待回应'),
-        AppCard(
-            child: ListTile(
-                leading: Icon(Icons.chat_bubble_outline),
-                title: Text('今晚怎么聊'),
-                subtitle: Text('孩子完成自我总结后，这里会出现基于事实的沟通建议。'))),
-      ]);
 
   Widget _profile() => ListView(padding: const EdgeInsets.all(16), children: [
         const AppCard(
@@ -257,31 +248,6 @@ class _WardListPageState extends ConsumerState<WardListPage> {
         'high' => '高中',
         _ => '小学',
       };
-
-  Future<void> _captureTransfer(List<Ward> wards, {String? initialText}) async {
-    final key = await _pickTransferImage(ImageSource.camera);
-    if (!mounted || key == null) return;
-    await _transfer(wards, initialText: initialText, initialAttachmentKey: key);
-  }
-
-  Future<String?> _pickTransferImage(ImageSource source) async {
-    try {
-      final image =
-          await ImagePicker().pickImage(source: source, imageQuality: 85);
-      if (image == null || !mounted) return null;
-      final extension = image.name.split('.').last.toLowerCase();
-      if (!const {'jpg', 'jpeg', 'png', 'webp'}.contains(extension)) {
-        showMessage(context, '暂只支持 JPG、PNG 或 WebP 图片');
-        return null;
-      }
-      return await ref
-          .read(apiProvider)
-          .uploadTaskIntakeImage(await image.readAsBytes(), extension);
-    } catch (_) {
-      if (mounted) showMessage(context, '图片上传失败，请重试');
-      return null;
-    }
-  }
 
   Future<void> _transfer(List<Ward> wards,
       {String? initialText, String? initialAttachmentKey}) async {
@@ -439,8 +405,7 @@ class _WardListPageState extends ConsumerState<WardListPage> {
                         minLines: 1,
                         maxLines: 4,
                         decoration: InputDecoration(
-                          hintText:
-                              recording ? '正在识别，松开后可编辑' : '输入作业、通知或给孩子的留言',
+                          hintText: recording ? '正在识别，松开后可编辑' : '输入作业或学校通知',
                           isDense: true,
                         ),
                       ),
@@ -693,27 +658,7 @@ class _WardDetailPageState extends ConsumerState<WardDetailPage> {
     ]);
   }
 
-  Widget _reports() => ListView(padding: const EdgeInsets.all(16), children: [
-        const AppCard(
-            child: ListTile(
-                leading: Icon(Icons.hourglass_top),
-                title: Text('今日报告等待生成'),
-                subtitle: Text('等孩子完成自我总结后，会生成今天的学习节奏与沟通建议。'))),
-        const SectionLabel('过往报告'),
-        AppCard(
-            onTap: () => context.go('/wards/${widget.wardId}/report'),
-            child: const ListTile(
-                leading: Icon(Icons.article_outlined),
-                title: Text('查看日报'),
-                subtitle: Text('完成事实、学习节奏与沟通建议'))),
-        const SizedBox(height: 10),
-        AppCard(
-            onTap: () => context.go('/wards/${widget.wardId}/trend'),
-            child: const ListTile(
-                leading: Icon(Icons.show_chart),
-                title: Text('过去 7 天'),
-                subtitle: Text('查看过往成长与学习节奏变化')))
-      ]);
+  Widget _reports() => GuardianReportView(wardId: widget.wardId);
 
   Widget _settings(Ward? ward) =>
       ListView(padding: const EdgeInsets.all(16), children: [

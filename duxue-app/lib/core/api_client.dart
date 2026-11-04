@@ -229,6 +229,19 @@ class ApiClient {
       ((await dio.get('/wards/$wardId/devices')).data as List)
           .map((item) => Device.fromJson(item))
           .toList();
+  Future<List<Map<String, dynamic>>> tutoringEvidence(
+          String wardId, DateTime day) async =>
+      ((await dio.get('/wards/$wardId/tutoring-evidence',
+                  queryParameters: {'date': _day(day)}))
+              .data['items'] as List)
+          .map((item) => Map<String, dynamic>.from(item as Map))
+          .toList();
+  Future<Map<String, dynamic>> tutoringEvidenceDetail(
+          String wardId, DateTime day, String problemId) async =>
+      Map<String, dynamic>.from((await dio.get(
+              '/wards/$wardId/tutoring-evidence/$problemId',
+              queryParameters: {'date': _day(day)}))
+          .data as Map);
   Future<DailyReport> report(String wardId, DateTime date) async {
     final timer = Stopwatch()..start();
     try {
@@ -522,6 +535,13 @@ class ApiClient {
   Future<Map<String, dynamic>> currentSprint() async =>
       (await dio.get('/sprints/current')).data as Map<String, dynamic>;
 
+  Future<Map<String, dynamic>> previewSprint(String content,
+          {Map<String, dynamic>? previous}) async =>
+      Map<String, dynamic>.from((await dio.post('/sprints/preview', data: {
+        'content': content,
+        if (previous != null) 'previous': previous,
+      }))
+          .data as Map);
   Future<Map<String, dynamic>> createSprint(Map<String, dynamic> data) async =>
       (await dio.post('/sprints', data: data)).data as Map<String, dynamic>;
 

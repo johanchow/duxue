@@ -829,3 +829,13 @@ When TTS Provider 超时
 Then 原文、发音提示和说明仍可见
 And 已完成的 Companion Run、StudySession、TutoringSession 与 ProblemRecord 均不改变
 ```
+
+
+## Guardian 逐题推导记录查询
+
+已实现，用户已确认本轮交付；首页呈现归 [用户 PRD](../product/prd-user.md#71-核心首页报告直接呈现)，物理映射归 [Server](design-server.md#guardian-推导记录查询迁移33)。这是已展示教学事实的只读投影，不是掌握认证。
+
+- 仅成功通过出口检查的 work 回合，将 Ward/assistant 消息绑定实际 `TutoringProblem`，记录 question/attempt/guide/reply。实质尝试与引导来自生产 `TutorPermitPolicy.advance` 结果，不新增关键词/正则分类。非教学、发音、澄清、失败/安全回退不绑定，不修改原教学许可。
+- `GET /wards/{ward_id}/tutoring-evidence?date=YYYY-MM-DD` 返回当日可展示题目；`GET /wards/{ward_id}/tutoring-evidence/{problem_id}?date=...` 展开原文。当前 Guardian 必须仍绑定 Ward；只读本人孩子、上海当日边界内、同题同会话、未被安全拦截的教学消息。
+- 需要当日已有 guide 且之后出现孩子的 attempt；仅问问题、仅提示、旧计数或孩子说懂了不成立。列表不带全对话，详情仅返回该题当天关联片段，不泄露其他话题、其他题目或自述。
+- submitted 只表示孩子提交思路，abandoned 只表示换题/退出；均不映射 verified。历史关联未知保留为空，不按时间邻近猜题。真正微验证与证据版本化报告不在本轮新增能力内。

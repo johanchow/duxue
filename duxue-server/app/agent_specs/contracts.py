@@ -35,6 +35,9 @@ def validate_output(unit: ModelUnit, payload: dict) -> None:
     elif unit_id == "planning.intake":
         from app.application.commands.plan_intake import PlanIntakeResult
         PlanIntakeResult.model_validate(payload)
+    elif unit_id == "study.sprint-intake":
+        from app.application.queries.sprint_preview import SprintVoiceCandidate
+        SprintVoiceCandidate.model_validate(payload)
     elif unit_id == "task.intake":
         from app.application.commands.task_intake import TaskIntakeResult
         TaskIntakeResult.model_validate(payload)
@@ -67,6 +70,6 @@ def validate_output(unit: ModelUnit, payload: dict) -> None:
 def has_python_contract(unit_id: str) -> bool:
     return unit_id in {
         "companion.intent", "companion.scene-switch", "planning.reply", "planning.intake",
-        "task.intake", "tutoring.turn", "evaluation.review-aspects",
+        "task.intake", "tutoring.turn", "evaluation.review-aspects", "study.sprint-intake",
         "tutoring.image-target", "tutoring.leak-judge", "tutoring.visual-leak-judge",
     }

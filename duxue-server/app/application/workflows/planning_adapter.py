@@ -45,6 +45,8 @@ from app.infrastructure.persistence.models import AgentRun, PlanDraft, Task, War
 def _operation_changes_task(operation, tasks: list) -> bool:
     """An update that restates the current title and leaves time untouched is not a change."""
     data = operation.model_dump(exclude_none=True)
+    if data.get("end_reminder_mode") is not None:
+        return True
     if data.get("kind") != "update":
         return True
     if any(data.get(field) for field in ("start_at", "after_task_reference", "before_task_reference", "reason")):
@@ -163,7 +165,7 @@ class PlanningWorkflowAdapter:
                 extracted = PlanIntakeService().respond(
                     ward={"id": ward.id, "display_name": ward.display_name, "grade_stage": ward.grade_stage},
                     tasks=[{"title": task.title, "details": task.details, "planned_minutes": task.planned_minutes,
-                            "scheduled": bool(task.schedule_id)} for task in tasks],
+                            "scheduled": bool(task.schedule_id), "end_reminder_mode": task.end_reminder_mode} for task in tasks],
                     request=PlanIntakeInput(content=invocation.turn.get("content", ""),
                         current_sprint=self._current_sprint_context(run.ward_id),
                         draft_items=active_draft.items if active_draft else [], clarification_slots=model_slots,
@@ -501,7 +503,7 @@ class PlanningWorkflowAdapter:
                 interaction["card_snapshot"] = {"items": [
                     {key: deepcopy(item[key]) for key in (
                         "assignment_id", "title", "planned_minutes", "start_at", "end_at",
-                        "duration_suggestion", "time_suggestion",
+                        "duration_suggestion", "time_suggestion", "end_reminder_mode",
                     ) if key in item}
                     for item in review["items"]
                 ]}
@@ -556,11 +558,12 @@ class PlanningWorkflowAdapter:
         sprint_service = SprintService(self.db)
         action = proposal.action
         if action == "sprint_prepare":
-            if not proposal.topic or not proposal.target_minutes:
-                return self._study_response(run,"这轮想专心做什么、试多少分钟？你也可以先直接做作业。")
+            if not proposal.target_minutes:
+                return self._study_response(run,"想试多久？")
+            topic = proposal.topic or "专注挑战"
             result = sprint_service.execute(run.ward_id, invocation.command_id, "prepare",
-                topic=proposal.topic, target_minutes=proposal.target_minutes, planned_start_at=proposal.planned_start_at)
-            return self._study_response(run,f"{proposal.topic}，试一轮{proposal.target_minutes}分钟？时间到不代表作业完成。",
+                topic=topic, target_minutes=proposal.target_minutes, planned_start_at=proposal.planned_start_at)
+            return self._study_response(run,f"{topic}，试一轮{proposal.target_minutes}分钟？时间到不代表作业完成。",
                 sprint=result["sprint"], needs_start=True)
         if action.startswith("sprint_"):
             current = sprint_service.current(run.ward_id)["sprint"]
@@ -578,6 +581,16 @@ class PlanningWorkflowAdapter:
         if len(matches) != 1:
             return self._study_response(run,"你指的是哪项作业？请说一下任务名称。")
         verb = action.removeprefix("task_")
+        if proposal.end_reminder_mode is not None:
+            if verb not in {"start", "resume"}:
+                raise HTTPException(400, "执行提醒只能随明确开始或继续设置")
+            self.db.query(Ward).filter_by(id=run.ward_id).with_for_update().one()
+            task = self.db.get(Task, matches[0]["id"])
+            if proposal.end_reminder_mode == "elapsed" and not (proposal.target_minutes or task.planned_minutes):
+                return self._study_response(run, "想在开始后多久提醒你？")
+            task.end_reminder_mode = proposal.end_reminder_mode
+            if proposal.target_minutes is not None:
+                task.planned_minutes = proposal.target_minutes
         result = TaskExecutionService(self.db).execute(run.ward_id,matches[0]["id"],verb)
         if verb == "pause" and result.get("session") is None:
             return self._study_response(run,"没有记录到这项正在运行的会话，任务完成情况不变。")
@@ -587,6 +600,8 @@ class PlanningWorkflowAdapter:
         else:
             text = {"start":"已记录开始。", "pause":"已记录暂停。", "resume":"已记录继续。",
                     "end":"这次先到这里，任务仍未声明完成。", "complete":"已记录你声明这项作业完成。"}[verb]
+        if proposal.end_reminder_mode == "elapsed":
+            text += "会按本次执行累计时长到时提醒；暂停期间不计时。"
         return self._study_response(run,text)
 
     def _current_sprint_context(self, ward_id):

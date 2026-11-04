@@ -111,7 +111,7 @@
 
 - **客户端层**：
   1. **读学Eye**：采用固定机位标准摄像头与共享采集网关，和学生交互设备物理分离；Go网关已实现，待家庭现场验收。
-  2. **`duxue-app` · Ward 端**：默认主体为伴学对话流，底部常驻唯一 `VoiceComposer`。普通任务与时间按需查看，不常驻当前/下一项；仅主动开启的限时 Sprint 展示挑战卡。首页规则见 [用户 PRD](prd-user.md#六ward-首页与导航架构默认对话流--可选专注挑战--底部唯一-voicecomposer)。
+  2. **`duxue-app` · Ward 端**：默认安静首页，主动求助才展开对话；底部复用唯一 `VoiceComposer`。普通任务与时间按需查看，不常驻当前/下一项；仅主动开启的限时 Sprint 展示挑战卡。首页规则见 [用户 PRD](prd-user.md#六ward-首页与导航架构默认安静首页--按需对话--可选专注挑战)。
   3. **`duxue-app` · Guardian 端**：聚焦设备绑定与在线状态、外部作业信息传递、以及每晚查收结构化伴学实况单与难题独立解题凭证。
 - **服务端核心领域（Domain）**：
   - **`Companion`（陪伴编排域）**：Ward 可见对话的唯一 append-only 账本，负责意图路由、跨场景切换核查（`scene-switch`）、确认卡与交互按钮生命周期管理。
@@ -143,7 +143,7 @@
 graph TB
     subgraph CLIENTS["客户端层（物理职责分离）"]
         CAM["读学Eye<br/>（标准摄像头 + 共享采集网关）"]
-        APPW["duxue-app · 学生端（Ward）<br/>（默认对话流 + 可选 Sprint + VoiceComposer）"]
+        APPW["duxue-app · 学生端（Ward）<br/>（安静首页 + 按需对话 + 可选 Sprint）"]
         APPG["duxue-app · 家长/伴学师端（Guardian / Coach）<br/>（晚间闭环实况单 + 独立解题凭证 + 1对多督学日报）"]
     end
 
@@ -189,7 +189,7 @@ graph TB
 
 | 能力域 | 产品规格（PRD） | 领域技术契约（事实源） | 当前状态与关键演进说明 |
 | :--- | :--- | :--- | :--- |
-| **用户、身份与首页** | [`prd-user.md`](prd-user.md) | [`design-app.md`](../technical/design-app.md) | **身份与统一对话入口已落地**。默认对话首页、按需作业与主动 Sprint 限时卡已实现，待本轮验收，尚未部署。 |
+| **用户、身份与首页** | [`prd-user.md`](prd-user.md) | [`design-app.md`](../technical/design-app.md) | **身份与统一对话入口已落地**。安静首页、按需作业与口述确认 Sprint 已实现，待本轮验收，尚未部署。 |
 | **陪伴对话统一入口** | [`prd-companion.md`](prd-companion.md) | [`domain-companion.md`](../technical/domain-companion.md) | **已落地**。统一 `/companion/turn`，支持 `planning`/`tutoring`/`reflection`/`unclear` 路由与跨场景核查。 |
 | **启发式答疑与表达** | [`prd-companion.md`](prd-companion.md) | [`domain-tutoring.md`](../technical/domain-tutoring.md)<br/>[`domain-tutoring-presentation.md`](../technical/domain-tutoring-presentation.md)<br/>[`eval-offline.md`](../technical/eval-offline.md) | **主链路已落地**。含答案保护许可、独立泄露裁判、5 种结构化配图、发音 `pronounce` 与离线评测。 |
 | **轻量计划与任务（原协商式计划 / 点火器）** | [`prd-schedule.md`](prd-schedule.md) | [`domain-planning.md`](../technical/domain-planning.md) | **本轮已实现，待验收**。普通计划按需提示、主动 Sprint 限时展示；后台模型保留，挑战与作业完成分离，迁移32尚未应用到开发/生产库。 |

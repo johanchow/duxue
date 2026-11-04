@@ -282,6 +282,7 @@ class Task(Base):
     planned_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     duration_kind: Mapped[str | None] = mapped_column(String(30), nullable=True)
     duration_source: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    end_reminder_mode: Mapped[str | None] = mapped_column(String(20), nullable=True)
     source: Mapped[str] = mapped_column(String(20), default="guardian")
     status: Mapped[str] = mapped_column(String(20), default="pool")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
@@ -479,6 +480,8 @@ class TutoringMessage(Base):
     __tablename__ = "tutoring_messages"
     id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
     tutoring_session_id: Mapped[str] = mapped_column(ForeignKey("tutoring_sessions.id"), index=True)
+    problem_id: Mapped[str | None] = mapped_column(ForeignKey("tutoring_problems.id", name="fk_tutoring_message_problem"), nullable=True, index=True)
+    evidence_kind: Mapped[str | None] = mapped_column(String(20), nullable=True)
     role: Mapped[str] = mapped_column(String(20))
     content: Mapped[str] = mapped_column(Text)
     media_urls: Mapped[list] = mapped_column(JSON, default=list)

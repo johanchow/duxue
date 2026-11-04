@@ -88,3 +88,54 @@ def test_unknown_task_time_is_reported_unknown_without_fabricating_session(db):
     TaskExecutionService(db).execute(ward.id, task.id, "complete")
     assert task.status == "completed"
     assert db.query(StudySession).count() == 0
+
+
+def test_general_conversation_can_prepare_duration_only_sprint_without_topic_gate(db):
+    ward = create_ward(db)
+    db.commit()
+    coordinator = CompanionCoordinator(db, dispatcher=Dispatcher(db), classifier=StaticIntentClassifier('planning'))
+    with patch('app.application.commands.plan_intake.PlanIntakeService.respond', return_value=PlanIntakeResult(
+        assistant_text='试二十分钟。', study_action={'action':'sprint_prepare','target_minutes':20}
+    )):
+        result = coordinator.handle(ward_id=ward.id, content='试一轮二十分钟专注挑战', thread_id=None,
+                                    expected_thread_version=0, route_hint=None)
+    assert result.interaction['sprint']['topic'] == '专注挑战'
+    assert db.query(Sprint).one().status == 'ready'
+    assert db.query(Task).count() == db.query(StudySession).count() == 0
+
+
+def test_natural_sprint_interlude_resumes_original_tutoring_run(db):
+    from app.application.ports.companion import WorkflowOutcome
+
+    class MixedDispatcher(Dispatcher):
+        def invoke(self, invocation):
+            if invocation.agent_type == 'tutoring':
+                return WorkflowOutcome(run_status='waiting_for_ward', outcome_type='waiting',
+                                       response={'kind': 'text', 'content': '先看看已知条件。', 'actions': []})
+            return super().invoke(invocation)
+
+    class AllowSwitch:
+        def confirm(self, **kwargs):
+            return True
+
+    ward = create_ward(db)
+    db.commit()
+    coordinator = CompanionCoordinator(db, dispatcher=MixedDispatcher(db),
+        classifier=StaticIntentClassifier('tutoring'), switch_verifier=AllowSwitch())
+    question = coordinator.handle(ward_id=ward.id, content='这道题怎么做', thread_id=None,
+                                  expected_thread_version=0, route_hint=None)
+    coordinator.classifier = StaticIntentClassifier('planning')
+    with patch('app.application.commands.plan_intake.PlanIntakeService.respond', return_value=PlanIntakeResult(
+        assistant_text='试十分钟', study_action={'action':'sprint_prepare', 'target_minutes':10}
+    )):
+        proposal = coordinator.handle(ward_id=ward.id, content='我想开十分钟专注挑战自己试试',
+            thread_id=question.thread_id, expected_thread_version=question.thread_version, route_hint=None)
+    action = proposal.interaction['actions'][0]
+    started = coordinator.handle(ward_id=ward.id, content='', thread_id=proposal.thread_id,
+        expected_thread_version=proposal.thread_version, route_hint='planning',
+        structured_command={'command':'sprint_command','interaction_id':action['id'],'payload':action['payload']})
+    coordinator.classifier = StaticIntentClassifier('tutoring')
+    resumed = coordinator.handle(ward_id=ward.id, content='刚才这道题接着讲', thread_id=question.thread_id,
+                                 expected_thread_version=started.thread_version, route_hint=None)
+    assert resumed.run_id == question.run_id
+    assert resumed.thread_id == question.thread_id

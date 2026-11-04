@@ -292,7 +292,7 @@ class AgentCatalog:
             if path.stem != spec.id or spec.id in specs:
                 raise ValueError(f"invalid agent file {path.name}")
             specs[spec.id] = spec
-        if set(specs) != {"companion", *_BUSINESS, "task-intake", "review-aspects", "tutoring-vet", "tutoring-retry"}:
+        if set(specs) != {"companion", *_BUSINESS, "task-intake", "review-aspects", "sprint-intake", "tutoring-vet", "tutoring-retry"}:
             raise ValueError(f"agent definitions missing or unexpected: {sorted(specs)}")
         return cls(specs, directory)
 

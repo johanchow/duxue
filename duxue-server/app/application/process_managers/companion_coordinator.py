@@ -110,6 +110,23 @@ class CompanionCoordinator:
         return run if run and run.status in (*_ACTIVE_STATUSES, "failed", "timed_out") else None
 
     def _start_or_resume(self, *, thread: ConversationThread, decision: RouteDecision, focus_run: AgentRun | None) -> AgentRun:
+        # A voluntary sprint can briefly use Planning without losing the
+        # paused problem's Run/checkpoint. Only a server-recorded interlude
+        # grants this return; ordinary scene switches keep their old behavior.
+        previous = self.db.query(AgentRun).filter_by(
+            thread_id=thread.id, run_ref=thread.focus_run_ref).one_or_none() if thread.focus_run_ref else None
+        return_ref = (previous.outcome or {}).get("sprint_return_ref") if previous else None
+        if decision.target == "tutoring" and previous and (previous.outcome or {}).get("sprint_interlude") and return_ref:
+            original = self.db.query(AgentRun).filter_by(
+                thread_id=thread.id, ward_id=thread.ward_id, run_ref=return_ref,
+                agent_type="tutoring", status="paused").one_or_none()
+            if original is not None:
+                original.status = "active"
+                original.last_active_at = now()
+                thread.focus_run_ref = original.run_ref
+                decision.mode = "continue"
+                decision.active_session_id = original.id
+                return original
         if decision.mode == "continue" and focus_run is not None:
             if focus_run.status not in _RESUMABLE_STATUSES:
                 raise HTTPException(409, "focus run cannot be resumed")
@@ -125,6 +142,10 @@ class CompanionCoordinator:
             id=run_id, thread_id=thread.id, ward_id=thread.ward_id,
             agent_type=decision.target, run_ref=f"agent_run:{run_id}", attempt=1,
         )
+        if decision.target == "planning" and focus_run and focus_run.agent_type == "tutoring":
+            run.outcome = {"sprint_return_ref": focus_run.run_ref}
+        elif decision.target == "planning" and previous and previous.agent_type == "planning" and return_ref:
+            run.outcome = {"sprint_return_ref": return_ref}
         self.db.add(run)
         self.db.flush()
         thread.focus_run_ref = run.run_ref
@@ -565,7 +586,10 @@ class CompanionCoordinator:
         run.context_refs = outcome.context_refs
         run.failure = outcome.failure or {}
         interaction = outcome.response or outcome.next_interaction or {}
+        return_ref = (run.outcome or {}).get("sprint_return_ref")
         run.outcome = {
+            "sprint_return_ref": return_ref,
+            "sprint_interlude": bool(return_ref and interaction.get("kind") == "sprint_control"),
             "type": outcome.outcome_type,
             "resume_action": outcome.resume_action,
             # The issued action is persisted with its run outcome.  A later

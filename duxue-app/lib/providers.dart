@@ -100,8 +100,8 @@ final devicesProvider = StreamProvider.family<List<Device>, String>((
     await Future<void>.delayed(const Duration(seconds: 30));
   }
 });
-final reportProvider =
-    FutureProvider.family<DailyReport, ({String wardId, DateTime date})>(
+final reportProvider = FutureProvider.autoDispose
+    .family<DailyReport, ({String wardId, DateTime date})>(
   (ref, key) => ref.watch(apiProvider).report(key.wardId, key.date),
 );
 final weeklyTrendProvider =
