@@ -25,12 +25,12 @@ from app.application.workflows.tutor_loop import (
 )
 from app.application.workflows.tutor_tools import TutorToolbox
 from app.application.workflows.tutor_turn import (
-    FALLBACK_TEXT,
     REMINDER,
     SAFE_TEXT,
     LeakJudgePort,
     TutorModelPort,
     build_tutor_instruction,
+    fallback_text,
 )
 from app.application.workflows.tutor_visual import describe
 from app.contexts.companion.domain.policy import PolicyRegistry
@@ -224,7 +224,7 @@ class TutoringWorkflow:
         """有界循环、出口检查与泄露后的一次重试由 tutor_loop 提供（评测共用）。"""
         try:
             model = self._model()
-        except Exception as error:
+        except Exception as error:  # noqa: BLE001 - model setup failures use the safe fallback
             record_llm_fallback(operation="tutor_turn", reason=str(error))
             return None
         return run_tutor_turn(
@@ -454,13 +454,14 @@ class TutoringWorkflow:
         refs = [f"tutoring_session:{tutor.id}"]
         ward_msg = self._ward_message(tutor, content)
         if failed:
+            text = fallback_text(failure, vetting.leak_reason if vetting else None)
             record_tutor_turn_result(
                 act=candidate.act if candidate else None, relation=candidate.relation if candidate else None,
-                leak_retried=leak_retried, outcome="fallback", reason=failure or "exit_check", shown=FALLBACK_TEXT,
+                leak_retried=leak_retried, outcome="fallback", reason=failure or "exit_check", shown=text,
                 shape_flags=vetting.shape_flags if vetting else None,
             )
             return self._reply(
-                invocation, tutor, refs, envelope, text=FALLBACK_TEXT, blocked=False,
+                invocation, tutor, refs, envelope, text=text, blocked=False,
                 permit=permit, problem_status=problem_row.status if problem_row else None,
             )
         if safety:

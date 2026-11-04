@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from app.application.ports.companion import RunInvocation
 from app.application.workflows.tutoring_workflow import TutoringWorkflow
 from app.infrastructure.ai.model_gateway import ModelGatewayError
@@ -50,6 +52,58 @@ def _setup(db, title="初中代数"):
 def _workflow(db, *raws, judge=None):
     model = StaticTutorModel(*raws)
     return TutoringWorkflow(db, turn_model=model, leak_judge=judge or StaticLeakJudge(False)), model
+
+
+@pytest.mark.parametrize("reason,expected", [
+    ("choice_verdict", "这次没能直接给出检查结果，是因为回答中涉及选择题或判断题的选项对错。这部分我可以陪你检查判断依据，你可以选一道题，说说你为什么这样选。"),
+    ("final_answer", "这次回答会直接给出题目的最终答案，这一步需要留给你完成。我可以换成提示，你可以告诉我卡在哪一步。"),
+    ("complete_solution", "这次回答会把整道题的解法直接写完，没有给你留下自己推理的步骤。我可以改为一步提示，你可以告诉我想从哪一步继续。"),
+    ("incorrect_confirmation", "这次回答还没有充分依据确认你的答案是否正确，所以暂时不能给出对错结论。你可以选一道题，我们一起核对解题过程。"),
+    ("premature_conclusion", "这次回答跳过了必要的计算或检查，还不能把结论当作已经验证。你可以说说已经做到哪一步，我们一起补上验证。"),
+    (None, "这次暂时没能完成回答，请稍后再试。"),
+])
+def test_final_failure_explains_reason_without_committing_rejected_work(db, monkeypatch, reason, expected):
+    from app.application.workflows import tutoring_workflow as module
+    from app.application.workflows.tutor_loop import ModelCall, TurnResult, Vetting
+    from app.application.workflows.tutor_turn import TutorTurnCandidate
+    from app.infrastructure.persistence.models import TutoringMessage
+
+    _, session = _setup(db)
+    workflow, _ = _workflow(db, ATTEMPT)
+    candidate = TutorTurnCandidate.model_validate(ATTEMPT)
+    failure = "leak_detected" if reason else "leak_check_failed"
+    result = TurnResult(ModelCall(candidate), Vetting(candidate, None, failure, leak_reason=reason))
+    monkeypatch.setattr(workflow, "_run_model", lambda *args, **kwargs: result)
+    recorded = []
+    monkeypatch.setattr(module, "record_tutor_turn_result", lambda **kwargs: recorded.append(kwargs))
+    outcome = _ask(db, workflow, session, "我已经写了答案，只想检查是不是都对了")
+
+    assert outcome.next_interaction["content"] == expected
+    assert outcome.next_interaction["model_fallback"] is True
+    assert recorded[-1]["shown"] == expected
+    assert db.query(TutoringMessage).filter_by(role="assistant").one().content == expected
+    assert db.query(TutoringProblem).count() == 0
+    assert not _events(db)
+
+
+@pytest.mark.parametrize("failure,reason", [
+    ("leak_check_failed", "choice_verdict"),
+    ("no_candidate", "final_answer"),
+    ("private_provider_exception", None),
+    ("leak_detected", "unknown_reason"),
+    (None, None),
+])
+def test_unknown_or_technical_failure_never_uses_a_teaching_boundary(failure, reason):
+    from app.application.workflows.tutor_turn import FALLBACK_TEXT, fallback_text
+
+    assert fallback_text(failure, reason) == FALLBACK_TEXT
+
+
+@pytest.mark.parametrize("failure", ["pronounce_without_lesson", "lesson_markup", "segment_not_in_source"])
+def test_invalid_pronunciation_offers_a_retry_without_exposing_internal_error(failure):
+    from app.application.workflows.tutor_turn import fallback_text
+
+    assert fallback_text(failure) == "这次没能生成可用的发音内容。你可以指定要读的单词或句子，再试一次。"
 
 
 def test_tutoring_workflow_step_by_step_and_close(db):
@@ -654,9 +708,9 @@ def test_new_run_without_checkpoint_abandons_leftover_open_problem_on_reused_ses
 
 
 def test_shown_work_turns_bind_evidence_to_the_actual_problem_and_keep_other_topics_out(db):
-    from app.infrastructure.persistence.models import TutoringMessage
-    from app.application.queries.tutoring_evidence import list_evidence, evidence_detail
+    from app.application.queries.tutoring_evidence import evidence_detail, list_evidence
     from app.contexts.planning.domain.scheduling import local_plan_date
+    from app.infrastructure.persistence.models import TutoringMessage
 
     ward, session = _setup(db)
     workflow, _ = _workflow(db, ATTEMPT, ATTEMPT, KNOWLEDGE)
