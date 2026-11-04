@@ -1006,3 +1006,7 @@ Sprint 命令以 Ward 行锁串行化，行/幂等回执同事务；轮次到时
 `tutoring_messages.problem_id` 为可空 UUID FK 至 tutoring_problems，命名 fk_tutoring_message_problem，带索引；`evidence_kind` 为可空 String(20)。旧消息全部保留空关联，无数据回填，原正文不改写。升降级保留原题目与对话，回退只删除新列、外键及索引。
 
 Query 由 `app/application/queries/tutoring_evidence.py` 承接，鉴权由 Guardian API 检查当前绑定关系；查询仅读已持久化且已展示的教学片段，不触发模型、不创建学习事实、不解锁答案。详情按需读取，客户端展开前不下载正文。账号清除按消息 → 题目 → 答疑会话顺序删，避免外键阻塞；不新建凭证副本或后台重建任务。
+
+### Task约定提醒增量（2026-11-04）
+
+Task可空列`end_reminder_mode: varchar(20)`由迁移`20261104_34`加入；历史默认NULL，不补造提醒授权。规则与持久化边界唯一归属[Planning约定提醒](domain-planning.md#约定到时提醒2026-11-04本轮待验收)。测试库已从33升级至34并完成本轮回归；生产库尚未执行此迁移，后台通知等现场验收边界见进行中spec。

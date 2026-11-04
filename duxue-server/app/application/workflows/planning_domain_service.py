@@ -576,6 +576,13 @@ class PlanningDomainService(PlanningOperations):
         for item in items:
             item.setdefault("planned_minutes", None)
             task = self.db.get(Task, item["assignment_id"])
+            mode = item.get("end_reminder_mode")
+            if mode not in {None, "scheduled", "elapsed", "off"}:
+                raise HTTPException(400, "到时提醒类型无效")
+            if mode in {"scheduled", "elapsed"} and not item.get("planned_minutes"):
+                pending.add("reminder_duration")
+            if mode == "scheduled" and (not item.get("start_at") or item.get("slot_source") != "ward_explicit"):
+                pending.add("reminder_start")
             item["readonly"] = bool(task and task.status in {COMPLETED, CANCELLED})
             item["schedule_conflict"] = item["assignment_id"] in conflict_ids
             item["will_enter_plan"] = bool(item.get("schedule_requested", True)
@@ -703,6 +710,7 @@ class PlanningDomainService(PlanningOperations):
                 continue
             task.title, task.planned_minutes = item["title"], item.get("planned_minutes")
             task.duration_kind, task.duration_source = item.get("duration_kind"), item.get("duration_source")
+            task.end_reminder_mode = item.get("end_reminder_mode")
             task.schedule_id, task.position = schedule.id, position
             task.status = SCHEDULED
         schedule.items, schedule.history = deepcopy(selected), history

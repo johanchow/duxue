@@ -47,7 +47,7 @@ def test_due_task_without_a_camera_presents_one_card(db):
     assert db.query(LearningEvent).filter_by(event_type="start_cue.presented").count() == 0
     start_notes = [item for item in view["notifications"] if item["kind"] == "start"]
     assert [item["id"] for item in start_notes] == [f"start:{english.id}"]
-    assert any(item["kind"] == "day_review" for item in view["notifications"])
+    assert not any(item["kind"] == "day_review" for item in view["notifications"])
 
 
 def test_completed_task_and_submitted_review_are_not_scheduled_as_notifications(db):

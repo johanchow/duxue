@@ -99,3 +99,9 @@ Companion 的 `plan_confirm_list` 承载安排确认；新增 `quick_ignite` 等
 产品场景与验收唯一归属 [PRD §六](../product/prd-schedule.md#六验收标准)。实施需补充领域与协议测试：可空时间、确认不开始、显式开始、暂停换项后的区间保留、无计时完成声明、幂等/旧版本/目标歧义、跨日释放、未完成项按需可查、默认无常驻任务条、普通任务与 Sprint 授权隔离、挑战到时不触发任务完成。
 
 本轮实现及实际测试记录见[进行中 spec](../../.agent/specs/lightweight-planning-focus-sprint.md)。旧活动草稿由迁移32失效，旧任务/日程/会话历史保留；旧来源不明钟点不自动触发新邀请。
+
+## 约定到时提醒（2026-11-04，本轮待验收）
+
+产品规则唯一归属[计划PRD §4.3.1](../product/prd-schedule.md#431-记事与约定提醒)。Task增加可空`end_reminder_mode`，取值scheduled/elapsed/off；空值与off均不授权到时提醒，历史不回填。模型只提议，操作白名单及Python契约约束闭集；草稿/确认卡保留方式，确认时写Task，取消使用off显式覆盖。Task查询返回此字段。迁移`20261104_34`新增可空列，部署前须升级数据库。
+
+Study负责提醒投影：scheduled按Ward明确钟点加planned_minutes，elapsed只按本次active StudySession的执行区间计算剩余时长，不累计暂停；无计划也可查询elapsed提醒。完成/取消不再排，缺少执行区间不猜开始。到时不完成任务，不生成学习质量结论。已排本地通知须由客户端刷新替换；跨设备离线期间不能保证撤回。

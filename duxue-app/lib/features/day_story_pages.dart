@@ -153,6 +153,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   Map<String, dynamic>? plan, insight, profile, startCue;
   String? session;
   Map<String, dynamic>? sprint, readySprint, sprintAction;
+  Map<String, dynamic>? pendingSprintNotice;
   String? hiddenSprintId;
   bool sprintBusy = false;
   int sprintGeneration = 0;
@@ -389,15 +390,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
                               Map<String, dynamic>.from(row as Map)
                           ],
                           onCommand: _actOnStartCue),
-                    ],
-                    if (historyMessages.isNotEmpty ||
-                        planMessages.isNotEmpty ||
-                        _hasOlderHistory) ...[
-                      const SizedBox(height: 24),
-                      TextButton.icon(
-                          onPressed: _openPlanChat,
-                          icon: const Icon(Icons.chat_bubble_outline, size: 16),
-                          label: const Text('继续上次对话')),
                     ],
                   ],
                 ]))),
@@ -717,6 +709,15 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
                 child: Text('• ${item['title']} · '
                     '${_draftSlotLabel(item)} · '
                     '${item['planned_minutes'] == null ? '未估时' : '约 ${item['planned_minutes']} 分钟'}')),
+            if (item['end_reminder_mode'] == 'scheduled')
+              const Text('按约定钟点到时提醒',
+                  style: TextStyle(color: Colors.blueGrey, fontSize: 12)),
+            if (item['end_reminder_mode'] == 'elapsed')
+              const Text('明确开始后按累计执行时长提醒，暂停不计时',
+                  style: TextStyle(color: Colors.blueGrey, fontSize: 12)),
+            if (item['end_reminder_mode'] == 'off')
+              const Text('已选择取消到时提醒，确认后生效',
+                  style: TextStyle(color: Colors.blueGrey, fontSize: 12)),
             _planSuggestion(item, 'duration',
                 showActions: false, honorDismissal: active),
             _planSuggestion(item, 'time',
@@ -752,10 +753,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
                 Map<String, dynamic>.from(row as Map)
             ],
             onCommand: _actOnStartCue),
-      if (sprintAction != null)
-        FilledButton(
-            onPressed: _chatBusy ? null : _acceptSprintProposal,
-            child: const Text('开始这次挑战')),
       if (loadingOlderMessages)
         const Padding(
           padding: EdgeInsets.only(top: 10),
@@ -784,6 +781,10 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
       ),
       for (final message in historyMessages) _chatMessage(message),
       for (final message in planMessages) _chatMessage(message),
+      if (sprintAction != null)
+        FilledButton(
+            onPressed: _chatBusy ? null : _acceptSprintProposal,
+            child: const Text('开始这次挑战')),
       if (_chatBusy)
         const Padding(
           padding: EdgeInsets.only(top: 14),
@@ -821,13 +822,22 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     ];
 
     return _HomeOverlay(
-      banner: _activeSprintCard(),
+      banner: sprintSetupOpen ? _spokenSprintCard() : _activeSprintCard(),
       title: '读学',
       subtitle: '随时提问，需要时再安排。',
       bottomInset: stagedImages.isNotEmpty ? 164 : 92,
-      onClose: () => setState(() => planChatOpen = false),
+      onClose: () => setState(() {
+        _discardSprintSetup();
+        planChatOpen = false;
+      }),
       closeTooltip: '收起对话',
-      action: _homeMenu(),
+      action: Row(mainAxisSize: MainAxisSize.min, children: [
+        IconButton(
+            tooltip: '对话内专注挑战',
+            onPressed: sprintBusy || _chatBusy ? null : _openSprint,
+            icon: const Icon(Icons.timer_outlined)),
+        _homeMenu(),
+      ]),
       child: ListView.builder(
         key: const Key('companion-chat-list'),
         controller: _chatScrollController,
@@ -933,8 +943,12 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   String _draftSlotLabel(Map<String, dynamic> item) {
     final start = DateTime.tryParse(item['start_at'] as String? ?? '');
     final end = DateTime.tryParse(item['end_at'] as String? ?? '');
-    String clock(DateTime value) =>
-        '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
+    String clock(DateTime value) {
+      // Offset timestamps parse as UTC; display the agreed Shanghai clock.
+      final local = value.isUtc ? value.add(const Duration(hours: 8)) : value;
+      return '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+    }
+
     if (start == null) return '未排时间';
     return end == null ? '${clock(start)} 开始' : '${clock(start)}–${clock(end)}';
   }
@@ -1062,6 +1076,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
 
   Future<void> _refreshSprint() async {
     if (!sprintForeground) return;
+    _presentSprintNotice();
     final generation = ++sprintGeneration;
     try {
       final result = await ref.read(apiProvider).currentSprint();
@@ -1091,15 +1106,10 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         } catch (_) {
           return; // Another device may have claimed this notice; keep the verified round.
         }
-        if (mounted &&
-            !_chatBusy &&
-            sprintForeground &&
-            generation == sprintGeneration) {
-          showMessage(
-              context,
-              notice['status'] == 'ready'
-                  ? '约定的挑战时间到了，想开始时点“专注挑战”。'
-                  : '这轮计时结束了，要继续还是休息？');
+        if (mounted) {
+          // A successful claim must survive a new turn or foreground refresh.
+          pendingSprintNotice = Map<String, dynamic>.from(notice);
+          _presentSprintNotice();
         }
       }
     } catch (_) {
@@ -1110,11 +1120,23 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     }
   }
 
+  void _presentSprintNotice() {
+    if (!mounted || !sprintForeground || _chatBusy || sprintBusy) return;
+    final notice = pendingSprintNotice;
+    if (notice == null) return;
+    pendingSprintNotice = null;
+    showMessage(
+        context,
+        notice['status'] == 'ready'
+            ? '约定的挑战时间到了，想开始时点“专注挑战”。'
+            : '这轮计时结束了，要继续还是休息？');
+  }
+
   Future<void> _openSprint() async {
     if (sprintBusy || _chatBusy) return;
     final generation = ++sprintSetupGeneration;
     setState(() {
-      planListOpen = planChatOpen = false;
+      planListOpen = false;
       sprintSetupOpen = true;
       spokenSprintDraft = spokenSprintPreview = null;
       sprintPreviewBusy = false;
@@ -1222,7 +1244,10 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     } catch (error) {
       if (mounted) showMessage(context, '请重新查看这轮挑战：${userErrorMessage(error)}');
     } finally {
-      if (mounted) setState(() => planSending = false);
+      if (mounted) {
+        setState(() => planSending = false);
+        _presentSprintNotice();
+      }
     }
   }
 
@@ -1802,6 +1827,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     } finally {
       if (mounted && generation == _chatGeneration) {
         setState(() => planSending = false);
+        _presentSprintNotice();
       }
     }
   }
@@ -1851,6 +1877,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     } finally {
       if (mounted && generation == _chatGeneration) {
         setState(() => planSending = false);
+        _presentSprintNotice();
       }
     }
   }
@@ -2080,6 +2107,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     } finally {
       if (mounted && generation == _chatGeneration) {
         setState(() => planSending = false);
+        _presentSprintNotice();
       }
     }
   }
@@ -2180,6 +2208,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     } finally {
       if (mounted && generation == _chatGeneration) {
         setState(() => planSending = false);
+        _presentSprintNotice();
       }
     }
   }

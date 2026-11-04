@@ -36,3 +36,7 @@ Ward 可见对话是 Companion 的 append-only 账本，统一走 `/companion/tu
 - 本机代理指向无进程的端口时，语音识别会报暂时不可用。
 
 - 2026-11-04 Ward默认安静，只有主动求助/查看历史才展开同一Companion对话；收起不清线程、不取消请求、不触发handoff。Challenge口述预览不写本账本，现有自然语言v2签发动作继续兼容。
+
+- 2026-11-04 答疑内图标已复用Study只读挑战预览，保留对话。自然语言路径回归发现挑战后继续原题会新建Run，已增加服务端受控的原Run恢复引用，只在Sprint交互后恢复同Thread/Ward的paused Tutoring Run；不凭客户端引用恢复。契约归[Companion设计](../../docs/technical/domain-companion.md#答疑中的挑战插曲2026-11-04本轮待验收)。
+
+- 2026-11-04 真机发现初路由能识别挑战但独立scene-switch因原题未结束而拒绝，导致明确挑战请求被当作答疑。scene-switch.system.v2允许保留原题的挑战/提醒插曲，仍拒绝仅估时和解题续答；真实模型红绿验证及可重复CLI见 `duxue-server/scripts/check_reminder_sprint_models.py`。

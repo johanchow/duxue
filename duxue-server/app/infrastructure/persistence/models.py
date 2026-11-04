@@ -282,6 +282,7 @@ class Task(Base):
     planned_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     duration_kind: Mapped[str | None] = mapped_column(String(30), nullable=True)
     duration_source: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    end_reminder_mode: Mapped[str | None] = mapped_column(String(20), nullable=True)
     source: Mapped[str] = mapped_column(String(20), default="guardian")
     status: Mapped[str] = mapped_column(String(20), default="pool")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

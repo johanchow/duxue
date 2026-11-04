@@ -22,8 +22,8 @@ flowchart TD
 
 | 组件 | 模型 | Prompt |
 | --- | --- | --- |
-| `companion.intent@v8` | `qwen-flash` | `companion.intent.system.v8` |
-| `companion.scene-switch@v1` | `qwen3.8-flash` | `companion.scene-switch.system.v1` |
+| `companion.intent@v9` | `qwen-flash` | `companion.intent.system.v9` |
+| `companion.scene-switch@v2` | `qwen3.8-flash` | `companion.scene-switch.system.v2` |
 
 工具：无。
 
@@ -53,7 +53,7 @@ flowchart TD
 
 | 组件 | 模型 | Prompt |
 | --- | --- | --- |
-| `planning.intake@v3` | `qwen3.7-plus-2026-05-26` | `planning.intake.prompt.v4` |
+| `planning.intake@v5` | `qwen3.7-plus-2026-05-26` | `planning.intake.prompt.v6` |
 | `planning.reply@v2` | `qwen3.8-flash` | `companion.agent-text.system.v2` |
 
 工具：无。

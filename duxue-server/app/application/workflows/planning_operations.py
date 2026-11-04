@@ -200,7 +200,7 @@ class PlanningOperations:
         for index, raw in enumerate(operations):
             # IDs can only come from issued slot answers, never raw model output.
             op = {k: deepcopy(v) for k, v in raw.items() if k in {
-                'kind', 'references', 'title', 'planned_minutes', 'duration_kind', 'start_at',
+                'kind', 'references', 'title', 'planned_minutes', 'duration_kind', 'end_reminder_mode', 'start_at',
                 'after_task_reference', 'before_task_reference', 'reason'}}
             if op.get('kind') not in {'create', 'update', 'schedule', 'defer', 'delete'}:
                 _reject_slot_value(field='operation_kind', code='unknown_plan_operation', value=op.get('kind'),
@@ -412,6 +412,11 @@ class PlanningOperations:
                     item['target_bound'] = True
                     if kind == 'create':
                         item['schedule_requested'] = True
+                    if op.get('end_reminder_mode') is not None:
+                        mode = op['end_reminder_mode']
+                        if mode not in {'scheduled', 'elapsed', 'off'}:
+                            raise HTTPException(400, '到时提醒类型无效')
+                        item['end_reminder_mode'] = mode
                     if kind in {'update', 'create'}:
                         if op.get('title'):
                             item['title'] = op['title'].strip()
@@ -470,7 +475,7 @@ class PlanningOperations:
     @staticmethod
     def _task_item(task):
         return {'assignment_id': task.id, 'title': task.title, 'planned_minutes': task.planned_minutes,
-                'new_task': False, 'details': task.details}
+                'new_task': False, 'details': task.details, 'end_reminder_mode': task.end_reminder_mode}
 
     @staticmethod
     def _loop_outcome(*, operations, answers, operation_results, pending_fields, items):
