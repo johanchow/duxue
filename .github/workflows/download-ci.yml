@@ -1,0 +1,31 @@
+name: Download Page CI
+
+on:
+  workflow_call:
+  pull_request:
+    paths:
+      - "download-page/**"
+      - "scripts/publish-download.py"
+      - "scripts/download-requirements.txt"
+      - "scripts/tests/test_publish_download.py"
+      - "scripts/tests/test_download_workflow.py"
+      - ".github/workflows/download-ci.yml"
+      - ".github/workflows/app-release.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r scripts/download-requirements.txt PyYAML==6.0.3
+      - run: node --test download-page/download.test.js
+      - run: python -m unittest discover -s scripts/tests -v

@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f6f8f5">
+  <meta name="description" content="下载读学 App，查看孩子的学习报告，陪伴每一步成长。">
+  <title>下载读学 App</title>
+  <style>
+    :root{color-scheme:light;--ink:#203b32;--muted:#687970;--green:#246d51;--line:#dde6df}
+    *{box-sizing:border-box}body{margin:0;background:#f6f8f5;color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;line-height:1.65}
+    a{color:inherit}button,a{-webkit-tap-highlight-color:transparent}button{font:inherit}button:focus-visible,a:focus-visible{outline:3px solid #78ab92;outline-offset:5px}
+    .shell{max-width:1080px;margin:auto;padding:30px 32px 24px}.brand{display:inline-flex;align-items:center;gap:10px;text-decoration:none;font-size:21px;font-weight:700;letter-spacing:2px}.mark{display:grid;place-items:center;width:40px;height:40px;border-radius:13px;background:var(--green);color:white;font-size:23px;font-weight:500;letter-spacing:0}
+    main{display:grid;grid-template-columns:1.1fr 1fr;align-items:center;gap:64px;min-height:690px;padding:64px 0}.eyebrow{color:var(--green);font-size:13px;letter-spacing:3px;margin:0 0 22px}h1{font-size:clamp(38px,5vw,58px);line-height:1.24;letter-spacing:-2px;font-weight:650;margin:0 0 24px}.intro{color:var(--muted);font-size:17px;max-width:340px;margin:0 0 34px}.download{display:flex;align-items:center;justify-content:center;gap:10px;border:0;border-radius:14px;background:var(--green);color:white;text-decoration:none;width:100%;min-height:56px;padding:14px 20px;font-size:17px;cursor:pointer;font-weight:600}.download[aria-disabled=true]{background:#dfe8e1;color:#748178;cursor:default}.download svg{width:22px;height:22px}.actions{max-width:340px}.meta{font-size:12px;color:var(--muted);margin:12px 0 0;overflow-wrap:anywhere}.status{font-size:13px;color:var(--muted);margin:12px 0;min-height:22px}.ios{font-size:13px;color:var(--muted);border-top:1px solid var(--line);padding-top:18px;margin-top:20px}.retry{border:0;background:none;padding:3px 0;color:var(--green);text-decoration:underline;cursor:pointer} [hidden]{display:none!important}
+    .scene{position:relative;display:flex;justify-content:center;align-items:center;padding:34px 10px;background:#eaf0e8;border-radius:46% 46% 38% 38%;min-height:460px}.report{width:min(100%,292px);background:#fffdf8;border:1px solid #e3e8df;border-radius:26px;padding:26px;box-shadow:0 24px 55px #203b3210;transform:rotate(3deg)}.report-top{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--muted)}.report h2{font-size:23px;line-height:1.4;margin:22px 0 9px}.report p{font-size:13px;color:var(--muted);margin:0}.illustration{margin:23px 0 16px;height:105px;display:flex;gap:8px;align-items:end;border-bottom:1px solid var(--line);padding:0 12px}.illustration span{flex:1;border-radius:7px 7px 0 0;background:#a7c9b2}.illustration span:nth-child(2n){background:#407d5b}.report-line{border-top:1px solid var(--line);margin-top:20px;padding-top:16px;display:flex;gap:10px;align-items:center;font-size:13px}.check{width:26px;height:26px;display:grid;place-items:center;background:#eaf2e9;border-radius:50%;color:var(--green)}.caption{position:absolute;bottom:0;font-size:11px;color:var(--muted);letter-spacing:1px}.features{display:flex;gap:24px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:38px}.features span:before{content:"·";color:var(--green);margin-right:8px}footer{border-top:1px solid var(--line);padding-top:20px;font-size:12px;color:var(--muted);display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap}
+    .wx{position:fixed;inset:0;background:#203b3266;z-index:5;display:flex;align-items:flex-start;justify-content:center;padding:24px;backdrop-filter:blur(4px)}.wx-card{max-width:440px;width:100%;background:#fffdf8;border-radius:22px;padding:24px;box-shadow:0 14px 70px #0002}.wx-top{display:flex;justify-content:space-between;align-items:center}.wx h2{font-size:20px;margin:0}.wx p,.wx ol{font-size:14px;color:var(--muted)}.wx ol{padding-left:22px}.close{border:0;background:#edf2ec;border-radius:50%;width:34px;height:34px;cursor:pointer;color:var(--ink);font-size:20px}.arrow{display:block;text-align:right;color:var(--green);font-size:32px;line-height:1;margin-bottom:16px}
+    @media(max-width:720px){.shell{padding:22px 24px}.brand{font-size:19px}.mark{width:36px;height:36px}main{grid-template-columns:1fr;gap:40px;padding:46px 0 42px;min-height:0}h1{font-size:42px;letter-spacing:-1px}.intro{font-size:16px;margin-bottom:26px}.actions{max-width:100%}.features{margin-top:26px;gap:14px}.scene{min-height:330px;max-width:390px;width:100%;margin:auto;padding:24px 16px 36px}.report{width:260px;padding:22px;transform:rotate(2deg)}.report h2{font-size:21px;margin-top:16px}.illustration{height:75px;margin-top:18px}.eyebrow{margin-bottom:16px}footer{font-size:11px}}
+    @media(prefers-reduced-motion:no-preference){.download{transition:background .15s}.download:hover:not([aria-disabled=true]){background:#1a563f}}
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header><a class="brand" href="/" aria-label="读学下载首页"><span class="mark" aria-hidden="true">读</span>读学</a></header>
+    <main>
+      <section aria-labelledby="title">
+        <p class="eyebrow">陪伴学习 · 看见成长</p>
+        <h1 id="title">多一份理解，<br>让陪伴更轻松。</h1>
+        <p class="intro">在读学 App 中查看孩子的学习报告，了解学习过程，陪伴每一步成长。</p>
+        <div class="actions">
+          <a id="android" class="download" aria-disabled="true" role="button" tabindex="-1">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M4 16v4h16v-4"/></svg>
+            <span id="download-label">正在获取版本…</span>
+          </a>
+          <p id="version" class="meta" hidden></p>
+          <p id="status" class="status" role="status" aria-live="polite">正在检查可下载的版本。</p>
+          <button id="retry" class="retry" type="button" hidden>重新加载</button>
+          <p class="ios">iPhone / iPad 版暂未开放，敬请期待。</p>
+          <noscript><p class="status">请开启浏览器 JavaScript，以获取最新下载版本。</p></noscript>
+        </div>
+        <div class="features" aria-label="读学功能"><span>学习报告</span><span>启发式答疑</span><span>专注挑战</span></div>
+      </section>
+      <div class="scene" aria-label="学习报告示意图">
+        <div class="report">
+          <div class="report-top"><span>读学 · 学习记录</span><span aria-hidden="true">☀</span></div>
+          <h2>每一小步，<br>都值得被看见。</h2>
+          <p>从过程出发，读懂孩子的努力。</p>
+          <div class="illustration" aria-hidden="true"><span style="height:40%"></span><span style="height:65%"></span><span style="height:55%"></span><span style="height:80%"></span><span style="height:70%"></span><span style="height:95%"></span></div>
+          <div class="report-line"><span class="check" aria-hidden="true">✓</span><span>让理解成为陪伴的起点</span></div>
+        </div>
+        <p class="caption">报告示意 · 非实际学习数据</p>
+      </div>
+    </main>
+    <footer><span>读学 · 陪伴孩子自主成长</span><span>Android 7.0 及以上</span></footer>
+  </div>
+  <div id="weixin" class="wx" role="dialog" aria-modal="true" aria-labelledby="weixin-title" hidden>
+    <div class="wx-card"><span class="arrow" aria-hidden="true">↗</span><div class="wx-top"><h2 id="weixin-title">请在浏览器中下载</h2><button id="close-weixin" class="close" type="button" aria-label="关闭下载指引">×</button></div><ol><li>点击微信右上角的「···」。</li><li>选择「在浏览器打开」。</li><li>打开后下载并安装读学 App。</li></ol><p>下载完成后，按手机提示允许安装即可。</p></div>
+  </div>
+  <script src="download.js" defer></script>
+</body>
+</html>

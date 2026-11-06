@@ -3,10 +3,6 @@ name: Release Guardian APK
 on:
   push:
     branches: [main]
-    paths:
-      - "duxue-app/**"
-      - ".github/workflows/app-release.yml"
-      - ".github/workflows/app-ci.yml"
   workflow_dispatch:
 
 permissions:
@@ -22,12 +18,19 @@ env:
 
 jobs:
   test:
+    if: github.ref == 'refs/heads/main'
     uses: ./.github/workflows/app-ci.yml
     permissions:
       contents: read
 
+  download-test:
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/download-ci.yml
+    permissions:
+      contents: read
+
   release:
-    needs: test
+    needs: [test, download-test]
     runs-on: ubuntu-latest
     environment: production
     defaults:
@@ -70,3 +73,25 @@ jobs:
           name: ${{ steps.build.outputs.artifact_name }}
           path: ${{ runner.temp }}/guardian-*.apk
           if-no-files-found: error
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install download publisher
+        working-directory: .
+        run: python -m pip install -r scripts/download-requirements.txt
+      - name: Publish download page and latest APK
+        working-directory: .
+        env:
+          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+          ARTIFACT_NAME: ${{ steps.build.outputs.artifact_name }}
+        run: |
+          APP_VERSION="$(awk '/^version:/ { print $2 }' duxue-app/pubspec.yaml)"
+          python scripts/publish-download.py \
+            --apk "$RUNNER_TEMP/$ARTIFACT_NAME.apk" \
+            --version "${APP_VERSION%%+*}" \
+            --build "$GITHUB_RUN_NUMBER" \
+            --commit "$GITHUB_SHA"
+      - name: Remove signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/duxue-app.keystore"

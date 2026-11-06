@@ -33,6 +33,9 @@ Guardian 用邮箱验证码注册和登录，不保存读学密码。Ward 使用
 
 ## 版本发布（2026-11-02）
 
+- 2026-11-06 用户确认 Gate 1 后，下载页与 OSS 发布流程已实现，首次线上页面和当前 main 正式签名 APK 已验证，待 Gate 2。发布规则/基础设施唯一归属 [部署文档](../../docs/deployment.md#guardian-apk)，验收证据在 [spec](../specs/app-download-page.md)。自动上传需要本改动合入 main 后生效，不能把首次 SDK 发布视为 GitHub 发布链路已验收。
+- OSS 静态托管实测会把公开路径中的 `+` 解成空格，导致已上传 APK 的公开 URL 404；已改为连字符并补回归。监测页面首页应使用 GET：本次根路径 HEAD 返回403，但 GET / 和 HEAD /index.html 均为200。ECS PEM 不能作为 OSS API 凭据；已有 GitHub Secrets 采用独立 RAM 最小权限。
+
 - 已修复：APK workflow 曾写死 `--build-name=0.1.0`，覆盖 pubspec 版本名。回归测试直接执行 workflow 构建脚本，用替身 Flutter 验证版本来源、CI 构建号、文件名与 commit 注入；界面测试验证安装包版本读取与失败降级。
 - 版本策略唯一归属：[部署文档 · App 版本管理](../../docs/deployment.md#app-版本管理)。Codemagic 双平台发布仍属规划，排查时先看实际 workflow。
 - 验证：112 个 Flutter 测试、静态分析与 workflow YAML 校验通过；带 commit 注入的界面测试通过。Android debug APK 构建成功，aapt 确认版本名来自 pubspec、构建号被覆盖为测试值 42；正式签名流水线待合并后运行。

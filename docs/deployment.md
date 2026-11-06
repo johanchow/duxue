@@ -7,7 +7,8 @@
 | `server-ci.yml` | Server 相关 PR | Pytest、构建 Docker 镜像 |
 | `server-deploy.yml` | Server 相关 `main` 推送或手动触发 | 推送 GHCR 镜像、远端迁移、启动 API/Worker/Beat、健康检查 |
 | `app-ci.yml` | Guardian 相关 PR，或被 `app-release.yml` 调用 | Flutter 静态检查与测试 |
-| `app-release.yml` | Guardian 相关 `main` 推送或手动触发 | 签名 Release APK，挂到该次 Actions 的 Artifacts |
+| `app-release.yml` | 每次 `main` 推送或在 `main` 手动触发 | 测试后签名 APK，保留 Artifacts，并发布下载页、APK 与最新版本元数据到 OSS |
+| `download-ci.yml` | 下载页/发布脚本/相关工作流 PR，或被发布流程调用 | Node 页面分流测试、Python 发布及工作流回归 |
 | `sites-pages.yml` | `sites/**` 合入 `main` 或手动触发 | 将演示目录发布到 GitHub Pages |
 
 技术演示入口：<https://johanchow.github.io/duxue/>。仓库 Pages 已启用，发布来源为 GitHub Actions。工作流把 `sites/` 的内容作为站点根上传，公开路径不含目录名；相关文件合入 `main` 后自动更新。首次发布需等本工作流进入 `main` 并运行完成。
@@ -70,7 +71,54 @@ https://$DEPLOY_SERVER_HOST/api/health
 
 ### Guardian APK
 
-合进 `main` 且改动碰到 `duxue-app/**` 时自动签名打包；也可在 Actions 里对 `main` 手动 Run workflow。APK 只挂在该次运行的 Artifacts，不上传到 ECS。包内 API 地址固定为 `https://duxuelai.xyz/api`。
+每次 PR 合入 `main`（以及其他 `main` 推送）都会自动测试、签名打包并发布；也可在 Actions 里对 `main` 手动 Run workflow。非 `main` 的手动运行跳过发布。包内 API 地址固定为 `https://duxuelai.xyz/api`。
+
+下载入口：<https://download.duxuelai.xyz/>。二维码固定指向此地址。代码见 [`download-page/`](../download-page/) 与 [发布脚本](../scripts/publish-download.py)。本改动的自动发布工作流需合入 `main` 后开始生效；首次上线已复用当时 `main` 成功签名的 `0.1.0` / Build 20，而非本地 debug 签名包。
+
+发布顺序：Flutter 分析与测试、下载页/发布回归 → 签名 APK → 保存 Actions Artifact → 上传不可覆盖的版本化 APK → 核对大小与 SHA-256 元数据 → 上传下载页 → 最后更新 `latest.json`。任何前置步骤失败都不切换最新版本；历史包保留，不自动删除。签名密钥在最后的清理步骤移除。
+
+OSS 公开对象布局：
+
+```text
+index.html
+latest.json
+releases/android/guardian-{version}-{build}-{commit7}-{sha256前12位}.apk
+```
+
+页面脚本在发布时嵌入 HTML，页面以单个对象更新，不依赖第三方脚本。`index.html` 和 `latest.json` 使用 `Cache-Control: no-store, max-age=0`，页面读取元数据也禁用缓存；版本化 APK 使用长期不可变缓存及下载附件头。公开对象名不用 `+`：实测 OSS 静态托管会把它解析成空格；Actions Artifact 的名称仍沿用原有 `+` 规则。
+
+页面支持 Android 浏览器自动尝试下载与手动下载、微信外部浏览器指引、网络失败重试；iOS 暂未开放。鸿蒙只展示 Android 兼容性提示，不自动下载。不承诺小米等浏览器必定提供商店入口；未上架安卓商店。
+
+同一发布工作流通过 `guardian-release` 串行化。发布脚本拒绝让旧构建号覆盖较新的版本，拒绝同构建号对应不同 APK；重复发布相同安装包无需重传，失败后可重跑该次 workflow。若该 workflow 的构建号规则变更，仍必须遵守下文的构建号连续性约定。
+
+本地验证（复用服务端虚拟环境的 OSS SDK / PyYAML）：
+
+```bash
+node --test download-page/download.test.js
+duxue-server/.venv/bin/python -m unittest discover -s scripts/tests -v
+cd duxue-app
+flutter test test/release_version_test.dart
+```
+
+#### 下载页基础设施
+
+2026-11-06 用户授权配置。下载页和当前 `main` 签名 APK 已首次发布并验证；后续自动化随本改动合入 `main` 生效。
+
+| 配置 | 当前状态 |
+|---|---|
+| Bucket | `duxue-download-page`，华北2（北京），专用于公开下载资源 |
+| 公网 Endpoint | `oss-cn-beijing.aliyuncs.com` |
+| 下载域名 | `download.duxuelai.xyz`，已绑定 Bucket |
+| DNS | 已添加 CNAME 到控制台推荐的 `duxue-download-page.cn-beijing.taihangpfm.cn`，`dig` 已验证生效 |
+| 公开访问 | 已仅对下载 Bucket 关闭阻止公共访问，并保存公共读 ACL；写操作仍需认证，未修改其他 Bucket |
+| 静态托管 | 默认首页 `index.html`，子目录首页未开启；HTTPS 页面、元数据和 APK 实测均为 200 |
+| HTTPS | 0 元、90 天个人测试证书已签发并托管至 OSS，2027-02-04 到期；`curl` 证书校验通过（`ssl_verify_result=0`）。个人测试证书仅供开发测试，正式商用需更换适用证书 |
+| 发布身份 | 已创建专用 RAM 用户 `duxue-download-publisher`，仅启用 AccessKey，不启用控制台登录 |
+| 发布策略 | 已创建并绑定 `DuxueDownloadPublish`；仅允许 `acs:oss:*:*:duxue-download-page/*` 的 `oss:PutObject` / `oss:GetObject`，不授予删除或 Bucket 管理权限 |
+| GitHub 凭据 | 已在 `production` Environment 新增并核对 `OSS_ACCESS_KEY_ID` / `OSS_ACCESS_KEY_SECRET`，未改动现有签名及 ECS 凭据 |
+| 商店链接 | 尚未上架 iOS 或安卓商店；首版只提供 APK，iOS 显示暂未开放 |
+
+ECS 的 SSH 私钥不等于 OSS API 凭据。发布账号独立于现有业务 RAM 用户；不得将私钥或 AccessKey 写入仓库或公开下载 Bucket。
 
 #### App 版本管理
 
