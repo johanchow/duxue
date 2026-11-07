@@ -1,0 +1,23 @@
+{
+  "video": {
+    "file": "duxue-demo-v2.mp4",
+    "key": "media/duxue-demo-video-e2494bcd2207bb1f.mp4",
+    "sha256": "e2494bcd2207bb1f0a75a176d0461f03d837fa98e327895f00c41620a230a9d8",
+    "size": 1511706,
+    "content_type": "video/mp4"
+  },
+  "poster": {
+    "file": "duxue-demo-web-poster.jpg",
+    "key": "media/duxue-demo-poster-77f3345839ec3674.jpg",
+    "sha256": "77f3345839ec3674a62f166afc6131414750923b3072bcf04d784c68028c82f2",
+    "size": 74131,
+    "content_type": "image/jpeg"
+  },
+  "captions": {
+    "file": "duxue-demo-v2.vtt",
+    "key": "media/duxue-demo-captions-108815e1fe3e971c.vtt",
+    "sha256": "108815e1fe3e971c0517648db7fdcfd92cc9929102cb7ffdcd1850ef3601245e",
+    "size": 992,
+    "content_type": "text/vtt; charset=utf-8"
+  }
+}

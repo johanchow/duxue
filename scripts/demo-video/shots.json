@@ -1,0 +1,271 @@
+[
+  {
+    "source": "voice.mkv",
+    "start": 0,
+    "duration": 2,
+    "chapter": 0,
+    "eyebrow": "读学 / 产品实录",
+    "title": "开口问，\n一步步想明白。",
+    "body": "AI 指导学习，\n让提问和思考自然发生。",
+    "caption": "让提问更自然，让思考一步步深入",
+    "crop": [
+      0,
+      84,
+      864,
+      1800
+    ],
+    "placement": [
+      1163,
+      106,
+      394,
+      820
+    ]
+  },
+  {
+    "source": "voice.mkv",
+    "start": 1,
+    "duration": 9,
+    "chapter": 1,
+    "eyebrow": "01 / 纯语音输入",
+    "title": "想问什么，\n直接说出来。",
+    "body": "提问和说思路，\n无需打字，也不用手写。",
+    "caption": "纯语音输入，开口就能提问和表达思路",
+    "crop": [
+      0,
+      84,
+      864,
+      1800
+    ],
+    "placement": [
+      1163,
+      106,
+      394,
+      820
+    ],
+    "voice_audio": "voice-voice.aiff",
+    "voice_delay": 2.3
+  },
+  {
+    "source": "voice.mkv",
+    "start": 27,
+    "duration": 5,
+    "chapter": 1,
+    "eyebrow": "01 / 纯语音输入",
+    "title": "说完问题，\n开始思考。",
+    "body": "AI 接住问题，\n从一个小步骤开始引导。",
+    "caption": "AI 不急着给答案，而是层层引导思考",
+    "crop": [
+      24,
+      1030,
+      816,
+      460
+    ],
+    "placement": [
+      900,
+      245,
+      920,
+      519
+    ]
+  },
+  {
+    "source": "socratic1.mkv",
+    "start": 19,
+    "duration": 10,
+    "chapter": 2,
+    "eyebrow": "02 / 启发式引导",
+    "title": "苏格拉底式\n一步步引导。",
+    "body": "先确认思路，再提出追问。\n把思考的机会留给孩子。",
+    "caption": "苏格拉底式追问，帮助孩子自己想明白",
+    "crop": [
+      24,
+      1120,
+      816,
+      360
+    ],
+    "placement": [
+      900,
+      300,
+      920,
+      406
+    ]
+  },
+  {
+    "source": "compare-ready.mkv",
+    "start": 27,
+    "duration": 8,
+    "chapter": 3,
+    "eyebrow": "03 / 多形式讲解",
+    "title": "并排对比，\n差异更清楚。",
+    "body": "知识点用对比表呈现，\n逐项看清相同与不同。",
+    "caption": "通过对比讲解，帮助理解概念之间的差异",
+    "crop": [
+      48,
+      1060,
+      768,
+      400
+    ],
+    "placement": [
+      900,
+      265,
+      920,
+      479
+    ]
+  },
+  {
+    "source": "pronounce-play.mkv",
+    "start": 3,
+    "duration": 4,
+    "chapter": 3,
+    "eyebrow": "03 / 多形式讲解",
+    "title": "听清读音，\n再跟着练。",
+    "body": "点按播放，听发音示范。\n可选择不同播放速度。",
+    "caption": "发音示范，让语言学习可以听、可以跟读",
+    "crop": [
+      32,
+      910,
+      610,
+      600
+    ],
+    "placement": [
+      960,
+      125,
+      780,
+      767
+    ]
+  },
+  {
+    "source": "pronounce-play.mkv",
+    "start": 17.2,
+    "duration": 4,
+    "chapter": 3,
+    "eyebrow": "03 / 多形式讲解",
+    "title": "听清读音，\n再跟着练。",
+    "body": "点按播放，听发音示范。\n可选择不同播放速度。",
+    "caption": "支持调整语速，按自己的节奏反复练习",
+    "crop": [
+      32,
+      910,
+      610,
+      600
+    ],
+    "placement": [
+      960,
+      125,
+      780,
+      767
+    ]
+  },
+  {
+    "source": "number-line.mkv",
+    "start": 27,
+    "duration": 8,
+    "chapter": 3,
+    "eyebrow": "03 / 多形式讲解",
+    "title": "抽象关系，\n看图更清楚。",
+    "body": "把抽象关系变成图形，\n配合文字一起理解。",
+    "caption": "用图形呈现抽象关系，让理解更直观",
+    "crop": [
+      40,
+      940,
+      784,
+      520
+    ],
+    "placement": [
+      900,
+      185,
+      920,
+      610
+    ]
+  },
+  {
+    "source": "sprint-goal.mkv",
+    "start": 2,
+    "duration": 5,
+    "chapter": 4,
+    "eyebrow": "04 / 冲刺挑战",
+    "title": "先定一个，\n小小的目标。",
+    "body": "说出想做的事，\n再给这一轮定个时长。",
+    "caption": "用语音设定目标，开启一轮专注挑战",
+    "crop": [
+      0,
+      84,
+      864,
+      1800
+    ],
+    "placement": [
+      1163,
+      106,
+      394,
+      820
+    ],
+    "voice_audio": "sprint-goal-voice.aiff",
+    "voice_delay": 1.3
+  },
+  {
+    "source": "sprint-controls.mkv",
+    "start": 1,
+    "duration": 6,
+    "chapter": 4,
+    "eyebrow": "04 / 冲刺挑战",
+    "title": "确认目标，\n开始这一轮。",
+    "body": "目标与时长先确认，\n倒计时从这里开始。",
+    "caption": "目标与时长清晰可见，专注从确认开始",
+    "crop": [
+      40,
+      295,
+      784,
+      360
+    ],
+    "placement": [
+      900,
+      280,
+      920,
+      422
+    ]
+  },
+  {
+    "source": "sprint-controls.mkv",
+    "start": 38,
+    "duration": 9,
+    "chapter": 4,
+    "eyebrow": "04 / 冲刺挑战",
+    "title": "专注有节奏，\n也能停一停。",
+    "body": "暂停时冻结计时，\n准备好了再继续本轮。",
+    "caption": "支持暂停和继续，让专注节奏由自己掌握",
+    "crop": [
+      40,
+      295,
+      784,
+      310
+    ],
+    "placement": [
+      900,
+      310,
+      920,
+      364
+    ]
+  },
+  {
+    "source": "quiet-outro.mkv",
+    "start": 1,
+    "duration": 4,
+    "chapter": 0,
+    "eyebrow": "读学 / 安卓体验版",
+    "title": "开口问，\n一步步想明白。",
+    "body": "语音提问 · 启发引导\n多形式讲解 · 冲刺挑战",
+    "quote": "download.duxuelai.xyz",
+    "caption": "现在下载读学，体验 AI 启发式伴学",
+    "crop": [
+      0,
+      84,
+      864,
+      1800
+    ],
+    "placement": [
+      1163,
+      106,
+      394,
+      820
+    ]
+  }
+]

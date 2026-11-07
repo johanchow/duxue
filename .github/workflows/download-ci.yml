@@ -6,6 +6,8 @@ on:
     paths:
       - "download-page/**"
       - "scripts/publish-download.py"
+      - "scripts/publish-website.py"
+      - "scripts/tests/test_publish_website.py"
       - "scripts/download-requirements.txt"
       - "scripts/tests/test_publish_download.py"
       - "scripts/tests/test_download_workflow.py"
@@ -27,5 +29,5 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install -r scripts/download-requirements.txt PyYAML==6.0.3
-      - run: node --test download-page/download.test.js
+      - run: node --test download-page/*.test.js
       - run: python -m unittest discover -s scripts/tests -v

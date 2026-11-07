@@ -73,7 +73,7 @@ https://$DEPLOY_SERVER_HOST/api/health
 
 每次 PR 合入 `main`（以及其他 `main` 推送）都会自动测试、签名打包并发布；也可在 Actions 里对 `main` 手动 Run workflow。非 `main` 的手动运行跳过发布。包内 API 地址固定为 `https://duxuelai.xyz/api`。
 
-下载入口：<https://download.duxuelai.xyz/>。二维码固定指向此地址。代码见 [`download-page/`](../download-page/) 与 [发布脚本](../scripts/publish-download.py)。本改动的自动发布工作流需合入 `main` 后开始生效；首次上线已复用当时 `main` 成功签名的 `0.1.0` / Build 20，而非本地 debug 签名包。
+下载入口：<https://download.duxuelai.xyz/>。二维码固定指向此地址。代码见 [`download-page/`](../download-page/) 与 [发布脚本](../scripts/publish-download.py)。PR #82 合入 `main` 后，[首次自动发布](https://github.com/johanchow/duxue/actions/runs/42239915167)成功，页面已从首次上线的 Build 20 自动更新到 Build 21。
 
 发布顺序：Flutter 分析与测试、下载页/发布回归 → 签名 APK → 保存 Actions Artifact → 上传不可覆盖的版本化 APK → 核对大小与 SHA-256 元数据 → 上传下载页 → 最后更新 `latest.json`。任何前置步骤失败都不切换最新版本；历史包保留，不自动删除。签名密钥在最后的清理步骤移除。
 
@@ -83,6 +83,7 @@ OSS 公开对象布局：
 index.html
 latest.json
 releases/android/guardian-{version}-{build}-{commit7}-{sha256前12位}.apk
+media/duxue-demo-{video|poster|captions}-{内容摘要}.{mp4|jpg|vtt}
 ```
 
 页面脚本在发布时嵌入 HTML，页面以单个对象更新，不依赖第三方脚本。`index.html` 和 `latest.json` 使用 `Cache-Control: no-store, max-age=0`，页面读取元数据也禁用缓存；版本化 APK 使用长期不可变缓存及下载附件头。公开对象名不用 `+`：实测 OSS 静态托管会把它解析成空格；Actions Artifact 的名称仍沿用原有 `+` 规则。
@@ -94,7 +95,7 @@ releases/android/guardian-{version}-{build}-{commit7}-{sha256前12位}.apk
 本地验证（复用服务端虚拟环境的 OSS SDK / PyYAML）：
 
 ```bash
-node --test download-page/download.test.js
+node --test download-page/*.test.js
 duxue-server/.venv/bin/python -m unittest discover -s scripts/tests -v
 cd duxue-app
 flutter test test/release_version_test.dart
@@ -102,7 +103,7 @@ flutter test test/release_version_test.dart
 
 #### 下载页基础设施
 
-2026-11-06 用户授权配置。下载页和当前 `main` 签名 APK 已首次发布并验证；后续自动化随本改动合入 `main` 生效。
+2026-11-06 用户授权配置，首次发布和合入 `main` 后的自动发布均已验证。
 
 | 配置 | 当前状态 |
 |---|---|
@@ -139,3 +140,11 @@ ECS 的 SSH 私钥不等于 OSS API 凭据。发布账号独立于现有业务 R
 本地没有 `KEYSTORE_FILE` 时，release 构建仍用 debug 签名，方便 `flutter run --release`。
 
 Server 与 App 的 CI/CD 由上述工作流维护。Go采集网关已有 [Gateway CI](../.github/workflows/gateway-ci.yml)、本地三平台构建脚本及systemd模板；当前只构建测试与产物，不自动发布或部署。实际配置/运行见[家庭实验手册](camera-setup-guide.md)，架构与依赖边界见[采集设计](technical/design-gateway.md)。
+
+### 官网演示视频素材
+
+新版首页已在本地完成视频接入及四项能力展示，待用户验收，线上已恢复此前版本。发布顺序固定为：**本地修改与预览 → 用户确认 → 创建PR → 合入main → 发布流水线自动更新首页**。不得直接调用OSS写入首页替代该流程。
+
+录制、合成与来源说明见 [视频制作脚本](../scripts/demo-video/README.md)，字幕和剪辑时间线在同目录 `shots.json`。媒体的公开路径、摘要、大小与类型唯一归属 [资源清单](../download-page/demo-assets.json)；大文件保存在被Git忽略的 `output/homepage-demo/`，不提交到仓库。
+
+用户确认后如需准备新版媒体，`scripts/publish-website.py --directory output/homepage-demo` 只上传并核对不可变媒体，不写 `index.html`、APK或 `latest.json`。首页由main流水线调用 `publish-download.py:page_bytes()` 将下载和章节脚本内嵌，并替换清单中的媒体URL后发布；后续APK发布复用媒体，不重新合成视频。
