@@ -73,7 +73,7 @@ https://$DEPLOY_SERVER_HOST/api/health
 
 每次 PR 合入 `main`（以及其他 `main` 推送）都会自动测试、签名打包并发布；也可在 Actions 里对 `main` 手动 Run workflow。非 `main` 的手动运行跳过发布。包内 API 地址固定为 `https://duxuelai.xyz/api`。
 
-下载入口：<https://download.duxuelai.xyz/>。二维码固定指向此地址。代码见 [`download-page/`](../download-page/) 与 [发布脚本](../scripts/publish-download.py)。本改动的自动发布工作流需合入 `main` 后开始生效；首次上线已复用当时 `main` 成功签名的 `0.1.0` / Build 20，而非本地 debug 签名包。
+下载入口：<https://download.duxuelai.xyz/>。二维码固定指向此地址。代码见 [`download-page/`](../download-page/) 与 [发布脚本](../scripts/publish-download.py)。PR #82 合入 `main` 后，[首次自动发布](https://github.com/johanchow/duxue/actions/runs/42239915167)成功，页面已从首次上线的 Build 20 自动更新到 Build 21。
 
 发布顺序：Flutter 分析与测试、下载页/发布回归 → 签名 APK → 保存 Actions Artifact → 上传不可覆盖的版本化 APK → 核对大小与 SHA-256 元数据 → 上传下载页 → 最后更新 `latest.json`。任何前置步骤失败都不切换最新版本；历史包保留，不自动删除。签名密钥在最后的清理步骤移除。
 
@@ -102,7 +102,7 @@ flutter test test/release_version_test.dart
 
 #### 下载页基础设施
 
-2026-11-06 用户授权配置。下载页和当前 `main` 签名 APK 已首次发布并验证；后续自动化随本改动合入 `main` 生效。
+2026-11-06 用户授权配置，首次发布和合入 `main` 后的自动发布均已验证。
 
 | 配置 | 当前状态 |
 |---|---|
