@@ -48,22 +48,26 @@ test('metadata only permits versioned APKs on the same origin', () => {
   }
   assert.throws(() => releaseFrom({ android: { ...data.android, build: '42' } }, origin));
 });
-test('Android auto download and manual click do not initiate two downloads', async () => {
+test('Android waits for a manual click before downloading', async () => {
   const p = page('Android');
   await start(p.win);
   assert.equal(p.elements.android.href, origin + data.android.url);
   assert.match(p.elements.version.textContent, /0.2.0.*42.*20.0 MB/);
   assert.equal(p.requests[0].options.cache, 'no-store');
-  assert.equal(p.timers.size, 1);
+  assert.equal(p.timers.size, 0);
   p.elements.android.events.click({ preventDefault: () => assert.fail('manual download blocked') });
   assert.equal(p.timers.size, 0);
   assert.deepEqual(p.navigations, []);
 });
-test('automatic download uses fetched metadata, not a hardcoded APK', async () => {
-  const p = page('Android');
+test('Android loading and retry never navigate automatically, and the button uses fetched metadata', async () => {
+  const next = { android: { ...data.android, url: '/releases/android/new-build.apk', build: 43 } };
+  const p = page('Android', [new Error('network'), next]);
   await start(p.win);
-  Array.from(p.timers.values())[0].fn();
-  assert.deepEqual(p.navigations, [origin + data.android.url]);
+  await p.elements.retry.events.click();
+  for (const timer of Array.from(p.timers.values())) timer.fn();
+  assert.deepEqual(p.navigations, []);
+  assert.equal(p.elements.android.href, origin + next.android.url);
+  p.elements.android.events.click({ preventDefault: () => assert.fail('manual download blocked') });
 });
 test('WeChat intercepts APK navigation and keeps guide accessible after closing', async () => {
   const p = page('Android MicroMessenger');
@@ -104,13 +108,15 @@ test('network failure can retry and then download the latest release', async () 
   assert.equal(p.elements.android.href, origin + data.android.url);
   assert.equal(p.elements.retry.hidden, true);
 });
-test('malformed metadata fails closed and background tab does not auto download', async () => {
+test('malformed metadata fails closed and Android never navigates in either visibility state', async () => {
   const invalid = page('Android', [{ android: { ...data.android, url: 'https://bad.test/a.apk' } }]);
   await start(invalid.win);
   assert.equal(invalid.elements.android.href, '');
-  const p = page('Android');
-  await start(p.win);
-  p.win.document.visibilityState = 'hidden';
-  Array.from(p.timers.values())[0].fn();
-  assert.deepEqual(p.navigations, []);
+  for (const visibility of ['visible', 'hidden']) {
+    const p = page('Android');
+    p.win.document.visibilityState = visibility;
+    await start(p.win);
+    for (const timer of Array.from(p.timers.values())) timer.fn();
+    assert.deepEqual(p.navigations, []);
+  }
 });

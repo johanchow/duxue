@@ -27,7 +27,7 @@
     const get = id => doc.getElementById(id);
     const env = environment(win.navigator.userAgent, win.navigator.platform, win.navigator.maxTouchPoints);
     const button = get('android'), label = get('download-label'), status = get('status');
-    let release = null, timer = null, loading = false, autoAttempted = false;
+    let release = null, loading = false;
     function showGuide() {
       get('weixin').hidden = false;
       get('close-weixin').focus();
@@ -43,7 +43,6 @@
       if (event.key === 'Tab') { event.preventDefault(); get('close-weixin').focus(); }
     });
     button.addEventListener('click', event => {
-      if (timer !== null) { win.clearTimeout(timer); timer = null; }
       if (!release) { event.preventDefault(); return; }
       if (env.weixin) { event.preventDefault(); showGuide(); }
     });
@@ -77,14 +76,7 @@
         status.textContent = env.ios ? '当前安装包适用于 Android，iOS 版暂未开放。' :
           env.weixin ? '请在手机浏览器中打开此页下载。' :
           env.harmony ? '此安装包适用于支持 Android 应用的设备。' :
-          env.android ? '正在尝试开始下载；未开始时请点击上方按钮。' : '在 Android 手机上打开此页，或点击下载安装包。';
-        if (env.android && !env.ios && !env.weixin && !env.harmony && !autoAttempted) {
-          autoAttempted = true;
-          timer = win.setTimeout(() => {
-            timer = null;
-            if (doc.visibilityState !== 'hidden') win.location.assign(release.url);
-          }, 1000);
-        }
+          env.android ? '点击上方按钮下载 Android 安装包。' : '在 Android 手机上打开此页，或点击下载安装包。';
       } catch (_) {
         label.textContent = '暂时无法获取下载地址';
         status.textContent = '网络暂时不可用，请重试。';
