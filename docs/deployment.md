@@ -83,6 +83,7 @@ OSS 公开对象布局：
 index.html
 latest.json
 releases/android/guardian-{version}-{build}-{commit7}-{sha256前12位}.apk
+media/duxue-demo-{video|poster|captions}-{内容摘要}.{mp4|jpg|vtt}
 ```
 
 页面脚本在发布时嵌入 HTML，页面以单个对象更新，不依赖第三方脚本。`index.html` 和 `latest.json` 使用 `Cache-Control: no-store, max-age=0`，页面读取元数据也禁用缓存；版本化 APK 使用长期不可变缓存及下载附件头。公开对象名不用 `+`：实测 OSS 静态托管会把它解析成空格；Actions Artifact 的名称仍沿用原有 `+` 规则。
@@ -94,7 +95,7 @@ releases/android/guardian-{version}-{build}-{commit7}-{sha256前12位}.apk
 本地验证（复用服务端虚拟环境的 OSS SDK / PyYAML）：
 
 ```bash
-node --test download-page/download.test.js
+node --test download-page/*.test.js
 duxue-server/.venv/bin/python -m unittest discover -s scripts/tests -v
 cd duxue-app
 flutter test test/release_version_test.dart
@@ -142,4 +143,8 @@ Server 与 App 的 CI/CD 由上述工作流维护。Go采集网关已有 [Gatewa
 
 ### 官网演示视频素材
 
-录制、合成与来源说明见 [视频制作脚本](../scripts/demo-video/README.md)，时间线在同目录 `shots.json`。首版成片保存在被Git忽略的 `output/homepage-demo/`，不进入APK构建；当前待用户验收，尚未上线。验收后使用带版本或内容摘要的独立OSS对象名上传MP4/封面/字幕，再引用到首页，不能覆盖 `latest.json` 或影响既有APK发布顺序。
+新版首页已在本地完成视频接入及四项能力展示，待用户验收，线上已恢复此前版本。发布顺序固定为：**本地修改与预览 → 用户确认 → 创建PR → 合入main → 发布流水线自动更新首页**。不得直接调用OSS写入首页替代该流程。
+
+录制、合成与来源说明见 [视频制作脚本](../scripts/demo-video/README.md)，字幕和剪辑时间线在同目录 `shots.json`。媒体的公开路径、摘要、大小与类型唯一归属 [资源清单](../download-page/demo-assets.json)；大文件保存在被Git忽略的 `output/homepage-demo/`，不提交到仓库。
+
+用户确认后如需准备新版媒体，`scripts/publish-website.py --directory output/homepage-demo` 只上传并核对不可变媒体，不写 `index.html`、APK或 `latest.json`。首页由main流水线调用 `publish-download.py:page_bytes()` 将下载和章节脚本内嵌，并替换清单中的媒体URL后发布；后续APK发布复用媒体，不重新合成视频。

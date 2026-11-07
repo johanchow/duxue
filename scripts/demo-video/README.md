@@ -17,4 +17,4 @@
 
 `shots.json` 是唯一剪辑时间线；输出 `duxue-demo.mp4`、`duxue-demo-poster.jpg`、`duxue-demo.srt`、`duxue-demo.vtt`、`provenance.json` 与 `validation.json`。来源清单记录原始素材 SHA256、裁切区间和成片时间，便于核验。构建检查源片段边界、H.264/AAC、1920×1080、像素格式与时长；交付前须逐章抽帧、听发音并在浏览器检查实际解码。
 
-用户验收视频后再接入官网，不把视频合成加入每次 APK 构建。官网部署约定以 `docs/deployment.md` 为准。
+新版首页在本地预览，用户确认后创建PR，合入main才自动部署。不把视频合成加入每次APK构建；独立媒体工具不能发布首页。媒体清单与发布步骤以 `docs/deployment.md` 为准。

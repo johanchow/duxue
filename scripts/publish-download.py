@@ -7,8 +7,8 @@ import argparse
 import hashlib
 import json
 import os
-from pathlib import Path
 import re
+from pathlib import Path
 
 import oss2
 
@@ -27,12 +27,32 @@ def read_latest(bucket):
 
 def page_bytes():
     html = (ROOT / "download-page/index.html").read_text()
-    script = (ROOT / "download-page/download.js").read_text()
-    # One object makes an HTML/JS update atomic for visitors.
-    marker = '<script src="download.js" defer></script>'
-    if html.count(marker) != 1 or "</script" in script.lower():
-        raise ValueError("Invalid download page script boundary")
-    return html.replace(marker, f"<script>\n{script}\n</script>").encode()
+    # Keep all page scripts in the same atomic HTML object.
+    for name in ("download", "demo"):
+        script = (ROOT / f"download-page/{name}.js").read_text()
+        marker = f'<script src="{name}.js" defer></script>'
+        if html.count(marker) != 1 or "</script" in script.lower():
+            raise ValueError("Invalid download page script boundary")
+        html = html.replace(marker, f"<script>\n{script}\n</script>")
+    for name, asset in demo_assets().items():
+        marker = f"__DEMO_{name.upper()}_URL__"
+        if marker not in html:
+            raise ValueError("Missing demo asset reference")
+        html = html.replace(marker, "/" + asset["key"])
+    return html.encode()
+
+
+def demo_assets():
+    assets = json.loads((ROOT / "download-page/demo-assets.json").read_text())
+    if set(assets) != {"video", "poster", "captions"}:
+        raise ValueError("Invalid demo asset manifest")
+    for asset in assets.values():
+        if (not re.fullmatch(r"media/[a-z0-9.-]+", asset["key"])
+                or Path(asset["file"]).name != asset["file"]
+                or not re.fullmatch(r"[0-9a-f]{64}", asset["sha256"])
+                or type(asset["size"]) is not int or asset["size"] <= 0):
+            raise ValueError("Invalid demo asset identity")
+    return assets
 
 
 def publish(bucket, apk, version, build, commit):
