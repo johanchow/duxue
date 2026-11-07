@@ -139,3 +139,7 @@ ECS 的 SSH 私钥不等于 OSS API 凭据。发布账号独立于现有业务 R
 本地没有 `KEYSTORE_FILE` 时，release 构建仍用 debug 签名，方便 `flutter run --release`。
 
 Server 与 App 的 CI/CD 由上述工作流维护。Go采集网关已有 [Gateway CI](../.github/workflows/gateway-ci.yml)、本地三平台构建脚本及systemd模板；当前只构建测试与产物，不自动发布或部署。实际配置/运行见[家庭实验手册](camera-setup-guide.md)，架构与依赖边界见[采集设计](technical/design-gateway.md)。
+
+### 官网演示视频素材
+
+录制、合成与来源说明见 [视频制作脚本](../scripts/demo-video/README.md)，时间线在同目录 `shots.json`。首版成片保存在被Git忽略的 `output/homepage-demo/`，不进入APK构建；当前待用户验收，尚未上线。验收后使用带版本或内容摘要的独立OSS对象名上传MP4/封面/字幕，再引用到首页，不能覆盖 `latest.json` 或影响既有APK发布顺序。
