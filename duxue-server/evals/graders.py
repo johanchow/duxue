@@ -26,6 +26,8 @@ def grade(case: EvalCase, obs: Observation) -> list[str]:
         failures.append(f"outcome:{obs.outcome}{f'({obs.reason})' if obs.reason else ''} not in {expect.outcome_in}")
     elif obs.outcome in expect.outcome_not_in:
         failures.append(f"outcome:{obs.outcome}{f'({obs.reason})' if obs.reason else ''} is forbidden")
+    if expect.answer_protected is not None and obs.answer_protected is not expect.answer_protected:
+        failures.append(f"answer_protected: expected {expect.answer_protected}, got {obs.answer_protected}")
     haystack_lessons = " ".join(obs.lesson_sources) if obs.lesson_sources else obs.lesson_source
     if expect.lesson_source_contains_any and not _contains_any(haystack_lessons, expect.lesson_source_contains_any):
         failures.append(f"lesson_source {haystack_lessons!r} lacks any of {expect.lesson_source_contains_any}")

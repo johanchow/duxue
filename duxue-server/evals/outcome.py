@@ -32,6 +32,8 @@ class Observation:
     shape_flags: list[str] = field(default_factory=list)
     # 第一版说出了答案、已重试一次改成提示（最终结果仍以 outcome 为准）。
     leak_retried: bool = False
+    # Scope approved by the production independent review; not the injected permit.
+    answer_protected: bool | None = None
 
 
 def classify(call: ModelCall, vetting: Vetting | None, *, leak_retried: bool = False) -> Observation:
@@ -41,6 +43,7 @@ def classify(call: ModelCall, vetting: Vetting | None, *, leak_retried: bool = F
         return Observation("fallback", reason=call.failure or "no_candidate", leak_retried=leak_retried)
     base = {
         "leak_retried": leak_retried,
+        "answer_protected": vetting.verdict.answer_protected if vetting and vetting.verdict else None,
         "act": candidate.act, "content": candidate.content,
         "lesson_source": " ".join(item.source_text for item in candidate.lessons) if candidate.lessons else None,
         "lesson_sources": [item.source_text for item in candidate.lessons],

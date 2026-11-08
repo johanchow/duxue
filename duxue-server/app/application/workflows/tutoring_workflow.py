@@ -480,7 +480,7 @@ class TutoringWorkflow:
             text = f"{text.rstrip()}\n{REMINDER}"
 
         problem_status = problem_row.status if problem_row else None
-        answer_protected = permit.answer_protected
+        answer_protected = verdict.answer_protected
         hint_index = None
         attempted = False
         evidence_problem_id = None
@@ -527,7 +527,7 @@ class TutoringWorkflow:
         next_interaction = {
             "status": "needs_input", "content": text, "act": candidate.act,
             "hint_index": hint_index, "problem_status": problem_status,
-            "answer_protected": answer_protected if problem_status is None else problem_status in PROTECTED_STATUSES, "safety_blocked": False,
+            "answer_protected": answer_protected, "safety_blocked": False,
             "return_to_task": remind, "model": components.model_for("tutoring.turn"), "model_fallback": False,
         }
         if visual is not None:

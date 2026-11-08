@@ -30,7 +30,7 @@ def test_global_guide_rule_requires_one_student_executable_step():
 
 def test_stem_formulas_and_spatial_svg_boundary():
     turn_prompt = PROMPTS["tutoring.turn.system.v20"].text
-    visual_judge_prompt = PROMPTS["tutoring.visual-leak-judge.system.v5"].text
+    visual_judge_prompt = PROMPTS["tutoring.visual-leak-judge.system.v6"].text
     assert "一维常规公式" in turn_prompt
     assert "二维对位演算式与学科结构式" in turn_prompt
     assert "作业图尽量只摆已知量" in turn_prompt

@@ -186,8 +186,8 @@ flowchart TD
 
 | 组件 | 模型 | Prompt |
 | --- | --- | --- |
-| `tutoring.leak-judge@v10` | `qwen3.8-flash` | `tutoring.leak-judge.system.v9` |
-| `tutoring.visual-leak-judge@v5` | `qwen-plus` | `tutoring.visual-leak-judge.system.v5` |
+| `tutoring.leak-judge@v11` | `qwen3.8-flash` | `tutoring.leak-judge.system.v10` |
+| `tutoring.visual-leak-judge@v6` | `qwen-plus` | `tutoring.visual-leak-judge.system.v6` |
 
 工具：无。
 

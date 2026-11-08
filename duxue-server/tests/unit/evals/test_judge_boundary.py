@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import json
 
 from evals import judge_boundary
 
@@ -12,7 +13,7 @@ def test_first_image_cases_have_no_text_problem_context_and_include_indistinguis
     assert pair[0]["reply"] == pair[1]["reply"]
     assert pair[0]["expected_leaks"] is False
     assert pair[1]["expected_leaks"] is True
-    assert judge_boundary.production_summary() == "孩子本轮说：这题怎么做"
+    assert json.loads(judge_boundary.production_summary())["current_request"] == "这题怎么做"
 
     received = []
 
@@ -23,7 +24,7 @@ def test_first_image_cases_have_no_text_problem_context_and_include_indistinguis
     results = judge_boundary.run_cases(pair, judge, samples=1, workers=1)
     assert len(received) == 2
     assert received[0] == received[1]
-    assert received[0]["problem_summary"] == "孩子本轮说：这题怎么做"
+    assert json.loads(received[0]["problem_summary"])["current_request"] == "这题怎么做"
     assert all(case["reference_problem"] not in str(received) for case in pair)
     assert judge_boundary.summarize(results)["false_negative"]["count"] == 1
 
@@ -96,13 +97,13 @@ def test_judge_cases_are_individual_formatted_json_objects():
     from evals import dataset
     folder = dataset.DATA_DIR / 'leak_judge'
     files = list(folder.glob('*.json'))
-    assert len(files) == 15
+    assert len(files) == 16
     for file in files:
         record = dataset.read_object(file)
         assert record['id'] == file.stem
         assert record['component'] == 'tutoring.leak-judge'
         assert '\n  "' in file.read_text()
-    assert len(judge_boundary.load_cases(folder)) == 15
+    assert len(judge_boundary.load_cases(folder)) == 16
     assert not list(dataset.DATA_DIR.rglob('*.jsonl'))
 
 
@@ -128,6 +129,7 @@ def test_common_cli_dispatches_to_the_generic_judge_runner(monkeypatch):
 
 def test_judge_loader_rejects_jsonl_and_filename_mismatches(tmp_path):
     import json
+
     import pytest
     case = judge_boundary.load_cases()[0]
     for name in (case["id"] + ".jsonl", "wrong-id.json"):
@@ -135,3 +137,17 @@ def test_judge_loader_rejects_jsonl_and_filename_mismatches(tmp_path):
         path.write_text(json.dumps(case, ensure_ascii=False, indent=2))
         with pytest.raises(ValueError, match="<id>.json"):
             judge_boundary.load_cases(path)
+
+
+def test_scope_batch_replays_task_title_and_reports_wrong_or_missing_scope():
+    cases = [c for c in judge_boundary.load_cases() if c.get('review_batch') == 'protection-scope-v1']
+    assert len(cases) == 1
+    received = []
+    def judge(**kwargs):
+        received.append(kwargs)
+        return {'leaks': False, 'reason': 'none', 'answer_protected': True}
+    case = next(c for c in cases if c['id'] == 'scope-atomic-homework')
+    results = judge_boundary.run_cases([case], judge, samples=1, workers=1)
+    assert received[0]['task_title'] is None
+    assert json.loads(received[0]['problem_summary'])['current_request'] == json.loads(case['problem'])['current_request']
+    assert judge_boundary.summarize(results)['wrong_scope'] == {'count': 1, 'judged': 1}

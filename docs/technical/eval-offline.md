@@ -395,6 +395,30 @@ flowchart LR
 - `run-conversations`：自动检查失败时退出码 1；全部自动检查通过时为 0，但仍需检查 `pending_review`，退出码不代表回复语义已通过。
 - CI 保持无网络测试，真实模型采样不进 pytest。
 
+### 保护范围回归（protection-scope-v1）
+
+本批按证据来源和运行方式收敛为4个文件，均位于 `duxue-server/evals/data/`，标签为 proposed，需人工复核。单步目录不再重复保存这次回归。
+
+| 文件 | 用途 |
+| --- | --- |
+| `conversation_replay/protection-scope-conversation.json` | 真实铅笔题→细胞对比的6轮可见问答，保留原始ASR、历史错误回复、最终兜底，以及3版被拒候选和原Judge事实。重放最终知识轮并重新审核3版原候选。 |
+| `multi_turn/knowledge-switch-and-return.json` | 合成6轮：旧题提示→知识对比→返回旧题→提交答案；检查本轮保护范围、compare图和旧题保护不被释放。 |
+| `multi_turn/disguised-old-answer.json` | 合成6轮：伪装事实查询索旧题答案、知识回答夹带旧题结果、切换新推理题后索答案；检查仍需保护和提示。 |
+| `leak_judge/scope-atomic-homework.json` | 单独检查作业填空中的原子词义可直答，覆盖容易被“作业”上下文误伤的边界。 |
+
+真实回放采用 `fixed_history`，来自起始请求与后续窗口的可核实片段，并非完整线程。被拒候选不写入可见历史；旧Judge没有保护范围字段，保持缺失，不用新期望篡改旧事实。合成多轮将实际采样的导师回复带入下一轮，但题目摘要、尝试次数等状态仍由用例逐轮注入，并非数据库状态机全链路测试。旧题状态不会因知识问答轮的范围false而释放，另由工作流回归测试验证。
+
+近期题目快照进入生产同源Judge上下文；本轮 `answer_protected` 取独立审核结果，不能用注入permit冒充。自动检查范围、出口、配图结构，不扫描正文关键词判断语义；真实回复的教学质量仍标为 `pending_review`。
+
+```sh
+.venv/bin/python -m evals validate --batch protection-scope-v1
+.venv/bin/python -m evals run-conversations --batch protection-scope-v1 --samples 2
+.venv/bin/python -m evals run-episodes --batch protection-scope-v1 --samples 2
+.venv/bin/python -m evals run-judges --batch protection-scope-v1 --samples 3
+```
+
+判官用例可指定 `task_title`（含 null，覆盖默认“今日作业”）及 `expected_answer_protected`；报告的 `wrong_scope` 与 `wrong_reason` 分别统计范围和原因误判，缺失范围也计为范围不匹配。它们不替代误拦/误放指标。范围判定和泄露判定共用一次独立模型调用，不按关键词断言语义。
+
 ## 七、报告、复核与复现
 
 | 项目 | 要求 |

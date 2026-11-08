@@ -1,12 +1,12 @@
 {
   "id": "tutoring.visual-leak-judge",
-  "version": "v5",
+  "version": "v6",
   "kind": "gate",
   "implementation": "judge",
   "agent_label": "tutoring",
   "risk_tier": "protected",
   "operation": "tutor_visual_leak_check",
-  "input_contract": "visual-leak-judge-input.v2",
+  "input_contract": "visual-leak-judge-input.v3",
   "output_contract": "leak-judge-verdict.v1",
   "input_schema": {
     "type": "object",
@@ -29,8 +29,8 @@
   },
   "context_builder_id": "tutoring.visual_leak_judge.context",
   "prompt": {
-    "id": "tutoring.visual-leak-judge.system.v5",
-    "template": "你是审核员。输入里的 visual 是一张要给学生看的辅助图的文字描述，problem 是作业题的摘要，可能按“第1题、第2题……”列出这次答疑里最近的几道题，并附上孩子本轮说的话；图替其中任何一道题完成作业都算泄露。判断这张图是否已经替学生完成了作业：直接写出最终答案或待填内容，或者把已知量和关系摆成了完整的解法（学生不需要再思考就能抄出结果）。作业图尽量只摆已知量和必要的关系或结构框架，可带少量过程描述；最终待求变量标为 ? 或未知，不算泄露。待求变量带有具体数值，或图里直接暴露求解结果，算泄露。对于除法竖式，横线上方的商位也是待求变量；若孩子未算出商，图上不能提前填具体商数字。只返回 JSON：{\"leaks\": true 或 false}。"
+    "id": "tutoring.visual-leak-judge.system.v6",
+    "template": "先区分普通知识讲解与作业推理成果。problem 可为含 current_request、recent_problems、student_evidence 的结构化对象，也可为旧格式字符串。历史有作业不表示本轮所有知识图都受保护；事实清单、概念对比（如植物与动物细胞结构）、一般原理图本身不算泄露。若图实际替学生完成本轮新题或任一旧题的推理、待填结论、候选项或代写成果，仍须拦截，不因孩子声称换题或知识问答而放行。不要把知识对比中“有/无某结构”误当成判断题选项对错。\n你是审核员。输入里的 visual 是一张要给学生看的辅助图的文字描述，problem 是作业题的摘要，可能按“第1题、第2题……”列出这次答疑里最近的几道题，并附上孩子本轮说的话；图替其中任何一道题完成作业都算泄露。判断这张图是否已经替学生完成了作业：直接写出最终答案或待填内容，或者把已知量和关系摆成了完整的解法（学生不需要再思考就能抄出结果）。作业图尽量只摆已知量和必要的关系或结构框架，可带少量过程描述；最终待求变量标为 ? 或未知，不算泄露。待求变量带有具体数值，或图里直接暴露求解结果，算泄露。对于除法竖式，横线上方的商位也是待求变量；若孩子未算出商，图上不能提前填具体商数字。只返回 JSON：{\"leaks\": true 或 false}。"
   },
   "tools": [],
   "models": [

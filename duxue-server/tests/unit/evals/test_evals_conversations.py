@@ -77,3 +77,42 @@ def test_fixed_gate_preserves_input_and_reports_wrong_reason_and_unavailable():
     assert samples[1]["failures"] == ["judge_unavailable"]
     original = row.attempts[1].gate.input
     assert received[0] == {"text": original.reply, "task_title": original.task_title, "problem_summary": original.problem}
+
+
+def test_scope_snapshot_preserves_recent_problems_visual_and_scope_expectation():
+    from evals.conversations import ConversationEval, turn_case
+    row = _row()
+    check = row['checks'][0]
+    check['input_snapshot']['recent_problems'] = ['当前铅笔题', '较早苹果题']
+    check['expect']['exit_gate']['answer_protected'] = False
+    check['expect']['visual'] = 'present'
+    check['expect']['visual_kind_in'] = ['compare']
+    parsed = ConversationEval.model_validate(row)
+    case = turn_case(parsed, parsed.checks[0])
+    assert case.context.recent_problems == ['当前铅笔题', '较早苹果题']
+    assert case.expect.answer_protected is False
+    assert case.expect.visual == 'present' and case.expect.visual_kind_in == ['compare']
+
+
+def test_replay_requires_the_expected_independent_scope_not_only_allow_verdict():
+    from types import SimpleNamespace
+
+    from evals.conversation_runner import verdict_failures
+    expected = SimpleNamespace(leaks=False, reason='none', answer_protected=False)
+    assert verdict_failures({'leaks': False, 'reason': 'none', 'answer_protected': True}, expected) == ['scope_mismatch']
+    assert verdict_failures({'leaks': False, 'reason': 'none'}, expected) == ['scope_mismatch']
+
+
+def test_original_rejected_attempts_remain_separate_from_visible_history_and_new_labels():
+    from evals.conversations import load_conversations
+    row = next(row for row in load_conversations() if row.id == "protection-scope-conversation")
+    assert len(row.messages) == 12 and len(row.attempts) == 3
+    for attempt in row.attempts:
+        assert not attempt.shown_to_user and attempt.delivered_as is None
+        assert attempt.gate.observed_verdict.leaks
+        assert attempt.gate.observed_verdict.answer_protected is None  # Not present in the old schema.
+        assert attempt.gate.observed_facts["new_final_answer"] is True
+        assert attempt.gate.observed_facts["complete_solution"] is True
+    gates = [check for check in row.checks if check.component == "tutoring.leak-judge"]
+    assert len(gates) == 3
+    assert all(not check.expect.leaks and check.expect.answer_protected is False for check in gates)

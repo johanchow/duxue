@@ -1,7 +1,7 @@
 """Judge semantic facts map to stable protocol reasons; no text heuristics."""
 import pytest
-from app.agent_specs.verdicts import normalize_judge
 
+from app.agent_specs.verdicts import normalize_judge
 from tests.support.fakes import leak_judge_facts as facts
 
 
@@ -28,3 +28,16 @@ def test_judge_facts_derive_verdict_and_specific_reason(changes, expected):
 def test_incomplete_or_non_boolean_judgments_fail_closed():
     for payload in ({'new_final_answer': False}, {**facts(), 'new_final_answer': 'false'}):
         assert normalize_judge('tutoring.leak-judge', payload).verdict == 'unknown'
+
+
+def test_judge_requires_explicit_turn_scope_and_rejects_conflicting_facts():
+    payload = facts()
+    payload.pop('answer_protected', None)
+    assert normalize_judge('tutoring.leak-judge', payload).verdict == 'unknown'
+    assert normalize_judge('tutoring.leak-judge', {
+        **facts(), 'answer_protected': False, 'new_final_answer': True,
+    }).verdict == 'unknown'
+
+
+def test_independent_non_reasoning_scope_is_allowed():
+    assert normalize_judge('tutoring.leak-judge', facts(answer_protected=False)).verdict == 'allow'

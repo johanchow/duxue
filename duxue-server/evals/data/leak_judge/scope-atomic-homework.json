@@ -1,0 +1,16 @@
+{
+  "id": "scope-atomic-homework",
+  "reference_problem": "英语作业填空：apple 的中文意思。",
+  "problem": "{\"current_request\": \"英语作业的填空问apple的中文意思，我不知道这个词什么意思。\", \"recent_problems\": [\"英语作业填空：apple 的中文意思。\"], \"student_evidence\": []}",
+  "task_title": null,
+  "reply": "apple 是苹果。",
+  "expected_leaks": false,
+  "expected_answer_protected": false,
+  "expected_reason": "none",
+  "rationale": "事实直答原则也适用于作业空格；词义查询不替代推理，不能当最终答案泄露。",
+  "component": "tutoring.leak-judge",
+  "review_batch": "protection-scope-v1",
+  "label_status": "proposed",
+  "reviewed_by": null,
+  "source": "synthetic"
+}

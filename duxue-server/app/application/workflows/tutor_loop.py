@@ -7,7 +7,7 @@ fallback 与线上完全同源，不另抄一份规则。
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from pydantic import ValidationError
 
@@ -286,13 +286,15 @@ def judge_problem_summary(
 ) -> str | None:
     """审核题目及有界学生证据；导师原话不当作学生已经提交的答案。"""
     problems = [item.strip() for item in recent_problems if item and item.strip()][:JUDGE_RECENT_PROBLEMS]
-    lines = [f"第{index}题：{item}" for index, item in enumerate(problems, start=1)]
     ward_texts = [str(item.get("text", "")).strip() for item in (recent_utterances or [])
                   if item.get("author") == "ward" and str(item.get("text", "")).strip()]
-    lines.extend(f"学生先前说：{text[:300]}" for text in ward_texts[-JUDGE_RECENT_STUDENT_UTTERANCES:])
-    if student_said.strip() and student_said.strip() not in problems:
-        lines.append(f"孩子本轮说：{student_said.strip()}")
-    return "\n".join(lines) or None
+    if not problems and not ward_texts and not student_said.strip():
+        return None
+    return json.dumps({
+        "current_request": student_said.strip(),
+        "recent_problems": problems,
+        "student_evidence": [text[:300] for text in ward_texts[-JUDGE_RECENT_STUDENT_UTTERANCES:]],
+    }, ensure_ascii=False)
 
 
 LEAK_REASONS = frozenset({
@@ -379,6 +381,12 @@ def vet_candidate(
         except Exception:  # noqa: BLE001 - a judge failure must reject the candidate
             result = None
         state["text_leaks"], state["leak_reason"] = _text_leak_result(result)
+        # Only a successful independent review can scope this turn. The persisted
+        # permit stays unchanged, and visual review still uses the original trigger.
+        if (state["text_leaks"] is False and isinstance(result, dict)
+                and type(result.get("answer_protected")) is bool):
+            state["turn_answer_protected"] = result["answer_protected"]
+
         return GateDecision(
             "allow" if state["text_leaks"] is False else "deny",
             "ok" if state["text_leaks"] is False else
@@ -401,6 +409,10 @@ def vet_candidate(
             return Vetting(candidate, None, reason, leak_reason=state.get("leak_reason"), shape_flags=state["flags"])
         if state["dropped"]:
             record_tutor_visual_dropped(reason=state["dropped"])
+        if "turn_answer_protected" in state:
+            protected = state["turn_answer_protected"]
+            verdict = replace(verdict, answer_protected=protected,
+                              effective_work_product=verdict.effective_work_product and protected)
         return Vetting(
             candidate, verdict, visual=state["visual"], visual_dropped=state["dropped"],
             shape_flags=state["flags"],
@@ -477,6 +489,7 @@ def run_tutor_turn(
                 "failure": result.failure, "leak_reason": result.leak_reason,
                 "visual_dropped": result.visual_dropped,
                 "shape_flags": result.shape_flags,
+                "answer_protected": result.verdict.answer_protected if result.verdict else None,
             })
             if result.visual is not None:
                 span.set_attribute("tutor.visual.kind", result.visual.kind)

@@ -34,7 +34,7 @@ class EpisodeTurn(Strict):
 
 
 class Episode(Strict):
-    id: str = Field(pattern=r"^episode-[a-z0-9-]+$")
+    id: str = Field(pattern=r"^[a-z0-9][a-z0-9-]{2,80}$")
     title: str
     inspired_by: Origin
     source: Literal["synthetic"] = "synthetic"

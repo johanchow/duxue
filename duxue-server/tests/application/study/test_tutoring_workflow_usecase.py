@@ -569,7 +569,7 @@ def test_the_leak_judge_still_sees_a_problem_abandoned_by_relation_new(db):
     _ask(db, workflow, session, "上一题答案是多少")
     problem = judge.problems[-1]
     assert "小明有3份小红有5份一共几份" in problem and "换一题：3x=9" in problem
-    assert "孩子本轮说：上一题答案是多少" in problem
+    assert json.loads(problem)["current_request"] == "上一题答案是多少"
 
 
 def test_an_attempt_without_evidence_records_no_attempt_fact(db):
@@ -726,3 +726,34 @@ def test_shown_work_turns_bind_evidence_to_the_actual_problem_and_keep_other_top
     detail = evidence_detail(db, ward.id, day, problem.id)
     assert len(detail["messages"]) == 4
     assert all(row["content"] != "diamond beach 是什么意思" for row in detail["messages"])
+
+
+@pytest.mark.parametrize("progress", ["none", "submitted"])
+def test_knowledge_scope_is_turn_local_and_return_to_old_problem_stays_protected(db, progress):
+    from app.application.workflows.tutoring_workflow import _state
+    from app.contexts.tutoring.domain.tutor_permit import TutorPermitPolicy
+
+    class ScopedJudge:
+        def __init__(self):
+            self.scopes = iter([True, False, True])
+            self.calls = 0
+        def leaks(self, **kwargs):
+            self.calls += 1
+            return {'leaks': False, 'reason': 'none', 'answer_protected': next(self.scopes)}
+
+    _, session = _setup(db)
+    judge = ScopedJudge()
+    first = tutor_raw("guide", student_move="attempt", progress=progress, evidence="学生尝试列式")
+    knowledge = tutor_raw("answer", "植物细胞有细胞壁，动物细胞没有。", relation="none")
+    workflow, model = _workflow(db, first, knowledge, ATTEMPT, judge=judge)
+    _ask(db, workflow, session, '练习题：四盒铅笔，每盒六支，送掉五支还剩多少？')
+    old = db.query(TutoringProblem).one()
+    old_counts = old.hints_given, old.substantive_attempts, old.status
+    answer = _ask(db, workflow, session, '植物细胞和动物细胞有什么区别？')
+    assert answer.next_interaction['answer_protected'] is False
+    assert (old.hints_given, old.substantive_attempts, old.status) == old_counts
+    assert TutorPermitPolicy.permit(_state(old)).answer_protected is True
+    again = _ask(db, workflow, session, '回到刚才的铅笔题，先算什么？')
+    assert again.next_interaction['answer_protected'] is True
+    assert judge.calls == 3
+    assert '"answer_protected": true' in model.calls[-1]['instruction']

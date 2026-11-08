@@ -33,6 +33,7 @@ class Message(Strict):
 class Verdict(Strict):
     leaks: bool = Field(strict=True)
     reason: Text
+    answer_protected: bool | None = Field(default=None, strict=True)
 
     @model_validator(mode="after")
     def consistent(self):
@@ -51,6 +52,7 @@ class Gate(Strict):
     observation_id: Text
     input: GateInput
     observed_verdict: Verdict
+    observed_facts: dict | None = None
 
 
 class Attempt(Strict):
@@ -81,6 +83,7 @@ class Permit(Strict):
 
 
 class Snapshot(Strict):
+    recent_problems: list[Text] = Field(default_factory=list, max_length=3)
     permit: Permit
     task_title: str | None
 
@@ -94,6 +97,8 @@ class TurnExpect(Strict):
     response: Response
     exit_gate: Verdict
     criteria: list[Text] = Field(min_length=1)
+    visual: Literal["present", "absent"] | None = None
+    visual_kind_in: list[Literal["steps", "compare", "segment", "number_line", "svg"]] = Field(default_factory=list)
 
 
 class GateExpect(Verdict):
@@ -203,9 +208,11 @@ def turn_case(row: ConversationEval, check: TurnCheck) -> EvalCase:
         history=[Utterance(author="ward" if m.role == "user" else "companion", text=m.content)
                  for m in row.messages[max(0, index - 8):index]],
         student_said=row.messages[index].content,
-        context=Context(task_title=snapshot.task_title, problem=ProblemContext(
+        context=Context(task_title=snapshot.task_title, recent_problems=snapshot.recent_problems, problem=ProblemContext(
             active_subgoal=permit.active_subgoal, **permit.attempt_summary.model_dump(),
         ) if permit.answer_protected else None),
-        expect=Expect(outcome_in=check.expect.outcome_in), source="real",
+        expect=Expect(outcome_in=check.expect.outcome_in,
+                      answer_protected=check.expect.exit_gate.answer_protected,
+                      visual=check.expect.visual, visual_kind_in=check.expect.visual_kind_in), source="real",
         label_status=row.label_status, reviewed_by=row.reviewed_by, review_batch=row.review_batch,
     )

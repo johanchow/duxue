@@ -167,7 +167,15 @@ def validate_layout(path: Path = DATA_DIR) -> list[str]:
 
 def dataset_hash(cases: list[EvalCase]) -> str:
     """Stable id of the dataset content. Results are comparable only when this matches."""
-    payload = [case.model_dump(mode="json") for case in sorted(cases, key=lambda c: c.id)]
+    payload = []
+    for case in sorted(cases, key=lambda c: c.id):
+        record = case.model_dump(mode="json")
+        # Optional scope fields must not alter hashes of unchanged legacy seeds.
+        if not record["context"]["recent_problems"]:
+            record["context"].pop("recent_problems")
+        if record["expect"]["answer_protected"] is None:
+            record["expect"].pop("answer_protected")
+        payload.append(record)
     return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:16]
 
 

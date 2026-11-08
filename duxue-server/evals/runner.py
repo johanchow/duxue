@@ -115,7 +115,7 @@ def _observe_tutor(case: EvalCase, backends: Backends, window: list[dict], image
         leak_judge=backends.leak_judge or _NeverLeaks(), backup_model=backends.backup_model,
         task_title=context.task_title,
         problem_summary=judge_problem_summary(
-            [problem.summary] if problem and problem.summary else [], case.student_said,
+            context.recent_problems or ([problem.summary] if problem and problem.summary else []), case.student_said,
             recent_utterances=window,
         ),
         # Keep offline replay on the same visual-review path as production. Inputs
