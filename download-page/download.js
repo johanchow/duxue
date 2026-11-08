@@ -51,7 +51,8 @@
       if (loading) return;
       loading = true;
       get('retry').hidden = true;
-      status.textContent = '正在检查可下载的版本。';
+      status.textContent = '';
+      status.hidden = true;
       const controller = new win.AbortController();
       const timeout = win.setTimeout(() => controller.abort(), 10000);
       try {
@@ -64,6 +65,7 @@
         if (!release) {
           label.textContent = 'Android 版即将开放';
           status.textContent = '首个安装包正在准备中，请稍后再来。';
+          status.hidden = false;
           get('retry').hidden = false;
           return;
         }
@@ -71,15 +73,10 @@
         button.removeAttribute('aria-disabled');
         button.removeAttribute('tabindex');
         label.textContent = '下载 Android 版';
-        get('version').textContent = `版本 ${release.version} · Build ${release.build} · ${(release.size / 1024 / 1024).toFixed(1)} MB`;
-        get('version').hidden = false;
-        status.textContent = env.ios ? '当前安装包适用于 Android，iOS 版暂未开放。' :
-          env.weixin ? '请在手机浏览器中打开此页下载。' :
-          env.harmony ? '此安装包适用于支持 Android 应用的设备。' :
-          env.android ? '点击上方按钮下载 Android 安装包。' : '在 Android 手机上打开此页，或点击下载安装包。';
       } catch (_) {
         label.textContent = '暂时无法获取下载地址';
         status.textContent = '网络暂时不可用，请重试。';
+        status.hidden = false;
         get('retry').hidden = false;
       } finally {
         win.clearTimeout(timeout);
