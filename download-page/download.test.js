@@ -6,7 +6,7 @@ const origin = 'https://download.duxuelai.xyz';
 const data = { android: { url: '/releases/android/app.apk', version: '0.2.0', build: 42, size: 20971520 } };
 function page(ua = '', responses = [data], extra = {}) {
   const elements = {};
-  for (const id of ['android', 'download-label', 'status', 'version', 'retry', 'weixin', 'close-weixin']) {
+  for (const id of ['android', 'download-label', 'status', 'retry', 'weixin', 'close-weixin']) {
     elements[id] = {
       hidden: true, events: {}, attrs: {}, textContent: '', href: '',
       addEventListener(event, action) { this.events[event] = action; },
@@ -52,7 +52,8 @@ test('Android waits for a manual click before downloading', async () => {
   const p = page('Android');
   await start(p.win);
   assert.equal(p.elements.android.href, origin + data.android.url);
-  assert.match(p.elements.version.textContent, /0.2.0.*42.*20.0 MB/);
+  assert.equal(p.elements.status.hidden, true);
+  assert.equal(p.elements.status.textContent, '');
   assert.equal(p.requests[0].options.cache, 'no-store');
   assert.equal(p.timers.size, 0);
   p.elements.android.events.click({ preventDefault: () => assert.fail('manual download blocked') });
@@ -87,6 +88,8 @@ test('iOS, desktop and Harmony do not automatically download APKs', async () => 
     await start(p.win);
     assert.equal(p.timers.size, 0);
     assert.deepEqual(p.navigations, []);
+    assert.equal(p.elements.status.hidden, true);
+    assert.equal(p.elements.status.textContent, '');
   }
 });
 test('first release missing has no broken download link', async () => {
@@ -94,6 +97,7 @@ test('first release missing has no broken download link', async () => {
   await start(p.win);
   assert.equal(p.elements.android.href, '');
   assert.match(p.elements['download-label'].textContent, /即将开放/);
+  assert.equal(p.elements.status.hidden, false);
   assert.equal(p.elements.retry.hidden, false);
   let blocked = false;
   p.elements.android.events.click({ preventDefault() { blocked = true; } });
@@ -103,10 +107,14 @@ test('network failure can retry and then download the latest release', async () 
   const p = page('Android', [new Error('network'), data]);
   await start(p.win);
   assert.equal(p.elements.retry.hidden, false);
+  assert.equal(p.elements.status.hidden, false);
+  assert.match(p.elements.status.textContent, /网络暂时不可用/);
   assert.equal(p.elements.android.href, '');
   await p.elements.retry.events.click();
   assert.equal(p.elements.android.href, origin + data.android.url);
   assert.equal(p.elements.retry.hidden, true);
+  assert.equal(p.elements.status.hidden, true);
+  assert.equal(p.elements.status.textContent, '');
 });
 test('malformed metadata fails closed and Android never navigates in either visibility state', async () => {
   const invalid = page('Android', [{ android: { ...data.android, url: 'https://bad.test/a.apk' } }]);
