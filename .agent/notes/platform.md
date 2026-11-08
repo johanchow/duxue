@@ -25,6 +25,10 @@
 
 ## 注意
 
+- 2026-11-08 TL-IPC43CL-V2 2.0真机短测通过：系统终端完成真实RTSP→JPEG→OSS→测试库，5帧/5份OSS摘要/5条事实，队列、重连、丢弃和缺口均0；随后独立重读OSS再次核对摘要。子码流实际为H.264，基础接入兼容。Codex启动FFmpeg报`No route to host`，系统终端同一路径成功，具体系统权限/网络策略原因未证实；不得据此误判摄像头故障。机位、3h及故障验收仍未完成，状态事实见[网关spec](../specs/go-camera-gateway.md)。
+
+- 2026-11-08 OSS现场踩坑：oss2将裸endpoint默认签成HTTP，网关正确拒绝；摄像头桶在杭州、通用endpoint在深圳，PUT返回区域不匹配。先红后绿修复公网HTTPS归一与摄像头桶独立区域配置，配置方法唯一归属[摄像头手册](../../docs/camera-setup-guide.md)。测试环境已修正，生产未动。真实凭证、图片与现场运行资料留在忽略Git的私有目录，不能提交。
+
 - 2026-11-08 后续配置化审计（建议，未实现）：优先纳入现有Agent的修复/条件指令，以及Tool静态规范，勿按提示词片段新增Agent。代码证据：`tutor_loop.py`修复模板、`tutoring_workflow.py`图片核验追加指令、`tutor_turn.py`自述使用提示、`plan_intake.py`/`utterance_window.py`窗口指代与任务提取规则、`tutor_tools.py`的`SVG_WIDGET_GUIDELINES`。这些语义内容影响行为却未完整进入当前Prompt版本/摘要，宜随所属Agent/Tool版本管理；当前Schema只支持单个Prompt且Tool无静态内容字段，实施须先补受限契约及校验，不能直接塞未知字段。动态事实/图片授权/错误诊断、修复触发/次数/必经审核及领域写入仍归代码。摄像VLM应在[Behavior目标实现](../../docs/technical/domain-behavior.md)时纳入配置和追溯，Batch/实时传输仍由适配器执行；迁移旧Prompt不等于新观察管线落地。ASR/TTS是基础设施能力，无须为了统一目录包装成Agent。
 
 - 2026-11-08 配置覆盖核查：简化前`agent_specs`有9个Workflow、11个Agent（8模型/3代码）、11个Gate（3Judge/8代码）及4个Tool，定义校验与相关69项单测通过。答疑修复话术仍见[`tutor_loop.py`](../../duxue-server/app/application/workflows/tutor_loop.py)，摄像VLM的Prompt/参数仍见[`inference.py`](../../duxue-server/app/infrastructure/ai/inference.py)且不走组件目录，不能认定全部AI处理均已JSON化。随后用户授权移除计划审阅调用，现为10个Agent（7模型/3代码），见[Planning笔记](planning.md)。配置声明与代码执行/领域规则须区分。

@@ -1,6 +1,6 @@
 # 摄像设备接入与家庭实验手册
 
-> 更新：2026-11-01。Go 网关与云端接入已实现；自动化测试使用合成画面、本地存储和临时数据库。真实摄像头、OSS与连续3小时验收仍待完成。
+> 更新：2026-11-08。Go网关与云端接入已实现；TL-IPC43CL-V2 2.0在Mac系统终端完成真实RTSP→OSS→测试库五帧短测。机位确认、连续3小时及断网/断电等现场验收仍待完成。
 > 配置、协议与验收事实源：[采集网关设计](technical/design-gateway.md)。
 
 ## 一、准备
@@ -38,6 +38,8 @@ cd duxue-server
 同一网关授权多个Ward时，重复传 `--ward-id`。一台摄像头固定关联一个Ward，不能直接改同一个camera_id的归属。换IP只改连接地址；摄像头账号与网关Token互不混用。
 
 服务端需先应用迁移 `20261101_31` 再启动新接口。生产迁移和服务部署由操作员按既有发布流程执行，本手册不代表自动完成。
+
+摄像头图片使用`OSS_BUCKET_CAMERA`。若它与附件桶不在同一区域，需要在服务端填写`OSS_CAMERA_ENDPOINT_PUBLIC`和`OSS_CAMERA_ENDPOINT_INTERNAL`；不填写则复用通用OSS endpoint。只填写摄像头公网endpoint时，生产读取也走该公网地址，避免误用另一区域的内网地址。公网签名上传始终使用HTTPS，裸域名或HTTP配置会归一为HTTPS，生产内网读取保留独立配置。可用OSS的桶信息接口核实真实区域；不能只根据通用endpoint推定摄像头桶区域。
 
 ## 四、构建、配置与运行
 
@@ -119,3 +121,22 @@ Linux按 `deploy/duxue-gateway.service` 部署：准备 `duxue-gateway` 服务�
 按 [技术验收清单](technical/design-gateway.md#五最小实验与验收) 记录连续3小时成功率、真实OSS对象/Frame一致性、断外网10分钟补传、摄像头断电重连、强杀恢复及两摄像头隔离。
 
 自动化合成画面测试不代替真实RTSP和OSS验收；采集成功也不等于动笔/思考/卡壳识别准确或晚间报告已完整落地。
+
+### 单独验证真实RTSP解码
+
+源码环境提供显式启用的实机测试，复用网关生产取图路径，验证三张可解码、时间递增的新鲜JPEG及640像素输出宽度；不保存图片、不上传云端。未设置地址时，普通测试自动跳过该项。
+
+在已加载摄像头私有环境变量的终端中执行：
+
+```bash
+cd duxue-gateway
+export GATEWAY_LIVE_RTSP_URL='rtsp://<摄像头IP>:554/stream2'
+export GATEWAY_LIVE_CAMERA_USER="$CAMERA_01_USERNAME"
+export GATEWAY_LIVE_CAMERA_PASSWORD="$CAMERA_01_PASSWORD"
+go test ./internal/infrastructure -run '^TestLiveRTSPFreshJPEG$' -count=1 -v
+unset GATEWAY_LIVE_CAMERA_PASSWORD GATEWAY_LIVE_CAMERA_USER GATEWAY_LIVE_RTSP_URL
+```
+
+TP-LINK TL-IPC43CL-V2 2.0的子码流实际提供H.264；已在Mac系统终端完成认证、解码、采图及真实OSS接收五帧短测。该结果不代表长期稳定性或行为分析准确度已验收。该系列设备密码/视频加密密码用于本地访问，不要混用物联App登录密码，账号和路径以实机为准。
+
+macOS若出现同机Python能连接摄像头、FFmpeg立即报`No route to host`，先检查“系统设置 → 隐私与安全性 → 本地网络”中运行网关的宿主应用权限。本次现场用户确认Codex开关已开启，Codex启动仍失败，但系统终端运行同一网关脚本成功；差异位于运行环境，具体权限或网络策略原因尚未证实。不要直接归因于摄像头掉线，也不要通过转发绕过权限。Apple的[本地网络隐私说明](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy)解释了宿主应用与子进程的权限归属。
