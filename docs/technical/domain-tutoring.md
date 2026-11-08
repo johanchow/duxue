@@ -464,6 +464,10 @@ Application 在本轮不是作业成果、且 `StudySessionQuery` 返回活动�
 
 最终检查失败时，由服务端按最终 `failure` 与 `leak_reason` 投影受控提示（原因说明 + 可选下一步），不复用被拒草稿，不指责用户索要答案或推断学生答错。提示先说明本次回答具体涉及的受限内容或缺失的核验，再提供下一步；不能只泛泛宣读规则。原因码描述的是回答的问题，不能由此声称已识别原图中的具体题号或题型。选项判定引导检查判断依据，最终答案/完整解法改为提供提示，错误附和/提前结论改为核对过程；发音内容不可用时邀请指定单词或句子重试。审核不可用、模型/格式失败及未知原因统一说明暂时无法完成并邀请稍后重试，不要求用户重新表达，也不暴露内部错误。映射实现唯一维护在 `duxue-server/app/application/workflows/tutor_turn.py::fallback_text`，Companion 与 App 直接记录和展示同一正文。继续记录 `model_fallback`（只按最终结果记一次），不写 Fact，不推进 `ProblemRecord`，不用反问掩盖失败。允许的重试只有两种：检查 1 的格式问题重试一次；正文给出了答案时改用 `guide` 重试一次（把误拦从兜底话术变成最小提示）。生产与离线评测共用 `run_tutor_turn()`。
 
+**本轮保护范围与旧题状态分开。** `TutorPermit.answer_protected` 仍由题目状态计算，用于决定是否必须审核；独立文字 Judge 在同一次调用中先判断本轮请求及候选回复是否涉及需要孩子亲自完成的作业推理成果，再返回泄露事实。协议为 `leak-judge-facts.v2`，新增必填布尔 `answer_protected`：普通知识、概念对比、一般原理讲解为 false；涉及旧题、新推理题、依据线索作判断、回复夹带旧题答案为 true。不能仅凭孩子说“新题”“知识问题”或主模型的 non_work 标签放行。学生已提交正确答案可确认，但本轮仍属于作业范围。范围缺失、类型错误、或范围为 false 却同时声称给出最终答案/完整解法/选项判断等互相矛盾的裁决，一律视为审核失败。
+
+生产 `judge_problem_summary()` 将 `current_request`、最多三条 `recent_problems`、最多三条 `student_evidence` 分开投影，传输时使用 JSON；历史题只是候选关联对象，不代表本轮必然在做旧题。旧评测快照字符串仍可读取。审核通过后，`Verdict.answer_protected` 与响应中的同名字段表示**本轮**的保护范围；不修改旧题的 status/disclosure，下轮仍按旧题状态触发审核。独立审核认定不涉及作业的轮次不推进题目或提示计数。正文范围为 false 也不跳过原本应执行的图形审核，图中泄露旧题仍须丢图。范围判定没有新增 LLM 调用，图形审核与已有重试预算保持不变。
+
 泄露裁判返回 `leaks` 与单个原因码（如 `premature_conclusion`、`choice_verdict`），用于指导这一次改写及最终失败提示映射；原因缺失时仍可按通用泄露规则重试。裁判自身失败仍 fail-closed，不让失败草稿或其内容展示给孩子。自然语言边界仍有误判风险，不能把原因码当作已校准的准确率。
 
 出口检查通过后，五项同时成立才结束本轮：
@@ -626,7 +630,7 @@ sequenceDiagram
 | `LearningFactPublisher` | Tutoring Outbox | 来源四元组去重；死信与补投见 Memory |
 | `AttachmentQuery` / `LearningMaterialQuery` | 授权检索适配器 | 超时、ACL 拒绝映射为工具 observation |
 | `ModelGatewayPort` | 现有多模态/文本模型 Adapter | 执行版本化的 `tutor-turn.v4`，每次调用只带已解析的目标图片，返回结构化候选；受 Run deadline 与通用重试政策约束 |
-| `LeakJudgePort` | 模型 Gateway 的一次结构化调用 | 只回答是否泄露；超时或结果非法按泄露处理（fail-closed）；与主调用分开计量 |
+| `LeakJudgePort` | 模型 Gateway 的一次结构化调用 | 同时判定本轮保护范围与是否泄露；超时或结果非法按泄露处理（fail-closed）；与主调用分开计量 |
 | `ToolGateway` | 只读工具适配器 | 每轮至多 3 次；没有实现返回 `tool_error`；全部限于当前 Ward 的授权范围 |
 | `PronunciationLessonProjectionPort` | Read Model Adapter | 以 `run_id + turn_id + attempt` 幂等投影；物理存储和清理见 design-server |
 | `SafetyScreeningPort` | 统一 moderation 服务、专用安全分类模型，或高风险场景的独立 Judge | 输入和最终 Ward 文本均要审核；本地关键词仅作快速明显风险拦截；端口失败按现有未成年人安全政策降级，不能把主模型自述当作唯一判断 |

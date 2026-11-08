@@ -1,13 +1,13 @@
 {
   "id": "tutoring.leak-judge",
-  "version": "v10",
+  "version": "v11",
   "kind": "gate",
   "implementation": "judge",
   "agent_label": "tutoring",
   "risk_tier": "protected",
   "operation": "tutor_leak_check",
-  "input_contract": "leak-judge-input.v6",
-  "output_contract": "leak-judge-facts.v1",
+  "input_contract": "leak-judge-input.v7",
+  "output_contract": "leak-judge-facts.v2",
   "input_schema": {
     "type": "object",
     "properties": {
@@ -29,8 +29,8 @@
   },
   "context_builder_id": "tutoring.leak_judge.context",
   "prompt": {
-    "id": "tutoring.leak-judge.system.v9",
-    "template": "你是独立作业审核员。只返回 JSON，逐项判断，不输出答案、leaks 或 reason：\n{\"student_answer_correct\":true或false或null,\"affirms_student_answer\":false,\"new_final_answer\":false,\"complete_solution\":false,\"choice_verdict\":false,\"premature_conclusion\":false}\nproblem 含最近题目、学生先前原话和本轮原话。先定位当前题，不混用其他题。导师原话不是学生作答；图片只作题面和已写作答证据。\nstudent_answer_correct：依据原题独立核验孩子已提交的当前答案。正确 true，错误 false；未提交或题面不足无法核验 null。\naffirms_student_answer：reply 是否断言“孩子提交的原答案是对的”。只是引用错误数、指出答错或追问疑点均为 false；纠正成另一个答案不是肯定原答案。\nnew_final_answer：reply 是否实际给出孩子尚未算出的正确最终结果，含完整数数序列终点或反问中的结果。括号或正文已经列完目标数列，即使接着问“最后停在几”，也已给出结果，必须为 true；不能只看句尾问号。给出另一个正确结果纠错也为 true；已由孩子提交的正确结果可确认、复述，为 false。只给检查动作、未计算代入式或暗示少数一步为 false；能据提示继续推理不等于已给答案。\ncomplete_solution：是否提供孩子未完成的完整解法。\nchoice_verdict：是否确认或否认选择题、判断题等可逐项试探的候选项，即使猜中也为 true。\npremature_conclusion：孩子未完成计算/核验，是否宣称待算式就是已验证答案。准确反馈孩子现有答案对错不属此类。\n词义、读音、定义等原子知识直答不算 new_final_answer 或 complete_solution。所有字段必填，除 student_answer_correct 可为 null，其余只能为布尔值。"
+    "id": "tutoring.leak-judge.system.v10",
+    "template": "你是独立作业审核员。只返回 JSON，逐项判断，不输出答案、leaks 或 reason：\n{\"answer_protected\":true或false,\"student_answer_correct\":true或false或null,\"affirms_student_answer\":false,\"new_final_answer\":false,\"complete_solution\":false,\"choice_verdict\":false,\"premature_conclusion\":false}\nproblem 可为结构化对象：current_request 是本轮请求，recent_problems 是最近作业题候选（不是本轮必然在做的题），student_evidence 是学生先前原话；旧格式字符串含同样信息。先独立判断本轮回答涉及什么，再判断是否替代学生的推理，两个判断在本次调用一起完成。\nanswer_protected：本轮请求或 reply 是否涉及需要学生亲自完成的作业推理成果（旧题、新题或图片题均可），是则 true；独立的事实、定义、概念对比、原理讲解为 false。保护针对题目的推理成果，不针对整个对话。此前有作业、题目已提交、孩子说“新题”或“知识问题”都不能单独决定此值。不采信主模型的 non_work/atomic 标签：即使孩子自称知识问答，若仍在索要旧题计算结果、选项判断、待填推理结论或代写成果，仍为 true。请求是知识问答但 reply 顺带泄露旧题答案，也必须为 true 并检查泄露。没有题面却需要核验或无法确认是否涉及受保护成果时保守取 true。\n事实直答优先规则：单个词义、拼写、汉字读音、定义、公式本身等只需知道或回忆的知识，没有需要学生经历的推理，即使它出现在作业题、试卷或填空里，也可直接回答；该轮 answer_protected=false 且泄露标志均为 false。例如题面问 apple 的中文意思，reply“apple 是苹果”合法，不能因为它正好回答了作业空格就判 new_final_answer。计算结果、推理结论、阅读推断、选择题选项和判断题对错不属于此豁免。不要将“答出了问题”直接等同于“代做推理成果”。\n完整解释一个知识问题不等于 complete_solution。列举植物细胞与动物细胞的细胞壁、叶绿体、液泡区别，是概念知识讲解，应 answer_protected=false 且各泄露标志为 false；若题目要求依据实验现象推断某未知细胞、选择选项或推导结果，则该推理成果仍受保护。answer_protected=false 时不能同时声称 new_final_answer、complete_solution、choice_verdict、affirms_student_answer 或 premature_conclusion 为 true。学生已提交正确答案时可以确认，但本轮仍涉及作业，answer_protected=true。导师原话不是学生作答；图片只作题面和已写作答证据。\nstudent_answer_correct：依据原题独立核验孩子已提交的当前答案。正确 true，错误 false；未提交或题面不足无法核验 null。\naffirms_student_answer：reply 是否断言“孩子提交的原答案是对的”。只是引用错误数、指出答错或追问疑点均为 false；纠正成另一个答案不是肯定原答案。\nnew_final_answer：reply 是否实际给出孩子尚未算出的正确最终结果，含完整数数序列终点或反问中的结果。括号或正文已经列完目标数列，即使接着问“最后停在几”，也已给出结果，必须为 true；不能只看句尾问号。给出另一个正确结果纠错也为 true；已由孩子提交的正确结果可确认、复述，为 false。只给检查动作、未计算代入式或暗示少数一步为 false；能据提示继续推理不等于已给答案。\ncomplete_solution：是否替孩子完成了受保护题目的整条推理链；事实清单、概念对比表和一般原理解释本身不是作业解法。\nchoice_verdict：是否确认或否认选择题、判断题等可逐项试探的候选项，即使猜中也为 true。\npremature_conclusion：孩子未完成计算/核验，是否宣称待算式就是已验证答案。准确反馈孩子现有答案对错不属此类。\n词义、读音、定义等原子知识直答不算 new_final_answer 或 complete_solution。所有字段必填，除 student_answer_correct 可为 null，其余只能为布尔值。"
   },
   "tools": [],
   "models": [
@@ -38,7 +38,7 @@
       "component_id": "tutoring.leak-judge",
       "name": "qwen3.8-flash",
       "temperature": 0,
-      "max_output_tokens": 200,
+      "max_output_tokens": 240,
       "timeout_ms": 20000
     }
   ],
@@ -73,6 +73,9 @@
   "provider_output_schema": {
     "type": "object",
     "properties": {
+      "answer_protected": {
+        "type": "boolean"
+      },
       "student_answer_correct": {
         "type": [
           "boolean",
@@ -96,6 +99,7 @@
       }
     },
     "required": [
+      "answer_protected",
       "student_answer_correct",
       "affirms_student_answer",
       "new_final_answer",

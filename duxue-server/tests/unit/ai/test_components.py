@@ -1,5 +1,4 @@
 from __future__ import annotations
-from tests.support.fakes import leak_judge_facts
 
 import json
 from types import SimpleNamespace
@@ -18,6 +17,7 @@ from app.infrastructure.ai.errors import ModelGatewayError
 # conftest patches ``generate`` for every test; keep the real one for this module.
 from app.infrastructure.ai.model_gateway import QwenAgentModelGateway
 from app.infrastructure.ai.prompts import PromptTemplate
+from tests.support.fakes import leak_judge_facts
 
 _REAL_GENERATE = QwenAgentModelGateway.generate
 
@@ -210,7 +210,7 @@ def test_tutoring_components_keep_existing_success_and_failure_boundaries(monkey
     monkeypatch.setattr(tutor_turn_model.components, "invoke_json_component", succeed)
     assert tutor_turn_model.QwenTutorTurnGateway().complete(envelope={}, instruction="说明") == {"act": "hint"}
     assert tutor_turn_model.QwenLeakJudge().leaks(text="提示", task_title=None, problem_summary=None) == {
-        "leaks": False, "reason": "none",
+        "leaks": False, "reason": "none", "answer_protected": True,
     }
     assert seen == ["tutoring.turn", "tutoring.leak-judge"]
 
@@ -222,7 +222,7 @@ def test_tutoring_components_keep_existing_success_and_failure_boundaries(monkey
     assert tutor_turn_model.QwenLeakJudge().leaks(
         text="你写的答案对吗？", task_title=None, problem_summary=None,
         images=["data:image/jpeg;base64,authorized"],
-    ) == {"leaks": False, "reason": "none"}
+    ) == {"leaks": False, "reason": "none", "answer_protected": True}
     assert isinstance(captured["user"], list)
     assert captured["user"][-1]["image_url"]["url"] == "data:image/jpeg;base64,authorized"
 
@@ -231,7 +231,7 @@ def test_tutoring_components_keep_existing_success_and_failure_boundaries(monkey
         lambda **_kwargs: leak_judge_facts(premature_conclusion=True),
     )
     assert tutor_turn_model.QwenLeakJudge().leaks(text="这是答案", task_title=None, problem_summary=None) == {
-        "leaks": True, "reason": "premature_conclusion",
+        "leaks": True, "reason": "premature_conclusion", "answer_protected": True,
     }
 
     monkeypatch.setattr(

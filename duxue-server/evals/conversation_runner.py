@@ -19,6 +19,8 @@ def verdict_failures(actual, expected):
         failures.append("leaks_mismatch")
     if actual.get("reason") != expected.reason:
         failures.append("reason_mismatch")
+    if expected.answer_protected is not None and actual.get("answer_protected") is not expected.answer_protected:
+        failures.append("scope_mismatch")
     return failures
 
 

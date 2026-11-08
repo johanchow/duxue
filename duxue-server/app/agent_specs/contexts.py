@@ -34,13 +34,22 @@ def planning_reply(*, envelope, instruction, recent_utterances=None, current_ima
             *image_parts(list(recent_utterances or []), list(current_images or []))]
 
 
+def _judge_problem(summary):
+    # Decode only the deterministic transport format; no semantic text parsing.
+    try:
+        value = json.loads(summary) if isinstance(summary, str) else summary
+    except (ValueError, TypeError):
+        return summary
+    return value if isinstance(value, dict) and "current_request" in value else summary
+
+
 def text_judge(*, text, task_title, problem_summary, images=None):
-    body = json.dumps({"task_title": task_title, "problem": problem_summary, "reply": text}, ensure_ascii=False)
+    body = json.dumps({"task_title": task_title, "problem": _judge_problem(problem_summary), "reply": text}, ensure_ascii=False)
     return [{"type": "text", "text": body}, *image_parts([], images)] if images else body
 
 
 def visual_judge(*, text, task_title, problem_summary):
-    return json.dumps({"task_title": task_title, "problem": problem_summary, "visual": text}, ensure_ascii=False)
+    return json.dumps({"task_title": task_title, "problem": _judge_problem(problem_summary), "visual": text}, ensure_ascii=False)
 
 
 def image_target(*, window, content):

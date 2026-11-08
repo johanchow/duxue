@@ -1,5 +1,7 @@
 """图的出口检查：文字泄露仍整轮回退，图的任何问题只丢图。"""
 
+import json
+
 import pytest
 
 from app.application.workflows.tutor_loop import run_tutor_turn, vet_candidate
@@ -251,27 +253,22 @@ def test_judge_problem_summary_lists_recent_problems_and_this_turn():
     )
 
     assert judge_problem_summary([], "  ") is None
-    assert judge_problem_summary([], "beach 什么意思") == "孩子本轮说：beach 什么意思"
-    summary = judge_problem_summary(["新题：3+5", "旧题：小明有3份"], "上一题答案是多少")
-    assert summary == "第1题：新题：3+5\n第2题：旧题：小明有3份\n孩子本轮说：上一题答案是多少"
-    # 本轮的话就是最新那道题的摘要时不重复
-    assert judge_problem_summary(["3+5=?"], "3+5=?") == "第1题：3+5=?"
-    many = judge_problem_summary([f"题{i}" for i in range(10)], "")
-    assert many.count("题：") == JUDGE_RECENT_PROBLEMS
+    summary = json.loads(judge_problem_summary(["新题：3+5", "旧题：小明有3份"], "上一题答案是多少"))
+    assert summary == {"current_request": "上一题答案是多少", "recent_problems": ["新题：3+5", "旧题：小明有3份"], "student_evidence": []}
+    # Even identical text retains separate current-request and historical roles.
+    assert json.loads(judge_problem_summary(["3+5=?"], "3+5=?"))["current_request"] == "3+5=?"
+    many = json.loads(judge_problem_summary([f"题{i}" for i in range(10)], ""))
+    assert len(many["recent_problems"]) == JUDGE_RECENT_PROBLEMS
 
 
 def test_judge_context_includes_bounded_prior_student_evidence_not_tutor_text():
     from app.application.workflows.tutor_loop import judge_problem_summary
 
-    window = [
-        {"author": "ward", "text": "我算出 x=4。"},
-        {"author": "companion", "text": "你的答案是 4。"},
-        {"author": "ward", "text": "我用两边同时除以 2。"},
-    ]
-    summary = judge_problem_summary(["解 2x+3=11"], "怎么自己验？", recent_utterances=window)
-    assert "学生先前说：我算出 x=4。" in summary
-    assert "学生先前说：我用两边同时除以 2。" in summary
-    assert "你的答案是 4。" not in summary
+    window = [{"author": "ward", "text": f"学生原话{i}"} for i in range(5)]
+    window.append({"author": "companion", "text": "你的答案是 4。"})
+    summary = json.loads(judge_problem_summary(["解 2x+3=11"], "怎么自己验？", recent_utterances=window))
+    assert summary["student_evidence"] == ["学生原话2", "学生原话3", "学生原话4"]
+    assert summary["current_request"] == "怎么自己验？"
 
 
 def test_homework_turn_allows_svg_and_sends_inner_svg_text_to_visual_leak_judge():
@@ -292,3 +289,42 @@ def test_homework_turn_allows_svg_and_sends_inner_svg_text_to_visual_leak_judge(
     assert dropped.failure is None and dropped.visual is None
     assert dropped.visual_dropped == "visual_leak_detected"
     assert "斜边 = 5" in judge2.visual_texts[0]
+
+
+def test_independent_judge_scopes_knowledge_without_releasing_old_problem():
+    class ScopedJudge:
+        calls = 0
+        def leaks(self, **kwargs):
+            self.calls += 1
+            return {'leaks': False, 'reason': 'none', 'answer_protected': False}
+        def visual_leaks(self, **kwargs):
+            return False
+
+    judge = ScopedJudge()
+    result = vet(tutor_raw('answer', '植物细胞有细胞壁，动物细胞没有。', relation='none'), judge)
+    assert result.failure is None
+    assert result.verdict.answer_protected is False
+    assert judge.calls == 1
+
+
+def test_turn_scope_does_not_skip_visual_review_or_trust_main_model_labels():
+    class ScopedJudge:
+        def __init__(self, protected, leaks=False):
+            self.protected, self.leaks_answer = protected, leaks
+            self.visual_calls = 0
+        def leaks(self, **kwargs):
+            return {'leaks': self.leaks_answer, 'reason': 'final_answer' if self.leaks_answer else 'none',
+                    'answer_protected': self.protected}
+        def visual_leaks(self, **kwargs):
+            self.visual_calls += 1
+            return True
+
+    raw = tutor_raw('answer', '这是知识讲解。', relation='none', visual=SEGMENT)
+    safe_text = ScopedJudge(False)
+    result = vet(raw, safe_text)
+    assert result.failure is None and result.verdict.answer_protected is False
+    assert safe_text.visual_calls == 1
+    assert result.visual is None and result.visual_dropped == 'visual_leak_detected'
+    assert PROTECTED.answer_protected is True
+    rejected = vet(raw, ScopedJudge(True, leaks=True))
+    assert rejected.failure == 'leak_detected'

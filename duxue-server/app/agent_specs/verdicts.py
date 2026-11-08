@@ -23,10 +23,16 @@ def normalize_judge(unit_id: str, payload: dict | None) -> GateVerdict:
                            reason_code="confirmed" if value is True else "not_confirmed")
     if unit_id == "tutoring.leak-judge":
         from jsonschema import Draft202012Validator
+
         from app.agent_specs.definitions import load_definitions
         schema = load_definitions().units[unit_id].provider_output_schema
         if not Draft202012Validator(schema).is_valid(payload):
             return GateVerdict(verdict="unknown", reason_code="invalid_judge_output")
+        if not payload["answer_protected"] and any(payload[key] for key in (
+            "affirms_student_answer", "new_final_answer", "complete_solution",
+            "choice_verdict", "premature_conclusion",
+        )):
+            return GateVerdict(verdict="unknown", reason_code="inconsistent_judge_scope")
         # Semantic facts come from the independent judge. This is a protocol
         # mapping, never a scan of student/tutor text or a new permission grant.
         if payload["choice_verdict"]:

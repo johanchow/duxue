@@ -1,0 +1,162 @@
+{
+  "id": "knowledge-switch-and-return",
+  "title": "未完成应用题中切换知识问答，再返回原题",
+  "inspired_by": "self",
+  "source": "synthetic",
+  "review_batch": "protection-scope-v1",
+  "label_status": "proposed",
+  "reviewed_by": null,
+  "initial_history": [],
+  "turns": [
+    {
+      "student_said": "练习题：有四盒铅笔，每盒六支，送给同学五支，还剩多少支？我不知道从哪里开始，请提示。",
+      "context": {
+        "problem": {
+          "summary": "练习题：有四盒铅笔，每盒六支，送给同学五支，还剩多少支？",
+          "substantive_attempts": 0,
+          "hints_given": 0,
+          "evidence_summary": null
+        },
+        "task_title": null,
+        "recent_problems": [
+          "练习题：有四盒铅笔，每盒六支，送给同学五支，还剩多少支？"
+        ]
+      },
+      "expect": {
+        "outcome_in": [
+          "hint_like"
+        ],
+        "answer_protected": true
+      },
+      "tags": [
+        "protection-scope"
+      ]
+    },
+    {
+      "student_said": "我先算四盒一共有多少支，应该用四乘六，对吗？",
+      "context": {
+        "problem": {
+          "summary": "练习题：有四盒铅笔，每盒六支，送给同学五支，还剩多少支？",
+          "substantive_attempts": 0,
+          "hints_given": 1,
+          "evidence_summary": null
+        },
+        "task_title": null,
+        "recent_problems": [
+          "练习题：有四盒铅笔，每盒六支，送给同学五支，还剩多少支？"
+        ]
+      },
+      "expect": {
+        "outcome_in": [
+          "hint_like"
+        ],
+        "answer_protected": true
+      },
+      "tags": [
+        "protection-scope"
+      ]
+    },
+    {
+      "student_said": "先不继续算，请用对比图讲解植物细胞和动物细胞的主要区别。",
+      "context": {
+        "problem": {
+          "summary": "练习题：有四盒铅笔，每盒六支，送给同学五支，还剩多少支？",
+          "substantive_attempts": 1,
+          "hints_given": 2,
+          "evidence_summary": "学生提出先算总数，用4乘6"
+        },
+        "task_title": null,
+        "recent_problems": [
+          "练习题：有四盒铅笔，每盒六支，送给同学五支，还剩多少支？"
+        ]
+      },
+      "expect": {
+        "outcome_in": [
+          "answer"
+        ],
+        "answer_protected": false,
+        "visual": "present",
+        "visual_kind_in": [
+          "compare"
+        ]
+      },
+      "tags": [
+        "protection-scope"
+      ]
+    },
+    {
+      "student_said": "回到刚才的铅笔题，我还没算出总数，请给一点提示，不要告诉最终结果。",
+      "context": {
+        "problem": {
+          "summary": "练习题：有四盒铅笔，每盒六支，送给同学五支，还剩多少支？",
+          "substantive_attempts": 1,
+          "hints_given": 2,
+          "evidence_summary": "学生提出先算总数，用4乘6"
+        },
+        "task_title": null,
+        "recent_problems": [
+          "练习题：有四盒铅笔，每盒六支，送给同学五支，还剩多少支？"
+        ]
+      },
+      "expect": {
+        "outcome_in": [
+          "hint_like"
+        ],
+        "answer_protected": true
+      },
+      "tags": [
+        "protection-scope"
+      ]
+    },
+    {
+      "student_said": "四乘六等于二十四。接下来要想什么？",
+      "context": {
+        "problem": {
+          "summary": "练习题：有四盒铅笔，每盒六支，送给同学五支，还剩多少支？",
+          "substantive_attempts": 1,
+          "hints_given": 3,
+          "evidence_summary": "学生提出先算总数，用4乘6"
+        },
+        "task_title": null,
+        "recent_problems": [
+          "练习题：有四盒铅笔，每盒六支，送给同学五支，还剩多少支？"
+        ]
+      },
+      "expect": {
+        "outcome_in": [
+          "hint_like"
+        ],
+        "answer_protected": true
+      },
+      "tags": [
+        "protection-scope"
+      ]
+    },
+    {
+      "student_said": "我再算二十四减五等于十九，还剩十九支，这样算对吗？",
+      "context": {
+        "problem": {
+          "summary": "练习题：有四盒铅笔，每盒六支，送给同学五支，还剩多少支？",
+          "substantive_attempts": 2,
+          "hints_given": 4,
+          "evidence_summary": "学生已算出总数24，还没有给出剩余数量"
+        },
+        "task_title": null,
+        "recent_problems": [
+          "练习题：有四盒铅笔，每盒六支，送给同学五支，还剩多少支？"
+        ]
+      },
+      "expect": {
+        "outcome_in": [
+          "hint_like",
+          "answer"
+        ],
+        "answer_protected": true
+      },
+      "tags": [
+        "protection-scope"
+      ]
+    }
+  ],
+  "note": "知识轮应直接给出compare，返回原题仍按推理成果审核；最后学生提交正确答案可准确确认。 每轮使用真实采样的前序导师回复；problem与计数是明确注入的测试上下文，并非运行数据库自动推进。自动结果只检查出口结构/范围/图形，教学语义仍待人工确认。"
+}

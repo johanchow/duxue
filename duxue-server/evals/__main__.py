@@ -156,7 +156,10 @@ def cmd_run_episodes(args) -> int:
                       "samples": [{"passed": sample.passed, "status": sample.status,
                                    "stopped_at": sample.stopped_at,
                                    "turns": [{"student_said": said, "outcome": step.observation.outcome,
-                                              "content": step.observation.content, "failures": step.failures}
+                                              "content": step.observation.content, "failures": step.failures,
+                                              "answer_protected": step.observation.answer_protected,
+                                              "visual_kind": step.observation.visual_kind,
+                                              "visual_dropped": step.observation.visual_dropped}
                                              for said, step in zip(sample.student_said, sample.steps)]}
                                   for sample in row.samples]} for row in results],
     }, ensure_ascii=False, indent=1), encoding="utf-8")

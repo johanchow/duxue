@@ -41,6 +41,7 @@ class ProblemContext(Strict):
 
 
 class Context(Strict):
+    recent_problems: list[str] = Field(default_factory=list, max_length=3)
     problem: ProblemContext | None = None
     task_title: str | None = None
     task_active: bool = False
@@ -51,6 +52,7 @@ class Context(Strict):
 class Expect(Strict):
     """Assertions. ``fallback`` is always a failure unless a case lists it explicitly."""
 
+    answer_protected: bool | None = Field(default=None, strict=True)
     outcome_in: list[Literal[OUTCOMES]] = Field(default_factory=list)  # type: ignore[valid-type]
     outcome_not_in: list[Literal[OUTCOMES]] = Field(default_factory=lambda: ["fallback"])  # type: ignore[valid-type]
     lesson_source_contains_any: list[str] = Field(default_factory=list)
@@ -67,7 +69,7 @@ class Expect(Strict):
     def is_specific(self) -> bool:
         """True when the case asserts more than "did not fall back"."""
         return bool(
-            self.outcome_in or self.lesson_source_contains_any or self.lesson_source_contains_all
+            self.answer_protected is not None or self.outcome_in or self.lesson_source_contains_any or self.lesson_source_contains_all
             or self.min_lessons is not None or self.content_contains_any
             or self.content_not_contains or self.intent_in or self.visual or self.visual_kind_in
             or self.visual_not_contains or set(self.outcome_not_in) != {"fallback"}

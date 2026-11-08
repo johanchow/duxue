@@ -26,7 +26,7 @@ def _episode(first_expect=None):
 
 def test_committed_episodes_are_six_turns_and_have_stable_hash():
     rows = episodes.load_episodes()
-    assert len(rows) == 2
+    assert len(rows) == 4
     assert all(len(row.turns) == 6 for row in rows)
     assert episodes.episodes_hash(rows) == episodes.episodes_hash(list(reversed(rows)))
     assert episodes.validate_episodes(rows) == []
@@ -39,6 +39,39 @@ def test_actual_tutor_reply_enters_next_window():
     assert len(model.calls) == 6
     assert {"author": "companion", "text": "Tutor reply 0"} in model.calls[1]["recent_utterances"]
     assert len(model.calls[-1]["recent_utterances"]) <= 8
+
+
+def test_scope_switch_uses_actual_history_and_keeps_old_problem_for_return():
+    import json
+
+    from evals.conversations import load_conversations
+
+    episode = next(row for row in episodes.load_episodes() if row.id == "knowledge-switch-and-return")
+    replay = next(row for row in load_conversations() if row.id == "protection-scope-conversation")
+    model = StaticTutorModel(
+        tutor_raw(content="第一轮提示"), tutor_raw(content="第二轮提示"),
+        replay.attempts[0].candidate,
+        tutor_raw(content="返回原题的提示"), tutor_raw(content="下一步提示"),
+        tutor_raw(content="核验学生提交的结果"),
+    )
+
+    class Judge(StaticLeakJudge):
+        def leaks(self, **kwargs):
+            super().leaks(**kwargs)
+            return {"leaks": False, "reason": "none", "answer_protected": self.calls != 3}
+
+        def visual_leaks(self, **kwargs):
+            return False
+
+    judge = Judge()
+    result = run_episode(episode, Backends(tutor_model=model, leak_judge=judge))
+    assert result.passed and len(result.steps) == 6
+    assert [step.observation.answer_protected for step in result.steps] == [True, True, False, True, True, True]
+    assert result.steps[2].observation.visual_kind == "compare"
+    assert {"author": "companion", "text": replay.attempts[0].candidate["content"]} in model.calls[3]["recent_utterances"]
+    contexts = [json.loads(value) for value in judge.problems]
+    assert contexts[2]["recent_problems"] == contexts[3]["recent_problems"] == episode.turns[0].context.recent_problems
+    assert contexts[3]["current_request"] == episode.turns[3].student_said
 
 
 def test_branch_uses_previous_outcome_and_failure_stops_episode():

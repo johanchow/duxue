@@ -41,6 +41,15 @@ def test_valid_pronounce_passes():
     assert sample.passed
 
 
+@pytest.mark.parametrize("actual", [True, None, False])
+def test_scope_expectation_checks_review_result_even_when_reply_outcome_matches(actual):
+    from evals.graders import grade
+    from evals.outcome import Observation
+    case = _case(expect={"outcome_in": ["answer"], "answer_protected": False})
+    failures = grade(case, Observation("answer", answer_protected=actual))
+    assert bool(failures) is (actual is not False)
+
+
 def test_chat_reply_to_a_choice_is_not_a_fallback():
     """2026-10-11: 「是的，是的」「壮阔宏大的」→ the confirming reply on a chat turn used to fall back."""
     raw = tutor_raw("chat", "确认一下：你问的是第四行，对吗？", relation=None, history_ref="u1")

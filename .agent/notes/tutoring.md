@@ -16,7 +16,7 @@
 ## 决策
 
 - 是否作业由模型用证据判断（`work|non_work`），不用任务标题推断。线索不足用 `non_work`。有受保护题，或候选声称在处理作业时，正文一律过独立裁判。模型标签只能收紧保护，不能放宽。
-- `answer_protected` 只由 `permit()` 计算。本轮表现只影响下一轮。`guide` 必须是 `work`。`depth` 缺失按 `reasoning`。`fact_gate` 不能跳过裁判。
+- `TutorPermit.answer_protected` 由 `permit()` 按旧题状态计算审核触发条件；独立Judge在同一次调用确定本轮Verdict/响应的保护范围，不持久化释放旧题。详见[出口检查](../../docs/technical/domain-tutoring.md#42-出口检查)。本轮表现只影响下一轮题目状态。`guide` 必须是 `work`。`depth` 缺失按 `reasoning`。`fact_gate` 不能跳过裁判。
 - `submitted` 只表示提交了完整思路或答案，不等于算对。已掌握只来自 `ConfirmUnderstanding`。
 - 计算题、问答题在题面足够时可以独立核验后确认或纠错，纠错不能补出孩子还没算出的最终结果。选择题、判断题不能逐项确认对错。题面不足只请补充。
 - 文字裁判输出结构化事实，代码不扫描回复里的词或数字。`final_answer` / `complete_solution` 重试不回灌含答案的草稿。裁判超时、非法、异常一律 fail-closed，不能展示失败草稿。
@@ -46,3 +46,10 @@
 - 2026-11-04 用户后续明确可保留选择/判断题不判候选项对错的原则，本轮要求分析友好提示；不采纳上一轮建议的核验放宽。链路确认：出口保留 `leak_detected`/`leak_check_failed`，但TutoringWorkflow失败分支统一投影FALLBACK_TEXT；Companion直接记该正文，App不按原因重写。友好提示方案须区分教学边界与技术不可用，优先主回答/有界repair给出可执行的合规帮助，最后用受控模板兜底。Judge原因描述被拒草稿，不能据此指责用户索答案、推断学生答错或选定错题；首因与重试末次故障需分开留存。模板回复不推进题目/学习事实、不提取失败草稿片段，不要求已说明意图的孩子重说；具体方案尚未实施。
 - 2026-11-04 已按用户确认的最小方案实现最终失败提示映射：保留生成/审核/重试，提示策略事实源见[出口检查](../../docs/technical/domain-tutoring.md#42-出口检查)。注意最终审核不可用优先使用技术提示，即使携带旧泄露原因也不解释为教学边界；未知原因不暴露异常文本。失败正文与trace/账本保持一致，不写学习事实、不推进题目。
 - 2026-11-04 最终提示进一步明确本次回答的问题点，区分最终答案与完整解法，不只宣读通用能力边界；原因码不是图片定位证据，不据此编造题号、断言原图含哪道题。契约见[出口检查](../../docs/technical/domain-tutoring.md#42-出口检查)。
+
+- 2026-11-07 官网视频实机录制时定位知识对比误拦：test环境22:38:31（上海），[trace b7daa887d5eb2355ae32344291dadc07](https://us.cloud.langfuse.com/project/cmvfvorj601l6ad0jhvajth4c/traces/b7daa887d5eb2355ae32344291dadc07)。用户问“我想问一道新题，请用对比图讲解植物细胞和动物细胞的主要区别”，主/repair/backup均返回answer+non_work+compare；三个文字Judge均报new_final_answer=true、complete_solution=true，按优先级映射final_answer，最终leak_detected。不是图形协议或visual审核失败，也不是超时。旧铅笔题提交后permit仍protected，check_authority因此对所有回答触发审核（符合现有防绕过设计）；Judge输入把三道历史应用题与当前知识问答拼为problem，仅带task_title/problem/reply，缺少明确的保护对象关联判定；prompt只列词义/读音/定义原子知识豁免，未充分界定概念对比/解释与作业推理成果的边界。按产品事实直答原则本次为误拦，不能以主模型non_work直接跳过独立审核作为修复。建议独立Judge先识别本轮与受保护成果的关系，再判是否替代推理；结构化区分current_request/protected_problems/student_evidence，并补“旧题后问概念对比可答、旧题换说法索答案仍拒”的真实回放。当前只完成诊断，未改提示词、业务代码或线上配置。
+
+- 2026-11-07 上述误拦已本地修复，尚未部署：`tutoring.leak-judge@v11`/`leak-judge-facts.v2` 在原有一次调用内返回本轮 `answer_protected` 及泄露事实；结构化当前请求/近期题目/学生证据，不信任主模型non_work放行，不释放旧题。图判官升v6，文字范围false仍执行既有图审核；缺失/矛盾范围fail-closed。`protection-scope-v1`新增9判官用例与2完整链路用例（标签均proposed，事实源见离线评测文档）；扩查发现作业词义直答也被误拦，已补充事实优先边界及用例。最终真实模型判官27次：FP0/15、FN0/12，范围/原因误判0/27，无不可用；完整链路4次均自动通过，人工查看实际回复/compare图描述，知识问答直答且伪装索旧题答案改为提示；额外4个已有判官用例带参考题面采样12次，FP0/6、FN0/6（counterfactual，不能并入默认图片评测）。结果在ignored `duxue-server/var/evals/protection-{scope,scope-turn,existing}-v11-final.json`；小样本不外推准确率，非发布门槛。服务端全量806通过/1既有跳过，修改文件Ruff通过，数据集与Agent定义校验通过。未提交、未推送或部署；官网视频素材仍保留，未使用假AI回复替代受阻画面。
+
+- 2026-11-08 按用户确认重组上述批次为4个文件，路径与职责见[保护范围回归](../../docs/technical/eval-offline.md#保护范围回归protection-scope-v1)。初版9判官+2单步已被替换，上一条采样仅是旧版结果，不能视为多轮验证通过。真实6轮可见历史保留三版拒绝候选、原Judge六项事实和兜底；新期望与旧裁决分开。固定历史只采样知识检查点；两条合成6轮使用真实前序回复，DB状态为注入。回放器补近期题目、独立范围和配图断言；旧种子哈希不变。
+- 新版真实模型结果在ignored `duxue-server/var/evals/protection-scope-{conversation,episodes,atomic}-reorganized.json`：真实候选重审6/6通过；知识回复2次均允许直答，其中1次compare格式无效被丢图，另1次结构通过且语义待人工复核。原子词义3/3通过。伪装索答案两次均完成6轮并通过；知识切换两次均在第3轮失败：一次仍回答数学题（范围true），一次已给知识和compare但act仍guide。按失败即停止规则，真实模型尚未覆盖其返回旧题的第4–6轮；这部分仅有确定性评测器测试和工作流旧题状态测试，不能宣称端到端全部通过。保留失败和原期望，本次只整理评测，未扩改主答疑提示词。全量813通过/1既有跳过，数据校验通过，修改Python文件F/E9检查通过；完整Ruff有既有问题，无新增违规类别。未提交或部署。

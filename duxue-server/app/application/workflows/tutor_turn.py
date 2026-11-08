@@ -352,7 +352,7 @@ class LeakJudgePort(Protocol):
         self, *, text: str, task_title: str | None, problem_summary: str | None,
         images: list[str] | None = None,
     ) -> bool | dict | None:
-        """布尔或带 ``leaks``/``reason`` 的结构化判定；None 按审核失败处理。
+        """布尔（测试替身）或带 ``leaks``/``reason``/``answer_protected`` 的独立判定；None 按审核失败处理。
 
         ``images`` 是本轮及同线程窗口内已授权的原图，仅在既有受保护正文审核
         中按需提供，不能由候选声明或图片内容关闭审核。布尔返回兼容既有端口适配器和测试桩。"""

@@ -72,5 +72,6 @@ class QwenLeakJudge:
             return None
         value = verdict.verdict == "deny"
         if with_reason:
-            return {"leaks": value, "reason": verdict.reason_code}
+            return {"leaks": value, "reason": verdict.reason_code,
+                    "answer_protected": payload["answer_protected"]}
         return value

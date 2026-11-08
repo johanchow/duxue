@@ -37,13 +37,17 @@ def load_cases(path: Path = DATA) -> list[dict]:
             raise ValueError(f"{file.name}: each case must be <id>.json")
     ids: set[str] = set()
     for case in cases:
-        if set(case) - {"id", "reference_problem", "reply", "expected_leaks", "rationale", "pair", "image", "problem", "expected_reason", "component", "source", "review_batch", "label_status", "reviewed_by"}:
+        if set(case) - {"id", "reference_problem", "reply", "expected_leaks", "rationale", "pair", "image", "problem", "expected_reason", "component", "source", "review_batch", "label_status", "reviewed_by", "task_title", "expected_answer_protected"}:
             raise ValueError(f"unexpected fields in {case.get('id')}")
         if not all(isinstance(case.get(key), str) and case[key] for key in
                    ("id", "reference_problem", "reply", "rationale")):
             raise ValueError("each case needs an id, reference problem, reply and rationale")
         if type(case.get("expected_leaks")) is not bool:
             raise ValueError(f"invalid label: {case['id']}")
+        if "task_title" in case and case["task_title"] is not None and not isinstance(case["task_title"], str):
+            raise ValueError(f"invalid task title: {case['id']}")
+        if "expected_answer_protected" in case and type(case["expected_answer_protected"]) is not bool:
+            raise ValueError(f"invalid protection scope: {case['id']}")
         if "problem" in case and (not isinstance(case["problem"], str) or not case["problem"].strip()):
             raise ValueError(f"invalid problem snapshot: {case['id']}")
         if "expected_reason" in case:
@@ -81,22 +85,33 @@ def run_cases(
         raise ValueError("samples and workers must be positive")
     problem_summary = summary if summary is not None else production_summary()
     results = [{"id": case["id"], "expected_leaks": case["expected_leaks"],
-                "pair": case.get("pair"), "expected_reason": case.get("expected_reason"), "observations": [None] * samples} for case in cases]
+                "pair": case.get("pair"), "expected_reason": case.get("expected_reason"),
+                "expected_answer_protected": case.get("expected_answer_protected"), "observations": [None] * samples} for case in cases]
 
     def call(case: dict) -> dict:
         started = time.monotonic()
         try:
             context = case.get("problem", problem_summary)
-            case_summary = (f"第1题：{case['reference_problem']}\n{context}"
-                            if with_reference else context)
+            case_summary = context
+            if with_reference:
+                try:
+                    structured = json.loads(context)
+                except (ValueError, TypeError):
+                    structured = None
+                if isinstance(structured, dict) and "current_request" in structured:
+                    structured["recent_problems"] = [case["reference_problem"], *structured.get("recent_problems", [])]
+                    case_summary = json.dumps(structured, ensure_ascii=False)
+                else:
+                    case_summary = f"第1题：{case['reference_problem']}\n{context}"
             from evals.runner import read_asset
             images = [read_asset(ASSETS_DIR / case["image"])] if case.get("image") else None
             verdict = judge(
-                text=case["reply"], task_title=TASK_TITLE, problem_summary=case_summary, images=images,
+                text=case["reply"], task_title=case.get("task_title", TASK_TITLE), problem_summary=case_summary, images=images,
             )
             if not isinstance(verdict, dict) or type(verdict.get("leaks")) is not bool:
                 return {"leaks": None, "reason": "judge_unavailable", "latency_ms": round((time.monotonic()-started)*1000)}
             return {"leaks": verdict["leaks"], "reason": verdict.get("reason"),
+                    "answer_protected": verdict.get("answer_protected"),
                     "latency_ms": round((time.monotonic()-started)*1000)}
         except Exception as error:  # noqa: BLE001 - Report failures; never count them as correct verdicts.
             return {"leaks": None, "reason": type(error).__name__,
@@ -122,7 +137,12 @@ def summarize(results: list[dict]) -> dict:
     leak_judged = len(leaks) - leak_unavailable
     reason_samples = [(row["expected_reason"], obs) for row in results if row.get("expected_reason")
                       for obs in row["observations"] if obs["leaks"] is not None]
+    scope_samples = [(row["expected_answer_protected"], obs) for row in results
+                     if row.get("expected_answer_protected") is not None
+                     for obs in row["observations"] if obs["leaks"] is not None]
     return {
+        "wrong_scope": {"count": sum(obs.get("answer_protected") is not expected for expected, obs in scope_samples),
+                        "judged": len(scope_samples)},
         "wrong_reason": {"count": sum(obs.get("reason") != expected for expected, obs in reason_samples),
                          "judged": len(reason_samples)},
         "cases": len(results), "samples": len(safe) + len(leaks),
