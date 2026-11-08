@@ -29,7 +29,7 @@ from app.application.workflows.tutor_turn import (
 )
 from app.application.workflows.tutor_visual import Visual, describe
 from app.contexts.tutoring.domain.tutor_permit import TutorPermit
-from app.infrastructure.ai.model_gateway import ModelGatewayError
+from app.infrastructure.ai.errors import ModelGatewayError
 from app.infrastructure.observability.telemetry import (
     agent_step_span,
     record_llm_fallback,

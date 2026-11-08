@@ -13,13 +13,8 @@ from app.infrastructure.ai.components import (
     validate_overrides,
 )
 from app.infrastructure.ai.errors import ModelGatewayError
-
-# conftest patches ``generate`` for every test; keep the real one for this module.
-from app.infrastructure.ai.model_gateway import QwenAgentModelGateway
 from app.infrastructure.ai.prompts import PromptTemplate
 from tests.support.fakes import leak_judge_facts
-
-_REAL_GENERATE = QwenAgentModelGateway.generate
 
 
 class _Client:
@@ -64,7 +59,7 @@ def test_registry_lists_every_call_with_stable_identity():
     ids = {spec.component_id for spec in COMPONENTS.all()}
     assert ids == {
         "tutoring.turn", "tutoring.turn-backup", "tutoring.leak-judge", "tutoring.visual-leak-judge", "companion.intent", "companion.scene-switch",
-        "planning.reply", "planning.intake", "task.intake",
+        "planning.intake", "task.intake",
         "evaluation.review-aspects", "tutoring.image-target", "study.sprint-intake",
     }
     for spec in COMPONENTS.all():
@@ -241,23 +236,6 @@ def test_tutoring_components_keep_existing_success_and_failure_boundaries(monkey
     assert tutor_turn_model.QwenLeakJudge().leaks(text="提示", task_title=None, problem_summary=None) is None
 
 
-@pytest.mark.parametrize("agent_type,component_id", [("planning", "planning.reply")])
-def test_agent_text_gateway_uses_registered_component_and_validates(monkeypatch, agent_type, component_id):
-    from app.infrastructure.ai import model_gateway
-
-    seen: dict = {}
-    monkeypatch.setattr(
-        model_gateway.components, "invoke_json_component",
-        lambda **kwargs: seen.update(kwargs) or {"content": "好的"},
-    )
-    candidate = _REAL_GENERATE(QwenAgentModelGateway(), agent_type=agent_type, envelope={}, instruction="i")
-    assert candidate.content == "好的" and seen["spec"].component_id == component_id
-
-    monkeypatch.setattr(model_gateway.components, "invoke_json_component", lambda **_: {"content": ""})
-    with pytest.raises(ModelGatewayError, match="invalid_model_candidate"):
-        _REAL_GENERATE(QwenAgentModelGateway(), agent_type=agent_type, envelope={}, instruction="i")
-
-
 def test_intake_services_map_gateway_errors_to_their_user_messages(monkeypatch):
     from app.api.schemas import TaskIntakeRequest
     from app.application.commands import task_intake
@@ -289,7 +267,6 @@ def test_model_assignment_matrix():
         "tutoring.visual-leak-judge": ("qwen-plus", False),
         "companion.intent": ("qwen-flash", False),
         "companion.scene-switch": ("qwen3.8-flash", True),
-        "planning.reply": ("qwen3.8-flash", True),
         "planning.intake": ("qwen3.7-plus-2026-05-26", True),
         "task.intake": ("qwen3.7-plus-2026-05-26", True),
             "evaluation.review-aspects": ("qwen-flash", False),

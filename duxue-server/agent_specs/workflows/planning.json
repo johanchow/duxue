@@ -1,7 +1,7 @@
 {
   "kind": "workflow",
   "id": "planning",
-  "version": "v1",
+  "version": "v2",
   "handler": "planning",
   "entry": "planning.prepare_review",
   "required_checks": [
@@ -66,13 +66,6 @@
       "trace": "planning.plan_intake",
       "trace_kind": "stage",
       "ref": "planning.intake"
-    },
-    {
-      "id": "planning.agent_text",
-      "kind": "agent",
-      "trace": "planning.agent_text",
-      "trace_kind": "stage",
-      "ref": "planning.reply"
     },
     {
       "id": "planning.graph_compile",

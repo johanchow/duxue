@@ -70,16 +70,3 @@ def user_content(
     if current_ids:
         body["current_image_ids"] = current_ids
     return [{"type": "text", "text": json.dumps(body, ensure_ascii=False)}, *image_parts(window, images)]
-
-
-def instruction_with_window(
-    instruction: str, utterances: list[dict], current_image_count: int = 0,
-) -> str:
-    rows, current_ids = window_text(list(utterances), current_image_count)
-    text = (
-        f"{instruction}\n{WINDOW_RULE}\n"
-        f"recent_utterances={json.dumps(rows, ensure_ascii=False)}"
-    )
-    if current_ids:
-        text += f"\ncurrent_image_ids={json.dumps(current_ids)}"
-    return text

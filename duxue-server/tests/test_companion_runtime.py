@@ -25,7 +25,7 @@ from app.application.workflows.planning_domain_service import PlanningDomainServ
 from app.application.workflows.planning_workflow import build_planning_graph
 from app.application.workflows.reflection_workflow import ReflectionWorkflow
 from app.application.workflows.tutoring_workflow import TutoringWorkflow
-from app.infrastructure.ai.model_gateway import ModelGatewayError
+from app.infrastructure.ai.errors import ModelGatewayError
 from app.infrastructure.messaging.outbox import publish_learning_fact
 from app.infrastructure.persistence.database import Base
 from app.infrastructure.persistence.models import (
@@ -61,7 +61,7 @@ class MemoryFacadeTest(unittest.TestCase):
     def setUp(self):
         # Unit tests must never consume a configured production model key.
         self.model_gateway = patch(
-            "app.infrastructure.ai.model_gateway.QwenAgentModelGateway.generate",
+            "app.infrastructure.ai.components.invoke_json_component",
             side_effect=ModelGatewayError("unit_test"),
         )
         self.model_gateway.start()

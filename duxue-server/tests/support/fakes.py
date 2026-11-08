@@ -1,33 +1,12 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any
 
 from app.application.ports.companion import (
     IntentProposal,
     RunInvocation,
     WorkflowOutcome,
 )
-from app.infrastructure.ai.model_gateway import AgentTextCandidate, ModelGatewayError
-
-
-class FakeModelGateway:
-    def __init__(self, candidate: AgentTextCandidate | None = None, raise_error: bool = False):
-        self.candidate = candidate or AgentTextCandidate(content="启发式测试建议")
-        self.raise_error = raise_error
-        self.calls: list[dict[str, Any]] = []
-
-    def generate(
-        self, *, agent_type: str, envelope: dict, instruction: str,
-        recent_utterances: list[dict] | None = None, current_images: list | None = None,
-    ) -> AgentTextCandidate:
-        self.calls.append({
-            "agent_type": agent_type, "envelope": envelope, "instruction": instruction,
-            "recent_utterances": list(recent_utterances or []), "current_images": list(current_images or []),
-        })
-        if self.raise_error:
-            raise ModelGatewayError("fake model error")
-        return self.candidate
 
 
 def tutor_raw(act: str = "guide", content: str = "先说说已知条件是什么？", *, relation: str | None = "same",

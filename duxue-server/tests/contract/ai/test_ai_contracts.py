@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import pytest
-from pydantic import ValidationError
-
 from app.application.ports.companion import (
     ContextEnvelope,
     ContextSpec,
@@ -11,7 +8,6 @@ from app.application.ports.companion import (
     RunInvocation,
     WorkflowOutcome,
 )
-from app.infrastructure.ai.model_gateway import AgentTextCandidate
 from app.infrastructure.persistence.models import uid
 
 
@@ -63,17 +59,3 @@ def test_run_invocation_and_outcome_contracts():
     )
     assert outcome.run_status == "waiting_for_ward"
     assert outcome.next_interaction["status"] == "needs_input"
-
-
-def test_agent_text_candidate_contract_limits():
-    """AgentTextCandidate 契约：长度必须在 1~1200 字符内，空文本或超长文本拒绝。"""
-    valid = AgentTextCandidate(content="这是一条有效的回复")
-    assert valid.content == "这是一条有效的回复"
-
-    # 空文本拒绝
-    with pytest.raises(ValidationError):
-        AgentTextCandidate(content="")
-
-    # 超长文本拒绝 (> 1200 字符)
-    with pytest.raises(ValidationError):
-        AgentTextCandidate(content="A" * 1201)

@@ -57,6 +57,8 @@ class Settings:
     public_base_url: str = os.getenv("APP_BASE_URL") or os.getenv("PUBLIC_BASE_URL", "http://localhost:8000")
     oss_endpoint: str = os.getenv("OSS_ENDPOINT_PUBLIC") or os.getenv("OSS_ENDPOINT", "")
     oss_endpoint_internal: str = os.getenv("OSS_ENDPOINT_INTERNAL") or os.getenv("OSS_ENDPOINT_PUBLIC") or os.getenv("OSS_ENDPOINT", "")
+    oss_camera_endpoint: str = os.getenv("OSS_CAMERA_ENDPOINT_PUBLIC") or os.getenv("OSS_ENDPOINT_PUBLIC") or os.getenv("OSS_ENDPOINT", "")
+    oss_camera_endpoint_internal: str = os.getenv("OSS_CAMERA_ENDPOINT_INTERNAL") or os.getenv("OSS_CAMERA_ENDPOINT_PUBLIC") or os.getenv("OSS_ENDPOINT_INTERNAL") or os.getenv("OSS_ENDPOINT_PUBLIC") or os.getenv("OSS_ENDPOINT", "")
     oss_presign_expire_seconds: int = _integer("OSS_PRESIGN_EXPIRE_SECONDS", "300")
     oss_bucket: str = os.getenv("OSS_BUCKET_NAME") or os.getenv("OSS_BUCKET", "")
     oss_camera_bucket: str = os.getenv("OSS_BUCKET_CAMERA", "")

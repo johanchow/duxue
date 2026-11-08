@@ -109,7 +109,7 @@ Agent 文件的 `kind` 固定为 `agent`。每个 Agent 均声明 `id`、`versio
 | 目标注册 ID 示例 | 构造的上下文 |
 | --- | --- |
 | `companion.intent_context` | 本轮输入与近期 Thread 原句窗口；不因路由需要而自动加入 profile/memory |
-| `planning.reply_context` | 近期窗口、受权任务以及按计划用途筛选的 profile/memory |
+| `planning.intake.context` | 近期窗口、受权任务、当前草稿与已确认自述，仅用于任务和安排提取 |
 | `tutoring.leak_judge_context` | 待审候选、答疑许可和已选定的受权题图；不继承答疑 Agent 的全部上下文 |
 
 例如任务整理 Agent 的动态 Prompt 可以这样声明变量（示意字段，待迁移时由 Schema 固化）：

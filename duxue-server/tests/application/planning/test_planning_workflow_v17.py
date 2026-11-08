@@ -333,7 +333,6 @@ def test_confirmation_turn_sees_prior_itinerary_and_creates_those_tasks(db, monk
     from app.application.commands.plan_intake import PlanIntakeResult, PlanIntakeService
     from app.application.ports.companion import RunInvocation
     from app.application.workflows.planning_adapter import PlanningWorkflowAdapter
-    from app.infrastructure.ai.model_gateway import ModelGatewayError
     from app.infrastructure.persistence.models import (
         AgentRun,
         CompanionCommand,
@@ -407,14 +406,7 @@ def test_confirmation_turn_sees_prior_itinerary_and_creates_those_tasks(db, monk
             ],
         )
 
-    class OfflineGateway:
-        def generate(self, **kwargs):
-            raise ModelGatewayError('offline')
-
     monkeypatch.setattr(PlanIntakeService, 'respond', respond)
-    monkeypatch.setattr(
-        'app.application.workflows.planning_adapter.QwenAgentModelGateway', OfflineGateway,
-    )
     PlanningWorkflowAdapter(db, checkpointer=InMemorySaver()).invoke(invocation=RunInvocation(
         run_id=run.id, thread_id=thread.id, ward_id=ward.id, agent_type='planning',
         command_id='confirm-itinerary', turn_id=confirm_turn,
@@ -443,7 +435,6 @@ def test_unchanged_update_asks_instead_of_saving(db, monkeypatch):
     from app.application.commands.plan_intake import PlanIntakeResult, PlanIntakeService
     from app.application.ports.companion import RunInvocation
     from app.application.workflows.planning_adapter import PlanningWorkflowAdapter
-    from app.infrastructure.ai.model_gateway import ModelGatewayError
     from app.infrastructure.persistence.models import AgentRun, ConversationThread
 
     ward = create_ward(db)
@@ -461,12 +452,7 @@ def test_unchanged_update_asks_instead_of_saving(db, monkeypatch):
             operations=[{'kind': 'update', 'references': ['diamond beach 10:00'], 'title': 'diamond beach 10:00'}],
         )
 
-    class OfflineGateway:
-        def generate(self, **kwargs):
-            raise ModelGatewayError('offline')
-
     monkeypatch.setattr(PlanIntakeService, 'respond', respond)
-    monkeypatch.setattr('app.application.workflows.planning_adapter.QwenAgentModelGateway', OfflineGateway)
     outcome = PlanningWorkflowAdapter(db, checkpointer=InMemorySaver()).invoke(invocation=RunInvocation(
         run_id=run.id, thread_id=thread.id, ward_id=ward.id, agent_type='planning',
         command_id='same-op', turn={'content': '同样的操作给十点那个任务。'},
@@ -486,7 +472,6 @@ def test_clarification_required_does_not_apply_operations(db, monkeypatch):
     from app.application.commands.plan_intake import PlanIntakeResult, PlanIntakeService
     from app.application.ports.companion import RunInvocation
     from app.application.workflows.planning_adapter import PlanningWorkflowAdapter
-    from app.infrastructure.ai.model_gateway import ModelGatewayError
     from app.infrastructure.persistence.models import AgentRun, ConversationThread
 
     ward = create_ward(db)
@@ -507,12 +492,7 @@ def test_clarification_required_does_not_apply_operations(db, monkeypatch):
             operations=[{'kind': 'update', 'references': ['diamond beach 10:00'], 'title': 'diamond beach', 'planned_minutes': 20}],
         )
 
-    class OfflineGateway:
-        def generate(self, **kwargs):
-            raise ModelGatewayError('offline')
-
     monkeypatch.setattr(PlanIntakeService, 'respond', respond)
-    monkeypatch.setattr('app.application.workflows.planning_adapter.QwenAgentModelGateway', OfflineGateway)
     outcome = PlanningWorkflowAdapter(db, checkpointer=InMemorySaver()).invoke(invocation=RunInvocation(
         run_id=run.id, thread_id=thread.id, ward_id=ward.id, agent_type='planning',
         command_id='ask-op', turn={'content': '同样的操作给十点那个任务。'},

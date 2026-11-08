@@ -103,17 +103,24 @@ def server_side_oss_endpoint(*, app_env: str, public_endpoint: str, internal_end
 
 
 class OssStorage:
-    def __init__(self, bucket: str) -> None:
+    def __init__(self, bucket: str, *, public_endpoint: str | None = None, internal_endpoint: str | None = None) -> None:
         try:
             import oss2
         except ImportError as exc:
             raise RuntimeError("oss2 is required when STORAGE_BACKEND=oss") from exc
         auth = oss2.Auth(settings.oss_access_key_id, settings.oss_access_key_secret)
-        self.public_bucket = oss2.Bucket(auth, settings.oss_endpoint, bucket)
+        # oss2 defaults a bare hostname to HTTP, but public uploads must use
+        # HTTPS (the gateway deliberately rejects insecure object targets).
+        public_endpoint = (public_endpoint if public_endpoint is not None else settings.oss_endpoint).strip()
+        if public_endpoint.startswith("http://"):
+            public_endpoint = "https://" + public_endpoint[len("http://"):]
+        elif "://" not in public_endpoint:
+            public_endpoint = "https://" + public_endpoint
+        self.public_bucket = oss2.Bucket(auth, public_endpoint, bucket)
         server_endpoint = server_side_oss_endpoint(
             app_env=settings.app_env,
-            public_endpoint=settings.oss_endpoint,
-            internal_endpoint=settings.oss_endpoint_internal,
+            public_endpoint=public_endpoint,
+            internal_endpoint=internal_endpoint if internal_endpoint is not None else settings.oss_endpoint_internal,
         )
         self.internal_bucket = oss2.Bucket(auth, server_endpoint, bucket)
 
@@ -154,4 +161,8 @@ class OssStorage:
 
 storage = OssStorage(settings.oss_bucket) if settings.storage_backend == "oss" else LocalStorage()
 # Camera frames use OSS_BUCKET_CAMERA. Local mode shares the upload directory.
-camera_storage = OssStorage(settings.oss_camera_bucket) if settings.storage_backend == "oss" else storage
+camera_storage = OssStorage(
+    settings.oss_camera_bucket,
+    public_endpoint=settings.oss_camera_endpoint,
+    internal_endpoint=settings.oss_camera_endpoint_internal,
+) if settings.storage_backend == "oss" else storage

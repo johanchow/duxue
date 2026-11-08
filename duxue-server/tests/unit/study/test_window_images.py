@@ -11,8 +11,7 @@ from app.application.queries.run_transcript import (
     visible_utterances,
 )
 from app.application.workflows.tutoring_workflow import TutoringWorkflow
-from app.infrastructure.ai.model_gateway import AgentTextCandidate
-from app.infrastructure.ai.utterance_window import instruction_with_window, user_content
+from app.infrastructure.ai.utterance_window import user_content
 from app.infrastructure.persistence.models import (
     CompanionCommand,
     CompanionMessage,
@@ -91,13 +90,6 @@ def test_user_content_numbers_window_and_current_pictures_in_one_message():
     assert "data:" not in parts[0]["text"]
     assert [p["image_url"]["url"] for p in parts if p["type"] == "image_url"] == ["data:a", "data:b", "data:c"]
     assert [p["text"] for p in parts[1:] if p["type"] == "text"] == ["图片1：", "图片2：", "图片3："]
-
-
-def test_instruction_text_never_embeds_pixels():
-    text = instruction_with_window("说明", [{"author": "ward", "text": "看", "image_urls": [PIXELS]}], 1)
-    assert PIXELS not in text
-    assert '"image_ids": [1]' in text
-    assert "current_image_ids=[2]" in text
 
 
 def test_old_image_selector_receives_request_local_numbers_without_storage_path(monkeypatch):

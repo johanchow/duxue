@@ -27,7 +27,7 @@ flowchart TD
 
 工具：无。
 
-## planning · v1
+## planning · v2
 
 ```mermaid
 flowchart TD
@@ -41,7 +41,6 @@ flowchart TD
   planning_checkpointer_setup[planning.checkpointer_setup]
   planning_context_build[planning.context_build]
   planning_plan_intake[planning.plan_intake]
-  planning_agent_text[planning.agent_text]
   planning_graph_compile[planning.graph_compile]
   planning_graph_invoke[planning.graph_invoke]
   planning_START --> planning_prepare_review
@@ -54,7 +53,6 @@ flowchart TD
 | 组件 | 模型 | Prompt |
 | --- | --- | --- |
 | `planning.intake@v5` | `qwen3.7-plus-2026-05-26` | `planning.intake.prompt.v6` |
-| `planning.reply@v2` | `qwen3.8-flash` | `companion.agent-text.system.v2` |
 
 工具：无。
 

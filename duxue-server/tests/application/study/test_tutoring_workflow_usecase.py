@@ -6,7 +6,7 @@ import pytest
 
 from app.application.ports.companion import RunInvocation
 from app.application.workflows.tutoring_workflow import TutoringWorkflow
-from app.infrastructure.ai.model_gateway import ModelGatewayError
+from app.infrastructure.ai.errors import ModelGatewayError
 from app.infrastructure.persistence.models import (
     CompanionCommand,
     CompanionMessage,
