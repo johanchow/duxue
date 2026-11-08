@@ -14,8 +14,6 @@ from app.application.commands.plan_intake import PlanIntakeInput, PlanIntakeServ
 from app.application.ports.companion import RunInvocation, WorkflowOutcome
 from app.application.queries.context_builder import ContextBuilder
 from app.application.queries.run_transcript import (
-    current_turn_images,
-    load_visible_utterances,
     recent_thread_utterances,
     visible_utterances,
 )
@@ -30,12 +28,8 @@ from app.contexts.planning.domain.scheduling import (
     TaskReferenceResolver,
     local_plan_date,
 )
-from app.infrastructure.ai import components
-from app.infrastructure.ai.model_gateway import ModelGatewayError, QwenAgentModelGateway
-from app.infrastructure.ai.utterance_window import instruction_with_window
 from app.infrastructure.observability.telemetry import (
     planning_stage_span,
-    record_llm_fallback,
     record_planning_input_rejected,
     record_planning_loop_outcome,
 )
@@ -113,12 +107,10 @@ class PlanningWorkflowAdapter:
             result = SprintService(self.db).execute(run.ward_id, invocation.command_id,
                 payload["action"], sprint_id=payload["sprint_id"], expected_version=payload["expected_version"])
             return self._study_response(run, "已按你的选择更新这轮挑战。", sprint=result["sprint"])
-        assistant_text = None
         pending_fields: list[str] = []
         service = PlanningDomainService(self.db)
         service.release_unfinished_tasks(run.ward_id, planning_today())
         prepared_draft_id = None
-        window_rows: list[dict] | None = None
         if not confirm and structured.get("command") == "accept_plan_suggestion":
             payload = structured.get("payload") or {}
             draft = service.accept_suggestion(
@@ -128,14 +120,12 @@ class PlanningWorkflowAdapter:
             )
             items, pending_fields = draft.items, draft.pending_fields
             prepared_draft_id = draft.id
-            assistant_text = "已按你的选择调整草稿，请再检查时间安排。"
         elif not confirm and structured.get("command") == "clarify_reply":
             payload = structured.get("payload") or {}
             draft = service.apply_operations(run.ward_id, planning_today(), [],
                 answers=payload.get("answers") or [], command_id=invocation.command_id)
             items, pending_fields = draft.items, draft.pending_fields
             prepared_draft_id = draft.id
-            assistant_text = "已记录补充的信息。"
         elif not confirm and items is None:
             ward = self.db.get(Ward, run.ward_id)
             tasks = self.db.query(Task).filter_by(ward_id=run.ward_id).filter(Task.status.notin_([COMPLETED, CANCELLED])).all()
@@ -160,7 +150,7 @@ class PlanningWorkflowAdapter:
                 self.db, ward_id=run.ward_id, thread_id=invocation.thread_id,
                 exclude_turn_id=invocation.turn_id,
             )
-            utterances = window_rows = visible_utterances(raw_utterances, ward_id=run.ward_id)
+            utterances = visible_utterances(raw_utterances, ward_id=run.ward_id)
             with planning_stage_span("plan_intake", run_id=run.id):
                 extracted = PlanIntakeService().respond(
                     ward={"id": ward.id, "display_name": ward.display_name, "grade_stage": ward.grade_stage},
@@ -238,41 +228,17 @@ class PlanningWorkflowAdapter:
             record_planning_loop_outcome(status=loop_status, has_image=bool(attachment_keys))
             items, pending_fields = draft.items, draft.pending_fields
             prepared_draft_id = draft.id
-            assistant_text = extracted.assistant_text
         elif not confirm:
             items, target_pending = service.resolve_task_references(
                 run.ward_id, items or [], trust_explicit_ids=True)
             pending_fields = sorted(target_pending)
-        model_guidance, model_fallback = None, False
-        if not confirm and not pending_fields:
-            try:
-                if window_rows is None:
-                    window_rows = load_visible_utterances(
-                        self.db, ward_id=run.ward_id, thread_id=invocation.thread_id,
-                        exclude_turn_id=invocation.turn_id,
-                    )
-                review_images = current_turn_images(run.ward_id, invocation.turn.get("attachment_keys"))
-                with planning_stage_span("agent_text", run_id=run.id):
-                    candidate = QwenAgentModelGateway().generate(
-                        agent_type="planning", envelope=envelope.model_dump(),
-                        recent_utterances=window_rows, current_images=review_images,
-                        instruction=instruction_with_window(
-                            "根据已有任务，给一条简短的计划审阅提示；不得创建任务或声称已确认计划。",
-                            window_rows, len(review_images),
-                        ),
-                    )
-                if PolicyRegistry().validate_candidate(candidate.model_dump(), allowed_tools=set()).accepted:
-                    model_guidance = candidate.content
-            except ModelGatewayError as error:
-                model_fallback = True
-                record_llm_fallback(operation="agent_text", reason=str(error))
         if self.checkpointer is not None:
             return self._invoke(
-                self.checkpointer, run, items, confirm, pending_fields, envelope.trace_snapshot(), model_guidance or assistant_text, model_fallback, structured, prepared_draft_id
+                self.checkpointer, run, items, confirm, pending_fields, envelope.trace_snapshot(), structured, prepared_draft_id
             )
         with _postgres_checkpointer() as checkpointer:
             return self._invoke(
-                checkpointer, run, items, confirm, pending_fields, envelope.trace_snapshot(), model_guidance or assistant_text, model_fallback, structured, prepared_draft_id
+                checkpointer, run, items, confirm, pending_fields, envelope.trace_snapshot(), structured, prepared_draft_id
             )
 
     @staticmethod
@@ -293,7 +259,6 @@ class PlanningWorkflowAdapter:
             "run_id": run.id, "turn_id": run.current_turn_id, "attempt": run.attempt,
             "content": text, "parts": [{"type": "text", "text": text}],
             "actions": [],
-            "model": components.model_for("planning.reply"), "model_fallback": False,
         }
         return WorkflowOutcome(
             run_status=run.status, outcome_type="waiting", next_interaction=interaction,
@@ -372,7 +337,6 @@ class PlanningWorkflowAdapter:
                            "object_id": draft.id, "object_version": draft.version,
                            "query": "GetPlanDraft"},
             "actions": actions,
-            "model": components.model_for("planning.reply"), "model_fallback": False,
         }
         return WorkflowOutcome(run_status=run.status, next_interaction=interaction,
                                checkpoint_ref=run.graph_checkpoint_ref,
@@ -386,8 +350,6 @@ class PlanningWorkflowAdapter:
         confirm: bool,
         pending_fields: list[str],
         context_snapshot: dict,
-        model_guidance: str | None,
-        model_fallback: bool,
         structured_command: dict,
         prepared_draft_id: str | None = None,
     ) -> WorkflowOutcome:
@@ -460,7 +422,7 @@ class PlanningWorkflowAdapter:
             else:
                 if not run.graph_checkpoint_ref:
                     raise RuntimeError("cannot issue confirm_plan without a review checkpoint")
-                visible_text = model_guidance or "请检查这份计划草稿。"
+                visible_text = "请确认这些事项和顺序。"
                 kind = "plan_confirm_list"
                 actions = [{"name": "confirm", "label": "确认这个计划", "command": "confirm_plan",
                             "id": f"plan:{run.id}:{run.attempt}:{review['draft_id']}:{review['object_version']}",
@@ -507,9 +469,6 @@ class PlanningWorkflowAdapter:
                     ) if key in item}
                     for item in review["items"]
                 ]}
-            interaction.update({"model": components.model_for("planning.reply"), "model_fallback": model_fallback})
-            if model_guidance:
-                interaction["model_guidance"] = model_guidance
             return WorkflowOutcome(
                 run_status=run.status,
                 next_interaction=interaction,
@@ -528,10 +487,6 @@ class PlanningWorkflowAdapter:
         run.status = (
             "closed" if outcome.get("status") == "confirmed" else "waiting_for_ward"
         )
-        outcome["model"] = components.model_for("planning.reply")
-        outcome["model_fallback"] = model_fallback
-        if model_guidance:
-            outcome["model_guidance"] = model_guidance
         return WorkflowOutcome(
             run_status=run.status,
             next_interaction=outcome,

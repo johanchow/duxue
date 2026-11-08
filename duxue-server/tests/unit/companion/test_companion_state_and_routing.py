@@ -11,7 +11,7 @@ from app.infrastructure.ai.intent_classifier import (
     ModelIntentClassifier,
     parse_intent_payload,
 )
-from app.infrastructure.ai.model_gateway import ModelGatewayError
+from app.infrastructure.ai.errors import ModelGatewayError
 from app.infrastructure.ai.prompts import PROMPTS
 from app.infrastructure.ai.scene_switch_verifier import ModelSceneSwitchVerifier
 
@@ -247,12 +247,6 @@ def test_intent_prompt_covers_the_three_scene_boundaries():
     assert "照片里的题目有没有都做对" in prompt
     assert "不得仅因“看一看”“检查”“全部”" in prompt
     assert "明确要求复盘或总结" in prompt
-
-
-def test_planning_reply_prompt_requires_markdown_for_all_visible_text():
-    prompt = PROMPTS["companion.agent-text.system.v2"].text
-    assert "Markdown" in prompt
-    assert "不要强制逐任务" in prompt
 
 
 def test_classifier_failure_proposes_unclear():

@@ -17,7 +17,6 @@ LOCK = {
     "tutoring.turn.system.v20": "72e440789c773203aa99843f4730f8a7966f69bc7e49f40cf6f31361643d65c0",
     "tutoring.leak-judge.system.v10": "988011f3e4ab620b8249a1127c83d0a9d358d3504460e103c8e0b407406dc5c2",
     "tutoring.visual-leak-judge.system.v6": "7ca13eaf4f04e95e0a0c32c4814230368ffef5ab4cff80fbf0a14af407cbcaf5",
-    "companion.agent-text.system.v2": "3f2d9727250893bcd49643359c428e30f460e969066e44f303accc09e49e54d0",
     "task.intake.prompt.v2": "73995e7f1e1fe5641511300b06e0526d7220434e4a61ab35f8497ae9d5f3a3ad",
     "planning.intake.prompt.v6": "3b4debe34c4a6d7a6d9b025258742ee3d12d7b4d698cac6a9e8f218d5d4eaf98",
     "evaluation.review-aspects.system.v1": "7558e943f00a2f642a226640487aa9a16cdea1ebcd6c22b8cb8a080684ffa00f",

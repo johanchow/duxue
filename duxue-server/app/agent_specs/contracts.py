@@ -29,9 +29,6 @@ def validate_output(unit: ModelUnit, payload: dict) -> None:
     elif unit_id == "companion.scene-switch":
         if type(payload["allow_switch"]) is not bool:
             raise ValueError("invalid switch verdict")
-    elif unit_id == "planning.reply":
-        from app.infrastructure.ai.model_gateway import AgentTextCandidate
-        AgentTextCandidate.model_validate(payload)
     elif unit_id == "planning.intake":
         from app.application.commands.plan_intake import PlanIntakeResult
         PlanIntakeResult.model_validate(payload)
@@ -69,7 +66,7 @@ def validate_output(unit: ModelUnit, payload: dict) -> None:
 
 def has_python_contract(unit_id: str) -> bool:
     return unit_id in {
-        "companion.intent", "companion.scene-switch", "planning.reply", "planning.intake",
+        "companion.intent", "companion.scene-switch", "planning.intake",
         "task.intake", "tutoring.turn", "evaluation.review-aspects", "study.sprint-intake",
         "tutoring.image-target", "tutoring.leak-judge", "tutoring.visual-leak-judge",
     }

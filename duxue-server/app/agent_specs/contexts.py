@@ -29,11 +29,6 @@ def tutor_turn(*, envelope, instruction, recent_utterances=None, current_images=
     return user_content(payload, recent_utterances, list(current_images or []))
 
 
-def planning_reply(*, envelope, instruction, recent_utterances=None, current_images=None):
-    return [{"type": "text", "text": json.dumps({"instruction": instruction, "context": envelope}, ensure_ascii=False)},
-            *image_parts(list(recent_utterances or []), list(current_images or []))]
-
-
 def _judge_problem(summary):
     # Decode only the deterministic transport format; no semantic text parsing.
     try:
@@ -84,7 +79,6 @@ BUILDERS = {
     "companion.intent.context": intent,
     "companion.scene_switch.context": scene_switch,
     "tutoring.turn.context": tutor_turn,
-    "planning.reply.context": planning_reply,
     "tutoring.leak_judge.context": text_judge,
     "tutoring.visual_leak_judge.context": visual_judge,
     "tutoring.image_target.context": image_target,

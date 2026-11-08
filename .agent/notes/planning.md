@@ -21,6 +21,8 @@
 
 ## 迁移与复核注意
 
+- 2026-11-08 用户确认后已移除额外的 `planning.reply` 模型调用、Agent定义、专用适配器/窗口拼接及失实模型标记，Planning Workflow升至v2。确认卡使用最终草稿快照、修改摘要和固定短提示；必要追问仍来自`planning.intake`。行为事实源见[安排入口](../../docs/technical/domain-planning.md#31-安排入口)。新增回归先红后绿，覆盖自然语言/结构化入口不额外调用模型、确认前不提交安排、正确版本确认及过期版本409。服务端全量813通过、1项网关二进制集成跳过，配置校验与静态检查通过；未部署、无数据库迁移。
+
 - 模型语义由版本化 `planning.intake.prompt.v4` / `companion.intent.system.v8` 解释；先经过受控协议再执行，不能改回关键词/正则路由。Prompt 改动同步锁与生成的流程文档。
 - 普通计划确认不创建会话或 Sprint；`timebox` 也不自动开启挑战。`duration_kind/duration_source` 可空，旧估时不回填来源。
 - Sprint 与任务计时分开记账，使用 Ward 行锁、乐观版本、幂等回执和数据库单活跃轮次索引；到时不结束原学习会话或完成任务。

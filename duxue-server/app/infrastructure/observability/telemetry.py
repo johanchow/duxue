@@ -38,7 +38,7 @@ _agent_parent_span: ContextVar[Any] = ContextVar("duxue_agent_parent_span", defa
 _pending_subgoal: ContextVar[dict[str, Any] | None] = ContextVar("duxue_pending_subgoal", default=None)
 _PLANNING_STAGES = frozenset({
     "checkpointer_connect", "checkpointer_setup", "context_build", "plan_intake",
-    "agent_text", "graph_compile", "graph_invoke",
+    "graph_compile", "graph_invoke",
 })
 _LANGFUSE_SPANS = frozenset({
     "agent.turn", "agent.route", "agent.workflow", "agent.node", "agent.tool",

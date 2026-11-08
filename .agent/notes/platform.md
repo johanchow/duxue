@@ -25,6 +25,8 @@
 
 ## 注意
 
+- 2026-11-08 配置覆盖核查：简化前`agent_specs`有9个Workflow、11个Agent（8模型/3代码）、11个Gate（3Judge/8代码）及4个Tool，定义校验与相关69项单测通过。答疑修复话术仍见[`tutor_loop.py`](../../duxue-server/app/application/workflows/tutor_loop.py)，摄像VLM的Prompt/参数仍见[`inference.py`](../../duxue-server/app/infrastructure/ai/inference.py)且不走组件目录，不能认定全部AI处理均已JSON化。随后用户授权移除计划审阅调用，现为10个Agent（7模型/3代码），见[Planning笔记](planning.md)。配置声明与代码执行/领域规则须区分。
+
 - 2026-10-31 用户确认采集产品化路线改为标准网络摄像头 + 共享本地网关；单摄像头/家庭 Wi-Fi/电脑先验证。技术事实源已重写为 [采集设计](../../docs/technical/design-gateway.md)，旧手机实现不再作为目标方案。网关、机构能力尚未完成。注意现有心跳只反映云端连通，时间修正会改写超过24h的历史帧，元数据重试必须复用同一 OSS key。
 - 测试分层见 design-server。SQLite 不能代替 PostgreSQL 约束与迁移测试。测试必须在导入应用前 `OTEL_SDK_DISABLED=true`，并 mock 外网模型。
 - `alembic check` 里 LangGraph checkpoint 表与应用 ORM 的差异不要当成业务表缺失。

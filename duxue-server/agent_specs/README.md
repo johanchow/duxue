@@ -6,7 +6,7 @@
 
 模型调用先检查 JSON Schema，再检查 Python 输出契约；错误结果进入原有的修复或失败回退。动态 Prompt 使用显式变量声明和一次性替换。任务整理与复盘维度提取各有自己的单 Agent Workflow。
 
-Companion 主路由、答疑重试与主备切换已由通用执行器读取条件边；Planning 确认门禁作为独立 LangGraph 节点执行，等待用户确认的节点只接收命令。10 个模型调用通过配置中的 `context_builder_id` 执行专用构造器；构造器只投影调用方已授权的数据，不能自行扩大读取范围。
+Companion 主路由、答疑重试与主备切换已由通用执行器读取条件边；Planning 确认门禁作为独立 LangGraph 节点执行，等待用户确认的节点只接收命令。配置内的模型调用通过 `context_builder_id` 执行专用构造器；构造器只投影调用方已授权的数据，不能自行扩大读取范围。Planning 确认卡的生成边界见[安排入口](../../docs/technical/domain-planning.md#31-安排入口)。
 
 Workflow 节点统一为 `agent/gate/action`，代码步骤使用 `handler_id`，条件边使用 `condition_id`；原 route/stage/check 标识只作为 `trace_kind` 观测信息。代码注册表在启动时拒绝未知处理器、条件和对象引用。领域入口的代码 Agent 在 `agents/*.session-turn.json` 声明 `RunInvocation/WorkflowOutcome` 契约，Dispatcher 执行 JSON Schema 与 Python 双层校验。
 
