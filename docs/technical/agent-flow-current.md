@@ -52,7 +52,7 @@ flowchart TD
 
 | 组件 | 模型 | Prompt |
 | --- | --- | --- |
-| `planning.intake@v5` | `qwen3.7-plus-2026-05-26` | `planning.intake.prompt.v6` |
+| `planning.intake@v6` | `qwen3.7-plus-2026-05-26` | `planning.intake.prompt.v6` |
 
 工具：无。
 
@@ -230,8 +230,8 @@ flowchart TD
 | 组件 | 模型 | Prompt |
 | --- | --- | --- |
 | `tutoring.image-target@v1` | `qwen3.8-flash` | `tutoring.image-target.system.v1` |
-| `tutoring.turn@v20` | `qwen3.7-plus-2026-05-26` | `tutoring.turn.system.v20` |
-| `tutoring.turn-backup@v3` | `qwen3.8-flash` | `tutoring.turn.system.v20` |
+| `tutoring.turn@v21` | `qwen3.7-plus-2026-05-26` | `tutoring.turn.system.v20` |
+| `tutoring.turn-backup@v4` | `qwen3.8-flash` | `tutoring.turn.system.v20` |
 
 工具：`tutoring.get_attempt_summary`, `tutoring.get_task_context`, `tutoring.lookup_history`, `tutoring.widget_guidelines`。
 

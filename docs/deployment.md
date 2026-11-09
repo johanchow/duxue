@@ -4,6 +4,8 @@
 
 | 工作流 | 触发条件 | 结果 |
 |---|---|---|
+| `admin-deploy.yml` | main上的Admin/Python执行代码更新或手动触发 | 测试、构建两个GHCR镜像、迁移独立管理库、更新Admin容器、HTTPS健康检查 |
+| `admin-ci.yml` | Admin相关PR/推送及被部署流程调用 | 真实PostgreSQL约束/权限测试、类型检查与Next.js构建 |
 | `server-ci.yml` | Server 相关 PR | Pytest、构建 Docker 镜像 |
 | `server-deploy.yml` | Server 相关 `main` 推送或手动触发 | 推送 GHCR 镜像、远端迁移、启动 API/Worker/Beat、健康检查 |
 | `app-ci.yml` | Guardian 相关 PR，或被 `app-release.yml` 调用 | Flutter 静态检查与测试 |
@@ -148,3 +150,54 @@ Server 与 App 的 CI/CD 由上述工作流维护。Go采集网关已有 [Gatewa
 录制、合成与来源说明见 [视频制作脚本](../scripts/demo-video/README.md)，字幕和剪辑时间线在同目录 `shots.json`。媒体的公开路径、摘要、大小与类型唯一归属 [资源清单](../download-page/demo-assets.json)；大文件保存在被Git忽略的 `output/homepage-demo/`，不提交到仓库。
 
 用户确认后如需准备新版媒体，`scripts/publish-website.py --directory output/homepage-demo` 只上传并核对不可变媒体，不写 `index.html`、APK或 `latest.json`。首页由main流水线调用 `publish-download.py:page_bytes()` 将下载和章节脚本内嵌，并替换清单中的媒体URL后发布；后续APK发布复用媒体，不重新合成视频。
+
+
+## Admin正式站点
+
+目标域名`https://admin.duxuelai.xyz`，与现有Server同台ECS，部署目录`/home/duxue/duxue-admin`。现有API/Worker/Beat由原部署流程维护；本流程仅更新Admin和私有Python配置执行器。
+
+阿里云已配置`admin`的A记录到ECS公网`47.107.176.107`（TTL 10分钟）。Nginx配置模板在[deploy目录](../duxue-admin/deploy/)：先用`admin.http.nginx.conf`提供HTTP-01验证路径，解析生效后申请独立证书，再切换`admin.nginx.conf`并执行`nginx -t`后reload。已有主站证书只包含apex/www，不用于Admin。HTTPS配置将80重定向443、把请求反代到127.0.0.1:3021，拒绝公网`/api/internal/`，调试请求超时300秒。
+
+```bash
+# 在ECS以root首次安装并签发；证书申请要求上述DNS已生效。
+NEEDRESTART_MODE=l apt-get install -y --no-install-recommends certbot
+certbot certonly --webroot -w /var/www/letsencrypt \
+  -d admin.duxuelai.xyz --agree-tos --register-unsafely-without-email --non-interactive
+# 安装SSL站点配置后校验并reload，保留主站配置。
+nginx -t
+systemctl reload nginx
+systemctl enable --now certbot.timer
+```
+
+证书续期deploy hook先`nginx -t`再`systemctl reload nginx`。2026-11-09已完成独立证书签发、HTTPS安装与续期dry-run（含deploy hook）；certbot.timer已启用。公网HTTP跳转HTTPS、健康检查200、内部发布接口404、Chrome正式管理员登录及35文件目录读取通过。首次证书有效期至2027-02-07，后续自动续期。
+
+正式部署文件为`docker-compose.yml`、`deploy.sh`、`images.env`和权限0600的`.env.prod`；目录归属duxue，模式0700。私有环境模板见[production.env.example](../duxue-admin/deploy/production.env.example)，数据库连接参数复用业务生产配置但库固定为`duxue-admin-prod`；测试库不迁移到正式库。共享内部密钥应独立随机生成，模型密钥仅给执行器；首次管理员单独初始化，不复用本地测试密码。凭据、pem、环境与本机`.local/production-bootstrap.json`均不得提交。
+
+容器采用Node 22.21.1、Next standalone与无root用户；迁移CLI打成独立CommonJS包，包含pg/dotenv依赖，避免standalone文件追踪遗漏CLI依赖。运行镜像不含本机.env、测试凭据、浏览器数据或旧静态后台。Python执行器仅监听Docker内部8011端口，使用内存SQLite和本地临时存储；Node仅绑定宿主127.0.0.1:3021，交给Nginx终止TLS。
+
+`Deploy Admin`复用既有GitHub `production`环境的部署SSH及GHCR拉取凭据，无新增Secret。合入main的相关变更触发：Admin CI → 构建/推送Admin与executor的提交SHA镜像 → 上传Compose/部署脚本 → 拉取镜像 → 正式管理库迁移 → 等待两个容器健康 → 公网HTTPS检查。仅代码进入main后自动部署才生效；开发分支不自动更新正式实例。
+
+```bash
+# ECS上检查/重启当前已记录版本；命令不会回显私有环境。
+cd /home/duxue/duxue-admin
+docker compose --env-file .env.prod --env-file images.env -f docker-compose.yml ps
+docker compose --env-file .env.prod --env-file images.env -f docker-compose.yml up -d --wait
+# 另可指定已验证的两个SHA镜像调用deploy.sh完成发布。
+```
+
+`images.env`记录最后健康镜像；更新失败时部署脚本恢复该镜像组合。迁移不自动回滚，后续迁移须保持对上个镜像的兼容。初次ECS无法连接Docker Hub时，可从[Docker官方ECR仓库](https://gallery.ecr.aws/docker/library/node)获取相同Node版本；日常正式构建由GitHub Actions完成，ECS只从GHCR拉取镜像。
+
+正式环境首次验证脚本[production-smoke.mjs](../duxue-admin/scripts/production-smoke.mjs)在私有Docker网络执行：独立管理员登录/安全Cookie、未登录/跨站拒绝、35文件配置校验与真实意图模型调试、首次初始化发布、无业务写入的Workflow执行。首次管理员临时env在初始化后移除，登录凭据保存在本机忽略目录供用户领取。
+
+## 业务Redis与Celery运行环境
+
+2026-11-09现场修复后，业务Server使用同台ECS的标准Redis 7.4 Docker服务，实例名`duxue-redis`。Tair Serverless KV不支持现有Celery依赖的BRPOP与Pub/Sub，不能仅凭PING成功视为兼容；限制见[阿里云命令支持文档](https://help.aliyun.com/zh/redis/product-overview/commands-supported-by-tair-serverless-kv-instances)。原云端实例未释放，临时参数调整已恢复。
+
+- 运维目录：ECS `/home/duxue/duxue-redis/`，独立Compose项目，镜像固定digest；与Server共享Docker私有网络`duxue-server_default`，无宿主/公网Redis端口。
+- `redis.conf`包含随机密码，权限0600，由容器Redis用户读取；`data/`是持久化目录，AOF每秒落盘。内存上限128MiB且noeviction，容器内存上限256MiB；不要删除该目录或以普通磁盘清理清空它。
+- Server连接在`/home/duxue/duxue-server/.env.prod`，`REDIS_HOST=duxue-redis`、`REDIS_USERNAME=default`，密码对应私有redis.conf；业务API/Worker/Beat均需重建才能加载修改。不要将Docker内部地址作为本机开发连接。
+- 既有Server自动部署只更新API/Worker/Beat，保留这个独立Redis服务与持久目录；环境文件不随Git部署覆盖。重启Redis可在运维目录执行`docker compose up -d --wait`，不得对其执行清数据操作。
+- 本次原云队列33条任务已复制并成功执行，原队列保留作恢复记录，不能再次无条件重放。仅root可读的队列快照与环境备份在`/root/`，不进入Git。
+- 验收需同时验证Redis认证、Worker pong、真实无业务副作用任务的结果回写、Beat实际派发与业务任务成功，不能只看容器Up或API健康。AOF状态需为enabled且last_write_status=ok。
+
+当前方案与ECS共用故障域，AOF everysec存在约一秒写入丢失窗口；如后续转回托管服务，需选择支持Celery所需完整命令的标准Redis/Tair规格，并安排队列与结果迁移。

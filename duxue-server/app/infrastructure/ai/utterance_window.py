@@ -11,14 +11,6 @@ from __future__ import annotations
 
 import json
 
-WINDOW_RULE = (
-    "recent_utterances 是同一条对话到上一轮为止的最近原句，从旧到新。"
-    "「他们」「刚才那句」「上面那个」只能根据这些原句确定对象。"
-    "对不上，或有多句都可能时，追问是哪一句，不要自己补一个对象，也不要把孩子这句中文当成待解释的外语。"
-    "某句带有 image_ids 时，同编号的图片会随后附在同一条消息里，那就是这句话发出的图片，请直接看图；"
-    "current_image_ids 是本轮学生发来的图片。标明无法读取的图片不要猜内容。"
-)
-
 _ROW_FIELDS = ("author", "text", "leading_omitted")
 
 

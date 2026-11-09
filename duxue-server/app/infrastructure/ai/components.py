@@ -15,7 +15,7 @@ from typing import Literal
 from jsonschema.exceptions import ValidationError as JSONSchemaValidationError
 
 from app.agent_specs.contracts import validate_input, validate_output
-from app.agent_specs.definitions import load_definitions
+from app.agent_specs.definitions import active_definitions, load_definitions
 from app.bootstrap.settings import settings
 from app.infrastructure.ai.errors import ModelGatewayError
 from app.infrastructure.ai.prompts import PROMPTS, DynamicPrompt, PromptTemplate
@@ -33,8 +33,9 @@ class ComponentSpec:
     """Code-owned declaration of one structured model call.
 
     ``protected`` components sit on a child-safety path (answer protection and
-    its independent leak check).  Their model, prompt and parameters change only
-    through code review and regression, never through an override.
+    its independent leak check). Their model, prompt and parameters come from
+    an approved complete configuration artifact; environment overrides cannot
+    change a pinned snapshot or bypass code-owned safety gates.
     """
 
     component_id: str
@@ -54,6 +55,7 @@ class ComponentSpec:
     timeout_seconds: int | None = None
     # Intake calls were never gated by the agent switch; keep that behaviour.
     requires_agent_switch: bool = True
+    definition_digest: str | None = None
 
     @property
     def overridable(self) -> bool:
@@ -70,13 +72,24 @@ class ComponentRegistry:
                 raise ValueError(f"{spec.component_id}: prompt {spec.prompt.id} is not registered in prompts.py")
 
     def get(self, component_id: str) -> ComponentSpec:
+        definitions = active_definitions()
+        if definitions is not None:
+            unit, index = definitions.component(component_id)
+            model = unit.models[index]
+            prompt = (PromptTemplate(unit.prompt.id, unit.prompt.template) if unit.prompt.delivery == "system"
+                      else DynamicPrompt(unit.prompt.id, unit.prompt.template, unit.prompt.variables))
+            return ComponentSpec(component_id, model.version or unit.version, model.operation or unit.operation,
+                                 unit.agent_label, unit.risk_tier, model.name, prompt,
+                                 unit.input_contract, unit.output_contract, model.max_output_tokens,
+                                 model.temperature, unit.accepts_images, model.timeout_ms // 1000,
+                                 unit.requires_agent_switch, definitions.definition_digest(component_id))
         try:
             return self._specs[component_id]
         except KeyError as error:
             raise KeyError(f"unknown AI component: {component_id}") from error
 
     def all(self) -> tuple[ComponentSpec, ...]:
-        return tuple(self._specs.values())
+        return tuple(self.get(identifier) for identifier in self._specs)
 
 
 def _load_components() -> ComponentRegistry:
@@ -100,6 +113,7 @@ def _load_components() -> ComponentRegistry:
                 accepts_images=unit.accepts_images,
                 timeout_seconds=model.timeout_ms // 1000,
                 requires_agent_switch=unit.requires_agent_switch,
+                definition_digest=load_definitions().definition_digest(model.component_id),
             ))
     return ComponentRegistry(*specs)
 
@@ -127,7 +141,9 @@ def validate_overrides(raw: str | None = None) -> None:
     _parse_overrides(settings.ai_model_overrides if raw is None else raw)
 
 
-def resolve_model(spec: ComponentSpec, raw_overrides: str | None = None) -> tuple[str, Literal["registry", "env_override"]]:
+def resolve_model(spec: ComponentSpec, raw_overrides: str | None = None) -> tuple[str, Literal["registry", "env_override", "config_snapshot"]]:
+    if active_definitions() is not None:
+        return spec.model, "config_snapshot"
     overrides = _parse_overrides(settings.ai_model_overrides if raw_overrides is None else raw_overrides)
     if spec.component_id in overrides:
         return overrides[spec.component_id], "env_override"
@@ -178,6 +194,7 @@ def invoke_json_component(*, spec: ComponentSpec, user, client=None, settings_ob
             operation=spec.operation, model=model, agent_type=spec.agent_label,
             component_id=spec.component_id, component_version=spec.version,
             prompt_id=spec.prompt.id, model_source=model_source,
+            definition_digest=spec.definition_digest,
             input_payload=messages,
         ) as telemetry:
             response = client.chat.completions.create(

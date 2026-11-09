@@ -13,7 +13,7 @@
 - **版本可追溯**：稳定 ID 与版本随 Trace 记录，便于定位和复现问题、审阅配置变更。
 - **保持业务边界**：配置只描述运行装配；授权、领域规则、状态写入和事务仍由相应代码负责。
 
-本期只随代码发布本地配置；**不做 A/B 实验、在线分流或配置管理台**，也不做远程配置和独立发布链路。配置不得包含任意可执行代码，也不得关闭必经门禁；答案保护和失败安全仍由代码强制。模型输出只是候选，不能直接写入业务事实。
+默认配置随代码发布；测试环境全部Agent/Gate/Tool已支持通过[配置管理台](design-admin.md)发布受限完整快照，独立管理草稿、校验、隔离调试、不可变版本与回滚。生产仍沿用代码配置，本期不做A/B实验、在线分流或流程编排。配置不得包含任意可执行代码，也不得关闭必经门禁；答案保护和失败安全仍由代码强制。模型输出只是候选，不能直接写入业务事实。
 
 ## 二、概念与责任
 
@@ -44,13 +44,15 @@ duxue-server/agent_specs/
 └── README.md              # 校验、生成图和发布操作
 ```
 
-目录表达对象类别，文件名使用稳定的业务 ID（例如 `agents/planning.task-intake.json`）；各文件显式声明 `id`、`version`、`kind`，Agent、Gate、Tool 再按各自契约声明输入与结果 Schema。Workflow 用 ID 引用对象，引用必须在启动时解析且唯一。重命名 ID 属于兼容性变更，必须迁移引用和历史观测映射；修改 Prompt、模型、工具权限或输入输出契约应提升相应版本。密钥、环境端点与儿童数据不进入配置。
+目录表达对象类别，文件名使用稳定的业务 ID（例如 `agents/planning.task-intake.json`）；发布文件显式声明 `id`、`kind`，Agent、Gate、Tool 再按各自契约声明输入与结果 Schema。Workflow 用 ID 引用对象，引用必须在启动时解析且唯一。重命名 ID 属于兼容性变更，必须迁移引用和历史观测映射；修改运行配置后由Admin生成完整包digest与不可变R发布记录；不维护组件v号。Git初始化文件的旧version字段仅服务本地定义加载器，导出时移除，不参与Admin契约摘要。密钥、环境端点与儿童数据不进入配置。
 
 Prompt 默认**内嵌在使用它的 Agent 或模型 Gate JSON**，不设必需的 `prompts/` 目录。主模型与备用模型可在同一任务单元内共用 Prompt；只有出现真实的跨单元复用，才引入可引用的共享模板，避免正文复制。
 
+组件可带可选的`display_name`、`description`展示元数据；动态Tool原有`description`仍是必填。模型参数/Prompt等可调字段与代码保护字段按[管理台设计](design-admin.md)分开管理，完整发布产物优先，不再只覆盖Tutoring。
+
 ## 四、配置契约
 
-以下是**目标 JSON 契约**，用于后续迁移，不是当前 `agent_specs/*.json` 已支持的字段。所有文件禁止未知字段；`id` 在全目录唯一，`version` 使用 `v1`、`v2` 等递增值，`kind` 必须与所在目录一致。输入使用 `input_schema`，Agent/Tool 结果使用 `output_schema`，Gate 裁决使用 `verdict_schema`；这些字段采用受限 JSON Schema（顶层 `object`，明确 `required` 与 `additionalProperties: false`）。运行时先按 JSON Schema 校验，再调用该 ID 在代码注册表中绑定的 Python 契约校验器；两者都必须通过，缺失 Python 契约时启动失败。测试用同一批合法/非法样本检查两层契约的结果一致，防止手工维护的 Schema 漂移。领域对象与业务不变量仍由代码持有。
+以下是**目标 JSON 契约**，用于后续迁移，不是当前 `agent_specs/*.json` 已支持的字段。所有文件禁止未知字段；`id` 在全目录唯一，组件不声明手工`version`，`kind` 必须与所在目录一致。输入使用 `input_schema`，Agent/Tool 结果使用 `output_schema`，Gate 裁决使用 `verdict_schema`；这些字段采用受限 JSON Schema（顶层 `object`，明确 `required` 与 `additionalProperties: false`）。运行时先按 JSON Schema 校验，再调用该 ID 在代码注册表中绑定的 Python 契约校验器；两者都必须通过，缺失 Python 契约时启动失败。测试用同一批合法/非法样本检查两层契约的结果一致，防止手工维护的 Schema 漂移。领域对象与业务不变量仍由代码持有。
 
 ### 4.1 Workflow 契约
 
@@ -91,7 +93,7 @@ Workflow 文件的 `kind` 固定为 `workflow`。`nodes[]` 的 `kind` 只允许 
 
 ### 4.2 Agent 契约
 
-Agent 文件的 `kind` 固定为 `agent`。每个 Agent 均声明 `id`、`version`、`implementation`、`input_schema`、`output_schema` 和闭集 `error_codes`。`llm` Agent 必须声明 `tools`（Tool ID 数组，可为 `[]`）；`code` Agent 不声明 `tools`。循环次数 `limits` 由 Workflow 持有，见 4.1。Agent 返回统一的 `status`（`ok`、`needs_input`、`failed`）、经 `output_schema` 验证的 `data`，以及失败时的受控 `error_code`；Workflow 只接收验证后的结果。
+Agent 文件的 `kind` 固定为 `agent`。每个 Agent 均声明 `id`、`implementation`、`input_schema`、`output_schema` 和闭集 `error_codes`。`llm` Agent 必须声明 `tools`（Tool ID 数组，可为 `[]`）；`code` Agent 不声明 `tools`。循环次数 `limits` 由 Workflow 持有，见 4.1。Agent 返回统一的 `status`（`ok`、`needs_input`、`failed`）、经 `output_schema` 验证的 `data`，以及失败时的受控 `error_code`；Workflow 只接收验证后的结果。
 
 `ok` 表示 `data` 已通过校验；`needs_input` 表示还缺用户输入，`data` 只包含由输出 Schema 允许的追问信息；`failed` 必须有 `error_code`，不可携带未经校验的模型候选。错误码为 Agent 定义中的闭集枚举，不能把提供商异常原文直接返回给 Workflow 或用户。
 
@@ -117,7 +119,6 @@ Agent 文件的 `kind` 固定为 `agent`。每个 Agent 均声明 `id`、`versio
 ```json
 {
   "id": "planning.task-intake",
-  "version": "v2",
   "kind": "agent",
   "implementation": "llm",
   "error_codes": ["invalid_model_candidate", "model_transport_error", "model_provider_disabled", "model_provider_not_configured", "agent_execution_failed"],
@@ -140,9 +141,29 @@ Agent 文件的 `kind` 固定为 `agent`。每个 Agent 均声明 `id`、`versio
 
 Context Builder 负责**取哪些数据以及能否读取**；`prompt.variables.binding` 只负责**把构造器输出的哪个字段填入哪个占位符**，不得再次查询数据库或执行表达式。变量由该调用的类型化输入契约和构造器输出显式选择，不能从模板文字或数据库字段自动推断。每项还需定义大小上限和序列化方式；启动时校验占位符、变量声明与构造器输出契约一致，调用时校验类型、范围和缺失值。本轮消息若作为独立 user 内容发送，不重复塞进模板变量。当前 `task.intake` 与 `planning.intake` 的动态 `_prompt` 需要按此原则拆分固定话术和数据组装。
 
+### 4.2.1 具名指令片段（已实现）
+
+`prompt.fragments` 是可选的名称到模板映射。每个片段声明 `id`、`template` 和 `variables`，变量沿用 `type` 与 `binding: "context.<变量名>"` 契约；片段名使用小写字母、数字和下划线，Prompt ID 在所有主模板和片段间唯一。旧配置不声明此字段时默认为空。
+
+```json
+{
+  "fragments": {
+    "visual_schema": {
+      "id": "tutoring.turn.visual-schema.v1",
+      "template": "修正配图，错误原因：{{reason}}。",
+      "variables": {"reason": {"type": "string", "binding": "context.reason"}}
+    }
+  }
+}
+```
+
+代码通过 `render_fragment(unit_id, name, **context)` 选择并渲染片段，条件与顺序仍由既有代码决定。片段没有 `when`、表达式、数据库访问或自行变更消息角色的能力。变量必须完整且类型一致，使用一次替换；插入的学生原话、错误或草稿不会再次当模板执行。片段只填入原有的用户内容位置，不增加模型调用。答疑修复、图片核验、自述使用规则以及Planning历史窗口指令已迁入所属Agent；授权、截断、修复触发和必经审核仍留在代码。
+
+主模板与片段分别进入版本化Prompt摘要锁。组件的 `definition_digest` 另覆盖完整Agent/Gate定义及其引用的Tool定义（含静态正文），不包含儿童数据。CLI `show` 展开片段和工具内容；模型span导出 `ai.definition_digest` 及Langfuse同名metadata，离线评测输出相应摘要。仅修改片段或Tool时也须提升所属定义版本；主Prompt正文未变时保留其ID，不能仅凭主模板摘要判断完整配置相同。
+
 ### 4.3 Gate 契约
 
-Gate 文件的 `kind` 固定为 `gate`。每个 Gate 均声明 `id`、`version`、`implementation`、`input_schema`、`verdict_schema`、`on_error` 和 `safety_class`。`judge` Gate 还必须声明 `tools`（Tool ID 数组，可为 `[]`）；`code` Gate 不声明 `tools`。统一裁决值 `verdict` 只允许 `allow`、`deny`、`unknown`；`reason_code` 使用该 Gate 声明的闭集枚举。`unknown` 和执行异常**不能当作 `allow`**。重试或结束由 Workflow 根据裁决和已声明条件边决定，不由 Gate 自行写业务状态。
+Gate 文件的 `kind` 固定为 `gate`。每个 Gate 均声明 `id`、`implementation`、`input_schema`、`verdict_schema`、`on_error` 和 `safety_class`。`judge` Gate 还必须声明 `tools`（Tool ID 数组，可为 `[]`）；`code` Gate 不声明 `tools`。统一裁决值 `verdict` 只允许 `allow`、`deny`、`unknown`；`reason_code` 使用该 Gate 声明的闭集枚举。`unknown` 和执行异常**不能当作 `allow`**。重试或结束由 Workflow 根据裁决和已声明条件边决定，不由 Gate 自行写业务状态。
 
 | `implementation` | 何时使用 | 必填字段 | 禁止字段 |
 | --- | --- | --- | --- |
@@ -158,7 +179,6 @@ Gate 文件的 `kind` 固定为 `gate`。每个 Gate 均声明 `id`、`version`�
 ```json
 {
   "id": "tutoring.authority",
-  "version": "v1",
   "kind": "gate",
   "implementation": "code",
   "handler_id": "tutoring.check_authority",
@@ -173,12 +193,14 @@ Gate 文件的 `kind` 固定为 `gate`。每个 Gate 均声明 `id`、`version`�
 
 ### 4.4 Tool 契约
 
-Tool 文件的 `kind` 固定为 `tool`，声明 `id`、`version`、`description`、`input_schema`、`output_schema`、`handler_id` 和 `access`（`read` 或 `write`）。`llm` Agent 或 `judge` Gate 的 `tools` 数组是其唯一可调用清单；Workflow 不直接引用 Tool。`handler_id` 必须命中代码注册表，处理器负责 Ward 授权、数据范围和副作用。工具调用次数上限由 Workflow 的 `limits.tool_calls` 与代码上限共同约束，计数范围见 4.1。
+Tool 文件的 `kind` 固定为 `tool`，声明 `id`、`description`、`input_schema`、`output_schema`、`handler_id` 和 `access`（`read` 或 `write`）。`llm` Agent 或 `judge` Gate 的 `tools` 数组是其唯一可调用清单；Workflow 不直接引用 Tool。`handler_id` 必须命中代码注册表，处理器负责 Ward 授权、数据范围和副作用。工具调用次数上限由 Workflow 的 `limits.tool_calls` 与代码上限共同约束，计数范围见 4.1。
+
+静态工具可额外声明 `static_result` 对象，且必须使用注册处理器 `handler_id: "tool.static_result"` 和 `access: "read"`。加载时按 `output_schema` 校验固定结果；调用时校验参数并返回独立副本。其他处理器禁止携带非空 `static_result`，避免配置正文被忽略或误用于动态查询。`tutoring.widget_guidelines` 的SVG规范以此保存，模型请求与修复预加载读取同一份结果，仍遵守原工具预算和权限。静态内容无需新增Agent；查询数据库的工具继续由领域授权的代码处理器实现。
 
 ## 五、执行、领域边界与观测
 
-启动时校验文件 Schema、ID 唯一性、引用、Workflow 可达性、处理器白名单、模型及工具预算、条件 Gate 与安全失败策略。通用执行器从 Workflow 定义装配控制流；处理器、条件函数、授权和领域写入仍由代码负责。迁移时用现有离线评测重放模型行为，并用单元与集成测试覆盖重试次数、条件 Gate、失败安全、确认恢复和事务边界。Workflow 装配和 Agent/Gate/Tool 查找都使用同一目录；流程图也从它生成。配置改动与代码、评测和文档同一 PR 审阅并发布；本期每个稳定 ID 只有一个生效版本，不引入分流规则。
+启动时校验文件 Schema、ID 唯一性、引用、Workflow 可达性、处理器白名单、模型及工具预算、条件 Gate 与安全失败策略。通用执行器从 Workflow 定义装配控制流；处理器、条件函数、授权和领域写入仍由代码负责。迁移时用现有离线评测重放模型行为，并用单元与集成测试覆盖重试次数、条件 Gate、失败安全、确认恢复和事务边界。Workflow 装配和 Agent/Gate/Tool 查找都使用同一目录；流程图也从它生成。Git配置改动与代码、评测和文档同一PR审阅并发布；测试环境组件在线变更走[管理台发布协议](design-admin.md#五发布拉取与恢复)。每轮固定一个完整快照，不引入分流规则。
 
 按项目当前 DDD 约定，Domain 是拥有业务语义、模型和规则的边界；Workflow 和 Agent 是 Application/Infrastructure 的运行角色，不是新的 Domain 或 Aggregate。Companion 只维护 Thread/Run 连续性并路由受权调用；Planning、Tutoring、Evaluation 各自裁决并写入自己的业务状态。配置目录集中的是**运行描述**，不是跨 Domain 的共享业务模型。装配器应处于应用组合层，领域模块不读取配置，也不依赖模型或工具实现。
 
-每条导出到 Langfuse 的 observation 都带可筛选 metadata：`kind`、`kind_id`、`kind_version`，并同时写到 span attribute `agent.unit.kind`、`agent.unit.id`、`agent.unit.version`。`kind` 是配置类别，取 `workflow`、`agent`、`gate`、`tool`、`action`；不在该目录中的模型调用（如摄像分析）记为 `external`，`kind_id` 用操作名。`kind_id` 是定义的稳定 ID：Agent、Gate、Tool 用文件里的 `id`，Workflow 用 Workflow `id`，代码步骤 `action` 用 Workflow 节点 ID，版本取该定义自己的 `version`（action 取所在 Workflow 的版本）。同一条 observation 另有 `workflow_id` 与 `node_id`：节点 ID 和被引用的 Agent/Gate ID 可以不同，例如节点 `tutoring-vet.text_leak` 引用 Gate `tutoring.leak-judge`。模型 generation 再带 `component_id`，用来区分同一 Agent 的主模型和备用模型。Prompt 变量与工具结果按现有儿童数据策略脱敏；配置、图和观测统计不能替代业务审计或学习事实。
+每条导出到 Langfuse 的 observation 都带可筛选 metadata：`kind`、`kind_id`、`kind_version`，并同时写到 span attribute `agent.unit.kind`、`agent.unit.id`、`agent.unit.version`。`kind` 是配置类别，取 `workflow`、`agent`、`gate`、`tool`、`action`；不在该目录中的模型调用（如摄像分析）记为 `external`，`kind_id` 用操作名。`kind_id` 是定义的稳定 ID：Agent、Gate、Tool 用文件里的 `id`，Workflow 用 Workflow `id`，代码步骤 `action` 用 Workflow 节点 ID，Admin运行时版本统一取完整发布包digest（action同样取当前快照）；显式本地开发模式才使用初始化定义的内部版本。同一条 observation 另有 `workflow_id` 与 `node_id`：节点 ID 和被引用的 Agent/Gate ID 可以不同，例如节点 `tutoring-vet.text_leak` 引用 Gate `tutoring.leak-judge`。模型 generation 再带 `component_id`，用来区分同一 Agent 的主模型和备用模型。Prompt 变量与工具结果按现有儿童数据策略脱敏；配置、图和观测统计不能替代业务审计或学习事实。

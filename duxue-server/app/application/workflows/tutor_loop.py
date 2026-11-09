@@ -11,11 +11,12 @@ from dataclasses import dataclass, field, replace
 
 from pydantic import ValidationError
 
+from app.agent_specs.execution_trace import transition
+from app.agent_specs.static_tools import static_tool_result
 from app.application.workflows.tutor_shape import lint_shape
 from app.application.workflows.tutor_tools import (
     MAX_MODEL_CALLS,
     MAX_TOOL_CALLS,
-    SVG_WIDGET_GUIDELINES,
     TutorToolbox,
 )
 from app.application.workflows.tutor_turn import (
@@ -30,6 +31,7 @@ from app.application.workflows.tutor_turn import (
 from app.application.workflows.tutor_visual import Visual, describe
 from app.contexts.tutoring.domain.tutor_permit import TutorPermit
 from app.infrastructure.ai.errors import ModelGatewayError
+from app.infrastructure.ai.prompts import render_fragment
 from app.infrastructure.observability.telemetry import (
     agent_step_span,
     record_llm_fallback,
@@ -46,12 +48,15 @@ _VISUAL_REPAIR_DRAFT_MAX = 4000
 
 
 def _ensure_widget_guidelines(observations: list[dict]) -> None:
+    from app.agent_specs.definitions import load_definitions
+    if "tutoring.widget_guidelines" not in load_definitions().units["tutoring.turn"].tools:
+        return
     if any(item.get("tool") == "widget_guidelines" for item in observations):
         return
     with agent_step_span("tool", "widget_guidelines", **{"agent.tool.source": "preloaded"}) as span:
         set_observation_payload(span, input={})
         observations.append({
-            "tool": "widget_guidelines", "status": "unique", "guidelines": SVG_WIDGET_GUIDELINES,
+            "tool": "widget_guidelines", **static_tool_result("tutoring.widget_guidelines"),
         })
         set_observation_payload(span, output=observations[-1])
         span.set_attribute("agent.tool.status", "unique")
@@ -62,10 +67,8 @@ def _visual_repair(candidate: TutorTurnCandidate, raw: dict, *, reason: str | No
     rejected = json.dumps(draft, ensure_ascii=False)
     if len(rejected) > _VISUAL_REPAIR_DRAFT_MAX:
         rejected = rejected[:_VISUAL_REPAIR_DRAFT_MAX] + "…"
-    return (
-        f"visual 校验未通过（{reason or candidate.visual_error}）；请保持 act、content、turn 不变，只修正 visual。"
-        f"\n被拒草稿（只供改写 visual，禁止改动正文）：{rejected}"
-    )
+    return render_fragment("tutoring.turn", "visual_schema",
+                           reason=reason or candidate.visual_error, draft=rejected)
 
 
 @dataclass(frozen=True)
@@ -124,7 +127,7 @@ def call_tutor_model(
                 record_tutor_candidate_rejection(
                     error_type="invalid_json", field="root", retrying=True,
                 )
-                repair = "返回的内容不是有效 JSON 对象；只返回一个符合 tutor-turn.v4 的 JSON 对象。"
+                repair = render_fragment("tutoring.turn", "invalid_json")
                 continue
             if best_candidate is not None:
                 return ModelCall(best_candidate)
@@ -208,7 +211,7 @@ def call_tutor_model(
             if repair is not None:
                 return ModelCall(best_candidate)
             _ensure_widget_guidelines(observations)
-            repair = _visual_repair(candidate, raw, reason="未先加载 widget_guidelines 中的绘图规范")
+            repair = _visual_repair(candidate, raw, reason=render_fragment("tutoring.turn", "widget_not_loaded"))
             continue
         if best_candidate is not None and (
             candidate.act != best_candidate.act
@@ -267,17 +270,7 @@ JUDGE_RECENT_PROBLEMS = 3
 JUDGE_RECENT_STUDENT_UTTERANCES = 3
 # 越过作业答案边界时重试一次；判官自身失败不重试。
 LEAK_RETRY_REASONS = frozenset({"leak_detected"})
-LEAK_REPAIR = "泄露：上一版回复越过了作业答案边界；请按题型重写，不附和错误答案或确认可试探的选项。"
-VISUAL_LEAK_REPAIR = (
-    "visual 泄露审核未通过：重画一张辅助图。尽量只摆题面已知量，可有少量过程描述；"
-    "最终待求量用 ?，不要直接暴露答案或替学生完成关键计算。"
-    "保持 act、content、turn 原样，只修改 visual。"
-)
-MISSING_VISUAL_REPAIR = (
-    "上一版把二维竖式写成了 TeX 文字，没有返回 visual，App 无法显示该图形。"
-    "请使用已给的 widget_guidelines 返回 kind=svg 的 visual；保持 act、turn 与题目数字不变，"
-    "把 content 中的 TeX 竖式去掉，保留简短、可独立阅读的文字引导。商位用 ?。"
-)
+LEAK_REPAIR = render_fragment("tutoring.turn", "leak_prefix")
 _TEXT_DIAGRAM_TEX = r"\enclose{longdiv}"
 
 
@@ -316,25 +309,23 @@ def _leak_repair(vetting: Vetting) -> str:
     """Bounded feedback for one retry. The rejected draft never reaches the child."""
     reason = vetting.leak_reason or vetting.failure or "unspecified"
     if reason in {"final_answer", "complete_solution"}:
-        return (f"{LEAK_REPAIR}\n审核原因：{reason}。\n"
-                "保留独立核验后的对错反馈，删除代算的正确结果与解法；"
-                "只说明一个让孩子执行的检查动作，不替孩子执行。")
+        return render_fragment("tutoring.turn", "leak_answer", prefix=render_fragment("tutoring.turn", "leak_prefix"), reason=reason)
     rejected = json.dumps(vetting.candidate.shown_text[:800], ensure_ascii=False)
-    return f"{LEAK_REPAIR}\n审核原因：{reason}。\n被拒草稿（只供改写，禁止照抄）：{rejected}"
+    return render_fragment("tutoring.turn", "leak_draft", prefix=render_fragment("tutoring.turn", "leak_prefix"), reason=reason, draft=rejected)
 
 
 def _visual_leak_repair(vetting: Vetting) -> str:
     rejected = json.dumps(vetting.candidate.model_dump(mode="json"), ensure_ascii=False)
     if len(rejected) > _VISUAL_REPAIR_DRAFT_MAX:
         rejected = rejected[:_VISUAL_REPAIR_DRAFT_MAX] + "…"
-    return f"{VISUAL_LEAK_REPAIR}\n被拒草稿（只供重画，禁止照抄图中泄露内容）：{rejected}"
+    return render_fragment("tutoring.turn", "visual_leak", draft=rejected)
 
 
 def _missing_visual_repair(vetting: Vetting) -> str:
     draft = json.dumps(vetting.candidate.model_dump(mode="json"), ensure_ascii=False)
     if len(draft) > _VISUAL_REPAIR_DRAFT_MAX:
         draft = draft[:_VISUAL_REPAIR_DRAFT_MAX] + "…"
-    return f"{MISSING_VISUAL_REPAIR}\n待修正草稿：{draft}"
+    return render_fragment("tutoring.turn", "missing_visual", draft=draft)
 
 
 def fact_gate(candidate: TutorTurnCandidate) -> str | None:
@@ -501,11 +492,16 @@ def run_tutor_turn(
         current_model: TutorModelPort, kind: str, *, repair_error: str | None = None,
         preload_svg_guidelines: bool = False,
     ) -> tuple[ModelCall, Vetting | None]:
+        transition("tutoring", "tutoring.model_loop" if kind == "primary" else "tutoring.exit_gate",
+                   "tutoring.attempt", None if kind == "primary" else "retry")
         with agent_step_span("node", "tutoring.attempt", **{"tutor.attempt.kind": kind}) as span:
+            set_observation_payload(span, input={"instruction": instruction, "window": window, "permit": permit.as_context(), "attempt_kind": kind, "repair_error": repair_error})
             proposal = call_tutor_model(
                 current_model, envelope, instruction, window, images, tools,
                 repair_error=repair_error, preload_svg_guidelines=preload_svg_guidelines,
             )
+            if proposal.candidate is not None:
+                transition("tutoring", "tutoring.attempt", "tutoring.exit_gate", "candidate")
             review = vet(proposal.candidate) if proposal.candidate is not None else None
             set_observation_payload(span, output={
                 "candidate_available": proposal.candidate is not None,

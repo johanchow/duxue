@@ -1,0 +1,12 @@
+ARG PYTHON_BASE=python:3.12-slim
+FROM ${PYTHON_BASE}
+WORKDIR /app
+COPY duxue-server/requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+COPY duxue-server/app ./app
+COPY duxue-server/agent_specs ./agent_specs
+RUN useradd --uid 10001 --create-home executor
+USER executor
+ENV OTEL_SDK_DISABLED=true LANGFUSE_ENABLED=false AGENT_DEBUG_AUDIT_ENABLED=false
+EXPOSE 8011
+CMD ["uvicorn", "app.bootstrap.agent_admin:app", "--host", "0.0.0.0", "--port", "8011"]

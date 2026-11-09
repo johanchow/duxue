@@ -9,8 +9,9 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
 
-from app.application.commands.companion_history import history_is_visible, lock_history
 from app.agent_specs.catalog import load_catalog
+from app.agent_specs.release_runtime import configured_call
+from app.application.commands.companion_history import history_is_visible, lock_history
 from app.application.ports.companion import (
     CoordinatorResult,
     IntentClassifier,
@@ -258,6 +259,7 @@ class CompanionCoordinator:
         }
 
     @trace_agent_turn
+    @configured_call
     def handle(
         self, *, ward_id: str, content: str, thread_id: str | None,
         expected_thread_version: int | None, route_hint: str | None,

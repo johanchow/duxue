@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Callable
+from contextlib import nullcontext
 from dataclasses import dataclass
 
 from langgraph.graph import END, START
@@ -58,32 +59,41 @@ def execute_workflow(
             handler_id = node.ref if node.kind in {"agent", "gate"} else node.handler
             if not handler_id or handler_id not in handlers:
                 raise ValueError(f"{spec.id}: missing handler for {current}")
-            result = handlers[handler_id](state)
-            if node.kind == "agent":
-                from app.agent_specs.results import (
-                    AgentResult,
-                    completed,
-                    validate_result,
-                )
-                if not isinstance(result, AgentResult):
-                    data = result.model_dump(mode="json") if hasattr(result, "model_dump") else result
-                    result = completed(data if data is not None else {})
-                result = validate_result(result)
-            state["results"][current] = result
-            if node.kind == "gate":
-                if not isinstance(result, GateDecision) or result.verdict not in {"allow", "deny", "unknown"}:
-                    raise ValueError(f"{spec.id}: invalid Gate verdict {current}")
-                if result.verdict == "unknown":
-                    raise ValueError(f"{spec.id}: Gate {current} returned unknown")
-                state["visited_gates"].append(node.ref)
+            from app.agent_specs.execution_trace import payload, recorder
+            current_trace = recorder()
+            context = current_trace.step(kind=node.kind, node_id=current, workflow_id=spec.id, input=state) if current_trace else nullcontext(None)
+            with context as event:
+                result = handlers[handler_id](state)
+                if node.kind == "agent":
+                    from app.agent_specs.results import (
+                        AgentResult,
+                        completed,
+                        validate_result,
+                    )
+                    if not isinstance(result, AgentResult):
+                        data = result.model_dump(mode="json") if hasattr(result, "model_dump") else result
+                        result = completed(data if data is not None else {})
+                    result = validate_result(result)
+                state["results"][current] = result
+                if node.kind == "gate":
+                    if not isinstance(result, GateDecision) or result.verdict not in {"allow", "deny", "unknown"}:
+                        raise ValueError(f"{spec.id}: invalid Gate verdict {current}")
+                    if result.verdict == "unknown":
+                        raise ValueError(f"{spec.id}: Gate {current} returned unknown")
+                    state["visited_gates"].append(node.ref)
+                if event is not None:
+                    event["output"] = payload(result)
         matching = []
         for edge in spec.edges:
             if edge.source != current:
                 continue
-            if edge.condition is None or edge.condition in predicates and predicates[edge.condition](state):
-                matching.append(edge)
-            elif edge.condition not in predicates:
+            if edge.condition and edge.condition not in predicates:
                 raise ValueError(f"{spec.id}: unknown condition {edge.condition}")
+            selected = edge.condition is None or bool(predicates[edge.condition](state))
+            from app.agent_specs.execution_trace import record_edge
+            record_edge(spec, edge, selected=selected, value=selected if edge.condition else None)
+            if selected:
+                matching.append(edge)
         if len(matching) != 1:
             raise ValueError(f"{spec.id}: expected one edge from {current}, got {len(matching)}")
         current = matching[0].target

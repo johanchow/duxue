@@ -105,6 +105,7 @@ def test_invoke_sends_static_prompt_as_system_and_uses_spec(spans):
     assert spans["span"]["component_id"] == "companion.intent"
     assert spans["span"]["component_version"] == "v9"
     assert spans["span"]["prompt_id"] == spec.prompt.id
+    assert spans["span"]["definition_digest"] == spec.definition_digest
     assert spans["span"]["model_source"] == "registry"
 
 
@@ -136,6 +137,8 @@ def test_real_generation_export_keeps_sent_messages_prompt_id_and_raw_reply(monk
     ).export([generation])
     exported = transformed.get_finished_spans()[0]
     assert exported.attributes["ai.prompt_id"] == spec.prompt.id
+    assert exported.attributes["ai.definition_digest"] == spec.definition_digest
+    assert exported.attributes["langfuse.observation.metadata.definition_digest"] == spec.definition_digest
     assert json.loads(exported.attributes["langfuse.observation.input"]) == [
         {"role": "system", "content": spec.prompt.text},
         {"role": "user", "content": "孩子的原话"},

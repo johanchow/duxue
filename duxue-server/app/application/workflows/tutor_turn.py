@@ -392,13 +392,15 @@ def build_tutor_instruction(
     self_review_aspects: list[dict] | None = None,
 ) -> str:
     """The per-turn instruction JSON. Shared by the workflow and the offline evaluation."""
+    from app.infrastructure.ai.prompts import render_fragment
+
     return json.dumps({
         "student_said": content,
         "permit": permit.as_context(),
         "history_candidates": history_candidates,
         "expected_act": "pronounce" if tutoring_intent == "pronunciation" else None,
         **({"ward_confirmed_self_review": self_review_aspects,
-            "self_review_rule": "这些是学生此前的自述，只帮助接续讨论；不能当作已掌握或正确答案证据。"}
+            "self_review_rule": render_fragment("tutoring.turn", "self_review")}
            if self_review_aspects else {}),
     }, ensure_ascii=False)
 

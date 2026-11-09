@@ -1,0 +1,46 @@
+name: duxue-admin
+services:
+  executor:
+    image: ${DUXUE_ADMIN_EXECUTOR_IMAGE:?executor image required}
+    restart: unless-stopped
+    environment:
+      APP_ENV: production
+      AGENT_ADMIN_CONTROL_PROCESS: '1'
+      AGENT_ADMIN_INTERNAL_TOKEN: ${AGENT_ADMIN_INTERNAL_TOKEN:?internal token required}
+      DATABASE_URL: 'sqlite:///:memory:'
+      JWT_SECRET_KEY: ${AGENT_ADMIN_INTERNAL_TOKEN}
+      REDIS_HOST: unused
+      STORAGE_BACKEND: local
+      LOCAL_UPLOAD_DIR: /tmp/duxue-admin-uploads
+      VLM_API_KEY: ${VLM_API_KEY:?model provider key required}
+      OTEL_SDK_DISABLED: 'true'
+      LANGFUSE_ENABLED: 'false'
+      AGENT_DEBUG_AUDIT_ENABLED: 'false'
+    expose: ['8011']
+    mem_limit: 512m
+    pids_limit: 128
+    healthcheck:
+      test: ['CMD', 'python', '-c', "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8011/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  admin:
+    image: ${DUXUE_ADMIN_IMAGE:?admin image required}
+    restart: unless-stopped
+    environment:
+      ADMIN_ENV: prod
+      ADMIN_DATABASE_URL: ${ADMIN_DATABASE_URL:?database connection required}
+      ADMIN_PUBLIC_ORIGIN: https://admin.duxuelai.xyz
+      AGENT_SERVER_URL: http://executor:8011
+      AGENT_ADMIN_INTERNAL_TOKEN: ${AGENT_ADMIN_INTERNAL_TOKEN}
+    ports: ['127.0.0.1:3021:3000']
+    depends_on:
+      executor:
+        condition: service_healthy
+    mem_limit: 384m
+    pids_limit: 128
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

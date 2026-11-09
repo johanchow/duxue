@@ -185,7 +185,8 @@ def test_run_commands_filter_to_review_batch_without_network(monkeypatch, tmp_pa
     from evals import __main__ as cli
 
     seen_cases, seen_episodes = [], []
-    spec = SimpleNamespace(version="test", model="fake", prompt=SimpleNamespace(digest="abc"))
+    spec = SimpleNamespace(version="test", model="fake", prompt=SimpleNamespace(digest="abc"),
+                           definition_digest="test-config")
     live = SimpleNamespace(preflight=lambda: None, build_backends=lambda _spec: object())
     variants = SimpleNamespace(resolve_spec=lambda *_args, **_kwargs: spec)
     runner = SimpleNamespace(run_cases=lambda subset, *_args, **_kwargs: seen_cases.extend(subset) or [])

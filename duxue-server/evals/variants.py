@@ -13,7 +13,7 @@ from dataclasses import replace
 from app.infrastructure.ai.components import COMPONENTS, ComponentSpec
 from app.infrastructure.ai.prompts import PromptTemplate
 
-# The sentence in WINDOW_RULE that tells the model not to fill in an object itself.
+# The referent rule in the main tutor prompt, also used by the planning window fragment.
 _NO_GUESS = "不要自己补一个对象，"
 
 

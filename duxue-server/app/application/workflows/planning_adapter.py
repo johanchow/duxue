@@ -9,6 +9,7 @@ from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.types import Command
 from sqlalchemy.orm import Session
 
+from app.agent_specs.release_runtime import configured_call
 from app.application.commands.memory import SqlAlchemyMemoryFacade
 from app.application.commands.plan_intake import PlanIntakeInput, PlanIntakeService
 from app.application.ports.companion import RunInvocation, WorkflowOutcome
@@ -84,6 +85,7 @@ class PlanningWorkflowAdapter:
         self.db = db
         self.checkpointer = checkpointer
 
+    @configured_call
     def invoke(self, *, invocation: RunInvocation) -> WorkflowOutcome:
         run = self.db.get(AgentRun, invocation.run_id)
         if run is None:

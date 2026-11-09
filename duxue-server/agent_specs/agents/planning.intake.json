@@ -1,6 +1,6 @@
 {
   "id": "planning.intake",
-  "version": "v5",
+  "version": "v6",
   "kind": "agent",
   "implementation": "llm",
   "agent_label": "planning",
@@ -64,6 +64,60 @@
       "current_sprint": {
         "type": "object",
         "binding": "context.current_sprint"
+      }
+    },
+    "fragments": {
+      "window_rules": {
+        "id": "planning.intake.window-rules.v1",
+        "template": "recent_utterances 是同一条对话到上一轮为止的最近原句，从旧到新。「他们」「刚才那句」「上面那个」只能根据这些原句确定对象。对不上，或有多句都可能时，追问是哪一句，不要自己补一个对象，也不要把孩子这句中文当成待解释的外语。某句带有 image_ids 时，同编号的图片会随后附在同一条消息里，那就是这句话发出的图片，请直接看图；current_image_ids 是本轮学生发来的图片。标明无法读取的图片不要猜内容。",
+        "variables": {}
+      },
+      "history_block": {
+        "id": "planning.intake.history-block.v1",
+        "template": "{{rules}}\n同一条对话的最近原句（从旧到新）：\n{{utterances}}\n{{omitted}}学生确认这些原句里列出的事项要创建时，为其中尚未出现在当前任务池的标题各输出一条 kind=create，并把学生明确说出的时长写入 planned_minutes。不要把「都」改写成任务池里已有的其他任务。原句附带的图片会随后按编号给出，直接看图确认；本轮没有新图片时，以这些原句和它们的附图为准。\n{{current_images}}\n",
+        "variables": {
+          "rules": {
+            "type": "string",
+            "binding": "context.rules"
+          },
+          "utterances": {
+            "type": "string",
+            "binding": "context.utterances"
+          },
+          "omitted": {
+            "type": "string",
+            "binding": "context.omitted"
+          },
+          "current_images": {
+            "type": "string",
+            "binding": "context.current_images"
+          }
+        }
+      },
+      "history_omitted": {
+        "id": "planning.intake.history-omitted.v1",
+        "template": "更早的 {{count}} 条原句已按预算省略，未改写成摘要。\n",
+        "variables": {
+          "count": {
+            "type": "string",
+            "binding": "context.count"
+          }
+        }
+      },
+      "history_complete": {
+        "id": "planning.intake.history-complete.v1",
+        "template": "这些是同一条对话到上一轮为止的原句，不是改写。\n",
+        "variables": {}
+      },
+      "current_images": {
+        "id": "planning.intake.current-images.v1",
+        "template": "本轮学生发来的图片编号：{{ids}}。\n",
+        "variables": {
+          "ids": {
+            "type": "string",
+            "binding": "context.ids"
+          }
+        }
       }
     }
   },
