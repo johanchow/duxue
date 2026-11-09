@@ -74,11 +74,11 @@ def test_child_safety_components_are_protected_and_not_overridable():
     assert COMPONENTS.get("planning.intake").overridable
 
 
-def test_override_applies_to_standard_component_and_is_marked():
+def test_environment_cannot_override_a_snapshot_model():
     spec = COMPONENTS.get("planning.intake")
     raw = json.dumps({"planning.intake": "model-x"})
-    assert resolve_model(spec, raw) == ("model-x", "env_override")
-    assert resolve_model(spec, "") == (spec.model, "registry")
+    assert resolve_model(spec, raw) == (spec.model, "config_snapshot")
+    assert resolve_model(spec, "") == (spec.model, "config_snapshot")
 
 
 @pytest.mark.parametrize("raw", [
@@ -106,7 +106,7 @@ def test_invoke_sends_static_prompt_as_system_and_uses_spec(spans):
     assert spans["span"]["component_version"] == "v9"
     assert spans["span"]["prompt_id"] == spec.prompt.id
     assert spans["span"]["definition_digest"] == spec.definition_digest
-    assert spans["span"]["model_source"] == "registry"
+    assert spans["span"]["model_source"] == "config_snapshot"
 
 
 def test_real_generation_export_keeps_sent_messages_prompt_id_and_raw_reply(monkeypatch):
@@ -146,7 +146,7 @@ def test_real_generation_export_keeps_sent_messages_prompt_id_and_raw_reply(monk
     assert exported.attributes["langfuse.observation.output"] == raw
 
 
-def test_invoke_dynamic_prompt_has_no_system_message_and_records_override(spans):
+def test_dynamic_prompt_uses_only_the_snapshot_model(spans):
     spec = COMPONENTS.get("task.intake")
     client = _Client('{"assistant_text":"已整理。"}')
     invoke_json_component(
@@ -155,8 +155,8 @@ def test_invoke_dynamic_prompt_has_no_system_message_and_records_override(spans)
     )
     call = client.calls[0]
     assert [m["role"] for m in call["messages"]] == ["user"]
-    assert call["model"] == "model-x"
-    assert spans["span"]["model_source"] == "env_override"
+    assert call["model"] == spec.model
+    assert spans["span"]["model_source"] == "config_snapshot"
 
 
 @pytest.mark.parametrize("content", ["", "[]", "not-json"])

@@ -1,6 +1,6 @@
 """Read-only management inventory derived from the runtime configuration catalog."""
 
-from app.agent_specs.admin_bundle import _artifact_document, seed_bundle
+from app.agent_specs.admin_bundle import _artifact_document
 from app.agent_specs.catalog import load_catalog
 
 # Display metadata has no effect on execution or the release compatibility hash.
@@ -112,7 +112,7 @@ WORKFLOW_DESCRIPTIONS = {
 }
 
 
-def management_inventory():
+def management_inventory(bundle):
     catalog = load_catalog()
     workflows = {
         key: _artifact_document(spec.model_dump(mode="json", by_alias=True))
@@ -120,7 +120,7 @@ def management_inventory():
     }
     files = {
         name: doc
-        for name, doc in seed_bundle()["files"].items()
+        for name, doc in bundle["files"].items()
         if doc.get("kind") in {"agent", "gate", "tool"}
     }
     definitions = {definition["id"]: definition for definition in files.values()}
@@ -175,7 +175,7 @@ def management_inventory():
         "workflow_descriptions": {
             key: WORKFLOW_DESCRIPTIONS.get(key, "尚未补充简介。") for key in workflows
         },
-        "source": "code-baseline",
+        "source": "admin-snapshot",
         "agents": agents,
         "definitions": definitions,
         "workflows": workflows,

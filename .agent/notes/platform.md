@@ -118,3 +118,7 @@
 - 2026-11-09 合并前只读核查：Server全量853通过/1跳过/3 subtests；生产业务库已34，Admin来源未配置且production代码仍禁自动拉取，故站点发布不会自动切换业务Agent来源。Redis ping仍认证失败，是既有后台故障；不能用API health或CI通过宣称全部线上功能正常。App Release无路径过滤，任何main push均触发APK构建/下载发布；Admin/Server工作流各自更新容器，Server Compose非滚动发布有短暂重启窗口。本次仅分析，不提交/推送/更改线上配置。
 
 - 2026-11-09 用户授权Chrome DevTools检查并恢复线上Redis：实际为Tair Serverless KV，ECS用户名错误，改为控制台真实账号duxue后PING通过，但继续暴露MULTI未启用、Lua同槽以及BRPOP/PubSub不支持，无法承载现有Celery。验证后已将云端txn/Lua参数恢复原值。改用同ECS独立标准Redis7.4 Docker（固定digest、密码、私有网络、AOF持久化/noeviction/资源限额），只更新ECS环境和重建原版本API/Worker/Beat，不发布新代码。33条旧待处理任务已复制执行成功且保留源/私密快照；实际Celery投递消费回写、Worker pong、API/Admin health和AOF检查通过。既有Redis认证异常现已解决；运维唯一说明见[部署文档](../../docs/deployment.md#业务redis与celery运行环境)，不可重复重放旧队列。
+
+- 2026-11-09 单源配置改造完成并确认提交：Admin独占可编辑Agent值，删除生产agents/gates/tools默认JSON；代码契约与固定Workflow/schema保留，历史回归夹具显式安装且不进入镜像。Admin从DB快照生成目录，空库需显式导入，CLI/网页导出完整身份；本地/评测使用固定导出，不轮询，记录完整digest，AI_MODEL_OVERRIDES退役。production API/Celery接入私有发布、环境隔离、原子持久缓存及每轮固定；部署前预检失败保留旧容器且不伪造在线回执。860服务端/28管理台、真实本地/CLI/隔离Docker/正式私有预检通过。ECS连接和R1缓存已预备但现有容器未重启、当前来源不变，合main部署后启用。操作与参数见[配置入口](../../duxue-server/agent_specs/README.md)及[部署步骤](../../docs/deployment.md#生产server接入admin配置)。真实模型离线评测只运行1条companion.intent用例（1/1），尚未完成答疑/Judge/多轮/对话的全量评测，不能把860项单测视为模型质量结论。
+
+- 单源实现注意：组件/Prompt注册须延迟读取，避免冷启动在首包加载前依赖配置；缓存使用随机临时名防不同容器PID碰撞，预检只验证/缓存、不回报在线实例。完整PG测试需使用同一套postgres/initdb，本机曾混用libpq18工具与PostgreSQL14 server，指定匹配目录后通过。

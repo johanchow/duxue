@@ -7,7 +7,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm.exc import StaleDataError
 
-from app.agent_specs.catalog import load_catalog
 from app.api.router import router
 from app.bootstrap.settings import settings
 from app.infrastructure.ai import components
@@ -19,7 +18,6 @@ def create_app() -> FastAPI:
     from app.infrastructure.security.gateway import credentials
     credentials()
     components.validate_overrides()
-    load_catalog()
     app = FastAPI(title="读学 Server", version="0.1.0")
     app.add_middleware(
         CORSMiddleware,

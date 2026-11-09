@@ -303,7 +303,12 @@ class AgentCatalog:
         try:
             identity = self._steps[kind, trace_name]
             digest = load_definitions().artifact_digest
-            return identity.model_copy(update={"unit_version":digest,"version":digest}) if digest else identity
+            if digest:
+                return identity.model_copy(update={"unit_version": digest, "version": digest})
+            if identity.unit_kind != "action" and identity.unit_id != "tutoring.unknown_tool":
+                _, _, version = _configured_unit(identity.unit_id)
+                return identity.model_copy(update={"unit_version": version})
+            return identity
         except KeyError as error:
             raise ValueError(f"unregistered agent step: {kind}/{trace_name}") from error
 
@@ -320,7 +325,10 @@ class AgentCatalog:
     def component_identity(self, component_id: str) -> StepIdentity:
         identity = self._components[component_id]
         digest = load_definitions().artifact_digest
-        return identity.model_copy(update={"unit_version":digest,"version":digest}) if digest else identity
+        if digest:
+            return identity.model_copy(update={"unit_version": digest, "version": digest})
+        _, _, version = _configured_unit(identity.unit_id)
+        return identity.model_copy(update={"unit_version": version})
 
     def require_edge(self, agent_id: str, source: str, target: str,
                      condition: str | None = None) -> None:

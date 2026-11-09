@@ -8,6 +8,16 @@ import pytest
 # exporter threads or make an external telemetry request.
 os.environ.setdefault("OTEL_SDK_DISABLED", "true")
 
+from pathlib import Path
+from functools import lru_cache
+from app.agent_specs import definitions as _definitions
+
+_TEST_ROOT = Path(__file__).parent / "fixtures/agent_specs"
+os.environ["AGENT_CONFIG_SOURCE"] = "snapshot"
+os.environ["AGENT_CONFIG_SNAPSHOT"] = str(Path(__file__).parent / "fixtures/admin-release.json")
+_definitions.ROOT = _TEST_ROOT
+_definitions.base_definitions = lru_cache(maxsize=1)(lambda: _definitions.DefinitionCatalog(_TEST_ROOT))
+
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker

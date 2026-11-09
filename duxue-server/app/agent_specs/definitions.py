@@ -288,7 +288,22 @@ class DefinitionCatalog:
 
 @lru_cache(maxsize=1)
 def base_definitions() -> DefinitionCatalog:
-    return DefinitionCatalog(ROOT)
+    from app.agent_specs.configuration import read_snapshot, _offline_catalog
+    if _offline_catalog is not None:
+        return _offline_catalog
+    from app.agent_specs.admin_bundle import compile_bundle
+    import os
+    mode = os.getenv("AGENT_CONFIG_SOURCE", "admin" if os.getenv("APP_ENV") in {"production", "prod"} else "snapshot")
+    if mode == "admin":
+        from app.agent_specs.release_runtime import AgentConfigurationUnavailable
+        raise AgentConfigurationUnavailable("Admin运行配置尚未初始化，拒绝读取离线快照兜底")
+    if mode != "snapshot":
+        raise ValueError("AGENT_CONFIG_SOURCE只允许admin或snapshot")
+    try:
+        return compile_bundle(read_snapshot()["bundle"]).catalog
+    except (ValueError, OSError) as error:
+        from app.agent_specs.release_runtime import AgentConfigurationUnavailable
+        raise AgentConfigurationUnavailable(str(error)) from error
 
 
 _current: ContextVar[DefinitionCatalog | None] = ContextVar("agent_definitions", default=None)

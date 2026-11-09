@@ -201,3 +201,15 @@ docker compose --env-file .env.prod --env-file images.env -f docker-compose.yml 
 - 验收需同时验证Redis认证、Worker pong、真实无业务副作用任务的结果回写、Beat实际派发与业务任务成功，不能只看容器Up或API健康。AOF状态需为enabled且last_write_status=ok。
 
 当前方案与ECS共用故障域，AOF everysec存在约一秒写入丢失窗口；如后续转回托管服务，需选择支持Celery所需完整命令的标准Redis/Tair规格，并安排队列与结果迁移。
+
+## 生产Server接入Admin配置
+
+业务可编辑Agent配置只由Admin维护，模式/缓存/离线快照参数见[配置入口](../duxue-server/agent_specs/README.md#运行模式)。本轮代码启用production加载，不改业务API协议。部署前必须完成以下准备，不能先替换运行容器再补配置：
+
+1. Admin Node接入现有`duxue-server_default`私有网络，别名`duxue-admin`；执行器仍只接Admin网络。已有实例首次可在线增加该网络，后续由Admin Compose自动声明。公网Nginx继续拒绝`/api/internal/`。
+2. ECS Server `.env.prod`设置`AGENT_CONFIG_SOURCE=admin`、`AGENT_CONFIG_SOURCE_URL=http://duxue-admin:3000/api/internal`、与Admin一致的`AGENT_ADMIN_INTERNAL_TOKEN`及`AGENT_CONFIG_CACHE=/app/var/admin/last-good.json`。勿回显密钥；修改前保留0600备份。
+3. 从私有发布接口读取并验证当前prod发布，将完整`id/digest/bundle/environment/kind`缓存预备于`/home/duxue/duxue-server/var/admin/last-good.json`（0600）。Server Compose将这个目录挂到API/Worker/Beat；不得当构建缓存清除。
+4. main发布拉取镜像、迁移后，先以新API镜像运行`python -m app.agent_specs preflight`。仅验证/缓存，不启动轮询、不冒充在线实例回执；网络短暂失败可用已有兼容prod缓存。预检失败保留原容器，等待处理配置；重试也用于等待Admin独立部署的网络就绪。
+5. 预检通过才更新API/Worker/Beat；API启动同步加载，Celery子进程先恢复预热缓存、后台轮询。核对Admin实例回执、线上真实答疑及后台任务。原请求固定旧快照，新请求在成功加载后使用新版本；发布/回滚无需重建业务容器。
+
+首次准备已在2026-11-09完成私有地址连通、prod发布验证、缓存预热与ECS环境文件更新；未重启现有业务容器，当前运行代码仍为566f4cc。待本轮代码合入main并自动部署后切换，不以预检容器或文件准备冒充业务已加载。已有R1发布的契约仍兼容，不重建或覆盖正式管理库。

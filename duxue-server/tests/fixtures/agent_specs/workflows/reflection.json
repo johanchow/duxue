@@ -1,0 +1,27 @@
+{
+  "kind": "workflow",
+  "id": "reflection",
+  "version": "v1",
+  "handler": "reflection",
+  "entry": "reflection.turn",
+  "nodes": [
+    {
+      "id": "reflection.turn",
+      "kind": "action",
+      "trace": "reflection.turn",
+      "trace_kind": "node",
+      "handler_id": "reflection.turn"
+    }
+  ],
+  "edges": [
+    {
+      "from": "START",
+      "to": "reflection.turn"
+    },
+    {
+      "from": "reflection.turn",
+      "to": "END"
+    }
+  ],
+  "invocation_agent": "reflection.session-turn"
+}

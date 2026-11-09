@@ -496,7 +496,7 @@ export default function Studio() {
         )}
         {state?.catalogError && (
           <div className="notice error">
-            答疑服务连接异常：{state.catalogError}
+            配置目录暂不可用：{state.catalogError}
           </div>
         )}
         {tab === 'agent-detail' &&

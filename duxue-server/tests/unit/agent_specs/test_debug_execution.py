@@ -2,7 +2,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.agent_specs.admin_bundle import compile_bundle, seed_bundle
+from app.agent_specs.admin_bundle import compile_bundle
+from app.agent_specs.configuration import snapshot_bundle
 from app.agent_specs.debug_contracts import DebugInput, resolve_target
 from app.agent_specs.debug_worker import execute
 from app.agent_specs.execution_trace import recorder
@@ -10,7 +11,7 @@ from app.infrastructure.ai.errors import ModelGatewayError
 
 
 def test_agent_targets_are_locked_and_code_components_never_fall_through_to_tutor():
-    catalog = compile_bundle(seed_bundle()).catalog
+    catalog = compile_bundle(snapshot_bundle()).catalog
     with pytest.raises(ValueError, match="does not belong"):
         resolve_target(
             DebugInput(
@@ -64,7 +65,7 @@ def test_failed_debug_retains_input_failed_model_and_executor_identity(monkeypat
         raise ModelGatewayError("model_transport_error")
 
     setup_provider(monkeypatch, fail)
-    bundle = seed_bundle()
+    bundle = snapshot_bundle()
     result = execute(
         {
             "bundle": bundle,
@@ -95,7 +96,7 @@ def test_single_agent_debug_never_runs_judge_tools_or_backup_unless_selected(
     setup_provider(monkeypatch, reply)
     result = execute(
         {
-            "bundle": seed_bundle(),
+            "bundle": snapshot_bundle(),
             "input": {
                 "content": "test",
                 "target_kind": "agent",
@@ -113,7 +114,7 @@ def test_workflow_debug_uses_real_executor_with_edge_and_node_data(monkeypatch):
     setup_provider(monkeypatch, lambda **kwargs: {"aspects": []})
     result = execute(
         {
-            "bundle": seed_bundle(),
+            "bundle": snapshot_bundle(),
             "input": {
                 "content": "今天我学会了乘法",
                 "target_kind": "workflow",
@@ -145,7 +146,7 @@ def test_tutoring_workflow_is_isolated_and_includes_domain_and_gate_nodes(monkey
     )
     result = execute(
         {
-            "bundle": seed_bundle(),
+            "bundle": snapshot_bundle(),
             "input": {
                 "content": "什么是光合作用",
                 "target_kind": "workflow",
@@ -178,7 +179,7 @@ def test_reflection_executes_confirmation_only_in_disposable_state(monkeypatch):
     )
     result = execute(
         {
-            "bundle": seed_bundle(),
+            "bundle": snapshot_bundle(),
             "input": {
                 "content": "今天我学会了乘法",
                 "target_kind": "workflow",

@@ -234,17 +234,20 @@ export async function handle(request: Request, parts: string[]) {
       let catalog = null,
         catalogError = null;
       try {
-        catalog = await serverCall('catalog');
         const active = (
           await pool().query(
             'SELECT r.id,r.sequence,r.bundle FROM agent_environments e JOIN agent_releases r ON r.id=e.release_id WHERE e.name=$1',
             [environmentName],
           )
         ).rows[0];
-        if (
-          active &&
-          active.bundle.compatibility === catalog.bundle.compatibility
-        ) {
+        const sourceBundle = active?.bundle || drafts.rows[0]?.bundle;
+        assert(
+          sourceBundle,
+          '管理库尚无配置，请先使用config:import导入完整配置快照',
+          409,
+        );
+        catalog = await serverCall('catalog', { bundle: sourceBundle });
+        if (active) {
           for (const [file, definition] of Object.entries(
             active.bundle.files,
           ) as [string, any][]) {
@@ -296,7 +299,15 @@ export async function handle(request: Request, parts: string[]) {
         await pool().query("SELECT * FROM agent_drafts WHERE state='working'")
       ).rows[0];
       if (existing) return Response.json(existing);
-      const defaults = (await serverCall('catalog')).bundle;
+      const published = (
+        await pool().query(
+          'SELECT r.bundle FROM agent_environments e JOIN agent_releases r ON r.id=e.release_id WHERE e.name=$1',
+          [environmentName],
+        )
+      ).rows[0];
+      assert(published, '没有已发布配置，请先导入Admin配置快照', 409);
+      const defaults = published.bundle;
+      await serverCall('validate', { bundle: defaults });
       const result = await transaction((client) =>
         workingDraft(client, {
           actorId: user.id,
@@ -345,6 +356,45 @@ export async function handle(request: Request, parts: string[]) {
         user.id,
         'release',
       );
+    }
+    if (parts.length === 3 && parts[2] === 'snapshot' && method === 'GET') {
+      assert(uuid(parts[1]), '配置编号无效');
+      if (parts[0] === 'releases') {
+        const row = (
+          await pool().query(
+            'SELECT id,sequence,digest,bundle FROM agent_releases WHERE id=$1',
+            [parts[1]],
+          )
+        ).rows[0];
+        assert(row, '发布不存在', 404);
+        return Response.json(
+          { ...row, kind: 'release', environment: environmentName },
+          {
+            headers: {
+              'Content-Disposition': `attachment; filename="agent-release-R${row.sequence}.json"`,
+            },
+          },
+        );
+      }
+      if (parts[0] === 'drafts') {
+        const row = await draftById(parts[1]);
+        const validation = await serverCall('validate', { bundle: row.bundle });
+        return Response.json(
+          {
+            id: row.id,
+            revision: row.revision,
+            digest: validation.digest,
+            bundle: row.bundle,
+            kind: 'draft',
+            environment: environmentName,
+          },
+          {
+            headers: {
+              'Content-Disposition': `attachment; filename="agent-draft-${row.id}-${row.revision}.json"`,
+            },
+          },
+        );
+      }
     }
     if (parts[0] === 'drafts' && parts[1]) {
       const draft = await draftById(parts[1]);

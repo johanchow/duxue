@@ -1,0 +1,24 @@
+{
+  "kind": "workflow",
+  "id": "task-intake",
+  "version": "v1",
+  "handler": "task-intake",
+  "entry": "task-intake.run",
+  "nodes": [
+    {
+      "id": "task-intake.run",
+      "kind": "agent",
+      "ref": "task.intake"
+    }
+  ],
+  "edges": [
+    {
+      "from": "START",
+      "to": "task-intake.run"
+    },
+    {
+      "from": "task-intake.run",
+      "to": "END"
+    }
+  ]
+}

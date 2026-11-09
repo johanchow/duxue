@@ -19,7 +19,9 @@
     "test:smoke": "tsx scripts/smoke.ts",
     "test:inventory": "tsx scripts/table-detail-browser.ts",
     "user:create": "tsx scripts/setup.ts user",
-    "user:role": "tsx scripts/setup.ts role"
+    "user:role": "tsx scripts/setup.ts role",
+    "config:export": "tsx scripts/setup.ts export-config",
+    "config:import": "tsx scripts/setup.ts import-config"
   },
   "dependencies": {
     "@dagrejs/dagre": "3.1.3",

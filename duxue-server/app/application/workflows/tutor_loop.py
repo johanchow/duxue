@@ -270,7 +270,11 @@ JUDGE_RECENT_PROBLEMS = 3
 JUDGE_RECENT_STUDENT_UTTERANCES = 3
 # 越过作业答案边界时重试一次；判官自身失败不重试。
 LEAK_RETRY_REASONS = frozenset({"leak_detected"})
-LEAK_REPAIR = render_fragment("tutoring.turn", "leak_prefix")
+def __getattr__(name):
+    if name == "LEAK_REPAIR":
+        return render_fragment("tutoring.turn", "leak_prefix")
+    raise AttributeError(name)
+
 _TEXT_DIAGRAM_TEX = r"\enclose{longdiv}"
 
 

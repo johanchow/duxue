@@ -441,3 +441,11 @@ flowchart LR
 - [ ] 人工复核回复与 `criteria`，将复核结论与原始模型输出分开保存。
 - [ ] 建立中文校准集后再引入自动教学语义 Judge。
 - [ ] 按实际需要扩展多模态、完整线程及更多上下文快照，不改写既有来源证据。
+
+## 配置来源与可复现快照
+
+评测只使用Admin导出的固定完整配置，不在线跟随最新发布，也不读取仓库Agent默认JSON。`run/run-judges/run-conversations/run-episodes`都支持`--config-snapshot`；无此参数时使用Server配置的快照路径。缺失或摘要/契约错误即失败，不自动下载或替换为单测夹具。来源与导出步骤见[配置入口](../../duxue-server/agent_specs/README.md#本地与离线评测)。
+
+入口在任何模型导入前固定整包，所有工作线程共享该包；主Agent、备用、独立Judge、Prompt片段、工具正文不混用其他来源。结果`meta.config_snapshot`保留id/digest、环境及发布sequence/草稿revision，与已有代码SHA、数据集哈希共同追溯。`--model/--variant`是此快照上的显式实验，只修改评测对象，不回写源包，继续在元数据记录实验模型和variant。
+
+单测历史夹具只为确定性回归，不能宣称验证了Admin当前Prompt的质量；真实发布质量需明确指定相应快照与数据集。测试夹具不随Docker镜像发布。

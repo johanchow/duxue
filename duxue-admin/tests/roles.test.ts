@@ -184,6 +184,21 @@ test('real database sessions enforce roles, immutable release debugging and imme
       });
       assert.equal(result.status, 200, JSON.stringify(await result.json()));
     }
+    const download = await request(
+      'visitor',
+      'GET',
+      `releases/${release}/snapshot`,
+    );
+    assert.equal(download.status, 200);
+    assert.match(
+      download.headers.get('Content-Disposition') || '',
+      /attachment/,
+    );
+    const exported = await download.json();
+    assert.equal(exported.id, release);
+    assert.equal(exported.kind, 'release');
+    assert.equal(exported.environment, 'test');
+    assert.deepEqual(exported.bundle, bundle);
     const savedSnapshots = (
       await db.query(
         'SELECT source_kind,bundle FROM agent_debug_runs ORDER BY started_at',
@@ -194,7 +209,11 @@ test('real database sessions enforce roles, immutable release debugging and imme
       ['draft', 'release'],
     );
     for (const row of savedSnapshots) assert.deepEqual(row.bundle, bundle);
-    assert.equal(requests.length, 4);
+    assert.equal(
+      requests.filter((r) => !r.path.endsWith('/catalog')).length,
+      4,
+    );
+    assert.equal(requests.filter((r) => r.path.endsWith('/catalog')).length, 1);
     for (const item of requests) assert.deepEqual(item.body.bundle, bundle);
     assert.equal(
       (await db.query('SELECT count(*) FROM agent_drafts')).rows[0].count,

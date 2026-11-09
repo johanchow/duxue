@@ -12,7 +12,8 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, ConfigDict
 
-from app.agent_specs.admin_bundle import compile_bundle, seed_bundle
+from app.agent_specs.admin_bundle import compile_bundle
+from app.agent_specs.configuration import snapshot_bundle
 from app.agent_specs.debug_contracts import (
     DebugInput,
     debug_capabilities,
@@ -42,22 +43,37 @@ class DebugRequest(BundleInput):
     input: DebugInput
 
 
-@router.get("/catalog")
-def catalog():
+def _catalog(bundle):
     from app.agent_specs import release_runtime
-    from app.agent_specs.definitions import base_definitions, use_definitions
+    from app.agent_specs.definitions import use_definitions
     from app.agent_specs.inventory import management_inventory
-
-    with use_definitions(base_definitions()):
-        data = {"bundle": seed_bundle(), **management_inventory()}
+    compiled = compile_bundle(bundle)
+    with use_definitions(compiled.catalog):
+        data = {"bundle": bundle, **management_inventory(bundle)}
     current = release_runtime.runtime.current if release_runtime.runtime else None
     data["debug_capabilities"] = debug_capabilities()
     data["runtime"] = {
         "release_id": current[0]["id"] if current else None,
         "digest": current[1].digest if current else None,
-        "source": "admin" if release_runtime.runtime else "code-default",
+        "source": "admin" if release_runtime.runtime else "snapshot",
     }
     return data
+
+
+@router.post("/catalog")
+def catalog_from_bundle(body: BundleInput):
+    try:
+        return _catalog(body.bundle)
+    except (ValueError, KeyError, TypeError) as error:
+        raise HTTPException(422, str(error)[:1500]) from error
+
+
+@router.get("/catalog")
+def catalog():
+    try:
+        return _catalog(snapshot_bundle())
+    except ValueError as error:
+        raise HTTPException(503, str(error)) from error
 
 
 @router.post("/validate")

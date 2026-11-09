@@ -14,6 +14,7 @@ services:
     environment:
       OTEL_SERVICE_COMPONENT: api
     ports: ["8000:8000"]
+    volumes: ["./var/admin:/app/var/admin"]
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
@@ -28,6 +29,7 @@ services:
     env_file: ${ENV_FILE:-.env}
     environment:
       OTEL_SERVICE_COMPONENT: worker
+    volumes: ["./var/admin:/app/var/admin"]
     restart: unless-stopped
 
   beat:
@@ -37,4 +39,5 @@ services:
     env_file: ${ENV_FILE:-.env}
     environment:
       OTEL_SERVICE_COMPONENT: beat
+    volumes: ["./var/admin:/app/var/admin"]
     restart: unless-stopped

@@ -18,6 +18,8 @@ python -m unittest tests.test_e2e -v
 
 启动时会自动加载 `duxue-server/.env`（已存在的环境变量优先，不会被覆盖）。启动前会校验数据库、JWT 密钥、Redis 与 VLM API Key；使用 `STORAGE_BACKEND=oss` 时还会校验 OSS endpoint、bucket 与访问密钥，缺失任一项会在进程启动前报错。`STORAGE_BACKEND=local` 可用于测试，不要求 OSS 配置。`/frames/upload-url` 仍遵守“先取预签名 URL、再 PUT、最后提交元数据”的生产契约。
 
+Agent功能还需准备Admin发布/导出快照，已取消仓库业务默认配置。首次运行和离线评测请先阅读[Agent配置入口](agent_specs/README.md)；环境参数、评测数据与Agent配置快照分别维护。
+
 开发、测试和生产环境更新代码后，都必须在启动 API/Worker 前运行同一环境的数据库迁移。`create_all()` 不会为已有表补列，不能替代 Alembic；生产环境必须禁用 `AUTO_CREATE_SCHEMA`。迁移命令：
 
 ```bash
@@ -28,7 +30,7 @@ alembic upgrade head
 
 ## Docker
 
-生产环境连接外部 RDS、Redis 与 OSS，不会在 Compose 内再创建同名依赖：
+业务Compose连接现有RDS、Redis与OSS；当前正式Redis为同ECS独立持久化Docker服务，运行维护见[部署文档](../docs/deployment.md#业务redis与celery运行环境)。Agent发布源通过私有Docker网络连接Admin：
 
 ```bash
 # Grafana 与可选 Langfuse 均由 `.env.prod` 中的环境变量直接配置。

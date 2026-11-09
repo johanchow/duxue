@@ -22,3 +22,7 @@ celery_app.conf.update(
         },
     },
 )
+
+
+from app.agent_specs.release_runtime import register_worker_lifecycle
+register_worker_lifecycle()
