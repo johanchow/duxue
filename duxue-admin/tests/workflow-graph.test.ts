@@ -4,7 +4,9 @@ import path from 'node:path';
 import test from 'node:test';
 import { workflowGraph } from '../src/lib/workflow-graph';
 
-const directory = path.resolve('../duxue-server/agent_specs/workflows');
+const directory = path.resolve(
+  '../duxue-server/tests/fixtures/agent_specs/workflows',
+);
 for (const file of fs
   .readdirSync(directory)
   .filter((file) => file.endsWith('.json'))) {

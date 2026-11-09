@@ -13,6 +13,7 @@ import { config } from './config';
 import { serverCall } from './server';
 import { requiredDebugComponents } from './release-evidence';
 import { workingDraft } from './working-draft';
+import { requireUnchangedWorkflows } from './workflow-policy';
 
 const uuid = (value: unknown) =>
   typeof value === 'string' &&
@@ -411,6 +412,7 @@ export async function handle(request: Request, parts: string[]) {
           data.bundle && JSON.stringify(data.bundle).length < 800000,
           '配置包无效',
         );
+        requireUnchangedWorkflows(data.bundle, draft.base_bundle);
         const saved = await transaction(async (client) => {
           const result = await client.query(
             "UPDATE agent_drafts SET bundle=$1,title=$2,revision=revision+1,validation=NULL,updated_at=now() WHERE id=$3 AND revision=$4 AND state='working' RETURNING *",
@@ -455,6 +457,7 @@ export async function handle(request: Request, parts: string[]) {
         return executeDebug(draft, data.input, user.id, 'draft');
       }
       if (parts[2] === 'publish' && method === 'POST') {
+        requireUnchangedWorkflows(draft.bundle, draft.base_bundle);
         const validation = await serverCall('validate', {
           bundle: draft.bundle,
         });

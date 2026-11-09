@@ -4,21 +4,21 @@
 
 ## 目标
 
-服务端按 Interface → Application → Domain → Infrastructure 分层。AI 调用走组件网关。Workflow / Agent / Gate / Tool以完整JSON描述运行装配；Admin模式优先运行不可变发布产物，本地JSON供初始化与兼容性校验，领域规则留在代码。
+服务端按 Interface → Application → Domain → Infrastructure 分层。AI 调用走组件网关。Workflow / Agent / Gate / Tool以完整JSON描述运行装配；Admin拥有可编辑配置与完整Workflow，运行只使用不可变发布产物或显式导出；Git仅保留执行代码/协议/权限与安全约束，领域规则留在代码。
 
 ## 状态
 
 - 已落地：根目录 `app/` 分层、按 Context 拆 router、组件网关、声明式 Workflow、生产库 `duxue-prod`。
 - `design-agent.md` 若写「目标契约，不是当前 JSON」，以文首「迁移已实现」和 `agent_specs/` 为准。
-- 具体模型名以当前Admin发布产物的`models`为准；显式本地模式才使用代码默认JSON，不记在这里。
+- 具体模型名以当前Admin发布产物的`models`为准；本地使用Admin显式导出快照，不记在这里。
 
 ## 决策
 
 - 不引入 `src/duxue` 包。ORM、OSS、鉴权、Outbox、遥测、Celery 归 infrastructure 或 workers。表名与 `duxue.*` task 名不变。
 - 一个 path/method 只注册一次。共享 HTTP 辅助放 `v1/common.py`。应用装配只在 `bootstrap`。
-- 测试环境全部组件优先使用Admin完整发布快照，按[管理台设计](../../docs/technical/design-admin.md)加载；代码维护默认值及固定契约。安全裁决、答案保护、事务不进 JSON。Workflow 只编排 Agent / Gate / 代码步骤。`models` 数组顺序即尝试顺序。
+- 测试环境全部组件优先使用Admin完整发布快照，按[管理台设计](../../docs/technical/design-admin.md)加载；代码仅维护固定契约与权限/安全边界。安全裁决、答案保护、事务不进 JSON。Workflow 只编排 Agent / Gate / 代码步骤。`models` 数组顺序即尝试顺序。
 - 模型返回的闭集每个取值只对应一种结果。失败映射到已有的「不可用」值，不另造同义词。
-- 模型名写进 JSON。端点、密钥、超时、总开关留环境变量。显式本地模式下`AI_MODEL_OVERRIDES`只按组件ID应急覆盖，`tutoring.*`禁止覆盖，非法值启动失败；Admin快照生效时不允许环境覆盖发布模型。
+- 模型名写进 JSON。端点、密钥、超时、总开关留环境变量。`AI_MODEL_OVERRIDES`已退役；本地与线上均不得通过环境变量覆盖发布模型。
 - JSON 组件关闭思考（`enable_thinking=false`）。线上已设的 `VLM_MODEL_NAME` / `ASR_MODEL` 不被代码默认值覆盖。实时 ASR 保持 `qwen3-asr-flash-realtime`，钉到 `2026-02-10` 会在北京空间把会话断开。
 - 非 production 时服务端读、查、删 OSS 走公网 endpoint。预签名上传始终公网。生产继续内网。
 - DDD 管业务语义与用例事务。Workflow 的节点、恢复、模型失败由 agent 设计管。
@@ -122,3 +122,7 @@
 - 2026-11-09 单源配置改造完成并确认提交：Admin独占可编辑Agent值，删除生产agents/gates/tools默认JSON；代码契约与固定Workflow/schema保留，历史回归夹具显式安装且不进入镜像。Admin从DB快照生成目录，空库需显式导入，CLI/网页导出完整身份；本地/评测使用固定导出，不轮询，记录完整digest，AI_MODEL_OVERRIDES退役。production API/Celery接入私有发布、环境隔离、原子持久缓存及每轮固定；部署前预检失败保留旧容器且不伪造在线回执。860服务端/28管理台、真实本地/CLI/隔离Docker/正式私有预检通过。ECS连接和R1缓存已预备但现有容器未重启、当前来源不变，合main部署后启用。操作与参数见[配置入口](../../duxue-server/agent_specs/README.md)及[部署步骤](../../docs/deployment.md#生产server接入admin配置)。真实模型离线评测只运行1条companion.intent用例（1/1），尚未完成答疑/Judge/多轮/对话的全量评测，不能把860项单测视为模型质量结论。
 
 - 单源实现注意：组件/Prompt注册须延迟读取，避免冷启动在首包加载前依赖配置；缓存使用随机临时名防不同容器PID碰撞，预检只验证/缓存、不回报在线实例。完整PG测试需使用同一套postgres/initdb，本机曾混用libpq18工具与PostgreSQL14 server，指定匹配目录后通过。
+
+- 2026-11-09 PR #90合并e20bb357后线上核验：Deploy Server/Admin、Admin CI和APK发布均success；五个应用容器均为合并SHA、Redis保持原实例，重启0/OOM无。公网API/Admin health200、内部发布公网404，管理台经原私网访问Executor生成35文件目录200。API及两个Worker子进程均持续回执prod R1 loaded、digest与Admin发布/持久缓存一致；业务数据库34可读、Redis认证PING/AOF正常、队列0、Worker pong，五分钟Beat派发29/Worker完成29且六容器日志无错误。正式发布快照真实意图模型调用返回tutoring。磁盘33%剩26GiB。本轮未重启/改配置/发布；未覆盖App真机完整交互或全量模型评测。
+
+- 2026-11-09 Workflow单源修正：原load_catalog仍全局缓存仓库目录，已删除生产9份Workflow副本；完整包编译时验证并持有流程目录，运行/管理目录/调试/离线线程统一读取固定快照，发布回滚下一轮切换。调用预算从当前快照读取，代码仅留注册/安全上限/门禁/协议；Admin保存与发布按DB草稿基线禁止改流程，不开放编排。兼容指纹中的Workflow改从传入包读取，不需改写现有R1（正式只读获取并本机编译，digest原样通过）。未知处理器/条件/引用、伪装门禁、缺预算等编译拒绝；保留原工具授权子集编辑能力。最终Server全量872通过/1跳过/3 subtests，Admin29测试（含真实PG拒绝保存/发布流程修改）、类型/生产构建、Ruff、CLI快照/数据集校验通过；HTTP拉取/固定/断网缓存冷恢复及实际流程切换回滚均有回归。历史夹具仅测试且不入镜像。设计唯一归属[管理台设计](../../docs/technical/design-admin.md)。用户已确认本轮结果并授权分支提交/PR；不部署，不代表全量真实模型评测通过。

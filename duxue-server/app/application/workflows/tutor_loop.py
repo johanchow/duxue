@@ -11,12 +11,11 @@ from dataclasses import dataclass, field, replace
 
 from pydantic import ValidationError
 
+from app.agent_specs.catalog import load_catalog
 from app.agent_specs.execution_trace import transition
 from app.agent_specs.static_tools import static_tool_result
 from app.application.workflows.tutor_shape import lint_shape
 from app.application.workflows.tutor_tools import (
-    MAX_MODEL_CALLS,
-    MAX_TOOL_CALLS,
     TutorToolbox,
 )
 from app.application.workflows.tutor_turn import (
@@ -103,7 +102,7 @@ def call_tutor_model(
 ) -> ModelCall:
     """有界循环：模型要工具就执行，直到返回候选。
 
-    至多 MAX_TOOL_CALLS 次工具、MAX_MODEL_CALLS 次主调用（含结构重试）。
+    工具与主调用次数上限来自本轮固定的 Workflow 配置（含结构重试）。
     ``repair_error`` 预置时（泄露后的重试）本身就是那一次重试，结构再错不另行重试。
     不记录 fallback：一轮是否回退由 ``run_tutor_turn`` 按最终结果判断。
     """
@@ -113,7 +112,9 @@ def call_tutor_model(
         _ensure_widget_guidelines(observations)
     tool_calls = 0
     best_candidate: TutorTurnCandidate | None = None
-    for _ in range(MAX_MODEL_CALLS):
+    limits = load_catalog().spec("tutoring").limits
+    max_model_calls, max_tool_calls = limits["model_calls"], limits["tool_calls"]
+    for _ in range(max_model_calls):
         try:
             raw = model.complete(
                 envelope=envelope, instruction=instruction, recent_utterances=window,
@@ -138,9 +139,9 @@ def call_tutor_model(
             return ModelCall(None, str(error))
         if isinstance(raw, dict) and "tool" in raw:
             name = str(raw.get("tool"))
-            if tool_calls >= MAX_TOOL_CALLS:
+            if tool_calls >= max_tool_calls:
                 with agent_step_span("check", "tutoring.tool_budget") as span:
-                    set_observation_payload(span, input={"tool": name, "calls": tool_calls, "limit": MAX_TOOL_CALLS})
+                    set_observation_payload(span, input={"tool": name, "calls": tool_calls, "limit": max_tool_calls})
                     span.set_attribute("agent.check.result", "budget_exhausted")
                     observations.append({"tool": name, "status": "budget_exhausted"})
                     set_observation_payload(span, output={"result": "budget_exhausted"})

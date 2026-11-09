@@ -9,12 +9,15 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from app.agent_specs.definitions import DefinitionCatalog
 from app.agent_specs.configuration import code_contract
+from app.agent_specs.definitions import DefinitionCatalog
+from app.agent_specs.registrations import WORKFLOW_BINDINGS
 
 # Every JSON is carried by the published artifact. Code owns the file whitelist
 # and protected contract; values are not filled from local defaults at load time.
-EDITABLE_FILES = tuple(sorted(code_contract()["files"]))
+WORKFLOW_FILES = {f"workflows/{name}.json" for name in WORKFLOW_BINDINGS}
+BUNDLE_FILES = tuple(sorted(set(code_contract()["files"]) | WORKFLOW_FILES))
+
 
 def digest(value) -> str:
     return hashlib.sha256(
@@ -55,10 +58,13 @@ def _frozen(doc):
     return result
 
 
-def contract_compatibility() -> str:
-    from app.agent_specs.registrations import WORKFLOW_BINDINGS
+def contract_compatibility(files: dict) -> str:
+    # The envelope binds code contracts and the topology supplied by Admin.
+    # Never reconstruct topology from a repository baseline. Keeping the same
+    # fingerprint algorithm preserves already-published immutable artifacts.
     return digest({
-        "files": code_contract()["files"],
+        "files": {**code_contract()["files"],
+                  **{name: doc for name, doc in files.items() if name in WORKFLOW_FILES}},
         "handlers": {key: {field: sorted(items) for field, items in value.items()}
                      for key, value in WORKFLOW_BINDINGS.items()},
         "protocol": 3,
@@ -73,36 +79,39 @@ class CompiledBundle:
 
 
 def compile_bundle(bundle: dict) -> CompiledBundle:
-    baseline = {"format_version": 3, "compatibility": contract_compatibility(), "files": code_contract()["files"]}
+    contracts = code_contract()
     if (
-        set(bundle) != set(baseline)
+        not isinstance(bundle, dict)
+        or set(bundle) != {"format_version", "compatibility", "files"}
         or type(bundle["format_version"]) is not int
         or bundle["format_version"] != 3
     ):
         raise ValueError("invalid bundle format")
-    if bundle["compatibility"] != baseline["compatibility"]:
-        raise ValueError(
-            "code compatibility mismatch; export a new draft from the current server"
-        )
     if not isinstance(bundle["files"], dict) or set(bundle["files"]) != set(
-        EDITABLE_FILES
+        BUNDLE_FILES
     ):
         raise ValueError(
             "bundle files differ from the registered complete configuration manifest"
         )
+    if bundle["compatibility"] != contract_compatibility(bundle["files"]):
+        raise ValueError("code compatibility mismatch; validate the complete Admin snapshot")
     for name, doc in bundle["files"].items():
-        original = baseline["files"][name]
+        if not isinstance(doc, dict):
+            raise ValueError(f"{name}: malformed configuration")
         if "version" in doc or any(
             "version" in model for model in doc.get("models", [])
         ):
             raise ValueError("manual configuration versions are not supported")
+        if name in WORKFLOW_FILES:
+            continue  # Validated by AgentCatalog against code bindings below.
+        original = contracts["files"][name]
         try:
             fixed = _frozen(doc)
         except (AttributeError, KeyError, TypeError) as error:
             raise ValueError(f"{name}: malformed configuration") from error
         if fixed != original:
             raise ValueError(f"{name}: read-only contract or workflow changed")
-        if "models" in doc and not set(doc["tools"]).issubset(code_contract()["tool_authority"][doc["id"]]):
+        if "models" in doc and not set(doc["tools"]).issubset(contracts["tool_authority"][doc["id"]]):
             raise ValueError(f"{name}: tool authority cannot expand")
     bundle_id = digest(bundle)
     with tempfile.TemporaryDirectory(prefix="duxue-config-") as directory:
@@ -122,6 +131,10 @@ def compile_bundle(bundle: dict) -> CompiledBundle:
             target.write_text(json.dumps(doc, ensure_ascii=False))
         catalog = DefinitionCatalog(root)
         catalog.artifact_digest = bundle_id
+        from app.agent_specs.catalog import AgentCatalog
+        from app.agent_specs.definitions import use_definitions
+        with use_definitions(catalog):
+            catalog.workflow_catalog = AgentCatalog.from_directory(root)
     main = catalog.units["tutoring.turn"].models[0].name
     if any(
         catalog.units[name].models[0].name == main

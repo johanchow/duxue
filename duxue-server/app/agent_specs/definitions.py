@@ -1,4 +1,4 @@
-"""Validated access to code defaults and pinned Admin Agent, Gate and Tool artifacts."""
+"""Validated access to pinned Admin Agent, Gate, Tool and Workflow artifacts."""
 
 from __future__ import annotations
 
@@ -192,6 +192,7 @@ class DefinitionCatalog:
         result_validator()
         self.root = root
         self.artifact_digest: str | None = None
+        self.workflow_catalog = None
         self.units: dict[str, ModelUnit] = {}
         self.tools: dict[str, ToolDefinition] = {}
         self.code_gates: dict[str, CodeGateDefinition] = {}

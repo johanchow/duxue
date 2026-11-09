@@ -1,6 +1,6 @@
 # 当前 Agent 流程图（自动生成）
 
-> 由 `duxue-server/agent_specs/workflows/*.json` 生成；编辑定义后运行 `cd duxue-server && .venv/bin/python -m app.agent_specs export`。
+> 由当前选定的 Admin 导出快照生成；运行 `cd duxue-server && .venv/bin/python -m app.agent_specs export`。本文件是导出视图，不是配置来源。
 > 实线表示主要执行路径，虚线表示节点内部的条件步骤；门禁实际执行条件仍由代码裁决。
 > 独立 API 调用有各自的 Workflow；未连接的节点表示会话外阶段。
 

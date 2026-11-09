@@ -31,19 +31,12 @@ Agent可编辑配置只在Admin维护；全部Agent/Gate/Tool通过[配置管理
 
 ```text
 duxue-server/agent_specs/
-├── workflows/             # 一个 Workflow 一个 JSON
-│   ├── companion.json
-│   ├── planning.json
-│   ├── tutoring.json
-│   ├── reflection.json
-│   ├── task-intake.json       # 独立 API 入口，单 Agent Workflow
-│   └── review-aspects.json    # 独立 API 入口，单 Agent Workflow
 ├── contracts.json         # 不含可编辑值的代码契约与权限上限
 ├── schemas/               # 统一执行结果协议
 └── README.md              # 校验、生成图和发布操作
 ```
 
-目录表达对象类别，文件名使用稳定的业务 ID（例如 `agents/planning.task-intake.json`）；发布文件显式声明 `id`、`kind`，Agent、Gate、Tool 再按各自契约声明输入与结果 Schema。Workflow 用 ID 引用对象，引用必须在启动时解析且唯一。重命名 ID 属于兼容性变更，必须迁移引用和历史观测映射；修改运行配置后由Admin生成完整包digest与不可变R发布记录；不维护组件v号。生产目录不含Agent业务默认值；发布包中的agents/gates/tools是逻辑路径，并非仓库中的第二份可编辑配置。单测历史夹具不作为运行或Admin初始化来源。密钥、环境端点与儿童数据不进入配置。
+目录表达对象类别，文件名使用稳定的业务 ID（例如 `agents/planning.task-intake.json`）；发布文件显式声明 `id`、`kind`，Agent、Gate、Tool 再按各自契约声明输入与结果 Schema。Workflow 用 ID 引用对象，引用必须在启动时解析且唯一。重命名 ID 属于兼容性变更，必须迁移引用和历史观测映射；修改运行配置后由Admin生成完整包digest与不可变R发布记录；不维护组件v号。生产目录不含Agent业务默认值；发布包中的agents/gates/tools/workflows是逻辑路径，并非仓库中的第二份可编辑配置。Workflow节点与边只存在Admin完整包；Python维护受支持处理器、条件、必经审核与预算上限，编译时校验并在每轮固定同一流程目录。管理台暂不提供流程编辑。单测历史夹具不作为运行或Admin初始化来源。密钥、环境端点与儿童数据不进入配置。
 
 Prompt 默认**内嵌在使用它的 Agent 或模型 Gate JSON**，不设必需的 `prompts/` 目录。主模型与备用模型可在同一任务单元内共用 Prompt；只有出现真实的跨单元复用，才引入可引用的共享模板，避免正文复制。
 
