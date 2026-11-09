@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from functools import lru_cache
+
 import hashlib
 import json
 import re
@@ -46,9 +49,10 @@ class DynamicPrompt:
         return hashlib.sha256(self.template.encode()).hexdigest()
 
 
-def _load_prompts() -> dict[str, PromptTemplate | DynamicPrompt]:
+@lru_cache(maxsize=16)
+def _load_prompts(definitions) -> dict[str, PromptTemplate | DynamicPrompt]:
     result: dict[str, PromptTemplate | DynamicPrompt] = {}
-    for unit in load_definitions().units.values():
+    for unit in definitions.units.values():
         for definition in (unit.prompt, *unit.prompt.fragments.values()):
             prompt = (
                 PromptTemplate(definition.id, definition.template)
@@ -61,7 +65,18 @@ def _load_prompts() -> dict[str, PromptTemplate | DynamicPrompt]:
     return result
 
 
-PROMPTS = _load_prompts()
+class PromptRegistry(Mapping):
+    def __getitem__(self, key):
+        return _load_prompts(load_definitions())[key]
+
+    def __iter__(self):
+        return iter(_load_prompts(load_definitions()))
+
+    def __len__(self):
+        return len(_load_prompts(load_definitions()))
+
+
+PROMPTS = PromptRegistry()
 
 
 def render_fragment(unit_id: str, name: str, **context) -> str:

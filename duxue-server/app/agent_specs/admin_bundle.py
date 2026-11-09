@@ -9,14 +9,12 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from app.agent_specs.definitions import ROOT, DefinitionCatalog
+from app.agent_specs.definitions import DefinitionCatalog
+from app.agent_specs.configuration import code_contract
 
 # Every JSON is carried by the published artifact. Code owns the file whitelist
 # and protected contract; values are not filled from local defaults at load time.
-EDITABLE_FILES = tuple(
-    sorted(str(path.relative_to(ROOT)) for path in ROOT.rglob("*.json"))
-)
-
+EDITABLE_FILES = tuple(sorted(code_contract()["files"]))
 
 def digest(value) -> str:
     return hashlib.sha256(
@@ -57,26 +55,14 @@ def _frozen(doc):
     return result
 
 
-def seed_bundle() -> dict:
-    files = {
-        name: _artifact_document(json.loads((ROOT / name).read_text()))
-        for name in EDITABLE_FILES
-    }
-    # Include immutable workflows, code registries and contracts in compatibility.
-    from app.agent_specs import registrations
-
-    fixed = {name: _frozen(doc) for name, doc in files.items()}
-    compatibility = digest(
-        {
-            "files": fixed,
-            "handlers": {
-                key: {field: sorted(items) for field, items in value.items()}
-                for key, value in registrations.WORKFLOW_BINDINGS.items()
-            },
-            "protocol": 3,
-        }
-    )
-    return {"format_version": 3, "compatibility": compatibility, "files": files}
+def contract_compatibility() -> str:
+    from app.agent_specs.registrations import WORKFLOW_BINDINGS
+    return digest({
+        "files": code_contract()["files"],
+        "handlers": {key: {field: sorted(items) for field, items in value.items()}
+                     for key, value in WORKFLOW_BINDINGS.items()},
+        "protocol": 3,
+    })
 
 
 @dataclass(frozen=True)
@@ -87,7 +73,7 @@ class CompiledBundle:
 
 
 def compile_bundle(bundle: dict) -> CompiledBundle:
-    baseline = seed_bundle()
+    baseline = {"format_version": 3, "compatibility": contract_compatibility(), "files": code_contract()["files"]}
     if (
         set(bundle) != set(baseline)
         or type(bundle["format_version"]) is not int
@@ -114,9 +100,9 @@ def compile_bundle(bundle: dict) -> CompiledBundle:
             fixed = _frozen(doc)
         except (AttributeError, KeyError, TypeError) as error:
             raise ValueError(f"{name}: malformed configuration") from error
-        if fixed != _frozen(original):
+        if fixed != original:
             raise ValueError(f"{name}: read-only contract or workflow changed")
-        if "models" in doc and not set(doc["tools"]).issubset(original["tools"]):
+        if "models" in doc and not set(doc["tools"]).issubset(code_contract()["tool_authority"][doc["id"]]):
             raise ValueError(f"{name}: tool authority cannot expand")
     bundle_id = digest(bundle)
     with tempfile.TemporaryDirectory(prefix="duxue-config-") as directory:

@@ -1,0 +1,61 @@
+{
+  "kind": "workflow",
+  "id": "companion",
+  "version": "v1",
+  "handler": "coordinator",
+  "entry": "companion.intent_route",
+  "targets": [
+    "planning",
+    "tutoring",
+    "reflection",
+    "clarify",
+    "safety"
+  ],
+  "nodes": [
+    {
+      "id": "companion.intent_route",
+      "kind": "agent",
+      "trace": "intent_route",
+      "trace_kind": "route",
+      "ref": "companion.intent"
+    },
+    {
+      "id": "companion.switch_confirm",
+      "kind": "gate",
+      "trace": "switch_confirm",
+      "trace_kind": "route",
+      "ref": "companion.scene-switch"
+    },
+    {
+      "id": "companion.final_route",
+      "kind": "action",
+      "trace": "final_route",
+      "trace_kind": "route",
+      "handler_id": "decide"
+    }
+  ],
+  "edges": [
+    {
+      "from": "START",
+      "to": "companion.intent_route"
+    },
+    {
+      "from": "companion.intent_route",
+      "to": "companion.switch_confirm",
+      "condition_id": "cross_scene"
+    },
+    {
+      "from": "companion.intent_route",
+      "to": "companion.final_route",
+      "condition_id": "direct"
+    },
+    {
+      "from": "companion.switch_confirm",
+      "to": "companion.final_route"
+    },
+    {
+      "from": "companion.final_route",
+      "to": "END"
+    }
+  ]
+}

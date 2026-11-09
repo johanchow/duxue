@@ -80,6 +80,7 @@ jobs:
              docker compose --profile tools pull migrate && \
              docker compose --profile tools run --rm migrate && \
              docker compose pull api worker beat && \
+             (attempt=0; until docker compose run --rm --no-deps api python -m app.agent_specs preflight; do attempt=\$((attempt+1)); test \"\$attempt\" -lt 12 || exit 1; sleep 10; done) && \
              docker compose up -d --no-build api worker beat && \
              docker image prune -f"
       - name: Verify API health

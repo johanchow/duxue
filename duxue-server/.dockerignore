@@ -10,3 +10,6 @@ tests/
 docs/
 scripts/
 *.db
+
+# Exported configuration snapshots, runtime caches and evaluation results
+var/

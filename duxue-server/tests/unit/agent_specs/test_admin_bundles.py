@@ -4,13 +4,14 @@ import pytest
 
 
 def test_bundle_checks_fixed_contracts_and_context_isolation():
-    from app.agent_specs.admin_bundle import compile_bundle, seed_bundle
+    from app.agent_specs.admin_bundle import compile_bundle
+    from app.agent_specs.configuration import snapshot_bundle
     from app.agent_specs.definitions import use_definitions
     from app.infrastructure.ai.components import COMPONENTS
     from app.infrastructure.ai.prompts import render_fragment
 
     original = COMPONENTS.get("tutoring.turn").prompt.text
-    bundle = seed_bundle()
+    bundle = snapshot_bundle()
     changed = copy.deepcopy(bundle)
     changed["files"]["agents/tutoring.turn.json"]["prompt"]["template"] = "测试草稿正文"
     changed["files"]["agents/tutoring.turn.json"]["prompt"]["fragments"][
@@ -28,30 +29,32 @@ def test_bundle_checks_fixed_contracts_and_context_isolation():
 
 
 def test_bundle_rejects_compatibility_drift_unknown_files_and_tool_expansion():
-    from app.agent_specs.admin_bundle import compile_bundle, seed_bundle
+    from app.agent_specs.admin_bundle import compile_bundle
+    from app.agent_specs.configuration import snapshot_bundle
 
-    bundle = seed_bundle()
+    bundle = snapshot_bundle()
     bundle["compatibility"] = "old-code"
     with pytest.raises(ValueError, match="compatibility"):
         compile_bundle(bundle)
-    bundle = seed_bundle()
+    bundle = snapshot_bundle()
     bundle["files"]["../settings.py"] = {}
     with pytest.raises(ValueError):
         compile_bundle(bundle)
 
-    bundle = seed_bundle()
+    bundle = snapshot_bundle()
     bundle["files"]["agents/tutoring.turn.json"]["tools"].append("unknown.tool")
     with pytest.raises(ValueError):
         compile_bundle(bundle)
 
 
 def test_release_pin_retains_the_same_snapshot_during_replacement(tmp_path):
-    from app.agent_specs.admin_bundle import compile_bundle, seed_bundle
+    from app.agent_specs.admin_bundle import compile_bundle
+    from app.agent_specs.configuration import snapshot_bundle
     from app.agent_specs.release_runtime import ReleaseRuntime
     from app.infrastructure.ai.components import COMPONENTS
 
     runtime = ReleaseRuntime("http://unused", "secret", tmp_path / "last-good.json")
-    first = seed_bundle()
+    first = snapshot_bundle()
     first["files"]["agents/tutoring.turn.json"]["prompt"]["template"] = "first"
     runtime.accept(
         {"id": "first", "digest": compile_bundle(first).digest, "bundle": first}
@@ -77,10 +80,11 @@ def test_pull_failure_reports_error_and_retains_last_good_cache(tmp_path, monkey
     from types import SimpleNamespace
 
     from app.agent_specs import release_runtime
-    from app.agent_specs.admin_bundle import compile_bundle, seed_bundle
+    from app.agent_specs.admin_bundle import compile_bundle
+    from app.agent_specs.configuration import snapshot_bundle
     from app.infrastructure.ai.components import COMPONENTS
 
-    bundle = seed_bundle()
+    bundle = snapshot_bundle()
     bundle["files"]["agents/tutoring.turn.json"]["prompt"]["template"] = "last-good"
     cache = tmp_path / "last-good.json"
     runtime = release_runtime.ReleaseRuntime("http://unused", "secret", cache)
@@ -122,13 +126,13 @@ def test_pull_failure_reports_error_and_retains_last_good_cache(tmp_path, monkey
 def test_internal_admin_api_requires_secret_and_rejects_protocol_edits(
     client, monkeypatch
 ):
-    from app.agent_specs.admin_bundle import seed_bundle
+    from app.agent_specs.configuration import snapshot_bundle
 
     monkeypatch.setenv("AGENT_ADMIN_INTERNAL_TOKEN", "unit-test-secret")
     monkeypatch.setenv("APP_ENV", "test")
     assert client.get("/internal/agent-admin/catalog").status_code == 401
     headers = {"Authorization": "Bearer unit-test-secret"}
-    bundle = seed_bundle()
+    bundle = snapshot_bundle()
     assert (
         client.post(
             "/internal/agent-admin/validate", headers=headers, json={"bundle": bundle}
@@ -156,7 +160,7 @@ def test_debug_problem_reaches_tutor_and_judge_as_authorized_history(
     from types import SimpleNamespace
 
     from app.agent_specs import debug_worker
-    from app.agent_specs.admin_bundle import seed_bundle
+    from app.agent_specs.configuration import snapshot_bundle
     from app.bootstrap import settings as settings_module
     from app.infrastructure.ai import components, tutor_turn_model
     from tests.support.fakes import StaticLeakJudge, StaticTutorModel, tutor_raw
@@ -183,7 +187,7 @@ def test_debug_problem_reaches_tutor_and_judge_as_authorized_history(
         io.StringIO(
             json.dumps(
                 {
-                    "bundle": seed_bundle(),
+                    "bundle": snapshot_bundle(),
                     "input": {"content": "给我一个提示", "problem": problem},
                 }
             )
@@ -197,10 +201,11 @@ def test_debug_problem_reaches_tutor_and_judge_as_authorized_history(
 
 
 def test_full_release_has_all_configuration_files_and_edits_all_model_agents():
-    from app.agent_specs.admin_bundle import compile_bundle, seed_bundle
+    from app.agent_specs.admin_bundle import compile_bundle
+    from app.agent_specs.configuration import snapshot_bundle
     from app.agent_specs.definitions import ROOT
 
-    bundle = seed_bundle()
+    bundle = snapshot_bundle()
     assert bundle["format_version"] == 3
     assert set(bundle["files"]) == {
         str(path.relative_to(ROOT)) for path in ROOT.rglob("*.json")
@@ -226,7 +231,8 @@ def test_published_release_is_used_outside_tutoring_and_nested_pins_keep_same_ve
     tmp_path, monkeypatch
 ):
     from app.agent_specs import release_runtime
-    from app.agent_specs.admin_bundle import compile_bundle, seed_bundle
+    from app.agent_specs.admin_bundle import compile_bundle
+    from app.agent_specs.configuration import snapshot_bundle
     from app.application.commands.plan_intake import PlanIntakeInput, _prompt
     from app.infrastructure.ai.components import COMPONENTS
 
@@ -234,7 +240,7 @@ def test_published_release_is_used_outside_tutoring_and_nested_pins_keep_same_ve
         "http://unused", "secret", tmp_path / "cache.json"
     )
     monkeypatch.setattr(release_runtime, "runtime", runtime)
-    first = seed_bundle()
+    first = snapshot_bundle()
     first["files"]["agents/companion.intent.json"]["prompt"]["template"] += "\n版本A"
     first["files"]["agents/planning.intake.json"]["prompt"]["template"] += "\n计划A"
     runtime.accept({"id": "a", "digest": compile_bundle(first).digest, "bundle": first})
@@ -273,13 +279,15 @@ def test_complete_artifact_values_do_not_get_filled_from_changed_local_prompt(
     import shutil
 
     from app.agent_specs import admin_bundle
+    from app.agent_specs.configuration import snapshot_bundle
+    from app.agent_specs.definitions import ROOT
 
-    original = admin_bundle.seed_bundle()
+    original = snapshot_bundle()
     original["files"]["agents/companion.intent.json"]["prompt"]["template"] += (
         "\nAdmin产物"
     )
-    shutil.copytree(admin_bundle.ROOT, tmp_path / "specs")
-    monkeypatch.setattr(admin_bundle, "ROOT", tmp_path / "specs")
+    shutil.copytree(ROOT, tmp_path / "specs")
+    monkeypatch.setattr("app.agent_specs.definitions.ROOT", tmp_path / "specs")
     file = tmp_path / "specs/agents/companion.intent.json"
     local = json.loads(file.read_text())
     local["prompt"]["template"] += "\n本地不同正文"
@@ -297,11 +305,11 @@ def test_generic_component_debug_uses_published_dynamic_prompt(monkeypatch, caps
     from types import SimpleNamespace
 
     from app.agent_specs import debug_worker
-    from app.agent_specs.admin_bundle import seed_bundle
+    from app.agent_specs.configuration import snapshot_bundle
     from app.bootstrap import settings as settings_module
     from app.infrastructure.ai import components
 
-    bundle = seed_bundle()
+    bundle = snapshot_bundle()
     bundle["files"]["agents/task.intake.json"]["prompt"]["template"] += (
         "\nAdmin任务配置"
     )
@@ -359,7 +367,8 @@ def test_generic_component_debug_uses_published_dynamic_prompt(monkeypatch, caps
 def test_reused_backup_gateway_resolves_each_pinned_artifact(monkeypatch):
     from types import SimpleNamespace
 
-    from app.agent_specs.admin_bundle import compile_bundle, seed_bundle
+    from app.agent_specs.admin_bundle import compile_bundle
+    from app.agent_specs.configuration import snapshot_bundle
     from app.agent_specs.definitions import use_definitions
     from app.infrastructure.ai import components
     from app.infrastructure.ai.tutor_turn_model import QwenTutorTurnGateway
@@ -373,7 +382,7 @@ def test_reused_backup_gateway_resolves_each_pinned_artifact(monkeypatch):
     monkeypatch.setattr(components, "invoke_agent_component", invoke)
     gateway = QwenTutorTurnGateway(component_id="tutoring.turn-backup")
     for name in ["backup-a", "backup-b"]:
-        bundle = seed_bundle()
+        bundle = snapshot_bundle()
         bundle["files"]["agents/tutoring.turn.json"]["models"][1]["name"] = name
         with use_definitions(compile_bundle(bundle).catalog):
             gateway.complete(envelope={}, instruction="test")
@@ -387,20 +396,22 @@ def test_artifact_identity_and_compatibility_ignore_legacy_definition_versions(
     import shutil
 
     from app.agent_specs import admin_bundle
+    from app.agent_specs.configuration import snapshot_bundle
+    from app.agent_specs.definitions import ROOT
 
-    original = admin_bundle.seed_bundle()
+    original = snapshot_bundle()
     assert original["format_version"] == 3
     for doc in original["files"].values():
         assert "version" not in doc
         assert all("version" not in model for model in doc.get("models", []))
-    shutil.copytree(admin_bundle.ROOT, tmp_path / "specs")
-    monkeypatch.setattr(admin_bundle, "ROOT", tmp_path / "specs")
+    shutil.copytree(ROOT, tmp_path / "specs")
+    monkeypatch.setattr("app.agent_specs.definitions.ROOT", tmp_path / "specs")
     path = tmp_path / "specs/agents/companion.intent.json"
     doc = json.loads(path.read_text())
     doc["version"] = "v999"
     doc["prompt"]["id"] = "legacy-version-changed"
     path.write_text(json.dumps(doc))
-    assert admin_bundle.seed_bundle()["compatibility"] == original["compatibility"]
+    assert snapshot_bundle()["compatibility"] == original["compatibility"]
     compiled = admin_bundle.compile_bundle(original)
     assert compiled.catalog.units["companion.intent"].version == compiled.digest
     from app.agent_specs.catalog import load_catalog

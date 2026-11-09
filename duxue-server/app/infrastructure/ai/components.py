@@ -1,15 +1,13 @@
 """Invoke configured model components through one observable gateway.
 
-Model parameters and Prompt bodies come from agent_specs/agents and gates.
-Secrets and provider endpoints remain deployment settings. The emergency
-AI_MODEL_OVERRIDES switch applies only to standard components.
+Model parameters and Prompt bodies come from immutable Admin snapshots.
+Secrets and provider endpoints remain deployment settings.
 """
 
 from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from functools import lru_cache
 from typing import Literal
 
 from jsonschema.exceptions import ValidationError as JSONSchemaValidationError
@@ -72,82 +70,38 @@ class ComponentRegistry:
                 raise ValueError(f"{spec.component_id}: prompt {spec.prompt.id} is not registered in prompts.py")
 
     def get(self, component_id: str) -> ComponentSpec:
-        definitions = active_definitions()
-        if definitions is not None:
-            unit, index = definitions.component(component_id)
-            model = unit.models[index]
-            prompt = (PromptTemplate(unit.prompt.id, unit.prompt.template) if unit.prompt.delivery == "system"
-                      else DynamicPrompt(unit.prompt.id, unit.prompt.template, unit.prompt.variables))
-            return ComponentSpec(component_id, model.version or unit.version, model.operation or unit.operation,
-                                 unit.agent_label, unit.risk_tier, model.name, prompt,
-                                 unit.input_contract, unit.output_contract, model.max_output_tokens,
-                                 model.temperature, unit.accepts_images, model.timeout_ms // 1000,
-                                 unit.requires_agent_switch, definitions.definition_digest(component_id))
-        try:
+        if self._specs and active_definitions() is None:
             return self._specs[component_id]
-        except KeyError as error:
-            raise KeyError(f"unknown AI component: {component_id}") from error
+        definitions = load_definitions()
+        unit, index = definitions.component(component_id)
+        model = unit.models[index]
+        return ComponentSpec(
+            component_id, model.version or unit.version, model.operation or unit.operation,
+            unit.agent_label, unit.risk_tier, model.name, PROMPTS[unit.prompt.id],
+            unit.input_contract, unit.output_contract, model.max_output_tokens,
+            model.temperature, unit.accepts_images, model.timeout_ms // 1000,
+            unit.requires_agent_switch, definitions.definition_digest(component_id),
+        )
 
     def all(self) -> tuple[ComponentSpec, ...]:
-        return tuple(self.get(identifier) for identifier in self._specs)
+        identifiers = self._specs or load_definitions().components
+        return tuple(self.get(identifier) for identifier in identifiers)
 
 
-def _load_components() -> ComponentRegistry:
-    from app.agent_specs.definitions import load_definitions
-
-    specs = []
-    for unit in load_definitions().units.values():
-        for model in unit.models:
-            specs.append(ComponentSpec(
-                component_id=model.component_id,
-                version=model.version or unit.version,
-                operation=model.operation or unit.operation,
-                agent_label=unit.agent_label,
-                risk_tier=unit.risk_tier,
-                model=model.name,
-                prompt=PROMPTS[unit.prompt.id],
-                input_contract=unit.input_contract,
-                output_contract=unit.output_contract,
-                max_tokens=model.max_output_tokens,
-                temperature=model.temperature,
-                accepts_images=unit.accepts_images,
-                timeout_seconds=model.timeout_ms // 1000,
-                requires_agent_switch=unit.requires_agent_switch,
-                definition_digest=load_definitions().definition_digest(model.component_id),
-            ))
-    return ComponentRegistry(*specs)
-
-
-COMPONENTS = _load_components()
-
-@lru_cache(maxsize=8)
-def _parse_overrides(raw: str) -> dict[str, str]:
-    if not raw.strip():
-        return {}
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError as error:
-        raise ValueError("AI_MODEL_OVERRIDES must be a JSON object") from error
-    if not isinstance(data, dict) or not all(isinstance(k, str) and isinstance(v, str) and v for k, v in data.items()):
-        raise ValueError("AI_MODEL_OVERRIDES must map component ids to model names")
-    for component_id in data:
-        if not COMPONENTS.get(component_id).overridable:
-            raise ValueError(f"AI_MODEL_OVERRIDES cannot target protected component {component_id}")
-    return data
+COMPONENTS = ComponentRegistry()
 
 
 def validate_overrides(raw: str | None = None) -> None:
-    """Fail fast at startup for an unknown id, protected target or malformed value."""
-    _parse_overrides(settings.ai_model_overrides if raw is None else raw)
+    """Reject the retired hidden configuration source before serving requests."""
+    value = settings.ai_model_overrides if raw is None else raw
+    if value.strip() and json.loads(value) != {}:
+        raise ValueError("AI_MODEL_OVERRIDES已停用，请在Admin配置模型，评测使用显式--model")
 
 
-def resolve_model(spec: ComponentSpec, raw_overrides: str | None = None) -> tuple[str, Literal["registry", "env_override", "config_snapshot"]]:
-    if active_definitions() is not None:
-        return spec.model, "config_snapshot"
-    overrides = _parse_overrides(settings.ai_model_overrides if raw_overrides is None else raw_overrides)
-    if spec.component_id in overrides:
-        return overrides[spec.component_id], "env_override"
-    return spec.model, "registry"
+def resolve_model(spec: ComponentSpec, raw_overrides: str | None = None) -> tuple[str, Literal["config_snapshot"]]:
+    # A model experiment is an explicit ComponentSpec copy in the eval process.
+    # Process environment must never override an Admin snapshot.
+    return spec.model, "config_snapshot"
 
 
 def model_for(component_id: str) -> str:

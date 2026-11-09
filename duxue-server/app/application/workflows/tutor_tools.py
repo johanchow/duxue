@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from app.agent_specs.catalog import load_catalog
 from app.agent_specs.definitions import load_definitions
 from app.agent_specs.static_tools import static_tool_result
 from app.application.workflows.teaching_skills import history_candidates
@@ -17,14 +16,20 @@ from app.infrastructure.observability.telemetry import (
 )
 from app.infrastructure.persistence.models import TutoringMessage, TutoringProblem
 
-_SPEC = load_catalog().spec("tutoring")
-MAX_TOOL_CALLS = _SPEC.limits["tool_calls"]
-MAX_MODEL_CALLS = _SPEC.limits["model_calls"]
-TOOL_NAMES = tuple(tool_id.split(".", 1)[1] for tool_id in load_definitions().units["tutoring.turn"].tools)
+from app.agent_specs.configuration import code_contract
+
+_FIXED = code_contract()["files"]["workflows/tutoring.json"]
+MAX_TOOL_CALLS = _FIXED["limits"]["tool_calls"]
+MAX_MODEL_CALLS = _FIXED["limits"]["model_calls"]
+TOOL_NAMES = tuple(tool_id.split(".", 1)[1] for tool_id in code_contract()["tool_authority"]["tutoring.turn"])
 _HISTORY_LIMIT = 3
 
-# Compatibility export for existing callers; the sole body lives in Tool JSON.
-SVG_WIDGET_GUIDELINES = static_tool_result("tutoring.widget_guidelines")["guidelines"]
+
+def __getattr__(name):
+    if name == "SVG_WIDGET_GUIDELINES":
+        return static_tool_result("tutoring.widget_guidelines")["guidelines"]
+    raise AttributeError(name)
+
 
 class TutorToolbox:
     def __init__(

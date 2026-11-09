@@ -8,6 +8,8 @@ judge. The --with-reference counterfactual explicitly sends the reference text.
 
 from __future__ import annotations
 
+from evals.configuration import snapshot_identity
+
 import argparse
 import hashlib
 import json
@@ -198,7 +200,7 @@ def main(argv: list[str] | None = None) -> int:
     sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True,
                          check=False).stdout.strip()
     report = {
-        "meta": {"at": datetime.now(timezone.utc).isoformat(), "git_sha": sha,
+        "meta": {"config_snapshot": snapshot_identity(), "at": datetime.now(timezone.utc).isoformat(), "git_sha": sha,
                  "judge": spec.component_id, "version": spec.version, "model": spec.model,
                  "prompt_digest": spec.prompt.digest, "definition_digest": spec.definition_digest, "dataset_sha256": hashlib.sha256(json.dumps(cases, ensure_ascii=False, sort_keys=True).encode()).hexdigest(),
                  "student_said": STUDENT_SAID, "task_title": TASK_TITLE, "problem_summary": summary,

@@ -215,3 +215,7 @@ def expire_study_sprints():
             SprintService(db).current(ward_id)
             db.commit()
     return {"wards_checked":len(ward_ids)}
+
+
+from app.agent_specs.release_runtime import register_worker_lifecycle
+register_worker_lifecycle()

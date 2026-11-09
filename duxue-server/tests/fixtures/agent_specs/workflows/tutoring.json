@@ -1,0 +1,186 @@
+{
+  "kind": "workflow",
+  "id": "tutoring",
+  "version": "v1",
+  "handler": "tutoring",
+  "entry": "tutoring.turn",
+  "required_checks": [
+    "tutoring.candidate_schema",
+    "tutoring.exit_gate",
+    "tutoring.output_safety",
+    "tutoring.candidate_exit",
+    "tutoring.visual"
+  ],
+  "limits": {
+    "model_calls": 4,
+    "tool_calls": 3
+  },
+  "nodes": [
+    {
+      "id": "tutoring.turn",
+      "kind": "action",
+      "trace": "tutoring.turn",
+      "trace_kind": "node",
+      "handler_id": "tutoring.turn"
+    },
+    {
+      "id": "tutoring.image_target",
+      "kind": "agent",
+      "trace": "tutoring.image_target",
+      "parent": "tutoring.turn",
+      "trace_kind": "check",
+      "ref": "tutoring.image-target"
+    },
+    {
+      "id": "tutoring.model_loop",
+      "kind": "action",
+      "trace": "tutoring.model_loop",
+      "parent": "tutoring.turn",
+      "trace_kind": "node",
+      "handler_id": "tutoring.model_loop"
+    },
+    {
+      "id": "tutoring.attempt",
+      "kind": "agent",
+      "trace": "tutoring.attempt",
+      "parent": "tutoring.model_loop",
+      "ref": "tutoring.turn"
+    },
+    {
+      "id": "tutoring.tool_budget",
+      "kind": "gate",
+      "trace": "tutoring.tool_budget",
+      "parent": "tutoring.attempt",
+      "trace_kind": "check",
+      "ref": "tutoring.tool_budget"
+    },
+    {
+      "id": "tutoring.candidate_schema",
+      "kind": "gate",
+      "trace": "tutoring.candidate_schema",
+      "parent": "tutoring.attempt",
+      "required": true,
+      "trace_kind": "check",
+      "ref": "tutoring.candidate_schema"
+    },
+    {
+      "id": "tutoring.visual_schema",
+      "kind": "gate",
+      "trace": "tutoring.visual_schema",
+      "parent": "tutoring.attempt",
+      "trace_kind": "check",
+      "ref": "tutoring.visual_schema"
+    },
+    {
+      "id": "tutoring.exit_gate",
+      "kind": "action",
+      "trace": "tutoring.exit_gate",
+      "parent": "tutoring.attempt",
+      "required": true,
+      "trace_kind": "check",
+      "handler_id": "tutoring.exit_gate"
+    },
+    {
+      "id": "tutoring.candidate_exit",
+      "kind": "gate",
+      "trace": "tutoring.candidate_exit",
+      "parent": "tutoring.exit_gate",
+      "required": true,
+      "trace_kind": "check",
+      "ref": "tutoring.candidate_exit"
+    },
+    {
+      "id": "tutoring.visual",
+      "kind": "gate",
+      "trace": "tutoring.visual",
+      "parent": "tutoring.exit_gate",
+      "required": true,
+      "trace_kind": "check",
+      "ref": "tutoring.visual"
+    },
+    {
+      "id": "tutoring.output_safety",
+      "kind": "gate",
+      "trace": "tutoring.output_safety",
+      "parent": "tutoring.turn",
+      "required": true,
+      "trace_kind": "check",
+      "ref": "tutoring.output_safety"
+    },
+    {
+      "id": "tutoring.apply_problem",
+      "kind": "action",
+      "trace": "tutoring.apply_problem",
+      "parent": "tutoring.turn",
+      "trace_kind": "node",
+      "handler_id": "tutoring.apply_problem"
+    },
+    {
+      "id": "tutoring.result",
+      "kind": "action",
+      "trace": "tutoring.result",
+      "parent": "tutoring.turn",
+      "trace_kind": "node",
+      "handler_id": "tutoring.result"
+    }
+  ],
+  "edges": [
+    {
+      "from": "START",
+      "to": "tutoring.turn"
+    },
+    {
+      "from": "tutoring.turn",
+      "to": "tutoring.image_target",
+      "condition_id": "image_reference"
+    },
+    {
+      "from": "tutoring.turn",
+      "to": "tutoring.model_loop",
+      "condition_id": "ready"
+    },
+    {
+      "from": "tutoring.image_target",
+      "to": "tutoring.model_loop",
+      "condition_id": "resolved"
+    },
+    {
+      "from": "tutoring.model_loop",
+      "to": "tutoring.attempt"
+    },
+    {
+      "from": "tutoring.attempt",
+      "to": "tutoring.exit_gate",
+      "condition_id": "candidate"
+    },
+    {
+      "from": "tutoring.exit_gate",
+      "to": "tutoring.attempt",
+      "condition_id": "retry"
+    },
+    {
+      "from": "tutoring.exit_gate",
+      "to": "tutoring.output_safety",
+      "condition_id": "checked"
+    },
+    {
+      "from": "tutoring.output_safety",
+      "to": "tutoring.apply_problem",
+      "condition_id": "accepted_work"
+    },
+    {
+      "from": "tutoring.output_safety",
+      "to": "tutoring.result",
+      "condition_id": "fallback_or_readonly"
+    },
+    {
+      "from": "tutoring.apply_problem",
+      "to": "tutoring.result"
+    },
+    {
+      "from": "tutoring.result",
+      "to": "END"
+    }
+  ],
+  "invocation_agent": "tutoring.session-turn"
+}

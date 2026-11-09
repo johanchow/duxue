@@ -1,28 +1,45 @@
-# Agent 定义目录
+# Agent 运行配置入口
 
-`workflows/` 存放流程；`agents/` 存放模型、Prompt、动态变量和工具权限；`gates/` 存放 Judge 与代码门禁；`tools/` 存放工具契约与处理器 ID。模型参数和 Prompt 正文的唯一来源已经迁入 JSON，Python 保留调用适配器与契约校验。`models` 数组顺序就是尝试顺序，是否切换仍由运行流程决定。
+Agent可编辑配置的唯一维护源是Admin。生产目录不再保留`agents/`、`gates/`、`tools/`业务默认值；不能从测试夹具初始化业务或补齐缺失配置。管理流程见[Admin设计](../../docs/technical/design-admin.md)。
 
-节点实现、路由条件、权限、答案保护、事务和失败回退仍由 Python 负责。JSON 不支持任意函数、表达式或在线修改。Planning 的 LangGraph 边从 JSON 装配；任务整理、复盘维度提取、答疑候选审核由通用执行器驱动。候选审核中授权、文字与配图检查各占一个 Gate，适用条件与必经基线受代码校验。
+## 代码保留的内容
 
-模型调用先检查 JSON Schema，再检查 Python 输出契约；错误结果进入原有的修复或失败回退。动态 Prompt 使用显式变量声明和一次性替换。任务整理与复盘维度提取各有自己的单 Agent Workflow。
+- `contracts.json`：稳定ID、输入输出契约、Prompt变量声明、处理器与工具授权上限，不含Prompt正文、模型名称/生成参数或静态工具正文。
+- `workflows/`：代码拥有的固定流程与必经门禁；当前不提供流程编辑。
+- `schemas/`：统一执行结果协议。
 
-主Prompt可通过 `fragments` 声明具名指令，由代码选择使用；只读静态Tool可通过 `static_result` 保存固定结果。字段、校验和追溯边界见[具名指令片段](../../docs/technical/design-agent.md#421-具名指令片段已实现)及[Tool契约](../../docs/technical/design-agent.md#44-tool-契约)。`show` 同时展开片段和工具定义；`definition_digest` 覆盖组件与引用Tool的完整配置，用于模型观测和离线评测追溯。
+契约与处理器注册共同形成兼容性摘要；发布包必须完整包含35份逻辑文件。代码不生成可编辑默认值。运行时只从完整包构建定义，不能扩权或跳过必经审核。
 
-Companion 主路由、答疑重试与主备切换已由通用执行器读取条件边；Planning 确认门禁作为独立 LangGraph 节点执行，等待用户确认的节点只接收命令。配置内的模型调用通过 `context_builder_id` 执行专用构造器；构造器只投影调用方已授权的数据，不能自行扩大读取范围。Planning 确认卡的生成边界见[安排入口](../../docs/technical/domain-planning.md#31-安排入口)。
+## 运行模式
 
-Workflow 节点统一为 `agent/gate/action`，代码步骤使用 `handler_id`，条件边使用 `condition_id`；原 route/stage/check 标识只作为 `trace_kind` 观测信息。代码注册表在启动时拒绝未知处理器、条件和对象引用。领域入口的代码 Agent 在 `agents/*.session-turn.json` 声明 `RunInvocation/WorkflowOutcome` 契约，Dispatcher 执行 JSON Schema 与 Python 双层校验。
+| 参数 | 含义 |
+|---|---|
+| `AGENT_CONFIG_SOURCE=admin` | API/Worker加载Admin发布，生产默认模式 |
+| `AGENT_CONFIG_SOURCE_URL` | 私有发布接口前缀，例如`http://duxue-admin:3000/api/internal` |
+| `AGENT_ADMIN_INTERNAL_TOKEN` | 与Admin一致、至少32字符的内部密钥 |
+| `AGENT_CONFIG_CACHE` | 最后成功发布的持久缓存路径，正式Docker挂载`/app/var/admin` |
+| `AGENT_CONFIG_SOURCE=snapshot` | 本地运行/评测只使用显式离线快照，不轮询Admin |
+| `AGENT_CONFIG_SNAPSHOT` | 完整导出文件路径，默认Server下`var/admin/release.json`，Git忽略 |
 
-Judge 的 `provider_output_schema` 描述模型原始协议，`verdict_schema` 描述适配后的 `allow/deny/unknown` 与 `reason_code`。Agent 使用 `status/data/error_code` 结果封套，由 `schemas/agent-result.json` 和 Python 契约共同验证；现有领域 Port 通过解包适配保持原返回协议，封套由代码生成，不改变模型输出 Prompt。
+离线快照必须含`id/digest/bundle`，并验证完整性、代码契约和摘要；缺失/错误时明确拒绝，不从仓库补值。生产验证环境为prod，缓存与在线来源都不能混入测试环境或草稿。Admin暂时不可用时继续使用已验证缓存；无缓存时AI调用返回配置未就绪。每轮应用调用固定一次快照，发布/回滚只影响后续调用。API与Celery子进程分别维护加载状态。
 
-答疑循环按原实现保留 `workflows/tutoring.json` 的 `limits.model_calls=4`、`limits.tool_calls=3`，表示每次生成尝试内的调用次数，不是金额。工具请求和结构修复都计入模型调用次数，外层重试另由 Workflow 条件路径控制。字段归属与到限行为见[设计契约 4.1](../../docs/technical/design-agent.md)。运行约定见 [平台笔记](../../.agent/notes/platform.md)。
+`AI_MODEL_OVERRIDES`已停用；模型变化在Admin维护。评测的`--model/--variant`只修改评测进程内的实验对象，不回写快照或Admin。
+
+## 本地与离线评测
+
+先按[Admin快照导入导出说明](../../duxue-admin/README.md#配置快照导入导出)下载/导出发布快照。Server `.env`配置snapshot模式及文件路径，重新启动本地服务。
 
 ```bash
 cd duxue-server
 .venv/bin/python -m app.agent_specs validate
-.venv/bin/python -m app.agent_specs show companion
-.venv/bin/python -m app.agent_specs export
+.venv/bin/python -m app.agent_specs show tutoring
+.venv/bin/python -m evals validate
+.venv/bin/python -m evals run --component companion.intent --samples 1 \
+  --config-snapshot var/admin/release.json
 ```
 
-`show` 输出展开的组件模型、Prompt 和契约；`export` 生成独立的[当前流程图](../../docs/technical/agent-flow-current.md)。改定义后应提交生成图，测试会检查同步。目标目录、字段契约与概念划分以 [Agent 配置设计](../../docs/technical/design-agent.md) 为准。
+四种真实评测命令都支持`--config-snapshot`；入口在导入模型前固定来源，同一进程所有线程使用同一包，结果记录发布/草稿身份和完整digest。`validate/export/compare`数据集操作不要求Agent配置或在线Admin；评测数据、标注继续由Git维护。
 
-Admin运行产物使用完整包digest作为配置身份，不带手工组件版本；Git默认定义里的旧version仅供本地初始化加载器使用。发布边界和协议格式以[管理台设计](../../docs/technical/design-admin.md)为准。
+## 单测与部署验证
+
+`tests/fixtures/`是明确隔离的历史回归输入，由`tests/conftest.py`显式安装；不随镜像发布，不是业务配置维护源。部署前执行`python -m app.agent_specs preflight`验证Admin发布或兼容缓存，失败保留原容器。初次生产接入步骤见[部署文档](../../docs/deployment.md#生产server接入admin配置)。

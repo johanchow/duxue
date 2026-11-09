@@ -81,9 +81,9 @@ export function VersionDetail({
           </button>
           <a
             className="button-link secondary"
-            href={`/api/releases/${version.id}`}
+            href={`/api/releases/${version.id}/snapshot`}
           >
-            下载产物
+            下载配置快照
           </a>
           {canEdit && (
             <button

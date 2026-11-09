@@ -34,7 +34,7 @@ VLM_API_KEY=模型服务密钥
 ## 独立部署测试环境
 
 - Next.js：`ADMIN_ENV=test`，`ADMIN_DATABASE_URL`（实际库名强制`duxue-admin-test`），`AGENT_SERVER_URL`，`AGENT_ADMIN_INTERNAL_TOKEN`，对外HTTPS地址`ADMIN_PUBLIC_ORIGIN`。
-- 现有Python服务：同一个`AGENT_ADMIN_INTERNAL_TOKEN`，`AGENT_CONFIG_SOURCE_URL=https://<admin-host>/api/internal`，持久目录`AGENT_CONFIG_CACHE`；APP_ENV为test。
+- 现有Python服务：同一个`AGENT_ADMIN_INTERNAL_TOKEN`，`AGENT_CONFIG_SOURCE=admin`、私有`AGENT_CONFIG_SOURCE_URL`（不走公网Nginx），持久目录`AGENT_CONFIG_CACHE`；APP_ENV为test。
 - 使用`npm run build && npm start`运行Node服务；反向代理请求超时至少300秒。不要部署成纯静态站点，也不要使用短时限的无状态函数执行调试请求。
 - 服务端与管理台密钥通过私有环境变量配置，不使用`NEXT_PUBLIC_*`。DB连接无需在浏览器配置。正式环境使用`ADMIN_ENV=prod`与独立`duxue-admin-prod`；部署步骤见[部署文档](../docs/deployment.md#admin正式站点)。
 
@@ -44,7 +44,7 @@ VLM_API_KEY=模型服务密钥
 
 “Workflow”(`/workflows`)提供真实流程图与完整只读配置；“Agent”(`/agents`)展示全部Agent/Gate/Tool，搜索与类型筛选并排。详情默认显示当前Admin发布值，仅标识有待发布修改，所有组件支持编辑；模型Agent/Judge可改模型与Prompt，工具可改描述/静态正文，固定Python实现与安全协议受保护。待发布修改和历史统一在“发布管理”，无独立草稿菜单。
 
-服务端优先运行Admin完整发布产物（format_version=3，35份JSON），30秒拉取并按应用调用固定快照。Admin模式无兼容发布/缓存时AI调用报配置未就绪，不静默使用代码默认值。未配置Admin来源才是显式本地默认模式。不支持旧协议加载或数据转换。发布产物无组件手工v号，内部身份由包digest生成；R序号仅在发布管理/历史展示。
+服务端优先运行Admin完整发布产物（format_version=3，35份JSON），30秒拉取并按应用调用固定快照。Admin模式无兼容发布/缓存时AI调用报配置未就绪，不静默使用代码默认值。本地使用显式导出快照；不再存在仓库业务默认模式。不支持旧协议加载或数据转换。发布产物无组件手工v号，内部身份由包digest生成；R序号仅在发布管理/历史展示。
 
 Agent详情只调试当前Agent；主备仅限自身模型，动态Prompt输入模板变量JSON。Workflow详情可调试已发布配置或已有已保存草稿；未保存修改禁止调试。完整草稿页可集中选择对象。当前接入的流程及限制见管理台设计。修改模型后，必须实际调试对应的主/备component；共享Prompt变动要覆盖两者。仅改名称/简介无需调用模型；已有发布且无修改时不能重复发布。真实联调脚本`npx tsx scripts/full-release-smoke.ts`会调用导师和意图模型、校验覆盖门禁并发布测试完整包，需要已启动两个服务，会产生真实用量和测试记录。
 
@@ -76,3 +76,19 @@ npm run test:inventory   # 表格/详情深链接、节点/连线、保存刷新
 `npx tsx scripts/debugging-smoke.ts`验证Agent固定目标、已发布/草稿来源、未保存拦截、真实Workflow运行、图中Node/Edge数据和未接入组件提示。会产生真实模型用量，截图/记录在ignored `.local/`；不发布配置。
 
 调试入口位于详情/编辑页顶部，点击打开右侧抽屉；手机全屏。关闭后同一快照保留输入和结果，Workflow运行完成后可点“查看流程执行”返回图。尚未接入独立调试的组件显示具体原因及所属Workflow入口。`npx tsx scripts/debug-drawer-browser.ts`验证焦点/滚动、重开保留、草稿未保存拦截、移动端与流程返回；仅执行一次无模型调用的Reflection测试，不发布或修改配置。
+
+## 配置快照导入导出
+
+已有环境从数据库管理当前发布/唯一草稿，目录不依赖Server默认JSON。空管理库需先`npm run setup`初始化账号，再由管理员导入已有Admin备份；导入不自动发布、不覆盖已有发布或草稿：
+
+```bash
+ADMIN_INIT_EMAIL=<管理员邮箱> npm run config:import -- /path/admin-release.json
+# 在页面调试并发布后，导出完整不可变发布身份和产物：
+npm run config:export -- ../duxue-server/var/admin/release.json
+# 另存当前已保存草稿，用于离线实验：
+npm run config:export -- ../duxue-server/var/admin/candidate.json --draft
+```
+
+导出目标必须不存在，避免误覆盖已用于评测的快照。普通用户也可在“发布管理→版本详情→下载配置快照”下载指定发布；GET `/api/drafts/<id>/snapshot`导出已保存草稿，不包含编辑器未保存内容。快照包含`id/digest/bundle`及release/draft身份；CLI从管理库读取，Python校验权威契约。文件与模型密钥、数据库凭据分开，不进入Git。离线运行参数见[Server配置入口](../duxue-server/agent_specs/README.md#本地与离线评测)。
+
+`npx tsx scripts/config-snapshot-smoke.ts`在测试管理库临时schema验证空库无默认值、CLI导入导出、页面快照下载及禁止覆盖，需本地执行器已启动，不发布或修改原环境指针。

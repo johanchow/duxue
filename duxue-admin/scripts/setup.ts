@@ -4,6 +4,9 @@ import { randomUUID } from 'node:crypto';
 import pg from 'pg';
 import { config } from '../src/lib/config';
 import { passwordHash } from '../src/lib/auth';
+import { serverCall } from '../src/lib/server';
+import { workingDraft } from '../src/lib/working-draft';
+import { transaction, pool } from '../src/lib/db';
 
 async function main() {
   const command = process.argv[2],
@@ -64,6 +67,81 @@ async function main() {
     } finally {
       await db.end();
     }
+  } else if (command === 'export-config') {
+    const destination = process.argv[3];
+    if (!destination) throw new Error('需要输出文件路径');
+    const db = new pg.Client({ connectionString: settings.databaseUrl });
+    await db.connect();
+    try {
+      const draft = process.argv[4] === '--draft';
+      const row = draft
+        ? (
+            await db.query(
+              "SELECT id,revision,bundle FROM agent_drafts WHERE state='working'",
+            )
+          ).rows[0]
+        : (
+            await db.query(
+              'SELECT r.id,r.sequence,r.digest,r.bundle FROM agent_environments e JOIN agent_releases r ON r.id=e.release_id WHERE e.name=$1',
+              [settings.environment],
+            )
+          ).rows[0];
+      if (!row) throw new Error('没有可导出的配置');
+      const validation = await serverCall('validate', { bundle: row.bundle });
+      if (!draft && row.digest !== validation.digest)
+        throw new Error('发布摘要不匹配');
+      const snapshot = {
+        ...row,
+        digest: validation.digest,
+        kind: draft ? 'draft' : 'release',
+        environment: settings.environment,
+      };
+      fs.mkdirSync(path.dirname(path.resolve(destination)), {
+        recursive: true,
+      });
+      fs.writeFileSync(destination, JSON.stringify(snapshot, null, 2) + '\n', {
+        mode: 0o600,
+        flag: 'wx',
+      });
+      console.log('Admin配置快照已导出：' + path.resolve(destination));
+    } finally {
+      await db.end();
+    }
+  } else if (command === 'import-config') {
+    const source = process.argv[3];
+    if (!source) throw new Error('需要Admin导出的快照路径');
+    const snapshot = JSON.parse(fs.readFileSync(source, 'utf8'));
+    if (!snapshot.id || !snapshot.digest || !snapshot.bundle)
+      throw new Error('需要id/digest/bundle完整快照');
+    const validation = await serverCall('validate', {
+      bundle: snapshot.bundle,
+    });
+    if (validation.digest !== snapshot.digest)
+      throw new Error('快照摘要不匹配');
+    await transaction(async (client) => {
+      const actor = (
+        await client.query(
+          "SELECT id FROM admin_users WHERE email=$1 AND role='admin' AND active",
+          [process.env.ADMIN_INIT_EMAIL],
+        )
+      ).rows[0];
+      if (!actor) throw new Error('ADMIN_INIT_EMAIL必须是有效管理员');
+      const existing = (
+        await client.query(
+          'SELECT release_id FROM agent_environments WHERE name=$1',
+          [settings.environment],
+        )
+      ).rows[0];
+      if (existing.release_id)
+        throw new Error('已有发布，初始化导入不会覆盖现有配置');
+      const result = await workingDraft(client, {
+        actorId: actor.id,
+        bundle: snapshot.bundle,
+        baseRelease: null,
+      });
+      if (!result.created) throw new Error('已有草稿，导入不会覆盖未发布修改');
+    });
+    console.log('配置已导入唯一草稿，需调试并发布后才生效');
   } else if (command === 'admin' || command === 'user') {
     const email = process.env.ADMIN_INIT_EMAIL?.toLowerCase(),
       password = process.env.ADMIN_INIT_PASSWORD,
@@ -104,7 +182,11 @@ async function main() {
     }
   } else throw new Error('unknown setup command');
 }
-main().catch((error: Error) => {
-  console.error(error.message);
-  process.exitCode = 1;
-});
+main()
+  .catch((error: Error) => {
+    console.error(error.message);
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    if (process.argv[2] === 'import-config') await pool().end();
+  });

@@ -1,0 +1,24 @@
+{
+  "kind": "workflow",
+  "id": "review-aspects",
+  "version": "v1",
+  "handler": "review-aspects",
+  "entry": "review-aspects.run",
+  "nodes": [
+    {
+      "id": "review-aspects.run",
+      "kind": "agent",
+      "ref": "evaluation.review-aspects"
+    }
+  ],
+  "edges": [
+    {
+      "from": "START",
+      "to": "review-aspects.run"
+    },
+    {
+      "from": "review-aspects.run",
+      "to": "END"
+    }
+  ]
+}

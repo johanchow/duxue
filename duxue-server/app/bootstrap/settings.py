@@ -67,9 +67,7 @@ class Settings:
     dashscope_api_key: str = os.getenv("VLM_API_KEY") or os.getenv("DASHSCOPE_API_KEY", "")
     dashscope_base_url: str = os.getenv("VLM_BATCH_BASE_URL") or os.getenv("VLM_API_BASE_URL") or os.getenv("DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
     vlm_model: str = os.getenv("VLM_MODEL_NAME") or os.getenv("VLM_MODEL", "qwen3-vl-flash-2026-01-22")
-    # Model names, prompts and generation parameters live in
-    # app/infrastructure/ai/components.py.  This is only the emergency override for
-    # non-protected components: JSON like {"planning.intake": "model-name"}.
+    # Deprecated: non-empty overrides are rejected; Agent settings come from Admin.
     ai_model_overrides: str = os.getenv("AI_MODEL_OVERRIDES", "").strip()
     agent_model_timeout_seconds: int = _integer("AGENT_MODEL_TIMEOUT_SECONDS", "20")
     agent_model_enabled: bool = os.getenv("AGENT_MODEL_ENABLED", "").lower() in {"1", "true", "yes"}

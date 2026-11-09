@@ -1,0 +1,2428 @@
+{
+  "format_version": 3,
+  "files": {
+    "agents/companion.intent.json": {
+      "id": "companion.intent",
+      "kind": "agent",
+      "implementation": "llm",
+      "agent_label": "planning",
+      "risk_tier": "standard",
+      "operation": "intent_proposal",
+      "input_contract": "intent-input.v1",
+      "output_contract": "intent-proposal.v1",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array"
+              }
+            ]
+          }
+        },
+        "required": [
+          "user"
+        ],
+        "additionalProperties": false
+      },
+      "context_builder_id": "companion.intent.context",
+      "prompt": {
+        "id": "companion.intent.prompt"
+      },
+      "models": [
+        {
+          "component_id": "companion.intent"
+        }
+      ],
+      "accepts_images": false,
+      "requires_agent_switch": true,
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "intent": {
+            "enum": [
+              "planning",
+              "tutoring",
+              "reflection",
+              "unclear"
+            ]
+          }
+        },
+        "required": [
+          "intent"
+        ],
+        "additionalProperties": false
+      },
+      "error_codes": [
+        "agent_execution_failed",
+        "invalid_model_candidate",
+        "model_provider_disabled",
+        "model_provider_not_configured",
+        "model_transport_error"
+      ]
+    },
+    "agents/evaluation.review-aspects.json": {
+      "id": "evaluation.review-aspects",
+      "kind": "agent",
+      "implementation": "llm",
+      "agent_label": "reflection",
+      "risk_tier": "standard",
+      "operation": "review_aspects",
+      "input_contract": "review-expression.v1",
+      "output_contract": "review-aspects-candidate.v1",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array"
+              }
+            ]
+          }
+        },
+        "required": [
+          "user"
+        ],
+        "additionalProperties": false
+      },
+      "context_builder_id": "evaluation.review_aspects.context",
+      "prompt": {
+        "id": "evaluation.review-aspects.prompt"
+      },
+      "models": [
+        {
+          "component_id": "evaluation.review-aspects"
+        }
+      ],
+      "accepts_images": false,
+      "requires_agent_switch": true,
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "aspects": {
+            "type": "array",
+            "maxItems": 12,
+            "items": {
+              "type": "object",
+              "properties": {
+                "dimension": {
+                  "type": "string"
+                },
+                "statement": {
+                  "type": "string"
+                },
+                "source_quote": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "dimension",
+                "statement",
+                "source_quote"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "aspects"
+        ],
+        "additionalProperties": false
+      },
+      "error_codes": [
+        "agent_execution_failed",
+        "invalid_model_candidate",
+        "model_provider_disabled",
+        "model_provider_not_configured",
+        "model_transport_error"
+      ]
+    },
+    "agents/planning.intake.json": {
+      "id": "planning.intake",
+      "kind": "agent",
+      "implementation": "llm",
+      "agent_label": "planning",
+      "risk_tier": "standard",
+      "operation": "plan_intake",
+      "input_contract": "plan-intake-input.v1",
+      "output_contract": "plan-intake-result.v1",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array"
+              }
+            ]
+          }
+        },
+        "required": [
+          "user"
+        ],
+        "additionalProperties": false
+      },
+      "context_builder_id": "planning.intake.context",
+      "prompt": {
+        "id": "planning.intake.prompt",
+        "delivery": "user",
+        "variables": {
+          "today": {
+            "type": "string",
+            "binding": "context.today"
+          },
+          "recent_utterance_block": {
+            "type": "string",
+            "binding": "context.recent_utterance_block"
+          },
+          "ward": {
+            "type": "object",
+            "binding": "context.ward"
+          },
+          "tasks": {
+            "type": "array",
+            "binding": "context.tasks"
+          },
+          "draft_items": {
+            "type": "array",
+            "binding": "context.draft_items"
+          },
+          "clarification_slots": {
+            "type": "array",
+            "binding": "context.clarification_slots"
+          },
+          "self_review_aspects": {
+            "type": "array",
+            "binding": "context.self_review_aspects"
+          },
+          "current_sprint": {
+            "type": "object",
+            "binding": "context.current_sprint"
+          }
+        },
+        "fragments": {
+          "window_rules": {
+            "id": "planning.intake.fragment.window_rules",
+            "variables": {}
+          },
+          "history_block": {
+            "id": "planning.intake.fragment.history_block",
+            "variables": {
+              "rules": {
+                "type": "string",
+                "binding": "context.rules"
+              },
+              "utterances": {
+                "type": "string",
+                "binding": "context.utterances"
+              },
+              "omitted": {
+                "type": "string",
+                "binding": "context.omitted"
+              },
+              "current_images": {
+                "type": "string",
+                "binding": "context.current_images"
+              }
+            }
+          },
+          "history_omitted": {
+            "id": "planning.intake.fragment.history_omitted",
+            "variables": {
+              "count": {
+                "type": "string",
+                "binding": "context.count"
+              }
+            }
+          },
+          "history_complete": {
+            "id": "planning.intake.fragment.history_complete",
+            "variables": {}
+          },
+          "current_images": {
+            "id": "planning.intake.fragment.current_images",
+            "variables": {
+              "ids": {
+                "type": "string",
+                "binding": "context.ids"
+              }
+            }
+          }
+        }
+      },
+      "models": [
+        {
+          "component_id": "planning.intake"
+        }
+      ],
+      "accepts_images": true,
+      "requires_agent_switch": false,
+      "output_schema": {
+        "$defs": {
+          "PlanningOperation": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "create",
+                  "update",
+                  "schedule",
+                  "defer",
+                  "delete"
+                ],
+                "title": "Kind",
+                "type": "string"
+              },
+              "references": {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 30,
+                "title": "References",
+                "type": "array"
+              },
+              "title": {
+                "anyOf": [
+                  {
+                    "maxLength": 300,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Title"
+              },
+              "planned_minutes": {
+                "anyOf": [
+                  {
+                    "maximum": 480,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Planned Minutes"
+              },
+              "duration_kind": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "completion_estimate",
+                      "timebox"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Duration Kind"
+              },
+              "end_reminder_mode": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "scheduled",
+                      "elapsed",
+                      "off"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "End Reminder Mode"
+              },
+              "start_at": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Start At"
+              },
+              "after_task_reference": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "After Task Reference"
+              },
+              "before_task_reference": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Before Task Reference"
+              },
+              "reason": {
+                "anyOf": [
+                  {
+                    "maxLength": 1000,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Reason"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "title": "PlanningOperation",
+            "type": "object"
+          },
+          "StudyActionProposal": {
+            "properties": {
+              "action": {
+                "enum": [
+                  "sprint_prepare",
+                  "sprint_pause",
+                  "sprint_resume",
+                  "sprint_end",
+                  "task_list",
+                  "task_time",
+                  "task_start",
+                  "task_pause",
+                  "task_resume",
+                  "task_end",
+                  "task_complete"
+                ],
+                "title": "Action",
+                "type": "string"
+              },
+              "topic": {
+                "anyOf": [
+                  {
+                    "maxLength": 300,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Topic"
+              },
+              "target_minutes": {
+                "anyOf": [
+                  {
+                    "maximum": 180,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Target Minutes"
+              },
+              "task_reference": {
+                "anyOf": [
+                  {
+                    "maxLength": 300,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Task Reference"
+              },
+              "planned_start_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Planned Start At"
+              },
+              "end_reminder_mode": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "elapsed",
+                      "off"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "End Reminder Mode"
+              }
+            },
+            "required": [
+              "action"
+            ],
+            "title": "StudyActionProposal",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "assistant_text": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Assistant Text",
+            "type": "string"
+          },
+          "clarification_required": {
+            "default": false,
+            "title": "Clarification Required",
+            "type": "boolean"
+          },
+          "questions": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 5,
+            "title": "Questions",
+            "type": "array"
+          },
+          "ready_to_confirm": {
+            "default": false,
+            "title": "Ready To Confirm",
+            "type": "boolean"
+          },
+          "slot_updates": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 30,
+            "title": "Slot Updates",
+            "type": "array"
+          },
+          "operations": {
+            "items": {
+              "$ref": "#/$defs/PlanningOperation"
+            },
+            "maxItems": 30,
+            "title": "Operations",
+            "type": "array"
+          },
+          "study_action": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/StudyActionProposal"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "assistant_text"
+        ],
+        "title": "PlanIntakeResult",
+        "type": "object"
+      },
+      "error_codes": [
+        "agent_execution_failed",
+        "invalid_model_candidate",
+        "model_provider_disabled",
+        "model_provider_not_configured",
+        "model_transport_error"
+      ]
+    },
+    "agents/planning.session-turn.json": {
+      "id": "planning.session-turn",
+      "kind": "agent",
+      "implementation": "code",
+      "handler_id": "planning",
+      "input_schema": {
+        "description": "An authorized, single-workflow instruction emitted by the Coordinator.",
+        "properties": {
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "thread_id": {
+            "title": "Thread Id",
+            "type": "string"
+          },
+          "ward_id": {
+            "title": "Ward Id",
+            "type": "string"
+          },
+          "agent_type": {
+            "enum": [
+              "planning",
+              "tutoring",
+              "reflection"
+            ],
+            "title": "Agent Type",
+            "type": "string"
+          },
+          "turn": {
+            "additionalProperties": true,
+            "title": "Turn",
+            "type": "object"
+          },
+          "turn_id": {
+            "title": "Turn Id",
+            "type": "string"
+          },
+          "command_id": {
+            "title": "Command Id",
+            "type": "string"
+          },
+          "attempt": {
+            "default": 1,
+            "minimum": 1,
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "context_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Context Refs",
+            "type": "array"
+          },
+          "resume_from_checkpoint": {
+            "default": false,
+            "title": "Resume From Checkpoint",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "run_id",
+          "thread_id",
+          "ward_id",
+          "agent_type",
+          "turn"
+        ],
+        "title": "RunInvocation",
+        "type": "object"
+      },
+      "output_schema": {
+        "description": "Validated workflow result; it contains no ORM objects or raw prompts.",
+        "properties": {
+          "run_status": {
+            "enum": [
+              "active",
+              "waiting_for_ward",
+              "paused",
+              "closed",
+              "escalated",
+              "failed",
+              "timed_out",
+              "cancelled"
+            ],
+            "title": "Run Status",
+            "type": "string"
+          },
+          "outcome_type": {
+            "anyOf": [
+              {
+                "enum": [
+                  "response",
+                  "waiting",
+                  "completed",
+                  "failure",
+                  "cancelled",
+                  "escalation"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Outcome Type"
+          },
+          "response": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Response"
+          },
+          "next_interaction": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Next Interaction"
+          },
+          "context_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Context Refs",
+            "type": "array"
+          },
+          "checkpoint_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Checkpoint Ref"
+          },
+          "context_snapshot": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Context Snapshot"
+          },
+          "failure": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Failure"
+          },
+          "resume_action": {
+            "default": "none",
+            "enum": [
+              "retry",
+              "resume_from_checkpoint",
+              "restart",
+              "none"
+            ],
+            "title": "Resume Action",
+            "type": "string"
+          },
+          "handoff_suggestion": {
+            "anyOf": [
+              {
+                "enum": [
+                  "planning",
+                  "tutoring",
+                  "reflection"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Handoff Suggestion"
+          },
+          "trace_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Trace Id"
+          }
+        },
+        "required": [
+          "run_status"
+        ],
+        "title": "WorkflowOutcome",
+        "type": "object"
+      },
+      "error_codes": [
+        "agent_execution_failed",
+        "invalid_model_candidate",
+        "model_provider_disabled",
+        "model_provider_not_configured",
+        "model_transport_error"
+      ]
+    },
+    "agents/reflection.session-turn.json": {
+      "id": "reflection.session-turn",
+      "kind": "agent",
+      "implementation": "code",
+      "handler_id": "reflection",
+      "input_schema": {
+        "description": "An authorized, single-workflow instruction emitted by the Coordinator.",
+        "properties": {
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "thread_id": {
+            "title": "Thread Id",
+            "type": "string"
+          },
+          "ward_id": {
+            "title": "Ward Id",
+            "type": "string"
+          },
+          "agent_type": {
+            "enum": [
+              "planning",
+              "tutoring",
+              "reflection"
+            ],
+            "title": "Agent Type",
+            "type": "string"
+          },
+          "turn": {
+            "additionalProperties": true,
+            "title": "Turn",
+            "type": "object"
+          },
+          "turn_id": {
+            "title": "Turn Id",
+            "type": "string"
+          },
+          "command_id": {
+            "title": "Command Id",
+            "type": "string"
+          },
+          "attempt": {
+            "default": 1,
+            "minimum": 1,
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "context_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Context Refs",
+            "type": "array"
+          },
+          "resume_from_checkpoint": {
+            "default": false,
+            "title": "Resume From Checkpoint",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "run_id",
+          "thread_id",
+          "ward_id",
+          "agent_type",
+          "turn"
+        ],
+        "title": "RunInvocation",
+        "type": "object"
+      },
+      "output_schema": {
+        "description": "Validated workflow result; it contains no ORM objects or raw prompts.",
+        "properties": {
+          "run_status": {
+            "enum": [
+              "active",
+              "waiting_for_ward",
+              "paused",
+              "closed",
+              "escalated",
+              "failed",
+              "timed_out",
+              "cancelled"
+            ],
+            "title": "Run Status",
+            "type": "string"
+          },
+          "outcome_type": {
+            "anyOf": [
+              {
+                "enum": [
+                  "response",
+                  "waiting",
+                  "completed",
+                  "failure",
+                  "cancelled",
+                  "escalation"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Outcome Type"
+          },
+          "response": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Response"
+          },
+          "next_interaction": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Next Interaction"
+          },
+          "context_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Context Refs",
+            "type": "array"
+          },
+          "checkpoint_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Checkpoint Ref"
+          },
+          "context_snapshot": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Context Snapshot"
+          },
+          "failure": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Failure"
+          },
+          "resume_action": {
+            "default": "none",
+            "enum": [
+              "retry",
+              "resume_from_checkpoint",
+              "restart",
+              "none"
+            ],
+            "title": "Resume Action",
+            "type": "string"
+          },
+          "handoff_suggestion": {
+            "anyOf": [
+              {
+                "enum": [
+                  "planning",
+                  "tutoring",
+                  "reflection"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Handoff Suggestion"
+          },
+          "trace_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Trace Id"
+          }
+        },
+        "required": [
+          "run_status"
+        ],
+        "title": "WorkflowOutcome",
+        "type": "object"
+      },
+      "error_codes": [
+        "agent_execution_failed",
+        "invalid_model_candidate",
+        "model_provider_disabled",
+        "model_provider_not_configured",
+        "model_transport_error"
+      ]
+    },
+    "agents/study.sprint-intake.json": {
+      "id": "study.sprint-intake",
+      "kind": "agent",
+      "implementation": "llm",
+      "agent_label": "planning",
+      "risk_tier": "standard",
+      "operation": "sprint_intake",
+      "input_contract": "sprint-voice-input.v1",
+      "output_contract": "sprint-voice-candidate.v1",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array"
+              }
+            ]
+          }
+        },
+        "required": [
+          "user"
+        ],
+        "additionalProperties": false
+      },
+      "context_builder_id": "study.sprint_intake.context",
+      "prompt": {
+        "id": "study.sprint-intake.prompt"
+      },
+      "models": [
+        {
+          "component_id": "study.sprint-intake"
+        }
+      ],
+      "accepts_images": false,
+      "requires_agent_switch": false,
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "topic": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 300
+          },
+          "target_minutes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 180
+          },
+          "cancelled": {
+            "type": "boolean"
+          },
+          "needs_clarification": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "topic",
+          "target_minutes",
+          "cancelled",
+          "needs_clarification"
+        ],
+        "additionalProperties": false
+      },
+      "error_codes": [
+        "agent_execution_failed",
+        "invalid_model_candidate",
+        "model_provider_disabled",
+        "model_provider_not_configured",
+        "model_transport_error"
+      ]
+    },
+    "agents/task.intake.json": {
+      "id": "task.intake",
+      "kind": "agent",
+      "implementation": "llm",
+      "agent_label": "planning",
+      "risk_tier": "standard",
+      "operation": "task_intake",
+      "input_contract": "task-intake-input.v1",
+      "output_contract": "task-intake-result.v1",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array"
+              }
+            ]
+          }
+        },
+        "required": [
+          "user"
+        ],
+        "additionalProperties": false
+      },
+      "context_builder_id": "task.intake.context",
+      "prompt": {
+        "id": "task.intake.prompt",
+        "delivery": "user",
+        "variables": {
+          "today": {
+            "type": "string",
+            "binding": "context.today"
+          },
+          "authorized_wards": {
+            "type": "array",
+            "binding": "context.authorized_wards"
+          },
+          "candidate_tasks": {
+            "type": "array",
+            "binding": "context.candidate_tasks"
+          },
+          "conversation_history": {
+            "type": "array",
+            "binding": "context.conversation_history"
+          }
+        }
+      },
+      "models": [
+        {
+          "component_id": "task.intake"
+        }
+      ],
+      "accepts_images": true,
+      "requires_agent_switch": false,
+      "output_schema": {
+        "$defs": {
+          "TaskCandidate": {
+            "properties": {
+              "ward_id": {
+                "minLength": 1,
+                "title": "Ward Id",
+                "type": "string"
+              },
+              "title": {
+                "maxLength": 300,
+                "minLength": 1,
+                "title": "Title",
+                "type": "string"
+              },
+              "details": {
+                "anyOf": [
+                  {
+                    "maxLength": 4000,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Details"
+              },
+              "due_date": {
+                "anyOf": [
+                  {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Due Date"
+              }
+            },
+            "required": [
+              "ward_id",
+              "title"
+            ],
+            "title": "TaskCandidate",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "assistant_text": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Assistant Text",
+            "type": "string"
+          },
+          "tasks": {
+            "items": {
+              "$ref": "#/$defs/TaskCandidate"
+            },
+            "maxItems": 30,
+            "title": "Tasks",
+            "type": "array"
+          },
+          "clarification_required": {
+            "default": false,
+            "title": "Clarification Required",
+            "type": "boolean"
+          },
+          "questions": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 5,
+            "title": "Questions",
+            "type": "array"
+          },
+          "ready_to_confirm": {
+            "default": false,
+            "title": "Ready To Confirm",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "assistant_text"
+        ],
+        "title": "TaskIntakeResult",
+        "type": "object",
+        "additionalProperties": false
+      },
+      "error_codes": [
+        "agent_execution_failed",
+        "invalid_model_candidate",
+        "model_provider_disabled",
+        "model_provider_not_configured",
+        "model_transport_error"
+      ]
+    },
+    "agents/tutoring.image-target.json": {
+      "id": "tutoring.image-target",
+      "kind": "agent",
+      "implementation": "llm",
+      "agent_label": "tutoring",
+      "risk_tier": "protected",
+      "operation": "tutor_image_target",
+      "input_contract": "image-target-input.v1",
+      "output_contract": "image-target.v1",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array"
+              }
+            ]
+          }
+        },
+        "required": [
+          "user"
+        ],
+        "additionalProperties": false
+      },
+      "context_builder_id": "tutoring.image_target.context",
+      "prompt": {
+        "id": "tutoring.image-target.prompt"
+      },
+      "models": [
+        {
+          "component_id": "tutoring.image-target"
+        }
+      ],
+      "accepts_images": true,
+      "requires_agent_switch": true,
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "ambiguous": {
+            "type": "boolean"
+          },
+          "target_image_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "error_codes": [
+        "agent_execution_failed",
+        "invalid_model_candidate",
+        "model_provider_disabled",
+        "model_provider_not_configured",
+        "model_transport_error"
+      ]
+    },
+    "agents/tutoring.session-turn.json": {
+      "id": "tutoring.session-turn",
+      "kind": "agent",
+      "implementation": "code",
+      "handler_id": "tutoring",
+      "input_schema": {
+        "description": "An authorized, single-workflow instruction emitted by the Coordinator.",
+        "properties": {
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "thread_id": {
+            "title": "Thread Id",
+            "type": "string"
+          },
+          "ward_id": {
+            "title": "Ward Id",
+            "type": "string"
+          },
+          "agent_type": {
+            "enum": [
+              "planning",
+              "tutoring",
+              "reflection"
+            ],
+            "title": "Agent Type",
+            "type": "string"
+          },
+          "turn": {
+            "additionalProperties": true,
+            "title": "Turn",
+            "type": "object"
+          },
+          "turn_id": {
+            "title": "Turn Id",
+            "type": "string"
+          },
+          "command_id": {
+            "title": "Command Id",
+            "type": "string"
+          },
+          "attempt": {
+            "default": 1,
+            "minimum": 1,
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "context_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Context Refs",
+            "type": "array"
+          },
+          "resume_from_checkpoint": {
+            "default": false,
+            "title": "Resume From Checkpoint",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "run_id",
+          "thread_id",
+          "ward_id",
+          "agent_type",
+          "turn"
+        ],
+        "title": "RunInvocation",
+        "type": "object"
+      },
+      "output_schema": {
+        "description": "Validated workflow result; it contains no ORM objects or raw prompts.",
+        "properties": {
+          "run_status": {
+            "enum": [
+              "active",
+              "waiting_for_ward",
+              "paused",
+              "closed",
+              "escalated",
+              "failed",
+              "timed_out",
+              "cancelled"
+            ],
+            "title": "Run Status",
+            "type": "string"
+          },
+          "outcome_type": {
+            "anyOf": [
+              {
+                "enum": [
+                  "response",
+                  "waiting",
+                  "completed",
+                  "failure",
+                  "cancelled",
+                  "escalation"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Outcome Type"
+          },
+          "response": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Response"
+          },
+          "next_interaction": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Next Interaction"
+          },
+          "context_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Context Refs",
+            "type": "array"
+          },
+          "checkpoint_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Checkpoint Ref"
+          },
+          "context_snapshot": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Context Snapshot"
+          },
+          "failure": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Failure"
+          },
+          "resume_action": {
+            "default": "none",
+            "enum": [
+              "retry",
+              "resume_from_checkpoint",
+              "restart",
+              "none"
+            ],
+            "title": "Resume Action",
+            "type": "string"
+          },
+          "handoff_suggestion": {
+            "anyOf": [
+              {
+                "enum": [
+                  "planning",
+                  "tutoring",
+                  "reflection"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Handoff Suggestion"
+          },
+          "trace_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Trace Id"
+          }
+        },
+        "required": [
+          "run_status"
+        ],
+        "title": "WorkflowOutcome",
+        "type": "object"
+      },
+      "error_codes": [
+        "agent_execution_failed",
+        "invalid_model_candidate",
+        "model_provider_disabled",
+        "model_provider_not_configured",
+        "model_transport_error"
+      ]
+    },
+    "agents/tutoring.turn.json": {
+      "id": "tutoring.turn",
+      "kind": "agent",
+      "implementation": "llm",
+      "agent_label": "tutoring",
+      "risk_tier": "protected",
+      "operation": "tutor_turn",
+      "input_contract": "tutor-turn.v4",
+      "output_contract": "tutor-turn-candidate.v4",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array"
+              }
+            ]
+          }
+        },
+        "required": [
+          "user"
+        ],
+        "additionalProperties": false
+      },
+      "context_builder_id": "tutoring.turn.context",
+      "prompt": {
+        "id": "tutoring.turn.prompt",
+        "fragments": {
+          "invalid_json": {
+            "id": "tutoring.turn.fragment.invalid_json",
+            "variables": {}
+          },
+          "visual_schema": {
+            "id": "tutoring.turn.fragment.visual_schema",
+            "variables": {
+              "reason": {
+                "type": "string",
+                "binding": "context.reason"
+              },
+              "draft": {
+                "type": "string",
+                "binding": "context.draft"
+              }
+            }
+          },
+          "widget_not_loaded": {
+            "id": "tutoring.turn.fragment.widget_not_loaded",
+            "variables": {}
+          },
+          "leak_prefix": {
+            "id": "tutoring.turn.fragment.leak_prefix",
+            "variables": {}
+          },
+          "leak_answer": {
+            "id": "tutoring.turn.fragment.leak_answer",
+            "variables": {
+              "prefix": {
+                "type": "string",
+                "binding": "context.prefix"
+              },
+              "reason": {
+                "type": "string",
+                "binding": "context.reason"
+              }
+            }
+          },
+          "leak_draft": {
+            "id": "tutoring.turn.fragment.leak_draft",
+            "variables": {
+              "prefix": {
+                "type": "string",
+                "binding": "context.prefix"
+              },
+              "reason": {
+                "type": "string",
+                "binding": "context.reason"
+              },
+              "draft": {
+                "type": "string",
+                "binding": "context.draft"
+              }
+            }
+          },
+          "visual_leak": {
+            "id": "tutoring.turn.fragment.visual_leak",
+            "variables": {
+              "draft": {
+                "type": "string",
+                "binding": "context.draft"
+              }
+            }
+          },
+          "missing_visual": {
+            "id": "tutoring.turn.fragment.missing_visual",
+            "variables": {
+              "draft": {
+                "type": "string",
+                "binding": "context.draft"
+              }
+            }
+          },
+          "image_review": {
+            "id": "tutoring.turn.fragment.image_review",
+            "variables": {}
+          },
+          "image_compare": {
+            "id": "tutoring.turn.fragment.image_compare",
+            "variables": {}
+          },
+          "self_review": {
+            "id": "tutoring.turn.fragment.self_review",
+            "variables": {}
+          }
+        }
+      },
+      "models": [
+        {
+          "component_id": "tutoring.turn"
+        },
+        {
+          "component_id": "tutoring.turn-backup",
+          "operation": "tutor_turn_backup"
+        }
+      ],
+      "accepts_images": true,
+      "requires_agent_switch": true,
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "act": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "args": {
+            "type": "object"
+          }
+        },
+        "anyOf": [
+          {
+            "required": [
+              "act",
+              "content"
+            ]
+          },
+          {
+            "required": [
+              "tool"
+            ]
+          }
+        ],
+        "additionalProperties": true
+      },
+      "error_codes": [
+        "agent_execution_failed",
+        "invalid_model_candidate",
+        "model_provider_disabled",
+        "model_provider_not_configured",
+        "model_transport_error"
+      ]
+    },
+    "gates/companion.scene-switch.json": {
+      "id": "companion.scene-switch",
+      "kind": "gate",
+      "implementation": "judge",
+      "agent_label": "tutoring",
+      "risk_tier": "standard",
+      "operation": "scene_switch_check",
+      "input_contract": "scene-switch-input.v1",
+      "output_contract": "scene-switch-verdict.v1",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array"
+              }
+            ]
+          }
+        },
+        "required": [
+          "user"
+        ],
+        "additionalProperties": false
+      },
+      "context_builder_id": "companion.scene_switch.context",
+      "prompt": {
+        "id": "companion.scene-switch.prompt"
+      },
+      "models": [
+        {
+          "component_id": "companion.scene-switch"
+        }
+      ],
+      "accepts_images": true,
+      "requires_agent_switch": true,
+      "on_error": "deny",
+      "safety_class": "standard",
+      "provider_output_schema": {
+        "type": "object",
+        "properties": {
+          "allow_switch": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "allow_switch"
+        ],
+        "additionalProperties": false
+      },
+      "verdict_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "verdict": {
+            "enum": [
+              "allow",
+              "deny",
+              "unknown"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          },
+          "reason_code": {
+            "title": "Reason Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "verdict",
+          "reason_code"
+        ],
+        "title": "GateVerdict",
+        "type": "object"
+      }
+    },
+    "gates/planning.confirmation-gate.json": {
+      "id": "planning.confirmation-gate",
+      "kind": "gate",
+      "implementation": "code",
+      "handler_id": "planning.confirmation_gate",
+      "safety_class": "protected",
+      "on_error": "abort",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "object"
+          },
+          "draft_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "draft_id"
+        ],
+        "additionalProperties": false
+      },
+      "verdict_schema": {
+        "type": "object",
+        "properties": {
+          "verdict": {
+            "enum": [
+              "allow",
+              "deny",
+              "unknown"
+            ]
+          },
+          "reason_code": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "verdict",
+          "reason_code"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "gates/tutoring.authority.json": {
+      "id": "tutoring.authority",
+      "kind": "gate",
+      "implementation": "code",
+      "handler_id": "tutoring.check_authority",
+      "safety_class": "protected",
+      "on_error": "deny",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "candidate": {
+            "type": "object"
+          },
+          "permit": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "candidate",
+          "permit"
+        ],
+        "additionalProperties": false
+      },
+      "verdict_schema": {
+        "type": "object",
+        "properties": {
+          "verdict": {
+            "enum": [
+              "allow",
+              "deny",
+              "unknown"
+            ]
+          },
+          "reason_code": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "verdict",
+          "reason_code"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "gates/tutoring.candidate_exit.json": {
+      "id": "tutoring.candidate_exit",
+      "kind": "gate",
+      "implementation": "code",
+      "handler_id": "tutoring.candidate_exit",
+      "safety_class": "protected",
+      "on_error": "deny",
+      "input_schema": {
+        "type": "object"
+      },
+      "verdict_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "verdict": {
+            "enum": [
+              "allow",
+              "deny",
+              "unknown"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          },
+          "reason_code": {
+            "title": "Reason Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "verdict",
+          "reason_code"
+        ],
+        "title": "GateVerdict",
+        "type": "object"
+      }
+    },
+    "gates/tutoring.candidate_schema.json": {
+      "id": "tutoring.candidate_schema",
+      "kind": "gate",
+      "implementation": "code",
+      "handler_id": "tutoring.candidate_schema",
+      "safety_class": "protected",
+      "on_error": "deny",
+      "input_schema": {
+        "type": "object"
+      },
+      "verdict_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "verdict": {
+            "enum": [
+              "allow",
+              "deny",
+              "unknown"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          },
+          "reason_code": {
+            "title": "Reason Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "verdict",
+          "reason_code"
+        ],
+        "title": "GateVerdict",
+        "type": "object"
+      }
+    },
+    "gates/tutoring.leak-judge.json": {
+      "id": "tutoring.leak-judge",
+      "kind": "gate",
+      "implementation": "judge",
+      "agent_label": "tutoring",
+      "risk_tier": "protected",
+      "operation": "tutor_leak_check",
+      "input_contract": "leak-judge-input.v7",
+      "output_contract": "leak-judge-facts.v2",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array"
+              }
+            ]
+          }
+        },
+        "required": [
+          "user"
+        ],
+        "additionalProperties": false
+      },
+      "context_builder_id": "tutoring.leak_judge.context",
+      "prompt": {
+        "id": "tutoring.leak-judge.prompt"
+      },
+      "models": [
+        {
+          "component_id": "tutoring.leak-judge"
+        }
+      ],
+      "accepts_images": true,
+      "requires_agent_switch": true,
+      "verdict_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "verdict": {
+            "enum": [
+              "allow",
+              "deny",
+              "unknown"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          },
+          "reason_code": {
+            "title": "Reason Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "verdict",
+          "reason_code"
+        ],
+        "title": "GateVerdict",
+        "type": "object"
+      },
+      "on_error": "deny",
+      "safety_class": "protected",
+      "provider_output_schema": {
+        "type": "object",
+        "properties": {
+          "answer_protected": {
+            "type": "boolean"
+          },
+          "student_answer_correct": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "affirms_student_answer": {
+            "type": "boolean"
+          },
+          "new_final_answer": {
+            "type": "boolean"
+          },
+          "complete_solution": {
+            "type": "boolean"
+          },
+          "choice_verdict": {
+            "type": "boolean"
+          },
+          "premature_conclusion": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "answer_protected",
+          "student_answer_correct",
+          "affirms_student_answer",
+          "new_final_answer",
+          "complete_solution",
+          "choice_verdict",
+          "premature_conclusion"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "gates/tutoring.output_safety.json": {
+      "id": "tutoring.output_safety",
+      "kind": "gate",
+      "implementation": "code",
+      "handler_id": "tutoring.output_safety",
+      "safety_class": "protected",
+      "on_error": "deny",
+      "input_schema": {
+        "type": "object"
+      },
+      "verdict_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "verdict": {
+            "enum": [
+              "allow",
+              "deny",
+              "unknown"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          },
+          "reason_code": {
+            "title": "Reason Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "verdict",
+          "reason_code"
+        ],
+        "title": "GateVerdict",
+        "type": "object"
+      }
+    },
+    "gates/tutoring.tool_budget.json": {
+      "id": "tutoring.tool_budget",
+      "kind": "gate",
+      "implementation": "code",
+      "handler_id": "tutoring.tool_budget",
+      "safety_class": "protected",
+      "on_error": "deny",
+      "input_schema": {
+        "type": "object"
+      },
+      "verdict_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "verdict": {
+            "enum": [
+              "allow",
+              "deny",
+              "unknown"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          },
+          "reason_code": {
+            "title": "Reason Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "verdict",
+          "reason_code"
+        ],
+        "title": "GateVerdict",
+        "type": "object"
+      }
+    },
+    "gates/tutoring.visual-leak-judge.json": {
+      "id": "tutoring.visual-leak-judge",
+      "kind": "gate",
+      "implementation": "judge",
+      "agent_label": "tutoring",
+      "risk_tier": "protected",
+      "operation": "tutor_visual_leak_check",
+      "input_contract": "visual-leak-judge-input.v3",
+      "output_contract": "leak-judge-verdict.v1",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array"
+              }
+            ]
+          }
+        },
+        "required": [
+          "user"
+        ],
+        "additionalProperties": false
+      },
+      "context_builder_id": "tutoring.visual_leak_judge.context",
+      "prompt": {
+        "id": "tutoring.visual-leak-judge.prompt"
+      },
+      "models": [
+        {
+          "component_id": "tutoring.visual-leak-judge"
+        }
+      ],
+      "accepts_images": false,
+      "requires_agent_switch": true,
+      "verdict_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "verdict": {
+            "enum": [
+              "allow",
+              "deny",
+              "unknown"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          },
+          "reason_code": {
+            "title": "Reason Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "verdict",
+          "reason_code"
+        ],
+        "title": "GateVerdict",
+        "type": "object"
+      },
+      "on_error": "deny",
+      "safety_class": "protected",
+      "provider_output_schema": {
+        "type": "object",
+        "properties": {
+          "leaks": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "leaks"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "gates/tutoring.visual.json": {
+      "id": "tutoring.visual",
+      "kind": "gate",
+      "implementation": "code",
+      "handler_id": "tutoring.visual",
+      "safety_class": "protected",
+      "on_error": "deny",
+      "input_schema": {
+        "type": "object"
+      },
+      "verdict_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "verdict": {
+            "enum": [
+              "allow",
+              "deny",
+              "unknown"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          },
+          "reason_code": {
+            "title": "Reason Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "verdict",
+          "reason_code"
+        ],
+        "title": "GateVerdict",
+        "type": "object"
+      }
+    },
+    "gates/tutoring.visual_schema.json": {
+      "id": "tutoring.visual_schema",
+      "kind": "gate",
+      "implementation": "code",
+      "handler_id": "tutoring.visual_schema",
+      "safety_class": "protected",
+      "on_error": "deny",
+      "input_schema": {
+        "type": "object"
+      },
+      "verdict_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "verdict": {
+            "enum": [
+              "allow",
+              "deny",
+              "unknown"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          },
+          "reason_code": {
+            "title": "Reason Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "verdict",
+          "reason_code"
+        ],
+        "title": "GateVerdict",
+        "type": "object"
+      }
+    },
+    "tools/tutoring.get_attempt_summary.json": {
+      "id": "tutoring.get_attempt_summary",
+      "kind": "tool",
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "additionalProperties": true
+      },
+      "handler_id": "tutoring.get_attempt_summary",
+      "access": "read"
+    },
+    "tools/tutoring.get_task_context.json": {
+      "id": "tutoring.get_task_context",
+      "kind": "tool",
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "additionalProperties": true
+      },
+      "handler_id": "tutoring.get_task_context",
+      "access": "read"
+    },
+    "tools/tutoring.lookup_history.json": {
+      "id": "tutoring.lookup_history",
+      "kind": "tool",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "additionalProperties": true
+      },
+      "handler_id": "tutoring.lookup_history",
+      "access": "read"
+    },
+    "tools/tutoring.widget_guidelines.json": {
+      "id": "tutoring.widget_guidelines",
+      "kind": "tool",
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "const": "unique"
+          },
+          "guidelines": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "status",
+          "guidelines"
+        ],
+        "additionalProperties": false
+      },
+      "handler_id": "tool.static_result",
+      "access": "read"
+    }
+  },
+  "tool_authority": {
+    "companion.intent": [],
+    "evaluation.review-aspects": [],
+    "planning.intake": [],
+    "study.sprint-intake": [],
+    "task.intake": [],
+    "tutoring.image-target": [],
+    "tutoring.turn": [
+      "tutoring.get_task_context",
+      "tutoring.get_attempt_summary",
+      "tutoring.lookup_history",
+      "tutoring.widget_guidelines"
+    ],
+    "companion.scene-switch": [],
+    "tutoring.leak-judge": [],
+    "tutoring.visual-leak-judge": []
+  }
+}

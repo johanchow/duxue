@@ -43,6 +43,9 @@ def _git_sha() -> str:
         return "unknown"
 
 
+from evals.configuration import snapshot_identity as _snapshot_identity
+
+
 def cmd_validate(args) -> int:
     from evals import judge_boundary
     path = Path(args.path) if args.path else (dataset.DATA_DIR / args.category if args.category else dataset.DATA_DIR)
@@ -99,7 +102,7 @@ def cmd_run_conversations(args) -> int:
                  "prompt_digest": spec.prompt.digest, "definition_digest": spec.definition_digest, "variant": args.variant, "samples": args.samples,
                  "judge_version": gate.version, "judge_model": gate.model, "judge_prompt_digest": gate.prompt.digest, "judge_definition_digest": gate.definition_digest,
                  "dataset_hash": conversations.conversations_hash(rows), "review_batch": args.batch,
-                 "git_sha": _git_sha(), "at": datetime.now(timezone.utc).isoformat()},
+                 "config_snapshot": _snapshot_identity(), "git_sha": _git_sha(), "at": datetime.now(timezone.utc).isoformat()},
         "summary": summary, "conversations": results,
     }
     out = Path(args.out) if args.out else dataset.RESULTS_DIR / f"{datetime.now():%Y%m%d-%H%M%S}-conversations.json"
@@ -149,7 +152,7 @@ def cmd_run_episodes(args) -> int:
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps({
         "meta": {"component": "tutoring.turn", "component_version": spec.version, "model": spec.model,
-                 "variant": args.variant, "git_sha": _git_sha(), "at": datetime.now(timezone.utc).isoformat(),
+                 "variant": args.variant, "config_snapshot": _snapshot_identity(), "git_sha": _git_sha(), "at": datetime.now(timezone.utc).isoformat(),
                  "episodes_hash": episodes.episodes_hash(rows), "review_batch": args.batch},
         "summary": summary,
         "episodes": [{"id": row.episode.id, "label_status": row.episode.label_status,
@@ -220,7 +223,7 @@ def cmd_run(args) -> int:
             "samples": args.samples, "dataset_hash": dataset.dataset_hash(selected), "cases_run": len(subset),
             "category": args.category,
             "review_batch": args.batch,
-            "git_sha": _git_sha(), "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "config_snapshot": _snapshot_identity(), "git_sha": _git_sha(), "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         }
         print(report.render_text(meta, summary, results))
         if args.out:
@@ -356,7 +359,27 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("b")
     p.set_defaults(func=cmd_compare)
 
+    for name in ("run", "run-judges", "run-conversations", "run-episodes"):
+        sub.choices[name].add_argument("--config-snapshot", help="Admin导出的完整固定快照，不在线跟随发布")
     args = parser.parse_args(argv)
+    if args.command in {"run", "run-judges", "run-conversations", "run-episodes"}:
+        # Explicit offline selection before any application/model imports.
+        os.environ["AGENT_CONFIG_SOURCE"] = "snapshot"
+        if args.config_snapshot:
+            os.environ["AGENT_CONFIG_SNAPSHOT"] = str(Path(args.config_snapshot).resolve())
+        from app.bootstrap import settings as _settings_module  # noqa: F401 - load deployment credentials
+        from app.agent_specs.configuration import read_snapshot
+        from app.agent_specs.configuration import select_offline_snapshot
+        from app.agent_specs.definitions import use_definitions
+        from evals.configuration import _record
+        record = read_snapshot()
+        snapshot = select_offline_snapshot(record)
+        token = _record.set(record)
+        try:
+            with use_definitions(snapshot.catalog):
+                return args.func(args)
+        finally:
+            _record.reset(token)
     return args.func(args)
 
 

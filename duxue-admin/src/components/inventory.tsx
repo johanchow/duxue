@@ -302,7 +302,7 @@ export function AgentDetail({
         <section aria-label="Agent 完整配置">
           <h2>当前配置</h2>
           {catalog.source !== 'admin-release' && (
-            <p className="notice">尚无兼容发布，当前仅展示初始化默认配置。</p>
+            <p className="notice">尚无已发布配置，当前展示已导入的草稿快照。</p>
           )}
           {definition.models && (
             <>

@@ -37,7 +37,7 @@ def test_catalog_exposes_all_agents_and_workflows(client, monkeypatch):
         assert workflow == _artifact_document(
             load_catalog().spec(key).model_dump(mode="json", by_alias=True)
         )
-    assert data["source"] == "code-baseline"
+    assert data["source"] == "admin-snapshot"
     assert data["counts"]["gates"] == len(definitions.code_gates) + sum(
         u.kind == "gate" for u in definitions.units.values()
     )
@@ -46,7 +46,8 @@ def test_catalog_exposes_all_agents_and_workflows(client, monkeypatch):
 def test_inventory_includes_gate_and_tool_types_and_workflow_descriptions():
     from app.agent_specs.inventory import management_inventory
 
-    data = management_inventory()
+    from app.agent_specs.configuration import snapshot_bundle
+    data = management_inventory(snapshot_bundle())
     assert {item["id"] for item in data["components"]} == set(data["definitions"])
     assert len(data["components"]) == data["counts"]["components"]
     assert (

@@ -13,7 +13,7 @@
 - **版本可追溯**：稳定 ID 与版本随 Trace 记录，便于定位和复现问题、审阅配置变更。
 - **保持业务边界**：配置只描述运行装配；授权、领域规则、状态写入和事务仍由相应代码负责。
 
-默认配置随代码发布；测试环境全部Agent/Gate/Tool已支持通过[配置管理台](design-admin.md)发布受限完整快照，独立管理草稿、校验、隔离调试、不可变版本与回滚。生产仍沿用代码配置，本期不做A/B实验、在线分流或流程编排。配置不得包含任意可执行代码，也不得关闭必经门禁；答案保护和失败安全仍由代码强制。模型输出只是候选，不能直接写入业务事实。
+Agent可编辑配置只在Admin维护；全部Agent/Gate/Tool通过[配置管理台](design-admin.md)发布受限完整快照，独立管理草稿、校验、隔离调试、不可变版本与回滚。生产接入与离线快照模式见[配置管理台设计](design-admin.md#四加载固定快照与恢复)，本期不做A/B实验、在线分流或流程编排。配置不得包含任意可执行代码，也不得关闭必经门禁；答案保护和失败安全仍由代码强制。模型输出只是候选，不能直接写入业务事实。
 
 ## 二、概念与责任
 
@@ -38,13 +38,12 @@ duxue-server/agent_specs/
 │   ├── reflection.json
 │   ├── task-intake.json       # 独立 API 入口，单 Agent Workflow
 │   └── review-aspects.json    # 独立 API 入口，单 Agent Workflow
-├── agents/                # 任务单元；模型、Prompt、变量与工具权限
-├── gates/                 # 裁决点；实现方式、必经规则和失败处理
-├── tools/                 # 工具契约；处理器只使用代码注册的 ID
+├── contracts.json         # 不含可编辑值的代码契约与权限上限
+├── schemas/               # 统一执行结果协议
 └── README.md              # 校验、生成图和发布操作
 ```
 
-目录表达对象类别，文件名使用稳定的业务 ID（例如 `agents/planning.task-intake.json`）；发布文件显式声明 `id`、`kind`，Agent、Gate、Tool 再按各自契约声明输入与结果 Schema。Workflow 用 ID 引用对象，引用必须在启动时解析且唯一。重命名 ID 属于兼容性变更，必须迁移引用和历史观测映射；修改运行配置后由Admin生成完整包digest与不可变R发布记录；不维护组件v号。Git初始化文件的旧version字段仅服务本地定义加载器，导出时移除，不参与Admin契约摘要。密钥、环境端点与儿童数据不进入配置。
+目录表达对象类别，文件名使用稳定的业务 ID（例如 `agents/planning.task-intake.json`）；发布文件显式声明 `id`、`kind`，Agent、Gate、Tool 再按各自契约声明输入与结果 Schema。Workflow 用 ID 引用对象，引用必须在启动时解析且唯一。重命名 ID 属于兼容性变更，必须迁移引用和历史观测映射；修改运行配置后由Admin生成完整包digest与不可变R发布记录；不维护组件v号。生产目录不含Agent业务默认值；发布包中的agents/gates/tools是逻辑路径，并非仓库中的第二份可编辑配置。单测历史夹具不作为运行或Admin初始化来源。密钥、环境端点与儿童数据不进入配置。
 
 Prompt 默认**内嵌在使用它的 Agent 或模型 Gate JSON**，不设必需的 `prompts/` 目录。主模型与备用模型可在同一任务单元内共用 Prompt；只有出现真实的跨单元复用，才引入可引用的共享模板，避免正文复制。
 
