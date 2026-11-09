@@ -5,6 +5,7 @@ from collections.abc import Callable
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from app.agent_specs.execution_trace import transition
 from app.application.commands.memory import SqlAlchemyMemoryFacade
 from app.application.ports.companion import RunInvocation, WorkflowOutcome
 from app.application.ports.tutoring import SafetyScreeningPort
@@ -41,6 +42,7 @@ from app.contexts.tutoring.domain.tutor_permit import (
     TutorPermitPolicy,
 )
 from app.infrastructure.ai import components
+from app.infrastructure.ai.prompts import render_fragment
 from app.infrastructure.messaging.outbox import publish_learning_fact
 from app.infrastructure.observability.telemetry import (
     agent_step_span,
@@ -105,9 +107,8 @@ class TutoringWorkflow:
 
     def _backup_model(self) -> TutorModelPort | None:
         if self.backup_model is None and self._live_turn_model:
-            from app.agent_specs.catalog import load_catalog
             from app.infrastructure.ai.tutor_turn_model import QwenTutorTurnGateway
-            self.backup_model = QwenTutorTurnGateway(spec=load_catalog().component("tutoring", "attempt", 1))
+            self.backup_model = QwenTutorTurnGateway(component_id="tutoring.turn-backup")
         return self.backup_model
 
     def _judge(self) -> LeakJudgePort:
@@ -145,7 +146,9 @@ class TutoringWorkflow:
         return self._media_cache[key]
 
     def invoke(self, invocation: RunInvocation) -> WorkflowOutcome:
-        return self._turn(invocation)
+        from app.agent_specs.release_runtime import pin_release
+        with pin_release():
+            return self._turn(invocation)
 
     def _find_session(self, ward_id: str, session_id: str | None) -> StudySession | None:
         if session_id:
@@ -258,6 +261,7 @@ class TutoringWorkflow:
 
     @traced_agent_node("tutoring.turn")
     def _turn(self, invocation: RunInvocation) -> WorkflowOutcome:
+        transition("tutoring", "START", "tutoring.turn")
         turn = invocation.turn
         policy = PolicyRegistry()
         envelope = ContextBuilder(SqlAlchemyMemoryFacade(self.db)).build(
@@ -351,6 +355,9 @@ class TutoringWorkflow:
             keep_target_images,
         )
 
+        has_images = bool(images or any(row.get("image_urls") for row in window))
+        if has_images:
+            transition("tutoring", "tutoring.turn", "tutoring.image_target", "image_reference")
         target = choose_image_target(
             window, images,
             compare_previous=turn.get("tutoring_intent") == "compare_previous_image",
@@ -386,13 +393,15 @@ class TutoringWorkflow:
             self_review_aspects=review_aspects,
         )
         if target.ids:
-            instruction += "\n只核验本轮附上的图片；历史回复中的结论不能代替核验。若要求检查全部题目，逐题说明检查范围，未检查或看不清的题不得概括为正确。"
+            instruction += render_fragment("tutoring.turn", "image_review")
             if turn.get("tutoring_intent") == "compare_previous_image":
-                instruction += "本轮附图中，最后几张是本轮新图；在它们之前的最多一张是上一张旧图。按孩子要求比较。"
+                instruction += render_fragment("tutoring.turn", "image_compare")
         tools = TutorToolbox(
             self.db, tutoring_session_id=tutor.id if tutor else None, problem=problem_row,
             task_title=task_title, task_active=task_active, window=window,
         )
+        transition("tutoring", "tutoring.image_target" if has_images else "tutoring.turn",
+                   "tutoring.model_loop", "resolved" if has_images else "ready")
         result = self._run_model(
             envelope.model_dump(), instruction, window, images, tools, permit=permit, task_title=task_title,
             problem_summary=judge_problem_summary(
@@ -409,6 +418,8 @@ class TutoringWorkflow:
             failure = vetting.failure
         failed = candidate is None or verdict is None or not verdict.ok
         # 独立输出安全审核看孩子将看到的全部文字：正文与图里的每个字。
+        if result and result.vetting is not None:
+            transition("tutoring", "tutoring.exit_gate", "tutoring.output_safety", "checked")
         with agent_step_span("check", "tutoring.output_safety") as safety_span:
             review_text = None if failed else (
                 candidate.content if visual is None else f"{candidate.content}\n{describe(visual)}"
@@ -429,6 +440,7 @@ class TutoringWorkflow:
                 lessons=candidate.lessons, content=candidate.content,
             )
             outcome.context_snapshot = envelope.trace_snapshot()
+            transition("tutoring", "tutoring.output_safety", "tutoring.result", "fallback_or_readonly")
             record_tutor_turn_result(
                 act=candidate.act, relation=candidate.relation, topic=candidate.topic, depth=candidate.depth, outcome="shown", reason=None,
                 shown=candidate.content,
@@ -437,6 +449,7 @@ class TutoringWorkflow:
         if not failed and not safety and candidate.act == "clarify":
             text = candidate.content
             listed = "\n".join(f"{i}. {item}" for i, item in enumerate(candidate.candidates, start=1))
+            transition("tutoring", "tutoring.output_safety", "tutoring.result", "fallback_or_readonly")
             record_tutor_turn_result(
                 act=candidate.act, relation=candidate.relation, topic=candidate.topic, depth=candidate.depth, outcome="shown", reason=None, shown=text,
             )
@@ -455,6 +468,7 @@ class TutoringWorkflow:
         ward_msg = self._ward_message(tutor, content)
         if failed:
             text = fallback_text(failure, vetting.leak_reason if vetting else None)
+            transition("tutoring", "tutoring.output_safety", "tutoring.result", "fallback_or_readonly")
             record_tutor_turn_result(
                 act=candidate.act if candidate else None, relation=candidate.relation if candidate else None,
                 leak_retried=leak_retried, outcome="fallback", reason=failure or "exit_check", shown=text,
@@ -465,6 +479,7 @@ class TutoringWorkflow:
                 permit=permit, problem_status=problem_row.status if problem_row else None,
             )
         if safety:
+            transition("tutoring", "tutoring.output_safety", "tutoring.result", "fallback_or_readonly")
             record_tutor_turn_result(
                 act=candidate.act, relation=candidate.relation, outcome="blocked", reason="safety", shown=SAFE_TEXT,
             )
@@ -485,10 +500,13 @@ class TutoringWorkflow:
         attempted = False
         evidence_problem_id = None
         if work:
+            transition("tutoring", "tutoring.output_safety", "tutoring.apply_problem", "accepted_work")
             problem_status, hint_index, attempted, evidence_problem_id = self._apply_problem(
                 tutor, problem_row, candidate, verdict, invocation, has_work_input=bool(content.strip() or images),
                 summary=content,
             )
+        transition("tutoring", "tutoring.apply_problem" if work else "tutoring.output_safety",
+                   "tutoring.result", None if work else "fallback_or_readonly")
         if evidence_problem_id:
             ward_msg.problem_id = evidence_problem_id
             ward_msg.evidence_kind = "attempt" if attempted else "question"

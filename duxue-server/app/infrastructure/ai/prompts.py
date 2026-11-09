@@ -49,16 +49,22 @@ class DynamicPrompt:
 def _load_prompts() -> dict[str, PromptTemplate | DynamicPrompt]:
     result: dict[str, PromptTemplate | DynamicPrompt] = {}
     for unit in load_definitions().units.values():
-        definition = unit.prompt
-        prompt = (
-            PromptTemplate(definition.id, definition.template)
-            if definition.delivery == "system" else
-            DynamicPrompt(definition.id, definition.template, definition.variables)
-        )
-        if prompt.id in result:
-            raise ValueError(f"duplicate Prompt ID {prompt.id}")
-        result[prompt.id] = prompt
+        for definition in (unit.prompt, *unit.prompt.fragments.values()):
+            prompt = (
+                PromptTemplate(definition.id, definition.template)
+                if getattr(definition, "delivery", None) == "system" else
+                DynamicPrompt(definition.id, definition.template, definition.variables)
+            )
+            if prompt.id in result:
+                raise ValueError(f"duplicate Prompt ID {prompt.id}")
+            result[prompt.id] = prompt
     return result
 
 
 PROMPTS = _load_prompts()
+
+
+def render_fragment(unit_id: str, name: str, **context) -> str:
+    """Code selects a named instruction; inserted data is never templated again."""
+    fragment = load_definitions().units[unit_id].prompt.fragments[name]
+    return DynamicPrompt(fragment.id, fragment.template, fragment.variables).render(context)

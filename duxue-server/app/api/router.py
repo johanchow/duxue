@@ -7,12 +7,25 @@ migration.
 
 from fastapi import APIRouter
 
-from app.api.v1 import behavior, companion, device_ingestion, gateway_ingestion, evaluation, identity, memory, planning, study, system, tutoring_evidence
-
+from app.api.v1 import (
+    agent_admin,
+    behavior,
+    companion,
+    device_ingestion,
+    evaluation,
+    gateway_ingestion,
+    identity,
+    memory,
+    planning,
+    study,
+    system,
+    tutoring_evidence,
+)
 
 router = APIRouter()
 for context_router in (
     system.router,
+    agent_admin.router,
     identity.router,
     device_ingestion.router,
     gateway_ingestion.router,

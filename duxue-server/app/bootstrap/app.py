@@ -31,9 +31,10 @@ def create_app() -> FastAPI:
     async def stale_write(request: Request, error: StaleDataError):
         return JSONResponse(status_code=409, content={"detail": "数据已变化，请刷新后重试"})
 
+    from uuid import uuid4
+
     from app.application.commands.gateway_ingestion import GatewayError
     from app.contexts.ingestion.domain.gateway import CaptureConflict
-    from uuid import uuid4
 
     @app.exception_handler(GatewayError)
     async def gateway_error(request: Request, error: GatewayError):
@@ -43,6 +44,17 @@ def create_app() -> FastAPI:
     async def capture_conflict(request: Request, error: CaptureConflict):
         return JSONResponse(status_code=409, content={"error_code": "EVIDENCE_CONFLICT", "message": "capture identity conflicts with existing evidence", "request_id": str(uuid4())})
 
+    from app.agent_specs.release_runtime import (
+        AgentConfigurationUnavailable,
+        close_runtime,
+        start_runtime,
+    )
+    @app.exception_handler(AgentConfigurationUnavailable)
+    async def agent_config_unavailable(request: Request, error: AgentConfigurationUnavailable):
+        return JSONResponse(status_code=503, content={"detail": "Agent配置尚未加载，请稍后重试"})
+
+    app.router.add_event_handler("startup", start_runtime)
+    app.router.add_event_handler("shutdown", close_runtime)
     app.include_router(router)
     configure_observability(component=os.getenv("OTEL_SERVICE_COMPONENT", "api"), app=app, engine=engine)
     return app

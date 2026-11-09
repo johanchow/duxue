@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 from pydantic import BaseModel, Field, ValidationError
 
 from app.agent_specs.contexts import build_context
+from app.agent_specs.release_runtime import configured_call
 from app.api.schemas import TaskCandidate, TaskIntakeRequest
 from app.infrastructure.ai import components
 from app.infrastructure.ai.errors import ModelGatewayError
@@ -36,9 +37,11 @@ def _data_url(key: str) -> str:
 
 
 def _prompt(wards: list[dict], request: TaskIntakeRequest) -> str:
-    from app.infrastructure.ai.prompts import PROMPTS, DynamicPrompt
+    from app.agent_specs.definitions import load_definitions
+    from app.infrastructure.ai.prompts import DynamicPrompt
 
-    prompt = PROMPTS["task.intake.prompt.v2"]
+    definition = load_definitions().units["task.intake"].prompt
+    prompt = DynamicPrompt(definition.id, definition.template, definition.variables)
     assert isinstance(prompt, DynamicPrompt)
     return prompt.render({
         "today": datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat(),
@@ -49,6 +52,7 @@ def _prompt(wards: list[dict], request: TaskIntakeRequest) -> str:
 
 
 class TaskIntakeService:
+    @configured_call
     def respond(self, *, wards: list[dict], request: TaskIntakeRequest) -> TaskIntakeResult:
         if not request.content and not request.attachment_keys:
             raise TaskIntakeError("请先输入文字或添加图片")

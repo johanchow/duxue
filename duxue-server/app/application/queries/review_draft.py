@@ -6,12 +6,14 @@ from fastapi import HTTPException
 
 from app.agent_specs.catalog import load_catalog
 from app.agent_specs.contexts import build_context
+from app.agent_specs.release_runtime import configured_call
 from app.agent_specs.runtime import execute_workflow
 from app.application.commands.self_reviews import DIMENSIONS
 from app.infrastructure.ai import components
 from app.infrastructure.ai.errors import ModelGatewayError
 
 
+@configured_call
 def propose_review_aspects(raw_expression: str) -> list[dict]:
     raw = raw_expression.strip()
     if not raw or len(raw) > 4000:

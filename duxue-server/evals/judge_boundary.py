@@ -200,7 +200,7 @@ def main(argv: list[str] | None = None) -> int:
     report = {
         "meta": {"at": datetime.now(timezone.utc).isoformat(), "git_sha": sha,
                  "judge": spec.component_id, "version": spec.version, "model": spec.model,
-                 "prompt_digest": spec.prompt.digest, "dataset_sha256": hashlib.sha256(json.dumps(cases, ensure_ascii=False, sort_keys=True).encode()).hexdigest(),
+                 "prompt_digest": spec.prompt.digest, "definition_digest": spec.definition_digest, "dataset_sha256": hashlib.sha256(json.dumps(cases, ensure_ascii=False, sort_keys=True).encode()).hexdigest(),
                  "student_said": STUDENT_SAID, "task_title": TASK_TITLE, "problem_summary": summary,
                  "context_mode": "reference_transcription" if args.with_reference else "case_snapshot_or_production_current",
                  "label_status": sorted({c.get("label_status", "proposed") for c in cases}),

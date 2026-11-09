@@ -1,0 +1,44 @@
+{
+  "name": "duxue-admin",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=22.0.0 <23"
+  },
+  "scripts": {
+    "dev": "next dev --hostname 127.0.0.1 --port 3021",
+    "build": "next build",
+    "start": "next start --hostname 127.0.0.1 --port 3021",
+    "db:migrate": "tsx scripts/setup.ts migrate",
+    "admin:create": "tsx scripts/setup.ts admin",
+    "test": "tsx --test tests/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "server:dev": "../duxue-server/.venv/bin/python scripts/start_server.py",
+    "setup": "tsx scripts/bootstrap.ts",
+    "test:browser": "tsx scripts/browser-smoke.ts",
+    "test:smoke": "tsx scripts/smoke.ts",
+    "test:inventory": "tsx scripts/table-detail-browser.ts",
+    "user:create": "tsx scripts/setup.ts user",
+    "user:role": "tsx scripts/setup.ts role"
+  },
+  "dependencies": {
+    "@dagrejs/dagre": "3.1.3",
+    "@xyflow/react": "12.12.1",
+    "dotenv": "16.6.1",
+    "next": "16.4.5",
+    "pg": "8.16.3",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@types/node": "22.18.6",
+    "@types/pg": "8.15.5",
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
+    "playwright": "^1.56.1",
+    "prettier": "^3.6.2",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3"
+  },
+  "type": "module"
+}

@@ -9,9 +9,11 @@ from zoneinfo import ZoneInfo
 from pydantic import BaseModel, Field, ValidationError
 
 from app.agent_specs.contexts import build_context
+from app.agent_specs.release_runtime import configured_call
 from app.infrastructure.ai import components
 from app.infrastructure.ai.errors import ModelGatewayError
-from app.infrastructure.ai.utterance_window import WINDOW_RULE, window_text
+from app.infrastructure.ai.prompts import render_fragment
+from app.infrastructure.ai.utterance_window import window_text
 from app.infrastructure.observability.telemetry import record_plan_intake_structure
 
 from .task_intake import TaskIntakeError
@@ -82,7 +84,8 @@ class PlanIntakeResult(BaseModel):
 
 
 def _prompt(ward: dict, tasks: list[dict], request: PlanIntakeInput) -> str:
-    from app.infrastructure.ai.prompts import PROMPTS, DynamicPrompt
+    from app.agent_specs.definitions import load_definitions
+    from app.infrastructure.ai.prompts import DynamicPrompt
 
     draft_items = []
     for item in request.draft_items:
@@ -90,7 +93,8 @@ def _prompt(ward: dict, tasks: list[dict], request: PlanIntakeInput) -> str:
         for identity_field in ("assignment_id", "after_assignment_id", "before_assignment_id"):
             projected.pop(identity_field, None)
         draft_items.append(projected)
-    prompt = PROMPTS["planning.intake.prompt.v6"]
+    definition = load_definitions().units["planning.intake"].prompt
+    prompt = DynamicPrompt(definition.id, definition.template, definition.variables)
     assert isinstance(prompt, DynamicPrompt)
     return prompt.render({
         "current_sprint": request.current_sprint,
@@ -115,29 +119,23 @@ def _recent_utterance_block(request: PlanIntakeInput) -> str:
         prefix = "（前段已按预算省略）" if item.get("leading_omitted") else ""
         lines.append(f"{speaker}{image}：{prefix}{item.get('text', '')}")
     omitted = (
-        f"更早的 {request.omitted_utterance_count} 条原句已按预算省略，未改写成摘要。\n"
-        if request.omitted_utterance_count else
-        "这些是同一条对话到上一轮为止的原句，不是改写。\n"
+        render_fragment("planning.intake", "history_omitted", count=str(request.omitted_utterance_count))
+        if request.omitted_utterance_count else render_fragment("planning.intake", "history_complete")
     )
-    return (
-        WINDOW_RULE + "\n"
-        "同一条对话的最近原句（从旧到新）：\n"
-        + "\n".join(lines)
-        + "\n"
-        + omitted
-        + "学生确认这些原句里列出的事项要创建时，为其中尚未出现在当前任务池的标题各输出一条 kind=create，并把学生明确说出的时长写入 planned_minutes。不要把「都」改写成任务池里已有的其他任务。原句附带的图片会随后按编号给出，直接看图确认；本轮没有新图片时，以这些原句和它们的附图为准。\n"
-        + _current_image_block(current_ids)
-        + "\n"
-    )
+    return render_fragment("planning.intake", "history_block",
+                           rules=render_fragment("planning.intake", "window_rules"),
+                           utterances="\n".join(lines), omitted=omitted,
+                           current_images=_current_image_block(current_ids))
 
 
 def _current_image_block(current_ids: list[int]) -> str:
     if not current_ids:
         return ""
-    return f"本轮学生发来的图片编号：{'、'.join(str(i) for i in current_ids)}。\n"
+    return render_fragment("planning.intake", "current_images", ids="、".join(str(i) for i in current_ids))
 
 
 class PlanIntakeService:
+    @configured_call
     def respond(self, *, ward: dict, tasks: list[dict], request: PlanIntakeInput) -> PlanIntakeResult:
         if not request.content and not request.attachment_keys:
             raise TaskIntakeError("请先输入文字、说话或添加图片")

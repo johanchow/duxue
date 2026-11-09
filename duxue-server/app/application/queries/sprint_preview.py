@@ -4,6 +4,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.agent_specs.catalog import load_catalog
 from app.agent_specs.contexts import build_context
+from app.agent_specs.release_runtime import configured_call
 from app.agent_specs.runtime import execute_workflow
 from app.application.commands.task_intake import TaskIntakeError
 from app.infrastructure.ai import components
@@ -27,6 +28,7 @@ class SprintVoiceCandidate(SprintSpokenDraft):
     needs_clarification: bool = False
 
 
+@configured_call
 def preview_spoken_sprint(request: SprintPreviewRequest) -> dict:
     catalog = load_catalog()
     try:

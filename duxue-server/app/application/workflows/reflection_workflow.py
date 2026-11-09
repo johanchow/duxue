@@ -4,11 +4,12 @@ from datetime import date
 
 from sqlalchemy.orm import Session
 
+from app.agent_specs.release_runtime import configured_call
 from app.application.commands.memory import SqlAlchemyMemoryFacade
+from app.application.commands.self_reviews import confirm_self_review
 from app.application.ports.companion import RunInvocation, WorkflowOutcome
 from app.application.queries.context_builder import ContextBuilder
 from app.contexts.companion.domain.policy import PolicyRegistry
-from app.application.commands.self_reviews import confirm_self_review
 from app.infrastructure.observability.telemetry import traced_agent_node
 from app.infrastructure.persistence.models import Report, SelfReview
 
@@ -17,6 +18,7 @@ _SELF_REVIEW_PROMPT = "如果想复盘今天的学习，请先说说今天学了
 class ReflectionWorkflow:
     def __init__(self, db: Session): self.db = db
     @traced_agent_node("reflection.turn")
+    @configured_call
     def invoke(self, invocation: RunInvocation) -> WorkflowOutcome:
         turn = invocation.turn
         envelope = ContextBuilder(SqlAlchemyMemoryFacade(self.db)).build(

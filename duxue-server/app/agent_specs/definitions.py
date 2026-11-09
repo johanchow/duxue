@@ -1,8 +1,11 @@
-"""Validated, code-owned access to local Agent, Gate and Tool definitions."""
+"""Validated access to code defaults and pinned Admin Agent, Gate and Tool artifacts."""
 
 from __future__ import annotations
 
+import hashlib
 import json
+from contextlib import contextmanager
+from contextvars import ContextVar
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -16,16 +19,15 @@ from app.agent_specs.results import ERROR_CODES, result_validator
 ROOT = Path(__file__).resolve().parents[2] / "agent_specs"
 _TOOL_HANDLERS = {
     "tutoring.get_task_context", "tutoring.get_attempt_summary",
-    "tutoring.lookup_history", "tutoring.widget_guidelines",
+    "tutoring.lookup_history", "tool.static_result",
 }
 
 
-class PromptDefinition(BaseModel):
+class PromptFragmentDefinition(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: str
     template: str
-    delivery: Literal["system", "user"] = "system"
     variables: dict[str, dict] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -34,13 +36,28 @@ class PromptDefinition(BaseModel):
         names = set(re.findall(r"\{\{([a-z_][a-z_0-9]*)\}\}", self.template))
         if names != set(self.variables):
             raise ValueError(f"{self.id}: prompt variables do not match placeholders")
-        if self.delivery == "system" and names:
-            raise ValueError(f"{self.id}: system prompt cannot use caller variables")
         for name, declaration in self.variables.items():
             if declaration != {"type": declaration.get("type"), "binding": f"context.{name}"}:
                 raise ValueError(f"{self.id}: invalid variable binding {name}")
             if declaration["type"] not in {"string", "array", "object"}:
                 raise ValueError(f"{self.id}: invalid variable type {name}")
+        return self
+
+
+class PromptDefinition(PromptFragmentDefinition):
+    delivery: Literal["system", "user"] = "system"
+    fragments: dict[str, PromptFragmentDefinition] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def valid_fragments(self):
+        import re
+        if self.delivery == "system" and self.variables:
+            raise ValueError(f"{self.id}: system prompt cannot use caller variables")
+        if any(not re.fullmatch(r"[a-z][a-z_0-9]*", name) for name in self.fragments):
+            raise ValueError(f"{self.id}: invalid fragment name")
+        ids = [self.id, *(fragment.id for fragment in self.fragments.values())]
+        if len(set(ids)) != len(ids):
+            raise ValueError(f"{self.id}: duplicate Prompt ID")
         return self
 
 
@@ -59,6 +76,8 @@ class ModelDefinition(BaseModel):
 class ModelUnit(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    display_name: str | None = None
+    description: str | None = None
     id: str
     version: str
     kind: Literal["agent", "gate"]
@@ -110,6 +129,7 @@ class ModelUnit(BaseModel):
 class ToolDefinition(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    display_name: str | None = None
     id: str
     version: str
     kind: Literal["tool"]
@@ -118,11 +138,30 @@ class ToolDefinition(BaseModel):
     output_schema: dict
     handler_id: str
     access: Literal["read", "write"]
+    static_result: dict | None = None
+
+    @model_validator(mode="after")
+    def valid_static_result(self):
+        for schema in (self.input_schema, self.output_schema):
+            Draft202012Validator.check_schema(schema)
+        if self.handler_id == "tool.static_result":
+            if self.access != "read" or self.static_result is None:
+                raise ValueError(f"{self.id}: static Tool requires a read-only result")
+            if self.input_schema.get("type") != "object" or self.output_schema.get("type") != "object":
+                raise ValueError(f"{self.id}: static Tool schemas must describe objects")
+            # Use ValueError so malformed config always has a Pydantic validation error.
+            if not Draft202012Validator(self.output_schema).is_valid(self.static_result):
+                raise ValueError(f"{self.id}: static result violates output_schema")
+        elif self.static_result is not None:
+            raise ValueError(f"{self.id}: static_result requires the static handler")
+        return self
 
 
 class CodeGateDefinition(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    display_name: str | None = None
+    description: str | None = None
     id: str
     version: str
     kind: Literal["gate"]
@@ -136,6 +175,8 @@ class CodeGateDefinition(BaseModel):
 
 class CodeAgentDefinition(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    display_name: str | None = None
+    description: str | None = None
     id: str
     version: str
     kind: Literal["agent"]
@@ -150,6 +191,7 @@ class DefinitionCatalog:
     def __init__(self, root: Path):
         result_validator()
         self.root = root
+        self.artifact_digest: str | None = None
         self.units: dict[str, ModelUnit] = {}
         self.tools: dict[str, ToolDefinition] = {}
         self.code_gates: dict[str, CodeGateDefinition] = {}
@@ -201,7 +243,12 @@ class DefinitionCatalog:
             Draft202012Validator.check_schema(tool.output_schema)
             self.tools[tool.id] = tool
         from app.agent_specs.contracts import has_python_contract
+        prompt_ids: set[str] = set()
         for unit in self.units.values():
+            for prompt in (unit.prompt, *unit.prompt.fragments.values()):
+                if prompt.id in prompt_ids:
+                    raise ValueError(f"duplicate Prompt ID {prompt.id}")
+                prompt_ids.add(prompt.id)
             if unit.context_builder_id not in BUILDERS:
                 raise ValueError(f"{unit.id}: unknown Context Builder {unit.context_builder_id}")
             if unit.context_builder_id != unit.id.replace("-", "_") + ".context":
@@ -232,7 +279,47 @@ class DefinitionCatalog:
         except KeyError as error:
             raise KeyError(f"unknown AI component: {component_id}") from error
 
+    def definition_digest(self, component_id: str) -> str:
+        unit, _ = self.component(component_id)
+        payload = {"unit": unit.model_dump(mode="json"),
+                   "tools": [self.tools[tool_id].model_dump(mode="json") for tool_id in unit.tools]}
+        return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+
 
 @lru_cache(maxsize=1)
-def load_definitions() -> DefinitionCatalog:
+def base_definitions() -> DefinitionCatalog:
     return DefinitionCatalog(ROOT)
+
+
+_current: ContextVar[DefinitionCatalog | None] = ContextVar("agent_definitions", default=None)
+
+
+def load_definitions() -> DefinitionCatalog:
+    return active_definitions() or base_definitions()
+
+
+def pinned_definitions() -> DefinitionCatalog | None:
+    return _current.get()
+
+
+def active_definitions() -> DefinitionCatalog | None:
+    pinned = _current.get()
+    if pinned is not None:
+        return pinned
+    # Lazy access avoids startup import cycles. One runtime owns the atomic
+    # published pointer; standalone model adapters also see its active version.
+    import sys
+    module = sys.modules.get("app.agent_specs.release_runtime")
+    runtime = getattr(module, "runtime", None)
+    if runtime is not None:
+        return runtime.definitions()
+    return None
+
+
+@contextmanager
+def use_definitions(definitions: DefinitionCatalog):
+    token = _current.set(definitions)
+    try:
+        yield
+    finally:
+        _current.reset(token)

@@ -1,0 +1,63 @@
+name: Deploy Admin
+on:
+  push:
+    branches: [main]
+    paths: ['duxue-admin/**', 'duxue-server/app/**', 'duxue-server/agent_specs/**', 'duxue-server/requirements.txt', '.github/workflows/admin-deploy.yml', '.github/workflows/admin-ci.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: write
+concurrency:
+  group: admin-deploy-production
+  cancel-in-progress: false
+jobs:
+  test:
+    uses: ./.github/workflows/admin-ci.yml
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: duxue-admin
+          file: duxue-admin/Dockerfile
+          push: true
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          tags: ghcr.io/${{ github.repository_owner }}/duxue-admin:${{ github.sha }}
+          cache-from: type=gha,scope=admin
+          cache-to: type=gha,mode=max,scope=admin
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: duxue-admin/Dockerfile.executor
+          push: true
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          tags: ghcr.io/${{ github.repository_owner }}/duxue-agent-executor:${{ github.sha }}
+          cache-from: type=gha,scope=agent-executor
+          cache-to: type=gha,mode=max,scope=agent-executor
+      - name: Deploy tested images to ECS
+        env:
+          DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+          DEPLOY_SERVER_HOST: ${{ secrets.DEPLOY_SERVER_HOST }}
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
+          GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
+          ADMIN_IMAGE: ghcr.io/${{ github.repository_owner }}/duxue-admin:${{ github.sha }}
+          EXECUTOR_IMAGE: ghcr.io/${{ github.repository_owner }}/duxue-agent-executor:${{ github.sha }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s' "$DEPLOY_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          trap 'rm -f ~/.ssh/id_ed25519' EXIT
+          scp -o StrictHostKeyChecking=accept-new duxue-admin/deploy/docker-compose.yml duxue-admin/deploy/deploy.sh "duxue@$DEPLOY_SERVER_HOST:/home/duxue/duxue-admin/"
+          printf '%s' "$GHCR_PULL_TOKEN" | ssh -o StrictHostKeyChecking=accept-new "duxue@$DEPLOY_SERVER_HOST" "docker login ghcr.io -u '$GHCR_USERNAME' --password-stdin"
+          ssh -o StrictHostKeyChecking=accept-new "duxue@$DEPLOY_SERVER_HOST" "sh /home/duxue/duxue-admin/deploy.sh '$ADMIN_IMAGE' '$EXECUTOR_IMAGE'"
+      - name: Verify public HTTPS
+        run: curl --fail --retry 10 --retry-delay 5 https://admin.duxuelai.xyz/api/health

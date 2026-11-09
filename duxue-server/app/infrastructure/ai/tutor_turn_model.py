@@ -16,8 +16,9 @@ class QwenTutorTurnGateway:
     """``spec`` / ``settings_obj`` exist for the offline evaluation to try a named candidate
     in its own process; production always uses the registered component."""
 
-    def __init__(self, spec=None, settings_obj=None):
+    def __init__(self, spec=None, settings_obj=None, component_id="tutoring.turn"):
         self._spec = spec
+        self._component_id = component_id
         self._settings = settings_obj
 
     def complete(
@@ -29,7 +30,7 @@ class QwenTutorTurnGateway:
                              observations=observations, repair_error=repair_error,
                              recent_utterances=recent_utterances, current_images=current_images)
         return components.invoke_agent_component(
-            spec=self._spec or load_catalog().component("tutoring", "attempt"), user=user,
+            spec=self._spec or components.COMPONENTS.get(self._component_id), user=user,
             settings_obj=self._settings,
         ).unwrap()
 

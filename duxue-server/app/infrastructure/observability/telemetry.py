@@ -361,6 +361,8 @@ class _GrafanaSpanExporter:
 
 def set_observation_payload(span: Any, *, input: Any = None, output: Any = None) -> None:
     """Set Langfuse's input/output on an explicitly created business span."""
+    from app.agent_specs.execution_trace import observe_payload
+    observe_payload(span, input=input, output=output)
     if input is not None:
         span.set_attribute("langfuse.observation.input", _langfuse_payload(input))
     if output is not None:
@@ -504,12 +506,14 @@ def agent_step_span(kind: str, name: str, **attributes: Any) -> Iterator[Any]:
                     **_attrs(**attributes)},
         record_exception=False, set_status_on_exception=False,
     ) as span:
-        try:
-            yield span
-        except Exception as error:
-            if "langfuse.observation.output" not in (getattr(span, "attributes", None) or {}):
-                set_observation_payload(span, output={"error_type": type(error).__name__})
-            raise
+        from app.agent_specs.execution_trace import observe_span
+        with observe_span(identity, span):
+            try:
+                yield span
+            except Exception as error:
+                if "langfuse.observation.output" not in (getattr(span, "attributes", None) or {}):
+                    set_observation_payload(span, output={"error_type": type(error).__name__})
+                raise
 
 
 def traced_agent_node(name: str):
@@ -642,6 +646,8 @@ def record_tutor_turn_result(
             result_span.set_attribute("tutor.visual.kind", visual_kind)
         if visual_dropped:
             result_span.set_attribute("tutor.visual.dropped", visual_dropped)
+    from app.agent_specs.execution_trace import transition
+    transition("tutoring", "tutoring.result", "END")
     _span_event("tutor.turn.result", attrs)
     _audit_logger.info("tutor.turn.result", extra={"telemetry": attrs})
     _write_debug_audit("turn_result", attrs, shown)
@@ -769,6 +775,7 @@ def agent_workflow_span(*, agent_type: str, run_id: str, thread_id: str) -> Iter
 def model_call_span(*, operation: str, model: str, agent_type: str | None = None,
                     component_id: str | None = None, component_version: str | None = None,
                     prompt_id: str | None = None, model_source: str | None = None,
+                    definition_digest: str | None = None,
                     input_payload: Any = None) -> Iterator[dict[str, Any]]:
     started = perf_counter()
     if component_id is not None:
@@ -786,6 +793,8 @@ def model_call_span(*, operation: str, model: str, agent_type: str | None = None
         "llm.operation": operation, "llm.model": model, "agent.type": agent_type,
         "ai.component_id": component_id, "ai.component_version": component_version,
         "ai.prompt_id": prompt_id,
+        "ai.definition_digest": definition_digest,
+        "langfuse.observation.metadata.definition_digest": definition_digest,
         "ai.model_source": model_source,
         # These are mapping keys, not prompt/completion payloads. Langfuse
         # also exports the controlled Agent spans enclosing this generation.

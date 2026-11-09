@@ -1,0 +1,9 @@
+node_modules
+.next
+.local
+.env*
+*.pem
+*.key
+*.log
+tests
+public/legacy

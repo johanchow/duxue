@@ -301,7 +301,9 @@ class AgentCatalog:
 
     def step(self, kind: str, trace_name: str) -> StepIdentity:
         try:
-            return self._steps[kind, trace_name]
+            identity = self._steps[kind, trace_name]
+            digest = load_definitions().artifact_digest
+            return identity.model_copy(update={"unit_version":digest,"version":digest}) if digest else identity
         except KeyError as error:
             raise ValueError(f"unregistered agent step: {kind}/{trace_name}") from error
 
@@ -316,7 +318,9 @@ class AgentCatalog:
         return COMPONENTS.get(component_id)
 
     def component_identity(self, component_id: str) -> StepIdentity:
-        return self._components[component_id]
+        identity = self._components[component_id]
+        digest = load_definitions().artifact_digest
+        return identity.model_copy(update={"unit_version":digest,"version":digest}) if digest else identity
 
     def require_edge(self, agent_id: str, source: str, target: str,
                      condition: str | None = None) -> None:
@@ -336,6 +340,15 @@ class AgentCatalog:
                 "version": component.version,
                 "model": component.model,
                 "prompt_id": component.prompt.id,
+                "definition_digest": component.definition_digest,
+                "prompt_fragments": {
+                    name: fragment.model_dump(mode="json") for name, fragment in
+                    load_definitions().component(component.component_id)[0].prompt.fragments.items()
+                },
+                "tools": {
+                    tool_id: load_definitions().tools[tool_id].model_dump(mode="json") for tool_id in
+                    load_definitions().component(component.component_id)[0].tools
+                },
                 "prompt_text": getattr(component.prompt, "text", getattr(component.prompt, "template", None)),
                 "prompt_builder": getattr(component.prompt, "builder", None),
                 "input_contract": component.input_contract,

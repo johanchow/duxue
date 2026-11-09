@@ -10,7 +10,7 @@
 | [tutoring.md](tutoring.md) | 答疑、答案保护、配图、发音、离线评测 |
 | [evaluation.md](evaluation.md) | 今日总结、复盘意图、记忆边界 |
 | [app.md](app.md) | 登录、Ward 续期、首页、错误文案 |
-| [platform.md](platform.md) | 服务端分层、Agent 配置、模型与环境 |
+| [platform.md](platform.md) | 服务端分层、Agent 配置与管理台、模型与环境 |
 | [observability.md](observability.md) | Grafana、Langfuse、评测运行 |
 
 ## 产品闭环状态

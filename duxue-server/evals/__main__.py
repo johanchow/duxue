@@ -15,7 +15,7 @@ from datetime import datetime, timezone  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 # No app import at module level: `validate` must work without runtime secrets.
-from evals import dataset, episodes, conversations  # noqa: E402
+from evals import conversations, dataset, episodes  # noqa: E402
 
 COMPONENTS = ("tutoring.turn", "companion.intent")
 VARIANT_NAMES = ("baseline", "drop-no-guess-clause")  # kept in sync with evals.variants.VARIANTS (tested)
@@ -96,8 +96,8 @@ def cmd_run_conversations(args) -> int:
     payload = {
         "meta": {"type": "conversation_replay", "replay_mode": "fixed_history",
                  "component": spec.component_id, "component_version": spec.version, "model": spec.model,
-                 "prompt_digest": spec.prompt.digest, "variant": args.variant, "samples": args.samples,
-                 "judge_version": gate.version, "judge_model": gate.model, "judge_prompt_digest": gate.prompt.digest,
+                 "prompt_digest": spec.prompt.digest, "definition_digest": spec.definition_digest, "variant": args.variant, "samples": args.samples,
+                 "judge_version": gate.version, "judge_model": gate.model, "judge_prompt_digest": gate.prompt.digest, "judge_definition_digest": gate.definition_digest,
                  "dataset_hash": conversations.conversations_hash(rows), "review_batch": args.batch,
                  "git_sha": _git_sha(), "at": datetime.now(timezone.utc).isoformat()},
         "summary": summary, "conversations": results,
@@ -215,6 +215,7 @@ def cmd_run(args) -> int:
         summary = report.summarize(results)
         meta = {
             "component": component, "component_version": spec.version, "model": spec.model,
+            "definition_digest": spec.definition_digest,
             "variant": args.variant, "prompt_digest": spec.prompt.digest[:12] if hasattr(spec.prompt, "digest") else None,
             "samples": args.samples, "dataset_hash": dataset.dataset_hash(selected), "cases_run": len(subset),
             "category": args.category,

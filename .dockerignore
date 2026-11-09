@@ -1,0 +1,12 @@
+# Root build context is only used by the private Agent executor image.
+**
+!duxue-server/
+!duxue-server/requirements.txt
+!duxue-server/app/
+!duxue-server/app/**
+!duxue-server/agent_specs/
+!duxue-server/agent_specs/**
+!duxue-admin/
+!duxue-admin/Dockerfile.executor
+**/__pycache__
+**/*.pyc
