@@ -1,5 +1,6 @@
 """Real conversation snapshots stay fixed across checkpoints and samples."""
 import copy
+
 import pytest
 from evals import dataset
 from evals.__main__ import main
@@ -38,10 +39,10 @@ def test_invalid_references_and_unknown_fields_are_rejected(change):
 
 
 def test_fixed_history_and_snapshot_permit():
-    from evals.conversations import load_conversations, turn_case
     from evals.conversation_runner import run_conversations
+    from evals.conversations import load_conversations, turn_case
     from evals.runner import Backends
-    from tests.support.fakes import StaticTutorModel, StaticLeakJudge, tutor_raw
+    from tests.support.fakes import StaticLeakJudge, StaticTutorModel, tutor_raw
     row = load_conversations()[0]
     first, second = [turn_case(row, c) for c in row.checks if c.component == "tutoring.turn"]
     assert first.student_said == "等于八。"
@@ -62,8 +63,8 @@ def test_fixed_history_and_snapshot_permit():
 
 
 def test_fixed_gate_preserves_input_and_reports_wrong_reason_and_unavailable():
-    from evals.conversations import load_conversations
     from evals.conversation_runner import run_conversations
+    from evals.conversations import load_conversations
     from evals.runner import Backends
     row = load_conversations()[0]
     row.checks = [row.checks[3]]
@@ -116,3 +117,113 @@ def test_original_rejected_attempts_remain_separate_from_visible_history_and_new
     gates = [check for check in row.checks if check.component == "tutoring.leak-judge"]
     assert len(gates) == 3
     assert all(not check.expect.leaks and check.expect.answer_protected is False for check in gates)
+
+
+def test_v1_cannot_silently_claim_multimodal_support_and_v2_preserves_images():
+    from evals.conversations import ConversationEval, turn_case
+    row = _row()
+    row['messages'][0]['images'] = ['img-aaaaaaaaaaaa.jpg']
+    with pytest.raises(ValueError):
+        ConversationEval.model_validate(row)
+    row['schema_version'] = 'conversation-eval.v2'
+    parsed = ConversationEval.model_validate(row)
+    case = turn_case(parsed, parsed.checks[0])
+    assert case.history[0].images == ['img-aaaaaaaaaaaa.jpg']
+
+
+def test_real_image_incident_preserves_original_error_and_new_target_expectations():
+    from evals.conversations import load_conversations, turn_case
+    row = next(row for row in load_conversations() if row.id == 'new-image-review-conversation')
+    assert row.schema_version == 'conversation-eval.v2'
+    assert len(row.messages) == 8 and len(row.attempts) == 6
+    assert row.messages[0].images != row.messages[2].images
+    for check in [check for check in row.checks if check.component == 'tutoring.turn']:
+        case = turn_case(row, check)
+        assert case.expect.selected_images
+        assert any(message.images for message in case.history) or case.images
+    repair = next(attempt for attempt in row.attempts if attempt.id == 'attempt-1-1')
+    assert repair.shown_to_user and not repair.gate.observed_verdict.leaks
+    assert repair.repair_feedback is None and repair.repair_feedback_status == 'unavailable'
+    check = next(check for check in row.checks if getattr(check, 'attempt_id', None) == repair.id)
+    assert check.expect.leaks and check.expect.reason == 'premature_conclusion'
+
+
+def test_v2_preserves_picture_only_messages_without_inventing_student_text():
+    from evals.conversations import ConversationEval
+    row = _row()
+    row['schema_version'] = 'conversation-eval.v2'
+    row['messages'][0]['content'] = ''
+    row['messages'][0]['images'] = ['img-aaaaaaaaaaaa.jpg']
+    parsed = ConversationEval.model_validate(row)
+    assert parsed.messages[0].content == ''
+
+@pytest.mark.parametrize('change', ['v1', 'no_retry', 'fabricated'])
+def test_unavailable_original_feedback_cannot_hide_observed_or_fabricated_data(change):
+    from evals.conversations import ConversationEval
+    row = dataset.read_object(dataset.DATA_DIR / 'conversation_replay/new-image-review-conversation.json')
+    retry = next(a for a in row['attempts'] if a.get('repair_feedback_status') == 'unavailable')
+    if change == 'v1':
+        row['schema_version'] = 'conversation-eval.v1'
+        for m in row['messages']: m.pop('images', None)
+        for a in row['attempts']: a['gate']['input'].pop('images', None)
+        for c in row['checks']: c['expect'].pop('selected_images', None)
+    elif change == 'no_retry':
+        retry['retry_of'] = None
+    else:
+        retry['repair_feedback'] = 'invented feedback'
+    with pytest.raises(ValueError, match='unavailable feedback'):
+        ConversationEval.model_validate(row)
+
+
+def test_image_context_scope_checks_real_targets_without_running_math_or_changing_history(tmp_path):
+    from evals.conversation_runner import run_image_context
+    from evals.conversations import load_conversations
+    row = next(r for r in load_conversations() if r.id == 'new-image-review-conversation')
+    original = row.model_dump()
+    for i, name in enumerate(dict.fromkeys(n for m in row.messages for n in m.images)):
+        (tmp_path / name).write_bytes(str(i).encode())
+    calls = []
+    def select(window, content):
+        calls.append(content)
+        return {'target_image_ids': [2], 'ambiguous': False}
+    result = run_image_context([row], samples=1, assets_dir=tmp_path, select=select)[0]
+    assert len(result['checks']) == 3
+    assert len(result['excluded_checks']) == 6
+    assert all(s['passed'] for c in result['checks'] for s in c['samples'])
+    assert calls == ['这不是同一个图片，这是一个新的图片。']
+    assert row.model_dump() == original
+    assert all(s['semantic_status'] == 'image_context_only' for c in result['checks'] for s in c['samples'])
+
+
+def test_image_context_scope_does_not_hide_wrong_selection_or_missing_assets(tmp_path):
+    from evals.conversation_runner import run_image_context
+    from evals.conversations import load_conversations
+    row = next(r for r in load_conversations() if r.id == 'new-image-review-conversation')
+    for i, name in enumerate(dict.fromkeys(n for m in row.messages for n in m.images)):
+        (tmp_path / name).write_bytes(str(i).encode())
+    result = run_image_context([row], assets_dir=tmp_path, samples=1,
+                              select=lambda *_: {'target_image_ids': [1], 'ambiguous': False})[0]
+    correction = result['checks'][1]['samples'][0]
+    assert not correction['passed'] and 'selected_images_mismatch' in correction['failures']
+    (tmp_path / row.messages[2].images[0]).unlink()
+    result = run_image_context([row], assets_dir=tmp_path, samples=1)[0]
+    assert not result['checks'][0]['samples'][0]['passed']
+    assert result['checks'][0]['samples'][0]['failures'][0].startswith('missing_asset:')
+
+
+def test_image_context_scope_detects_prior_assistant_pollution_even_with_correct_pixels(tmp_path, monkeypatch):
+    from evals.conversation_runner import run_image_context
+    from evals.conversations import load_conversations
+    from app.application.workflows import image_target
+    row = next(r for r in load_conversations() if r.id == 'new-image-review-conversation')
+    row.checks = [row.checks[0]]
+    for i, name in enumerate(dict.fromkeys(n for m in row.messages for n in m.images)):
+        (tmp_path / name).write_bytes(str(i).encode())
+    original = image_target.prepare_images
+    def polluted(window, images, **kwargs):
+        prepared = original(window, images, **kwargs)
+        prepared.window.append(next(view for view in window if view['author'] == 'companion'))
+        return prepared
+    monkeypatch.setattr(image_target, 'prepare_images', polluted)
+    result = run_image_context([row], assets_dir=tmp_path, samples=1)[0]
+    assert result['checks'][0]['samples'][0]['failures'] == ['prior_image_reply_retained']

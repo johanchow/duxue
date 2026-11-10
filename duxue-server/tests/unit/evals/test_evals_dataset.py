@@ -3,7 +3,6 @@
 import json
 
 import pytest
-
 from evals import dataset, episodes
 from evals.__main__ import main
 from evals.schema import EvalCase
@@ -32,7 +31,7 @@ def test_each_category_owns_its_cases_and_multi_turn_is_separate():
     }
     for category, count in expected.items():
         assert len(dataset.load_cases(dataset.DATA_DIR / category)) == count
-    assert len(episodes.load_episodes()) == 4
+    assert len(episodes.load_episodes()) == 5
     assert all(row.label_status == "proposed" for row in episodes.load_episodes())
     assert episodes.validate_episodes(episodes.load_episodes()) == []
 

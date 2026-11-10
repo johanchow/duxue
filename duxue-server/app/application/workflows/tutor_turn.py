@@ -10,15 +10,6 @@ import json
 from dataclasses import dataclass
 from typing import Annotated, Literal, Protocol
 
-from pydantic import (
-    BaseModel,
-    ConfigDict,
-    Field,
-    ValidationError,
-    field_validator,
-    model_validator,
-)
-
 from app.application.workflows.pronunciation_guidance import (
     LessonBody,
     forbidden_text,
@@ -31,6 +22,14 @@ from app.application.workflows.tutor_visual import (
     drop_reason,
 )
 from app.contexts.tutoring.domain.tutor_permit import TutorPermit
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 CONTRACT_ID = "tutor-turn.v4"
 
@@ -190,6 +189,9 @@ class PronouncePayload(BaseModel):
         return self.lessons[0]
 
 
+from app.application.workflows.image_review import ImageReview
+
+
 class TutorTurnCandidate(BaseModel):
     """tutor-turn.v4.  Required: ``act`` and ``content``.  Everything else is optional
     and lives in the sub-object that belongs to one act, so no field can contradict
@@ -207,6 +209,7 @@ class TutorTurnCandidate(BaseModel):
     clarify: ClarifyPayload | None = None
     pronounce: PronouncePayload | None = None
     # 配图是可选的展示增强：非法或不适用时整张丢弃并记下原因，绝不让候选整体失败。
+    image_review: ImageReview | None = None
     visual: Visual | None = None
     visual_dropped: str | None = Field(default=None, exclude=True)
     visual_error: str | None = Field(default=None, exclude=True)

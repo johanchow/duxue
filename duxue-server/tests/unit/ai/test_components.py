@@ -4,7 +4,6 @@ import json
 from types import SimpleNamespace
 
 import pytest
-
 from app.infrastructure.ai import components
 from app.infrastructure.ai.components import (
     COMPONENTS,
@@ -110,14 +109,13 @@ def test_invoke_sends_static_prompt_as_system_and_uses_spec(spans):
 
 
 def test_real_generation_export_keeps_sent_messages_prompt_id_and_raw_reply(monkeypatch):
+    from app.infrastructure.observability import telemetry
     from langfuse._client.span_exporter import LangfuseTransformingSpanExporter
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import SimpleSpanProcessor
     from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
         InMemorySpanExporter,
     )
-
-    from app.infrastructure.observability import telemetry
 
     monkeypatch.setenv("OTEL_SDK_DISABLED", "false")
     source = InMemorySpanExporter()
@@ -219,10 +217,10 @@ def test_tutoring_components_keep_existing_success_and_failure_boundaries(monkey
     )
     assert tutor_turn_model.QwenLeakJudge().leaks(
         text="你写的答案对吗？", task_title=None, problem_summary=None,
-        images=["data:image/jpeg;base64,authorized"],
+        images=["data:image/jpeg;base64,YXV0aG9yaXplZA=="],
     ) == {"leaks": False, "reason": "none", "answer_protected": True}
     assert isinstance(captured["user"], list)
-    assert captured["user"][-1]["image_url"]["url"] == "data:image/jpeg;base64,authorized"
+    assert captured["user"][-1]["image_url"]["url"] == "data:image/jpeg;base64,YXV0aG9yaXplZA=="
 
     monkeypatch.setattr(
         tutor_turn_model.components, "invoke_json_component",

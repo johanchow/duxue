@@ -7,15 +7,15 @@ import os
 # The evaluation must never export traces or child content to the observability backend.
 os.environ["OTEL_SDK_DISABLED"] = "true"
 
-import argparse  # noqa: E402
-import json  # noqa: E402
-import subprocess  # noqa: E402
-import sys  # noqa: E402
-from datetime import datetime, timezone  # noqa: E402
-from pathlib import Path  # noqa: E402
+import argparse
+import json
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
 
 # No app import at module level: `validate` must work without runtime secrets.
-from evals import conversations, dataset, episodes  # noqa: E402
+from evals import conversations, dataset, episodes
 
 COMPONENTS = ("tutoring.turn", "companion.intent")
 VARIANT_NAMES = ("baseline", "drop-no-guess-clause")  # kept in sync with evals.variants.VARIANTS (tested)
@@ -27,7 +27,7 @@ def _load_app(*modules: str):
 
     try:
         return [importlib.import_module(name) for name in modules]
-    except Exception as error:  # noqa: BLE001 - ConfigurationError lives inside the app package
+    except Exception as error:
         if type(error).__name__ == "ConfigurationError":
             raise SystemExit(f"缺少运行配置，无法调用应用代码：{error}") from error
         raise
@@ -91,16 +91,30 @@ def cmd_run_conversations(args) -> int:
         return 2
     live, runner, variants = _load_app("evals.live", "evals.conversation_runner", "evals.variants")
     live.preflight()
-    spec = variants.resolve_spec("tutoring.turn", model=args.model, variant=args.variant)
     from app.infrastructure.ai.components import COMPONENTS as registry
-    gate = registry.get("tutoring.leak-judge")
-    results = runner.run_conversations(rows, live.build_backends(spec), samples=args.samples)
+    scope = args.scope
+    if scope == 'image-context':
+        if args.model or args.variant != 'baseline':
+            print('image-context使用快照内选图Agent，不支持主模型variant', file=sys.stderr)
+            return 2
+        spec = registry.get('tutoring.image-target')
+        results = runner.run_image_context(rows, samples=args.samples)
+        gate_meta = {}
+    else:
+        spec = variants.resolve_spec("tutoring.turn", model=args.model, variant=args.variant)
+        gate = registry.get("tutoring.leak-judge")
+        results = runner.run_conversations(rows, live.build_backends(spec), samples=args.samples)
+        gate_meta = {"judge_version": gate.version, "judge_model": gate.model,
+                     "judge_prompt_digest": gate.prompt.digest, "judge_definition_digest": gate.definition_digest}
     summary = runner.summarize(results)
+    if scope == 'image-context':
+        summary['excluded_checks'] = sum(len(row['excluded_checks']) for row in results)
+        summary['note'] = '仅验证选图与历史隔离；未执行主回复、数学批改及Judge准确率检查。'
     payload = {
-        "meta": {"type": "conversation_replay", "replay_mode": "fixed_history",
+        "meta": {"type": "conversation_replay", "replay_mode": "fixed_history", "scope": scope,
                  "component": spec.component_id, "component_version": spec.version, "model": spec.model,
                  "prompt_digest": spec.prompt.digest, "definition_digest": spec.definition_digest, "variant": args.variant, "samples": args.samples,
-                 "judge_version": gate.version, "judge_model": gate.model, "judge_prompt_digest": gate.prompt.digest, "judge_definition_digest": gate.definition_digest,
+                 **gate_meta,
                  "dataset_hash": conversations.conversations_hash(rows), "review_batch": args.batch,
                  "config_snapshot": _snapshot_identity(), "git_sha": _git_sha(), "at": datetime.now(timezone.utc).isoformat()},
         "summary": summary, "conversations": results,
@@ -153,13 +167,19 @@ def cmd_run_episodes(args) -> int:
     out.write_text(json.dumps({
         "meta": {"component": "tutoring.turn", "component_version": spec.version, "model": spec.model,
                  "variant": args.variant, "config_snapshot": _snapshot_identity(), "git_sha": _git_sha(), "at": datetime.now(timezone.utc).isoformat(),
-                 "episodes_hash": episodes.episodes_hash(rows), "review_batch": args.batch},
+                 "episodes_hash": episodes.episodes_hash(selected), "review_batch": args.batch},
         "summary": summary,
         "episodes": [{"id": row.episode.id, "label_status": row.episode.label_status,
                       "samples": [{"passed": sample.passed, "status": sample.status,
                                    "stopped_at": sample.stopped_at,
                                    "turns": [{"student_said": said, "outcome": step.observation.outcome,
                                               "content": step.observation.content, "failures": step.failures,
+                                              "delivered_content": step.observation.delivered_content or step.observation.content,
+                                              "selected_images": step.observation.selected_images,
+                                              "selected_image_refs": step.observation.selected_image_refs,
+                                              "image_review": step.observation.image_review,
+                                              "review_conclusion": step.observation.review_conclusion,
+                                              "semantic_status": "pending_review",
                                               "answer_protected": step.observation.answer_protected,
                                               "visual_kind": step.observation.visual_kind,
                                               "visual_dropped": step.observation.visual_dropped}
@@ -170,7 +190,7 @@ def cmd_run_episodes(args) -> int:
     if not summary["by_status"]["confirmed"]["episodes"]:
         print("没有 confirmed episode；结果仅供观察，不构成发布门槛。")
     print(f"结果：{out}")
-    return 0
+    return 1 if any(not sample.passed for row in results for sample in row.samples) else 0
 
 
 def cmd_run(args) -> int:
@@ -327,6 +347,8 @@ def main(argv: list[str] | None = None) -> int:
     p.set_defaults(func=cmd_run_judges)
 
     p = sub.add_parser("run-conversations", help="固定原始历史回放真实对话及门禁候选（联网）")
+    p.add_argument("--scope", choices=('full', 'image-context'), default='full',
+                   help="image-context仅执行真实选图和历史隔离，不执行主回复/数学审核")
     p.add_argument("--path")
     p.add_argument("--samples", type=int, default=3)
     p.add_argument("--model")
@@ -367,10 +389,12 @@ def main(argv: list[str] | None = None) -> int:
         os.environ["AGENT_CONFIG_SOURCE"] = "snapshot"
         if args.config_snapshot:
             os.environ["AGENT_CONFIG_SNAPSHOT"] = str(Path(args.config_snapshot).resolve())
-        from app.bootstrap import settings as _settings_module  # noqa: F401 - load deployment credentials
-        from app.agent_specs.configuration import read_snapshot
-        from app.agent_specs.configuration import select_offline_snapshot
+        from app.agent_specs.configuration import read_snapshot, select_offline_snapshot
         from app.agent_specs.definitions import use_definitions
+        from app.bootstrap import (
+            settings as _settings_module,  # noqa: F401 - load deployment credentials
+        )
+
         from evals.configuration import _record
         record = read_snapshot()
         snapshot = select_offline_snapshot(record)

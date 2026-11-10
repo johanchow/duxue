@@ -14,10 +14,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from sqlalchemy.orm import Session
-
 from app.application.workflows.tutor_turn import REMINDER
 from app.infrastructure.persistence.models import CompanionMessage
+from sqlalchemy.orm import Session
 
 MAX_UTTERANCES = 8
 MAX_UTTERANCE_CHARS = 2400
@@ -83,6 +82,7 @@ def recent_thread_utterances(
             "author": row.author_type,
             "text": _strip_system_reminder(row.author_type, row.content),
             "attachment_refs": list(row.attachment_refs or []),
+            "image_target_refs": (row.interaction_ref or {}).get("image_target_refs", []),
         }
         for row in rows
     ]
@@ -127,8 +127,12 @@ def visible_utterances(
                     raise
                 urls.append(None)
         view: dict = {"author": row.get("author"), "text": row.get("text") or ""}
+        if row.get("image_target_refs"):
+            view["image_target_refs"] = list(row["image_target_refs"])
         if row.get("leading_omitted"):
             view["leading_omitted"] = True
+        if keys and not urls:
+            view["had_images"] = True
         if urls:
             view["image_urls"] = urls
         views[index] = view

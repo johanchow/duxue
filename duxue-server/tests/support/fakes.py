@@ -60,7 +60,10 @@ class StaticTutorModel:
             "current_images": list(current_images or []), "repair_error": repair_error,
         })
         index = min(len(self.calls) - 1, len(self.raws) - 1)
-        return self.raws[index]
+        raw = self.raws[index]
+        if (current_images or any(row.get("image_urls") for row in recent_utterances or [])) and raw.get("turn", {}).get("type") == "work":
+            raw = {"image_review": {"conclusion": "not_checking", "coverage": "partial", "questions": []}, **raw}
+        return raw
 
 
 class StaticLeakJudge:

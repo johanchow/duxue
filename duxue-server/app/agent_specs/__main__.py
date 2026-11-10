@@ -22,6 +22,8 @@ def main():
             candidate.tick(acknowledge=False)
             if candidate.current is None:
                 raise RuntimeError('Admin发布包与兼容缓存均不可用，保留原运行服务')
+            from app.application.workflows.image_review import require_configuration
+            require_configuration(candidate.current[0]['bundle'])
             print('Admin发布配置已验证并缓存：' + candidate.current[1].digest)
         else:
             if settings.app_env in {'production', 'prod'}:

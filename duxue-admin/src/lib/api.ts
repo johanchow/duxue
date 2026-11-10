@@ -461,6 +461,11 @@ export async function handle(request: Request, parts: string[]) {
         const validation = await serverCall('validate', {
           bundle: draft.bundle,
         });
+        assert(
+          validation.runtime_ready === true,
+          '运行协议未就绪，请完成配置升级后再发布',
+          409,
+        );
         const release = await transaction(async (client) => {
           const locked = (
             await client.query(
@@ -578,7 +583,14 @@ export async function handle(request: Request, parts: string[]) {
         });
       if (parts[2] === 'rollback' && method === 'POST') {
         const data = await bodyOf(request);
-        await serverCall('validate', { bundle: release.bundle });
+        const validation = await serverCall('validate', {
+          bundle: release.bundle,
+        });
+        assert(
+          validation.runtime_ready === true,
+          '该版本不支持当前运行协议，不能回滚',
+          409,
+        );
         await transaction(async (client) => {
           const env = (
             await client.query(

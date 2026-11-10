@@ -9,8 +9,6 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field, replace
 
-from pydantic import ValidationError
-
 from app.agent_specs.catalog import load_catalog
 from app.agent_specs.execution_trace import transition
 from app.agent_specs.static_tools import static_tool_result
@@ -41,6 +39,7 @@ from app.infrastructure.observability.telemetry import (
     record_tutor_visual_dropped,
     set_observation_payload,
 )
+from pydantic import ValidationError
 
 INVALID_CANDIDATE = "invalid_model_candidate"
 _VISUAL_REPAIR_DRAFT_MAX = 4000
@@ -76,6 +75,7 @@ class ModelCall:
 
     candidate: TutorTurnCandidate | None
     failure: str | None = None
+    used_calls: int = 0
 
 
 @dataclass(frozen=True)
@@ -98,7 +98,7 @@ class Vetting:
 def call_tutor_model(
     model: TutorModelPort, envelope: dict, instruction: str, window: list[dict],
     images: list, tools: TutorToolbox, *, repair_error: str | None = None,
-    preload_svg_guidelines: bool = False,
+    preload_svg_guidelines: bool = False, review_evidence=None, call_budget: int | None = None,
 ) -> ModelCall:
     """有界循环：模型要工具就执行，直到返回候选。
 
@@ -108,17 +108,35 @@ def call_tutor_model(
     """
     repair: str | None = repair_error
     observations: list[dict] = []
+    if review_evidence is not None:
+        observations.append({"kind": "verified_image_review", "image_review": review_evidence.model_dump(mode="json")})
+        envelope = {**envelope, "image_review_phase": "response"}
+        try:
+            source, _ = json.JSONDecoder().raw_decode(instruction)
+            instruction = json.dumps({key: source[key] for key in ('student_said', 'permit', 'expected_act') if key in source}, ensure_ascii=False)
+        except (ValueError, TypeError):
+            pass
+
     if preload_svg_guidelines:
         _ensure_widget_guidelines(observations)
     tool_calls = 0
     best_candidate: TutorTurnCandidate | None = None
     limits = load_catalog().spec("tutoring").limits
     max_model_calls, max_tool_calls = limits["model_calls"], limits["tool_calls"]
-    for _ in range(max_model_calls):
+    call_limit = min(max_model_calls, call_budget) if call_budget is not None else max_model_calls
+    used_calls = 0
+
+    def result(candidate, failure=None):
+        return ModelCall(candidate, failure, used_calls)
+
+    for _ in range(call_limit):
+        used_calls += 1
         try:
             raw = model.complete(
-                envelope=envelope, instruction=instruction, recent_utterances=window,
-                current_images=images, repair_error=repair, observations=observations,
+                envelope=envelope, instruction=instruction,
+                recent_utterances=[] if review_evidence is not None else window,
+                current_images=[] if review_evidence is not None else images,
+                repair_error=repair, observations=observations,
             )
         except ModelGatewayError as error:
             # json.loads() lives in the provider adapter.  An empty string
@@ -126,17 +144,17 @@ def call_tutor_model(
             # usual repair request, but it deserves the same one retry.
             if str(error) == "invalid_model_candidate" and repair is None:
                 record_tutor_candidate_rejection(
-                    error_type="invalid_json", field="root", retrying=True,
+                    error_type="invalid_json", field="root", retrying=used_calls < call_limit,
                 )
                 repair = render_fragment("tutoring.turn", "invalid_json")
                 continue
             if best_candidate is not None:
-                return ModelCall(best_candidate)
-            return ModelCall(None, str(error))
+                return result(best_candidate)
+            return result(None, str(error))
         except Exception as error:  # noqa: BLE001 - provider boundary uses the safe fallback
             if best_candidate is not None:
-                return ModelCall(best_candidate)
-            return ModelCall(None, str(error))
+                return result(best_candidate)
+            return result(None, str(error))
         if isinstance(raw, dict) and "tool" in raw:
             name = str(raw.get("tool"))
             if tool_calls >= max_tool_calls:
@@ -154,6 +172,21 @@ def call_tutor_model(
                 set_observation_payload(span, input=raw)
                 try:
                     candidate = TutorTurnCandidate.model_validate(raw)
+                    if review_evidence is not None:
+                        candidate = candidate.model_copy(update={"image_review": review_evidence})
+                    elif candidate.image_review is not None:
+                        from app.application.workflows.image_review import (
+                            reconcile_calculations,
+                        )
+                        candidate = candidate.model_copy(update={
+                            'image_review': reconcile_calculations(candidate.image_review),
+                        })
+                    from app.application.workflows.image_review import (
+                        validate_image_review,
+                    )
+                    validate_image_review(candidate, [
+                        *(url for row in window for url in row.get("image_urls", [])), *images,
+                    ])
                 except (ValidationError, ValueError) as error:
                     span.set_attribute("agent.check.result", "rejected")
                     error_type, field = schema_error_diagnostic(error)
@@ -166,10 +199,15 @@ def call_tutor_model(
                 set_observation_payload(span, output={"result": "accepted"})
         except (ValidationError, ValueError) as error:
             error_type, field = schema_error_diagnostic(error)
+            from app.application.workflows.image_review import ImageReviewProtocolError
             record_tutor_candidate_rejection(
-                error_type=error_type, field=field, retrying=repair is None,
+                error_type=error_type, field=field,
+                retrying=used_calls < call_limit and (repair is None or isinstance(error, ImageReviewProtocolError)),
             )
-            if repair is not None:  # 结构错误只重试一次
+            if isinstance(error, ImageReviewProtocolError):
+                repair = error.feedback()
+                continue  # Still consumes the configured model-call budget.
+            if repair is not None:  # Other structural errors retain one retry.
                 break
             repair = format_schema_error(error)
             continue
@@ -210,7 +248,7 @@ def call_tutor_model(
                 "visual_error": "svg generated without widget_guidelines",
             })
             if repair is not None:
-                return ModelCall(best_candidate)
+                return result(best_candidate)
             _ensure_widget_guidelines(observations)
             repair = _visual_repair(candidate, raw, reason=render_fragment("tutoring.turn", "widget_not_loaded"))
             continue
@@ -219,11 +257,11 @@ def call_tutor_model(
             or candidate.content != best_candidate.content
             or candidate.turn != best_candidate.turn
         ):
-            return ModelCall(best_candidate)
-        return ModelCall(candidate)
+            return result(best_candidate)
+        return result(candidate)
     if best_candidate is not None:
-        return ModelCall(best_candidate)
-    return ModelCall(None, INVALID_CANDIDATE)
+        return result(best_candidate)
+    return result(None, INVALID_CANDIDATE)
 
 
 def _check_visual_leak(leak_judge: LeakJudgePort, text: str, task_title, problem_summary) -> bool | None:
@@ -244,10 +282,10 @@ def _check_visual_leak(leak_judge: LeakJudgePort, text: str, task_title, problem
         return result
 
 
-def _check_text_leak(leak_judge: LeakJudgePort, text: str, task_title, problem_summary, judge_images: list[str]):
-    with agent_step_span("check", "tutoring.text_leak") as span:
+def _check_text_leak(leak_judge: LeakJudgePort, text: str, task_title, problem_summary, judge_images: list[str], *, phase="response"):
+    with agent_step_span("check", "tutoring.text_leak", **{"image.review.phase": phase}) as span:
         set_observation_payload(span, input={
-            "reply": text, "task_title": task_title, "problem": problem_summary,
+            "reply": text, "task_title": task_title, "problem": problem_summary, "review_phase": phase,
             # Keep image bytes out of trace payloads. The model call itself uses the
             # shared telemetry scrubber for its multimodal message.
             "judge_image_count": len(judge_images),
@@ -313,6 +351,9 @@ def _text_leak_result(result: bool | dict | None) -> tuple[bool | None, str | No
 def _leak_repair(vetting: Vetting) -> str:
     """Bounded feedback for one retry. The rejected draft never reaches the child."""
     reason = vetting.leak_reason or vetting.failure or "unspecified"
+    if reason in {"incorrect_confirmation", "premature_conclusion"}:
+        return json.dumps({"kind": "verification_disagreement", "reason": reason,
+                           "student_answer_correct": None}, ensure_ascii=False)
     if reason in {"final_answer", "complete_solution"}:
         return render_fragment("tutoring.turn", "leak_answer", prefix=render_fragment("tutoring.turn", "leak_prefix"), reason=reason)
     rejected = json.dumps(vetting.candidate.shown_text[:800], ensure_ascii=False)
@@ -352,10 +393,16 @@ def vet_candidate(
     """Run the configured authority, text and optional visual Gates."""
     from app.agent_specs.catalog import load_catalog
     from app.agent_specs.runtime import GateDecision, execute_workflow
+    from app.application.workflows.image_review import review_problem
+    problem_summary = review_problem(problem_summary, candidate, list(judge_images or []))
 
     def authority(state: dict) -> GateDecision:
         with agent_step_span("check", "tutoring.authority") as span:
             verdict = check_authority(candidate, permit)
+            if verdict.ok and judge_images and candidate.act in {'answer', 'guide', 'chat'}:
+                # The generator's non_work label cannot exempt image grading
+                # from independent review, including in a fresh conversation.
+                verdict = replace(verdict, needs_leak_check=True)
             state["authority"] = verdict
             span.set_attribute("agent.check.result", "pass" if verdict.ok else "rejected")
             set_observation_payload(span, output={"ok": verdict.ok, "reason": verdict.reason})
@@ -507,9 +554,31 @@ def run_tutor_turn(
             )
             if proposal.candidate is not None:
                 transition("tutoring", "tutoring.attempt", "tutoring.exit_gate", "candidate")
+            candidate = proposal.candidate
+            evidence = candidate.image_review if candidate is not None else None
+            if judge_images and evidence is not None and evidence.conclusion != "not_checking":
+                from app.application.workflows.image_review import review_problem
+                summary = json.loads(review_problem(problem_summary, candidate, list(judge_images or [])))
+                summary['image_review_phase'] = 'evidence_only'
+                try:
+                    evidence_result = _check_text_leak(leak_judge, '', task_title,
+                                                      json.dumps(summary, ensure_ascii=False), list(judge_images or []), phase='evidence')
+                    rejected, reason = _text_leak_result(evidence_result)
+                except Exception:  # noqa: BLE001 - unverified evidence never becomes a reply
+                    rejected, reason = None, None
+                if rejected is not False:
+                    review = Vetting(candidate, None, 'leak_check_failed' if rejected is None else 'leak_detected',
+                                     reason or 'premature_conclusion')
+                    set_observation_payload(span, output={"phase": "image_review_evidence", "failure": review.failure, "leak_reason": review.leak_reason})
+                    return proposal, review
+                remaining = load_catalog().spec('tutoring').limits['model_calls'] - proposal.used_calls
+                polished = call_tutor_model(current_model, envelope, instruction, window, images, tools,
+                                            review_evidence=evidence, call_budget=remaining)
+                proposal = ModelCall(polished.candidate, polished.failure, proposal.used_calls + polished.used_calls)
             review = vet(proposal.candidate) if proposal.candidate is not None else None
             set_observation_payload(span, output={
                 "candidate_available": proposal.candidate is not None,
+                "used_model_calls": proposal.used_calls,
                 "failure": review.failure if review is not None else proposal.failure,
                 "leak_reason": review.leak_reason if review is not None else None,
             })

@@ -28,6 +28,7 @@ class Utterance(Strict):
     text: str = ""
     # Asset names only. Files live in var/eval-assets/ and never enter git.
     images: list[str] = Field(default_factory=list)
+    image_target_refs: list[str] = Field(default_factory=list)
 
 
 class ProblemContext(Strict):
@@ -65,6 +66,8 @@ class Expect(Strict):
     visual: Literal["present", "absent"] | None = None
     visual_kind_in: list[Literal["steps", "compare", "segment", "number_line", "svg"]] = Field(default_factory=list)
     visual_not_contains: list[str] = Field(default_factory=list)
+    selected_images: list[str] | None = None
+    review_conclusion: Literal["all_correct", "some_incorrect", "uncertain", "not_checking"] | None = None
 
     def is_specific(self) -> bool:
         """True when the case asserts more than "did not fall back"."""
@@ -72,7 +75,7 @@ class Expect(Strict):
             self.answer_protected is not None or self.outcome_in or self.lesson_source_contains_any or self.lesson_source_contains_all
             or self.min_lessons is not None or self.content_contains_any
             or self.content_not_contains or self.intent_in or self.visual or self.visual_kind_in
-            or self.visual_not_contains or set(self.outcome_not_in) != {"fallback"}
+            or self.visual_not_contains or self.selected_images is not None or self.review_conclusion or set(self.outcome_not_in) != {"fallback"}
         )
 
 
@@ -82,7 +85,7 @@ class EvalCase(Strict):
     conversation_id: str
     turn_index: int = Field(ge=0)
     history: list[Utterance] = Field(default_factory=list, max_length=MAX_WINDOW)
-    student_said: str = Field(min_length=1)
+    student_said: str
     images: list[str] = Field(default_factory=list)
     context: Context = Field(default_factory=Context)
     expect: Expect = Field(default_factory=Expect)
@@ -96,6 +99,8 @@ class EvalCase(Strict):
 
     @model_validator(mode="after")
     def component_fields_match(self):
+        if not self.student_said.strip() and not self.images:
+            raise ValueError("student turn requires text or images")
         if self.component == "companion.intent":
             if (
                 self.expect.outcome_in or self.expect.lesson_source_contains_any

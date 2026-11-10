@@ -119,12 +119,13 @@ test('real database sessions enforce roles, immutable release debugging and imme
     url.searchParams.set('options', '-csearch_path=' + schema);
     process.env.ADMIN_DATABASE_URL = url.toString();
     const requests: any[] = [];
+    let runtimeReady = true;
     globalThis.fetch = async (target, init) => {
       const body = JSON.parse(String(init?.body));
       requests.push({ path: String(target), body });
       return Response.json(
         String(target).endsWith('/validate')
-          ? { digest: 'digest' }
+          ? { digest: 'digest', runtime_ready: runtimeReady }
           : {
               digest: 'digest',
               status: 'succeeded',
@@ -239,6 +240,32 @@ test('real database sessions enforce roles, immutable release debugging and imme
       ).rows[0].count,
       '2',
     );
+    runtimeReady = false;
+    const blockedPublish = await request(
+      'admin',
+      'POST',
+      `drafts/${draft}/publish`,
+      { revision: 1 },
+    );
+    assert.equal(blockedPublish.status, 409);
+    assert.match((await blockedPublish.json()).error, /运行协议未就绪/);
+    const blockedRollback = await request(
+      'admin',
+      'POST',
+      `releases/${release}/rollback`,
+      {},
+    );
+    assert.equal(blockedRollback.status, 409);
+    assert.match((await blockedRollback.json()).error, /不能回滚/);
+    assert.equal(
+      (
+        await db.query(
+          "SELECT release_id FROM agent_environments WHERE name='test'",
+        )
+      ).rows[0].release_id,
+      release,
+    );
+    runtimeReady = true;
     const alteredFlow = structuredClone(bundle);
     alteredFlow.files['workflows/test.json'].nodes = ['injected'] as any;
     assert.equal(

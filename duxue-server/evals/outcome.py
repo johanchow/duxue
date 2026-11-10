@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from app.application.workflows.tutor_loop import ModelCall, Vetting
+from app.application.workflows.tutor_turn import fallback_text
 from app.application.workflows.tutor_visual import describe
 
 _ACT_OUTCOME = {
@@ -18,9 +19,14 @@ class Observation:
     """One sampled result, free of any model-internal detail the Ward would not see."""
 
     outcome: str
+    selected_images: list[str] = field(default_factory=list)
+    selected_image_refs: list[str] = field(default_factory=list)
+    review_conclusion: str | None = None
+    image_review: dict | None = None
     act: str | None = None
     reason: str | None = None
     content: str | None = None
+    delivered_content: str | None = None
     lesson_source: str | None = None
     lesson_sources: list[str] = field(default_factory=list)
     candidates: list[str] = field(default_factory=list)
@@ -40,18 +46,20 @@ def classify(call: ModelCall, vetting: Vetting | None, *, leak_retried: bool = F
     """``fallback`` means the Ward would be shown FALLBACK_TEXT; ``reason`` says which check fired."""
     candidate = call.candidate
     if candidate is None:
-        return Observation("fallback", reason=call.failure or "no_candidate", leak_retried=leak_retried)
+        return Observation("fallback", reason=call.failure or "no_candidate", delivered_content=fallback_text(call.failure), leak_retried=leak_retried)
     base = {
         "leak_retried": leak_retried,
         "answer_protected": vetting.verdict.answer_protected if vetting and vetting.verdict else None,
         "act": candidate.act, "content": candidate.content,
+        "review_conclusion": candidate.image_review.conclusion if candidate.image_review else None,
+        "image_review": candidate.image_review.model_dump(mode="json") if candidate.image_review else None,
         "lesson_source": " ".join(item.source_text for item in candidate.lessons) if candidate.lessons else None,
         "lesson_sources": [item.source_text for item in candidate.lessons],
         "candidates": list(candidate.candidates),
     }
     flags = list(vetting.shape_flags) if vetting is not None else []
     if vetting is not None and vetting.failure is not None:
-        return Observation("fallback", reason=vetting.failure, shape_flags=flags, **base)
+        return Observation("fallback", reason=vetting.failure, delivered_content=fallback_text(vetting.failure, vetting.leak_reason), shape_flags=flags, **base)
     if candidate.act == "safety":
         return Observation("blocked", **base)
     visual = vetting.visual if vetting is not None else candidate.visual

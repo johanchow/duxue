@@ -33,6 +33,9 @@ class ReleaseRuntime:
         if self.expected_environment and release.get("environment") != self.expected_environment:
             raise ValueError("缓存配置环境不匹配")
         snapshot = compile_bundle(release["bundle"])
+        if self.expected_environment == "prod":
+            from app.application.workflows.image_review import require_configuration
+            require_configuration(release["bundle"])
         if release["digest"] != snapshot.digest:
             raise ValueError("release digest mismatch")
         self.cache.parent.mkdir(parents=True, exist_ok=True)

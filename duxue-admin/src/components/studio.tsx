@@ -581,7 +581,11 @@ export default function Studio() {
                             );
                             setDraft({ ...draft, validation: v });
                             setMessage(
-                              '配置校验通过 · ' + v.digest.slice(0, 12),
+                              (v.runtime_ready
+                                ? '配置校验通过 · '
+                                : '结构校验通过，运行协议尚未就绪：' +
+                                  (v.runtime_errors || []).join('；') +
+                                  ' · ') + v.digest.slice(0, 12),
                             );
                           })
                         }
@@ -1059,13 +1063,18 @@ export default function Studio() {
                             disabled={busy}
                             onClick={() =>
                               action(async () => {
-                                await api(
+                                const v = await api(
                                   'drafts/' + pending.id + '/validate',
                                   'POST',
                                   { revision: pending.revision },
                                 );
                                 await refresh();
-                                setMessage('配置校验通过');
+                                setMessage(
+                                  v.runtime_ready
+                                    ? '配置校验通过'
+                                    : '结构校验通过，运行协议尚未就绪：' +
+                                        (v.runtime_errors || []).join('；'),
+                                );
                               })
                             }
                           >
@@ -1074,7 +1083,7 @@ export default function Studio() {
                           <button
                             disabled={
                               busy ||
-                              !pending.validation ||
+                              pending.validation?.runtime_ready !== true ||
                               (!pending.changed_ids.length &&
                                 state.environment.release_id !== null) ||
                               missing.length > 0 ||
@@ -1119,7 +1128,12 @@ export default function Studio() {
                     ))}
                   </div>
                   <p>
-                    {pending.validation ? '配置校验通过' : '尚未完成校验'} ·{' '}
+                    {pending.validation?.runtime_ready
+                      ? '配置校验通过'
+                      : pending.validation
+                        ? '运行协议未就绪，暂不能发布'
+                        : '尚未完成校验'}{' '}
+                    ·{' '}
                     {pending.required_components.length
                       ? successful.length
                         ? '已有本次修改的成功调试'

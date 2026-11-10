@@ -11,7 +11,7 @@ import base64
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -19,9 +19,14 @@ from app.application.workflows.teaching_skills import history_candidates
 from app.application.workflows.tutor_loop import judge_problem_summary, run_tutor_turn
 from app.application.workflows.tutor_tools import TutorToolbox
 from app.application.workflows.tutor_turn import build_tutor_instruction
-from app.contexts.tutoring.domain.tutor_permit import ProblemState, TutorPermit, TutorPermitPolicy
+from app.contexts.tutoring.domain.tutor_permit import (
+    ProblemState,
+    TutorPermit,
+    TutorPermitPolicy,
+)
 from app.infrastructure.ai.errors import ModelGatewayError
 from app.infrastructure.ai.intent_classifier import ModelIntentClassifier
+
 from evals.dataset import ASSETS_DIR
 from evals.graders import grade
 from evals.outcome import Observation, classify
@@ -48,6 +53,7 @@ class Backends:
     backup_model: object | None = None         # TutorModelPort
     leak_judge: object | None = None           # LeakJudgePort
     intent_complete: Callable[..., str] | None = None
+    image_target_selector: Callable | None = None
 
 
 @dataclass
@@ -83,6 +89,8 @@ def build_input(case: EvalCase, assets_dir: Path) -> tuple[list[dict], list[str 
     window: list[dict] = []
     for row in case.history:
         view: dict = {"author": row.author, "text": row.text}
+        if row.image_target_refs:
+            view["image_target_refs"] = list(row.image_target_refs)
         if row.images:
             view["image_urls"] = [read_asset(assets_dir / name) for name in row.images]
         window.append(view)
@@ -90,6 +98,20 @@ def build_input(case: EvalCase, assets_dir: Path) -> tuple[list[dict], list[str 
 
 
 def _observe_tutor(case: EvalCase, backends: Backends, window: list[dict], images: list, *, permit_override: TutorPermit | None = None) -> Observation:
+    from app.agent_specs.image_refs import image_ref
+    from app.application.workflows.image_target import prepare_images
+    original_pairs = [(asset, url) for row, view in zip(case.history, window)
+                      for asset, url in zip(row.images, view.get('image_urls', []))]
+    original_pairs.extend(zip(case.images, images))
+    prepared = prepare_images(window, images, content=case.student_said,
+                              select=backends.image_target_selector,
+                              compare_previous=case.context.tutoring_intent == 'compare_previous_image')
+    if prepared.target.ambiguous:
+        return Observation('clarify', act='clarify', reason='image_target_ambiguous',
+                           content='你想检查哪张图片？请说明图片编号。')
+    selected_assets = list(dict.fromkeys(asset for asset, url in original_pairs
+                                        if url and image_ref(url) in prepared.refs))
+    window, images = prepared.window, prepared.images
     context = case.context
     problem = context.problem
     state = (
@@ -127,7 +149,8 @@ def _observe_tutor(case: EvalCase, backends: Backends, window: list[dict], image
             ] if isinstance(image, str) and image
         ],
     )
-    return classify(result.call, result.vetting, leak_retried=result.leak_retried)
+    return replace(classify(result.call, result.vetting, leak_retried=result.leak_retried),
+                   selected_images=selected_assets, selected_image_refs=prepared.refs)
 
 
 def _observe_intent(case: EvalCase, backends: Backends, window: list[dict], images: list) -> Observation:

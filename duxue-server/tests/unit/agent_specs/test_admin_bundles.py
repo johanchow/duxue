@@ -133,12 +133,18 @@ def test_internal_admin_api_requires_secret_and_rejects_protocol_edits(
     assert client.get("/internal/agent-admin/catalog").status_code == 401
     headers = {"Authorization": "Bearer unit-test-secret"}
     bundle = snapshot_bundle()
-    assert (
-        client.post(
+    result = client.post(
             "/internal/agent-admin/validate", headers=headers, json={"bundle": bundle}
-        ).status_code
-        == 200
-    )
+        )
+    assert result.status_code == 200
+    assert result.json()['valid'] is True
+    assert result.json()['runtime_ready'] is False
+    assert result.json()['runtime_errors']
+    for name in ('agents/tutoring.turn.json', 'agents/tutoring.image-target.json', 'gates/tutoring.leak-judge.json'):
+        bundle['files'][name]['prompt']['template'] += '\n[image-review.v1]'
+    result = client.post('/internal/agent-admin/validate', headers=headers, json={'bundle': bundle})
+    assert result.json()['runtime_ready'] is True
+    assert result.json()['runtime_errors'] == []
     bundle["files"]["gates/tutoring.leak-judge.json"]["on_error"] = "abort"
     assert (
         client.post(

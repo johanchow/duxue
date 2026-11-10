@@ -2,9 +2,6 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from fastapi import HTTPException
-from sqlalchemy.orm import Session
-
 from app.agent_specs.execution_trace import transition
 from app.application.commands.memory import SqlAlchemyMemoryFacade
 from app.application.ports.companion import RunInvocation, WorkflowOutcome
@@ -61,6 +58,8 @@ from app.infrastructure.persistence.models import (
     TutoringSession,
     now,
 )
+from fastapi import HTTPException
+from sqlalchemy.orm import Session
 
 
 def _state(row: TutoringProblem | None) -> ProblemState | None:
@@ -98,6 +97,7 @@ class TutoringWorkflow:
         self.safety_screening = safety_screening
         self.image_target_selector = image_target_selector
         self._media_cache: dict[str, tuple[list[dict], list[str | None]]] = {}
+        self._selected_image_refs: dict[str, list[str]] = {}
 
     def _model(self) -> TutorModelPort:
         if self.turn_model is None:
@@ -148,7 +148,15 @@ class TutoringWorkflow:
     def invoke(self, invocation: RunInvocation) -> WorkflowOutcome:
         from app.agent_specs.release_runtime import pin_release
         with pin_release():
-            return self._turn(invocation)
+            key = f"{invocation.run_id}:{invocation.turn_id}"
+            try:
+                outcome = self._turn(invocation)
+                refs = self._selected_image_refs.get(key, [])
+                if refs and outcome.next_interaction is not None:
+                    outcome.next_interaction["image_target_refs"] = list(refs)
+                return outcome
+            finally:
+                self._selected_image_refs.pop(key, None)
 
     def _find_session(self, ward_id: str, session_id: str | None) -> StudySession | None:
         if session_id:
@@ -351,21 +359,18 @@ class TutoringWorkflow:
             )
         window, images = self._media(invocation)
         from app.application.workflows.image_target import (
-            choose_image_target,
-            keep_target_images,
+            prepare_images,
         )
 
         has_images = bool(images or any(row.get("image_urls") for row in window))
         if has_images:
             transition("tutoring", "tutoring.turn", "tutoring.image_target", "image_reference")
-        target = choose_image_target(
-            window, images,
+        prepared = prepare_images(
+            window, images, content=content,
             compare_previous=turn.get("tutoring_intent") == "compare_previous_image",
-            select=lambda rows: (
-                self.image_target_selector(rows, content)
-                if self.image_target_selector is not None else self._select_image_target(rows, content)
-            ),
+            select=self.image_target_selector or self._select_image_target,
         )
+        target = prepared.target
         with agent_step_span("check", "tutoring.image_target") as target_span:
             set_observation_payload(target_span, input={
                 "candidate_count": sum(len(row.get("image_urls") or []) for row in window) + len(images),
@@ -374,13 +379,16 @@ class TutoringWorkflow:
         if target.ambiguous:
             interaction = build_interaction(
                 invocation=invocation, kind="text",
-                text="你想让我看哪张照片？请说是第几张，或重新发那张图，我再逐题帮你检查。",
+                text=("你想让我检查哪张已上传的照片？请说第几张，我会继续用原图检查。"
+                      if any(images) or any(url for row in window for url in row.get("image_urls", []))
+                      else "这次图片没有读取成功，请重新上传或拍清楚一些，我再帮你检查。"),
             )
             return WorkflowOutcome(
                 run_status="waiting_for_ward", outcome_type="response",
                 next_interaction={**interaction, "status": "clarification_required", "reason": "image_target_ambiguous"},
             )
-        window, images = keep_target_images(window, images, target)
+        window, images = prepared.window, prepared.images
+        self._selected_image_refs[f"{invocation.run_id}:{invocation.turn_id}"] = prepared.refs
         candidates = history_candidates(window)
         review_aspects = get_recent_self_reviews(
             self.db, actor_id=invocation.ward_id, actor_role="ward",

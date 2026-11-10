@@ -46,8 +46,9 @@ def run_episode(episode: Episode, backend: Backends, *, assets_dir: Path = ASSET
         if not sample.passed:
             result.stopped_at = index
             break
-        history.extend((Utterance(author="ward", text=said),
-                        Utterance(author="companion", text=sample.observation.content or "")))
+        history.extend((Utterance(author="ward", text=said, images=turn.images),
+                        Utterance(author="companion", text=sample.observation.delivered_content or sample.observation.content or "",
+                                  image_target_refs=sample.observation.selected_image_refs)))
         previous_outcome = sample.observation.outcome
     return result
 

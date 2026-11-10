@@ -1,0 +1,177 @@
+{
+  "id": "episode-image-switch-and-correction",
+  "title": "连续换图与纠正：读取标题、题面及文字插问（不验算）",
+  "inspired_by": "self",
+  "source": "synthetic",
+  "review_batch": "image-review-v1",
+  "label_status": "proposed",
+  "reviewed_by": null,
+  "initial_history": [
+    {
+      "author": "ward",
+      "text": "图片里的题目是不是都做对了？",
+      "images": [
+        "img-f0b2a66592fb.jpg"
+      ]
+    },
+    {
+      "author": "companion",
+      "text": "图片里的题目我帮你检查完了，大部分都做对了，但有两道题需要你再算一遍：\n\n1. **第一题** $47+24$：你写的是 70，个位 $7+4=11$，记得进位哦。\n2. **第二题** $63\\div(21-12)$：括号里 $21-12$ 算错了，不是 9。\n\n其他口算、单位换算和脱式计算都正确。请你把这两道题重新算一下，看看正确答案是多少？"
+    }
+  ],
+  "turns": [
+    {
+      "student_said": "这张是另一页，请只告诉我这页周四旁边印着的标题，不用批改答案。",
+      "images": [
+        "img-4430cfb69b7c.jpg"
+      ],
+      "context": {
+        "problem": {
+          "summary": "此前做过图片作业；当前只读取照片标题或印刷题面，不检查数学答案",
+          "substantive_attempts": 1,
+          "hints_given": 0
+        }
+      },
+      "expect": {
+        "outcome_in": [
+          "answer"
+        ],
+        "selected_images": [
+          "img-4430cfb69b7c.jpg"
+        ],
+        "answer_protected": false
+      },
+      "tags": [
+        "image-context",
+        "actual-history",
+        "no-math-grading"
+      ]
+    },
+    {
+      "student_said": "这不是上一张图片，我说的是刚发的这张新图片。请只告诉我周四旁边的标题，不用批改。",
+      "images": [],
+      "context": {
+        "problem": {
+          "summary": "此前做过图片作业；当前只读取照片标题或印刷题面，不检查数学答案",
+          "substantive_attempts": 1,
+          "hints_given": 0
+        }
+      },
+      "expect": {
+        "outcome_in": [
+          "answer"
+        ],
+        "selected_images": [
+          "img-4430cfb69b7c.jpg"
+        ],
+        "answer_protected": false
+      },
+      "tags": [
+        "image-context",
+        "actual-history",
+        "no-math-grading"
+      ]
+    },
+    {
+      "student_said": "先不检查图片了，lost是什么意思？",
+      "images": [],
+      "context": {
+        "problem": {
+          "summary": "此前做过图片作业；当前只读取照片标题或印刷题面，不检查数学答案",
+          "substantive_attempts": 1,
+          "hints_given": 0
+        }
+      },
+      "expect": {
+        "outcome_in": [
+          "answer"
+        ],
+        "selected_images": [],
+        "answer_protected": false
+      },
+      "tags": [
+        "image-context",
+        "actual-history",
+        "no-math-grading"
+      ]
+    },
+    {
+      "student_said": "回到第一张照片，请只读出周五旁边的标题，不要计算或批改。",
+      "images": [],
+      "context": {
+        "problem": {
+          "summary": "此前做过图片作业；当前只读取照片标题或印刷题面，不检查数学答案",
+          "substantive_attempts": 1,
+          "hints_given": 0
+        }
+      },
+      "expect": {
+        "outcome_in": [
+          "answer"
+        ],
+        "selected_images": [
+          "img-f0b2a66592fb.jpg"
+        ],
+        "answer_protected": false
+      },
+      "tags": [
+        "image-context",
+        "actual-history",
+        "no-math-grading"
+      ]
+    },
+    {
+      "student_said": "再看这页，请只读出第二大题的标题，不要解题或判断对错。",
+      "images": [
+        "img-4430cfb69b7c.jpg"
+      ],
+      "context": {
+        "problem": {
+          "summary": "此前做过图片作业；当前只读取照片标题或印刷题面，不检查数学答案",
+          "substantive_attempts": 1,
+          "hints_given": 0
+        }
+      },
+      "expect": {
+        "outcome_in": [
+          "answer"
+        ],
+        "selected_images": [
+          "img-4430cfb69b7c.jpg"
+        ],
+        "answer_protected": false
+      },
+      "tags": [
+        "image-context",
+        "actual-history",
+        "no-math-grading"
+      ]
+    },
+    {
+      "student_said": "还是这张第二页，请只读出第二大题第一题印刷的算式，不要计算，也不要检查手写答案。",
+      "images": [],
+      "context": {
+        "problem": {
+          "summary": "此前做过图片作业；当前只读取照片标题或印刷题面，不检查数学答案",
+          "substantive_attempts": 1,
+          "hints_given": 0
+        }
+      },
+      "expect": {
+        "outcome_in": [
+          "answer"
+        ],
+        "selected_images": [
+          "img-4430cfb69b7c.jpg"
+        ],
+        "answer_protected": false
+      },
+      "tags": [
+        "image-context",
+        "actual-history",
+        "no-math-grading"
+      ]
+    }
+  ],
+  "note": "按用户要求暂绕过数学稳定性，将6轮合成请求改为读取印刷标题/算式和词义，不检查手写答案，不断言数学结论。仍保留真实首图错误批改作为污染源，验证换图、无附件纠正、文字跳出、返回旧图、再发新图及连续指代。每轮继承实际生成的助手回复和图片，不预写后续助手回答。原始事故回放另存conversation_replay/new-image-review-conversation.json，未修改其原文、原裁决或数学期望。标签proposed；真实正文需对照原图人工复核。"
+}

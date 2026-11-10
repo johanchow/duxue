@@ -10,8 +10,6 @@ import json
 from dataclasses import dataclass
 from typing import Literal
 
-from jsonschema.exceptions import ValidationError as JSONSchemaValidationError
-
 from app.agent_specs.contracts import validate_input, validate_output
 from app.agent_specs.definitions import active_definitions, load_definitions
 from app.bootstrap.settings import settings
@@ -21,6 +19,7 @@ from app.infrastructure.observability.telemetry import (
     model_call_span,
     record_model_response,
 )
+from jsonschema.exceptions import ValidationError as JSONSchemaValidationError
 
 RiskTier = Literal["protected", "standard"]
 AgentLabel = Literal["planning", "tutoring", "reflection"]
@@ -177,6 +176,11 @@ def invoke_json_component(*, spec: ComponentSpec, user, client=None, settings_ob
     except ModelGatewayError:
         raise
     except Exception as error:
+        import logging
+        logging.getLogger(__name__).warning(
+            "model transport failed: %s status=%s component=%s",
+            type(error).__name__, getattr(error, "status_code", None), spec.component_id,
+        )
         raise ModelGatewayError("model_transport_error") from error
     return payload
 

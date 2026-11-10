@@ -5,7 +5,6 @@ import subprocess
 import sys
 
 import pytest
-
 from app.agent_specs.admin_bundle import compile_bundle, contract_compatibility
 from app.agent_specs.configuration import CODE_ROOT, read_snapshot, snapshot_bundle
 from app.agent_specs.release_runtime import ReleaseRuntime
@@ -54,7 +53,10 @@ def test_production_explicitly_starts_admin_runtime(monkeypatch, tmp_path):
 
 def test_cached_release_survives_admin_failure_and_rejects_wrong_environment(monkeypatch, tmp_path):
     import httpx
-    bundle = snapshot_bundle(); compiled = compile_bundle(bundle)
+    bundle = snapshot_bundle()
+    for name in ('agents/tutoring.turn.json', 'agents/tutoring.image-target.json', 'gates/tutoring.leak-judge.json'):
+        bundle['files'][name]['prompt']['template'] += '\n[image-review.v1]'
+    compiled = compile_bundle(bundle)
     record = {'id': 'r1', 'digest': compiled.digest, 'bundle': bundle, 'environment': 'prod'}
     cache = tmp_path / 'cache.json'
     first = ReleaseRuntime('http://unused', 'token', cache, expected_environment='prod')
@@ -123,9 +125,15 @@ else:
     assert result.stdout.strip() == 'PASS'
 
 
-def test_real_asgi_startup_without_local_defaults_and_http_cache_recovery():
+def test_real_asgi_startup_without_local_defaults_and_http_cache_recovery(tmp_path):
     from app.agent_specs.configuration import snapshot_path
-    result = subprocess.run([sys.executable, 'scripts/admin_source_smoke.py', str(snapshot_path())],
+    record = json.loads(snapshot_path().read_text())
+    for name in ('agents/tutoring.turn.json', 'agents/tutoring.image-target.json', 'gates/tutoring.leak-judge.json'):
+        record['bundle']['files'][name]['prompt']['template'] += '\n[image-review.v1]'
+    record['digest'] = compile_bundle(record['bundle']).digest
+    source = tmp_path / 'configured-release.json'
+    source.write_text(json.dumps(record))
+    result = subprocess.run([sys.executable, 'scripts/admin_source_smoke.py', str(source)],
                             env={**os.environ, 'PYTHONPATH': '.'}, capture_output=True, text=True, check=False)
     assert result.returncode == 0, result.stderr
     assert 'production ASGI startup' in result.stdout
@@ -134,6 +142,7 @@ def test_real_asgi_startup_without_local_defaults_and_http_cache_recovery():
 
 def test_workflows_have_no_production_copy_and_are_loaded_from_the_pinned_bundle():
     import copy
+
     from app.agent_specs.catalog import load_catalog
     from app.agent_specs.definitions import use_definitions
 
@@ -177,6 +186,7 @@ def test_bundle_compilation_validates_workflows_without_local_topology(change):
 
 def test_release_workflow_execution_switch_and_rollback_keep_outer_call_pinned(tmp_path):
     import copy
+
     from app.agent_specs.catalog import load_catalog
     from app.agent_specs.runtime import execute_workflow
 
@@ -218,6 +228,7 @@ def test_release_workflow_execution_switch_and_rollback_keep_outer_call_pinned(t
 
 def test_tutor_call_limits_follow_selected_workflow_instead_of_import_time_defaults():
     from types import SimpleNamespace
+
     from app.agent_specs.definitions import use_definitions
     from app.application.workflows.tutor_loop import call_tutor_model
 
@@ -267,3 +278,14 @@ def test_eager_workflow_validation_keeps_existing_authorized_tool_subset_editabl
     with use_definitions(compiled.catalog):
         assert load_catalog().spec('tutoring').id == 'tutoring'
         assert 'tutoring.lookup_history' not in compiled.catalog.units['tutoring.turn'].tools
+
+
+def test_image_review_output_budget_can_fit_a_full_page_without_becoming_unbounded():
+    import pytest
+    from app.agent_specs.definitions import ModelDefinition
+    from pydantic import ValidationError
+    values = dict(name='model', component_id='tutoring.turn', timeout_ms=120000,
+                  temperature=0, max_output_tokens=8192)
+    assert ModelDefinition.model_validate(values).max_output_tokens == 8192
+    with pytest.raises(ValidationError):
+        ModelDefinition.model_validate({**values, 'max_output_tokens': 16385})

@@ -69,7 +69,7 @@ class ModelDefinition(BaseModel):
     version: str | None = None
     operation: str | None = None
     temperature: float = Field(ge=0, le=2)
-    max_output_tokens: int = Field(gt=0, le=4096)
+    max_output_tokens: int = Field(gt=0, le=16384)
     timeout_ms: int = Field(gt=0, le=120000)
 
 
@@ -289,11 +289,12 @@ class DefinitionCatalog:
 
 @lru_cache(maxsize=1)
 def base_definitions() -> DefinitionCatalog:
-    from app.agent_specs.configuration import read_snapshot, _offline_catalog
+    from app.agent_specs.configuration import _offline_catalog, read_snapshot
     if _offline_catalog is not None:
         return _offline_catalog
-    from app.agent_specs.admin_bundle import compile_bundle
     import os
+
+    from app.agent_specs.admin_bundle import compile_bundle
     mode = os.getenv("AGENT_CONFIG_SOURCE", "admin" if os.getenv("APP_ENV") in {"production", "prod"} else "snapshot")
     if mode == "admin":
         from app.agent_specs.release_runtime import AgentConfigurationUnavailable

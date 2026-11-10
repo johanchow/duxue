@@ -2,15 +2,14 @@
 
 import json
 
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor
-from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
-
 from app.application.workflows import tutor_loop
 from app.application.workflows.tutor_loop import LEAK_REPAIR, run_tutor_turn
 from app.application.workflows.tutor_tools import TutorToolbox
 from app.application.workflows.tutoring_workflow import TutoringWorkflow
 from app.contexts.tutoring.domain.tutor_permit import AttemptSummary, TutorPermit
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from tests.support.fakes import StaticLeakJudge, StaticTutorModel, tutor_raw
 
 PROTECTED = TutorPermit(True, AttemptSummary())
@@ -54,7 +53,7 @@ def test_a_leaking_reply_is_retried_once_and_the_hint_is_shown(monkeypatch):
 
 
 def test_protected_review_receives_images_on_primary_repair_and_backup(monkeypatch):
-    image = "data:image/jpeg;base64,review-image"
+    image = "data:image/jpeg;base64,cmV2aWV3LWltYWdl"
     judge = LeaksWhen("等于 4")
     backup = StaticTutorModel(HINT)
     fallbacks: list[str] = []
