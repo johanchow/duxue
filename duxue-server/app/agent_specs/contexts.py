@@ -22,6 +22,18 @@ def scene_switch(*, content, current_agent_type, proposed_agent_type, recent_utt
 def tutor_turn(*, envelope, instruction, recent_utterances=None, current_images=None,
                repair_error=None, observations=None):
     payload = {"contract": "tutor-turn.v4", "instruction": instruction, "context": envelope}
+    if current_images or any(row.get("image_urls") for row in recent_utterances or []):
+        if envelope.get("image_review_phase") != "response":
+            from app.application.workflows.image_review import ImageReview
+            report_schema = ImageReview.model_json_schema()
+            definitions = report_schema.pop('$defs', {})
+            payload["response_schema"] = {
+                "type": "object", "$defs": definitions,
+                "required": ["image_review", "act", "content"],
+                "properties": {"image_review": report_schema, "act": {"type": "string"},
+                               "turn": {"type": "object"}, "content": {"type": "string", "minLength": 1, "maxLength": 1200}},
+                "additionalProperties": True,
+            }
     if observations:
         payload["observations"] = observations
     if repair_error:
@@ -39,7 +51,11 @@ def _judge_problem(summary):
 
 
 def text_judge(*, text, task_title, problem_summary, images=None):
-    body = json.dumps({"task_title": task_title, "problem": _judge_problem(problem_summary), "reply": text}, ensure_ascii=False)
+    from app.agent_specs.image_refs import image_manifest
+    payload = {"task_title": task_title, "problem": _judge_problem(problem_summary), "reply": text}
+    if images:
+        payload["image_manifest"] = image_manifest(images)
+    body = json.dumps(payload, ensure_ascii=False)
     return [{"type": "text", "text": body}, *image_parts([], images)] if images else body
 
 
@@ -48,7 +64,9 @@ def visual_judge(*, text, task_title, problem_summary):
 
 
 def image_target(*, window, content):
-    return user_content({"student_said": content}, window)
+    from app.agent_specs.image_refs import image_manifest
+    manifest = image_manifest([url for row in window for url in row.get("image_urls", [])])
+    return user_content({"student_said": content, "latest_image_ref": manifest[-1]["image_ref"] if manifest else None}, window)
 
 
 def review_aspects(*, raw_expression):

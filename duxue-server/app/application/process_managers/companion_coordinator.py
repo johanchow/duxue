@@ -5,10 +5,6 @@ import json
 from time import perf_counter
 from uuid import uuid4
 
-from fastapi import HTTPException
-from sqlalchemy.orm import Session
-from sqlalchemy.orm.exc import StaleDataError
-
 from app.agent_specs.catalog import load_catalog
 from app.agent_specs.release_runtime import configured_call
 from app.application.commands.companion_history import history_is_visible, lock_history
@@ -52,6 +48,9 @@ from app.infrastructure.persistence.models import (
 from app.infrastructure.persistence.workflow_dispatcher import (
     SqlAlchemyWorkflowDispatcher,
 )
+from fastapi import HTTPException
+from sqlalchemy.orm import Session
+from sqlalchemy.orm.exc import StaleDataError
 
 _ACTIVE_STATUSES = ("active", "waiting_for_ward", "paused")
 _RESUMABLE_STATUSES = ("waiting_for_ward", "paused", "failed", "timed_out")
@@ -221,6 +220,14 @@ class CompanionCoordinator:
 
     @staticmethod
     def _visible_interaction_ref(outcome: WorkflowOutcome) -> dict | None:
+        content = CompanionCoordinator._visible_content_ref(outcome)
+        refs = (outcome.next_interaction or {}).get("image_target_refs")
+        if refs:
+            return {**(content or {}), "image_target_refs": list(refs)}
+        return content
+
+    @staticmethod
+    def _visible_content_ref(outcome: WorkflowOutcome) -> dict | None:
         payload = outcome.next_interaction or outcome.response or {}
         kind = payload.get("kind")
         if kind == "text_visual":

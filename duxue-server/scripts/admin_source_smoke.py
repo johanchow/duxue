@@ -50,7 +50,8 @@ def main():
         from fastapi.testclient import TestClient
 
         from app.agent_specs import release_runtime
-        from app.agent_specs.admin_bundle import compile_bundle
+        from app.agent_specs.admin_bundle import compile_bundle, contract_compatibility
+        from app.agent_specs.catalog import load_catalog
         from app.bootstrap.app import app
         from app.infrastructure.ai.components import COMPONENTS
 
@@ -64,15 +65,20 @@ def main():
                 runtime = release_runtime.runtime
                 assert runtime.current[1].digest == record['digest']
                 original = COMPONENTS.get('companion.intent').prompt.text
+                original_flow = load_catalog().spec('reflection')
                 replacement = copy.deepcopy(record)
                 replacement['id'] = '00000000-0000-4000-8000-000000000002'
                 replacement['bundle']['files']['agents/companion.intent.json']['prompt']['template'] += '\nSmoke version.'
+                replacement['bundle']['files']['workflows/reflection.json']['edges'].reverse()
+                replacement['bundle']['compatibility'] = contract_compatibility(replacement['bundle']['files'])
                 replacement['digest'] = compile_bundle(replacement['bundle']).digest
                 with runtime.pin():
                     state['release'] = replacement
                     runtime.tick()
                     assert COMPONENTS.get('companion.intent').prompt.text == original
+                    assert load_catalog().spec('reflection') is original_flow
                 assert COMPONENTS.get('companion.intent').prompt.text.endswith('Smoke version.')
+                assert load_catalog().spec('reflection').edges[0].target == 'END'
                 state['available'] = False
                 runtime.tick()
                 assert runtime.current[1].digest == replacement['digest']
@@ -81,7 +87,10 @@ def main():
                 print('PASS: production ASGI startup, HTTP release/ack, atomic pin and live outage recovery')
             cached = release_runtime.ReleaseRuntime(os.environ['AGENT_CONFIG_SOURCE_URL'], token, cache, expected_environment='prod')
             cached.start()
-            try: assert cached.current[1].digest == replacement['digest']
+            try:
+                assert cached.current[1].digest == replacement['digest']
+                with cached.pin():
+                    assert load_catalog().spec('reflection').edges[0].target == 'END'
             finally: cached.close()
             print('PASS: cold restart with Admin unavailable uses persistent validated cache')
         finally:

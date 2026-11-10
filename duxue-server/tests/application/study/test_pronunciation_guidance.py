@@ -3,8 +3,6 @@ from __future__ import annotations
 import json
 
 import pytest
-from fastapi import HTTPException
-
 from app.application.ports.companion import RunInvocation
 from app.application.queries.pronunciation_speech import PronunciationLessonQuery
 from app.application.workflows.tutoring_workflow import TutoringWorkflow
@@ -24,6 +22,7 @@ from app.infrastructure.persistence.models import (
     TutoringSession,
     uid,
 )
+from fastapi import HTTPException
 from tests.support.factories import create_ward
 from tests.support.fakes import StaticLeakJudge, StaticTutorModel, tutor_raw
 
@@ -46,9 +45,10 @@ def _pronounce(text: str = "apple", *, segment: str | None = "apple") -> dict:
     )
 
 
-def _present(db, invocation, *raws, model=None):
+def _present(db, invocation, *raws, model=None, image_target_selector=None):
     model = model or StaticTutorModel(*raws)
-    return TutoringWorkflow(db, turn_model=model, leak_judge=StaticLeakJudge()).invoke(invocation)
+    return TutoringWorkflow(db, turn_model=model, leak_judge=StaticLeakJudge(),
+                            image_target_selector=image_target_selector).invoke(invocation)
 
 
 def _counts(db):
@@ -179,7 +179,7 @@ def test_follow_up_keeps_the_prior_image_and_utterance(db, monkeypatch):
     outcome = _present(db, RunInvocation(
         run_id=uid(), thread_id=thread.id, ward_id=ward.id, agent_type="tutoring",
         turn={"content": "那第二行怎么读？", "tutoring_intent": "pronunciation", "attachment_keys": []},
-    ), model=model)
+    ), model=model, image_target_selector=lambda rows, content: {'target_image_ids': [1], 'ambiguous': False})
     assert outcome.next_interaction["kind"] == "pronunciation_lesson"
     call = model.calls[0]
     assert call["current_images"] == []

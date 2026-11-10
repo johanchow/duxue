@@ -29,13 +29,13 @@ RESULTS_DIR = ROOT / "var" / "evals"
 _PHONE = re.compile(r"(?<!\d)1\d{10}(?!\d)")
 _EMAIL = re.compile(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}")
 _CN_ID = re.compile(r"(?<![\dXx])\d{17}[\dXx](?![\dXx])")
-_UUID = re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", re.I)
+_UUID = re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", re.IGNORECASE)
 _LONG_NUMBER = re.compile(r"(?<!\d)\d{8,}(?!\d)")
 _DETECTORS = {
     "phone": _PHONE, "email": _EMAIL, "cn_id": _CN_ID, "uuid": _UUID, "long_number": _LONG_NUMBER,
-    "data_url": re.compile(r"data:[\w/+.-]+;base64", re.I),
-    "storage_path": re.compile(r"\bward/[0-9a-f-]{8,}/", re.I),
-    "url": re.compile(r"https?://", re.I),
+    "data_url": re.compile(r"data:[\w/+.-]+;base64", re.IGNORECASE),
+    "storage_path": re.compile(r"\bward/[0-9a-f-]{8,}/", re.IGNORECASE),
+    "url": re.compile(r"https?://", re.IGNORECASE),
 }
 
 
@@ -175,6 +175,12 @@ def dataset_hash(cases: list[EvalCase]) -> str:
             record["context"].pop("recent_problems")
         if record["expect"]["answer_protected"] is None:
             record["expect"].pop("answer_protected")
+        for row in record["history"]:
+            if not row.get("image_target_refs"):
+                row.pop("image_target_refs", None)
+        for field in ("selected_images", "review_conclusion"):
+            if record["expect"].get(field) is None:
+                record["expect"].pop(field, None)
         payload.append(record)
     return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:16]
 
@@ -198,7 +204,7 @@ def validate(cases: list[EvalCase]) -> list[str]:
             problems.append(f"{case.id}: history longer than the production window ({MAX_WINDOW})")
         if len(case.asset_names) > MAX_WINDOW:
             problems.append(f"{case.id}: more images than the production window keeps ({MAX_WINDOW})")
-        for name in case.asset_names:
+        for name in [*case.asset_names, *(case.expect.selected_images or [])]:
             if not ASSET_NAME.match(name):
                 problems.append(f"{case.id}: bad asset name {name!r}")
         findings = pii_findings(case)

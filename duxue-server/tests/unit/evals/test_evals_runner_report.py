@@ -1,5 +1,4 @@
 import pytest
-
 from app.infrastructure.ai.components import COMPONENTS
 from evals import report, variants
 from evals.runner import Backends, build_input, run_cases
@@ -102,8 +101,9 @@ def test_images_reach_the_model_as_numbered_data_urls(tmp_path):
     judge = StaticLeakJudge(False)
     run_cases([case], {"tutoring.turn": Backends(tutor_model=model, leak_judge=judge)},
               samples=1, workers=1, assets_dir=tmp_path)
-    assert model.calls[0]["recent_utterances"][0]["image_urls"] and len(model.calls[0]["current_images"]) == 1
-    assert len(judge.images[0]) == 2
+    assert "image_urls" not in model.calls[0]["recent_utterances"][0]
+    assert len(model.calls[0]["current_images"]) == 1
+    assert len(judge.images[0]) == 1
 
 
 def test_instruction_is_the_production_one():

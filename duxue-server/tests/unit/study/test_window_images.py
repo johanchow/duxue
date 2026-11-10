@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-from types import SimpleNamespace
 
 from app.application.ports.companion import RunInvocation
 from app.application.queries.run_transcript import (
@@ -18,8 +17,8 @@ from app.infrastructure.persistence.models import (
     ConversationThread,
     uid,
 )
-from tests.support.fakes import StaticTutorModel
 from tests.support.factories import create_ward
+from tests.support.fakes import StaticTutorModel
 
 PIXELS = "data:image/jpeg;base64,YQ=="
 
@@ -133,7 +132,7 @@ def test_tutoring_sends_window_and_current_pictures_to_every_model_call(db, monk
 
     def reader(key):
         read_keys.append(key)
-        return f"data:image/jpeg;base64,{key[-7:-4]}"
+        return "data:image/jpeg;base64,bmV3"
 
     monkeypatch.setattr("app.application.queries.run_transcript._default_reader", reader)
     model = StaticTutorModel()
@@ -143,7 +142,7 @@ def test_tutoring_sends_window_and_current_pictures_to_every_model_call(db, monk
     ))
     call = model.calls[0]
     assert "image_urls" not in call["recent_utterances"][0]
-    assert call["current_images"] == ["data:image/jpeg;base64,new"]
+    assert call["current_images"] == ["data:image/jpeg;base64,bmV3"]
     assert read_keys == [new_key]
     assert "had_image" not in call["instruction"] and "base64" not in call["instruction"]
 

@@ -26,7 +26,7 @@ def _episode(first_expect=None):
 
 def test_committed_episodes_are_six_turns_and_have_stable_hash():
     rows = episodes.load_episodes()
-    assert len(rows) == 4
+    assert len([row for row in rows if row.review_batch != "image-review-v1"]) == 4
     assert all(len(row.turns) == 6 for row in rows)
     assert episodes.episodes_hash(rows) == episodes.episodes_hash(list(reversed(rows)))
     assert episodes.validate_episodes(rows) == []
@@ -93,3 +93,28 @@ def test_branch_uses_previous_outcome_and_failure_stops_episode():
     assert summary["stable_pass"] == 0
     assert summary["any_pass"] == 1
     assert summary["by_status"]["proposed"]["any_pass"] == 1
+
+
+def test_multimodal_episode_keeps_actual_generated_reply_and_image_identity(tmp_path):
+    from app.agent_specs.image_refs import image_ref
+    from evals.runner import read_asset
+    row = _episode().model_dump(mode='json')
+    name = 'img-aaaaaaaaaaaa.jpg'
+    (tmp_path / name).write_bytes(b'image')
+    row['turns'][0]['images'] = [name]
+    model = StaticTutorModel(tutor_raw(content='第一张图的实际生成回复'))
+    selection_windows = []
+
+    def select(window, content):
+        selection_windows.append(window)
+        return {'target_image_ids': [1], 'ambiguous': False}
+
+    result = run_episode(episodes.Episode.model_validate(row),
+                         Backends(tutor_model=model, leak_judge=StaticLeakJudge(False),
+                                  image_target_selector=select), assets_dir=tmp_path)
+    assert result.passed
+    assert result.steps[1].observation.selected_images == [name]
+    assert model.calls[1]['recent_utterances'][0]['image_urls']
+    assert selection_windows[0][1]['text'] == '第一张图的实际生成回复'
+    assert selection_windows[0][1]['image_target_refs'] == [image_ref(read_asset(tmp_path / name))]
+    assert not any(row['author'] == 'companion' for row in model.calls[1]['recent_utterances'])

@@ -18,9 +18,6 @@ from app.infrastructure.persistence.models import TutoringMessage, TutoringProbl
 
 from app.agent_specs.configuration import code_contract
 
-_FIXED = code_contract()["files"]["workflows/tutoring.json"]
-MAX_TOOL_CALLS = _FIXED["limits"]["tool_calls"]
-MAX_MODEL_CALLS = _FIXED["limits"]["model_calls"]
 TOOL_NAMES = tuple(tool_id.split(".", 1)[1] for tool_id in code_contract()["tool_authority"]["tutoring.turn"])
 _HISTORY_LIMIT = 3
 

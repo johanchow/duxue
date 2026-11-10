@@ -12,12 +12,8 @@ CODE_ROOT = Path(__file__).resolve().parents[2] / 'agent_specs'
 @lru_cache(maxsize=1)
 def code_contract():
     contract = json.loads((CODE_ROOT / 'contracts.json').read_text(encoding='utf-8'))
-    for folder in ('workflows', 'schemas'):
-        for path in sorted((CODE_ROOT / folder).glob('*.json')):
-            doc = json.loads(path.read_text(encoding='utf-8'))
-            if doc.get('kind') == 'workflow':
-                doc.pop('version', None)
-            contract['files'][str(path.relative_to(CODE_ROOT))] = doc
+    for path in sorted((CODE_ROOT / 'schemas').glob('*.json')):
+        contract['files'][str(path.relative_to(CODE_ROOT))] = json.loads(path.read_text(encoding='utf-8'))
     return contract
 
 

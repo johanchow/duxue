@@ -86,7 +86,10 @@ test('real database sessions enforce roles, immutable release debugging and imme
     const bundle = {
       format_version: 3,
       compatibility: 'contract',
-      files: { 'agent.json': { id: 'test', prompt: { template: 'frozen' } } },
+      files: {
+        'agent.json': { id: 'test', prompt: { template: 'frozen' } },
+        'workflows/test.json': { id: 'test', nodes: [], edges: [] },
+      },
     };
     for (const [id, state] of [
       [draft, 'working'],
@@ -116,12 +119,13 @@ test('real database sessions enforce roles, immutable release debugging and imme
     url.searchParams.set('options', '-csearch_path=' + schema);
     process.env.ADMIN_DATABASE_URL = url.toString();
     const requests: any[] = [];
+    let runtimeReady = true;
     globalThis.fetch = async (target, init) => {
       const body = JSON.parse(String(init?.body));
       requests.push({ path: String(target), body });
       return Response.json(
         String(target).endsWith('/validate')
-          ? { digest: 'digest' }
+          ? { digest: 'digest', runtime_ready: runtimeReady }
           : {
               digest: 'digest',
               status: 'succeeded',
@@ -236,6 +240,66 @@ test('real database sessions enforce roles, immutable release debugging and imme
       ).rows[0].count,
       '2',
     );
+    runtimeReady = false;
+    const blockedPublish = await request(
+      'admin',
+      'POST',
+      `drafts/${draft}/publish`,
+      { revision: 1 },
+    );
+    assert.equal(blockedPublish.status, 409);
+    assert.match((await blockedPublish.json()).error, /运行协议未就绪/);
+    const blockedRollback = await request(
+      'admin',
+      'POST',
+      `releases/${release}/rollback`,
+      {},
+    );
+    assert.equal(blockedRollback.status, 409);
+    assert.match((await blockedRollback.json()).error, /不能回滚/);
+    assert.equal(
+      (
+        await db.query(
+          "SELECT release_id FROM agent_environments WHERE name='test'",
+        )
+      ).rows[0].release_id,
+      release,
+    );
+    runtimeReady = true;
+    const alteredFlow = structuredClone(bundle);
+    alteredFlow.files['workflows/test.json'].nodes = ['injected'] as any;
+    assert.equal(
+      (
+        await request('admin', 'PUT', 'drafts/' + draft, {
+          revision: 1,
+          bundle: alteredFlow,
+        })
+      ).status,
+      400,
+    );
+    assert.equal(
+      (await db.query('SELECT revision FROM agent_drafts WHERE id=$1', [draft]))
+        .rows[0].revision,
+      1,
+    );
+    // A draft written by an older client/database path must not bypass the
+    // read-only boundary at publication time either.
+    await db.query('UPDATE agent_drafts SET bundle=$1 WHERE id=$2', [
+      alteredFlow,
+      draft,
+    ]);
+    assert.equal(
+      (
+        await request('admin', 'POST', `drafts/${draft}/publish`, {
+          revision: 1,
+        })
+      ).status,
+      400,
+    );
+    await db.query('UPDATE agent_drafts SET bundle=$1 WHERE id=$2', [
+      bundle,
+      draft,
+    ]);
     assert.equal(
       (
         await request('admin', 'PUT', 'drafts/' + draft, {

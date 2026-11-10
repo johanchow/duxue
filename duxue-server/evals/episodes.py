@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-import json
 import hashlib
+import json
 from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, ValidationError, model_validator
 
 from evals import dataset
-from evals.schema import Context, EvalCase, Expect, OUTCOMES, Strict, Utterance
+from evals.schema import OUTCOMES, Context, EvalCase, Expect, Strict, Utterance
 
 EPISODES_DIR = dataset.DATA_DIR / "multi_turn"
 Origin = Literal["MathDial", "SocraTeach", "CoMTA", "self"]
@@ -18,6 +18,7 @@ Origin = Literal["MathDial", "SocraTeach", "CoMTA", "self"]
 
 class EpisodeTurn(Strict):
     student_said: str = Field(min_length=1)
+    images: list[str] = Field(default_factory=list)
     # A different student reply after clarification or another allowed tutor move.
     student_on: dict[str, str] = Field(default_factory=dict)
     context: Context
@@ -61,6 +62,16 @@ def load_episodes(path: Path = EPISODES_DIR) -> list[Episode]:
 
 def episodes_hash(rows: list[Episode]) -> str:
     payload = [row.model_dump(mode="json") for row in sorted(rows, key=lambda row: row.id)]
+    for record in payload:
+        for row in record['initial_history']:
+            if not row.get('image_target_refs'):
+                row.pop('image_target_refs', None)
+        for turn in record['turns']:
+            if not turn.get('images'):
+                turn.pop('images', None)
+            for key in ('selected_images', 'review_conclusion'):
+                if turn['expect'].get(key) is None:
+                    turn['expect'].pop(key, None)
     return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:16]
 
 
@@ -68,7 +79,7 @@ def turn_case(episode: Episode, index: int, history: list[Utterance], said: str)
     turn = episode.turns[index]
     return EvalCase(
         id=f"{episode.id}-{index:02d}", component="tutoring.turn", conversation_id=episode.id,
-        turn_index=index, history=history[-8:], student_said=said, context=turn.context,
+        turn_index=index, history=history[-8:], student_said=said, images=turn.images, context=turn.context,
         expect=turn.expect, tags=["multi-turn", *turn.tags], source="synthetic",
         review_batch=episode.review_batch, label_status=episode.label_status,
         reviewed_by=episode.reviewed_by, note=episode.note,

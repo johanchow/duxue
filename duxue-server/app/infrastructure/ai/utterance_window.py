@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 
-_ROW_FIELDS = ("author", "text", "leading_omitted")
+_ROW_FIELDS = ("author", "text", "leading_omitted", "image_target_refs")
 
 
 def _numbering(utterances: list[dict], current_count: int) -> tuple[list[list[int]], list[int]]:
@@ -59,6 +59,10 @@ def user_content(
     rows, current_ids = window_text(window, len(images))
     body = dict(payload)
     body["recent_utterances"] = rows
+    from app.agent_specs.image_refs import image_manifest
+    manifest = image_manifest([*(url for row in window for url in row.get("image_urls", [])), *images])
+    if manifest:
+        body["image_manifest"] = manifest
     if current_ids:
         body["current_image_ids"] = current_ids
     return [{"type": "text", "text": json.dumps(body, ensure_ascii=False)}, *image_parts(window, images)]

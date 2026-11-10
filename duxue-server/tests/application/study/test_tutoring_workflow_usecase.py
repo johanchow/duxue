@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 
 import pytest
-
 from app.application.ports.companion import RunInvocation
 from app.application.workflows.tutoring_workflow import TutoringWorkflow
 from app.infrastructure.ai.errors import ModelGatewayError
@@ -129,13 +128,12 @@ def test_tutoring_workflow_step_by_step_and_close(db):
 
 
 def test_subgoal_observation_matches_the_persisted_problem(db, monkeypatch):
+    from app.infrastructure.observability import telemetry
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import SimpleSpanProcessor
     from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
         InMemorySpanExporter,
     )
-
-    from app.infrastructure.observability import telemetry
 
     monkeypatch.setenv("OTEL_SDK_DISABLED", "false")
     exporter = InMemorySpanExporter()
@@ -181,14 +179,14 @@ def test_protected_image_turn_passes_only_authorized_current_image_to_leak_judge
     key = f"ward/{session.ward_id}/companion/homework.jpg"
     monkeypatch.setattr(
         "app.application.queries.run_transcript._default_reader",
-        lambda object_key: "data:image/jpeg;base64,authorized" if object_key == key else None,
+        lambda object_key: "data:image/jpeg;base64,YXV0aG9yaXplZA==" if object_key == key else None,
     )
     judge = StaticLeakJudge(False)
     workflow, _ = _workflow(db, ATTEMPT, judge=judge)
 
     _ask(db, workflow, session, "看看我图片里写的答案对不对", attachment_keys=[key])
 
-    assert judge.images == [["data:image/jpeg;base64,authorized"]]
+    assert judge.images == [["data:image/jpeg;base64,YXV0aG9yaXplZA=="]]
 
 
 def test_repeated_attempts_never_unlock_the_next_round(db):

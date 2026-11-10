@@ -1,4 +1,4 @@
-"""Validated access to code defaults and pinned Admin Agent, Gate and Tool artifacts."""
+"""Validated access to pinned Admin Agent, Gate, Tool and Workflow artifacts."""
 
 from __future__ import annotations
 
@@ -69,7 +69,7 @@ class ModelDefinition(BaseModel):
     version: str | None = None
     operation: str | None = None
     temperature: float = Field(ge=0, le=2)
-    max_output_tokens: int = Field(gt=0, le=4096)
+    max_output_tokens: int = Field(gt=0, le=16384)
     timeout_ms: int = Field(gt=0, le=120000)
 
 
@@ -192,6 +192,7 @@ class DefinitionCatalog:
         result_validator()
         self.root = root
         self.artifact_digest: str | None = None
+        self.workflow_catalog = None
         self.units: dict[str, ModelUnit] = {}
         self.tools: dict[str, ToolDefinition] = {}
         self.code_gates: dict[str, CodeGateDefinition] = {}
@@ -288,11 +289,12 @@ class DefinitionCatalog:
 
 @lru_cache(maxsize=1)
 def base_definitions() -> DefinitionCatalog:
-    from app.agent_specs.configuration import read_snapshot, _offline_catalog
+    from app.agent_specs.configuration import _offline_catalog, read_snapshot
     if _offline_catalog is not None:
         return _offline_catalog
-    from app.agent_specs.admin_bundle import compile_bundle
     import os
+
+    from app.agent_specs.admin_bundle import compile_bundle
     mode = os.getenv("AGENT_CONFIG_SOURCE", "admin" if os.getenv("APP_ENV") in {"production", "prod"} else "snapshot")
     if mode == "admin":
         from app.agent_specs.release_runtime import AgentConfigurationUnavailable

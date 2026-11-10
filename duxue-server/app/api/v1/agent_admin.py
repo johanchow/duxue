@@ -80,8 +80,16 @@ def catalog():
 def validate(body: BundleInput):
     try:
         snapshot = compile_bundle(body.bundle)
+        from app.application.workflows.image_review import require_configuration
+        try:
+            require_configuration(body.bundle)
+            runtime_errors = []
+        except ValueError as error:
+            runtime_errors = [str(error)]
         return {
             "valid": True,
+            "runtime_ready": not runtime_errors,
+            "runtime_errors": runtime_errors,
             "digest": snapshot.digest,
             "compatibility": body.bundle["compatibility"],
         }

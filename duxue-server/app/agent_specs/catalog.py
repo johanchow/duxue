@@ -6,7 +6,6 @@ handlers, evaluates expressions, grants permissions or implements guardrails.
 
 from __future__ import annotations
 
-from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
@@ -16,7 +15,6 @@ from app.agent_specs.definitions import load_definitions
 from app.agent_specs.registrations import WORKFLOW_BINDINGS
 from app.infrastructure.ai.components import COMPONENTS, ComponentSpec
 
-_DIRECTORY = Path(__file__).resolve().parents[2] / "agent_specs"
 _REQUIRED_CHECKS = {
     "planning": {"planning.confirmation_gate"},
     "tutoring": {
@@ -209,6 +207,9 @@ class AgentCatalog:
         referenced: set[str] = set()
         for spec in specs.values():
             registration = WORKFLOW_BINDINGS[spec.id]
+            expected_handler = "coordinator" if spec.id == "companion" else spec.id
+            if spec.handler != expected_handler:
+                raise ValueError(f"{spec.id}: workflow handler must match its domain")
             handlers = {node.handler for node in spec.nodes if node.handler}
             conditions = {edge.condition for edge in spec.edges if edge.condition}
             conditions.update(gate["when"] for gate in spec.required_gates)
@@ -223,6 +224,8 @@ class AgentCatalog:
             for node in spec.nodes:
                 if node.kind == "agent" and node.ref not in load_definitions().units and node.ref not in load_definitions().code_agents:
                     raise ValueError(f"{node.id}: unknown Agent reference {node.ref}")
+                if node.kind == "agent" and node.ref in load_definitions().units and load_definitions().units[node.ref].kind != "agent":
+                    raise ValueError(f"{node.id}: Gate cannot be used as Agent")
                 if node.kind == "gate" and node.ref not in load_definitions().code_gates and (
                     node.ref not in load_definitions().units or load_definitions().units[node.ref].kind != "gate"
                 ):
@@ -270,17 +273,23 @@ class AgentCatalog:
             spec = self.spec(agent)
             if not checks.issubset(set(spec.required_checks)):
                 raise ValueError(f"{agent}: missing required checks {sorted(checks - set(spec.required_checks))}")
-        for agent in _BUSINESS:
-            if self.spec(agent).handler != agent:
-                raise ValueError(f"{agent}: workflow handler must match its domain")
-        if self.spec("companion").handler != "coordinator":
-            raise ValueError("companion: handler must be coordinator")
+            for check in checks:
+                node = spec.node(check)
+                expected = "planning.confirmation-gate" if check == "planning.confirmation_gate" else check
+                if check == "tutoring.exit_gate":
+                    valid = node.kind == "action" and node.handler == expected
+                else:
+                    valid = node.kind == "gate" and node.ref == expected
+                if not valid:
+                    raise ValueError(f"{check}: required check binding differs")
+        if set(self.spec("tutoring").limits) != set(_MAX_LIMITS):
+            raise ValueError("tutoring: model and tool limits are required")
         if set(self.spec("companion").targets) != _BUSINESS | {"clarify", "safety"}:
             raise ValueError("companion: route targets differ from business contexts")
-        if set(load_definitions().units["tutoring.turn"].tools) != {
+        if not set(load_definitions().units["tutoring.turn"].tools).issubset({
             "tutoring.get_task_context", "tutoring.get_attempt_summary",
             "tutoring.lookup_history", "tutoring.widget_guidelines",
-        }:
+        }):
             raise ValueError("tutoring: tool permissions differ from code-owned handlers")
 
     @classmethod
@@ -292,7 +301,7 @@ class AgentCatalog:
             if path.stem != spec.id or spec.id in specs:
                 raise ValueError(f"invalid agent file {path.name}")
             specs[spec.id] = spec
-        if set(specs) != {"companion", *_BUSINESS, "task-intake", "review-aspects", "sprint-intake", "tutoring-vet", "tutoring-retry"}:
+        if set(specs) != set(WORKFLOW_BINDINGS):
             raise ValueError(f"agent definitions missing or unexpected: {sorted(specs)}")
         return cls(specs, directory)
 
@@ -368,16 +377,20 @@ class AgentCatalog:
         return result
 
 
-@lru_cache(maxsize=1)
 def load_catalog() -> AgentCatalog:
-    return AgentCatalog.from_directory(_DIRECTORY)
+    definitions = load_definitions()
+    if definitions.workflow_catalog is None:
+        # Only explicit directory loaders (historical tests) take this path.
+        # Compiled Admin bundles already own an eagerly validated catalog.
+        definitions.workflow_catalog = AgentCatalog.from_directory(definitions.root)
+    return definitions.workflow_catalog
 
 
 def render_mermaid(catalog: AgentCatalog) -> str:
     lines = [
         "# 当前 Agent 流程图（自动生成）",
         "",
-        "> 由 `duxue-server/agent_specs/workflows/*.json` 生成；编辑定义后运行 `cd duxue-server && .venv/bin/python -m app.agent_specs export`。",
+        "> 由当前选定的 Admin 导出快照生成；运行 `cd duxue-server && .venv/bin/python -m app.agent_specs export`。本文件是导出视图，不是配置来源。",
         "> 实线表示主要执行路径，虚线表示节点内部的条件步骤；门禁实际执行条件仍由代码裁决。",
         "> 独立 API 调用有各自的 Workflow；未连接的节点表示会话外阶段。",
         "",

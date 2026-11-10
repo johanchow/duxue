@@ -105,6 +105,7 @@ interface Utterance {
   author: "ward" | "companion";
   text?: string;           // 默认 ""
   images?: AssetName[];    // 默认 []
+  image_target_refs?: string[]; // 助手先前选图的内容引用
 }
 
 interface ProblemContext {
@@ -154,7 +155,7 @@ interface EvalCase {
   conversation_id: string;                   // 真实来源标识；合成可用 synthetic
   turn_index: number;                        // 整数 >= 0
   history?: Utterance[];                     // 默认 []，最多 8 条
-  student_said: string;                      // 非空，本轮学生句
+  student_said: string;                      // 本轮学生句；仅图片轮允许空字符串
   images?: AssetName[];                      // 默认 []，本轮图片
   context?: Context;                        // 默认 {}，展开为共享类型默认值
   expect?: Expect;                          // 默认 {}，包含默认禁止 fallback
@@ -344,6 +345,34 @@ interface GateCheck {
 - 被拒候选留在 `attempts`，不冒充用户看到的消息。
 - `candidate` 保留产生时的版本；生产候选契约见 [tutor_turn.py](../../duxue-server/app/application/workflows/tutor_turn.py)，此处不重复定义其 act/turn/配图协议。
 - v1 只覆盖文本消息及现有输入快照；多模态、更多组件或上下文字段需扩展契约，不能假装已被该格式支持。
+
+### 连续图片回归（image-review-v1）
+
+真实回放扩展为 `conversation-eval.v2`，v1仍严格拒绝图片。`messages[].images`、`attempts[].gate.input.images` 为本机资源名，原件置于ignored `var/eval-assets/`；支持仅图片的学生消息，文本和图片不能同时为空。`messages[].image_target_refs` 可保存原始助手选图引用。缺图片明确跳过/失败，不能替换成文字用例并计通过。
+
+v2在原始重试反馈被观测系统截断时允许 `repair_feedback=null` 与 `repair_feedback_status=unavailable`；必须有同轮前序 `retry_of`，不能补造反馈。完整可见原文、被拒候选、原始裁决与新期望分别存放。固定历史只使用检查点前的消息，不将本次新回复写回真实历史；原始窗口之外的消息必须在source.note说明遗漏范围。
+
+新增用例事实源：
+
+- [new-image-review-conversation.json](../../duxue-server/evals/data/conversation_replay/new-image-review-conversation.json)：事故相关4轮8条原消息，6个原始候选；3个主回复检查点与3个固定候选复审，保留实际错误回复。
+- [episode-image-switch-and-correction.json](../../duxue-server/evals/data/multi_turn/episode-image-switch-and-correction.json)：首图错误批改历史作污染种子，6轮依次覆盖上传新页读标题、无附件纠正读标题、脱离图片问词义、返回首图读标题、重回第二图读大题标题及再次指代读印刷算式。按用户要求暂绕过数学稳定性，不再在此合成用例中检查计算结果或断言review_conclusion。每个turn的 `images` 是新增附件；后续轮次继承实际生成并交付的回复、图片和选图引用，不用预写的正确助手回复。题目状态仍是注入，不等于真实数据库端到端。
+
+`Expect`及真实TurnExpect新增 `selected_images`、`review_conclusion`，只比较结构化目标和结论枚举；不扫描回复关键词判断选图或正误。GateExpect可用 `reason_in` 接受多个合理拒绝原因。报告记录完整 `image_review`、实际选图引用与 `delivered_content`；fallback正文与被拒候选分开。结构断言通过仍标记 `semantic_status=pending_review`，须对照原图和criteria复核题目位置、错误步骤和答案保护。全部标签保持proposed，未经复核不升confirmed。
+
+```bash
+python -m evals run-conversations --path evals/data/conversation_replay/new-image-review-conversation.json --samples 1 --config-snapshot var/admin/image-review-draft.json --out var/evals/image-review-conversation.json
+python -m evals run-episodes --case episode-image-switch-and-correction --samples 1 --config-snapshot var/admin/image-review-draft.json --out var/evals/image-review-episode.json
+```
+
+真实事故原文、原始裁决和数学期望保持原样。要仅验收本轮选图与历史隔离，可显式执行：
+
+```bash
+python -m evals run-conversations --path evals/data/conversation_replay/new-image-review-conversation.json --scope image-context --samples 3 --config-snapshot var/admin/image-context-accepted-snapshot.json --out var/evals/image-context-conversation-final.json
+```
+
+`image-context`对3个TurnCheck使用原始截至当轮的历史和图片，执行生产`prepare_images()`（包含真实选图Agent）；断言目标资源/稳定引用、指代不模糊及图片语境旧助手原文未回灌。直接新附件优先走生产确定性路径。该模式不调用主答疑或数学Judge，报告明确记录`scope=image-context`、实际选图模型、`semantic_status=image_context_only`与未执行的6个完整回复/判官检查，不把它们计为通过。默认`--scope full`仍保留完整执行与原始数学断言；不支持在image-context下冒用主模型variant。合成6轮仍完整执行真实主答疑与现有出口检查，后续历史继承真实生成回复，不能将兜底记为合格知识回复。
+
+快照必须从Admin导出；上述文件名只是本机导出位置，不是Git配置默认值。`run-conversations`、`run-episodes`出现失败或缺资源返回非零退出码；合成多轮首个失败即停止，未运行轮次不计通过。旧seed-v1批次的哈希保持 `7084bc6835908cf9`，新增批次单独统计。
 
 ## 五、执行与判分边界
 
