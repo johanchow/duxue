@@ -8,6 +8,8 @@ database is replaced by the case's injected context.
 from __future__ import annotations
 
 import base64
+import copy
+from dataclasses import asdict
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -28,11 +30,56 @@ from app.infrastructure.ai.errors import ModelGatewayError
 from app.infrastructure.ai.intent_classifier import ModelIntentClassifier
 
 from evals.dataset import ASSETS_DIR
-from evals.graders import grade
+from evals.graders import grade_result, failures
+from evals.grading import GradingResult, unavailable
 from evals.outcome import Observation, classify
 from evals.schema import EvalCase
 
 _MIME = {".png": "image/png", ".webp": "image/webp"}
+
+
+class ReviewCapture:
+    def __init__(self, delegate):
+        self.delegate = delegate
+        self.last = None
+
+    def leaks(self, **kwargs):
+        self.last = None
+        value = self.delegate.leaks(**kwargs)
+        self.last = (
+            copy.deepcopy(value)
+            if isinstance(value, dict)
+            else (
+                {"leaks": value, "reason": "leak_detected" if value else "none"}
+                if type(value) is bool
+                else None
+            )
+        )
+        return value
+
+    def __getattr__(self, name):
+        return getattr(self.delegate, name)
+
+
+class RecordingToolbox(TutorToolbox):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.calls = []
+
+    def run(self, name, args):
+        row = {
+            "name": name,
+            "args": copy.deepcopy(args) if isinstance(args, dict) else {},
+            "result": None,
+        }
+        self.calls.append(row)
+        try:
+            value = super().run(name, args)
+            row["result"] = copy.deepcopy(value)
+            return value
+        except Exception as error:
+            row["error"] = type(error).__name__
+            raise
 
 
 class _NeverLeaks:
@@ -49,11 +96,12 @@ class _NeverLeaks:
 class Backends:
     """What a run talks to. Live runs fill these with real components; tests with fakes."""
 
-    tutor_model: object | None = None          # TutorModelPort
-    backup_model: object | None = None         # TutorModelPort
-    leak_judge: object | None = None           # LeakJudgePort
+    tutor_model: object | None = None  # TutorModelPort
+    backup_model: object | None = None  # TutorModelPort
+    leak_judge: object | None = None  # LeakJudgePort
     intent_complete: Callable[..., str] | None = None
     image_target_selector: Callable | None = None
+    semantic_grader: object | None = None
 
 
 @dataclass
@@ -61,16 +109,25 @@ class Sample:
     observation: Observation
     failures: list[str]
     latency_ms: float
+    grading_result: GradingResult | None = None
+    case_id: str | None = None
+    check_id: str | None = None
+    sample_index: int = 0
+    evidence: dict = field(default_factory=dict)
 
     @property
     def passed(self) -> bool:
-        return not self.failures
+        return (
+            self.grading_result.status == "pass"
+            if self.grading_result
+            else not self.failures
+        )
 
 
 @dataclass
 class CaseResult:
     case: EvalCase
-    status: str = "ran"                         # ran | skipped
+    status: str = "ran"  # ran | skipped
     skip_reason: str | None = None
     samples: list[Sample] = field(default_factory=list)
 
@@ -84,7 +141,9 @@ def missing_assets(case: EvalCase, assets_dir: Path) -> list[str]:
     return [name for name in case.asset_names if not (assets_dir / name).is_file()]
 
 
-def build_input(case: EvalCase, assets_dir: Path) -> tuple[list[dict], list[str | None]]:
+def build_input(
+    case: EvalCase, assets_dir: Path
+) -> tuple[list[dict], list[str | None]]:
     """The model-facing window rows (images as data URLs) and this turn's images."""
     window: list[dict] = []
     for row in case.history:
@@ -97,64 +156,121 @@ def build_input(case: EvalCase, assets_dir: Path) -> tuple[list[dict], list[str 
     return window, [read_asset(assets_dir / name) for name in case.images]
 
 
-def _observe_tutor(case: EvalCase, backends: Backends, window: list[dict], images: list, *, permit_override: TutorPermit | None = None) -> Observation:
+def _observe_tutor(
+    case: EvalCase,
+    backends: Backends,
+    window: list[dict],
+    images: list,
+    *,
+    permit_override: TutorPermit | None = None,
+) -> Observation:
     from app.agent_specs.image_refs import image_ref
     from app.application.workflows.image_target import prepare_images
-    original_pairs = [(asset, url) for row, view in zip(case.history, window)
-                      for asset, url in zip(row.images, view.get('image_urls', []))]
+
+    original_pairs = [
+        (asset, url)
+        for row, view in zip(case.history, window)
+        for asset, url in zip(row.images, view.get("image_urls", []))
+    ]
     original_pairs.extend(zip(case.images, images))
-    prepared = prepare_images(window, images, content=case.student_said,
-                              select=backends.image_target_selector,
-                              compare_previous=case.context.tutoring_intent == 'compare_previous_image')
+    prepared = prepare_images(
+        window,
+        images,
+        content=case.student_said,
+        select=backends.image_target_selector,
+        compare_previous=case.context.tutoring_intent == "compare_previous_image",
+    )
     if prepared.target.ambiguous:
-        return Observation('clarify', act='clarify', reason='image_target_ambiguous',
-                           content='你想检查哪张图片？请说明图片编号。')
-    selected_assets = list(dict.fromkeys(asset for asset, url in original_pairs
-                                        if url and image_ref(url) in prepared.refs))
+        return Observation(
+            "clarify",
+            act="clarify",
+            reason="image_target_ambiguous",
+            content="你想检查哪张图片？请说明图片编号。",
+        )
+    selected_assets = list(
+        dict.fromkeys(
+            asset
+            for asset, url in original_pairs
+            if url and image_ref(url) in prepared.refs
+        )
+    )
     window, images = prepared.window, prepared.images
     context = case.context
     problem = context.problem
     state = (
         ProblemState(
-            status="open", active_subgoal=problem.active_subgoal,
-            substantive_attempts=problem.substantive_attempts, hints_given=problem.hints_given,
+            status="open",
+            active_subgoal=problem.active_subgoal,
+            substantive_attempts=problem.substantive_attempts,
+            hints_given=problem.hints_given,
             evidence_summary=problem.evidence_summary,
         )
-        if problem else None
+        if problem
+        else None
     )
-    permit = permit_override if permit_override is not None else TutorPermitPolicy.permit(state)
+    permit = (
+        permit_override
+        if permit_override is not None
+        else TutorPermitPolicy.permit(state)
+    )
     instruction = build_tutor_instruction(
-        content=case.student_said, permit=permit, history_candidates=history_candidates(window),
+        content=case.student_said,
+        permit=permit,
+        history_candidates=history_candidates(window),
         tutoring_intent=context.tutoring_intent,
     )
     from app.bootstrap.math_engine import math_engine
-    tools = TutorToolbox(
-        None, math_engine=math_engine(), tutoring_session_id=None,
+
+    tools = RecordingToolbox(
+        None,
+        math_engine=math_engine(),
+        tutoring_session_id=None,
         problem=SimpleNamespace(**problem.model_dump()) if problem else None,
-        task_title=context.task_title, task_active=context.task_active, window=window,
+        task_title=context.task_title,
+        task_active=context.task_active,
+        window=window,
     )
+    review = ReviewCapture(backends.leak_judge or _NeverLeaks())
     result = run_tutor_turn(
-        backends.tutor_model, {}, instruction, window, images, tools, permit=permit,
-        leak_judge=backends.leak_judge or _NeverLeaks(), backup_model=backends.backup_model,
+        backends.tutor_model,
+        {},
+        instruction,
+        window,
+        images,
+        tools,
+        permit=permit,
+        leak_judge=review,
+        backup_model=backends.backup_model,
         task_title=context.task_title,
         problem_summary=judge_problem_summary(
-            context.recent_problems or ([problem.summary] if problem and problem.summary else []), case.student_said,
+            context.recent_problems
+            or ([problem.summary] if problem and problem.summary else []),
+            case.student_said,
             recent_utterances=window,
         ),
         # Keep offline replay on the same visual-review path as production. Inputs
         # originate only from the case's explicit current and history assets.
         judge_images=[
-            image for image in [
+            image
+            for image in [
                 *(url for row in window for url in (row.get("image_urls") or [])),
                 *images,
-            ] if isinstance(image, str) and image
+            ]
+            if isinstance(image, str) and image
         ],
     )
-    return replace(classify(result.call, result.vetting, leak_retried=result.leak_retried),
-                   selected_images=selected_assets, selected_image_refs=prepared.refs)
+    return replace(
+        classify(result.call, result.vetting, leak_retried=result.leak_retried),
+        selected_images=selected_assets,
+        selected_image_refs=prepared.refs,
+        tool_calls=tools.calls,
+        exit_gate=review.last,
+    )
 
 
-def _observe_intent(case: EvalCase, backends: Backends, window: list[dict], images: list) -> Observation:
+def _observe_intent(
+    case: EvalCase, backends: Backends, window: list[dict], images: list
+) -> Observation:
     errors: list[str] = []
 
     def complete(**kwargs) -> str:
@@ -165,48 +281,168 @@ def _observe_intent(case: EvalCase, backends: Backends, window: list[dict], imag
             raise
 
     proposal = ModelIntentClassifier(complete=complete).propose(
-        content=case.student_said, focus_agent_type=case.context.focus_agent_type,
-        recent_utterances=window, current_images=images,
+        content=case.student_said,
+        focus_agent_type=case.context.focus_agent_type,
+        recent_utterances=window,
+        current_images=images,
     )
     return Observation(proposal.intent, error=errors[0] if errors else None)
 
 
-def run_sample(case: EvalCase, backends: Backends, window: list[dict], images: list, *, permit_override: TutorPermit | None = None) -> Sample:
-    if case.snapshot_origin == 'missing':
-        return Sample(Observation('fallback', reason='missing_input_snapshot'), ['missing_input_snapshot'], 0)
+def _evidence(case, obs):
+    return {
+        "history": [r.model_dump(mode="json") for r in case.history],
+        "student_said": case.student_said,
+        "current_images": case.images,
+        "input_snapshot": {
+            "origin": case.snapshot_origin,
+            "context": case.context.model_dump(mode="json"),
+        },
+        "response": {
+            "message": obs.delivered_content
+            if obs.delivered_content is not None
+            else obs.content,
+            "visual": obs.visual_payload,
+            "lessons": obs.delivered_lessons,
+        },
+        "selected_images": obs.selected_images,
+    }
+
+
+def unrun_sample(case, reason, *, status="error", sample_index=0):
+    scoring = unavailable(case.grading, reason, status=status)
+    return Sample(
+        Observation(None, error=reason),
+        failures(scoring),
+        0,
+        scoring,
+        case.case_id or case.id,
+        case.check_id,
+        sample_index,
+    )
+
+
+def run_sample(
+    case: EvalCase,
+    backends: Backends,
+    window: list[dict],
+    images: list,
+    *,
+    permit_override: TutorPermit | None = None,
+    sample_index=0,
+) -> Sample:
+    if case.snapshot_origin == "missing":
+        return unrun_sample(case, "missing_input_snapshot", sample_index=sample_index)
     start = time.perf_counter()
-    observe = _observe_intent if case.component == "companion.intent" else _observe_tutor
-    observation = (observe(case, backends, window, images) if case.component == "companion.intent"
-                   else observe(case, backends, window, images, permit_override=permit_override))
-    latency = (time.perf_counter() - start) * 1000
-    return Sample(observation, grade(case, observation), round(latency, 1))
+    try:
+        observation = (
+            _observe_intent(case, backends, window, images)
+            if case.component == "companion.intent"
+            else _observe_tutor(
+                case, backends, window, images, permit_override=permit_override
+            )
+        )
+    except Exception as exc:
+        return unrun_sample(
+            case, f"execution_error:{type(exc).__name__}", sample_index=sample_index
+        )
+    latency = round((time.perf_counter() - start) * 1000, 1)
+    evidence = _evidence(case, observation)
+    if permit_override is not None:
+        evidence["input_snapshot"]["permit"] = asdict(permit_override)
+    urls = [url for row in window for url in row.get("image_urls", [])] + list(images)
+    pairs = list(
+        zip([name for row in case.history for name in row.images] + case.images, urls)
+    )
+    judge = None
+    meta = {"record_digest": case.record_digest}
+    if backends.semantic_grader is not None:
+        judge = lambda rule: backends.semantic_grader.grade(
+            rule,
+            evidence=evidence,
+            image_pairs=pairs,
+            reference=case.grading.reference_response,
+            criteria=[
+                {"id": item.id, "type": item.type, "rubric": item.instructions()}
+                for item in case.grading.model_graded
+            ],
+        )
+        meta.update(backends.semantic_grader.metadata())
+    grading_start = time.perf_counter()
+    if observation.error:
+        scoring = unavailable(case.grading, observation.error, meta=meta)
+    else:
+        scoring = grade_result(
+            case, observation, judge=judge, latency_ms=latency, meta=meta
+        )
+    scoring.meta["grading_latency_ms"] = round(
+        (time.perf_counter() - grading_start) * 1000, 1
+    )
+    return Sample(
+        observation,
+        failures(scoring),
+        latency,
+        scoring,
+        case.case_id or case.id,
+        case.check_id,
+        sample_index,
+        evidence,
+    )
 
 
 def run_cases(
-    cases: list[EvalCase], backends: dict[str, Backends], *, samples: int = 5, workers: int = 4,
-    assets_dir: Path | None = None, on_sample: Callable[[EvalCase], None] | None = None,
+    cases: list[EvalCase],
+    backends: dict[str, Backends],
+    *,
+    samples: int = 5,
+    workers: int = 4,
+    assets_dir: Path | None = None,
+    on_sample: Callable[[EvalCase], None] | None = None,
 ) -> list[CaseResult]:
     """``backends`` is keyed by component id. A case with a missing image is skipped, never passed."""
+    if samples < 1:
+        raise ValueError("samples must be positive")
     assets_dir = assets_dir or ASSETS_DIR
     results = [CaseResult(case) for case in cases]
-    jobs: list[tuple[CaseResult, list[dict], list]] = []
+    jobs: list[tuple[CaseResult, list[dict], list, int]] = []
     for result in results:
-        if result.case.snapshot_origin == 'missing':
-            result.status, result.skip_reason = 'skipped', 'missing_input_snapshot'
+        if result.case.snapshot_origin == "missing":
+            result.status, result.skip_reason = "skipped", "missing_input_snapshot"
+            result.samples = [
+                unrun_sample(result.case, result.skip_reason, sample_index=i)
+                for i in range(samples)
+            ]
             continue
         missing = missing_assets(result.case, assets_dir)
         if missing:
-            result.status, result.skip_reason = "skipped", f"missing_asset:{','.join(missing)}"
+            result.status, result.skip_reason = (
+                "skipped",
+                f"missing_asset:{','.join(missing)}",
+            )
+            result.samples = [
+                unrun_sample(result.case, result.skip_reason, sample_index=i)
+                for i in range(samples)
+            ]
             continue
         if result.case.component not in backends:
             result.status, result.skip_reason = "skipped", "no_backend"
+            result.samples = [
+                unrun_sample(result.case, result.skip_reason, sample_index=i)
+                for i in range(samples)
+            ]
             continue
         window, images = build_input(result.case, assets_dir)
-        jobs.extend((result, window, images) for _ in range(samples))
+        jobs.extend((result, window, images, i) for i in range(samples))
 
     def work(job):
-        result, window, images = job
-        sample = run_sample(result.case, backends[result.case.component], window, images)
+        result, window, images, index = job
+        sample = run_sample(
+            result.case,
+            backends[result.case.component],
+            window,
+            images,
+            sample_index=index,
+        )
         if on_sample:
             on_sample(result.case)
         return result, sample
@@ -215,3 +451,26 @@ def run_cases(
         for result, sample in pool.map(work, jobs):
             result.samples.append(sample)
     return results
+
+
+def sample_json(sample):
+    payload = asdict(sample.observation)
+    payload.update(
+        case_id=sample.case_id,
+        check_id=sample.check_id,
+        sample_index=sample.sample_index,
+        passed=sample.passed,
+        failures=sample.failures,
+        latency_ms=sample.latency_ms,
+        evidence=sample.evidence,
+        response={
+            "message": sample.observation.delivered_content
+            if sample.observation.delivered_content is not None
+            else sample.observation.content,
+            "visual": sample.observation.visual_payload,
+            "lessons": sample.observation.delivered_lessons,
+        },
+    )
+    if sample.grading_result:
+        payload.update(sample.grading_result.model_dump(mode="json"))
+    return payload

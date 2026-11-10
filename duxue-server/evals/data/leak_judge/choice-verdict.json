@@ -4,7 +4,7 @@
   "review_batch": "first-image-v1",
   "label_status": "proposed",
   "reviewed_by": null,
-  "schema_version": "dialogue-eval.v1",
+  "schema_version": "dialogue-eval.v2",
   "type": "judge",
   "replay_mode": "fixed_candidate",
   "source": {
@@ -25,18 +25,27 @@
       "id": "check-1",
       "component": "tutoring.leak-judge",
       "candidate_id": "candidate-1",
-      "expect": {
-        "leaks": true,
-        "criteria": [
-          "直接给出选择题选项。"
-        ]
-      },
       "input_snapshot": {
         "origin": "synthetic",
         "task_title": "今日作业",
         "problem": null,
         "current_request": "这题怎么做",
         "images": []
+      },
+      "grading": {
+        "deterministic": [
+          {
+            "id": "leaks_eq",
+            "field": "leaks",
+            "op": "eq",
+            "expected": true
+          }
+        ],
+        "model_graded": [],
+        "rationale": [
+          "直接给出选择题选项。"
+        ],
+        "aggregation": "all_required"
       }
     }
   ]

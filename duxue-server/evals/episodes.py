@@ -10,7 +10,8 @@ from typing import Literal
 from pydantic import Field, ValidationError, model_validator
 
 from evals import dataset
-from evals.schema import OUTCOMES, Context, EvalCase, Expect, SnapshotOrigin, Strict, Utterance
+from evals.grading import Grading, OUTCOMES
+from evals.schema import Context, EvalCase, SnapshotOrigin, Strict, Utterance
 
 EPISODES_DIR = dataset.DATA_DIR / "multi_turn"
 Origin = Literal["MathDial", "SocraTeach", "CoMTA", "self"]
@@ -23,7 +24,8 @@ class EpisodeTurn(Strict):
     # A different student reply after clarification or another allowed tutor move.
     student_on: dict[str, str] = Field(default_factory=dict)
     context: Context
-    expect: Expect
+    grading: Grading
+    check_id: str = "check-1"
     tags: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
@@ -59,6 +61,7 @@ def load_episodes(path: Path = EPISODES_DIR) -> list[Episode]:
     for file in files:
         try:
             from evals.dialogue import EpisodeRecord
+
             record = EpisodeRecord.model_validate(dataset.read_object(file))
             if file.stem != record.id:
                 raise ValueError("filename must match id")
@@ -69,19 +72,38 @@ def load_episodes(path: Path = EPISODES_DIR) -> list[Episode]:
 
 
 def episodes_hash(rows: list[Episode]) -> str:
-    payload = [row.model_dump(mode="json") for row in sorted(rows, key=lambda row: row.id)]
-    return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:16]
+    payload = [
+        row.model_dump(mode="json") for row in sorted(rows, key=lambda row: row.id)
+    ]
+    return hashlib.sha256(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True).encode()
+    ).hexdigest()[:16]
 
 
-def turn_case(episode: Episode, index: int, history: list[Utterance], said: str) -> EvalCase:
+def turn_case(
+    episode: Episode, index: int, history: list[Utterance], said: str
+) -> EvalCase:
     turn = episode.turns[index]
     return EvalCase(
-        snapshot_origin=turn.snapshot_origin, record_digest=episode.record_digest,
-        id=f"{episode.id}-{index:02d}", component="tutoring.turn", conversation_id=episode.id,
-        turn_index=index, history=history[-8:], student_said=said, images=turn.images, context=turn.context,
-        expect=turn.expect, tags=["multi-turn", *turn.tags], source="synthetic",
-        review_batch=episode.review_batch, label_status=episode.label_status,
-        reviewed_by=episode.reviewed_by, note=episode.note,
+        snapshot_origin=turn.snapshot_origin,
+        record_digest=episode.record_digest,
+        id=f"{episode.id}-{index:02d}",
+        component="tutoring.turn",
+        conversation_id=episode.id,
+        turn_index=index,
+        history=history[-8:],
+        student_said=said,
+        images=turn.images,
+        context=turn.context,
+        grading=turn.grading,
+        case_id=episode.id,
+        check_id=turn.check_id,
+        tags=["multi-turn", *turn.tags],
+        source="synthetic",
+        review_batch=episode.review_batch,
+        label_status=episode.label_status,
+        reviewed_by=episode.reviewed_by,
+        note=episode.note,
     )
 
 
@@ -97,8 +119,10 @@ def validate_episodes(rows: list[Episode]) -> list[str]:
         if episode.label_status != "confirmed" and episode.reviewed_by:
             problems.append(f"{episode.id}: reviewer on unconfirmed episode")
         for index, turn in enumerate(episode.turns):
-            if not turn.expect.is_specific():
-                problems.append(f"{episode.id}:{index}: turn needs specific expectation")
+            if not turn.grading.is_specific():
+                problems.append(
+                    f"{episode.id}:{index}: turn needs specific expectation"
+                )
             case = turn_case(episode, index, episode.initial_history, turn.student_said)
             problems.extend(dataset.validate([case]))
             for reply in turn.student_on.values():

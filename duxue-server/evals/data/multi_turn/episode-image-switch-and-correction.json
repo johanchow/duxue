@@ -6,7 +6,7 @@
   "label_status": "proposed",
   "reviewed_by": null,
   "note": "按用户要求暂绕过数学稳定性，将6轮合成请求改为读取印刷标题/算式和词义，不检查手写答案，不断言数学结论。仍保留真实首图错误批改作为污染源，验证换图、无附件纠正、文字跳出、返回旧图、再发新图及连续指代。每轮继承实际生成的助手回复和图片，不预写后续助手回答。原始事故回放另存conversation_replay/new-image-review-conversation.json，未修改其原文、原裁决或数学期望。标签proposed；真实正文需对照原图人工复核。",
-  "schema_version": "dialogue-eval.v1",
+  "schema_version": "dialogue-eval.v2",
   "type": "episode",
   "replay_mode": "generated_history",
   "source": {
@@ -94,20 +94,61 @@
         },
         "note": "保留旧用例注入状态；并非重新从生产数据库取得的完整快照。"
       },
-      "expect": {
-        "outcome_in": [
-          "answer"
-        ],
-        "selected_images": [
-          "img-4430cfb69b7c.jpg"
-        ],
-        "answer_protected": false
-      },
       "tags": [
         "image-context",
         "actual-history",
         "no-math-grading"
-      ]
+      ],
+      "grading": {
+        "deterministic": [
+          {
+            "id": "outcome_in",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "answer"
+            ]
+          },
+          {
+            "id": "outcome_not_in",
+            "field": "outcome",
+            "op": "not_in",
+            "expected": [
+              "fallback"
+            ]
+          },
+          {
+            "id": "selected_images_set_eq",
+            "field": "selected_images",
+            "op": "set_eq",
+            "expected": [
+              "img-4430cfb69b7c.jpg"
+            ]
+          },
+          {
+            "id": "answer_protected_eq",
+            "field": "answer_protected",
+            "op": "eq",
+            "expected": false
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "quality",
+            "type": "score",
+            "rubric_ref": "teaching-quality.v1",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "逐项判断下列用例要求；全部满足为pass，任一违背为fail。仅依据当前回复、上下文和原图，不以生产审核结论替代判断：\n依据新上传第二页原图准确读出周四旁印刷标题；不批改手写答案，不复制首图的旧助手结论。",
+            "expected": "pass"
+          }
+        ],
+        "rationale": [],
+        "aggregation": "all_required"
+      }
     },
     {
       "id": "check-2",
@@ -124,20 +165,61 @@
         },
         "note": "保留旧用例注入状态；并非重新从生产数据库取得的完整快照。"
       },
-      "expect": {
-        "outcome_in": [
-          "answer"
-        ],
-        "selected_images": [
-          "img-4430cfb69b7c.jpg"
-        ],
-        "answer_protected": false
-      },
       "tags": [
         "image-context",
         "actual-history",
         "no-math-grading"
-      ]
+      ],
+      "grading": {
+        "deterministic": [
+          {
+            "id": "outcome_in",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "answer"
+            ]
+          },
+          {
+            "id": "outcome_not_in",
+            "field": "outcome",
+            "op": "not_in",
+            "expected": [
+              "fallback"
+            ]
+          },
+          {
+            "id": "selected_images_set_eq",
+            "field": "selected_images",
+            "op": "set_eq",
+            "expected": [
+              "img-4430cfb69b7c.jpg"
+            ]
+          },
+          {
+            "id": "answer_protected_eq",
+            "field": "answer_protected",
+            "op": "eq",
+            "expected": false
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "quality",
+            "type": "score",
+            "rubric_ref": "teaching-quality.v1",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "逐项判断下列用例要求；全部满足为pass，任一违背为fail。仅依据当前回复、上下文和原图，不以生产审核结论替代判断：\n依据刚发的第二页继续准确读周四旁标题，不误认为第一张，不要求重传已有清晰图片。",
+            "expected": "pass"
+          }
+        ],
+        "rationale": [],
+        "aggregation": "all_required"
+      }
     },
     {
       "id": "check-3",
@@ -154,18 +236,59 @@
         },
         "note": "保留旧用例注入状态；并非重新从生产数据库取得的完整快照。"
       },
-      "expect": {
-        "outcome_in": [
-          "answer"
-        ],
-        "selected_images": [],
-        "answer_protected": false
-      },
       "tags": [
         "image-context",
         "actual-history",
         "no-math-grading"
-      ]
+      ],
+      "grading": {
+        "deterministic": [
+          {
+            "id": "outcome_in",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "answer"
+            ]
+          },
+          {
+            "id": "outcome_not_in",
+            "field": "outcome",
+            "op": "not_in",
+            "expected": [
+              "fallback"
+            ]
+          },
+          {
+            "id": "selected_images_set_eq",
+            "field": "selected_images",
+            "op": "set_eq",
+            "expected": []
+          },
+          {
+            "id": "answer_protected_eq",
+            "field": "answer_protected",
+            "op": "eq",
+            "expected": false
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "quality",
+            "type": "score",
+            "rubric_ref": "teaching-quality.v1",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "逐项判断下列用例要求；全部满足为pass，任一违背为fail。仅依据当前回复、上下文和原图，不以生产审核结论替代判断：\n脱离图片直接解释lost的词义，不能继续批改或朗读旧图片题目。",
+            "expected": "pass"
+          }
+        ],
+        "rationale": [],
+        "aggregation": "all_required"
+      }
     },
     {
       "id": "check-4",
@@ -182,20 +305,61 @@
         },
         "note": "保留旧用例注入状态；并非重新从生产数据库取得的完整快照。"
       },
-      "expect": {
-        "outcome_in": [
-          "answer"
-        ],
-        "selected_images": [
-          "img-f0b2a66592fb.jpg"
-        ],
-        "answer_protected": false
-      },
       "tags": [
         "image-context",
         "actual-history",
         "no-math-grading"
-      ]
+      ],
+      "grading": {
+        "deterministic": [
+          {
+            "id": "outcome_in",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "answer"
+            ]
+          },
+          {
+            "id": "outcome_not_in",
+            "field": "outcome",
+            "op": "not_in",
+            "expected": [
+              "fallback"
+            ]
+          },
+          {
+            "id": "selected_images_set_eq",
+            "field": "selected_images",
+            "op": "set_eq",
+            "expected": [
+              "img-f0b2a66592fb.jpg"
+            ]
+          },
+          {
+            "id": "answer_protected_eq",
+            "field": "answer_protected",
+            "op": "eq",
+            "expected": false
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "quality",
+            "type": "score",
+            "rubric_ref": "teaching-quality.v1",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "逐项判断下列用例要求；全部满足为pass，任一违背为fail。仅依据当前回复、上下文和原图，不以生产审核结论替代判断：\n回到第一张原图，准确读周五旁标题，不计算也不批改。",
+            "expected": "pass"
+          }
+        ],
+        "rationale": [],
+        "aggregation": "all_required"
+      }
     },
     {
       "id": "check-5",
@@ -212,20 +376,61 @@
         },
         "note": "保留旧用例注入状态；并非重新从生产数据库取得的完整快照。"
       },
-      "expect": {
-        "outcome_in": [
-          "answer"
-        ],
-        "selected_images": [
-          "img-4430cfb69b7c.jpg"
-        ],
-        "answer_protected": false
-      },
       "tags": [
         "image-context",
         "actual-history",
         "no-math-grading"
-      ]
+      ],
+      "grading": {
+        "deterministic": [
+          {
+            "id": "outcome_in",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "answer"
+            ]
+          },
+          {
+            "id": "outcome_not_in",
+            "field": "outcome",
+            "op": "not_in",
+            "expected": [
+              "fallback"
+            ]
+          },
+          {
+            "id": "selected_images_set_eq",
+            "field": "selected_images",
+            "op": "set_eq",
+            "expected": [
+              "img-4430cfb69b7c.jpg"
+            ]
+          },
+          {
+            "id": "answer_protected_eq",
+            "field": "answer_protected",
+            "op": "eq",
+            "expected": false
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "quality",
+            "type": "score",
+            "rubric_ref": "teaching-quality.v1",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "逐项判断下列用例要求；全部满足为pass，任一违背为fail。仅依据当前回复、上下文和原图，不以生产审核结论替代判断：\n使用再次上传的第二页，准确读取第二大题标题，不解题或判断学生对错。",
+            "expected": "pass"
+          }
+        ],
+        "rationale": [],
+        "aggregation": "all_required"
+      }
     },
     {
       "id": "check-6",
@@ -242,20 +447,61 @@
         },
         "note": "保留旧用例注入状态；并非重新从生产数据库取得的完整快照。"
       },
-      "expect": {
-        "outcome_in": [
-          "answer"
-        ],
-        "selected_images": [
-          "img-4430cfb69b7c.jpg"
-        ],
-        "answer_protected": false
-      },
       "tags": [
         "image-context",
         "actual-history",
         "no-math-grading"
-      ]
+      ],
+      "grading": {
+        "deterministic": [
+          {
+            "id": "outcome_in",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "answer"
+            ]
+          },
+          {
+            "id": "outcome_not_in",
+            "field": "outcome",
+            "op": "not_in",
+            "expected": [
+              "fallback"
+            ]
+          },
+          {
+            "id": "selected_images_set_eq",
+            "field": "selected_images",
+            "op": "set_eq",
+            "expected": [
+              "img-4430cfb69b7c.jpg"
+            ]
+          },
+          {
+            "id": "answer_protected_eq",
+            "field": "answer_protected",
+            "op": "eq",
+            "expected": false
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "quality",
+            "type": "score",
+            "rubric_ref": "teaching-quality.v1",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "逐项判断下列用例要求；全部满足为pass，任一违背为fail。仅依据当前回复、上下文和原图，不以生产审核结论替代判断：\n保持第二页指代，准确读第二大题第一题的印刷算式；不计算，也不将手写答案混入题面。",
+            "expected": "pass"
+          }
+        ],
+        "rationale": [],
+        "aggregation": "all_required"
+      }
     }
   ]
 }

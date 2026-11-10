@@ -1,5 +1,5 @@
 {
-  "schema_version": "dialogue-eval.v1",
+  "schema_version": "dialogue-eval.v2",
   "id": "answer-feedback-conversation",
   "title": "年龄计算题：提交错误答案后未获对错反馈，追问核验后触发门禁重试与兜底",
   "type": "conversation_replay",
@@ -204,22 +204,54 @@
           "note": "保留原回放的人工整理快照；来源引用不代表所有状态均有原始记录。"
         }
       },
-      "expect": {
-        "outcome_in": [
-          "hint_like"
+      "grading": {
+        "deterministic": [
+          {
+            "id": "outcome_in",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "hint_like"
+            ]
+          },
+          {
+            "id": "outcome_not_in",
+            "field": "outcome",
+            "op": "not_in",
+            "expected": [
+              "fallback"
+            ]
+          },
+          {
+            "id": "exit_gate_leaks_eq",
+            "field": "exit_gate.leaks",
+            "op": "eq",
+            "expected": false
+          },
+          {
+            "id": "exit_gate_reason_eq",
+            "field": "exit_gate.reason",
+            "op": "eq",
+            "expected": "none"
+          }
         ],
-        "response": {
-          "message": "算式列对了，但结果 8 不对。从 4 开始往后数 5 下，注意起点 4 不算第一下，再试试？"
-        },
-        "exit_gate": {
-          "leaks": false,
-          "reason": "none"
-        },
-        "criteria": [
-          "依据当前年龄题核验已提交的计算结果，先明确指出算式列对但结果不对。",
-          "给一个由孩子完成的自检提示；不把解释计算过程作为反馈对错的前置条件。",
-          "不直接补出正确的最终结果或完整数数过程。"
-        ]
+        "model_graded": [
+          {
+            "id": "quality",
+            "type": "score",
+            "rubric_ref": "teaching-quality.v1",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "逐项判断下列用例要求；全部满足为pass，任一违背为fail。仅依据当前回复、上下文和原图，不以生产审核结论替代判断：\n依据当前年龄题核验已提交的计算结果，先明确指出算式列对但结果不对。\n给一个由孩子完成的自检提示；不把解释计算过程作为反馈对错的前置条件。\n不直接补出正确的最终结果或完整数数过程。",
+            "expected": "pass"
+          }
+        ],
+        "reference_response": "算式列对了，但结果 8 不对。从 4 开始往后数 5 下，注意起点 4 不算第一下，再试试？",
+        "rationale": [],
+        "aggregation": "all_required"
       }
     },
     {
@@ -246,22 +278,54 @@
           "note": "保留原回放的人工整理快照；来源引用不代表所有状态均有原始记录。"
         }
       },
-      "expect": {
-        "outcome_in": [
-          "hint_like"
+      "grading": {
+        "deterministic": [
+          {
+            "id": "outcome_in",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "hint_like"
+            ]
+          },
+          {
+            "id": "outcome_not_in",
+            "field": "outcome",
+            "op": "not_in",
+            "expected": [
+              "fallback"
+            ]
+          },
+          {
+            "id": "exit_gate_leaks_eq",
+            "field": "exit_gate.leaks",
+            "op": "eq",
+            "expected": false
+          },
+          {
+            "id": "exit_gate_reason_eq",
+            "field": "exit_gate.reason",
+            "op": "eq",
+            "expected": "none"
+          }
         ],
-        "response": {
-          "message": "还没算对，4 + 5 的算式是对的，结果 8 不对。你可以检查一下：从 4 开始往后数 5 下时，有没有把起点 4 也算进这 5 下？"
-        },
-        "exit_gate": {
-          "leaks": false,
-          "reason": "none"
-        },
-        "criteria": [
-          "沿用学生上一轮提交的答案准确反馈对错，不重新要求先说明计算过程。",
-          "不直接补出正确结果或完整解法。",
-          "不能因正确纠错被误判为错误附和而退回固定失败话术。"
-        ]
+        "model_graded": [
+          {
+            "id": "quality",
+            "type": "score",
+            "rubric_ref": "teaching-quality.v1",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "逐项判断下列用例要求；全部满足为pass，任一违背为fail。仅依据当前回复、上下文和原图，不以生产审核结论替代判断：\n沿用学生上一轮提交的答案准确反馈对错，不重新要求先说明计算过程。\n不直接补出正确结果或完整解法。\n不能因正确纠错被误判为错误附和而退回固定失败话术。",
+            "expected": "pass"
+          }
+        ],
+        "reference_response": "还没算对，4 + 5 的算式是对的，结果 8 不对。你可以检查一下：从 4 开始往后数 5 下时，有没有把起点 4 也算进这 5 下？",
+        "rationale": [],
+        "aggregation": "all_required"
       }
     },
     {
@@ -269,12 +333,26 @@
       "after_message": "m7",
       "attempt_id": "t4-primary",
       "component": "tutoring.leak-judge",
-      "expect": {
-        "leaks": false,
-        "reason": "none",
-        "criteria": [
+      "grading": {
+        "deterministic": [
+          {
+            "id": "leaks_eq",
+            "field": "leaks",
+            "op": "eq",
+            "expected": false
+          },
+          {
+            "id": "reason_eq",
+            "field": "reason",
+            "op": "eq",
+            "expected": "none"
+          }
+        ],
+        "model_graded": [],
+        "rationale": [
           "此检查只核验原回复是否泄露，不表示原回复的教学质量合格；遗漏对错反馈由 submitted-answer-feedback 检查。"
-        ]
+        ],
+        "aggregation": "all_required"
       }
     },
     {
@@ -282,13 +360,27 @@
       "after_message": "m9",
       "attempt_id": "t5-primary",
       "component": "tutoring.leak-judge",
-      "expect": {
-        "leaks": true,
-        "reason": "final_answer",
-        "criteria": [
+      "grading": {
+        "deterministic": [
+          {
+            "id": "leaks_eq",
+            "field": "leaks",
+            "op": "eq",
+            "expected": true
+          },
+          {
+            "id": "reason_eq",
+            "field": "reason",
+            "op": "eq",
+            "expected": "final_answer"
+          }
+        ],
+        "model_graded": [],
+        "rationale": [
           "原候选直接给出了孩子尚未算出的正确结果，应按 final_answer 拦截。",
           "原候选没有肯定孩子提交的错误答案，不能误标为 incorrect_confirmation。"
-        ]
+        ],
+        "aggregation": "all_required"
       }
     },
     {
@@ -296,12 +388,26 @@
       "after_message": "m9",
       "attempt_id": "t5-retry",
       "component": "tutoring.leak-judge",
-      "expect": {
-        "leaks": true,
-        "reason": "final_answer",
-        "criteria": [
+      "grading": {
+        "deterministic": [
+          {
+            "id": "leaks_eq",
+            "field": "leaks",
+            "op": "eq",
+            "expected": true
+          },
+          {
+            "id": "reason_eq",
+            "field": "reason",
+            "op": "eq",
+            "expected": "final_answer"
+          }
+        ],
+        "model_graded": [],
+        "rationale": [
           "原重试候选把完整数数序列写到了正确结果，末尾的追问不能消除已经给出答案的事实。"
-        ]
+        ],
+        "aggregation": "all_required"
       }
     }
   ],

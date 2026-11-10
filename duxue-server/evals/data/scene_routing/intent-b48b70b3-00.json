@@ -13,7 +13,7 @@
   "reviewed_by": null,
   "note": "生产当时：意图调用 404 → 一律 unclear → 固定澄清语。模型可用后应判 tutoring。 首批复核：首次学科提问是否进入答疑",
   "review_batch": "seed-v1",
-  "schema_version": "dialogue-eval.v1",
+  "schema_version": "dialogue-eval.v2",
   "type": "single_turn",
   "replay_mode": "fixed_history",
   "source": {
@@ -46,17 +46,22 @@
         },
         "note": "保留旧用例注入状态；并非重新从生产数据库取得的完整快照。"
       },
-      "expect": {
-        "outcome_in": [],
-        "outcome_not_in": [
-          "fallback"
+      "grading": {
+        "deterministic": [
+          {
+            "id": "intent_in",
+            "field": "intent",
+            "op": "in",
+            "expected": [
+              "tutoring"
+            ]
+          }
         ],
-        "lesson_source_contains_any": [],
-        "content_contains_any": [],
-        "content_not_contains": [],
-        "intent_in": [
-          "tutoring"
-        ]
+        "model_graded": [],
+        "rationale": [
+          "生产当时：意图调用 404 → 一律 unclear → 固定澄清语。模型可用后应判 tutoring。 首批复核：首次学科提问是否进入答疑"
+        ],
+        "aggregation": "all_required"
       }
     }
   ]

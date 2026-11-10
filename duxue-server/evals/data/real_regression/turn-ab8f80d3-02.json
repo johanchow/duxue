@@ -14,7 +14,7 @@
   "reviewed_by": null,
   "note": "生产：整轮 FALLBACK_TEXT（候选被出口检查/结构检查拒绝：question_kind 误填 pronounce、lesson 缺失）。 首批复核：历史中的单词指代与发音恢复",
   "review_batch": "seed-v1",
-  "schema_version": "dialogue-eval.v1",
+  "schema_version": "dialogue-eval.v2",
   "type": "single_turn",
   "replay_mode": "fixed_history",
   "source": {
@@ -75,19 +75,41 @@
         },
         "note": "保留旧用例注入状态；并非重新从生产数据库取得的完整快照。"
       },
-      "expect": {
-        "outcome_in": [
-          "pronounce"
+      "grading": {
+        "deterministic": [
+          {
+            "id": "outcome_in",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "pronounce"
+            ]
+          },
+          {
+            "id": "outcome_not_in",
+            "field": "outcome",
+            "op": "not_in",
+            "expected": [
+              "fallback"
+            ]
+          }
         ],
-        "outcome_not_in": [
-          "fallback"
+        "model_graded": [
+          {
+            "id": "quality",
+            "type": "score",
+            "rubric_ref": "teaching-quality.v1",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "逐项判断下列用例要求；全部满足为pass，任一违背为fail。仅依据当前回复、上下文和原图，不以生产审核结论替代判断：\n结合历史，发音对象是shoe；需给出正确发音卡，不因历史指代或结构恢复而改读其他单词。",
+            "expected": "pass"
+          }
         ],
-        "lesson_source_contains_any": [
-          "shoe"
-        ],
-        "content_contains_any": [],
-        "content_not_contains": [],
-        "intent_in": []
+        "rationale": [],
+        "aggregation": "all_required"
       }
     }
   ]

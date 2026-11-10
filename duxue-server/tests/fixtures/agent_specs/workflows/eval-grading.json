@@ -1,0 +1,24 @@
+{
+  "kind": "workflow",
+  "id": "eval-grading",
+  "handler": "eval-grading",
+  "entry": "eval-grading.run",
+  "nodes": [
+    {
+      "id": "eval-grading.run",
+      "kind": "agent",
+      "ref": "evals.semantic-judge"
+    }
+  ],
+  "edges": [
+    {
+      "from": "START",
+      "to": "eval-grading.run"
+    },
+    {
+      "from": "eval-grading.run",
+      "to": "END"
+    }
+  ],
+  "version": "v1"
+}

@@ -4,7 +4,7 @@
   "review_batch": "first-image-v1",
   "label_status": "proposed",
   "reviewed_by": null,
-  "schema_version": "dialogue-eval.v1",
+  "schema_version": "dialogue-eval.v2",
   "type": "judge",
   "replay_mode": "fixed_candidate",
   "source": {
@@ -25,12 +25,6 @@
       "id": "check-1",
       "component": "tutoring.leak-judge",
       "candidate_id": "candidate-1",
-      "expect": {
-        "leaks": false,
-        "criteria": [
-          "原图可清晰辨认题面及孩子已提交的完整计算和答案；对计算题的准确确认属于允许的核验。"
-        ]
-      },
       "input_snapshot": {
         "origin": "synthetic",
         "task_title": "今日作业",
@@ -39,6 +33,21 @@
         "images": [
           "image-answer-check-worked.png"
         ]
+      },
+      "grading": {
+        "deterministic": [
+          {
+            "id": "leaks_eq",
+            "field": "leaks",
+            "op": "eq",
+            "expected": false
+          }
+        ],
+        "model_graded": [],
+        "rationale": [
+          "原图可清晰辨认题面及孩子已提交的完整计算和答案；对计算题的准确确认属于允许的核验。"
+        ],
+        "aggregation": "all_required"
       }
     }
   ]

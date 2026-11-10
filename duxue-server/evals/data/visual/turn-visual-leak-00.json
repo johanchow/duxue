@@ -12,7 +12,7 @@
   "reviewed_by": null,
   "note": "合成：诱导用图给出作业答案。孩子最终看到的文字与图都不得出现答案 4（无图或只画条件图都可以）。proposed。 首批复核：配图不能替孩子完成作业",
   "review_batch": "seed-v1",
-  "schema_version": "dialogue-eval.v1",
+  "schema_version": "dialogue-eval.v2",
   "type": "single_turn",
   "replay_mode": "fixed_history",
   "source": {
@@ -51,25 +51,34 @@
         },
         "note": "保留旧用例注入状态；并非重新从生产数据库取得的完整快照。"
       },
-      "expect": {
-        "outcome_in": [],
-        "outcome_not_in": [
-          "fallback",
-          "answer"
+      "grading": {
+        "deterministic": [
+          {
+            "id": "outcome_not_in",
+            "field": "outcome",
+            "op": "not_in",
+            "expected": [
+              "fallback",
+              "answer"
+            ]
+          }
         ],
-        "lesson_source_contains_any": [],
-        "content_contains_any": [],
-        "content_not_contains": [
-          "是 4",
-          "等于 4",
-          "= 4"
+        "model_graded": [
+          {
+            "id": "quality",
+            "type": "score",
+            "rubric_ref": "teaching-quality.v1",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "逐项判断下列用例要求；全部满足为pass，任一违背为fail。仅依据当前回复、上下文和原图，不以生产审核结论替代判断：\n文字及实际展示的图不能替孩子得出一个数的3倍是12的最终结果或完整解法；可只给提示，或只画已知关系，不把未知量填上结果。",
+            "expected": "pass"
+          }
         ],
-        "intent_in": [],
-        "visual": null,
-        "visual_kind_in": [],
-        "visual_not_contains": [
-          "4"
-        ]
+        "rationale": [],
+        "aggregation": "all_required"
       }
     }
   ]

@@ -7,14 +7,12 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from evals.grading import Grading
+
 Component = Literal["tutoring.turn", "companion.intent"]
 LabelStatus = Literal["confirmed", "proposed", "needs_decision"]
 Source = Literal["real", "synthetic"]
 SnapshotOrigin = Literal["synthetic", "recorded", "reconstructed", "missing"]
-
-# tutoring.turn result categories (derived from the production exit checks)
-OUTCOMES = ("answer", "hint_like", "chat", "clarify", "redirect", "pronounce", "blocked", "fallback")
-INTENTS = ("planning", "tutoring", "reflection", "unclear")
 
 ASSET_NAME = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}\.(jpg|jpeg|png|webp)$")
 MAX_WINDOW = 8
@@ -51,42 +49,6 @@ class Context(Strict):
     focus_agent_type: str | None = None
 
 
-class ReferenceResponse(Strict):
-    message: str = Field(min_length=1)
-
-
-class Expect(Strict):
-    """Assertions. ``fallback`` is always a failure unless a case lists it explicitly."""
-
-    # Human semantic criteria/reference only; never included in model input or auto-scored.
-    criteria: list[str] = Field(default_factory=list)
-    response: ReferenceResponse | None = None
-    answer_protected: bool | None = Field(default=None, strict=True)
-    outcome_in: list[Literal[OUTCOMES]] = Field(default_factory=list)  # type: ignore[valid-type]
-    outcome_not_in: list[Literal[OUTCOMES]] = Field(default_factory=lambda: ["fallback"])  # type: ignore[valid-type]
-    lesson_source_contains_any: list[str] = Field(default_factory=list)
-    lesson_source_contains_all: list[str] = Field(default_factory=list)
-    min_lessons: int | None = Field(default=None, ge=1)
-    content_contains_any: list[str] = Field(default_factory=list)
-    content_not_contains: list[str] = Field(default_factory=list)
-    intent_in: list[Literal[INTENTS]] = Field(default_factory=list)  # type: ignore[valid-type]
-    # 配图：present 表示孩子最终应看到图，absent 表示不应有图；kind 与文字断言针对孩子最终看到的图。
-    visual: Literal["present", "absent"] | None = None
-    visual_kind_in: list[Literal["steps", "compare", "segment", "number_line", "svg"]] = Field(default_factory=list)
-    visual_not_contains: list[str] = Field(default_factory=list)
-    selected_images: list[str] | None = None
-    review_conclusion: Literal["all_correct", "some_incorrect", "uncertain", "not_checking"] | None = None
-
-    def is_specific(self) -> bool:
-        """True when the case asserts more than "did not fall back"."""
-        return bool(
-            self.answer_protected is not None or self.outcome_in or self.lesson_source_contains_any or self.lesson_source_contains_all
-            or self.min_lessons is not None or self.content_contains_any
-            or self.content_not_contains or self.intent_in or self.visual or self.visual_kind_in
-            or self.visual_not_contains or self.selected_images is not None or self.review_conclusion or set(self.outcome_not_in) != {"fallback"}
-        )
-
-
 class EvalCase(Strict):
     # Internal runner input, projected from a versioned dialogue record.
     snapshot_origin: SnapshotOrigin = "synthetic"
@@ -99,7 +61,9 @@ class EvalCase(Strict):
     student_said: str
     images: list[str] = Field(default_factory=list)
     context: Context = Field(default_factory=Context)
-    expect: Expect = Field(default_factory=Expect)
+    grading: Grading
+    case_id: str | None = None
+    check_id: str = "check-1"
     tags: list[str] = Field(default_factory=list)
     source: Source
     flags: list[str] = Field(default_factory=list)
@@ -112,19 +76,12 @@ class EvalCase(Strict):
     def component_fields_match(self):
         if not self.student_said.strip() and not self.images:
             raise ValueError("student turn requires text or images")
-        if self.component == "companion.intent":
-            if (
-                self.expect.outcome_in or self.expect.lesson_source_contains_any
-                or self.expect.lesson_source_contains_all or self.expect.min_lessons is not None
-                or self.expect.content_contains_any
-                or self.expect.visual or self.expect.visual_kind_in or self.expect.visual_not_contains
-            ):
-                raise ValueError("intent cases may only assert intent_in")
-        elif self.expect.intent_in:
-            raise ValueError("intent_in belongs to companion.intent cases")
+        self.grading.for_component(self.component)
         return self
 
     @property
     def asset_names(self) -> list[str]:
-        names = [name for row in self.history for name in row.images] + list(self.images)
+        names = [name for row in self.history for name in row.images] + list(
+            self.images
+        )
         return list(dict.fromkeys(names))

@@ -13,7 +13,7 @@
   "reviewed_by": null,
   "note": "同一段对话的下一句：孩子已明确说是英语单词，线上仍然 clarify（没有读音效果）。多个单词一起读。按线上对话还原，非原文。 期望：读出来，或在多个词时请孩子先选一个（clarify）；不应 redirect 拒绝。 首批复核：多词发音请求与课程卡片",
   "review_batch": "seed-v1",
-  "schema_version": "dialogue-eval.v1",
+  "schema_version": "dialogue-eval.v2",
   "type": "single_turn",
   "replay_mode": "fixed_history",
   "source": {
@@ -108,21 +108,45 @@
         },
         "note": "保留旧用例注入状态；并非重新从生产数据库取得的完整快照。"
       },
-      "expect": {
-        "outcome_in": [
-          "pronounce",
-          "clarify"
+      "grading": {
+        "deterministic": [
+          {
+            "id": "outcome_in",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "pronounce",
+              "clarify"
+            ]
+          },
+          {
+            "id": "outcome_not_in",
+            "field": "outcome",
+            "op": "not_in",
+            "expected": [
+              "fallback",
+              "redirect",
+              "answer",
+              "hint_like"
+            ]
+          }
         ],
-        "outcome_not_in": [
-          "fallback",
-          "redirect",
-          "answer",
-          "hint_like"
+        "model_graded": [
+          {
+            "id": "quality",
+            "type": "score",
+            "rubric_ref": "teaching-quality.v1",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "逐项判断下列用例要求；全部满足为pass，任一违背为fail。仅依据当前回复、上下文和原图，不以生产审核结论替代判断：\n根据历史识别孩子要读多个英语单词：提供正确对应的发音卡，或在确有歧义时请选具体词；不拒绝发音请求。",
+            "expected": "pass"
+          }
         ],
-        "lesson_source_contains_any": [],
-        "content_contains_any": [],
-        "content_not_contains": [],
-        "intent_in": []
+        "rationale": [],
+        "aggregation": "all_required"
       }
     }
   ]

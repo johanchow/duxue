@@ -1,57 +1,33 @@
-"""Deterministic assertions. No LLM judge: its FP/FN rate would have to be calibrated first."""
+"""Apply the shared v2 grader to measured turn outputs."""
 
-from __future__ import annotations
-
-from evals.outcome import Observation
-from evals.schema import EvalCase
+from dataclasses import asdict
+from evals.grading import evaluate
 
 
-def _contains_any(text: str | None, needles: list[str]) -> bool:
-    haystack = " ".join((text or "").lower().split())
-    return any(" ".join(needle.lower().split()) in haystack for needle in needles)
+def observations(obs, latency_ms=0):
+    values = asdict(obs)
+    values.update(
+        intent=obs.outcome,
+        visual_present=obs.visual_kind is not None,
+        lesson_count=len(obs.lesson_sources),
+        latency_ms=latency_ms,
+    )
+    for key, value in (obs.exit_gate or {}).items():
+        values["exit_gate." + key] = value
+    return values
 
 
-def grade(case: EvalCase, obs: Observation) -> list[str]:
-    """Failure reasons; an empty list means the sample passed."""
-    expect = case.expect
-    failures: list[str] = []
-    if case.component == "companion.intent":
-        if obs.error:
-            failures.append(f"provider_error:{obs.error}")
-        if expect.intent_in and obs.outcome not in expect.intent_in:
-            failures.append(f"intent:{obs.outcome} not in {expect.intent_in}")
-        return failures
+def grade_result(case, obs, *, judge=None, latency_ms=0, meta=None):
+    return evaluate(case.grading, observations(obs, latency_ms), judge=judge, meta=meta)
 
-    if expect.outcome_in and obs.outcome not in expect.outcome_in:
-        failures.append(f"outcome:{obs.outcome}{f'({obs.reason})' if obs.reason else ''} not in {expect.outcome_in}")
-    elif obs.outcome in expect.outcome_not_in:
-        failures.append(f"outcome:{obs.outcome}{f'({obs.reason})' if obs.reason else ''} is forbidden")
-    if expect.answer_protected is not None and obs.answer_protected is not expect.answer_protected:
-        failures.append(f"answer_protected: expected {expect.answer_protected}, got {obs.answer_protected}")
-    if expect.selected_images is not None and set(obs.selected_images) != set(expect.selected_images):
-        failures.append(f"selected_images: expected {expect.selected_images}, got {obs.selected_images}")
-    if expect.review_conclusion and obs.review_conclusion != expect.review_conclusion:
-        failures.append(f"review_conclusion: expected {expect.review_conclusion}, got {obs.review_conclusion}")
-    haystack_lessons = " ".join(obs.lesson_sources) if obs.lesson_sources else obs.lesson_source
-    if expect.lesson_source_contains_any and not _contains_any(haystack_lessons, expect.lesson_source_contains_any):
-        failures.append(f"lesson_source {haystack_lessons!r} lacks any of {expect.lesson_source_contains_any}")
-    if expect.lesson_source_contains_all:
-        missing = [needle for needle in expect.lesson_source_contains_all if not _contains_any(haystack_lessons, [needle])]
-        if missing:
-            failures.append(f"lesson_source {haystack_lessons!r} lacks {missing}")
-    lesson_count = len(obs.lesson_sources) or (1 if obs.lesson_source else 0)
-    if expect.min_lessons is not None and lesson_count < expect.min_lessons:
-        failures.append(f"lessons: expected >={expect.min_lessons}, got {lesson_count}")
-    if expect.content_contains_any and not _contains_any(obs.content, expect.content_contains_any):
-        failures.append(f"content lacks any of {expect.content_contains_any}")
-    if expect.content_not_contains and _contains_any(obs.content, expect.content_not_contains):
-        failures.append(f"content contains forbidden text from {expect.content_not_contains}")
-    if expect.visual == "present" and obs.visual_kind is None:
-        failures.append(f"visual: expected a diagram, got none{f' (dropped: {obs.visual_dropped})' if obs.visual_dropped else ''}")
-    if expect.visual == "absent" and obs.visual_kind is not None:
-        failures.append(f"visual: expected no diagram, got {obs.visual_kind}")
-    if expect.visual_kind_in and obs.visual_kind not in expect.visual_kind_in:
-        failures.append(f"visual_kind:{obs.visual_kind} not in {expect.visual_kind_in}")
-    if expect.visual_not_contains and _contains_any(obs.visual_text, expect.visual_not_contains):
-        failures.append(f"visual contains forbidden text from {expect.visual_not_contains}")
-    return failures
+
+def failures(result):
+    return [
+        f"{g.id}:{g.status}: {g.explanation or str(g.actual) + ' != ' + str(g.expected)}"
+        for g in result.grades
+        if g.status != "pass"
+    ]
+
+
+def grade(case, obs):
+    return failures(grade_result(case, obs))

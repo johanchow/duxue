@@ -12,7 +12,7 @@
   "reviewed_by": null,
   "note": "自写：孩子已有 2x=8，应推进到处理系数 2，而非重复问 11-3。 首批复核：学生提供新证据后应调整引导，不重复旧提示",
   "review_batch": "seed-v1",
-  "schema_version": "dialogue-eval.v1",
+  "schema_version": "dialogue-eval.v2",
   "type": "single_turn",
   "replay_mode": "fixed_history",
   "source": {
@@ -48,27 +48,42 @@
         },
         "note": "保留旧用例注入状态；并非重新从生产数据库取得的完整快照。"
       },
-      "expect": {
-        "outcome_in": [
-          "hint_like"
+      "grading": {
+        "deterministic": [
+          {
+            "id": "outcome_in",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "hint_like"
+            ]
+          },
+          {
+            "id": "outcome_not_in",
+            "field": "outcome",
+            "op": "not_in",
+            "expected": [
+              "fallback",
+              "answer"
+            ]
+          }
         ],
-        "outcome_not_in": [
-          "fallback",
-          "answer"
+        "model_graded": [
+          {
+            "id": "quality",
+            "type": "score",
+            "rubric_ref": "teaching-quality.v1",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "逐项判断下列用例要求；全部满足为pass，任一违背为fail。仅依据当前回复、上下文和原图，不以生产审核结论替代判断：\n接受学生已正确得到2x=8的证据，推进处理系数2的一小步，不重复要求11减3，不直接给最终未知数。",
+            "expected": "pass"
+          }
         ],
-        "content_contains_any": [
-          "系数",
-          "除以 2",
-          "除以2",
-          "coefficient",
-          "divide both sides"
-        ],
-        "content_not_contains": [
-          "x = 4",
-          "x=4",
-          "答案是 4",
-          "the answer is 4"
-        ]
+        "rationale": [],
+        "aggregation": "all_required"
       }
     }
   ]

@@ -2527,6 +2527,124 @@
       },
       "handler_id": "tutoring.math",
       "access": "read"
+    },
+    "agents/evals.semantic-judge.json": {
+      "id": "evals.semantic-judge",
+      "kind": "agent",
+      "implementation": "llm",
+      "agent_label": "tutoring",
+      "risk_tier": "standard",
+      "operation": "eval_semantic_grade",
+      "input_contract": "eval-grade-input.v1",
+      "output_contract": "eval-grade-output.v1",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array"
+              }
+            ]
+          }
+        },
+        "required": [
+          "user"
+        ],
+        "additionalProperties": false
+      },
+      "context_builder_id": "evals.semantic_judge.context",
+      "prompt": {
+        "id": "evals.semantic-judge.prompt"
+      },
+      "models": [
+        {
+          "component_id": "evals.semantic-judge"
+        }
+      ],
+      "accepts_images": true,
+      "requires_agent_switch": false,
+      "output_schema": {
+        "type": "object",
+        "oneOf": [
+          {
+            "properties": {
+              "explanation": {
+                "type": "string",
+                "minLength": 1
+              },
+              "evidence": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "score": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 5
+              }
+            },
+            "required": [
+              "score",
+              "explanation",
+              "evidence"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "properties": {
+              "explanation": {
+                "type": "string",
+                "minLength": 1
+              },
+              "evidence": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "verdict": {
+                "enum": [
+                  "pass",
+                  "fail"
+                ]
+              }
+            },
+            "required": [
+              "verdict",
+              "explanation",
+              "evidence"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "properties": {
+              "error": {
+                "const": "insufficient_evidence"
+              }
+            },
+            "required": [
+              "error"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "error_codes": [
+        "agent_execution_failed",
+        "invalid_model_candidate",
+        "model_provider_disabled",
+        "model_provider_not_configured",
+        "model_transport_error"
+      ]
     }
   },
   "tool_authority": {
@@ -2545,6 +2663,7 @@
     ],
     "companion.scene-switch": [],
     "tutoring.leak-judge": [],
-    "tutoring.visual-leak-judge": []
+    "tutoring.visual-leak-judge": [],
+    "evals.semantic-judge": []
   }
 }

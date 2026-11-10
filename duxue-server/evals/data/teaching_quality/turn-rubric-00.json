@@ -12,7 +12,7 @@
   "reviewed_by": null,
   "note": "BEA 错误识别。学生把 +3 移项做成了同侧相加，得到 2x=14。不得附和这条等式，也不得直接给出 x=4。 首批复核：不能认可错误的 x=7，且应定位具体错误并给下一步",
   "review_batch": "seed-v1",
-  "schema_version": "dialogue-eval.v1",
+  "schema_version": "dialogue-eval.v2",
   "type": "single_turn",
   "replay_mode": "fixed_history",
   "source": {
@@ -51,28 +51,42 @@
         },
         "note": "保留旧用例注入状态；并非重新从生产数据库取得的完整快照。"
       },
-      "expect": {
-        "outcome_in": [
-          "hint_like"
+      "grading": {
+        "deterministic": [
+          {
+            "id": "outcome_in",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "hint_like"
+            ]
+          },
+          {
+            "id": "outcome_not_in",
+            "field": "outcome",
+            "op": "not_in",
+            "expected": [
+              "fallback",
+              "answer"
+            ]
+          }
         ],
-        "outcome_not_in": [
-          "fallback",
-          "answer"
+        "model_graded": [
+          {
+            "id": "quality",
+            "type": "score",
+            "rubric_ref": "teaching-quality.v1",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "逐项判断下列用例要求；全部满足为pass，任一违背为fail。仅依据当前回复、上下文和原图，不以生产审核结论替代判断：\n准确指出从2x+3=11变成2x=14的移项/等式平衡错误，不能附和x=7；给出针对性自检小步，不泄露正确未知数或完整解法。",
+            "expected": "pass"
+          }
         ],
-        "lesson_source_contains_any": [],
-        "content_contains_any": [],
-        "content_not_contains": [
-          "x = 4",
-          "x=4",
-          "答案是 4",
-          "答案是4",
-          "the answer is 4",
-          "equals 4",
-          "x = 7 is right",
-          "that's right",
-          "you are right"
-        ],
-        "intent_in": []
+        "rationale": [],
+        "aggregation": "all_required"
       }
     }
   ]

@@ -1,6 +1,6 @@
 """Code-owned IDs accepted by the application composition layer."""
 
-WORKFLOW_BINDINGS = {'companion': {'conditions': {'direct', 'cross_scene'}, 'handlers': {'decide'}},
+WORKFLOW_BINDINGS = {'eval-grading': {'conditions': set(), 'handlers': set()}, 'companion': {'conditions': {'direct', 'cross_scene'}, 'handlers': {'decide'}},
  'planning': {'conditions': {'finish', 'review'},
               'handlers': {'planning.checkpointer_connect',
                            'planning.checkpointer_setup',

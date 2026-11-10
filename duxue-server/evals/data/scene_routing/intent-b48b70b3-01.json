@@ -13,7 +13,7 @@
   "reviewed_by": null,
   "note": "同一线程的追问：孩子已经说明是在问问题。 首批复核：结合上一轮打雷问题，判断追问是否仍属答疑；当前标注有争议",
   "review_batch": "seed-v1",
-  "schema_version": "dialogue-eval.v1",
+  "schema_version": "dialogue-eval.v2",
   "type": "single_turn",
   "replay_mode": "fixed_history",
   "source": {
@@ -60,17 +60,22 @@
         },
         "note": "保留旧用例注入状态；并非重新从生产数据库取得的完整快照。"
       },
-      "expect": {
-        "outcome_in": [],
-        "outcome_not_in": [
-          "fallback"
+      "grading": {
+        "deterministic": [
+          {
+            "id": "intent_in",
+            "field": "intent",
+            "op": "in",
+            "expected": [
+              "tutoring"
+            ]
+          }
         ],
-        "lesson_source_contains_any": [],
-        "content_contains_any": [],
-        "content_not_contains": [],
-        "intent_in": [
-          "tutoring"
-        ]
+        "model_graded": [],
+        "rationale": [
+          "同一线程的追问：孩子已经说明是在问问题。 首批复核：结合上一轮打雷问题，判断追问是否仍属答疑；当前标注有争议"
+        ],
+        "aggregation": "all_required"
       }
     }
   ]

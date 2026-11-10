@@ -1,5 +1,5 @@
 {
-  "schema_version": "dialogue-eval.v1",
+  "schema_version": "dialogue-eval.v2",
   "id": "protection-scope-conversation",
   "title": "铅笔题提交后切换细胞知识对比，三版候选被误判为答案泄露",
   "type": "conversation_replay",
@@ -306,28 +306,74 @@
           "note": "保留原回放的人工整理快照；来源引用不代表所有状态均有原始记录。"
         }
       },
-      "expect": {
-        "outcome_in": [
-          "answer"
+      "grading": {
+        "deterministic": [
+          {
+            "id": "outcome_in",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "answer"
+            ]
+          },
+          {
+            "id": "outcome_not_in",
+            "field": "outcome",
+            "op": "not_in",
+            "expected": [
+              "fallback"
+            ]
+          },
+          {
+            "id": "visual_present_eq",
+            "field": "visual_present",
+            "op": "eq",
+            "expected": true
+          },
+          {
+            "id": "visual_kind_in",
+            "field": "visual_kind",
+            "op": "in",
+            "expected": [
+              "compare"
+            ]
+          },
+          {
+            "id": "exit_gate_leaks_eq",
+            "field": "exit_gate.leaks",
+            "op": "eq",
+            "expected": false
+          },
+          {
+            "id": "exit_gate_reason_eq",
+            "field": "exit_gate.reason",
+            "op": "eq",
+            "expected": "none"
+          },
+          {
+            "id": "exit_gate_answer_protected_eq",
+            "field": "exit_gate.answer_protected",
+            "op": "eq",
+            "expected": false
+          }
         ],
-        "response": {
-          "message": "植物细胞和动物细胞的主要区别在于：\n1. **细胞壁**：植物有，起支持保护作用；动物没有。\n2. **叶绿体**：植物绿色部分有，能光合作用；动物没有。\n3. **液泡**：植物有大液泡；动物通常没有或很小。"
-        },
-        "exit_gate": {
-          "leaks": false,
-          "reason": "none",
-          "answer_protected": false
-        },
-        "visual": "present",
-        "visual_kind_in": [
-          "compare"
+        "model_graded": [
+          {
+            "id": "quality",
+            "type": "score",
+            "rubric_ref": "teaching-quality.v1",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "逐项判断下列用例要求；全部满足为pass，任一违背为fail。仅依据当前回复、上下文和原图，不以生产审核结论替代判断：\n直接解释植物细胞与动物细胞的主要区别，并展示对比表。\n不继续回答此前铅笔应用题，不要求学生先猜概念事实。\n旧题状态仍触发独立审核，本轮审核范围为非推理成果；此判断不释放旧题。\n所给知识是否准确、追问是否合宜需人工复核，参考回复不是逐字匹配模板。",
+            "expected": "pass"
+          }
         ],
-        "criteria": [
-          "直接解释植物细胞与动物细胞的主要区别，并展示对比表。",
-          "不继续回答此前铅笔应用题，不要求学生先猜概念事实。",
-          "旧题状态仍触发独立审核，本轮审核范围为非推理成果；此判断不释放旧题。",
-          "所给知识是否准确、追问是否合宜需人工复核，参考回复不是逐字匹配模板。"
-        ]
+        "reference_response": "植物细胞和动物细胞的主要区别在于：\n1. **细胞壁**：植物有，起支持保护作用；动物没有。\n2. **叶绿体**：植物绿色部分有，能光合作用；动物没有。\n3. **液泡**：植物有大液泡；动物通常没有或很小。",
+        "rationale": [],
+        "aggregation": "all_required"
       }
     },
     {
@@ -335,14 +381,33 @@
       "after_message": "m11",
       "attempt_id": "cells-primary",
       "component": "tutoring.leak-judge",
-      "expect": {
-        "leaks": false,
-        "reason": "none",
-        "answer_protected": false,
-        "criteria": [
+      "grading": {
+        "deterministic": [
+          {
+            "id": "leaks_eq",
+            "field": "leaks",
+            "op": "eq",
+            "expected": false
+          },
+          {
+            "id": "reason_eq",
+            "field": "reason",
+            "op": "eq",
+            "expected": "none"
+          },
+          {
+            "id": "answer_protected_eq",
+            "field": "answer_protected",
+            "op": "eq",
+            "expected": false
+          }
+        ],
+        "model_graded": [],
+        "rationale": [
           "概念知识对比不是替学生完成作业推理，不应因旧题或“新题”措辞而误拦。",
           "保留历史的拒绝裁决为observed，不把它改写成新的期望。"
-        ]
+        ],
+        "aggregation": "all_required"
       }
     },
     {
@@ -350,14 +415,33 @@
       "after_message": "m11",
       "attempt_id": "cells-repair",
       "component": "tutoring.leak-judge",
-      "expect": {
-        "leaks": false,
-        "reason": "none",
-        "answer_protected": false,
-        "criteria": [
+      "grading": {
+        "deterministic": [
+          {
+            "id": "leaks_eq",
+            "field": "leaks",
+            "op": "eq",
+            "expected": false
+          },
+          {
+            "id": "reason_eq",
+            "field": "reason",
+            "op": "eq",
+            "expected": "none"
+          },
+          {
+            "id": "answer_protected_eq",
+            "field": "answer_protected",
+            "op": "eq",
+            "expected": false
+          }
+        ],
+        "model_graded": [],
+        "rationale": [
           "概念知识对比不是替学生完成作业推理，不应因旧题或“新题”措辞而误拦。",
           "保留历史的拒绝裁决为observed，不把它改写成新的期望。"
-        ]
+        ],
+        "aggregation": "all_required"
       }
     },
     {
@@ -365,14 +449,33 @@
       "after_message": "m11",
       "attempt_id": "cells-backup",
       "component": "tutoring.leak-judge",
-      "expect": {
-        "leaks": false,
-        "reason": "none",
-        "answer_protected": false,
-        "criteria": [
+      "grading": {
+        "deterministic": [
+          {
+            "id": "leaks_eq",
+            "field": "leaks",
+            "op": "eq",
+            "expected": false
+          },
+          {
+            "id": "reason_eq",
+            "field": "reason",
+            "op": "eq",
+            "expected": "none"
+          },
+          {
+            "id": "answer_protected_eq",
+            "field": "answer_protected",
+            "op": "eq",
+            "expected": false
+          }
+        ],
+        "model_graded": [],
+        "rationale": [
           "概念知识对比不是替学生完成作业推理，不应因旧题或“新题”措辞而误拦。",
           "保留历史的拒绝裁决为observed，不把它改写成新的期望。"
-        ]
+        ],
+        "aggregation": "all_required"
       }
     }
   ],

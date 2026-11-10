@@ -1,5 +1,5 @@
 {
-  "schema_version": "dialogue-eval.v1",
+  "schema_version": "dialogue-eval.v2",
   "id": "new-image-review-conversation",
   "title": "连续上传第二张作业照片却重复第一页批改",
   "type": "conversation_replay",
@@ -386,27 +386,74 @@
           "note": "保留原回放的人工整理快照；来源引用不代表所有状态均有原始记录。"
         }
       },
-      "expect": {
-        "outcome_in": [
-          "hint_like"
+      "grading": {
+        "deterministic": [
+          {
+            "id": "outcome_in",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "hint_like"
+            ]
+          },
+          {
+            "id": "outcome_not_in",
+            "field": "outcome",
+            "op": "not_in",
+            "expected": [
+              "fallback"
+            ]
+          },
+          {
+            "id": "selected_images_set_eq",
+            "field": "selected_images",
+            "op": "set_eq",
+            "expected": [
+              "img-4430cfb69b7c.jpg"
+            ]
+          },
+          {
+            "id": "review_conclusion_eq",
+            "field": "review_conclusion",
+            "op": "eq",
+            "expected": "some_incorrect"
+          },
+          {
+            "id": "exit_gate_leaks_eq",
+            "field": "exit_gate.leaks",
+            "op": "eq",
+            "expected": false
+          },
+          {
+            "id": "exit_gate_reason_eq",
+            "field": "exit_gate.reason",
+            "op": "eq",
+            "expected": "none"
+          },
+          {
+            "id": "exit_gate_answer_protected_eq",
+            "field": "exit_gate.answer_protected",
+            "op": "eq",
+            "expected": true
+          }
         ],
-        "response": {
-          "message": "核验当前这页：第二大题34−(28−13)最后写成17需要重新检查；90−37=53正确。不能沿用第一页47+24和63÷(21−12)的错误批改，也不要要求重传已有图片。"
-        },
-        "exit_gate": {
-          "leaks": false,
-          "reason": "none",
-          "answer_protected": true
-        },
-        "selected_images": [
-          "img-4430cfb69b7c.jpg"
+        "model_graded": [
+          {
+            "id": "quality",
+            "type": "score",
+            "rubric_ref": "teaching-quality.v1",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "逐项判断下列用例要求；全部满足为pass，任一违背为fail。仅依据当前回复、上下文和原图，不以生产审核结论替代判断：\n只根据本轮目标图片的实际题面和学生作答核验，不复制历史助手批改结论。\n第二大题34−(28−13)最后一步写成17应指出该处，不能把90−37=53判错。\n不直接补出学生未完成的正确结果或完整解法；明确检查范围及无法确认的部分。",
+            "expected": "pass"
+          }
         ],
-        "review_conclusion": "some_incorrect",
-        "criteria": [
-          "只根据本轮目标图片的实际题面和学生作答核验，不复制历史助手批改结论。",
-          "第二大题34−(28−13)最后一步写成17应指出该处，不能把90−37=53判错。",
-          "不直接补出学生未完成的正确结果或完整解法；明确检查范围及无法确认的部分。"
-        ]
+        "reference_response": "核验当前这页：第二大题34−(28−13)最后写成17需要重新检查；90−37=53正确。不能沿用第一页47+24和63÷(21−12)的错误批改，也不要要求重传已有图片。",
+        "rationale": [],
+        "aggregation": "all_required"
       }
     },
     {
@@ -436,27 +483,74 @@
           "note": "保留原回放的人工整理快照；来源引用不代表所有状态均有原始记录。"
         }
       },
-      "expect": {
-        "outcome_in": [
-          "hint_like"
+      "grading": {
+        "deterministic": [
+          {
+            "id": "outcome_in",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "hint_like"
+            ]
+          },
+          {
+            "id": "outcome_not_in",
+            "field": "outcome",
+            "op": "not_in",
+            "expected": [
+              "fallback"
+            ]
+          },
+          {
+            "id": "selected_images_set_eq",
+            "field": "selected_images",
+            "op": "set_eq",
+            "expected": [
+              "img-4430cfb69b7c.jpg"
+            ]
+          },
+          {
+            "id": "review_conclusion_eq",
+            "field": "review_conclusion",
+            "op": "eq",
+            "expected": "some_incorrect"
+          },
+          {
+            "id": "exit_gate_leaks_eq",
+            "field": "exit_gate.leaks",
+            "op": "eq",
+            "expected": false
+          },
+          {
+            "id": "exit_gate_reason_eq",
+            "field": "exit_gate.reason",
+            "op": "eq",
+            "expected": "none"
+          },
+          {
+            "id": "exit_gate_answer_protected_eq",
+            "field": "exit_gate.answer_protected",
+            "op": "eq",
+            "expected": true
+          }
         ],
-        "response": {
-          "message": "核验当前这页：第二大题34−(28−13)最后写成17需要重新检查；90−37=53正确。不能沿用第一页47+24和63÷(21−12)的错误批改，也不要要求重传已有图片。"
-        },
-        "exit_gate": {
-          "leaks": false,
-          "reason": "none",
-          "answer_protected": true
-        },
-        "selected_images": [
-          "img-4430cfb69b7c.jpg"
+        "model_graded": [
+          {
+            "id": "quality",
+            "type": "score",
+            "rubric_ref": "teaching-quality.v1",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "逐项判断下列用例要求；全部满足为pass，任一违背为fail。仅依据当前回复、上下文和原图，不以生产审核结论替代判断：\n只根据本轮目标图片的实际题面和学生作答核验，不复制历史助手批改结论。\n第二大题34−(28−13)最后一步写成17应指出该处，不能把90−37=53判错。\n不直接补出学生未完成的正确结果或完整解法；明确检查范围及无法确认的部分。",
+            "expected": "pass"
+          }
         ],
-        "review_conclusion": "some_incorrect",
-        "criteria": [
-          "只根据本轮目标图片的实际题面和学生作答核验，不复制历史助手批改结论。",
-          "第二大题34−(28−13)最后一步写成17应指出该处，不能把90−37=53判错。",
-          "不直接补出学生未完成的正确结果或完整解法；明确检查范围及无法确认的部分。"
-        ]
+        "reference_response": "核验当前这页：第二大题34−(28−13)最后写成17需要重新检查；90−37=53正确。不能沿用第一页47+24和63÷(21−12)的错误批改，也不要要求重传已有图片。",
+        "rationale": [],
+        "aggregation": "all_required"
       }
     },
     {
@@ -487,27 +581,74 @@
           "note": "保留原回放的人工整理快照；来源引用不代表所有状态均有原始记录。"
         }
       },
-      "expect": {
-        "outcome_in": [
-          "hint_like"
+      "grading": {
+        "deterministic": [
+          {
+            "id": "outcome_in",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "hint_like"
+            ]
+          },
+          {
+            "id": "outcome_not_in",
+            "field": "outcome",
+            "op": "not_in",
+            "expected": [
+              "fallback"
+            ]
+          },
+          {
+            "id": "selected_images_set_eq",
+            "field": "selected_images",
+            "op": "set_eq",
+            "expected": [
+              "img-fb7a992d16e2.jpg"
+            ]
+          },
+          {
+            "id": "review_conclusion_eq",
+            "field": "review_conclusion",
+            "op": "eq",
+            "expected": "some_incorrect"
+          },
+          {
+            "id": "exit_gate_leaks_eq",
+            "field": "exit_gate.leaks",
+            "op": "eq",
+            "expected": false
+          },
+          {
+            "id": "exit_gate_reason_eq",
+            "field": "exit_gate.reason",
+            "op": "eq",
+            "expected": "none"
+          },
+          {
+            "id": "exit_gate_answer_protected_eq",
+            "field": "exit_gate.answer_protected",
+            "op": "eq",
+            "expected": true
+          }
         ],
-        "response": {
-          "message": "核验当前这页：第二大题34−(28−13)最后写成17需要重新检查；90−37=53正确。不能沿用第一页47+24和63÷(21−12)的错误批改，也不要要求重传已有图片。"
-        },
-        "exit_gate": {
-          "leaks": false,
-          "reason": "none",
-          "answer_protected": true
-        },
-        "selected_images": [
-          "img-fb7a992d16e2.jpg"
+        "model_graded": [
+          {
+            "id": "quality",
+            "type": "score",
+            "rubric_ref": "teaching-quality.v1",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "逐项判断下列用例要求；全部满足为pass，任一违背为fail。仅依据当前回复、上下文和原图，不以生产审核结论替代判断：\n只根据本轮目标图片的实际题面和学生作答核验，不复制历史助手批改结论。\n第二大题34−(28−13)最后一步写成17应指出该处，不能把90−37=53判错。\n不直接补出学生未完成的正确结果或完整解法；明确检查范围及无法确认的部分。",
+            "expected": "pass"
+          }
         ],
-        "review_conclusion": "some_incorrect",
-        "criteria": [
-          "只根据本轮目标图片的实际题面和学生作答核验，不复制历史助手批改结论。",
-          "第二大题34−(28−13)最后一步写成17应指出该处，不能把90−37=53判错。",
-          "不直接补出学生未完成的正确结果或完整解法；明确检查范围及无法确认的部分。"
-        ]
+        "reference_response": "核验当前这页：第二大题34−(28−13)最后写成17需要重新检查；90−37=53正确。不能沿用第一页47+24和63÷(21−12)的错误批改，也不要要求重传已有图片。",
+        "rationale": [],
+        "aggregation": "all_required"
       }
     },
     {
@@ -515,17 +656,35 @@
       "after_message": "m3",
       "component": "tutoring.leak-judge",
       "attempt_id": "attempt-1-0",
-      "expect": {
-        "leaks": true,
-        "reason": "incorrect_confirmation",
-        "answer_protected": true,
-        "criteria": [
+      "grading": {
+        "deterministic": [
+          {
+            "id": "leaks_eq",
+            "field": "leaks",
+            "op": "eq",
+            "expected": true
+          },
+          {
+            "id": "reason_in",
+            "field": "reason",
+            "op": "in",
+            "expected": [
+              "incorrect_confirmation",
+              "premature_conclusion"
+            ]
+          },
+          {
+            "id": "answer_protected_eq",
+            "field": "answer_protected",
+            "op": "eq",
+            "expected": true
+          }
+        ],
+        "model_graded": [],
+        "rationale": [
           "不得放行对这页的错误全对声明。独立发现学生实际错误可判incorrect_confirmation；缺逐题/覆盖依据而不能确认可判premature_conclusion。原始observed_verdict保持不变。"
         ],
-        "reason_in": [
-          "incorrect_confirmation",
-          "premature_conclusion"
-        ]
+        "aggregation": "all_required"
       }
     },
     {
@@ -533,13 +692,32 @@
       "after_message": "m3",
       "component": "tutoring.leak-judge",
       "attempt_id": "attempt-1-1",
-      "expect": {
-        "leaks": true,
-        "reason": "premature_conclusion",
-        "answer_protected": true,
-        "criteria": [
+      "grading": {
+        "deterministic": [
+          {
+            "id": "leaks_eq",
+            "field": "leaks",
+            "op": "eq",
+            "expected": true
+          },
+          {
+            "id": "reason_eq",
+            "field": "reason",
+            "op": "eq",
+            "expected": "premature_conclusion"
+          },
+          {
+            "id": "answer_protected_eq",
+            "field": "answer_protected",
+            "op": "eq",
+            "expected": true
+          }
+        ],
+        "model_graded": [],
+        "rationale": [
           "对照本轮图片独立核验，不把旧助手结论作为事实；错误的全部正确及不属于本图的错题判断均不得放行。"
-        ]
+        ],
+        "aggregation": "all_required"
       }
     },
     {
@@ -547,13 +725,32 @@
       "after_message": "m7",
       "component": "tutoring.leak-judge",
       "attempt_id": "attempt-3-0",
-      "expect": {
-        "leaks": true,
-        "reason": "premature_conclusion",
-        "answer_protected": true,
-        "criteria": [
+      "grading": {
+        "deterministic": [
+          {
+            "id": "leaks_eq",
+            "field": "leaks",
+            "op": "eq",
+            "expected": true
+          },
+          {
+            "id": "reason_eq",
+            "field": "reason",
+            "op": "eq",
+            "expected": "premature_conclusion"
+          },
+          {
+            "id": "answer_protected_eq",
+            "field": "answer_protected",
+            "op": "eq",
+            "expected": true
+          }
+        ],
+        "model_graded": [],
+        "rationale": [
           "对照本轮图片独立核验，不把旧助手结论作为事实；错误的全部正确及不属于本图的错题判断均不得放行。"
-        ]
+        ],
+        "aggregation": "all_required"
       }
     }
   ],

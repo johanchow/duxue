@@ -49,6 +49,7 @@ def debug_capabilities():
         "code_agents": CODE_AGENTS,
         "context_schema": DebugContext.model_json_schema(),
         "limitations": {
+            "eval-grading": "通过离线CLI运行完整评测；可单独调试评测裁判组件",
             "companion": "尚未接入协调器隔离调试",
             "planning": "尚未接入计划检查点隔离调试",
             "tutoring-vet": "内部审核子流程，请在Tutoring执行记录中查看",

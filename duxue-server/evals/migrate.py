@@ -1,129 +1,191 @@
-"""Explicit, idempotent migration of pre-dialogue eval files (no model calls).
+"""Explicit v1 -> v2 migration using authored semantic rules, never inferred keywords.
 
-Run: python -m evals.migrate evals/data --write
-Without --write, validate and report changes only. Old formats are not accepted
-by normal loaders; this is the only compatibility boundary.
+python -m evals.migrate INPUT --grading-from REVIEWED_V2_DIRECTORY [--write]
+Current v2 files only need validation. Old input is preserved unless --write is explicit.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 import argparse
 import copy
 import json
 from pathlib import Path
 
-from evals.dialogue import VERSION, EpisodeRecord, JudgeRecord, TurnRecord
-from evals.schema import Utterance
+from evals.grading import Grading
 
 
-def message(row: dict, index: int) -> dict:
-    original = Utterance.model_validate(row)
-    return {'id': f'm{index + 1}', 'role': 'user' if original.author == 'ward' else 'assistant',
-            'content': original.text, 'images': original.images,
-            'image_target_refs': original.image_target_refs}
+def structural(expect, component):
+    """Translate closed assertions only. Semantic expectations need authored rubrics."""
+    known = {
+        "criteria",
+        "response",
+        "outcome_in",
+        "outcome_not_in",
+        "intent_in",
+        "answer_protected",
+        "visual",
+        "visual_kind_in",
+        "selected_images",
+        "review_conclusion",
+        "exit_gate",
+        "leaks",
+        "reason",
+        "reason_in",
+        "min_lessons",
+        "lesson_source_contains_any",
+        "lesson_source_contains_all",
+        "content_contains_any",
+        "content_not_contains",
+        "visual_not_contains",
+    }
+    if set(expect) - known:
+        raise ValueError("unknown legacy expectations: " + str(set(expect) - known))
+    rules = []
+
+    def add(field, op, value):
+        rules.append(
+            {
+                "id": f"{field.replace('.', '_')}_{op}",
+                "field": field,
+                "op": op,
+                "expected": value,
+            }
+        )
+
+    if component == "companion.intent":
+        if expect.get("intent_in"):
+            add("intent", "in", expect["intent_in"])
+        else:
+            raise ValueError("route expectation needs an authored intent label")
+    elif component == "tutoring.turn":
+        if expect.get("outcome_in"):
+            add("outcome", "in", expect["outcome_in"])
+        forbidden = expect.get("outcome_not_in", ["fallback"])
+        # Preserve the v1 allow-list precedence when fallback was explicitly allowed.
+        forbidden = [v for v in forbidden if v not in expect.get("outcome_in", [])]
+        if forbidden:
+            add("outcome", "not_in", forbidden)
+        if expect.get("visual"):
+            add("visual_present", "eq", expect["visual"] == "present")
+        if expect.get("visual_kind_in"):
+            add("visual_kind", "in", expect["visual_kind_in"])
+        if expect.get("selected_images") is not None:
+            add("selected_images", "set_eq", expect["selected_images"])
+        if expect.get("review_conclusion"):
+            add("review_conclusion", "eq", expect["review_conclusion"])
+        if expect.get("min_lessons") is not None:
+            add("lesson_count", "gte", expect["min_lessons"])
+        for field in ("leaks", "reason", "answer_protected"):
+            if (
+                field in expect.get("exit_gate", {})
+                and expect["exit_gate"][field] is not None
+            ):
+                add("exit_gate." + field, "eq", expect["exit_gate"][field])
+    else:
+        if type(expect.get("leaks")) is not bool:
+            raise ValueError("judge requires leaks label")
+        add("leaks", "eq", expect["leaks"])
+        if expect.get("reason_in"):
+            add("reason", "in", expect["reason_in"])
+        elif expect.get("reason") is not None:
+            add("reason", "eq", expect["reason"])
+    if expect.get("answer_protected") is not None:
+        add("answer_protected", "eq", expect["answer_protected"])
+    return rules
 
 
-def source(kind: str, *, candidate: bool = False) -> dict:
-    return {'kind': kind, 'coverage': 'candidate_only' if candidate else ('authored' if kind == 'synthetic' else 'observed_window'),
-            'note': '迁移保留原始来源标签；格式统一不补造原话或缺失的状态证据。'}
+def validate_record(row):
+    from evals.dialogue import EpisodeRecord, JudgeRecord, TurnRecord
+    from evals.conversations import ConversationEval
+
+    model = {
+        "single_turn": TurnRecord,
+        "episode": EpisodeRecord,
+        "judge": JudgeRecord,
+        "conversation_replay": ConversationEval,
+    }.get(row.get("type"))
+    if model is None:
+        raise ValueError("unknown evaluation type")
+    return model.model_validate(row)
 
 
-def snapshot(context: dict, kind: str) -> dict:
-    return {'origin': 'synthetic' if kind == 'synthetic' else 'reconstructed', 'context': context,
-            'note': '保留旧用例注入状态；并非重新从生产数据库取得的完整快照。'}
-
-
-def migrate_record(original: dict) -> dict:
+def migrate_record(original, grading_by_check=None):
     row = copy.deepcopy(original)
-    if row.get('schema_version') == VERSION:
+    if row.get("schema_version") == "dialogue-eval.v2":
         validate_record(row)
         return row
-    if row.get('type') == 'conversation_replay':
-        if row.get('schema_version') not in {'conversation-eval.v1', 'conversation-eval.v2'}:
-            raise ValueError('unsupported conversation version')
-        row['schema_version'] = VERSION
-        for check in row['checks']:
-            if check['component'] == 'tutoring.turn':
-                check['input_snapshot']['provenance'] = {
-                    'origin': 'reconstructed',
-                    'references': [check['source_observation_id']],
-                    'note': '保留原回放的人工整理快照；来源引用不代表所有状态均有原始记录。',
-                }
-    elif 'turns' in row:
-        kind = row.pop('source', 'synthetic')
-        history = row.pop('initial_history', [])
-        turns = row.pop('turns')
-        messages = [message(m, i) for i, m in enumerate(history)]
-        checks = []
-        for i, turn in enumerate(turns):
-            current = message({'author': 'ward', 'text': turn.pop('student_said'), 'images': turn.pop('images', [])}, len(messages))
-            messages.append(current)
-            checks.append({'id': f'check-{i + 1}', 'after_message': current['id'], 'component': 'tutoring.turn',
-                           'input_snapshot': snapshot(turn.pop('context'), kind), **turn})
-        row.update(schema_version=VERSION, type='episode', replay_mode='generated_history',
-                   source=source(kind), messages=messages, checks=checks)
-    elif row.get('component') == 'tutoring.leak-judge' or 'expected_leaks' in row:
-        kind = row.pop('source', 'synthetic')
-        problem = row.pop('problem', None)
-        image = row.pop('image', None)
-        expect = {'leaks': row.pop('expected_leaks'), 'criteria': [row.pop('rationale')]}
-        for old, new in [('expected_reason', 'reason'), ('expected_answer_protected', 'answer_protected')]:
-            if old in row:
-                expect[new] = row.pop(old)
-        candidate = {'id': 'candidate-1', 'role': 'assistant', 'content': row.pop('reply')}
-        check = {'id': 'check-1', 'component': row.pop('component', 'tutoring.leak-judge'),
-                 'candidate_id': candidate['id'], 'expect': expect,
-                 'input_snapshot': {'origin': 'synthetic' if kind == 'synthetic' else 'reconstructed',
-                                    'task_title': row.pop('task_title', '今日作业'), 'problem': problem,
-                                    'current_request': None if problem is not None else '这题怎么做',
-                                    'images': [image] if image else []}}
-        row.update(schema_version=VERSION, type='judge', replay_mode='fixed_candidate', source=source(kind, candidate=True),
-                   messages=[], candidates=[candidate], checks=[check])
-    elif 'student_said' in row:
-        kind = row.pop('source')
-        messages = [message(m, i) for i, m in enumerate(row.pop('history', []))]
-        current = message({'author': 'ward', 'text': row.pop('student_said'), 'images': row.pop('images', [])}, len(messages))
-        messages.append(current)
-        check = {'id': 'check-1', 'after_message': current['id'], 'component': row.pop('component'),
-                 'input_snapshot': snapshot(row.pop('context', {}), kind), 'expect': row.pop('expect', {})}
-        row.update(schema_version=VERSION, type='single_turn', replay_mode='fixed_history',
-                   source=source(kind), messages=messages, checks=[check])
-    else:
-        raise ValueError('unknown legacy evaluation format')
+    if row.get("schema_version") != "dialogue-eval.v1":
+        raise ValueError(
+            "migration requires dialogue-eval.v1; older formats need their historical migrator"
+        )
+    row["schema_version"] = "dialogue-eval.v2"
+    for check in row["checks"]:
+        expected = check.pop("expect")
+        rules = structural(expected, check["component"])
+        supplied = (grading_by_check or {}).get(check["id"])
+        if supplied is None:
+            if check["component"] == "tutoring.turn":
+                raise ValueError(
+                    f"{row['id']}/{check['id']}: authored grading required; no automatic semantic migration"
+                )
+            supplied = {
+                "deterministic": rules,
+                "model_graded": [],
+                "rationale": expected.get("criteria", []),
+            }
+        grading = Grading.model_validate(supplied)
+        for required in rules:
+            if not any(
+                all(
+                    c.model_dump(by_alias=True).get(k) == v
+                    for k, v in required.items()
+                    if k != "id"
+                )
+                for c in grading.deterministic
+            ):
+                raise ValueError("migration cannot discard a structural expectation")
+        check["grading"] = grading.model_dump(
+            mode="json", by_alias=True, exclude_none=True
+        )
     validate_record(row)
     return row
 
 
-def validate_record(row: dict):
-    # Local import avoids a dependency from the shared contract back to loaders.
-    from evals.conversations import ConversationEval
-    model = {'single_turn': TurnRecord, 'episode': EpisodeRecord,
-             'judge': JudgeRecord, 'conversation_replay': ConversationEval}.get(row.get('type'))
-    if model is None:
-        raise ValueError('unknown evaluation type')
-    return model.model_validate(row)
-
-
-def main(argv=None) -> int:
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('path', type=Path)
-    parser.add_argument('--write', action='store_true')
+    parser.add_argument("path", type=Path)
+    parser.add_argument("--grading-from", type=Path)
+    parser.add_argument("--write", action="store_true")
     args = parser.parse_args(argv)
-    files = [args.path] if args.path.is_file() else sorted(args.path.rglob('*.json'))
-    if not files:
-        parser.error('no JSON files found')
-    # Validate the whole batch before writing any files.
+    authored = {}
+    if args.grading_from:
+        paths = (
+            [args.grading_from]
+            if args.grading_from.is_file()
+            else sorted(args.grading_from.rglob("*.json"))
+        )
+        for path in paths:
+            row = json.loads(path.read_text())
+            validate_record(row)
+            if row["id"] in authored:
+                raise ValueError("duplicate authored id")
+            authored[row["id"]] = {c["id"]: c["grading"] for c in row["checks"]}
+    paths = [args.path] if args.path.is_file() else sorted(args.path.rglob("*.json"))
+    if not paths:
+        raise ValueError("empty dataset")
     changes = []
-    for file in files:
-        original = json.loads(file.read_text(encoding='utf-8'))
-        migrated = migrate_record(original)
-        if migrated != original:
-            changes.append((file, migrated))
-    if args.write:
-        for file, migrated in changes:
-            file.write_text(json.dumps(migrated, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
-    print(f'{len(files)} validated; {len(changes)} {"migrated" if args.write else "would migrate"}')
+    for path in paths:
+        original = json.loads(path.read_text())
+        migrated = migrate_record(original, authored.get(original["id"]))
+        if original != migrated:
+            changes.append((path, migrated))
+    for path, row in changes:
+        if args.write:
+            path.write_text(json.dumps(row, ensure_ascii=False, indent=2) + "\n")
+    print(
+        f"{len(paths)} validated / {len(changes)} {'migrated' if args.write else 'would migrate'}"
+    )
     return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     raise SystemExit(main())

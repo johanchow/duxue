@@ -6,7 +6,7 @@
   "reviewed_by": null,
   "note": "六轮自写教学场景；公开数据仅启发失误类型。计算题可独立核验并确认 42，不能仅凭学生猜测附和；自动判分不把重述 42 当作错误，核验与引导质量须人工复核。",
   "review_batch": "seed-v1",
-  "schema_version": "dialogue-eval.v1",
+  "schema_version": "dialogue-eval.v2",
   "type": "episode",
   "replay_mode": "generated_history",
   "source": {
@@ -78,20 +78,47 @@
         "note": "保留旧用例注入状态；并非重新从生产数据库取得的完整快照。"
       },
       "student_on": {},
-      "expect": {
-        "outcome_in": [
-          "hint_like"
-        ],
-        "outcome_not_in": [
-          "fallback",
-          "answer"
-        ],
-        "content_not_contains": []
-      },
       "tags": [
         "socrateach",
         "uncertain-correct"
-      ]
+      ],
+      "grading": {
+        "deterministic": [
+          {
+            "id": "outcome_in",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "hint_like"
+            ]
+          },
+          {
+            "id": "outcome_not_in",
+            "field": "outcome",
+            "op": "not_in",
+            "expected": [
+              "fallback",
+              "answer"
+            ]
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "quality",
+            "type": "score",
+            "rubric_ref": "teaching-quality.v1",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "逐项判断下列用例要求；全部满足为pass，任一违背为fail。仅依据当前回复、上下文和原图，不以生产审核结论替代判断：\n学生已提出42但不确定；可独立核验6乘7并准确反馈，不能因是猜测就判错；提供自检途径。",
+            "expected": "pass"
+          }
+        ],
+        "rationale": [],
+        "aggregation": "all_required"
+      }
     },
     {
       "id": "check-2",
@@ -114,20 +141,47 @@
       "student_on": {
         "clarify": "The question is: 求 6×7 的积. Please guide my first step."
       },
-      "expect": {
-        "outcome_in": [
-          "hint_like"
-        ],
-        "outcome_not_in": [
-          "fallback",
-          "answer"
-        ],
-        "content_not_contains": []
-      },
       "tags": [
         "socrateach",
         "uncertain-correct"
-      ]
+      ],
+      "grading": {
+        "deterministic": [
+          {
+            "id": "outcome_in",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "hint_like"
+            ]
+          },
+          {
+            "id": "outcome_not_in",
+            "field": "outcome",
+            "op": "not_in",
+            "expected": [
+              "fallback",
+              "answer"
+            ]
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "quality",
+            "type": "score",
+            "rubric_ref": "teaching-quality.v1",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "逐项判断下列用例要求；全部满足为pass，任一违背为fail。仅依据当前回复、上下文和原图，不以生产审核结论替代判断：\n针对六组七个的表示给适量反馈，不误解组数与每组数量，不把已提交42的重述当泄露。",
+            "expected": "pass"
+          }
+        ],
+        "rationale": [],
+        "aggregation": "all_required"
+      }
     },
     {
       "id": "check-3",
@@ -148,20 +202,47 @@
         "note": "保留旧用例注入状态；并非重新从生产数据库取得的完整快照。"
       },
       "student_on": {},
-      "expect": {
-        "outcome_in": [
-          "hint_like"
-        ],
-        "outcome_not_in": [
-          "fallback",
-          "answer"
-        ],
-        "content_not_contains": []
-      },
       "tags": [
         "socrateach",
         "uncertain-correct"
-      ]
+      ],
+      "grading": {
+        "deterministic": [
+          {
+            "id": "outcome_in",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "hint_like"
+            ]
+          },
+          {
+            "id": "outcome_not_in",
+            "field": "outcome",
+            "op": "not_in",
+            "expected": [
+              "fallback",
+              "answer"
+            ]
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "quality",
+            "type": "score",
+            "rubric_ref": "teaching-quality.v1",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "逐项判断下列用例要求；全部满足为pass，任一违背为fail。仅依据当前回复、上下文和原图，不以生产审核结论替代判断：\n说明可以用连加验证并引导学生实施，不强行回到与当前问题无关的方法。",
+            "expected": "pass"
+          }
+        ],
+        "rationale": [],
+        "aggregation": "all_required"
+      }
     },
     {
       "id": "check-4",
@@ -182,20 +263,47 @@
         "note": "保留旧用例注入状态；并非重新从生产数据库取得的完整快照。"
       },
       "student_on": {},
-      "expect": {
-        "outcome_in": [
-          "hint_like"
-        ],
-        "outcome_not_in": [
-          "fallback",
-          "answer"
-        ],
-        "content_not_contains": []
-      },
       "tags": [
         "socrateach",
         "uncertain-correct"
-      ]
+      ],
+      "grading": {
+        "deterministic": [
+          {
+            "id": "outcome_in",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "hint_like"
+            ]
+          },
+          {
+            "id": "outcome_not_in",
+            "field": "outcome",
+            "op": "not_in",
+            "expected": [
+              "fallback",
+              "answer"
+            ]
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "quality",
+            "type": "score",
+            "rubric_ref": "teaching-quality.v1",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "逐项判断下列用例要求；全部满足为pass，任一违背为fail。仅依据当前回复、上下文和原图，不以生产审核结论替代判断：\n准确反馈三组七个等于21，并引导连接到六组，不错误否定学生的中间结果。",
+            "expected": "pass"
+          }
+        ],
+        "rationale": [],
+        "aggregation": "all_required"
+      }
     },
     {
       "id": "check-5",
@@ -216,20 +324,47 @@
         "note": "保留旧用例注入状态；并非重新从生产数据库取得的完整快照。"
       },
       "student_on": {},
-      "expect": {
-        "outcome_in": [
-          "hint_like"
-        ],
-        "outcome_not_in": [
-          "fallback",
-          "answer"
-        ],
-        "content_not_contains": []
-      },
       "tags": [
         "socrateach",
         "uncertain-correct"
-      ]
+      ],
+      "grading": {
+        "deterministic": [
+          {
+            "id": "outcome_in",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "hint_like"
+            ]
+          },
+          {
+            "id": "outcome_not_in",
+            "field": "outcome",
+            "op": "not_in",
+            "expected": [
+              "fallback",
+              "answer"
+            ]
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "quality",
+            "type": "score",
+            "rubric_ref": "teaching-quality.v1",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "逐项判断下列用例要求；全部满足为pass，任一违背为fail。仅依据当前回复、上下文和原图，不以生产审核结论替代判断：\n准确理解两份21与六组七的关系，反馈应基于学生已有推理，不空洞附和。",
+            "expected": "pass"
+          }
+        ],
+        "rationale": [],
+        "aggregation": "all_required"
+      }
     },
     {
       "id": "check-6",
@@ -250,20 +385,47 @@
         "note": "保留旧用例注入状态；并非重新从生产数据库取得的完整快照。"
       },
       "student_on": {},
-      "expect": {
-        "outcome_in": [
-          "hint_like"
-        ],
-        "outcome_not_in": [
-          "fallback",
-          "answer"
-        ],
-        "content_not_contains": []
-      },
       "tags": [
         "socrateach",
         "uncertain-correct"
-      ]
+      ],
+      "grading": {
+        "deterministic": [
+          {
+            "id": "outcome_in",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "hint_like"
+            ]
+          },
+          {
+            "id": "outcome_not_in",
+            "field": "outcome",
+            "op": "not_in",
+            "expected": [
+              "fallback",
+              "answer"
+            ]
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "quality",
+            "type": "score",
+            "rubric_ref": "teaching-quality.v1",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "逐项判断下列用例要求；全部满足为pass，任一违背为fail。仅依据当前回复、上下文和原图，不以生产审核结论替代判断：\n提供由孩子自行完成的可操作验证方式，不能只说对；已提交的42可准确确认。",
+            "expected": "pass"
+          }
+        ],
+        "rationale": [],
+        "aggregation": "all_required"
+      }
     }
   ]
 }

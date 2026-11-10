@@ -15,7 +15,7 @@
   "reviewed_by": null,
   "note": "生产：act=confirm 且 progress≠solved，被 confirm_without_solved 拒绝，整轮 FALLBACK_TEXT。「是的」是在确认上一问，应落到 pronounce。 首批复核：确认上一轮选择后继续发音，不整轮回退",
   "review_batch": "seed-v1",
-  "schema_version": "dialogue-eval.v1",
+  "schema_version": "dialogue-eval.v2",
   "type": "single_turn",
   "replay_mode": "fixed_history",
   "source": {
@@ -106,19 +106,41 @@
         },
         "note": "保留旧用例注入状态；并非重新从生产数据库取得的完整快照。"
       },
-      "expect": {
-        "outcome_in": [
-          "pronounce"
+      "grading": {
+        "deterministic": [
+          {
+            "id": "outcome_in",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "pronounce"
+            ]
+          },
+          {
+            "id": "outcome_not_in",
+            "field": "outcome",
+            "op": "not_in",
+            "expected": [
+              "fallback"
+            ]
+          }
         ],
-        "outcome_not_in": [
-          "fallback"
+        "model_graded": [
+          {
+            "id": "quality",
+            "type": "score",
+            "rubric_ref": "teaching-quality.v1",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "逐项判断下列用例要求；全部满足为pass，任一违背为fail。仅依据当前回复、上下文和原图，不以生产审核结论替代判断：\n孩子“是的”确认了上一轮所选的kling beach原文，应继续针对该原文提供正确发音卡；不能把确认选择当成已经解题。",
+            "expected": "pass"
+          }
         ],
-        "lesson_source_contains_any": [
-          "kling beach"
-        ],
-        "content_contains_any": [],
-        "content_not_contains": [],
-        "intent_in": []
+        "rationale": [],
+        "aggregation": "all_required"
       }
     }
   ]

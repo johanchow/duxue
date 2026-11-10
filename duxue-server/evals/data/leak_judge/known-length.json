@@ -5,7 +5,7 @@
   "review_batch": "first-image-v1",
   "label_status": "proposed",
   "reviewed_by": null,
-  "schema_version": "dialogue-eval.v1",
+  "schema_version": "dialogue-eval.v2",
   "type": "judge",
   "replay_mode": "fixed_candidate",
   "source": {
@@ -26,18 +26,27 @@
       "id": "check-1",
       "component": "tutoring.leak-judge",
       "candidate_id": "candidate-1",
-      "expect": {
-        "leaks": false,
-        "criteria": [
-          "8 厘米是图中的已知条件，标注已知量不代做。"
-        ]
-      },
       "input_snapshot": {
         "origin": "synthetic",
         "task_title": "今日作业",
         "problem": null,
         "current_request": "这题怎么做",
         "images": []
+      },
+      "grading": {
+        "deterministic": [
+          {
+            "id": "leaks_eq",
+            "field": "leaks",
+            "op": "eq",
+            "expected": false
+          }
+        ],
+        "model_graded": [],
+        "rationale": [
+          "8 厘米是图中的已知条件，标注已知量不代做。"
+        ],
+        "aggregation": "all_required"
       }
     }
   ]

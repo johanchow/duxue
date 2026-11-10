@@ -5,6 +5,7 @@ from app.agent_specs.catalog import load_catalog
 
 # Display metadata has no effect on execution or the release compatibility hash.
 AGENT_PURPOSES = {
+    "evals.semantic-judge": ("离线评测裁判", "按用例rubric独立评分；未校准结果不作发布门槛。"),
     "companion.intent": (
         "对话意图路由",
         "理解当前请求，提出进入计划、答疑或复盘等场景的路由候选。",
@@ -101,6 +102,7 @@ COMPONENT_PURPOSES = {
     ),
 }
 WORKFLOW_DESCRIPTIONS = {
+    "eval-grading": "独立评价离线回放结果，按用例rubric给出分数与证据。",
     "companion": "识别对话意图，审核场景切换，并将请求路由到相应业务流程。",
     "planning": "组织计划信息整理、安排确认与受控写入，支持会话恢复。",
     "reflection": "组织孩子的原话复盘和单轮反馈，不将主观自述写入客观记忆。",
