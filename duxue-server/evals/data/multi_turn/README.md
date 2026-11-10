@@ -1,3 +1,3 @@
 # 多轮评测
 
-本目录每个 JSON 文件是一段带学生反馈分支的会话，文件名与 `id` 相同。它与其他目录的单步用例使用不同 schema、runner 和报告；两种通过率不混算。所有新增标注在人工复核前为 `proposed`。
+每个 JSON 是一段带学生反馈分支的合成会话，使用共用 `dialogue-eval.v1` 消息格式和 `generated_history` 执行模式。字段、状态来源和运行边界统一维护在[离线评测设计](../../../../docs/technical/eval-offline.md#44-合成连续对话)。多轮与单轮结果分别统计；人工复核前标签为 `proposed`。

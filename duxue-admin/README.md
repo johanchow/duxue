@@ -92,3 +92,5 @@ npm run config:export -- ../duxue-server/var/admin/candidate.json --draft
 导出目标必须不存在，避免误覆盖已用于评测的快照。普通用户也可在“发布管理→版本详情→下载配置快照”下载指定发布；GET `/api/drafts/<id>/snapshot`导出已保存草稿，不包含编辑器未保存内容。快照包含`id/digest/bundle`及release/draft身份；CLI从管理库读取，Python校验权威契约。文件与模型密钥、数据库凭据分开，不进入Git。离线运行参数见[Server配置入口](../duxue-server/agent_specs/README.md#本地与离线评测)。
 
 `npx tsx scripts/config-snapshot-smoke.ts`在测试管理库临时schema验证空库无默认值、CLI导入导出、页面快照下载及禁止覆盖，需本地执行器已启动，不发布或修改原环境指针。
+
+数学工具契约升级使用 `config:import-upgrade`（写草稿，不发布）；来源并发校验与完整顺序见[数学执行器部署](../docs/deployment.md#数学执行器与配置升级)。

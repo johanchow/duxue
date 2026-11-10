@@ -15,7 +15,8 @@ def test_leak_judge_exposes_facts_instead_of_choosing_its_reason():
     from app.agent_specs.definitions import load_definitions
     unit = load_definitions().units["tutoring.leak-judge"]
     schema = unit.provider_output_schema
-    assert set(schema["required"]) == set(schema["properties"])
+    assert set(schema["required"]) == set(schema["properties"]) - {"math_consistent"}
+    assert schema["properties"]["math_consistent"]["type"] == ["boolean", "null"]
     assert not schema["additionalProperties"]
     assert "leaks" not in schema["properties"] and "reason" not in schema["properties"]
     assert schema["properties"]["student_answer_correct"]["type"] == ["boolean", "null"]

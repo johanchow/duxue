@@ -81,6 +81,7 @@ def run_domain(workflow_id, data, runtime):
                     def _media(self, invocation):
                         return window, []
 
+                from app.bootstrap.math_engine import math_engine
                 workflow = SandboxTutoring(
                     db,
                     turn_model=QwenTutorTurnGateway(settings_obj=runtime),
@@ -88,6 +89,7 @@ def run_domain(workflow_id, data, runtime):
                         settings_obj=runtime, component_id="tutoring.turn-backup"
                     ),
                     leak_judge=QwenLeakJudge(settings_obj=runtime),
+                    math_engine=math_engine(),
                 )
             else:
                 from app.application.workflows.reflection_workflow import (

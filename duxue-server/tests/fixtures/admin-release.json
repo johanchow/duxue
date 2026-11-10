@@ -1,9 +1,9 @@
 {
   "id": "00000000-0000-4000-8000-000000000001",
-  "digest": "bb557d20055e91f81077eaffee54319f7c4034764b0182167082f12ba35bdffa",
+  "digest": "76d1d4409ae0938173826f4c1d448896815b072ee57fc86cc2e008d2dc695261",
   "bundle": {
     "format_version": 3,
-    "compatibility": "c9d13384a0439dda9505bacd2c3cc5543d094607e6817361d36001f70f6aff39",
+    "compatibility": "10e9738e74f94e08c2a3b5420d8339781d65f2930b53917b454cbb73bc7a822b",
     "files": {
       "agents/companion.intent.json": {
         "id": "companion.intent",
@@ -2151,6 +2151,12 @@
             },
             "premature_conclusion": {
               "type": "boolean"
+            },
+            "math_consistent": {
+              "type": [
+                "boolean",
+                "null"
+              ]
             }
           },
           "required": [
@@ -3258,6 +3264,122 @@
           }
         ],
         "invocation_agent": "tutoring.session-turn"
+      },
+      "tools/tutoring.math.json": {
+        "id": "tutoring.math",
+        "kind": "tool",
+        "input_schema": {
+          "$defs": {
+            "MathSymbol": {
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "pattern": "^[a-zA-Z][a-zA-Z0-9]{0,15}$",
+                  "title": "Name",
+                  "type": "string"
+                },
+                "domain": {
+                  "enum": [
+                    "real",
+                    "complex",
+                    "integer"
+                  ],
+                  "title": "Domain",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "domain"
+              ],
+              "title": "MathSymbol",
+              "type": "object"
+            }
+          },
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "enum": [
+                "evaluate",
+                "equivalent",
+                "solve",
+                "differentiate",
+                "integrate",
+                "limit"
+              ],
+              "title": "Op",
+              "type": "string"
+            },
+            "args": {
+              "additionalProperties": true,
+              "title": "Args",
+              "type": "object"
+            },
+            "symbols": {
+              "items": {
+                "$ref": "#/$defs/MathSymbol"
+              },
+              "maxItems": 8,
+              "title": "Symbols",
+              "type": "array"
+            },
+            "assumptions": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 16,
+              "title": "Assumptions",
+              "type": "array"
+            },
+            "image_ref": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Image Ref"
+            },
+            "step_ref": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Step Ref"
+            }
+          },
+          "required": [
+            "op",
+            "args"
+          ],
+          "title": "MathInput",
+          "type": "object"
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "status"
+          ],
+          "additionalProperties": true
+        },
+        "handler_id": "tutoring.math",
+        "access": "read",
+        "description": "受限数学核验；结果不改变答案保护"
       }
     }
   },

@@ -142,9 +142,13 @@ def to_json(results: list[CaseResult]) -> list[dict]:
         {
             "id": r.case.id, "component": r.case.component, "label_status": r.case.label_status,
             "tags": r.case.tags, "status": r.status, "skip_reason": r.skip_reason,
+            "snapshot_origin": r.case.snapshot_origin, "record_digest": r.case.record_digest,
+            "criteria": r.case.expect.criteria,
+            "reference_response": r.case.expect.response.model_dump() if r.case.expect.response else None,
             "samples": [
                 {"outcome": s.observation.outcome, "act": s.observation.act, "reason": s.observation.reason,
                  "error": s.observation.error, "passed": s.passed, "failures": s.failures,
+                 "semantic_status": "pending_review" if r.case.component == "tutoring.turn" else "label_comparison",
                  "latency_ms": s.latency_ms, "content": s.observation.content,
                  "visual_kind": s.observation.visual_kind, "visual_text": s.observation.visual_text,
                  "visual_dropped": s.observation.visual_dropped, "shape_flags": s.observation.shape_flags,

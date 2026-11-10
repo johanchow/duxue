@@ -96,6 +96,12 @@
       },
       "premature_conclusion": {
         "type": "boolean"
+      },
+      "math_consistent": {
+        "type": [
+          "boolean",
+          "null"
+        ]
       }
     },
     "required": [

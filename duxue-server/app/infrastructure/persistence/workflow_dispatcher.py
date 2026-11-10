@@ -13,7 +13,7 @@ from app.agent_specs.definitions import load_definitions
 from app.agent_specs.results import completed
 from app.application.ports.companion import RunInvocation, WorkflowOutcome
 from app.application.workflows.reflection_workflow import ReflectionWorkflow
-from app.application.workflows.tutoring_workflow import TutoringWorkflow
+from app.bootstrap.math_engine import tutoring_workflow
 from app.infrastructure.persistence.models import AgentRun
 
 
@@ -30,7 +30,7 @@ class SqlAlchemyWorkflowDispatcher:
             raise HTTPException(404, "agent run not found")
         factories = {
             "planning": self.planning_factory,
-            "tutoring": TutoringWorkflow,
+            "tutoring": tutoring_workflow,
             "reflection": ReflectionWorkflow,
         }
         workflow = load_catalog().spec(invocation.agent_type)

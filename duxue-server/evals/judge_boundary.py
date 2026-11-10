@@ -22,7 +22,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from evals.dataset import ASSETS_DIR, DATA_DIR, read_object
-from evals.schema import ASSET_NAME
 
 os.environ["OTEL_SDK_DISABLED"] = "true"
 
@@ -33,50 +32,22 @@ TASK_TITLE = "今日作业"
 
 def load_cases(path: Path = DATA) -> list[dict]:
     files = [path] if path.is_file() else sorted(path.glob("*.json"))
-    cases = [read_object(file) for file in files]
-    for file, case in zip(files, cases):
-        if file.suffix != ".json" or file.stem != case.get("id"):
+    from evals.dialogue import JudgeRecord
+    cases = []
+    for file in files:
+        row = JudgeRecord.model_validate(read_object(file))
+        if file.suffix != ".json" or file.stem != row.id:
             raise ValueError(f"{file.name}: each case must be <id>.json")
-    ids: set[str] = set()
-    for case in cases:
-        if set(case) - {"id", "reference_problem", "reply", "expected_leaks", "rationale", "pair", "image", "problem", "expected_reason", "component", "source", "review_batch", "label_status", "reviewed_by", "task_title", "expected_answer_protected"}:
-            raise ValueError(f"unexpected fields in {case.get('id')}")
-        if not all(isinstance(case.get(key), str) and case[key] for key in
-                   ("id", "reference_problem", "reply", "rationale")):
-            raise ValueError("each case needs an id, reference problem, reply and rationale")
-        if type(case.get("expected_leaks")) is not bool:
-            raise ValueError(f"invalid label: {case['id']}")
-        if "task_title" in case and case["task_title"] is not None and not isinstance(case["task_title"], str):
-            raise ValueError(f"invalid task title: {case['id']}")
-        if "expected_answer_protected" in case and type(case["expected_answer_protected"]) is not bool:
-            raise ValueError(f"invalid protection scope: {case['id']}")
-        if "problem" in case and (not isinstance(case["problem"], str) or not case["problem"].strip()):
-            raise ValueError(f"invalid problem snapshot: {case['id']}")
-        if "expected_reason" in case:
-            reason = case["expected_reason"]
-            if not isinstance(reason, str) or not reason.strip() or (reason == "none") != (not case["expected_leaks"]):
-                raise ValueError(f"invalid expected reason: {case['id']}")
-        if case.get("component", "tutoring.leak-judge") != "tutoring.leak-judge":
-            raise ValueError(f"invalid judge component: {case['id']}")
-        status = case.get("label_status", "proposed")
-        if status not in {"proposed", "confirmed", "needs_decision"}:
-            raise ValueError(f"invalid label status: {case['id']}")
-        if (status == "confirmed") != bool(case.get("reviewed_by")):
-            raise ValueError(f"confirmed needs reviewer; other labels cannot claim one: {case['id']}")
-        if case["id"] in ids:
-            raise ValueError(f"duplicate id: {case['id']}")
-        if "image" in case and (not isinstance(case["image"], str) or not ASSET_NAME.match(case["image"])):
-            raise ValueError(f"invalid image asset: {case['id']}")
-        ids.add(case["id"])
-    if not cases:
-        raise ValueError("empty judge dataset")
+        cases.append(row.to_case())
+    if not cases or len({c['id'] for c in cases}) != len(cases):
+        raise ValueError('empty judge dataset or duplicate id')
     return cases
 
 
-def production_summary() -> str:
+def production_summary(current_request: str = STUDENT_SAID) -> str:
     from app.application.workflows.tutor_loop import judge_problem_summary
 
-    return judge_problem_summary([], STUDENT_SAID, recent_utterances=[])
+    return judge_problem_summary([], current_request, recent_utterances=[])
 
 
 def run_cases(
@@ -93,7 +64,10 @@ def run_cases(
     def call(case: dict) -> dict:
         started = time.monotonic()
         try:
-            context = case.get("problem", problem_summary)
+            context = case.get("problem")
+            if context is None:
+                context = (production_summary(case["current_request"])
+                           if case.get("current_request") else problem_summary)
             case_summary = context
             if with_reference:
                 try:

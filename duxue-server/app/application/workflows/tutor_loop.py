@@ -107,7 +107,9 @@ def call_tutor_model(
     不记录 fallback：一轮是否回退由 ``run_tutor_turn`` 按最终结果判断。
     """
     repair: str | None = repair_error
-    observations: list[dict] = []
+    ledger = getattr(tools, "math_verification", None)
+    observations: list[dict] = ([{"tool": "math", **record} for record in ledger.records.values()]
+                                if ledger is not None else [])
     if review_evidence is not None:
         observations.append({"kind": "verified_image_review", "image_review": review_evidence.model_dump(mode="json")})
         envelope = {**envelope, "image_review_phase": "response"}
@@ -174,7 +176,7 @@ def call_tutor_model(
                     candidate = TutorTurnCandidate.model_validate(raw)
                     if review_evidence is not None:
                         candidate = candidate.model_copy(update={"image_review": review_evidence})
-                    elif candidate.image_review is not None:
+                    elif candidate.image_review is not None and ledger is None:
                         from app.application.workflows.image_review import (
                             reconcile_calculations,
                         )
@@ -184,9 +186,15 @@ def call_tutor_model(
                     from app.application.workflows.image_review import (
                         validate_image_review,
                     )
+                    ledger = getattr(tools, "math_verification", None)
+                    if ledger is not None:
+                        candidate = ledger.reconcile_image(candidate)
+                        ledger.validate(candidate.math_claims)
+                    elif candidate.math_claims:
+                        raise ValueError("math_evidence_unavailable")
                     validate_image_review(candidate, [
                         *(url for row in window for url in row.get("image_urls", [])), *images,
-                    ])
+                    ], external_calculations=ledger is not None)
                 except (ValidationError, ValueError) as error:
                     span.set_attribute("agent.check.result", "rejected")
                     error_type, field = schema_error_diagnostic(error)
@@ -351,6 +359,9 @@ def _text_leak_result(result: bool | dict | None) -> tuple[bool | None, str | No
 def _leak_repair(vetting: Vetting) -> str:
     """Bounded feedback for one retry. The rejected draft never reaches the child."""
     reason = vetting.leak_reason or vetting.failure or "unspecified"
+    if reason == "math_inconsistent":
+        return json.dumps({"kind": "math_verification_failed", "reason": reason,
+                           "instruction": "依据本轮工具记录修正；缺证据先核算；未知只说明未核验"}, ensure_ascii=False)
     if reason in {"incorrect_confirmation", "premature_conclusion"}:
         return json.dumps({"kind": "verification_disagreement", "reason": reason,
                            "student_answer_correct": None}, ensure_ascii=False)
@@ -513,15 +524,37 @@ def run_tutor_turn(
     """主调用 + 出口检查；文字给出了答案时带 ``LEAK_REPAIR`` 重试一次，重试结果重新完整检查。
 
     生产与离线评测共用。``model_fallback`` 只按最终结果记录一次。"""
+    if hasattr(tools, "begin_math"):
+        tools.begin_math(envelope, instruction, list(judge_images or [
+            *(url for row in window for url in row.get("image_urls", [])), *images,
+        ]))
+
     def vet(candidate: TutorTurnCandidate) -> Vetting:
         with agent_step_span("check", "tutoring.exit_gate") as span:
             set_observation_payload(span, input={
                 "candidate": candidate.model_dump(mode="json"), "permit": permit.as_context(),
                 "task_title": task_title, "problem_summary": problem_summary,
             })
+            ledger = getattr(tools, "math_verification", None)
+            if ledger is not None:
+                try:
+                    ledger.validate(candidate.math_claims)
+                    check = getattr(leak_judge, "check_math", None)
+                    checked = check(text=candidate.content + ("\n" + describe(candidate.visual) if candidate.visual else ""),
+                                    context={"problem": problem_summary,
+                                             "candidate_turn": candidate.turn.model_dump() if candidate.turn else None,
+                                             **ledger.context(candidate.math_claims)},
+                                    images=list(judge_images or [])) if check else None
+                except Exception:  # noqa: BLE001 - independent math check fails closed
+                    checked = None
+                if checked is not True:
+                    return Vetting(candidate, None, "leak_check_failed" if checked is None else "leak_detected",
+                                   "math_inconsistent")
+            checked_summary = (json.dumps({"problem": problem_summary, **ledger.context(candidate.math_claims)},
+                                          ensure_ascii=False) if ledger is not None else problem_summary)
             result = vet_candidate(
                 candidate, permit=permit, leak_judge=leak_judge,
-                task_title=task_title, problem_summary=problem_summary, judge_images=judge_images,
+                task_title=task_title, problem_summary=checked_summary, judge_images=judge_images,
             )
             span.set_attribute("agent.check.result", "rejected" if result.failure else "pass")
             if result.failure:
@@ -560,6 +593,9 @@ def run_tutor_turn(
                 from app.application.workflows.image_review import review_problem
                 summary = json.loads(review_problem(problem_summary, candidate, list(judge_images or [])))
                 summary['image_review_phase'] = 'evidence_only'
+                ledger = getattr(tools, "math_verification", None)
+                if ledger is not None:
+                    summary["math_records"] = list(ledger.records.values())
                 try:
                     evidence_result = _check_text_leak(leak_judge, '', task_title,
                                                       json.dumps(summary, ensure_ascii=False), list(judge_images or []), phase='evidence')
@@ -638,7 +674,7 @@ def run_tutor_turn(
 
     def same_leak(state):
         review = state["vetting"]
-        return (backup_model is not None and review.failure == state["original_failure"] == "leak_detected"
+        return (backup_model is not None and review.leak_reason != "math_inconsistent" and review.failure == state["original_failure"] == "leak_detected"
                 and review.leak_reason == state["original_reason"])
 
     def needs_redraw(state):

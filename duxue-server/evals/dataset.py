@@ -58,6 +58,9 @@ def _strings(case: EvalCase) -> list[str]:
     if case.context.problem:
         out += [case.context.problem.summary or "", case.context.problem.evidence_summary or ""]
     expect = case.expect
+    out.extend(expect.criteria)
+    if expect.response:
+        out.append(expect.response.message)
     out += (
         expect.lesson_source_contains_any + expect.lesson_source_contains_all
         + expect.content_contains_any + expect.content_not_contains
@@ -104,7 +107,11 @@ def load_cases(path: Path | None = None) -> list[EvalCase]:
     for file in _case_files(path):
         try:
             record = read_object(file)
-            cases.append(EvalCase.model_validate(record))
+            from evals.dialogue import TurnRecord
+            parsed = TurnRecord.model_validate(record)
+            if file.stem != parsed.id:
+                raise ValueError("filename must match id")
+            cases.append(parsed.to_case())
         except (ValueError, ValidationError) as error:
             raise ValueError(f"{file.name}: {error}") from error
     return cases
@@ -143,6 +150,11 @@ def validate_layout(path: Path = DATA_DIR) -> list[str]:
                 problems.append(str(error))
             continue
         if category == "multi_turn":
+            from evals.episodes import load_episodes, validate_episodes
+            try:
+                problems.extend(validate_episodes(load_episodes(file)))
+            except ValueError as error:
+                problems.append(str(error))
             continue
         if category == "leak_judge":
             from evals.judge_boundary import load_cases as load_judge_cases
@@ -167,21 +179,7 @@ def validate_layout(path: Path = DATA_DIR) -> list[str]:
 
 def dataset_hash(cases: list[EvalCase]) -> str:
     """Stable id of the dataset content. Results are comparable only when this matches."""
-    payload = []
-    for case in sorted(cases, key=lambda c: c.id):
-        record = case.model_dump(mode="json")
-        # Optional scope fields must not alter hashes of unchanged legacy seeds.
-        if not record["context"]["recent_problems"]:
-            record["context"].pop("recent_problems")
-        if record["expect"]["answer_protected"] is None:
-            record["expect"].pop("answer_protected")
-        for row in record["history"]:
-            if not row.get("image_target_refs"):
-                row.pop("image_target_refs", None)
-        for field in ("selected_images", "review_conclusion"):
-            if record["expect"].get(field) is None:
-                record["expect"].pop(field, None)
-        payload.append(record)
+    payload = [case.model_dump(mode="json") for case in sorted(cases, key=lambda c: c.id)]
     return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:16]
 
 

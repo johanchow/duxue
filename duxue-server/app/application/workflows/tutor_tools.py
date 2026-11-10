@@ -5,8 +5,9 @@
 
 from __future__ import annotations
 
-from sqlalchemy.orm import Session
+import hashlib
 
+from app.agent_specs.configuration import code_contract
 from app.agent_specs.definitions import load_definitions
 from app.agent_specs.static_tools import static_tool_result
 from app.application.workflows.teaching_skills import history_candidates
@@ -15,8 +16,7 @@ from app.infrastructure.observability.telemetry import (
     set_observation_payload,
 )
 from app.infrastructure.persistence.models import TutoringMessage, TutoringProblem
-
-from app.agent_specs.configuration import code_contract
+from sqlalchemy.orm import Session
 
 TOOL_NAMES = tuple(tool_id.split(".", 1)[1] for tool_id in code_contract()["tool_authority"]["tutoring.turn"])
 _HISTORY_LIMIT = 3
@@ -31,8 +31,10 @@ def __getattr__(name):
 class TutorToolbox:
     def __init__(
         self, db: Session, *, tutoring_session_id: str | None, problem: TutoringProblem | None,
-        task_title: str | None, task_active: bool, window: list[dict],
+        task_title: str | None, task_active: bool, window: list[dict], math_engine=None,
     ):
+        self.math_engine = math_engine
+        self.math_verification = None
         self.db = db
         self.tutoring_session_id = tutoring_session_id
         self.problem = problem
@@ -45,11 +47,12 @@ class TutorToolbox:
         with agent_step_span("tool", name if name in allowed else "unknown_tool",
                              **{"agent.tool.source": "model_request"}) as span:
             args = args if isinstance(args, dict) else {}
-            set_observation_payload(span, input=args)
+            set_observation_payload(span, input={"op": args.get("op")} if name == "math" else args)
             handlers = {
                 "get_task_context": self._task_context,
                 "get_attempt_summary": self._attempt_summary,
                 "lookup_history": self._lookup_history,
+                "math": self._math,
             }
             for tool_id in load_definitions().units["tutoring.turn"].tools:
                 if load_definitions().tools[tool_id].handler_id == "tool.static_result":
@@ -70,8 +73,26 @@ class TutorToolbox:
             except Exception:
                 result = {"tool": name, "status": "tool_error"}
             span.set_attribute("agent.tool.status", result.get("status", "tool_error"))
-            set_observation_payload(span, output=result)
+            set_observation_payload(span, output={key: result[key] for key in ("status", "request_id", "input_digest", "error_code") if key in result} if name == "math" else result)
             return result
+
+    def begin_math(self, envelope: dict, instruction: str, images: list[str]):
+        from app.agent_specs.image_refs import image_ref
+        from app.application.workflows.math_verification import MathVerification
+        enabled = "tutoring.math" in load_definitions().units["tutoring.turn"].tools
+        if not enabled:
+            self.math_verification = None
+            return
+        self.math_verification = MathVerification(self.math_engine, {
+            "turn_id": envelope.get("turn_id"), "run_id": envelope.get("run_id"),
+            "problem_ref": getattr(self.problem, "id", None),
+            "instruction_digest": hashlib.sha256(instruction.encode()).hexdigest(),
+        }, {image_ref(url) for url in images if url})
+
+    def _math(self, args):
+        if self.math_verification is None:
+            return {"status": "unknown", "error_code": "unavailable"}
+        return self.math_verification.run(args)
 
     def _task_context(self, _args: dict) -> dict:
         if not self.task_active or not self.task_title:

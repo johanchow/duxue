@@ -6,6 +6,7 @@ import { config } from '../src/lib/config';
 import { passwordHash } from '../src/lib/auth';
 import { serverCall } from '../src/lib/server';
 import { workingDraft } from '../src/lib/working-draft';
+import { importConfigUpgrade } from '../src/lib/config-upgrade';
 import { transaction, pool } from '../src/lib/db';
 
 async function main() {
@@ -107,6 +108,40 @@ async function main() {
     } finally {
       await db.end();
     }
+  } else if (command === 'import-upgrade') {
+    const source = process.argv[3];
+    if (!source) throw new Error('需要升级后的完整快照路径');
+    const snapshot = JSON.parse(fs.readFileSync(source, 'utf8'));
+    if (
+      !snapshot.migration_source ||
+      !snapshot.bundle ||
+      !snapshot.digest ||
+      snapshot.kind !== 'draft'
+    )
+      throw new Error('需要含migration_source的待验证升级快照');
+    if (snapshot.environment !== settings.environment)
+      throw new Error('升级快照环境不匹配');
+    const validation = await serverCall('validate', {
+      bundle: snapshot.bundle,
+    });
+    if (validation.digest !== snapshot.digest)
+      throw new Error('升级快照摘要不匹配');
+    await transaction(async (client) => {
+      const actor = (
+        await client.query(
+          "SELECT id FROM admin_users WHERE email=$1 AND role='admin' AND active",
+          [process.env.ADMIN_INIT_EMAIL],
+        )
+      ).rows[0];
+      if (!actor) throw new Error('ADMIN_INIT_EMAIL必须是有效管理员');
+      await importConfigUpgrade(client, {
+        source: snapshot.migration_source,
+        bundle: snapshot.bundle,
+        actorId: actor.id,
+        environment: settings.environment,
+      });
+    });
+    console.log('升级已写入工作草稿，旧调试证据失效；需重新调试、校验及发布');
   } else if (command === 'import-config') {
     const source = process.argv[3];
     if (!source) throw new Error('需要Admin导出的快照路径');
@@ -188,5 +223,6 @@ main()
     process.exitCode = 1;
   })
   .finally(async () => {
-    if (process.argv[2] === 'import-config') await pool().end();
+    if (['import-config', 'import-upgrade'].includes(process.argv[2]))
+      await pool().end();
   });

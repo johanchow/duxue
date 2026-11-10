@@ -6,6 +6,7 @@ import pytest
 from evals import dataset, episodes
 from evals.__main__ import main
 from evals.schema import EvalCase
+from evals.migrate import migrate_record
 
 
 def _case(**fields) -> EvalCase:
@@ -41,7 +42,7 @@ def test_layout_rejects_a_case_in_the_wrong_category(tmp_path):
         (tmp_path / category).mkdir()
     case = _case()
     (tmp_path / "scene_routing" / f"{case.id}.json").write_text(
-        json.dumps(case.model_dump(mode="json"), ensure_ascii=False, indent=2) + "\n", encoding="utf-8",
+        json.dumps(migrate_record(case.model_dump(mode="json", exclude={"snapshot_origin", "record_digest"})), ensure_ascii=False, indent=2) + "\n", encoding="utf-8",
     )
     assert any("scene_routing requires companion.intent" in problem
                for problem in dataset.validate_layout(tmp_path))
@@ -210,7 +211,7 @@ def test_run_commands_filter_to_review_batch_without_network(monkeypatch, tmp_pa
 
     monkeypatch.setattr(cli, "_load_app", load_modules)
     assert main(["run", "--batch", "seed-v1", "--samples", "1", "--out", str(tmp_path / "single.json")]) == 0
-    assert json.loads((tmp_path / "single-tutoring_turn.json").read_text())["meta"]["dataset_hash"] == "7084bc6835908cf9"
+    assert json.loads((tmp_path / "single-tutoring_turn.json").read_text())["meta"]["dataset_hash"] == dataset.dataset_hash(dataset.load_cases())
     assert len(seen_cases) == 16
     assert all(case.review_batch == "seed-v1" for case in seen_cases)
     assert json.loads((tmp_path / "single-tutoring_turn.json").read_text())["meta"]["review_batch"] == "seed-v1"

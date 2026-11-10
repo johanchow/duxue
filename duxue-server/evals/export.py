@@ -15,9 +15,10 @@ from pathlib import Path
 
 from app.application.process_managers.companion_coordinator import _CLARIFY_REPLY
 from app.application.queries.run_transcript import select_recent_utterances
-from app.application.workflows.tutor_turn import FALLBACK_TEXT, REMINDER
+from app.application.workflows.tutor_turn import FALLBACK_TEXT
 from evals.dataset import ASSETS_DIR, scrub
-from evals.schema import Context, EvalCase, Utterance
+from evals.dialogue import VERSION, ContextSnapshot, Message, Source, TurnCheck, TurnRecord
+from evals.schema import Expect
 
 _NUMBERED_LIST = re.compile(r"\n1\. ")
 _IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
@@ -58,38 +59,49 @@ def _flags(rows: list[dict], index: int) -> list[str]:
 def build_cases(
     rows: list[dict], *, conversation_id: str, component: str, asset_for: Callable[[str], str],
     names: tuple[str, ...] = (),
-) -> list[EvalCase]:
+    snapshots: dict[str, ContextSnapshot] | None = None,
+) -> list[TurnRecord]:
     """``rows`` are the thread's messages, oldest first (``author``, ``text``, ``attachment_refs``)."""
     short = "intent" if component == "companion.intent" else "turn"
     # select_recent_utterances drops rows whose turn_id equals the excluded one (None here).
-    rows = [{**row, "turn_id": row.get("turn_id") or f"row-{i}"} for i, row in enumerate(rows)]
-    # The reminder is appended only while a task is running, so any occurrence in the thread
-    # tells us the Ward had an active task around these turns.
-    task_active = any(REMINDER in (r.get("text") or "") for r in rows if r["author"] == "companion")
-    cases: list[EvalCase] = []
+    rows = [{**row, "turn_id": row.get("turn_id") or f"row-{i}", "eval_message_id": f"m{i + 1}"}
+            for i, row in enumerate(rows)]
+    # Message storage does not contain a historical domain-state snapshot.
+    # In particular, later tutor text must not be used to reconstruct earlier state.
+    cases: list[TurnRecord] = []
+
+    def message(item):
+        return Message(
+            id=item["eval_message_id"],
+            role='user' if item['author'] == 'ward' else 'assistant',
+            content=scrub(item.get('text') or '', names),
+            images=[asset_for(key) for key in item.get('attachment_refs') or []],
+            image_target_refs=list(item.get('image_target_refs') or []),
+        )
+
     ordinal = 0
     for index, row in enumerate(rows):
         if row["author"] != "ward":
             continue
         position, ordinal = ordinal, ordinal + 1
         text = scrub((row.get("text") or "").strip(), names)
-        if not text:
-            continue  # a picture with no words has no sentence to replay
+        if not text and not row.get("attachment_refs"):
+            continue
         prior, _omitted = select_recent_utterances(rows[:index], exclude_turn_id=None)
-        history = [
-            Utterance(
-                author=item["author"], text=scrub(item.get("text") or "", names),
-                images=[asset_for(key) for key in item.get("attachment_refs") or []],
-            )
-            for item in prior
-        ]
-        cases.append(EvalCase(
-            id=f"{short}-{conversation_id}-{position:02d}", component=component,  # type: ignore[arg-type]
-            conversation_id=conversation_id, turn_index=position, history=history, student_said=text,
-            images=[asset_for(key) for key in row.get("attachment_refs") or []],
-            context=Context(task_active=task_active) if component == "tutoring.turn" else Context(),
-            source="real", flags=_flags(rows, index), label_status="proposed",
-            note="自动导出：补全 expect 与 tags，人工复核后再设 confirmed。context 无法从对话还原的部分（题目状态等）需手工补。",
+        current = message(row)
+        snapshot = (snapshots or {}).get(row['turn_id']) or ContextSnapshot(
+            origin='missing', context=None,
+            note='消息存储未提供当时的题目/任务/路由状态；须从对应运行证据补齐，禁止依据后续回复推断。',
+        )
+        cases.append(TurnRecord(
+            schema_version=VERSION, type='single_turn', replay_mode='fixed_history',
+            id=f"{short}-{conversation_id}-{position:02d}", conversation_id=conversation_id, turn_index=position,
+            messages=[*[message(item) for item in prior], current],
+            source=Source(kind='real', provider='companion_messages', coverage='observed_window'),
+            checks=[TurnCheck(id='check-1', after_message=current.id, component=component,
+                              input_snapshot=snapshot, expect=Expect())],
+            flags=_flags(rows, index), label_status='proposed',
+            note='自动导出候选：保留原话与附件；补全期望、状态证据和复核记录后才可用于质量结论。',
         ))
     return cases
 
@@ -131,7 +143,8 @@ def load_thread_rows(db, thread_prefix: str) -> tuple[str, list[dict]]:
     )
     rows = [
         {"turn_id": m.turn_id, "author": m.author_type, "text": m.content,
-         "attachment_refs": list(m.attachment_refs or [])}
+         "attachment_refs": list(m.attachment_refs or []),
+         "image_target_refs": list((m.interaction_ref or {}).get("image_target_refs", []))}
         for m in messages
     ]
     return thread_id[:8], rows

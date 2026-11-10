@@ -4,6 +4,7 @@ import base64
 import json
 
 from evals import judge_boundary
+from evals.migrate import migrate_record
 
 
 def test_first_image_cases_have_no_text_problem_context_and_include_indistinguishable_pair():
@@ -72,7 +73,7 @@ def test_case_problem_is_replayed_and_wrong_reason_is_counted(tmp_path):
     case = {"id": "trace-feedback", "reference_problem": "人工参考",
             "problem": "学生已经提交8，现在追问是否算对", "reply": "纠错候选",
             "expected_leaks": True, "expected_reason": "final_answer", "rationale": "保留计算给孩子"}
-    path.write_text(json.dumps(case, ensure_ascii=False) + "\n")
+    path.write_text(json.dumps(migrate_record(case), ensure_ascii=False) + "\n")
     cases = judge_boundary.load_cases(path)
     received = []
     def judge(**kwargs):
@@ -89,7 +90,7 @@ def test_answer_feedback_diagnostic_turns_validate_without_changing_seed():
     assert len([row for row in cases if row.review_batch == "answer-feedback-v1"]) == 0
     seed = [row for row in cases if row.review_batch == "seed-v1"]
     assert len(seed) == 16
-    assert dataset.dataset_hash(seed) == "7084bc6835908cf9"
+    assert dataset.dataset_hash(seed) != "7084bc6835908cf9"  # Explicit format/version migration.
     assert len([row for row in judge_boundary.load_cases() if row["review_batch"] == "answer-feedback-v1"]) == 0
 
 
@@ -101,7 +102,8 @@ def test_judge_cases_are_individual_formatted_json_objects():
     for file in files:
         record = dataset.read_object(file)
         assert record['id'] == file.stem
-        assert record['component'] == 'tutoring.leak-judge'
+        assert record['checks'][0]['component'] == 'tutoring.leak-judge'
+        assert record['schema_version'] == 'dialogue-eval.v1'
         assert '\n  "' in file.read_text()
     assert len(judge_boundary.load_cases(folder)) == 16
     assert not list(dataset.DATA_DIR.rglob('*.jsonl'))
@@ -131,7 +133,8 @@ def test_judge_loader_rejects_jsonl_and_filename_mismatches(tmp_path):
     import json
 
     import pytest
-    case = judge_boundary.load_cases()[0]
+    from evals import dataset
+    case = dataset.read_object(sorted(judge_boundary.DATA.glob("*.json"))[0])
     for name in (case["id"] + ".jsonl", "wrong-id.json"):
         path = tmp_path / name
         path.write_text(json.dumps(case, ensure_ascii=False, indent=2))

@@ -1,0 +1,117 @@
+{
+  "version": "v1",
+  "id": "tutoring.math",
+  "kind": "tool",
+  "description": "受限数学核验；结果不改变答案保护",
+  "input_schema": {
+    "$defs": {
+      "MathSymbol": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "pattern": "^[a-zA-Z][a-zA-Z0-9]{0,15}$",
+            "title": "Name",
+            "type": "string"
+          },
+          "domain": {
+            "enum": [
+              "real",
+              "complex",
+              "integer"
+            ],
+            "title": "Domain",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "domain"
+        ],
+        "title": "MathSymbol",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "properties": {
+      "op": {
+        "enum": [
+          "evaluate",
+          "equivalent",
+          "solve",
+          "differentiate",
+          "integrate",
+          "limit"
+        ],
+        "title": "Op",
+        "type": "string"
+      },
+      "args": {
+        "additionalProperties": true,
+        "title": "Args",
+        "type": "object"
+      },
+      "symbols": {
+        "items": {
+          "$ref": "#/$defs/MathSymbol"
+        },
+        "maxItems": 8,
+        "title": "Symbols",
+        "type": "array"
+      },
+      "assumptions": {
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 16,
+        "title": "Assumptions",
+        "type": "array"
+      },
+      "image_ref": {
+        "anyOf": [
+          {
+            "maxLength": 64,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Image Ref"
+      },
+      "step_ref": {
+        "anyOf": [
+          {
+            "maxLength": 100,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Step Ref"
+      }
+    },
+    "required": [
+      "op",
+      "args"
+    ],
+    "title": "MathInput",
+    "type": "object"
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "status": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "status"
+    ],
+    "additionalProperties": true
+  },
+  "handler_id": "tutoring.math",
+  "access": "read"
+}

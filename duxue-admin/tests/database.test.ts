@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import pg from 'pg';
 import { config } from '../src/lib/config';
 import { workingDraft } from '../src/lib/working-draft';
+import { importConfigUpgrade } from '../src/lib/config-upgrade';
 test('PostgreSQL migration enforces immutable releases, references, optimistic revisions and test-only environments', async () => {
   const db = new pg.Client({ connectionString: config().databaseUrl });
   await db.connect();
@@ -82,6 +83,31 @@ test('PostgreSQL migration enforces immutable releases, references, optimistic r
         )
       ).rows[0].count,
       '1',
+    );
+    const upgrade = {
+      source: {
+        kind: 'draft' as const,
+        id: next.draft.id,
+        revision: next.draft.revision,
+        digest: 'exported-digest',
+      },
+      actorId: user,
+      environment: 'test',
+      bundle: { files: { math: true } },
+    };
+    await importConfigUpgrade(db, upgrade);
+    const upgraded = (
+      await db.query('SELECT * FROM agent_drafts WHERE id=$1', [next.draft.id])
+    ).rows[0];
+    assert.equal(upgraded.revision, next.draft.revision + 1);
+    assert.equal(upgraded.validation, null);
+    assert.deepEqual(upgraded.base_bundle, next.draft.base_bundle);
+    assert.equal(upgraded.base_release_id, next.draft.base_release_id);
+    assert.deepEqual(upgraded.bundle, upgrade.bundle);
+    await assert.rejects(importConfigUpgrade(db, upgrade), /草稿已变化/);
+    assert.equal(
+      (await db.query('SELECT count(*) FROM agent_releases')).rows[0].count,
+      '0',
     );
     await db.query(
       "INSERT INTO agent_debug_runs(id,draft_id,revision,digest,input,status,created_by) VALUES($1,$2,2,'digest','{}','succeeded',$3)",

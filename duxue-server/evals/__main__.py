@@ -50,11 +50,13 @@ def cmd_validate(args) -> int:
     from evals import judge_boundary
     path = Path(args.path) if args.path else (dataset.DATA_DIR / args.category if args.category else dataset.DATA_DIR)
     judge_only = (args.category == "leak_judge" or path.name == "leak_judge"
-                  or (path.is_file() and dataset.read_object(path).get("component") == "tutoring.leak-judge"))
+                  or (path.is_file() and dataset.read_object(path).get("type") == "judge"))
     conversation_only = (args.category == "conversation_replay" or path.name == "conversation_replay"
                          or (path.is_file() and dataset.read_object(path).get("type") == "conversation_replay"))
     replays = conversations.load_conversations(path) if conversation_only else []
-    cases = [] if judge_only or conversation_only else dataset.load_cases(path)
+    episode_only = (args.category == 'multi_turn' or path.name == 'multi_turn'
+                    or (path.is_file() and dataset.read_object(path).get('type') == 'episode'))
+    cases = [] if judge_only or conversation_only or episode_only else dataset.load_cases(path)
     problems = dataset.validate(cases)
     judges = judge_boundary.load_cases(path) if judge_only else []
     if not args.path and not args.category:
@@ -64,7 +66,8 @@ def cmd_validate(args) -> int:
         judges = judge_boundary.load_cases()
         replays = conversations.load_conversations()
     else:
-        multi = []
+        multi = episodes.load_episodes(path) if episode_only else []
+        problems.extend(episodes.validate_episodes(multi))
     if args.batch:
         cases = [case for case in cases if case.review_batch == args.batch]
         multi = [row for row in multi if row.review_batch == args.batch]
@@ -235,6 +238,8 @@ def cmd_run(args) -> int:
         )
         if sys.stderr.isatty():
             print(file=sys.stderr)
+        if any(result.status == 'skipped' for result in results):
+            exit_code = 1
         summary = report.summarize(results)
         meta = {
             "component": component, "component_version": spec.version, "model": spec.model,
@@ -278,13 +283,13 @@ def cmd_export(args) -> int:
         rows, conversation_id=conversation_id, component=args.component,
         asset_for=export.asset_writer(storage.read_bytes), names=tuple(args.name or ()),
     )
-    problems = dataset.validate(cases)
+    problems = dataset.validate([record.to_case() for record in cases])
     out = Path(args.out) if args.out else dataset.RESULTS_DIR / "candidates" / f"{conversation_id}-{args.component.replace('.', '_')}.jsonl"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text("\n".join(c.model_dump_json() for c in cases) + "\n", encoding="utf-8")
     flagged = sum(bool(c.flags) for c in cases)
     print(f"{len(cases)} 个决策点（{flagged} 个被自动标记）→ {out}")
-    print("下一步：补 expect/tags/context，人工复核后放到对应类别目录，文件名与 id 相同，再设 confirmed + reviewed_by。")
+    print("下一步：补 checks[].input_snapshot 和 expect，人工复核后放入对应目录；缺失快照不会被当作完整回放。")
     for problem in problems:
         print(f"! {problem}")
     return 0
@@ -317,7 +322,7 @@ def main(argv: list[str] | None = None) -> int:
 
     p = sub.add_parser("validate", help="校验数据集（无网络）")
     p.add_argument("--path")
-    p.add_argument("--category", choices=(*dataset.SINGLE_TURN_CATEGORIES, "leak_judge", "conversation_replay"))
+    p.add_argument("--category", choices=(*dataset.SINGLE_TURN_CATEGORIES, "leak_judge", "conversation_replay", "multi_turn"))
     p.add_argument("--batch", help="仅统计指定人工复核批次，如 seed-v1")
     p.set_defaults(func=cmd_validate)
 

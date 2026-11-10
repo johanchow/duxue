@@ -18,6 +18,7 @@ concurrency:
 
 env:
   IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/duxue-server
+  MATH_IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/duxue-math
   DEPLOY_ENVIRONMENT: production
   # Fixed for the single production ECS layout in docs/preparetion.md.
   DEPLOY_SERVER_USER: duxue
@@ -51,6 +52,13 @@ jobs:
           tags: |
             ${{ env.IMAGE_NAME }}:${{ github.sha }}
             ${{ env.IMAGE_NAME }}:${{ env.DEPLOY_ENVIRONMENT }}
+      - name: Build and publish isolated math executor
+        uses: docker/build-push-action@v6
+        with:
+          context: duxue-server
+          file: duxue-server/math_executor/Dockerfile
+          push: true
+          tags: ${{ env.MATH_IMAGE_NAME }}:${{ github.sha }}
       - name: Configure deployment SSH key
         env:
           DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
@@ -65,7 +73,7 @@ jobs:
           ssh $SSH_OPTS -p "$DEPLOY_SERVER_PORT" "$DEPLOY_SERVER_USER@$DEPLOY_SERVER_HOST" \
             "mkdir -p '$DEPLOY_PATH'"
           scp $SSH_OPTS -P "$DEPLOY_SERVER_PORT" \
-            duxue-server/docker-compose.yml \
+            duxue-server/docker-compose.yml duxue-server/docker-compose.math.yml \
             "$DEPLOY_SERVER_USER@$DEPLOY_SERVER_HOST:$DEPLOY_PATH/"
       - name: Migrate and start services
         env:
@@ -76,12 +84,12 @@ jobs:
           ssh $SSH_OPTS -p "$DEPLOY_SERVER_PORT" "$DEPLOY_SERVER_USER@$DEPLOY_SERVER_HOST" \
             "cd '$DEPLOY_PATH' && \
              printf '%s' '$GHCR_PULL_TOKEN' | docker login ghcr.io -u '$GHCR_USERNAME' --password-stdin && \
-             export ENV_FILE=.env.prod DUXUE_SERVER_IMAGE='${IMAGE_NAME}:${GITHUB_SHA}' && \
+             export ENV_FILE=.env.prod DUXUE_SERVER_IMAGE='${IMAGE_NAME}:${GITHUB_SHA}' DUXUE_MATH_IMAGE='${MATH_IMAGE_NAME}:${GITHUB_SHA}' COMPOSE_FILE=docker-compose.yml:docker-compose.math.yml && \
              docker compose --profile tools pull migrate && \
              docker compose --profile tools run --rm migrate && \
-             docker compose pull api worker beat && \
+             docker compose pull api worker beat math-engine && \
              (attempt=0; until docker compose run --rm --no-deps api python -m app.agent_specs preflight; do attempt=\$((attempt+1)); test \"\$attempt\" -lt 12 || exit 1; sleep 10; done) && \
-             docker compose up -d --no-build api worker beat && \
+             docker compose up -d --no-build --wait math-engine api worker beat && \
              docker image prune -f"
       - name: Verify API health
         env:

@@ -190,6 +190,7 @@ class PronouncePayload(BaseModel):
 
 
 from app.application.workflows.image_review import ImageReview
+from app.application.workflows.math_verification import MathClaim
 
 
 class TutorTurnCandidate(BaseModel):
@@ -210,6 +211,7 @@ class TutorTurnCandidate(BaseModel):
     pronounce: PronouncePayload | None = None
     # 配图是可选的展示增强：非法或不适用时整张丢弃并记下原因，绝不让候选整体失败。
     image_review: ImageReview | None = None
+    math_claims: list[MathClaim] = Field(default_factory=list, max_length=16)
     visual: Visual | None = None
     visual_dropped: str | None = Field(default=None, exclude=True)
     visual_error: str | None = Field(default=None, exclude=True)
