@@ -172,6 +172,8 @@ def _observe_intent(case: EvalCase, backends: Backends, window: list[dict], imag
 
 
 def run_sample(case: EvalCase, backends: Backends, window: list[dict], images: list, *, permit_override: TutorPermit | None = None) -> Sample:
+    if case.snapshot_origin == 'missing':
+        return Sample(Observation('fallback', reason='missing_input_snapshot'), ['missing_input_snapshot'], 0)
     start = time.perf_counter()
     observe = _observe_intent if case.component == "companion.intent" else _observe_tutor
     observation = (observe(case, backends, window, images) if case.component == "companion.intent"
@@ -189,6 +191,9 @@ def run_cases(
     results = [CaseResult(case) for case in cases]
     jobs: list[tuple[CaseResult, list[dict], list]] = []
     for result in results:
+        if result.case.snapshot_origin == 'missing':
+            result.status, result.skip_reason = 'skipped', 'missing_input_snapshot'
+            continue
         missing = missing_assets(result.case, assets_dir)
         if missing:
             result.status, result.skip_reason = "skipped", f"missing_asset:{','.join(missing)}"

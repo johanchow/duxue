@@ -1,5 +1,5 @@
 {
-  "schema_version": "conversation-eval.v1",
+  "schema_version": "dialogue-eval.v1",
   "id": "answer-feedback-conversation",
   "title": "年龄计算题：提交错误答案后未获对错反馈，追问核验后触发门禁重试与兜底",
   "type": "conversation_replay",
@@ -195,7 +195,14 @@
             "evidence_summary": "孩子确认了算式是四加五"
           }
         },
-        "task_title": null
+        "task_title": null,
+        "provenance": {
+          "origin": "reconstructed",
+          "references": [
+            "3d2fe2807f409bb9"
+          ],
+          "note": "保留原回放的人工整理快照；来源引用不代表所有状态均有原始记录。"
+        }
       },
       "expect": {
         "outcome_in": [
@@ -230,7 +237,14 @@
             "evidence_summary": "孩子给出计算结果 8"
           }
         },
-        "task_title": null
+        "task_title": null,
+        "provenance": {
+          "origin": "reconstructed",
+          "references": [
+            "1b73937d5f08c75f"
+          ],
+          "note": "保留原回放的人工整理快照；来源引用不代表所有状态均有原始记录。"
+        }
       },
       "expect": {
         "outcome_in": [

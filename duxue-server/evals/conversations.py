@@ -9,43 +9,21 @@ from typing import Annotated, Literal
 from pydantic import Field, model_validator
 
 from evals.dataset import DATA_DIR, read_object
+from evals.dialogue import Dialogue, Evidence, Message
 from evals.schema import (
     ASSET_NAME,
     OUTCOMES,
     Context,
     EvalCase,
     Expect,
-    LabelStatus,
     ProblemContext,
+    ReferenceResponse,
     Strict,
     Utterance,
 )
 
 DIRECTORY = DATA_DIR / "conversation_replay"
 Text = Annotated[str, Field(min_length=1)]
-
-
-class Source(Strict):
-    kind: Literal["real"]
-    provider: Text
-    trace_ids: list[Text] = Field(min_length=1)
-    history_observation_id: Text
-    coverage: Literal["observed_window"]
-    note: Text
-
-
-class Message(Strict):
-    id: Text
-    role: Literal["user", "assistant"]
-    content: str
-    images: list[str] = Field(default_factory=list)
-    image_target_refs: list[str] = Field(default_factory=list)
-
-    @model_validator(mode='after')
-    def text_or_picture(self):
-        if not self.content.strip() and not self.images:
-            raise ValueError('message requires text or images')
-        return self
 
 
 class Verdict(Strict):
@@ -103,18 +81,15 @@ class Permit(Strict):
 
 
 class Snapshot(Strict):
+    provenance: Evidence
     recent_problems: list[Text] = Field(default_factory=list, max_length=3)
     permit: Permit
     task_title: str | None
 
 
-class Response(Strict):
-    message: Text
-
-
 class TurnExpect(Strict):
     outcome_in: list[Literal[OUTCOMES]] = Field(min_length=1)
-    response: Response
+    response: ReferenceResponse
     exit_gate: Verdict
     criteria: list[Text] = Field(min_length=1)
     visual: Literal["present", "absent"] | None = None
@@ -145,16 +120,11 @@ class GateCheck(Strict):
     expect: GateExpect
 
 
-class ConversationEval(Strict):
-    schema_version: Literal["conversation-eval.v1", "conversation-eval.v2"]
-    id: Text
+class ConversationEval(Dialogue):
     title: Text
     type: Literal["conversation_replay"]
     replay_mode: Literal["fixed_history"]
-    source: Source
     review_batch: Text
-    label_status: LabelStatus
-    reviewed_by: str | None
     messages: list[Message] = Field(min_length=1)
     attempts: list[Attempt]
     checks: list[Annotated[TurnCheck | GateCheck, Field(discriminator="component")]] = Field(min_length=1)
@@ -162,13 +132,14 @@ class ConversationEval(Strict):
 
     @model_validator(mode="after")
     def references(self):
-        if (self.label_status == "confirmed") != bool(self.reviewed_by):
-            raise ValueError("confirmed requires reviewer; other labels cannot claim one")
+        if (self.source.kind != "real" or not self.source.trace_ids
+                or not self.source.provider or not self.source.history_observation_id):
+            raise ValueError("conversation replay needs real trace sources")
+        if any(isinstance(c, TurnCheck) and c.input_snapshot.provenance.origin == "missing" for c in self.checks):
+            raise ValueError("conversation replay requires explicit snapshots")
         assets = [name for message in self.messages for name in message.images]
         assets += [name for attempt in self.attempts for name in attempt.gate.input.images]
         assets += [name for check in self.checks if isinstance(check, TurnCheck) for name in check.expect.selected_images or []]
-        if self.schema_version == "conversation-eval.v1" and assets:
-            raise ValueError("images require conversation-eval.v2")
         if any(not ASSET_NAME.fullmatch(name) for name in assets):
             raise ValueError("invalid conversation image asset")
         for rows in (self.messages, self.attempts, self.checks):
@@ -183,10 +154,9 @@ class ConversationEval(Strict):
         prior = set()
         for attempt in self.attempts:
             if attempt.repair_feedback_status == 'unavailable' and (
-                self.schema_version != 'conversation-eval.v2'
-                or attempt.retry_of is None or attempt.repair_feedback is not None
+                attempt.retry_of is None or attempt.repair_feedback is not None
             ):
-                raise ValueError('unavailable feedback requires a v2 retry without fabricated feedback')
+                raise ValueError('unavailable feedback requires a prior retry without fabricated feedback')
             index = user_index(attempt.after_message)
             if attempt.trace_id not in self.source.trace_ids:
                 raise ValueError("attempt trace missing from source")
@@ -201,7 +171,7 @@ class ConversationEval(Strict):
             elif attempt.delivered_as is not None:
                 raise ValueError("unshown attempt cannot claim delivery")
             if attempt.retry_of is not None:
-                missing_allowed = self.schema_version == "conversation-eval.v2" and attempt.repair_feedback_status == "unavailable" and attempt.repair_feedback is None
+                missing_allowed = attempt.repair_feedback_status == "unavailable" and attempt.repair_feedback is None
                 if attempt.retry_of not in prior or attempts[attempt.retry_of].after_message != attempt.after_message or (not attempt.repair_feedback and not missing_allowed):
                     raise ValueError("retry must reference prior attempt in same turn with feedback")
             elif attempt.repair_feedback is not None:
@@ -232,20 +202,6 @@ def load_conversations(path: Path = DIRECTORY) -> list[ConversationEval]:
 
 def conversations_hash(rows: list[ConversationEval]) -> str:
     payload = [r.model_dump(mode="json") for r in sorted(rows, key=lambda r: r.id)]
-    for record in payload:
-        if record['schema_version'] == 'conversation-eval.v1':
-            for message in record['messages']:
-                message.pop('images', None)
-                message.pop('image_target_refs', None)
-            for attempt in record['attempts']:
-                attempt['gate']['input'].pop('images', None)
-                attempt.pop('repair_feedback_status', None)
-        for check in record['checks']:
-            if not check['expect'].get('reason_in'):
-                check['expect'].pop('reason_in', None)
-            for key in ('selected_images', 'review_conclusion'):
-                if check['expect'].get(key) is None:
-                    check['expect'].pop(key, None)
     return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:16]
 
 
@@ -254,6 +210,7 @@ def turn_case(row: ConversationEval, check: TurnCheck) -> EvalCase:
     snapshot = check.input_snapshot
     permit = snapshot.permit
     return EvalCase(
+        snapshot_origin=snapshot.provenance.origin, record_digest=conversations_hash([row]),
         id=check.id, component="tutoring.turn", conversation_id=row.id, turn_index=index // 2,
         history=[Utterance(author="ward" if m.role == "user" else "companion", text=m.content, images=m.images, image_target_refs=m.image_target_refs)
                  for m in row.messages[max(0, index - 8):index]],

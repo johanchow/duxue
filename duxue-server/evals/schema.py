@@ -1,4 +1,4 @@
-"""Dataset record: one decision point (history + injected context + the Ward's sentence)."""
+"""Internal runner inputs and shared assertions; disk records live in dialogue.py."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 Component = Literal["tutoring.turn", "companion.intent"]
 LabelStatus = Literal["confirmed", "proposed", "needs_decision"]
 Source = Literal["real", "synthetic"]
+SnapshotOrigin = Literal["synthetic", "recorded", "reconstructed", "missing"]
 
 # tutoring.turn result categories (derived from the production exit checks)
 OUTCOMES = ("answer", "hint_like", "chat", "clarify", "redirect", "pronounce", "blocked", "fallback")
@@ -50,9 +51,16 @@ class Context(Strict):
     focus_agent_type: str | None = None
 
 
+class ReferenceResponse(Strict):
+    message: str = Field(min_length=1)
+
+
 class Expect(Strict):
     """Assertions. ``fallback`` is always a failure unless a case lists it explicitly."""
 
+    # Human semantic criteria/reference only; never included in model input or auto-scored.
+    criteria: list[str] = Field(default_factory=list)
+    response: ReferenceResponse | None = None
     answer_protected: bool | None = Field(default=None, strict=True)
     outcome_in: list[Literal[OUTCOMES]] = Field(default_factory=list)  # type: ignore[valid-type]
     outcome_not_in: list[Literal[OUTCOMES]] = Field(default_factory=lambda: ["fallback"])  # type: ignore[valid-type]
@@ -80,6 +88,9 @@ class Expect(Strict):
 
 
 class EvalCase(Strict):
+    # Internal runner input, projected from a versioned dialogue record.
+    snapshot_origin: SnapshotOrigin = "synthetic"
+    record_digest: str | None = None
     id: str = Field(pattern=r"^[a-z0-9][a-z0-9._-]{2,80}$")
     component: Component
     conversation_id: str

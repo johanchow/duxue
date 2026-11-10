@@ -1,5 +1,5 @@
 {
-  "schema_version": "conversation-eval.v1",
+  "schema_version": "dialogue-eval.v1",
   "id": "protection-scope-conversation",
   "title": "铅笔题提交后切换细胞知识对比，三版候选被误判为答案泄露",
   "type": "conversation_replay",
@@ -297,7 +297,14 @@
           "四盒铅笔，每盒六支，送给同学五支，还剩多少支？我应该先算什么。",
           "我做一道应用题，有四盒铅笔，每盒六支，送给同学五支，还剩多少支？我不知道从哪一步开始，请引导我思考。",
           "三袋苹果，每袋四个，送给邻居两个，还剩多少个？我不知道先算哪一步。"
-        ]
+        ],
+        "provenance": {
+          "origin": "reconstructed",
+          "references": [
+            "89ef625feca0212b"
+          ],
+          "note": "保留原回放的人工整理快照；来源引用不代表所有状态均有原始记录。"
+        }
       },
       "expect": {
         "outcome_in": [

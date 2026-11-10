@@ -1,5 +1,5 @@
 {
-  "schema_version": "conversation-eval.v2",
+  "schema_version": "dialogue-eval.v1",
   "id": "new-image-review-conversation",
   "title": "连续上传第二张作业照片却重复第一页批改",
   "type": "conversation_replay",
@@ -377,7 +377,14 @@
             "evidence_summary": null
           }
         },
-        "task_title": null
+        "task_title": null,
+        "provenance": {
+          "origin": "reconstructed",
+          "references": [
+            "38adf3b16abe87fd"
+          ],
+          "note": "保留原回放的人工整理快照；来源引用不代表所有状态均有原始记录。"
+        }
       },
       "expect": {
         "outcome_in": [
@@ -420,7 +427,14 @@
             "evidence_summary": null
           }
         },
-        "task_title": null
+        "task_title": null,
+        "provenance": {
+          "origin": "reconstructed",
+          "references": [
+            "4aa3af01333f60c9"
+          ],
+          "note": "保留原回放的人工整理快照；来源引用不代表所有状态均有原始记录。"
+        }
       },
       "expect": {
         "outcome_in": [
@@ -464,7 +478,14 @@
             "evidence_summary": null
           }
         },
-        "task_title": null
+        "task_title": null,
+        "provenance": {
+          "origin": "reconstructed",
+          "references": [
+            "b7dd50132a9f2014"
+          ],
+          "note": "保留原回放的人工整理快照；来源引用不代表所有状态均有原始记录。"
+        }
       },
       "expect": {
         "outcome_in": [

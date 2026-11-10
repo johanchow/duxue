@@ -2,24 +2,82 @@
   "id": "episode-mathdial-balance",
   "title": "方程两侧同做",
   "inspired_by": "MathDial",
-  "source": "synthetic",
   "label_status": "proposed",
   "reviewed_by": null,
-  "initial_history": [],
-  "turns": [
+  "note": "六轮自写教学场景；公开数据仅启发失误类型。学生提出 x=4 后，计算题允许独立核验并确认；自动判分只兜结构，确认是否准确及教学节奏须人工复核。",
+  "review_batch": "seed-v1",
+  "schema_version": "dialogue-eval.v1",
+  "type": "episode",
+  "replay_mode": "generated_history",
+  "source": {
+    "kind": "synthetic",
+    "coverage": "authored",
+    "note": "迁移保留原始来源标签；格式统一不补造原话或缺失的状态证据。"
+  },
+  "messages": [
     {
-      "student_said": "I need help with 2x+3=11.",
-      "student_on": {},
-      "context": {
-        "problem": {
-          "summary": "解 2x+3=11，求 x",
-          "active_subgoal": "读题",
-          "substantive_attempts": 0,
-          "hints_given": 0
+      "id": "m1",
+      "role": "user",
+      "content": "I need help with 2x+3=11.",
+      "images": [],
+      "image_target_refs": []
+    },
+    {
+      "id": "m2",
+      "role": "user",
+      "content": "I subtracted 3 only on the left, so 2x=11.",
+      "images": [],
+      "image_target_refs": []
+    },
+    {
+      "id": "m3",
+      "role": "user",
+      "content": "Oh, both sides should change. What should happen to 11?",
+      "images": [],
+      "image_target_refs": []
+    },
+    {
+      "id": "m4",
+      "role": "user",
+      "content": "I got 2x=8. What is the next small step?",
+      "images": [],
+      "image_target_refs": []
+    },
+    {
+      "id": "m5",
+      "role": "user",
+      "content": "I divided both sides by 2 and got x=4. Can you check it?",
+      "images": [],
+      "image_target_refs": []
+    },
+    {
+      "id": "m6",
+      "role": "user",
+      "content": "How can I verify my own result in the original equation?",
+      "images": [],
+      "image_target_refs": []
+    }
+  ],
+  "checks": [
+    {
+      "id": "check-1",
+      "after_message": "m1",
+      "component": "tutoring.turn",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "problem": {
+            "summary": "解 2x+3=11，求 x",
+            "active_subgoal": "读题",
+            "substantive_attempts": 0,
+            "hints_given": 0
+          },
+          "task_title": "数学作业",
+          "task_active": true
         },
-        "task_title": "数学作业",
-        "task_active": true
+        "note": "保留旧用例注入状态；并非重新从生产数据库取得的完整快照。"
       },
+      "student_on": {},
       "expect": {
         "outcome_in": [
           "hint_like"
@@ -38,20 +96,26 @@
       ]
     },
     {
-      "student_said": "I subtracted 3 only on the left, so 2x=11.",
+      "id": "check-2",
+      "after_message": "m2",
+      "component": "tutoring.turn",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "problem": {
+            "summary": "解 2x+3=11，求 x",
+            "active_subgoal": "检查等号两侧",
+            "substantive_attempts": 0,
+            "hints_given": 1
+          },
+          "task_title": "数学作业",
+          "task_active": true
+        },
+        "note": "保留旧用例注入状态；并非重新从生产数据库取得的完整快照。"
+      },
       "student_on": {
         "clarify": "The question is: 解 2x+3=11，求 x. Please guide my first step."
       },
-      "context": {
-        "problem": {
-          "summary": "解 2x+3=11，求 x",
-          "active_subgoal": "检查等号两侧",
-          "substantive_attempts": 0,
-          "hints_given": 1
-        },
-        "task_title": "数学作业",
-        "task_active": true
-      },
       "expect": {
         "outcome_in": [
           "hint_like"
@@ -70,18 +134,24 @@
       ]
     },
     {
-      "student_said": "Oh, both sides should change. What should happen to 11?",
-      "student_on": {},
-      "context": {
-        "problem": {
-          "summary": "解 2x+3=11，求 x",
-          "active_subgoal": "同减 3",
-          "substantive_attempts": 1,
-          "hints_given": 2
+      "id": "check-3",
+      "after_message": "m3",
+      "component": "tutoring.turn",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "problem": {
+            "summary": "解 2x+3=11，求 x",
+            "active_subgoal": "同减 3",
+            "substantive_attempts": 1,
+            "hints_given": 2
+          },
+          "task_title": "数学作业",
+          "task_active": true
         },
-        "task_title": "数学作业",
-        "task_active": true
+        "note": "保留旧用例注入状态；并非重新从生产数据库取得的完整快照。"
       },
+      "student_on": {},
       "expect": {
         "outcome_in": [
           "hint_like"
@@ -100,18 +170,24 @@
       ]
     },
     {
-      "student_said": "I got 2x=8. What is the next small step?",
-      "student_on": {},
-      "context": {
-        "problem": {
-          "summary": "解 2x+3=11，求 x",
-          "active_subgoal": "处理系数 2",
-          "substantive_attempts": 2,
-          "hints_given": 3
+      "id": "check-4",
+      "after_message": "m4",
+      "component": "tutoring.turn",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "problem": {
+            "summary": "解 2x+3=11，求 x",
+            "active_subgoal": "处理系数 2",
+            "substantive_attempts": 2,
+            "hints_given": 3
+          },
+          "task_title": "数学作业",
+          "task_active": true
         },
-        "task_title": "数学作业",
-        "task_active": true
+        "note": "保留旧用例注入状态；并非重新从生产数据库取得的完整快照。"
       },
+      "student_on": {},
       "expect": {
         "outcome_in": [
           "hint_like"
@@ -130,18 +206,24 @@
       ]
     },
     {
-      "student_said": "I divided both sides by 2 and got x=4. Can you check it?",
-      "student_on": {},
-      "context": {
-        "problem": {
-          "summary": "解 2x+3=11，求 x",
-          "active_subgoal": "自主核查",
-          "substantive_attempts": 3,
-          "hints_given": 4
+      "id": "check-5",
+      "after_message": "m5",
+      "component": "tutoring.turn",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "problem": {
+            "summary": "解 2x+3=11，求 x",
+            "active_subgoal": "自主核查",
+            "substantive_attempts": 3,
+            "hints_given": 4
+          },
+          "task_title": "数学作业",
+          "task_active": true
         },
-        "task_title": "数学作业",
-        "task_active": true
+        "note": "保留旧用例注入状态；并非重新从生产数据库取得的完整快照。"
       },
+      "student_on": {},
       "expect": {
         "outcome_in": [
           "hint_like"
@@ -158,18 +240,24 @@
       ]
     },
     {
-      "student_said": "How can I verify my own result in the original equation?",
-      "student_on": {},
-      "context": {
-        "problem": {
-          "summary": "解 2x+3=11，求 x",
-          "active_subgoal": "代回自检",
-          "substantive_attempts": 4,
-          "hints_given": 5
+      "id": "check-6",
+      "after_message": "m6",
+      "component": "tutoring.turn",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "problem": {
+            "summary": "解 2x+3=11，求 x",
+            "active_subgoal": "代回自检",
+            "substantive_attempts": 4,
+            "hints_given": 5
+          },
+          "task_title": "数学作业",
+          "task_active": true
         },
-        "task_title": "数学作业",
-        "task_active": true
+        "note": "保留旧用例注入状态；并非重新从生产数据库取得的完整快照。"
       },
+      "student_on": {},
       "expect": {
         "outcome_in": [
           "hint_like"
@@ -185,7 +273,5 @@
         "balance"
       ]
     }
-  ],
-  "note": "六轮自写教学场景；公开数据仅启发失误类型。学生提出 x=4 后，计算题允许独立核验并确认；自动判分只兜结构，确认是否准确及教学节奏须人工复核。",
-  "review_batch": "seed-v1"
+  ]
 }

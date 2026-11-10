@@ -20,7 +20,8 @@ def _build(rows, component="tutoring.turn", names=()):
 
 def test_one_decision_point_per_ward_turn_with_the_window_before_it():
     rows = _rows(("ward", "鞋用英语怎么说？", []), ("companion", "shoe", []), ("ward", "怎么读？", []))
-    cases = _build(rows)
+    records = _build(rows)
+    cases = [r.to_case() for r in records]
     assert [c.id for c in cases] == ["turn-abc12345-00", "turn-abc12345-01"]
     assert cases[0].history == [] and cases[1].student_said == "怎么读？"
     assert [(h.author, h.text) for h in cases[1].history] == [("ward", "鞋用英语怎么说？"), ("companion", "shoe")]
@@ -30,14 +31,14 @@ def test_one_decision_point_per_ward_turn_with_the_window_before_it():
 
 def test_window_is_capped_like_production():
     rows = _rows(*[("ward" if i % 2 == 0 else "companion", f"句子{i}", []) for i in range(21)], ("ward", "最后一句", []))
-    last = _build(rows)[-1]
+    last = _build(rows)[-1].to_case()
     assert len(last.history) == 8 and last.history[-1].text == "句子20"
 
 
 def test_images_become_asset_names_in_history_and_current_turn():
     rows = _rows(("ward", "看图", ["ward/x/companion/aaaa1111.jpg"]), ("companion", "好", []),
                  ("ward", "这个怎么读？", ["ward/x/companion/bbbb2222.jpg"]))
-    cases = _build(rows)
+    cases = [r.to_case() for r in _build(rows)]
     assert cases[0].images == ["img-aaaa.jpg"]
     assert cases[1].history[0].images == ["img-aaaa.jpg"] and cases[1].images == ["img-bbbb.jpg"]
 
@@ -59,23 +60,28 @@ def test_flags_mark_the_failure_modes_seen_in_the_incidents():
     assert flags[4] == ["no_reply"]
 
 
-def test_task_is_inferred_from_the_reminder_and_only_for_tutoring_cases():
+def test_task_state_is_missing_instead_of_inferred_from_later_reminders():
     rows = _rows(("ward", "鞋用英语怎么说？", []), ("companion", f"shoe\n{REMINDER}", []))
-    assert _build(rows)[0].context.task_active is True
-    assert _build(rows, component="companion.intent")[0].context.task_active is False
-    assert _build(rows, component="companion.intent")[0].id.startswith("intent-")
+    for component in ('tutoring.turn', 'companion.intent'):
+        record = _build(rows, component=component)[0]
+        snapshot = record.checks[0].input_snapshot
+        assert snapshot.context is None and snapshot.origin == 'missing'
+        assert record.to_case().snapshot_origin == 'missing'
+    assert _build(rows, component='companion.intent')[0].id.startswith('intent-')
 
 
 def test_identifiers_are_scrubbed_before_a_case_exists():
     rows = _rows(("ward", "我是小明，我的号码 13812345678", []), ("companion", "小明你好 a@b.cn", []), ("ward", "好的", []))
-    cases = _build(rows, names=("小明",))
+    cases = [r.to_case() for r in _build(rows, names=("小明",))]
     assert "小明" not in cases[0].student_said and "13812345678" not in cases[0].student_said
     assert "小明" not in cases[1].history[1].text and "a@b.cn" not in cases[1].history[1].text
     assert dataset.validate(cases) == []
 
 
-def test_a_picture_with_no_words_is_not_a_case():
-    assert _build(_rows(("ward", "", ["ward/x/companion/aaaa1111.jpg"]), ("companion", "看到了", []))) == []
+def test_a_picture_with_no_words_is_a_case_without_fabricated_text():
+    record = _build(_rows(("ward", "", ["ward/x/companion/aaaa1111.jpg"]), ("companion", "看到了", [])))[0]
+    assert record.messages[0].content == ''
+    assert record.messages[0].images == ['img-aaaa.jpg']
 
 
 def test_asset_writer_stores_images_under_a_content_hash(tmp_path):

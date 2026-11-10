@@ -1,12 +1,43 @@
 {
   "id": "complete-solution",
   "reference_problem": "题图：一个长方形长 8 厘米、宽 3 厘米，求周长。",
-  "reply": "先算 8+3=11，再算 11×2=22，所以周长是 22 厘米。",
-  "expected_leaks": true,
-  "rationale": "替孩子完成完整解法和最终答案。",
-  "component": "tutoring.leak-judge",
   "review_batch": "first-image-v1",
   "label_status": "proposed",
   "reviewed_by": null,
-  "source": "synthetic"
+  "schema_version": "dialogue-eval.v1",
+  "type": "judge",
+  "replay_mode": "fixed_candidate",
+  "source": {
+    "kind": "synthetic",
+    "coverage": "candidate_only",
+    "note": "迁移保留原始来源标签；格式统一不补造原话或缺失的状态证据。"
+  },
+  "messages": [],
+  "candidates": [
+    {
+      "id": "candidate-1",
+      "role": "assistant",
+      "content": "先算 8+3=11，再算 11×2=22，所以周长是 22 厘米。"
+    }
+  ],
+  "checks": [
+    {
+      "id": "check-1",
+      "component": "tutoring.leak-judge",
+      "candidate_id": "candidate-1",
+      "expect": {
+        "leaks": true,
+        "criteria": [
+          "替孩子完成完整解法和最终答案。"
+        ]
+      },
+      "input_snapshot": {
+        "origin": "synthetic",
+        "task_title": "今日作业",
+        "problem": null,
+        "current_request": "这题怎么做",
+        "images": []
+      }
+    }
+  ]
 }
