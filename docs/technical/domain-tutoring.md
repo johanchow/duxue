@@ -8,6 +8,8 @@
 
 Context Map 与分层图只在 [ddd-overview.md](ddd-overview.md) 维护。`StudySession`、`StartCue` 与学习计时只在 [domain-study.md](domain-study.md) 维护。Thread/Run、Harness 驱动、`WorkflowInteractionView` 和 SSE 只在 [domain-companion.md](domain-companion.md) 维护。Episode、Signal 与 Profile 只在 [domain-memory.md](domain-memory.md) 维护。物理表、留存和删除只在 [design-server.md](design-server.md) 维护。
 
+> 数学工具核验扩展（代码已实现，待环境验收与真实模型评测）：见 [数学核验设计](tutoring-math.md)，定义本领域内的计算端口、证据协议和提交边界。
+
 ## 核心原则：引导孩子思考与练习，而不是保护作业
 
 **目的是让孩子学会，不是让作业被“自己完成”或“快速完成”。** 作业只是练习的载体；被保护的是孩子需要亲自经历的思考，不是作业本身。后面所有关于是否直接回答、是否给提示、是否检查泄露的设计，都从这条出发：

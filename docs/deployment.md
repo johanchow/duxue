@@ -213,3 +213,35 @@ docker compose --env-file .env.prod --env-file images.env -f docker-compose.yml 
 5. 预检通过才更新API/Worker/Beat；API启动同步加载，Celery子进程先恢复预热缓存、后台轮询。核对Admin实例回执、线上真实答疑及后台任务。原请求固定旧快照，新请求在成功加载后使用新版本；发布/回滚无需重建业务容器。
 
 首次准备已在2026-11-09完成私有地址连通、prod发布验证、缓存预热与ECS环境文件更新；未重启现有业务容器，当前运行代码仍为566f4cc。待本轮代码合入main并自动部署后切换，不以预检容器或文件准备冒充业务已加载。已有R1发布的契约仍兼容，不重建或覆盖正式管理库。
+
+
+## 数学执行器与配置升级
+
+实现说明见 [数学核验设计](technical/tutoring-math.md)。本轮仅准备代码和CI，不操作正式发布或线上容器。
+
+1. **先导出再升级控制执行器。** 从旧Admin导出当前工作草稿（若有）或当前发布快照；保留其id、digest、revision及environment。新代码契约不加载旧格式快照，避免升级后无法导出旧包。勿使用历史测试夹具替代当前配置。
+2. 在Server目录生成升级候选（不覆盖源文件、不发布）：
+
+   ```bash
+   .venv/bin/python -m scripts.upgrade_math_bundle /path/current.json /path/math-candidate.json --enable
+   ```
+
+   不加`--enable`只迁移工具/协议清单，保留未授权状态。候选是draft，不能伪装成原发布；仅用于明确指定的离线评测或草稿导入。
+3. 更新Admin控制执行器到新代码，在Admin目录执行：
+
+   ```bash
+   ADMIN_INIT_EMAIL=<管理员邮箱> npm run config:import-upgrade -- /path/math-candidate.json
+   ```
+
+   仅有效管理员、同环境可导入。原工作草稿id/revision或当前发布id/digest必须仍匹配；发布来源遇到已有草稿拒绝覆盖。原base_bundle/base_release_id保留，revision递增、旧校验/调试证据失效；不改变发布指针。
+4. 先在测试环境启动数学执行器并让API/离线评测/Admin控制执行器通过`MATH_ENGINE_SOCKET`访问专用socket。API/Worker部署组合为：
+
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.math.yml build math-engine
+   docker compose -f docker-compose.yml -f docker-compose.math.yml up -d --wait math-engine api worker beat
+   ```
+
+   配置见Compose：无网络、非root、只读根目录、无业务凭据、资源配额；专用volume仅共享socket。不要把Docker socket挂进业务容器。Admin控制执行器若独立容器运行，也需挂载同环境的socket volume并设置路径；本机调试可另启动本机执行器，但它不等价于生产容器隔离。
+5. 在相同配置摘要下完成导师、备用模型、Judge真实调试及答疑回放后，由管理员正常发布；Server预检通过才更新服务。发布旧代码无法理解的新契约前，要安排Admin/Server兼容升级窗口，旧服务继续使用已固定的旧包，不把新包加载失败当作已切换成功。
+
+Server CI安装数学测试依赖、构建独立镜像，并运行`python scripts/smoke_math_container.py duxue-math:ci`验证计算、UID、网络/文件系统与资源配置。Server Deploy构建同SHA数学镜像、上传Compose overlay并等待健康；没有合并/推送不会执行部署。回滚应同时恢复兼容的代码镜像与Admin完整发布包。

@@ -1,10 +1,7 @@
 """Typed, image-bound verification evidence, separate from the visible reply."""
 from __future__ import annotations
 
-import ast
 import json
-from decimal import Decimal, InvalidOperation
-from fractions import Fraction
 from typing import Literal
 
 from app.agent_specs.image_refs import image_ref
@@ -27,39 +24,8 @@ class Calculation(BaseModel):
     submitted: str = Field(min_length=1, max_length=40)
 
     def correct(self) -> bool:
-        try:
-            tree = ast.parse(self.expression, mode='eval')
-        except SyntaxError as error:
-            raise ValueError('invalid_calculation_syntax') from error
-        if len(list(ast.walk(tree))) > 80:
-            raise ValueError('calculation_too_complex')
-        def number(raw):
-            parsed = Decimal(raw)
-            if not parsed.is_finite() or abs(parsed) > Decimal('1e12') or abs(parsed.as_tuple().exponent) > 24:
-                raise ValueError('calculation_out_of_bounds')
-            return Fraction(parsed)
-
-        def value(node):
-            if isinstance(node, ast.Constant) and type(node.value) in (int, float):
-                result = number(ast.get_source_segment(self.expression, node))
-            elif isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
-                result = value(node.operand) * (-1 if isinstance(node.op, ast.USub) else 1)
-            elif isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Sub, ast.Mult, ast.Div)):
-                left, right = value(node.left), value(node.right)
-                if isinstance(node.op, ast.Add): result = left + right
-                elif isinstance(node.op, ast.Sub): result = left - right
-                elif isinstance(node.op, ast.Mult): result = left * right
-                else: result = left / right
-            else:
-                raise ValueError('unsupported_calculation_syntax')
-            if abs(result) > 10**12 or result.denominator.bit_length() > 1024:
-                raise ValueError('calculation_out_of_bounds')
-            return result
-        try:
-            submitted = number(self.submitted)
-            return value(tree.body) == submitted
-        except (InvalidOperation, ArithmeticError) as error:
-            raise ValueError('invalid_calculation') from error
+        from math_executor.arithmetic import arithmetic_equal
+        return arithmetic_equal(self.expression, self.submitted)
 
 
 class QuestionReview(BaseModel):
@@ -73,12 +39,12 @@ class QuestionReview(BaseModel):
     basis: str = Field(min_length=1, max_length=300)
     calculation: Calculation | None = None
 
-    def validate_calculation(self):
+    def validate_calculation(self, *, externally_verified: bool = False):
         if self.kind == 'unreadable' and self.verdict != 'uncertain':
             raise ImageReviewProtocolError('unreadable_requires_uncertainty', self.location)
         if self.kind == 'arithmetic' and self.calculation is None:
             raise ImageReviewProtocolError('arithmetic_requires_transcribed_calculation', self.location)
-        if self.calculation is not None:
+        if self.calculation is not None and not externally_verified:
             correct = self.calculation.correct()
             expected = 'correct' if correct else 'incorrect'
             if self.verdict not in (expected, 'uncertain'):
@@ -138,7 +104,7 @@ def reconcile_calculations(report: ImageReview) -> ImageReview:
     return ImageReview.model_validate({**report.model_dump(), 'questions': questions, 'conclusion': conclusion})
 
 
-def validate_image_review(candidate, images: list[str | None]) -> None:
+def validate_image_review(candidate, images: list[str | None], *, external_calculations: bool = False) -> None:
     refs = {image_ref(value) for value in images if value}
     if not refs:
         return
@@ -149,7 +115,7 @@ def validate_image_review(candidate, images: list[str | None]) -> None:
         return
     report.supported_conclusion()
     for question in report.questions:
-        question.validate_calculation()
+        question.validate_calculation(externally_verified=external_calculations)
     if any(q.image_ref not in refs for q in report.questions):
         raise ImageReviewProtocolError('image_review_references_unselected_image')
     if report.conclusion == 'all_correct' and {q.image_ref for q in report.questions} != refs:

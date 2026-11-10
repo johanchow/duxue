@@ -88,7 +88,9 @@ class TutoringWorkflow:
         safety_screening: SafetyScreeningPort | None = None,
         backup_model: TutorModelPort | None = None,
         image_target_selector: Callable[[list[dict], str], dict] | None = None,
+        math_engine=None,
     ):
+        self.math_engine = math_engine
         self.db = db
         self.turn_model = turn_model
         self.backup_model = backup_model
@@ -406,7 +408,7 @@ class TutoringWorkflow:
                 instruction += render_fragment("tutoring.turn", "image_compare")
         tools = TutorToolbox(
             self.db, tutoring_session_id=tutor.id if tutor else None, problem=problem_row,
-            task_title=task_title, task_active=task_active, window=window,
+            task_title=task_title, task_active=task_active, window=window, math_engine=self.math_engine,
         )
         transition("tutoring", "tutoring.image_target" if has_images else "tutoring.turn",
                    "tutoring.model_loop", "resolved" if has_images else "ready")

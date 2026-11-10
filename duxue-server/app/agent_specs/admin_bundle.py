@@ -113,6 +113,10 @@ def compile_bundle(bundle: dict) -> CompiledBundle:
             raise ValueError(f"{name}: read-only contract or workflow changed")
         if "models" in doc and not set(doc["tools"]).issubset(contracts["tool_authority"][doc["id"]]):
             raise ValueError(f"{name}: tool authority cannot expand")
+    if "tutoring.math" in bundle["files"]["agents/tutoring.turn.json"]["tools"]:
+        for name in ("agents/tutoring.turn.json", "gates/tutoring.leak-judge.json"):
+            if "[math.v1]" not in bundle["files"][name]["prompt"]["template"]:
+                raise ValueError("math tool requires matching tutor and judge protocol")
     bundle_id = digest(bundle)
     with tempfile.TemporaryDirectory(prefix="duxue-config-") as directory:
         root = Path(directory)

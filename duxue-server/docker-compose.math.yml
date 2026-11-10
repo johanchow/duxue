@@ -1,0 +1,36 @@
+# Merge with docker-compose.yml. Unix socket is the only communication channel.
+services:
+  math-engine:
+    image: ${DUXUE_MATH_IMAGE:-duxue-math:local}
+    build:
+      context: .
+      dockerfile: math_executor/Dockerfile
+    network_mode: none
+    read_only: true
+    user: "10001:10001"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 16
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=16m"]
+    volumes: ["math-socket:/run/math"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s=socket.socket(socket.AF_UNIX); s.settimeout(1); s.connect('/run/math/engine.sock'); s.close()"]
+      interval: 30s
+      timeout: 2s
+      retries: 3
+  api:
+    environment:
+      MATH_ENGINE_SOCKET: /run/math/engine.sock
+    volumes: ["math-socket:/run/math:ro"]
+    depends_on:
+      math-engine:
+        condition: service_healthy
+  worker:
+    environment:
+      MATH_ENGINE_SOCKET: /run/math/engine.sock
+    volumes: ["math-socket:/run/math:ro"]
+volumes:
+  math-socket:

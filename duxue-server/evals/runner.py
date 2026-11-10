@@ -127,8 +127,9 @@ def _observe_tutor(case: EvalCase, backends: Backends, window: list[dict], image
         content=case.student_said, permit=permit, history_candidates=history_candidates(window),
         tutoring_intent=context.tutoring_intent,
     )
+    from app.bootstrap.math_engine import math_engine
     tools = TutorToolbox(
-        None, tutoring_session_id=None,
+        None, math_engine=math_engine(), tutoring_session_id=None,
         problem=SimpleNamespace(**problem.model_dump()) if problem else None,
         task_title=context.task_title, task_active=context.task_active, window=window,
     )

@@ -41,6 +41,10 @@ class RecordingJudge:
         self.calls.append({"input": recorded, "verdict": result})
         return result
 
+    def check_math(self, **kwargs):
+        check = getattr(self.delegate, "check_math", None)
+        return check(**kwargs) if check else None
+
     def visual_leaks(self, **kwargs):
         return self.delegate.visual_leaks(**kwargs)
 

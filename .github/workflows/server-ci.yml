@@ -70,3 +70,12 @@ jobs:
           context: duxue-server
           push: false
           tags: duxue-server:ci
+      - name: Build isolated math executor
+        uses: docker/build-push-action@v6
+        with:
+          context: duxue-server
+          file: duxue-server/math_executor/Dockerfile
+          load: true
+          tags: duxue-math:ci
+      - name: Verify isolated math execution
+        run: python scripts/smoke_math_container.py duxue-math:ci

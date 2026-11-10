@@ -19,7 +19,7 @@ from app.agent_specs.results import ERROR_CODES, result_validator
 ROOT = Path(__file__).resolve().parents[2] / "agent_specs"
 _TOOL_HANDLERS = {
     "tutoring.get_task_context", "tutoring.get_attempt_summary",
-    "tutoring.lookup_history", "tool.static_result",
+    "tutoring.lookup_history", "tutoring.math", "tool.static_result",
 }
 
 

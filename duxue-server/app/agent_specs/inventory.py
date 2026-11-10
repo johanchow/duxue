@@ -93,6 +93,7 @@ COMPONENT_PURPOSES = {
         "作答摘要工具",
         "读取已授权作答尝试的摘要，为启发式答疑提供依据。",
     ),
+    "tutoring.math": ("数学核验工具", "受限四则与SymPy核验，结果不改变答案保护。"),
     "tutoring.lookup_history": ("答疑历史工具", "查询授权范围内的历史答疑上下文。"),
     "tutoring.widget_guidelines": (
         "配图规范工具",

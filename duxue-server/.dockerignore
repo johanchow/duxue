@@ -13,3 +13,7 @@ scripts/
 
 # Exported configuration snapshots, runtime caches and evaluation results
 var/
+
+# Local interpreters/test dependencies never belong in application or math images.
+.venv/
+.ruff_cache/

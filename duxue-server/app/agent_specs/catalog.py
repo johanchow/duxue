@@ -288,7 +288,7 @@ class AgentCatalog:
             raise ValueError("companion: route targets differ from business contexts")
         if not set(load_definitions().units["tutoring.turn"].tools).issubset({
             "tutoring.get_task_context", "tutoring.get_attempt_summary",
-            "tutoring.lookup_history", "tutoring.widget_guidelines",
+            "tutoring.lookup_history", "tutoring.math", "tutoring.widget_guidelines",
         }):
             raise ValueError("tutoring: tool permissions differ from code-owned handlers")
 

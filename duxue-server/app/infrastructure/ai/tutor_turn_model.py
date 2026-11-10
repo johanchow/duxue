@@ -52,6 +52,22 @@ class QwenLeakJudge:
             "tutoring.leak-judge", user, with_reason=True,
         )
 
+    def check_math(self, *, text: str, context: dict, images: list[str]) -> bool | None:
+        import json
+        user = build_context("tutoring.leak-judge", text=text, task_title=None,
+                             problem_summary=json.dumps(context, ensure_ascii=False), images=images)
+        from app.infrastructure.observability.telemetry import agent_step_span
+        try:
+            with agent_step_span("check", "tutoring.text_leak", **{"math.review.phase": "consistency"}):
+                payload = components.invoke_json_component(
+                    spec=load_catalog().component_by_id("tutoring-vet", "tutoring.leak-judge"),
+                    user=user, settings_obj=self._settings,
+                )
+        except ModelGatewayError:
+            return None
+        value = payload.get("math_consistent") if isinstance(payload, dict) else None
+        return value if type(value) is bool else None
+
     def visual_leaks(self, *, text: str, task_title: str | None, problem_summary: str | None) -> bool | None:
         """``text`` 是 ``describe(visual)``。独立的提示词与组件，不与文字判官共用。"""
         return self._judge(
