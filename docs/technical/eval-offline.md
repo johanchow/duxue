@@ -241,6 +241,8 @@ duxue-server/
 
 评分输入同时携带本项`rubric`及同检查点全部`case_criteria`，避免公共质量标准与具体答案保护要求脱节；这些标准只发给离线裁判，不进入被测模型。`delivery_contract`明确正文、配图和读音卡均为实际交付，卡片信息无需在正文重复；未提供音频时不评音频质量。`output_contract`明确当前评分类型、必需字段及简短解释/证据格式；非法输出仍记error，不修补成通过。
 
+评测平台采用 Langfuse；Admin 仅聚合概览、实验摘要及生产指标，其余管理入口跳转 Langfuse，见[平台边界与聚合协议](design-admin.md#evaluation--langfuse)。本地 JSON 报告仍保留；当前 runner 尚未自动上报为 Langfuse 实验，Admin 不再提供报告导入或自建复核库。Langfuse 的5个Dataset和6个核心Evaluator已初始化，原生执行输入与限制见[初始化状态](design-admin.md#langfuse资源初始化2026-11-11)；资源存在不代表本地runner已迁移。
+
 每个检查点、每次采样各生成一份结果：
 
 | 字段 | 内容 |

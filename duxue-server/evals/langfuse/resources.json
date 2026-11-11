@@ -1,0 +1,267 @@
+{
+  "projectId": "cmvfvorj601l6ad0jhvajth4c",
+  "baseUrl": "https://us.cloud.langfuse.com",
+  "datasets": [
+    {
+      "id": "cmwbz8jy50075ad0jxdtal3lj",
+      "name": "judge-calibration"
+    },
+    {
+      "id": "cmwbz8js40092ad0ebdpmjufi",
+      "name": "orchestration-tools"
+    },
+    {
+      "id": "cmwbz8jjx0071ad0jjngtlvja",
+      "name": "answer-protection-safety"
+    },
+    {
+      "id": "cmwbz8jdl008sad0e3wv51oni",
+      "name": "guidance-logic"
+    },
+    {
+      "id": "cmwbz8j5y006jad0jzj4jffaq",
+      "name": "teaching-correctness"
+    }
+  ],
+  "evaluators": [
+    {
+      "id": "cmwbzekjo00sdad0e24qrwbdo",
+      "name": "eval.case_requirements",
+      "type": "LLM_AS_JUDGE",
+      "version": 3,
+      "model": "qwen3.8-flash",
+      "assignedRuleIds": [],
+      "provider": "duxue-dashscope"
+    },
+    {
+      "id": "cmwbzekax00pnad0jzhaopmau",
+      "name": "eval.safety",
+      "type": "LLM_AS_JUDGE",
+      "version": 3,
+      "model": "qwen3.8-flash",
+      "assignedRuleIds": [],
+      "provider": "duxue-dashscope"
+    },
+    {
+      "id": "cmwbzek2i00pfad0jo7qlfwal",
+      "name": "eval.answer_protection",
+      "type": "LLM_AS_JUDGE",
+      "version": 3,
+      "model": "qwen3.8-flash",
+      "assignedRuleIds": [],
+      "provider": "duxue-dashscope"
+    },
+    {
+      "id": "cmwbzeju900muad0jz57lnour",
+      "name": "eval.guidance_logic",
+      "type": "LLM_AS_JUDGE",
+      "version": 3,
+      "model": "qwen3.8-flash",
+      "assignedRuleIds": [],
+      "provider": "duxue-dashscope"
+    },
+    {
+      "id": "cmwbzeajr00paad0jqtv3u05f",
+      "name": "eval.teaching_correctness",
+      "type": "LLM_AS_JUDGE",
+      "version": 3,
+      "model": "qwen3.8-flash",
+      "assignedRuleIds": [],
+      "provider": "duxue-dashscope"
+    },
+    {
+      "id": "cmwbzd15b00kuad0jss4pe410",
+      "name": "eval.deterministic_pass",
+      "type": "CODE",
+      "version": 1,
+      "model": null,
+      "assignedRuleIds": []
+    },
+    {
+      "id": "cmvs1ew650421ad0kjp966ok7",
+      "name": "tutor-check-pass",
+      "type": "CODE",
+      "version": 2,
+      "model": null,
+      "assignedRuleIds": [
+        "cmvs1gz9q02s8ad0kudrqeo15",
+        "cmvs1gzzk0a27ad0mcefwxzyy",
+        "cmvs1h1540a2cad0mzrrvn5wb",
+        "cmvs1h25z02m5ad0e5r6ao18q",
+        "cmvs1h34u0a2had0msimly7yw",
+        "cmvs1h49802vead0ds89jjpd1"
+      ]
+    },
+    {
+      "id": "cmvs1etlq02t9ad0e4o0dc4tg",
+      "name": "tutor-result-guardrail",
+      "type": "CODE",
+      "version": 1,
+      "model": null,
+      "assignedRuleIds": [
+        "cmvs1fvem0a1yad0mipjgs6kp"
+      ]
+    }
+  ],
+  "scoreConfigs": [
+    {
+      "id": "fb352394-03ae-44ae-b19e-f76fb73d9b04",
+      "name": "eval.answer_protection",
+      "type": "BOOLEAN",
+      "archived": false
+    },
+    {
+      "id": "51d16ce5-af01-4474-ace9-6204b4525fd2",
+      "name": "eval.guidance_logic",
+      "type": "NUMERIC",
+      "archived": false
+    },
+    {
+      "id": "985be635-640d-4db2-827d-b598d99136ec",
+      "name": "eval.teaching_correctness",
+      "type": "NUMERIC",
+      "archived": false
+    },
+    {
+      "id": "a71935b8-ca5e-482f-8444-28bfb13364b3",
+      "name": "review.disposition",
+      "type": "CATEGORICAL",
+      "archived": false
+    },
+    {
+      "id": "82b68de4-1523-48c7-aedd-c8e385510ad9",
+      "name": "eval.grading_cost",
+      "type": "NUMERIC",
+      "archived": false
+    },
+    {
+      "id": "85857e6a-f8b7-4f8f-b4fb-395a6cee3573",
+      "name": "eval.cost_per_task",
+      "type": "NUMERIC",
+      "archived": false
+    },
+    {
+      "id": "46bf94f6-777b-44ab-a96a-d3b3efb38d61",
+      "name": "eval.safety",
+      "type": "BOOLEAN",
+      "archived": false
+    },
+    {
+      "id": "bf06c963-233a-4747-8c3b-2dea743300e7",
+      "name": "eval.tool_correctness",
+      "type": "BOOLEAN",
+      "archived": false
+    },
+    {
+      "id": "2c8124ef-4fa1-4b3f-aa20-3dbcfa03d865",
+      "name": "eval.overall",
+      "type": "NUMERIC",
+      "archived": false
+    },
+    {
+      "id": "51cd2d56-c3aa-4d91-be21-a3ac1a632c26",
+      "name": "eval.deterministic_pass",
+      "type": "BOOLEAN",
+      "archived": false
+    },
+    {
+      "id": "61806631-4d1d-47c3-b935-418e7932f380",
+      "name": "eval.case_requirements",
+      "type": "BOOLEAN",
+      "archived": false
+    },
+    {
+      "id": "44692f25-a99b-4855-9dd8-05f5eb15f5a1",
+      "name": "eval.answer_quality",
+      "type": "NUMERIC",
+      "archived": true
+    },
+    {
+      "id": "7a4ae3cc-c871-4e92-9002-95f68c92a306",
+      "name": "eval.task_success",
+      "type": "BOOLEAN",
+      "archived": false
+    },
+    {
+      "id": "ef584a80-aea9-4bd9-9bf6-704fb8eec93e",
+      "name": "eval.status",
+      "type": "CATEGORICAL",
+      "archived": false
+    },
+    {
+      "id": "a93d79f2-447a-4ddf-8e1a-573b2efe4591",
+      "name": "tutor.check_pass",
+      "type": "BOOLEAN",
+      "archived": false
+    },
+    {
+      "id": "73108517-f30f-49e2-8075-61930ecfcf36",
+      "name": "tutor.leak_retried",
+      "type": "BOOLEAN",
+      "archived": false
+    },
+    {
+      "id": "15021e4a-d3b8-4d38-856a-69c896fc92e5",
+      "name": "tutor.fallback_reason",
+      "type": "CATEGORICAL",
+      "archived": false
+    },
+    {
+      "id": "f8d685ed-a3b8-4da1-be47-58ee1f097686",
+      "name": "tutor.act",
+      "type": "CATEGORICAL",
+      "archived": false
+    },
+    {
+      "id": "fb3a5962-a73e-4bc3-841d-0893af66da41",
+      "name": "tutor.shown",
+      "type": "BOOLEAN",
+      "archived": false
+    },
+    {
+      "id": "736e0d53-2169-4dad-8095-f1bd14d11d5c",
+      "name": "tutor.outcome",
+      "type": "CATEGORICAL",
+      "archived": false
+    }
+  ],
+  "annotationQueues": [
+    {
+      "id": "cmwbza1hl00hfad0e17wbe9h2",
+      "name": "duxue/offline-calibration",
+      "scoreConfigIds": [
+        "985be635-640d-4db2-827d-b598d99136ec",
+        "51d16ce5-af01-4474-ace9-6204b4525fd2",
+        "fb352394-03ae-44ae-b19e-f76fb73d9b04",
+        "46bf94f6-777b-44ab-a96a-d3b3efb38d61",
+        "61806631-4d1d-47c3-b935-418e7932f380",
+        "a71935b8-ca5e-482f-8444-28bfb13364b3"
+      ]
+    }
+  ],
+  "pending": [
+    "Dataset item sync, experiment execution and scorer integration not performed."
+  ],
+  "annotationPolicy": {
+    "mode": "shared",
+    "queueId": "cmwbza1hl00hfad0e17wbe9h2",
+    "purposes": [
+      "offline-calibration",
+      "production-sampling"
+    ],
+    "sourceMetadataKey": "review_source",
+    "autoEnqueueImplemented": false
+  },
+  "llmConnection": {
+    "id": "cmwc0mdva0076ad0dsgmlbcou",
+    "provider": "duxue-dashscope",
+    "adapter": "openai",
+    "baseURL": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    "model": "qwen3.8-flash",
+    "modelParams": {
+      "temperature": 0,
+      "max_tokens": 1536
+    },
+    "credentialSource": "Server VLM_API_KEY; secret stored only in Langfuse connection"
+  }
+}

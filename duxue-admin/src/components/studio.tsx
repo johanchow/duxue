@@ -1,4 +1,5 @@
 'use client';
+import { Evaluation } from './evaluation';
 import { useEffect, useState } from 'react';
 import {
   AgentInventory,
@@ -295,6 +296,7 @@ export default function Studio() {
     ['agents', '◉', 'Agent'],
     ['releases', '↥', '发布管理'],
     ['runs', '◷', '调试记录'],
+    ['evaluation', '◫', 'Evaluation'],
   ];
   const heading =
     tab === 'agent-detail'
@@ -494,7 +496,7 @@ export default function Studio() {
             {message}
           </div>
         )}
-        {state?.catalogError && (
+        {tab !== 'evaluation' && state?.catalogError && (
           <div className="notice error">
             配置目录暂不可用：{state.catalogError}
           </div>
@@ -1242,6 +1244,9 @@ export default function Studio() {
               )
             }
           />
+        )}
+        {tab === 'evaluation' && (
+          <Evaluation key={entityId} page={entityId || 'overview'} />
         )}
         {tab === 'agents' && state?.catalog && (
           <AgentInventory

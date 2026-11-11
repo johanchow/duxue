@@ -6,6 +6,13 @@ export function studioRoute(pathname: string) {
   } catch {
     return { tab: 'missing', id: undefined };
   }
+  if (
+    parts[0] === 'evals' &&
+    (parts.length === 1 ||
+      (parts.length === 2 &&
+        ['overview', 'experiments', 'production'].includes(parts[1])))
+  )
+    return { tab: 'evaluation', id: parts[1] || 'overview' };
   if (!parts.length) return { tab: 'flows', id: undefined };
   if (parts.length === 1) {
     return {
@@ -38,6 +45,7 @@ export function studioRoute(pathname: string) {
   return { tab: 'missing', id: undefined };
 }
 export const studioPaths: Record<string, string> = {
+  evaluation: '/evals/overview',
   agents: '/agents',
   flows: '/workflows',
   config: '/drafts',

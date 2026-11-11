@@ -94,3 +94,21 @@ npm run config:export -- ../duxue-server/var/admin/candidate.json --draft
 `npx tsx scripts/config-snapshot-smoke.ts`在测试管理库临时schema验证空库无默认值、CLI导入导出、页面快照下载及禁止覆盖，需本地执行器已启动，不发布或修改原环境指针。
 
 数学工具契约升级使用 `config:import-upgrade`（写草稿，不发布）；来源并发校验与完整顺序见[数学执行器部署](../docs/deployment.md#数学执行器与配置升级)。
+
+## Evaluation
+
+入口 `/evals/overview`、`/evals/experiments`、`/evals/production`。Admin 只读聚合 Langfuse，不上传报告、不存第二份结果；其余三个入口在新标签页打开 Langfuse，需要对应项目访问权限。无需新增数据库迁移。
+
+在 Admin 自己的 `.env`（部署时进程环境）配置：
+
+```dotenv
+ADMIN_LANGFUSE_BASE_URL=https://us.cloud.langfuse.com
+ADMIN_LANGFUSE_PROJECT_ID=<项目ID>
+ADMIN_LANGFUSE_PUBLIC_KEY=<公钥>
+ADMIN_LANGFUSE_SECRET_KEY=<私钥>
+ADMIN_LANGFUSE_ENVIRONMENT=production
+```
+
+运行时不读取 Server `.env`。项目必须与凭证匹配；API 不可用时显示错误。数据缺失显示 `—`，实验为空不代表本地评测未执行。现有本地报告不自动导入 Langfuse，指标输入协议见 [技术设计](../docs/technical/design-admin.md#evaluation--langfuse)。
+
+`npm test` 包含隔离 PG schema 的权限/关联测试；`npx tsx scripts/evaluation-browser-smoke.ts` 仅测试环境使用本地账号进行只读页面验收，不上传结果或发布配置。
