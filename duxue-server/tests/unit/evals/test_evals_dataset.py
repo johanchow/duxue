@@ -26,15 +26,15 @@ def _case(**fields) -> EvalCase:
 
 def test_committed_dataset_is_valid_and_not_empty():
     cases = dataset.load_cases()
-    assert len(cases) == 13
+    assert len(cases) == 18
     assert dataset.validate(cases) == []
     assert dataset.validate_layout() == []
 
 
 def test_each_purpose_category_selects_single_turn_records_by_type():
     expected = {
-        "teaching-correctness": 1,
-        "guidance-logic": 2,
+        "teaching-correctness": 3,
+        "guidance-logic": 5,
         "answer-protection-safety": 5,
         "orchestration-tools": 5,
         "judge-calibration": 0,
@@ -289,7 +289,7 @@ def test_run_commands_filter_to_review_batch_without_network(monkeypatch, tmp_pa
     )
     assert json.loads((tmp_path / "single-tutoring_turn.json").read_text())["meta"][
         "dataset_hash"
-    ] == dataset.dataset_hash(dataset.load_cases())
+    ] == dataset.dataset_hash([c for c in dataset.load_cases() if c.review_batch == "seed-v1"])
     assert len(seen_cases) == 13
     assert all(case.review_batch == "seed-v1" for case in seen_cases)
     assert (
@@ -353,8 +353,8 @@ def test_compare_rejects_different_review_batches(tmp_path, capsys):
 
 
 @pytest.mark.parametrize("category,counts", [
-    ("teaching-correctness", (1, 0, 0, 0)),
-    ("guidance-logic", (2, 2, 0, 0)),
+    ("teaching-correctness", (3, 0, 0, 0)),
+    ("guidance-logic", (5, 2, 0, 0)),
     ("answer-protection-safety", (5, 1, 0, 1)),
     ("orchestration-tools", (5, 1, 0, 0)),
     ("judge-calibration", (0, 0, 15, 0)),

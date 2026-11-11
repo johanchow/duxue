@@ -90,3 +90,9 @@
 
 - 2026-11-11 用户要求删除历史未全部通过的 7 份评测用例，evals/data 现保留 33 份（13 单轮、4 多轮、15 判官、1 真实回放）。执行器测试所依赖的 3 份历史快照移至 tests/fixtures/eval_protocol，仅做无网络协议测试，不纳入 Dataset；历史结果保留并标明已删除，不视为修复或重新评测通过。
 - 删除后验证：评测相关单元测试 172 passed，全量静态校验通过，当前数据哈希 a52bfe675869865b；未重新执行模型评测。用户随后授权提交本地目录改造、用例删除及配套测试文档。
+
+- 2026-11-11 审阅根目录 pedagogical_action.jsonl：5 条纯文本 instruction/response 样本，extra_info 为 JSON 字符串。可作为教学正确性/引导逻辑候选素材，不能直接把 assistant 当 gold：沙堆例无计算过程却赞许过程，余数例连问六题不符当前小步引导。SocraTeach 的 user 内嵌对话需拆分角色；TutorBench 已有多轮，可固定历史逐点回放，不能宣称生产真实记录或闭环验证。原 system 仅作来源，不覆盖产品 prompt；补显式测试上下文及 rubric，初始 proposed；来源名称不等于真实性/标注可靠性的证明。本轮仅分析，未导入或执行。
+
+- 2026-11-11 用户授权将 pedagogical_action 5条素材改为评测用例：教学正确性2条、引导逻辑3条，批次pedagogical-action-v1。多轮只评最后请求并保留固定历史，system/末条示范隔离，来源metadata/文件哈希保留，测试状态synthetic且标签proposed；规则按产品原则重写。当前38份，174项相关单测及静态校验通过；未运行模型、上传Langfuse或提交。协议与目录说明见[离线设计](../../docs/technical/eval-offline.md#外部教学素材改编pedagogical-action-v1)。
+
+- 2026-11-11 pedagogical-action-v1 首次本地真实运行：复用grading-v2-fixes历史草稿快照，qwen3.7-plus-2026-05-26生成/qwen3.8-flash评分，每例1次，5 pass/0 fail/0 error；quality依次形容词4、布朗尼5、沙堆4、骰子5、余数5。骰子有multi_question诊断但语义断言通过；proposed/uncalibrated未升级，不能作为稳定质量结论。证据在server var/evals/pedagogical-action-20261111-214816/{README.md,results.json,execution.json,config-snapshot.json,audit.jsonl}，未上报Langfuse。

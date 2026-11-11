@@ -1,0 +1,163 @@
+{
+  "schema_version": "dialogue-eval.v2",
+  "id": "pedagogy-adjective-feedback",
+  "type": "single_turn",
+  "replay_mode": "fixed_history",
+  "conversation_id": "pedagogy-adjective-feedback",
+  "turn_index": 5,
+  "source": {
+    "kind": "synthetic",
+    "coverage": "authored",
+    "provider": "TutorBench-v6",
+    "note": "外部教学样本的评测改编，未验证真实对话来源；不是生产观测。{\"file\": \"pedagogical_action.jsonl\", \"line\": 5, \"file_sha256\": \"71e51a34cc7f98206c3bfdcbd430ccb11476468b737079b2def10e21408f3800\", \"metadata\": {\"category\": \"pedagogical_action\", \"dataset\": \"TutorBench-v6\", \"uid\": \"v6tb-02975\", \"kind\": \"tutorbench_dialogue\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"pedagogy/tutorbench_dialogue\", \"rank\": 2884, \"supervised_tokens\": 308, \"token_budget\": 931000}, \"system_prompt_id\": \"tutorbench\", \"system_prompt_version\": \"v6_finegrained_20260831\"}, \"original_system\": \"You are a highly capable, supportive tutor. Respond directly to the student. Be accurate, pedagogically helpful, appropriately calibrated to the student, and avoid unnecessary verbosity.\", \"adaptation\": [\"移除原system指令和最后assistant示范，不作为生产提示或正确答案；重新编写判分标准。\"], \"history_window\": \"执行时只投影当前用户前最多8条消息；全段可见历史保留用于溯源。\"}"
+  },
+  "messages": [
+    {
+      "role": "user",
+      "content": "I understand that adjectives modify nouns and provide more information about them. They can describe what kind, how many, or which one. An example of an adjective is \"beautiful\" in the sentence \"She has a beautiful dress.\" It describes the noun \"dress.\" Is that correct? Can you give me another example of an adjective?",
+      "id": "m1",
+      "images": [],
+      "image_target_refs": []
+    },
+    {
+      "role": "assistant",
+      "content": "Absolutely, you've got the right idea! \"Beautiful\" indeed describes the noun \"dress\" in the sentence \"She has a beautiful dress.\" Another example of an adjective is \"tall\" in the sentence \"The tall tree swayed in the wind.\" Here, \"tall\" provides more information about the noun \"tree.\" Well done! Now, let's move on to identifying descriptive adjectives in sentences. Can you tell me where you might find descriptive adjectives in the sentences \"San Diego has sandy beaches\" and \"The beaches in San Diego are sandy\"?",
+      "id": "m2",
+      "images": [],
+      "image_target_refs": []
+    },
+    {
+      "role": "user",
+      "content": "In the sentence \"San Diego has sandy beaches,\" the descriptive adjective is \"sandy,\" and it describes the noun \"beaches.\" In the sentence \"The beaches in San Diego are sandy,\" the descriptive adjective is also \"sandy,\" and it describes the noun \"beaches.\" So, in both sentences, \"sandy\" is the descriptive adjective. Did I get that right?",
+      "id": "m3",
+      "images": [],
+      "image_target_refs": []
+    },
+    {
+      "role": "assistant",
+      "content": "Absolutely! You're spot on. In both sentences, \"sandy\" is the descriptive adjective that provides more information about the noun \"beaches.\" Great job! Now, let's move on to creating sentences about your city using adjectives. With a partner, write two sentences about your city. In the first, use an adjective before a noun. In the second, use an adjective after a linking verb. Once you have those sentences, please share them with me.",
+      "id": "m4",
+      "images": [],
+      "image_target_refs": []
+    },
+    {
+      "role": "user",
+      "content": "I'm sorry, I got distracted for a moment. Can you please repeat the instructions? I want to make sure I understand what I need to do.",
+      "id": "m5",
+      "images": [],
+      "image_target_refs": []
+    },
+    {
+      "role": "assistant",
+      "content": "Of course! I appreciate your attention to detail. I asked you to work with a partner to write two sentences about your city. In the first sentence, use an adjective before a noun. In the second sentence, use an adjective after a linking verb. Once you have those sentences, please share them with me. This exercise will help reinforce your understanding of how descriptive adjectives can appear in different positions within a sentence. I hope this clarifies the task. Now, please go ahead and complete the exercise.",
+      "id": "m6",
+      "images": [],
+      "image_target_refs": []
+    },
+    {
+      "role": "user",
+      "content": "Oh, I see. I need to write two sentences about my city, one with an adjective before a noun and the other with an adjective after a linking verb. Alright, let me think for a moment. \n\n\"The bustling city has tall skyscrapers.\"\n\"The city is bustling with energy.\"\n\nI hope those examples make sense. Thank you for your patience.",
+      "id": "m7",
+      "images": [],
+      "image_target_refs": []
+    },
+    {
+      "role": "assistant",
+      "content": "Excellent work! Your examples are spot on. In the first sentence, \"bustling\" is the adjective that comes before the noun \"city,\" and in the second sentence, \"bustling\" is the adjective that comes after the linking verb \"is.\" You've demonstrated a clear understanding of using descriptive adjectives in different positions within a sentence. Now, let's move on to exploring different examples of adjectives. Adjectives come in various forms and can be identified by their endings. Can you add words to these lists based on their endings?\n- -able/-ible: __________\n- -ful: __________\n- -less: __________\n- -ic: __________\n- -ive: __________\n- -al: __________\n- -ous: __________\n- -ish: __________\n\nTake a moment to fill in the blanks with appropriate words. This exercise will help reinforce your recognition of adjectives by their endings.",
+      "id": "m8",
+      "images": [],
+      "image_target_refs": []
+    },
+    {
+      "role": "user",
+      "content": "I'm sorry, I got a bit distracted again. Can you please repeat the instructions? I want to make sure I understand what I need to do.",
+      "id": "m9",
+      "images": [],
+      "image_target_refs": []
+    },
+    {
+      "role": "assistant",
+      "content": "Certainly, I appreciate your attention to detail. I asked you to add words to the lists based on their endings. Here are the endings and the lists:\n- -able/-ible: __________\n- -ful: __________\n- -less: __________\n- -ic: __________\n- -ive: __________\n- -al: __________\n- -ous: __________\n- -ish: __________\n\nYour task is to fill in the blanks with appropriate words based on the endings provided. This exercise will help reinforce your recognition of adjectives by their endings. Now, please take a moment to complete the task.",
+      "id": "m10",
+      "images": [],
+      "image_target_refs": []
+    },
+    {
+      "role": "user",
+      "content": "Oh, I see. You want me to fill in the blanks with words based on their endings. Let me try:\n\n- -able/-ible: comfortable, incredible\n- -ful: beautiful, cheerful\n- -less: fearless, hopeless\n- -ic: fantastic, athletic\n- -ive: active, creative\n- -al: natural, personal\n- -ous: adventurous, curious\n- -ish: childish, foolish\n\nI hope those examples are correct. Thank you for your guidance.",
+      "id": "m11",
+      "images": [],
+      "image_target_refs": []
+    }
+  ],
+  "review_batch": "pedagogical-action-v1",
+  "label_status": "proposed",
+  "reviewed_by": null,
+  "tags": [
+    "pedagogical-action",
+    "external-adaptation",
+    "guidance-logic"
+  ],
+  "flags": [],
+  "note": "结合历史核验形容词后缀练习并控制教学推进。只评最后一条学生消息后的回复；此前助手消息为固定历史，不要求模型复现原示范。",
+  "checks": [
+    {
+      "id": "check-1",
+      "after_message": "m11",
+      "component": "tutoring.turn",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "problem": {
+            "summary": "英语形容词后缀练习：学生按-able/-ible、-ful、-less、-ic、-ive、-al、-ous、-ish列举单词，询问是否正确。以可见练习要求和学生列表为准。",
+            "active_subgoal": "回应已提交的后缀分类结果",
+            "substantive_attempts": 1,
+            "hints_given": 0
+          },
+          "task_title": "教学反馈练习",
+          "task_active": true
+        },
+        "note": "为组件评测显式构造的上下文；计数表示当前检查点的测试条件，不声称是原始数据库状态。"
+      },
+      "grading": {
+        "deterministic": [
+          {
+            "id": "outcome_in",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "hint_like",
+              "answer"
+            ]
+          },
+          {
+            "id": "outcome_not_in",
+            "field": "outcome",
+            "op": "not_in",
+            "expected": [
+              "fallback"
+            ]
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "quality",
+            "type": "score",
+            "rubric_ref": "teaching-quality.v1",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "准确反馈学生当前列表中的词符合所列后缀分类，不编造错误。可以选择少量具体词作解释，避免机械重复全部列表。先回应当前核验需求；可以简短结束，或只提供一个适量的可选下一步，不强制开启多组分词形容词填空。语气支持、回应历史中的理解需求；不能仅凭此练习宣称已经全面掌握英语形容词。 仅依据当前回复及检查点可见上下文判断；允许自然的中英文表达，不作关键词或句数匹配。",
+            "expected": "pass"
+          }
+        ],
+        "rationale": [
+          "原始示范未作为gold；语义要求按读学的小步引导及已提交答案核验原则重新定义。"
+        ],
+        "aggregation": "all_required"
+      }
+    }
+  ]
+}

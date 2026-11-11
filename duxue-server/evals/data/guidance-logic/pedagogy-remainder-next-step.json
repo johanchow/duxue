@@ -1,0 +1,92 @@
+{
+  "schema_version": "dialogue-eval.v2",
+  "id": "pedagogy-remainder-next-step",
+  "type": "single_turn",
+  "replay_mode": "fixed_history",
+  "conversation_id": "pedagogy-remainder-next-step",
+  "turn_index": 0,
+  "source": {
+    "kind": "synthetic",
+    "coverage": "authored",
+    "provider": "TMATH",
+    "note": "外部教学样本的评测改编，未验证真实对话来源；不是生产观测。{\"file\": \"pedagogical_action.jsonl\", \"line\": 4, \"file_sha256\": \"71e51a34cc7f98206c3bfdcbd430ccb11476468b737079b2def10e21408f3800\", \"metadata\": {\"category\": \"pedagogical_action\", \"dataset\": \"TMATH\", \"uid\": \"ped-00061382\", \"kind\": \"generic_pedagogy\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"pedagogy/socratic_question_chain\", \"rank\": 265, \"supervised_tokens\": 159, \"token_budget\": 74000}, \"system_prompt_id\": \"socratic_question_chain\", \"system_prompt_version\": \"v6_finegrained_20260831\"}, \"original_system\": \"Use a concise chain of logically ordered Socratic questions that leads the learner toward the key idea. Each question should have a clear purpose and must not reveal the final answer.\", \"adaptation\": [\"移除原system指令和最后assistant示范，不作为生产提示或正确答案；重新编写判分标准。\", \"移除Problem包装，保留题目及引导请求。\"], \"history_window\": \"执行时只投影当前用户前最多8条消息；全段可见历史保留用于溯源。\"}"
+  },
+  "messages": [
+    {
+      "role": "user",
+      "content": "What is the remainder when 1,493,824 is divided by 4?\n\nGuide me with Socratic questions.",
+      "id": "m1",
+      "images": [],
+      "image_target_refs": []
+    }
+  ],
+  "review_batch": "pedagogical-action-v1",
+  "label_status": "proposed",
+  "reviewed_by": null,
+  "tags": [
+    "pedagogical-action",
+    "external-adaptation",
+    "guidance-logic"
+  ],
+  "flags": [],
+  "note": "求余数时提供一个聚焦的下一步提示。只评最后一条学生消息后的回复；此前助手消息为固定历史，不要求模型复现原示范。",
+  "checks": [
+    {
+      "id": "check-1",
+      "after_message": "m1",
+      "component": "tutoring.turn",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "problem": {
+            "summary": "求1,493,824除以4的余数；学生请求用苏格拉底式问题引导，尚未提交计算。",
+            "active_subgoal": "从末两位与除以4的关系开始引导",
+            "substantive_attempts": 0,
+            "hints_given": 0
+          },
+          "task_title": "教学反馈练习",
+          "task_active": true
+        },
+        "note": "为组件评测显式构造的上下文；计数表示当前检查点的测试条件，不声称是原始数据库状态。"
+      },
+      "grading": {
+        "deterministic": [
+          {
+            "id": "outcome_in",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "hint_like"
+            ]
+          },
+          {
+            "id": "outcome_not_in",
+            "field": "outcome",
+            "op": "not_in",
+            "expected": [
+              "fallback"
+            ]
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "quality",
+            "type": "score",
+            "rubric_ref": "teaching-quality.v1",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "给出一个简短、有明确目的的下一步问题或提示，引导观察末两位并思考与除以4的关系，或提出等价的正确分解思路。不得直接说余数为0或宣布该数能整除，不代算完整过程，不一次抛出整串问题或扩展到其他除数。允许直接指出末两位是24；这不是最终推理成果。 仅依据当前回复及检查点可见上下文判断；允许自然的中英文表达，不作关键词或句数匹配。",
+            "expected": "pass"
+          }
+        ],
+        "rationale": [
+          "原始示范未作为gold；语义要求按读学的小步引导及已提交答案核验原则重新定义。"
+        ],
+        "aggregation": "all_required"
+      }
+    }
+  ]
+}

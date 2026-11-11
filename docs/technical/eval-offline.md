@@ -77,9 +77,9 @@ duxue-server/
 | --- | --- |
 | `seed-v1` | 固定种子：单步与合成多轮 |
 | `first-image-v1` | 首图场景的独立判官用例 |
-| `answer-feedback-v1` | 已提交答案反馈的真实对话 |
+| `pedagogical-action-v1` | 外部教学素材改编的5个单轮检查点，包含固定多轮历史 |
 
-当前维护 33 份用例：教学正确性 1、引导逻辑性 4、答案保护与安全 7、编排与工具 6、判官校准 15；执行类型为单轮 13、多轮 4、判官 15、真实回放 1。2026-11-11 按用户要求移除了历史报告中未全部通过的 7 份用例，详见[历史失败清单](eval-failures-2026-11-11.md)。删除不代表问题已修复，历史报告不改写。
+当前维护 38 份用例：教学正确性 3、引导逻辑性 7、答案保护与安全 7、编排与工具 6、判官校准 15；执行类型为单轮 18、多轮 4、判官 15、真实回放 1。2026-11-11 按用户要求移除了历史报告中未全部通过的 7 份用例，详见[历史失败清单](eval-failures-2026-11-11.md)。删除不代表问题已修复，历史报告不改写。
 
 ## 四、数据契约
 
@@ -348,3 +348,19 @@ v2迁移已完成。公共评分锚点放在`evals/rubrics.py`，逐例要求保
 升级补入独立评分组件和离线workflow，复制源包泄露Judge的模型名，固定温度0；图片评分要求所选模型支持视觉，文本模型不适用。部署时同步升级Admin校验契约与完整发布包，按既有流程导入、复核、发布，通过Server preflight后再切换服务；线上配置未随仓库修改自动发布。
 
 已含评分组件的快照默认保持原Prompt；显式添加`--refresh-grader`才更新评分Prompt，保留模型与其他组件配置。修复评分器时先固定原回复重评，再跑完整回放；新采样通过不能单独证明缺陷已修复，原报告和候选配置均须保留。
+
+### 外部教学素材改编（pedagogical-action-v1）
+
+从用户提供的 `pedagogical_action.jsonl` 改编5例，均为 `single_turn/fixed_history`、`proposed`。原始数据集名、uid、文件哈希、行号、system指令和改编说明保存在 `source` 中；来源真实性未核实，按 synthetic 测试场景登记，不冒充生产记录。
+
+| 目录 / 用例 | 检查目标 |
+|---|---|
+| `teaching-correctness/pedagogy-cone-rounding.json` | 区分未取整数值与最终作答要求，不凭结果臆测学生过程 |
+| `teaching-correctness/pedagogy-brownies-confirmation.json` | 依据可见对话条件核验学生已提交的20块并适当收束 |
+| `guidance-logic/pedagogy-dice-equal-groups.json` | 肯定正确中间步骤，纠正加法误用，推进一个等组乘法步骤 |
+| `guidance-logic/pedagogy-remainder-next-step.json` | 聚焦一个求余提示，不代算最终结果、不连续抛出整串问题 |
+| `guidance-logic/pedagogy-adjective-feedback.json` | 核验后缀分类，回应当前需求，避免无要求的大段教学扩展 |
+
+原 system 不覆盖生产 Prompt，最后的 assistant 示范不进入输入、不作为 gold。两条多轮素材保留此前原话，每例只评最后用户请求，执行时取最近8条历史；不构造后续学生分支，也不声称覆盖完整交互。上下文与计数显式标为 synthetic。确定性规则仅检查结果类型与回退；教学内容及节奏使用现有 quality/case_requirements 语义评分协议，不新增评分器或做关键词匹配。
+
+静态校验：`.venv/bin/python -m evals validate --batch pedagogical-action-v1`。模型执行：`.venv/bin/python -m evals run --component tutoring.turn --batch pedagogical-action-v1 --samples 1 --config-snapshot <本地配置快照> --out var/evals/pedagogical-action.json`。本批已完成格式与加载测试，并在本地做每例1次真实模型采样，5例均通过；结果位于 `duxue-server/var/evals/pedagogical-action-20261111-214816/`。仍未人工校准或上传 Langfuse，单次通过不作为发布门槛。
