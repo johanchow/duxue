@@ -35,3 +35,27 @@ def test_multiturn_sources_keep_prior_replies_but_only_evaluate_last_request():
     assert 'comfortable, incredible' in adjective.student_said
     assert 'participle adjectives' not in str(adjective.history)
     assert 'Excellent job! So now we know' not in str(brownie.history)
+
+
+def test_subject_batch_contains_only_three_text_questions_and_no_completions():
+    from evals.__main__ import main
+
+    cases = [c for c in dataset.load_cases() if c.review_batch == 'subject-competence-v1']
+    assert {c.id for c in cases} == {
+        'subject-portraits-next-step',
+        'subject-reading-evidence',
+        'subject-rhetoric-distinction',
+    }
+    for case in cases:
+        assert case.label_status == 'proposed'
+        assert case.snapshot_origin == 'synthetic'
+        assert case.history == []
+        assert case.images == []
+        assert case.context.problem.substantive_attempts == 0
+        assert case.grading.reference_response is None
+        record = dataset.read_object(next(dataset.DATA_DIR.rglob(case.id + '.json')))
+        assert len(record['messages']) == 1
+        assert record['messages'][0]['role'] == 'user'
+        assert record['source']['provider'] != 'essay-asap'
+        assert record['source']['note'].split('original_system')[0] not in case.student_said
+    assert main(['validate', '--batch', 'subject-competence-v1']) == 0

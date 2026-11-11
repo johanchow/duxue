@@ -78,8 +78,9 @@ duxue-server/
 | `seed-v1` | 固定种子：单步与合成多轮 |
 | `first-image-v1` | 首图场景的独立判官用例 |
 | `pedagogical-action-v1` | 外部教学素材改编的5个单轮检查点，包含固定多轮历史 |
+| `subject-competence-v1` | 3个纯文本学科问题：数学应用题、阅读选择题、修辞辨析 |
 
-当前维护 38 份用例：教学正确性 3、引导逻辑性 7、答案保护与安全 7、编排与工具 6、判官校准 15；执行类型为单轮 18、多轮 4、判官 15、真实回放 1。2026-11-11 按用户要求移除了历史报告中未全部通过的 7 份用例，详见[历史失败清单](eval-failures-2026-11-11.md)。删除不代表问题已修复，历史报告不改写。
+当前维护 41 份用例：教学正确性 5、引导逻辑性 8、答案保护与安全 7、编排与工具 6、判官校准 15；执行类型为单轮 21、多轮 4、判官 15、真实回放 1。2026-11-11 按用户要求移除了历史报告中未全部通过的 7 份用例，详见[历史失败清单](eval-failures-2026-11-11.md)。删除不代表问题已修复，历史报告不改写。
 
 ## 四、数据契约
 
@@ -364,3 +365,15 @@ v2迁移已完成。公共评分锚点放在`evals/rubrics.py`，逐例要求保
 原 system 不覆盖生产 Prompt，最后的 assistant 示范不进入输入、不作为 gold。两条多轮素材保留此前原话，每例只评最后用户请求，执行时取最近8条历史；不构造后续学生分支，也不声称覆盖完整交互。上下文与计数显式标为 synthetic。确定性规则仅检查结果类型与回退；教学内容及节奏使用现有 quality/case_requirements 语义评分协议，不新增评分器或做关键词匹配。
 
 静态校验：`.venv/bin/python -m evals validate --batch pedagogical-action-v1`。模型执行：`.venv/bin/python -m evals run --component tutoring.turn --batch pedagogical-action-v1 --samples 1 --config-snapshot <本地配置快照> --out var/evals/pedagogical-action.json`。本批已完成格式与加载测试，并在本地做每例1次真实模型采样，5例均通过；结果位于 `duxue-server/var/evals/pedagogical-action-20261111-214816/`。仍未人工校准或上传 Langfuse，单次通过不作为发布门槛。
+
+### 学科素材改编（subject-competence-v1）
+
+仅使用用户提供的 `subject_competence.jsonl` 前3条，排除第4条作文。均为纯文本 `single_turn/fixed_history`、`proposed`，来源与转换方式沿用上节协议；上下文显式标为 synthetic，学生尚未提交解法。
+
+| 目录 / 用例 | 检查目标 |
+|---|---|
+| `guidance-logic/subject-portraits-next-step.json` | 正确理解拍照人数关系，引导一个起步，不直接代算最终6人 |
+| `teaching-correctness/subject-reading-evidence.json` | 根据完整文章引导定位证据，区分风险与既成事实，不替学生选D |
+| `teaching-correctness/subject-rhetoric-distinction.json` | 正确辨析拟声与隐喻，引导观察原句，不替学生完成二选一 |
+
+保留阅读文章和全部选项；原system与assistant示范不进入输入，不要求模仿原直接解题输出。确定性规则检查hint_like及非回退；正确性、可执行提示和答案保护由现有语义裁判判断。批次校验：`.venv/bin/python -m evals validate --batch subject-competence-v1`。本批已本地运行，每例1次，自动判分3例通过；结果位于 `duxue-server/var/evals/subject-competence-20261111-221402/`。阅读题直接引用答案核心证据的引导强度仍需复核；未完成人工校准或上传Langfuse。

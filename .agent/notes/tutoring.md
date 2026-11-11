@@ -96,3 +96,9 @@
 - 2026-11-11 用户授权将 pedagogical_action 5条素材改为评测用例：教学正确性2条、引导逻辑3条，批次pedagogical-action-v1。多轮只评最后请求并保留固定历史，system/末条示范隔离，来源metadata/文件哈希保留，测试状态synthetic且标签proposed；规则按产品原则重写。当前38份，174项相关单测及静态校验通过；未运行模型、上传Langfuse或提交。协议与目录说明见[离线设计](../../docs/technical/eval-offline.md#外部教学素材改编pedagogical-action-v1)。
 
 - 2026-11-11 pedagogical-action-v1 首次本地真实运行：复用grading-v2-fixes历史草稿快照，qwen3.7-plus-2026-05-26生成/qwen3.8-flash评分，每例1次，5 pass/0 fail/0 error；quality依次形容词4、布朗尼5、沙堆4、骰子5、余数5。骰子有multi_question诊断但语义断言通过；proposed/uncalibrated未升级，不能作为稳定质量结论。证据在server var/evals/pedagogical-action-20261111-214816/{README.md,results.json,execution.json,config-snapshot.json,audit.jsonl}，未上报Langfuse。
+
+- 2026-11-11 审阅 subject_competence.jsonl 共4条，images均为空，题干人工阅读未发现依赖缺失图片：拍照题的picture是故事对象，figure of speech是修辞。前三条文本条件完整，可改编为小步数学引导/阅读选项保护/修辞辨析；原直接答案不可作为辅导输出要求。作文条缺原完整任务、来源材料及评分量表，输入已有holistic=2不能作为独立评分gold；可改编为仅依据可见作文反馈及缺依据不臆断测试，不能声称复现原评分。仅分析，未导入。
+
+- 2026-11-11 按用户要求仅将subject_competence前3条改为评测，排除作文：数学起步归guidance-logic，阅读证据/修辞辨析归teaching-correctness；批次subject-competence-v1。保留完整文本与选项，移除外部system/直接解答示范和解答包装指令，synthetic/proposed，复用现有语义评分协议。当前41份；175项评测单测及全量静态校验通过，未运行模型或提交。
+
+- 2026-11-11 subject-competence-v1 本地运行，每例1次，自动3 pass/0 fail/0 error，quality均5；主模型qwen3.7-plus-2026-05-26、裁判qwen3.8-flash，沿用上一批快照。阅读题too_long、修辞题multi_question仅诊断；阅读回复直接引用并翻译答案核心证据，可能与保留学生证据提取要求冲突，需人工校准，不改写自动结果。结果在server var/evals/subject-competence-20261111-221402/，未上传Langfuse或提交。

@@ -248,7 +248,7 @@ def test_all_committed_files_share_contract_and_migration_is_idempotent():
     from evals.migrate import migrate_record, validate_record
 
     files = sorted(dataset.DATA_DIR.rglob("*.json"))
-    assert len(files) == 38
+    assert len(files) == 41
     for path in files:
         raw = dataset.read_object(path)
         assert raw["schema_version"] == "dialogue-eval.v2"

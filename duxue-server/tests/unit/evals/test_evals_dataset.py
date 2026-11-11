@@ -26,15 +26,15 @@ def _case(**fields) -> EvalCase:
 
 def test_committed_dataset_is_valid_and_not_empty():
     cases = dataset.load_cases()
-    assert len(cases) == 18
+    assert len(cases) == 21
     assert dataset.validate(cases) == []
     assert dataset.validate_layout() == []
 
 
 def test_each_purpose_category_selects_single_turn_records_by_type():
     expected = {
-        "teaching-correctness": 3,
-        "guidance-logic": 5,
+        "teaching-correctness": 5,
+        "guidance-logic": 6,
         "answer-protection-safety": 5,
         "orchestration-tools": 5,
         "judge-calibration": 0,
@@ -353,8 +353,8 @@ def test_compare_rejects_different_review_batches(tmp_path, capsys):
 
 
 @pytest.mark.parametrize("category,counts", [
-    ("teaching-correctness", (3, 0, 0, 0)),
-    ("guidance-logic", (5, 2, 0, 0)),
+    ("teaching-correctness", (5, 0, 0, 0)),
+    ("guidance-logic", (6, 2, 0, 0)),
     ("answer-protection-safety", (5, 1, 0, 1)),
     ("orchestration-tools", (5, 1, 0, 0)),
     ("judge-calibration", (0, 0, 15, 0)),

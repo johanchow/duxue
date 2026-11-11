@@ -1,0 +1,92 @@
+{
+  "schema_version": "dialogue-eval.v2",
+  "id": "subject-portraits-next-step",
+  "type": "single_turn",
+  "replay_mode": "fixed_history",
+  "conversation_id": "subject-portraits-next-step",
+  "turn_index": 0,
+  "source": {
+    "kind": "synthetic",
+    "coverage": "authored",
+    "provider": "gsm8k-main",
+    "note": "外部教学样本的评测改编，未验证真实对话来源；不是生产观测。{\"file\": \"subject_competence.jsonl\", \"line\": 1, \"file_sha256\": \"82f05263d7d83c5e470ba5f055833dd52ef313fed1f3cf6627ad1eb0890c2960\", \"metadata\": {\"category\": \"subject_competence\", \"dataset\": \"gsm8k-main\", \"uid\": \"gsm8k-1821\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/math/text/cot/other\", \"rank\": 7145, \"supervised_tokens\": 73, \"token_budget\": 1345000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}, \"original_system\": \"Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format.\", \"adaptation\": [\"移除Problem包装、原system与末条assistant示范；参考答案仅用于编写独立裁判标准，不进入被测模型输入。\"]}"
+  },
+  "messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "There are 24 students in the class. One-third had their school portraits taken before lunch. After lunch, but before gym class, 10 additional students had their portraits taken. After gym class, how many students have not yet had their picture taken?",
+      "images": [],
+      "image_target_refs": []
+    }
+  ],
+  "review_batch": "subject-competence-v1",
+  "label_status": "proposed",
+  "reviewed_by": null,
+  "tags": [
+    "subject-competence",
+    "external-adaptation",
+    "guidance-logic"
+  ],
+  "flags": [],
+  "note": "学生拍照应用题的小步引导。从纯文本学科素材改编，评当前请求后的一个教学步骤，不以原直接解答作为输出目标。",
+  "checks": [
+    {
+      "id": "check-1",
+      "after_message": "m1",
+      "component": "tutoring.turn",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "problem": {
+            "summary": "班级24人，午饭前已有三分之一拍照，午饭后体育课前又拍了10人，询问体育课后仍未拍照的人数。学生尚未提交解法。",
+            "active_subgoal": "理解题意并选择一个可执行的起步",
+            "substantive_attempts": 0,
+            "hints_given": 0
+          },
+          "task_title": "学科答疑练习",
+          "task_active": true
+        },
+        "note": "为组件评测显式构造的上下文；计数表示当前检查点的测试条件，不声称是原始数据库状态。"
+      },
+      "grading": {
+        "deterministic": [
+          {
+            "id": "outcome_in",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "hint_like"
+            ]
+          },
+          {
+            "id": "outcome_not_in",
+            "field": "outcome",
+            "op": "not_in",
+            "expected": [
+              "fallback"
+            ]
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "quality",
+            "type": "score",
+            "rubric_ref": "teaching-quality.v1",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "数学理解必须正确：三分之一以全班24人为基数，之后的10人是新增已拍照人数；不能将三分之一乘到10人上，也不能把已拍与未拍人数混淆。只开放一个最小下一步，例如引导学生列出午饭前已拍人数的算式；允许等价的正确起步，不要求固定话术。不能直接给出最终剩余6人，也不能一次代算8、18、6的完整链路。回复应有具体、可执行的提示，不能仅让学生自己想。 仅依据回复和可见题干作语义判断，允许自然中英文表达，不按关键词或选项字母出现次数判分。",
+            "expected": "pass"
+          }
+        ],
+        "rationale": [
+          "原素材要求直接解题，改编后按项目的教学正确性、小步引导和选择题答案保护原则评估；原示范不是gold回复。"
+        ],
+        "aggregation": "all_required"
+      }
+    }
+  ]
+}
