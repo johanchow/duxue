@@ -1,6 +1,9 @@
 """Real conversation snapshots stay fixed across checkpoints and samples."""
 
 import copy
+from pathlib import Path
+
+FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "eval_protocol"
 
 import pytest
 from evals import dataset
@@ -9,15 +12,15 @@ from evals.__main__ import main
 
 def _row():
     return dataset.read_object(
-        dataset.DATA_DIR / "conversation_replay" / "answer-feedback-conversation.json"
+        FIXTURES / "answer-feedback-conversation.json"
     )
 
 
 def test_conversation_directory_validates_without_model_calls():
     from evals.conversations import load_conversations
 
-    assert load_conversations()[0].id == "answer-feedback-conversation"
-    assert main(["validate", "--category", "conversation_replay"]) == 0
+    assert [row.id for row in load_conversations()] == ["protection-scope-conversation"]
+    assert main(["validate", "--category", "guidance-logic"]) == 0
     assert dataset.validate_layout() == []
     assert all(row.review_batch != "answer-feedback-v1" for row in dataset.load_cases())
 
@@ -52,7 +55,7 @@ def test_fixed_history_and_snapshot_permit():
     from tests.support.eval_cases import Backends
     from tests.support.fakes import StaticLeakJudge, StaticTutorModel, tutor_raw
 
-    row = load_conversations()[0]
+    row = load_conversations(FIXTURES / "answer-feedback-conversation.json")[0]
     first, second = [
         turn_case(row, c) for c in row.checks if c.component == "tutoring.turn"
     ]
@@ -88,7 +91,7 @@ def test_fixed_gate_preserves_input_and_reports_wrong_reason_and_unavailable():
     from evals.conversations import load_conversations
     from tests.support.eval_cases import Backends
 
-    row = load_conversations()[0]
+    row = load_conversations(FIXTURES / "answer-feedback-conversation.json")[0]
     row.checks = [row.checks[3]]
     received = []
 
@@ -204,7 +207,7 @@ def test_real_image_incident_preserves_original_error_and_new_target_expectation
     from evals.conversations import load_conversations, turn_case
 
     row = next(
-        row for row in load_conversations() if row.id == "new-image-review-conversation"
+        row for row in load_conversations(FIXTURES) if row.id == "new-image-review-conversation"
     )
     assert row.schema_version == "dialogue-eval.v2"
     assert len(row.messages) == 8 and len(row.attempts) == 6
@@ -243,7 +246,7 @@ def test_unavailable_original_feedback_cannot_hide_observed_or_fabricated_data(c
     from evals.conversations import ConversationEval
 
     row = dataset.read_object(
-        dataset.DATA_DIR / "conversation_replay/new-image-review-conversation.json"
+        FIXTURES / "new-image-review-conversation.json"
     )
     retry = next(
         a for a in row["attempts"] if a.get("repair_feedback_status") == "unavailable"
@@ -263,7 +266,7 @@ def test_image_context_scope_checks_real_targets_without_running_math_or_changin
     from evals.conversations import load_conversations
 
     row = next(
-        r for r in load_conversations() if r.id == "new-image-review-conversation"
+        r for r in load_conversations(FIXTURES) if r.id == "new-image-review-conversation"
     )
     original = row.model_dump()
     for i, name in enumerate(dict.fromkeys(n for m in row.messages for n in m.images)):
@@ -301,7 +304,7 @@ def test_image_context_scope_does_not_hide_wrong_selection_or_missing_assets(tmp
     from evals.conversations import load_conversations
 
     row = next(
-        r for r in load_conversations() if r.id == "new-image-review-conversation"
+        r for r in load_conversations(FIXTURES) if r.id == "new-image-review-conversation"
     )
     for i, name in enumerate(dict.fromkeys(n for m in row.messages for n in m.images)):
         (tmp_path / name).write_bytes(str(i).encode())
@@ -333,7 +336,7 @@ def test_image_context_scope_detects_prior_assistant_pollution_even_with_correct
     from app.application.workflows import image_target
 
     row = next(
-        r for r in load_conversations() if r.id == "new-image-review-conversation"
+        r for r in load_conversations(FIXTURES) if r.id == "new-image-review-conversation"
     )
     row.checks = [row.checks[0]]
     for i, name in enumerate(dict.fromkeys(n for m in row.messages for n in m.images)):

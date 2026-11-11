@@ -46,7 +46,7 @@ def _episode(first_expect=None):
 
 def test_committed_episodes_are_six_turns_and_have_stable_hash():
     rows = episodes.load_episodes()
-    assert len([row for row in rows if row.review_batch != "image-review-v1"]) == 4
+    assert len([row for row in rows if row.review_batch != "image-review-v1"]) == 3
     assert all(len(row.turns) == 6 for row in rows)
     assert episodes.episodes_hash(rows) == episodes.episodes_hash(list(reversed(rows)))
     assert episodes.validate_episodes(rows) == []
@@ -72,9 +72,12 @@ def test_scope_switch_uses_actual_history_and_keeps_old_problem_for_return():
 
     from evals.conversations import load_conversations
 
+    from pathlib import Path
+
+    fixture = Path(__file__).resolve().parents[2] / "fixtures/eval_protocol/knowledge-switch-and-return.json"
     episode = next(
         row
-        for row in episodes.load_episodes()
+        for row in episodes.load_episodes(fixture)
         if row.id == "knowledge-switch-and-return"
     )
     replay = next(

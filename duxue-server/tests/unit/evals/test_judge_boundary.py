@@ -6,35 +6,20 @@ import json
 from evals import judge_boundary
 
 
-def test_first_image_cases_have_no_text_problem_context_and_include_indistinguishable_pair():
-    cases = judge_boundary.load_cases()
-    pair = [case for case in cases if case.get("pair") == "length-8"]
-    assert len(pair) == 2
-    assert pair[0]["reply"] == pair[1]["reply"]
-    assert pair[0]["expected_leaks"] is False
-    assert pair[1]["expected_leaks"] is True
-    assert (
-        json.loads(judge_boundary.production_summary())["current_request"]
-        == "这题怎么做"
-    )
-
+def test_reference_problem_is_excluded_unless_explicitly_requested():
+    case = next(c for c in judge_boundary.load_cases() if c["id"] == "known-length")
     received = []
 
     def judge(**kwargs):
         received.append(kwargs)
         return {"leaks": False, "reason": "none"}
 
-    results = judge_boundary.run_cases(pair, judge, samples=1, workers=1)
-    assert len(received) == 2
-    assert received[0] == received[1]
+    judge_boundary.run_cases([case], judge, samples=1, workers=1)
     assert json.loads(received[0]["problem_summary"])["current_request"] == "这题怎么做"
-    assert all(case["reference_problem"] not in str(received) for case in pair)
-    assert judge_boundary.summarize(results)["false_negative"]["count"] == 1
-
+    assert case["reference_problem"] not in str(received)
     received.clear()
-    judge_boundary.run_cases(pair, judge, samples=1, workers=1, with_reference=True)
-    assert received[0]["problem_summary"] != received[1]["problem_summary"]
-    assert pair[0]["reference_problem"] in received[0]["problem_summary"]
+    judge_boundary.run_cases([case], judge, samples=1, workers=1, with_reference=True)
+    assert case["reference_problem"] in received[0]["problem_summary"]
 
 
 def test_judge_errors_are_reported_separately_from_false_negatives():
@@ -96,7 +81,7 @@ def test_case_problem_is_replayed_and_wrong_reason_is_counted(tmp_path):
     from evals import dataset
     from tests.support.eval_cases import grading
 
-    row = dataset.read_object(judge_boundary.DATA / "known-length.json")
+    row = dataset.read_object(judge_boundary.DATA / "judge-calibration" / "known-length.json")
     row["id"] = case["id"]
     row["candidates"][0]["content"] = case["reply"]
     row["checks"][0]["input_snapshot"]["problem"] = case["problem"]
@@ -126,7 +111,7 @@ def test_answer_feedback_diagnostic_turns_validate_without_changing_seed():
     cases = dataset.load_cases()
     assert len([row for row in cases if row.review_batch == "answer-feedback-v1"]) == 0
     seed = [row for row in cases if row.review_batch == "seed-v1"]
-    assert len(seed) == 16
+    assert len(seed) == 13
     assert (
         dataset.dataset_hash(seed) != "7084bc6835908cf9"
     )  # Explicit format/version migration.
@@ -145,41 +130,25 @@ def test_answer_feedback_diagnostic_turns_validate_without_changing_seed():
 def test_judge_cases_are_individual_formatted_json_objects():
     from evals import dataset
 
-    folder = dataset.DATA_DIR / "leak_judge"
+    folder = dataset.DATA_DIR / "judge-calibration"
     files = list(folder.glob("*.json"))
-    assert len(files) == 16
+    assert len(files) == 15
     for file in files:
         record = dataset.read_object(file)
         assert record["id"] == file.stem
         assert record["checks"][0]["component"] == "tutoring.leak-judge"
         assert record["schema_version"] == "dialogue-eval.v2"
         assert '\n  "' in file.read_text()
-    assert len(judge_boundary.load_cases(folder)) == 16
+    assert len(judge_boundary.load_cases(folder)) == 15
     assert not list(dataset.DATA_DIR.rglob("*.jsonl"))
 
 
-def test_answer_feedback_uses_the_common_runner_and_batch():
-    from evals import dataset
+def test_removed_answer_feedback_batch_has_no_runnable_cases():
     from evals.__main__ import main
-
-    cases = [
-        row for row in dataset.load_cases() if row.review_batch == "answer-feedback-v1"
-    ]
-    assert cases == []
     from evals.conversations import load_conversations
 
-    assert (
-        len(
-            [
-                row
-                for row in load_conversations()
-                if row.review_batch == "answer-feedback-v1"
-            ]
-        )
-        == 1
-    )
-    assert main(["validate", "--batch", "answer-feedback-v1"]) == 0
-    assert not (dataset.ROOT / "evals" / "answer_feedback.py").exists()
+    assert not any(row.review_batch == "answer-feedback-v1" for row in load_conversations())
+    assert main(["validate", "--batch", "answer-feedback-v1"]) == 1
 
 
 def test_common_cli_dispatches_to_the_generic_judge_runner(monkeypatch):
@@ -223,7 +192,7 @@ def test_judge_loader_rejects_jsonl_and_filename_mismatches(tmp_path):
     import pytest
     from evals import dataset
 
-    case = dataset.read_object(sorted(judge_boundary.DATA.glob("*.json"))[0])
+    case = dataset.read_object(dataset.record_files(judge_boundary.DATA, "judge")[0])
     for name in (case["id"] + ".jsonl", "wrong-id.json"):
         path = tmp_path / name
         path.write_text(json.dumps(case, ensure_ascii=False, indent=2))

@@ -26,39 +26,37 @@ def _case(**fields) -> EvalCase:
 
 def test_committed_dataset_is_valid_and_not_empty():
     cases = dataset.load_cases()
-    assert len(cases) == 16
+    assert len(cases) == 13
     assert dataset.validate(cases) == []
     assert dataset.validate_layout() == []
 
 
-def test_each_category_owns_its_cases_and_multi_turn_is_separate():
+def test_each_purpose_category_selects_single_turn_records_by_type():
     expected = {
-        "scene_routing": 2,
-        "real_regression": 2,
-        "answer_protection": 2,
-        "pronunciation_context": 2,
-        "visual": 2,
-        "fact_vs_reasoning": 2,
-        "teaching_quality": 2,
-        "safety": 2,
+        "teaching-correctness": 1,
+        "guidance-logic": 2,
+        "answer-protection-safety": 5,
+        "orchestration-tools": 5,
+        "judge-calibration": 0,
     }
     for category, count in expected.items():
         assert len(dataset.load_cases(dataset.DATA_DIR / category)) == count
-    assert len(episodes.load_episodes()) == 5
+    assert len(episodes.load_episodes()) == 4
     assert all(row.label_status == "proposed" for row in episodes.load_episodes())
     assert episodes.validate_episodes(episodes.load_episodes()) == []
 
 
-def test_layout_rejects_a_case_in_the_wrong_category(tmp_path):
+def test_layout_rejects_a_case_outside_purpose_categories(tmp_path):
     for category in dataset.CATEGORIES:
         (tmp_path / category).mkdir()
     case = _case()
+    (tmp_path / "scene_routing").mkdir()
     (tmp_path / "scene_routing" / f"{case.id}.json").write_text(
         json.dumps(record_for_case(case), ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
     assert any(
-        "scene_routing requires companion.intent" in problem
+        "unexpected dataset file" in problem
         for problem in dataset.validate_layout(tmp_path)
     )
 
@@ -66,7 +64,7 @@ def test_layout_rejects_a_case_in_the_wrong_category(tmp_path):
 def test_dataset_covers_the_three_debugged_conversations_and_the_guard_seeds():
     cases = [case for case in dataset.load_cases() if case.review_batch == "seed-v1"]
     conversations = {c.conversation_id for c in cases}
-    assert {"ab8f80d3", "97103aaf", "b48b70b3", "synthetic"} <= conversations
+    assert {"ab8f80d3", "b48b70b3", "synthetic"} <= conversations
     assert all(c.review_batch == "seed-v1" for c in cases)
     assert {c.component for c in cases} == {"tutoring.turn", "companion.intent"}
     assert sum("guard" in c.tags for c in cases) <= 6
@@ -80,8 +78,8 @@ def test_rubric_slice_covers_several_teaching_angles():
         if "rubric" in c.tags and c.review_batch == "seed-v1"
     ]
     angles = {tag for case in cases for tag in case.tags}
-    assert len(cases) == 2
-    assert {"mistake-id", "evidence-update"} <= angles
+    assert len(cases) == 1
+    assert {"evidence-update"} <= angles
     assert all(
         case.source == "synthetic" and case.label_status == "proposed" for case in cases
     )
@@ -196,26 +194,21 @@ def test_review_batch_covers_two_candidates_per_angle_without_confirming_them(ca
     cases, multi = dataset.load_cases(), episodes.load_episodes()
     selected_cases = [case for case in cases if case.review_batch == "seed-v1"]
     selected_multi = [row for row in multi if row.review_batch == "seed-v1"]
-    assert len(selected_cases) == 16
+    assert len(selected_cases) == 13
     assert len(selected_multi) == 2
-    for category in dataset.SINGLE_TURN_CATEGORIES:
-        assert (
-            sum(
-                case.review_batch == "seed-v1"
-                for case in dataset.load_cases(dataset.DATA_DIR / category)
-            )
-            == 2
-        )
+    assert sorted(
+        c.id for category in dataset.CATEGORIES
+        for c in dataset.load_cases(dataset.DATA_DIR / category)
+        if c.review_batch == "seed-v1"
+    ) == sorted(c.id for c in selected_cases)
     assert all(c.label_status == "proposed" for c in selected_cases)
     assert all(e.label_status == "proposed" for e in selected_multi)
     assert main(["validate", "--batch", "seed-v1"]) == 0
-    assert "16 cases + 2 episodes" in capsys.readouterr().out
+    assert "13 cases + 2 episodes" in capsys.readouterr().out
 
 
 def test_answer_confirmation_cases_follow_the_problem_type_policy():
     cases = {case.id: case for case in dataset.load_cases()}
-    assert cases["turn-protect-05"].grading.model_graded
-    assert cases["turn-protect-05"].review_batch == "seed-v1"
     multi = {episode.id: episode for episode in episodes.load_episodes()}
     assert multi["episode-socrateach-uncertain-correct"].turns[0].grading.model_graded
     assert multi["episode-mathdial-balance"].turns[4].grading.model_graded
@@ -297,7 +290,7 @@ def test_run_commands_filter_to_review_batch_without_network(monkeypatch, tmp_pa
     assert json.loads((tmp_path / "single-tutoring_turn.json").read_text())["meta"][
         "dataset_hash"
     ] == dataset.dataset_hash(dataset.load_cases())
-    assert len(seen_cases) == 16
+    assert len(seen_cases) == 13
     assert all(case.review_batch == "seed-v1" for case in seen_cases)
     assert (
         json.loads((tmp_path / "single-tutoring_turn.json").read_text())["meta"][
@@ -357,3 +350,33 @@ def test_compare_rejects_different_review_batches(tmp_path, capsys):
     )
     assert main(["compare", str(first), str(second)]) == 2
     assert "复核批次不同" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("category,counts", [
+    ("teaching-correctness", (1, 0, 0, 0)),
+    ("guidance-logic", (2, 2, 0, 0)),
+    ("answer-protection-safety", (5, 1, 0, 1)),
+    ("orchestration-tools", (5, 1, 0, 0)),
+    ("judge-calibration", (0, 0, 15, 0)),
+])
+def test_purpose_categories_include_every_execution_format(category, counts, capsys):
+    from evals import conversations, judge_boundary
+
+    path = dataset.DATA_DIR / category
+    records = (dataset.load_cases(path), episodes.load_episodes(path),
+               judge_boundary.load_cases(path), conversations.load_conversations(path))
+    assert tuple(map(len, records)) == counts
+    assert sum(counts) == len(list(path.glob("*.json")))
+    assert main(["validate", "--category", category]) == 0
+    assert f"{counts[0]} cases + {counts[1]} episodes + {counts[2]} judge cases + {counts[3]} conversations" in capsys.readouterr().out
+
+
+def test_unknown_record_type_cannot_silently_disappear(tmp_path):
+    (tmp_path / "bad.json").write_text('{"id": "bad", "type": "typo"}')
+    with pytest.raises(ValueError, match="unknown record type"):
+        dataset.load_cases(tmp_path)
+
+
+def test_missing_dataset_path_is_an_error(tmp_path):
+    with pytest.raises(ValueError, match="does not exist"):
+        episodes.load_episodes(tmp_path / "missing")

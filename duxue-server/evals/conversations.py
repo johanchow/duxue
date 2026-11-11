@@ -9,7 +9,7 @@ from typing import Annotated, Literal
 
 from pydantic import Field, model_validator
 
-from evals.dataset import DATA_DIR, read_object
+from evals.dataset import DATA_DIR, read_object, record_files
 from evals.dialogue import Dialogue, Evidence, Message
 from evals.grading import Grading
 from evals.schema import (
@@ -21,7 +21,7 @@ from evals.schema import (
     Utterance,
 )
 
-DIRECTORY = DATA_DIR / "conversation_replay"
+DIRECTORY = DATA_DIR
 Text = Annotated[str, Field(min_length=1)]
 
 
@@ -217,7 +217,7 @@ class ConversationEval(Dialogue):
 
 
 def load_conversations(path: Path = DIRECTORY) -> list[ConversationEval]:
-    files = [path] if path.is_file() else sorted(path.glob("*.json"))
+    files = record_files(path, "conversation_replay")
     rows = []
     for file in files:
         row = ConversationEval.model_validate(read_object(file))

@@ -253,7 +253,7 @@ def test_safety_seed_expects_blocked_not_normal_tutoring():
 
     case = next(
         c
-        for c in dataset.load_cases(dataset.DATA_DIR / "safety")
+        for c in dataset.load_cases(dataset.DATA_DIR / "answer-protection-safety")
         if c.id == "turn-safety-00"
     )
     safe = _sample(

@@ -52,24 +52,20 @@ flowchart TD
 duxue-server/
 ├── evals/
 │   ├── data/
-│   │   ├── scene_routing/           # 意图路由，单步
-│   │   ├── real_regression/         # 真实单步故障
-│   │   ├── answer_protection/       # 答案保护
-│   │   ├── pronunciation_context/   # 发音与指代
-│   │   ├── visual/                  # 图文行为
-│   │   ├── fact_vs_reasoning/       # 事实与推理边界
-│   │   ├── teaching_quality/        # 教学行为
-│   │   ├── safety/                  # 主组件安全动作
-│   │   ├── leak_judge/              # 独立判官
-│   │   ├── multi_turn/              # 合成多轮
-│   │   └── conversation_replay/     # 真实对话，固定历史
+│   │   ├── teaching-correctness/    # 教学正确性
+│   │   ├── guidance-logic/          # 引导逻辑性
+│   │   ├── answer-protection-safety/ # 答案保护与安全
+│   │   ├── orchestration-tools/     # 路由、工具与上下文编排
+│   │   └── judge-calibration/       # 生产判官校准
 │   └── __main__.py                  # 统一 CLI
 └── var/
     ├── eval-assets/                 # 本机图片，不入库
     └── evals/                       # 候选导出和报告，不入库
 ```
 
-- 配置：`<类型或主类别>/<id>.json`；一个 JSON 对象、两空格缩进、文件名与 `id` 一致。
+- 配置：`<Dataset 目的类别>/<id>.json`；一个 JSON 对象、两空格缩进、文件名与 `id` 一致。
+- 一份用例只归属一个主 Dataset，目录名与 Langfuse Dataset 一致；跨维度用 `tags` 表达，不复制用例。单轮、多轮、真实回放、固定候选是 `type`，不作为目录。加载器按 `type` 递归筛选；`validate --category` 校验该目的下全部执行类型。
+- 本次仅调整本地归类，未上传用例、未切换评分器；本地 runner 仍使用现有评分逻辑。
 - 同类场景使用通用执行器，不为单个故障新写 Python runner。
 - 各类型共用版本、消息和来源契约；专用检查点按 type/replay_mode 严格校验。
 - `tags` 表达交叉维度，`review_batch` 表达复核批次；批次不表示已经确认。
@@ -82,6 +78,8 @@ duxue-server/
 | `seed-v1` | 固定种子：单步与合成多轮 |
 | `first-image-v1` | 首图场景的独立判官用例 |
 | `answer-feedback-v1` | 已提交答案反馈的真实对话 |
+
+当前维护 33 份用例：教学正确性 1、引导逻辑性 4、答案保护与安全 7、编排与工具 6、判官校准 15；执行类型为单轮 13、多轮 4、判官 15、真实回放 1。2026-11-11 按用户要求移除了历史报告中未全部通过的 7 份用例，详见[历史失败清单](eval-failures-2026-11-11.md)。删除不代表问题已修复，历史报告不改写。
 
 ## 四、数据契约
 
@@ -114,7 +112,7 @@ duxue-server/
 
 单轮可以只有一条 user 消息，也可以包含此前历史和后续原记录。执行器只投影检查点之前的消息。无需为了多轮形式编造历史；一条完整对话中的多个检查点使用真实回放类型。
 
-例子见 [turn-guard-01.json](../../duxue-server/evals/data/answer_protection/turn-guard-01.json)。原手填题目/任务上下文保留，来源为 synthetic；旧真实单步的手填状态标为 reconstructed。
+例子见 [turn-guard-01.json](../../duxue-server/evals/data/answer-protection-safety/turn-guard-01.json)。原手填题目/任务上下文保留，来源为 synthetic；旧真实单步的手填状态标为 reconstructed。
 
 每点使用§五的`grading`：确定性规则检查结果类别、选图、配图等结构；语义rubric和参考正文仅进入独立评分器，不进入被测组件。
 
@@ -134,11 +132,11 @@ duxue-server/
 
 `messages` 的前缀是可选种子历史，后缀是按顺序排列的学生脚本。`checks` 逐条引用后缀的 user 消息，不能遗漏、倒序或夹带预写的导师答案。每个检查点保存注入上下文、grading、tags 和可选 `student_on`：按上一轮实际 outcome 选择替代学生文字，未命中则使用对应消息原文；图片仍来自该消息。
 
-支持1～10个检查点；现有5份脚本仍各6轮。运行后把实际交付的回复、学生图片和实际选图引用加入下一轮历史；失败或缺资源即停止，未运行轮次不计通过。上下文仍按检查点注入，不能宣称已验证数据库状态机。执行见 [episode_runner.py](../../duxue-server/evals/episode_runner.py)。
+支持1～10个检查点；现有4份脚本仍各6轮。运行后把实际交付的回复、学生图片和实际选图引用加入下一轮历史；失败或缺资源即停止，未运行轮次不计通过。上下文仍按检查点注入，不能宣称已验证数据库状态机。执行见 [episode_runner.py](../../duxue-server/evals/episode_runner.py)。
 
 ### 4.5 真实对话与候选链
 
-`type=conversation_replay`，`replay_mode=fixed_history`。同样使用共用 messages/source；还保留 `attempts` 与两种检查点。例子见 [answer-feedback-conversation.json](../../duxue-server/evals/data/conversation_replay/answer-feedback-conversation.json)。
+`type=conversation_replay`，`replay_mode=fixed_history`。同样使用共用 messages/source；还保留 `attempts` 与两种检查点。例子见 [protection-scope-conversation.json](../../duxue-server/evals/data/answer-protection-safety/protection-scope-conversation.json)。
 
 - `messages` 只存实际可见消息；原始被拒候选在 attempts，不写进可见历史。
 - attempts 保存 after_message、trace/generation observation、原 model/prompt、原 candidate、gate.input 和 observed_verdict/observed_facts。原裁决与新 grading 分开，不改写事故证据。
@@ -160,7 +158,7 @@ duxue-server/
 .venv/bin/python -m evals validate
 ```
 
-迁移覆盖16个单步、5个合成多轮、16个独立判官和3个真实回放文件。原话、图片、分支、注入状态、原候选、标签和确定性期望保持；原语义字面规则整理为rubric；源文件版本与来源说明参与新哈希，因此旧报告不能直接与新格式报告比较。原seed-v1旧哈希 `7084bc6835908cf9` 仅作历史记录，当前值由 validate 输出。配置快照仍另由Admin导出，不与样本输入快照混为一谈。
+历史迁移覆盖16个单步、5个合成多轮、16个独立判官和3个真实回放文件。原话、图片、分支、注入状态、原候选、标签和确定性期望保持；原语义字面规则整理为rubric；源文件版本与来源说明参与新哈希，因此旧报告不能直接与新格式报告比较。原seed-v1旧哈希 `7084bc6835908cf9` 仅作历史记录，当前值由 validate 输出。配置快照仍另由Admin导出，不与样本输入快照混为一谈。
 
 ### 连续图片回归（image-review-v1）
 
@@ -170,29 +168,19 @@ duxue-server/
 
 新增用例事实源：
 
-- [new-image-review-conversation.json](../../duxue-server/evals/data/conversation_replay/new-image-review-conversation.json)：事故相关4轮8条原消息，6个原始候选；3个主回复检查点与3个固定候选复审，保留实际错误回复。
-- [episode-image-switch-and-correction.json](../../duxue-server/evals/data/multi_turn/episode-image-switch-and-correction.json)：首图错误批改历史作污染种子，6轮依次覆盖上传新页读标题、无附件纠正读标题、脱离图片问词义、返回首图读标题、重回第二图读大题标题及再次指代读印刷算式。按用户要求暂绕过数学稳定性，不再在此合成用例中检查计算结果或断言review_conclusion。每个turn的 `images` 是新增附件；后续轮次继承实际生成并交付的回复、图片和选图引用，不用预写的正确助手回复。题目状态仍是注入，不等于真实数据库端到端。
+- [episode-image-switch-and-correction.json](../../duxue-server/evals/data/orchestration-tools/episode-image-switch-and-correction.json)：首图错误批改历史作污染种子，6轮依次覆盖上传新页读标题、无附件纠正读标题、脱离图片问词义、返回首图读标题、重回第二图读大题标题及再次指代读印刷算式。按用户要求暂绕过数学稳定性，不再在此合成用例中检查计算结果或断言review_conclusion。每个turn的 `images` 是新增附件；后续轮次继承实际生成并交付的回复、图片和选图引用，不用预写的正确助手回复。题目状态仍是注入，不等于真实数据库端到端。
 
 选图、批改结论和判官原因使用 `grading.deterministic` 的登记字段比较，开放语义交给 `model_graded`。报告保留 `image_review`、选图引用、实际交付正文及逐项评分；fallback与被拒候选分开。全部标签保持proposed，未经人工复核不升confirmed。
 
-```bash
-python -m evals run-conversations --path evals/data/conversation_replay/new-image-review-conversation.json --samples 1 --config-snapshot var/admin/image-review-draft.json --out var/evals/image-review-conversation.json
-python -m evals run-episodes --case episode-image-switch-and-correction --samples 1 --config-snapshot var/admin/image-review-draft.json --out var/evals/image-review-episode.json
-```
+该真实事故回放已从维护数据集中移除；图片连续上下文仍由上述合成用例覆盖。执行器保留 `--scope image-context` 能力，适用于具有选图断言的真实回放。
 
-真实事故原文、原始裁决和数学期望保持原样。要仅验收本轮选图与历史隔离，可显式执行：
-
-```bash
-python -m evals run-conversations --path evals/data/conversation_replay/new-image-review-conversation.json --scope image-context --samples 3 --config-snapshot var/admin/image-context-accepted-snapshot.json --out var/evals/image-context-conversation-final.json
-```
-
-`image-context`对3个TurnCheck使用原始截至当轮的历史和图片，执行生产`prepare_images()`（包含真实选图Agent）；断言目标资源/稳定引用、指代不模糊及图片语境旧助手原文未回灌。直接新附件优先走生产确定性路径。该模式不调用主答疑或数学Judge，报告明确记录`scope=image-context`、实际选图模型及全部检查点；仅执行选图断言，其他声明项逐项记为`not_run`，不把它们计为通过。默认`--scope full`仍保留完整执行与原始数学断言；不支持在image-context下冒用主模型variant。合成6轮仍完整执行真实主答疑与现有出口检查，后续历史继承真实生成回复，不能将兜底记为合格知识回复。
+`image-context`对TurnCheck使用原始截至当轮的历史和图片，执行生产`prepare_images()`（包含真实选图Agent）；断言目标资源/稳定引用、指代不模糊及图片语境旧助手原文未回灌。直接新附件优先走生产确定性路径。该模式不调用主答疑或数学Judge，报告明确记录`scope=image-context`、实际选图模型及全部检查点；仅执行选图断言，其他声明项逐项记为`not_run`，不把它们计为通过。默认`--scope full`仍保留完整执行与原始数学断言；不支持在image-context下冒用主模型variant。合成6轮仍完整执行真实主答疑与现有出口检查，后续历史继承真实生成回复，不能将兜底记为合格知识回复。
 
 快照必须从Admin导出；上述文件名只是本机导出位置，不是Git配置默认值。`run-conversations`、`run-episodes`出现失败或缺资源返回非零退出码；合成多轮首个失败即停止，未运行轮次不计通过。格式迁移后的哈希按统一契约重新计算，新增批次仍单独统计。
 
 ## 五、判分原则与协议
 
-生产同源回放见 `tutor_loop.py`；统一协议与确定性判分见 `evals/grading.py`，独立语义裁判适配见 `evals/semantic.py`。上下文仍由用例注入，绕过HTTP和数据库工作流，不等于端到端验证；`safety/`仅覆盖主组件安全动作。
+生产同源回放见 `tutor_loop.py`；统一协议与确定性判分见 `evals/grading.py`，独立语义裁判适配见 `evals/semantic.py`。上下文仍由用例注入，绕过HTTP和数据库工作流，不等于端到端验证；安全类用例仅覆盖主组件安全动作。
 
 ### 5.1 原则
 
@@ -274,13 +262,13 @@ v2迁移已完成。公共评分锚点放在`evals/rubrics.py`，逐例要求保
 
 | 入口 | 示例 | 说明 |
 | --- | --- | --- |
-| 校验 | `.venv/bin/python -m evals validate --category leak_judge` | 无模型调用；支持路径、类别、批次筛选 |
+| 校验 | `.venv/bin/python -m evals validate --category judge-calibration` | 无模型调用；支持路径、类别、批次筛选 |
 | 单步 | `.venv/bin/python -m evals run --batch seed-v1 --samples 5` | 默认 5 次采样、4 并发 |
 | 判官 | `.venv/bin/python -m evals run-judges --batch first-image-v1 --samples 3` | 默认 3 次采样、4 并发 |
 | 合成多轮 | `.venv/bin/python -m evals run-episodes --batch seed-v1 --samples 3` | 默认 3 次采样 |
 | 导出 | `.venv/bin/python -m evals export --thread <前缀>` | 只读数据库，输出候选 JSONL，不直接写维护数据集 |
 | 比较 | `.venv/bin/python -m evals compare <A.json> <B.json>` | 校验v2报告、数据哈希、批次、采样次数与评分器身份一致 |
-| 真实对话 | `.venv/bin/python -m evals run-conversations --path evals/data/conversation_replay --samples 3` | 固定历史；支持 `--case`、`--batch`、`--status`、`--model`、`--variant`、`--out` |
+| 真实对话 | `.venv/bin/python -m evals run-conversations --path evals/data --samples 3` | 固定历史；支持 `--case`、`--batch`、`--status`、`--model`、`--variant`、`--out` |
 
 - `run` 支持组件、类别、标签、批次、状态、用例筛选；判官和多轮支持各自的批次、状态、用例筛选。
 - `run --model/--variant` 必须指定 `--component`；仅影响评测进程。多轮也支持模型和 variant 对照，不修改生产配置。
@@ -293,14 +281,13 @@ v2迁移已完成。公共评分锚点放在`evals/rubrics.py`，逐例要求保
 
 ### 保护范围回归（protection-scope-v1）
 
-本批按证据来源和运行方式收敛为4个文件，均位于 `duxue-server/evals/data/`，标签为 proposed，需人工复核。单步目录不再重复保存这次回归。
+本批按证据来源和运行方式保留3个文件，均位于 `duxue-server/evals/data/`，标签为 proposed，需人工复核。单步目录不再重复保存这次回归。
 
 | 文件 | 用途 |
 | --- | --- |
-| `conversation_replay/protection-scope-conversation.json` | 真实铅笔题→细胞对比的6轮可见问答，保留原始ASR、历史错误回复、最终兜底，以及3版被拒候选和原Judge事实。重放最终知识轮并重新审核3版原候选。 |
-| `multi_turn/knowledge-switch-and-return.json` | 合成6轮：旧题提示→知识对比→返回旧题→提交答案；检查本轮保护范围、compare图和旧题保护不被释放。 |
-| `multi_turn/disguised-old-answer.json` | 合成6轮：伪装事实查询索旧题答案、知识回答夹带旧题结果、切换新推理题后索答案；检查仍需保护和提示。 |
-| `leak_judge/scope-atomic-homework.json` | 单独检查作业填空中的原子词义可直答，覆盖容易被“作业”上下文误伤的边界。 |
+| `answer-protection-safety/protection-scope-conversation.json` | 真实铅笔题→细胞对比的6轮可见问答，保留原始ASR、历史错误回复、最终兜底，以及3版被拒候选和原Judge事实。重放最终知识轮并重新审核3版原候选。 |
+| `answer-protection-safety/disguised-old-answer.json` | 合成6轮：伪装事实查询索旧题答案、知识回答夹带旧题结果、切换新推理题后索答案；检查仍需保护和提示。 |
+| `judge-calibration/scope-atomic-homework.json` | 单独检查作业填空中的原子词义可直答，覆盖容易被“作业”上下文误伤的边界。 |
 
 真实回放采用 `fixed_history`，来自起始请求与后续窗口的可核实片段，并非完整线程。被拒候选不写入可见历史；旧Judge没有保护范围字段，保持缺失，不用新期望篡改旧事实。合成多轮将实际采样的导师回复带入下一轮，但题目摘要、尝试次数等状态仍由用例逐轮注入，并非数据库状态机全链路测试。旧题状态不会因知识问答轮的范围false而释放，另由工作流回归测试验证。
 

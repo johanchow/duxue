@@ -64,41 +64,22 @@ def cmd_validate(args) -> int:
         if args.path
         else (dataset.DATA_DIR / args.category if args.category else dataset.DATA_DIR)
     )
-    judge_only = (
-        args.category == "leak_judge"
-        or path.name == "leak_judge"
-        or (path.is_file() and dataset.read_object(path).get("type") == "judge")
-    )
-    conversation_only = (
-        args.category == "conversation_replay"
-        or path.name == "conversation_replay"
-        or (
-            path.is_file()
-            and dataset.read_object(path).get("type") == "conversation_replay"
-        )
-    )
-    replays = conversations.load_conversations(path) if conversation_only else []
-    episode_only = (
-        args.category == "multi_turn"
-        or path.name == "multi_turn"
-        or (path.is_file() and dataset.read_object(path).get("type") == "episode")
-    )
-    cases = (
-        []
-        if judge_only or conversation_only or episode_only
-        else dataset.load_cases(path)
-    )
+    cases = dataset.load_cases(path)
+    multi = episodes.load_episodes(path)
+    judges = judge_boundary.load_cases(path)
+    replays = conversations.load_conversations(path)
     problems = dataset.validate(cases)
-    judges = judge_boundary.load_cases(path) if judge_only else []
-    if not args.path and not args.category:
+    problems.extend(episodes.validate_episodes(multi))
+    ids = (
+        [c.id for c in cases]
+        + [c.id for c in multi]
+        + [c["id"] for c in judges]
+        + [c.id for c in replays]
+    )
+    if len(ids) != len(set(ids)):
+        problems.append("duplicate case id across record types")
+    if path == dataset.DATA_DIR:
         problems.extend(dataset.validate_layout())
-        multi = episodes.load_episodes()
-        problems.extend(episodes.validate_episodes(multi))
-        judges = judge_boundary.load_cases()
-        replays = conversations.load_conversations()
-    else:
-        multi = episodes.load_episodes(path) if episode_only else []
-        problems.extend(episodes.validate_episodes(multi))
     if args.batch:
         cases = [case for case in cases if case.review_batch == args.batch]
         multi = [row for row in multi if row.review_batch == args.batch]
@@ -564,12 +545,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--path")
     p.add_argument(
         "--category",
-        choices=(
-            *dataset.SINGLE_TURN_CATEGORIES,
-            "leak_judge",
-            "conversation_replay",
-            "multi_turn",
-        ),
+        choices=dataset.CATEGORIES,
     )
     p.add_argument("--batch", help="仅统计指定人工复核批次，如 seed-v1")
     p.set_defaults(func=cmd_validate)

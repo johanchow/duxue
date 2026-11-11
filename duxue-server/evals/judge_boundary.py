@@ -22,17 +22,17 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
-from evals.dataset import ASSETS_DIR, DATA_DIR, read_object
+from evals.dataset import ASSETS_DIR, DATA_DIR, read_object, record_files
 
 os.environ["OTEL_SDK_DISABLED"] = "true"
 
-DATA = DATA_DIR / "leak_judge"
+DATA = DATA_DIR
 STUDENT_SAID = "这题怎么做"
 TASK_TITLE = "今日作业"
 
 
 def load_cases(path: Path = DATA) -> list[dict]:
-    files = [path] if path.is_file() else sorted(path.glob("*.json"))
+    files = record_files(path, "judge")
     from evals.dialogue import JudgeRecord
 
     cases = []
@@ -41,8 +41,8 @@ def load_cases(path: Path = DATA) -> list[dict]:
         if file.suffix != ".json" or file.stem != row.id:
             raise ValueError(f"{file.name}: each case must be <id>.json")
         cases.append(row.to_case())
-    if not cases or len({c["id"] for c in cases}) != len(cases):
-        raise ValueError("empty judge dataset or duplicate id")
+    if len({c["id"] for c in cases}) != len(cases):
+        raise ValueError("duplicate judge id")
     return cases
 
 

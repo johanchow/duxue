@@ -10,7 +10,7 @@ from evals import dataset, export
 
 def test_guard_seed_uses_a_real_message_envelope_without_fabricated_history():
     data = dataset.read_object(
-        dataset.DATA_DIR / "answer_protection/turn-guard-01.json"
+        dataset.DATA_DIR / "answer-protection-safety/turn-guard-01.json"
     )
     assert data["schema_version"] == "dialogue-eval.v2"
     assert data["source"]["kind"] == "synthetic"
@@ -63,7 +63,7 @@ def _turn_record():
     from evals.dialogue import TurnRecord
 
     return TurnRecord.model_validate(
-        dataset.read_object(dataset.DATA_DIR / "answer_protection/turn-guard-01.json")
+        dataset.read_object(dataset.DATA_DIR / "answer-protection-safety/turn-guard-01.json")
     )
 
 
@@ -248,7 +248,7 @@ def test_all_committed_files_share_contract_and_migration_is_idempotent():
     from evals.migrate import migrate_record, validate_record
 
     files = sorted(dataset.DATA_DIR.rglob("*.json"))
-    assert len(files) == 40
+    assert len(files) == 33
     for path in files:
         raw = dataset.read_object(path)
         assert raw["schema_version"] == "dialogue-eval.v2"
@@ -289,7 +289,7 @@ def test_episode_script_rejects_future_order_or_pre_authored_answers():
     from evals.dialogue import EpisodeRecord
 
     raw = dataset.read_object(
-        dataset.DATA_DIR / "multi_turn/episode-mathdial-balance.json"
+        dataset.DATA_DIR / "guidance-logic/episode-mathdial-balance.json"
     )
     for mutation in ("reorder", "assistant"):
         changed = copy.deepcopy(raw)
@@ -308,7 +308,7 @@ def test_episode_migration_preserves_branches_and_state():
     from evals.migrate import migrate_record
 
     target = dataset.read_object(
-        dataset.DATA_DIR / "multi_turn/episode-mathdial-balance.json"
+        dataset.DATA_DIR / "guidance-logic/episode-mathdial-balance.json"
     )
     old = copy.deepcopy(target)
     old["schema_version"] = "dialogue-eval.v1"
@@ -330,7 +330,7 @@ def test_judge_contract_keeps_candidate_and_reference_outside_visible_messages()
     from evals import judge_boundary
     from evals.dialogue import JudgeRecord
 
-    raw = dataset.read_object(dataset.DATA_DIR / "leak_judge/atomic-fact.json")
+    raw = dataset.read_object(dataset.DATA_DIR / "judge-calibration/atomic-fact.json")
     raw["checks"][0]["input_snapshot"]["current_request"] = "新的实际请求"
     received = []
     judge_boundary.run_cases(
@@ -352,13 +352,13 @@ def test_cli_validates_each_file_type_and_episode_category(capsys):
     from evals.__main__ import main
 
     for relative in (
-        "answer_protection/turn-guard-01.json",
-        "multi_turn/episode-mathdial-balance.json",
-        "leak_judge/atomic-fact.json",
-        "conversation_replay/answer-feedback-conversation.json",
+        "answer-protection-safety/turn-guard-01.json",
+        "guidance-logic/episode-mathdial-balance.json",
+        "judge-calibration/atomic-fact.json",
+        "answer-protection-safety/protection-scope-conversation.json",
     ):
         assert main(["validate", "--path", str(dataset.DATA_DIR / relative)]) == 0
-    assert main(["validate", "--category", "multi_turn"]) == 0
+    assert main(["validate", "--category", "guidance-logic"]) == 0
 
 
 def test_hash_changes_with_source_evidence_even_when_model_input_is_equal():
@@ -379,7 +379,7 @@ def test_episode_projection_preserves_snapshot_origin():
     from evals.episodes import turn_case
 
     raw = dataset.read_object(
-        dataset.DATA_DIR / "multi_turn/episode-mathdial-balance.json"
+        dataset.DATA_DIR / "guidance-logic/episode-mathdial-balance.json"
     )
     raw["checks"][0]["input_snapshot"]["origin"] = "reconstructed"
     episode = EpisodeRecord.model_validate(raw).to_episode()

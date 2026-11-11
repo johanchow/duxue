@@ -14,31 +14,14 @@ from evals.schema import ASSET_NAME, MAX_WINDOW, EvalCase
 ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = Path(__file__).resolve().parent / "data"
 CATEGORIES = (
-    "scene_routing",
-    "real_regression",
-    "answer_protection",
-    "pronunciation_context",
-    "visual",
-    "fact_vs_reasoning",
-    "teaching_quality",
-    "safety",
-    "leak_judge",
-    "multi_turn",
-    "conversation_replay",
+    "teaching-correctness",
+    "guidance-logic",
+    "answer-protection-safety",
+    "orchestration-tools",
+    "judge-calibration",
 )
-SINGLE_TURN_CATEGORIES = tuple(
-    c
-    for c in CATEGORIES
-    if c not in {"multi_turn", "leak_judge", "conversation_replay"}
-)
-CATEGORY_TAGS = {
-    "answer_protection": "answer-protection",
-    "pronunciation_context": "pronounce",
-    "visual": "visual",
-    "fact_vs_reasoning": "depth",
-    "teaching_quality": "rubric",
-    "safety": "safety",
-}
+SINGLE_TURN_CATEGORIES = CATEGORIES
+RECORD_TYPES = {"single_turn", "episode", "judge", "conversation_replay"}
 ASSETS_DIR = ROOT / "var" / "eval-assets"
 RESULTS_DIR = ROOT / "var" / "evals"
 
@@ -112,23 +95,26 @@ def read_object(path: Path) -> dict:
     return data
 
 
-def _case_files(path: Path) -> list[Path]:
-    if path.is_file():
-        return [path]
-    return sorted(
-        file
-        for file in path.rglob("*.json")
-        if not {"multi_turn", "leak_judge", "conversation_replay"}.intersection(
-            file.relative_to(path).parts
-        )
-    )
+def record_files(path: Path, record_type: str) -> list[Path]:
+    """Select execution format independently of the purpose-based directory."""
+    if not path.exists():
+        raise ValueError(f"dataset path does not exist: {path}")
+    files = [path] if path.is_file() else sorted(path.rglob("*.json"))
+    selected = []
+    for file in files:
+        kind = read_object(file).get("type")
+        if kind not in RECORD_TYPES:
+            raise ValueError(f"{file.name}: unknown record type: {kind}")
+        if kind == record_type:
+            selected.append(file)
+    return sorted(selected, key=lambda file: (file.name, str(file)))
 
 
 def load_cases(path: Path | None = None) -> list[EvalCase]:
     """Single-turn cases from one file or a category tree, in filename order."""
     path = path if path is not None else DATA_DIR
     cases: list[EvalCase] = []
-    for file in _case_files(path):
+    for file in record_files(path, "single_turn"):
         try:
             record = read_object(file)
             from evals.dialogue import TurnRecord
@@ -163,7 +149,6 @@ def validate_layout(path: Path = DATA_DIR) -> list[str]:
         ):
             problems.append(f"unexpected dataset file: {file.relative_to(path)}")
             continue
-        category = file.parent.name
         try:
             record = read_object(file)
         except ValueError as error:
@@ -171,7 +156,7 @@ def validate_layout(path: Path = DATA_DIR) -> list[str]:
             continue
         if record.get("id") != file.stem:
             problems.append(f"{file.relative_to(path)}: filename must match id")
-        if category == "conversation_replay":
+        if record.get("type") == "conversation_replay":
             from evals.conversations import load_conversations
 
             try:
@@ -179,7 +164,7 @@ def validate_layout(path: Path = DATA_DIR) -> list[str]:
             except ValueError as error:
                 problems.append(str(error))
             continue
-        if category == "multi_turn":
+        if record.get("type") == "episode":
             from evals.episodes import load_episodes, validate_episodes
 
             try:
@@ -187,7 +172,7 @@ def validate_layout(path: Path = DATA_DIR) -> list[str]:
             except ValueError as error:
                 problems.append(str(error))
             continue
-        if category == "leak_judge":
+        if record.get("type") == "judge":
             from evals.judge_boundary import load_cases as load_judge_cases
 
             try:
@@ -196,20 +181,10 @@ def validate_layout(path: Path = DATA_DIR) -> list[str]:
                 problems.append(str(error))
             continue
         try:
-            case = load_cases(file)[0]
+            load_cases(file)[0]
         except (ValueError, IndexError) as error:
             problems.append(str(error))
             continue
-        if category == "scene_routing" and case.component != "companion.intent":
-            problems.append(f"{case.id}: scene_routing requires companion.intent")
-        elif category == "real_regression" and (
-            case.component != "tutoring.turn" or case.source != "real"
-        ):
-            problems.append(f"{case.id}: real_regression requires a real tutoring turn")
-        elif category in CATEGORY_TAGS and CATEGORY_TAGS[category] not in case.tags:
-            problems.append(
-                f"{case.id}: missing category tag {CATEGORY_TAGS[category]}"
-            )
     return problems
 
 

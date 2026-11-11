@@ -13,7 +13,7 @@ from evals import dataset
 from evals.grading import Grading, OUTCOMES
 from evals.schema import Context, EvalCase, SnapshotOrigin, Strict, Utterance
 
-EPISODES_DIR = dataset.DATA_DIR / "multi_turn"
+EPISODES_DIR = dataset.DATA_DIR
 Origin = Literal["MathDial", "SocraTeach", "CoMTA", "self"]
 
 
@@ -54,9 +54,7 @@ class Episode(Strict):
 
 
 def load_episodes(path: Path = EPISODES_DIR) -> list[Episode]:
-    if not path.exists():
-        return []
-    files = [path] if path.is_file() else sorted(path.glob("*.json"))
+    files = dataset.record_files(path, "episode")
     rows: list[Episode] = []
     for file in files:
         try:
