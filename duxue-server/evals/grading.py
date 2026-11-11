@@ -156,6 +156,7 @@ class SemanticCheck(Strict):
 
 
 class Grading(Strict):
+    native_evaluators: list[Text] = Field(default_factory=list)
     deterministic: list[FieldCheck | ToolCalled | ParameterMatch | NoForbiddenTools] = (
         Field(min_length=1)
     )
@@ -194,7 +195,7 @@ class Grading(Strict):
         ):
             raise ValueError("tool assertions require tutoring.turn capture")
         if component == "tutoring.turn":
-            if not self.model_graded:
+            if not self.model_graded and not self.native_evaluators:
                 raise ValueError("teaching responses require model_graded")
             boundaries = [
                 c

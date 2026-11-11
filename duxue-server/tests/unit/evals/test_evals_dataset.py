@@ -6,7 +6,7 @@ import json
 
 import pytest
 from evals import dataset, episodes
-from evals.__main__ import main
+from evals.__main__ import historical_main as main
 from evals.schema import EvalCase
 from tests.support.eval_cases import record_for_case
 

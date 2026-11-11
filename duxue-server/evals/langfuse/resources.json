@@ -28,54 +28,66 @@
       "id": "cmwbzekjo00sdad0e24qrwbdo",
       "name": "eval.case_requirements",
       "type": "LLM_AS_JUDGE",
-      "version": 3,
+      "version": 4,
       "model": "qwen3.8-flash",
-      "assignedRuleIds": [],
+      "assignedRuleIds": [
+        "cmwc7ymes00j2ad0je6uihr40"
+      ],
       "provider": "duxue-dashscope"
     },
     {
       "id": "cmwbzekax00pnad0jzhaopmau",
       "name": "eval.safety",
       "type": "LLM_AS_JUDGE",
-      "version": 3,
+      "version": 4,
       "model": "qwen3.8-flash",
-      "assignedRuleIds": [],
+      "assignedRuleIds": [
+        "cmwc7ym6y00ixad0j3fzmngxs"
+      ],
       "provider": "duxue-dashscope"
     },
     {
       "id": "cmwbzek2i00pfad0jo7qlfwal",
       "name": "eval.answer_protection",
       "type": "LLM_AS_JUDGE",
-      "version": 3,
+      "version": 4,
       "model": "qwen3.8-flash",
-      "assignedRuleIds": [],
+      "assignedRuleIds": [
+        "cmwc7ylz402y6ad0kk52iuswg"
+      ],
       "provider": "duxue-dashscope"
     },
     {
       "id": "cmwbzeju900muad0jz57lnour",
       "name": "eval.guidance_logic",
       "type": "LLM_AS_JUDGE",
-      "version": 3,
+      "version": 4,
       "model": "qwen3.8-flash",
-      "assignedRuleIds": [],
+      "assignedRuleIds": [
+        "cmwc7ylnk02svad0j6l5e52o2"
+      ],
       "provider": "duxue-dashscope"
     },
     {
       "id": "cmwbzeajr00paad0jqtv3u05f",
       "name": "eval.teaching_correctness",
       "type": "LLM_AS_JUDGE",
-      "version": 3,
+      "version": 4,
       "model": "qwen3.8-flash",
-      "assignedRuleIds": [],
+      "assignedRuleIds": [
+        "cmwc7ylgg030uad0l03uccsjz"
+      ],
       "provider": "duxue-dashscope"
     },
     {
       "id": "cmwbzd15b00kuad0jss4pe410",
       "name": "eval.deterministic_pass",
       "type": "CODE",
-      "version": 1,
+      "version": 2,
       "model": null,
-      "assignedRuleIds": []
+      "assignedRuleIds": [
+        "cmwc7yky900i1ad0exvv3jz07"
+      ]
     },
     {
       "id": "cmvs1ew650421ad0kjp966ok7",
@@ -84,12 +96,12 @@
       "version": 2,
       "model": null,
       "assignedRuleIds": [
-        "cmvs1gz9q02s8ad0kudrqeo15",
-        "cmvs1gzzk0a27ad0mcefwxzyy",
-        "cmvs1h1540a2cad0mzrrvn5wb",
-        "cmvs1h25z02m5ad0e5r6ao18q",
+        "cmvs1h49802vead0ds89jjpd1",
         "cmvs1h34u0a2had0msimly7yw",
-        "cmvs1h49802vead0ds89jjpd1"
+        "cmvs1h25z02m5ad0e5r6ao18q",
+        "cmvs1h1540a2cad0mzrrvn5wb",
+        "cmvs1gzzk0a27ad0mcefwxzyy",
+        "cmvs1gz9q02s8ad0kudrqeo15"
       ]
     },
     {
@@ -104,6 +116,12 @@
     }
   ],
   "scoreConfigs": [
+    {
+      "id": "a17394d7-5771-429f-be37-b662a5d27c01",
+      "name": "eval.latency_ms",
+      "type": "NUMERIC",
+      "archived": false
+    },
     {
       "id": "fb352394-03ae-44ae-b19e-f76fb73d9b04",
       "name": "eval.answer_protection",
@@ -240,7 +258,8 @@
     }
   ],
   "pending": [
-    "Dataset item sync, experiment execution and scorer integration not performed."
+    "Human calibration and automatic annotation queue enrollment remain pending.",
+    "Langfuse rejects image/jpeg for the current custom DashScope models; image evaluation awaits a compatible connection."
   ],
   "annotationPolicy": {
     "mode": "shared",
@@ -263,5 +282,20 @@
       "max_tokens": 1536
     },
     "credentialSource": "Server VLM_API_KEY; secret stored only in Langfuse connection"
+  },
+  "sourceOfTruth": {
+    "datasets": "Langfuse",
+    "evaluators": "Langfuse",
+    "scores": "Langfuse",
+    "git": "Runner, protocol, tests and read-only bootstrap/audit snapshots"
+  },
+  "evaluationEnvironment": {
+    "default": "offline-evaluation",
+    "legacy": "sdk-experiment",
+    "ruleEnvironments": [
+      "offline-evaluation",
+      "sdk-experiment"
+    ],
+    "sdkTaskOverride": true
   }
 }

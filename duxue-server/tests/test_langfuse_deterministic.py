@@ -63,3 +63,11 @@ def test_unexecuted_or_missing_envelope_raises():
         run([{'id':'a','field':'outcome','op':'eq','expected':'answer'}], {'outcome':'answer'}, status='not_run')
     with pytest.raises(ValueError, match='envelope'):
         native.evaluate(Obj(observation=Obj(metadata={})))
+
+def test_output_envelope():
+    result = native.evaluate(Obj(observation=Obj(output={'evaluation': {
+        'schema_version': 'duxue-eval-observation.v1', 'execution_status':'completed',
+        'grading': {'deterministic':[{'id':'x','field':'leaks','op':'eq','expected':False}]},
+        'observed': {'leaks':False},
+    }})))
+    assert result.scores[0].value is True

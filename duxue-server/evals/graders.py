@@ -18,6 +18,8 @@ def observations(obs, latency_ms=0):
 
 
 def grade_result(case, obs, *, judge=None, latency_ms=0, meta=None):
+    if case.grading.native_evaluators:
+        raise ValueError("Native evaluators must execute in Langfuse")
     return evaluate(case.grading, observations(obs, latency_ms), judge=judge, meta=meta)
 
 

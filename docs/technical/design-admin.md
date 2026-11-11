@@ -144,7 +144,7 @@ Admin本地唯一环境文件是`duxue-admin/.env`，显式提供`ADMIN_DATABASE
 
 ## Evaluation / Langfuse
 
-Admin 不另建评测结果库。Git 管理用例/rubric，Python runner 执行确定性断言与独立裁判，Langfuse 管理实验、评分、追踪和人工复核；Admin 保留既有配置/发布事实源。
+Admin 不另建评测结果库。Langfuse 维护用例、rubric、原生 Evaluator、实验、评分和人工复核；Python runner 执行待测代码、传输证据并收取云端分数，Git 只维护执行器与只读初始化快照；Admin 保留既有配置/发布事实源。
 
 | 菜单 | 实现与数据归属 |
 |---|---|
@@ -157,7 +157,7 @@ Admin 不另建评测结果库。Git 管理用例/rubric，Python runner 执行�
 
 ### 聚合协议
 
-以任务级 canonical Score 为统一输入，`source=API`；每任务/指标仅提交一个有效结果。新协议需要 runner/生产采样器显式上报，不会从旧日志自动推导。原始检查点结果、rubric、裁判解释仍归 Langfuse 实验/Trace，不另存 Admin。
+读取 `source=API/EVAL`，排除人工标注。任务成功/状态为 runner 的 API 汇总；教学正确性、引导逻辑、保护、安全与工具断言为原生 EVAL 检查点评分，不混作任务级质量。每个维度显示自己的样本数，不会从旧日志自动推导。原始检查点结果、rubric、裁判解释仍归 Langfuse 实验/Trace，不另存 Admin。
 
 | 指标 | Score / 口径 |
 |---|---|
@@ -166,34 +166,34 @@ Admin 不另建评测结果库。Git 管理用例/rubric，Python runner 执行�
 | 教学正确性 / 引导逻辑性 | `eval.teaching_correctness` / `eval.guidance_logic`，分别为NUMERIC 1–5，不再合成笼统质量分 |
 | 答案保护 | `eval.answer_protection`，BOOLEAN，与内容安全分别评分 |
 | Tool Correctness / Safety | `eval.tool_correctness` 为声明的工具确定性断言子集；`eval.safety` 为独立内容安全，均为BOOLEAN |
-| Latency | 根 observation 延迟 P50/P95；生产限定 `agent.turn`，毫秒转换为秒 |
+| Latency | 生产根 `agent.turn` 延迟 P50/P95；离线使用 `eval.latency_ms` 均值，排除云端评分等待；毫秒转秒 |
 | Cost / Task | `eval.cost_per_task`，完整任务美元成本均值；计价不全不得报 0 |
 | 裁判成本 / 状态 | `eval.grading_cost` 单独展示均值；`eval.status` 为 pass/fail/error/not_run 的 CATEGORICAL |
 
 补充定义：`eval.case_requirements`（BOOLEAN，逐例语义要求）、`eval.deterministic_pass`（BOOLEAN，确定性断言汇总）、`review.disposition`（CATEGORICAL：confirmed/judge_error/case_issue/insufficient_evidence）。状态分类编码不是分数，不取均值；人工评分保留来源，不覆盖自动结果。检查点评分附对应 observation，任务级成功附任务主体；任务级质量聚合规则未确定前不得混用两个层级。
 
-上述共13个正式 Score Config 已在 Langfuse 建立；另保留6个tutor.*监测定义，归档旧eval.answer_quality。`eval.overall`及两项成本仅预留定义，须先实现可靠口径与采集再上报；创建定义不启用自动评测、不产生实际分数。Latency 复用 observation，不再建同名 Score。上报时绑定 configId 验证类型/范围，整数评分约束由 grader 校验。
+上述共14个正式 Score Config 已在 Langfuse 建立；另保留6个tutor.*监测定义，归档旧eval.answer_quality。`eval.overall`及两项成本仅预留定义，须先实现可靠口径与采集再上报；创建定义不启用自动评测、不产生实际分数。离线延迟使用新增 `eval.latency_ms`，生产仍复用 observation。API 汇总绑定 configId；原生评分以同名 Evaluator 的输出类型/范围校验，人工队列引用同名 Score Config，不复制原生分数为另一份 API 分数。
 
 评分显示样本数量；缺失/非法范围显示 `—`，不拿门禁放行率当安全或质量、不把 error/not_run 算作通过。百分比指标差值为百分点，Overall 为分数差，延迟/成本为相对变化；基线为 0 时相对变化未知。Production 显式过滤 `environment` 且排除实验，避免测试混入；评测实验按 experimentId 隔离。缺乏同口径、同用例版本的实验不支持因果归因。
 
 实验 metadata 使用 `config_digest`（或 `config_snapshot.digest`）、`git_sha/code_version`、`dataset_version/dataset_hash`、`grader_version`、`rubric_digest/rubric_version`。只按有效配置摘要关联 Admin，不按名称猜测。草稿修改会清除校验摘要，旧实验不会继续关联新草稿内容。
 
-本轮撤回自建报告导入、私有产物存储、复核/对比 CRUD、`eval_runs/eval_reviews` 与 010 迁移。旧测试记录先备份再撤回；不删除 Langfuse 数据、不新增发布门禁。现有离线报告仍在 Server 本地，尚未自动同步成 Langfuse Experiment；在完成显式上报前，实验与质量指标可为空。
+本轮撤回自建报告导入、私有产物存储、复核/对比 CRUD、`eval_runs/eval_reviews` 与 010 迁移。旧测试记录先备份再撤回；不删除 Langfuse 数据、不新增发布门禁。新统一 runner 已将执行关联 Langfuse Experiment，并保留本地审计报告；历史本地报告不会自动补传。
 
 API依据：[Metrics API](https://langfuse.com/docs/metrics/features/metrics-api)；[历史访问范围裁剪实现](https://github.com/langfuse/langfuse/blob/main/web/src/pages/api/public/v2/metrics.ts)。当前聚合不轮询，避免频繁消耗 Metrics API 配额。
 
 ### Langfuse资源初始化（2026-11-11）
 
-已创建5个按目的划分的数据集：教学正确性、引导逻辑性、答案保护与安全、编排与工具正确性、裁判校准；单步/多轮/真实回放作为metadata。Dataset名称已去掉重复的duxue/前缀，直接位于项目根目录，ID不变。集合当前为空，用例仍由Git单向同步，不在两处独立维护。资源ID见[初始化清单](../../duxue-server/evals/langfuse/resources.json)。
+已创建5个按目的划分的数据集：教学正确性、引导逻辑性、答案保护与安全、编排与工具正确性、裁判校准；单步/多轮/真实回放作为metadata。Dataset名称已去掉重复的duxue/前缀，直接位于项目根目录，ID不变。已导入41个用例、64个检查点。用例在 Langfuse 维护，Git 目录仅为初始化快照。资源ID见[初始化清单](../../duxue-server/evals/langfuse/resources.json)。
 
-6个核心Evaluator已保存：`eval.deterministic_pass`为Python CODE，另5个LLM Judge对应教学正确性、引导逻辑性、答案保护、内容安全、用例要求符合性。既有2个生产流程CODE不变，合计8个；新增Evaluator未绑定自动规则。5个语义定义已绑定 `duxue-dashscope / qwen3.8-flash`（版本3），temperature=0、max_tokens=1536；使用Server同源DashScope地址和经授权复用的模型凭证，密钥仅保存在Langfuse连接，仓库不保存。5个定义的合成文本连通性测试成功，未做真实质量校准或图片验证。原生定义快照见[judges.json](../../duxue-server/evals/langfuse/judges.json)，部署代码见[deterministic.py](../../duxue-server/evals/langfuse/deterministic.py)。修改需发布新版本，不能只改本地文件。
+6个核心Evaluator已保存：`eval.deterministic_pass`为Python CODE，另5个LLM Judge对应教学正确性、引导逻辑性、答案保护、内容安全、用例要求符合性。既有2个生产流程CODE不变，合计8个；6个核心 Evaluator 各有一条独立离线规则，采样率1；匹配 offline-evaluation（兼容历史 sdk-experiment）的 eval.checkpoint 及适用维度标记；新运行使用前者，使 Scores 默认可见。5个语义定义已绑定 `duxue-dashscope / qwen3.8-flash`（版本4），temperature=0、max_tokens=1536；使用Server同源DashScope地址和经授权复用的模型凭证，密钥仅保存在Langfuse连接，仓库不保存。5个定义的文本评测链路已验证；未做人工质量校准。图片实测被平台模型能力检查拒绝，兼容连接待确认，相关结果保留为 error。原生定义快照见[judges.json](../../duxue-server/evals/langfuse/judges.json)，Code初始化快照见[deterministic.py](../../duxue-server/evals/langfuse/deterministic.py)。修改需发布新版本，不能只改本地文件。
 
 人工复核按用户确认共用1个现有队列 `duxue/offline-calibration`，同时用于离线校准与生产抽检，绑定5个语义评分定义和review.disposition。保留远端队列名称/ID；当前连接工具及Public API未提供队列重命名接口。后续入队应在源记录metadata使用 `review_source=offline-calibration|production-sampling` 区分用途，不复用Score的source字段（API/EVAL/ANNOTATION）。资源清单已登记共享策略；自动入队及来源标记写入尚未实现，未增加成员权限或创建真实标注。
 
-CODE输入协议：目标observation的`metadata.duxue_eval`提供`schema_version=duxue-eval-observation.v1`、`execution_status=completed`、`grading.deterministic`、`observed`及`capture_complete`。`observed`使用v2登记字段（包括带点字段名），工具为`tool_calls:[{name,args}]`，工具断言还需`capture_complete.tool_calls=true`；缺证据/未知字段/非法类型抛执行错误，不填false或通过。每次只判一个检查点，逐项证据随Score metadata保存，不输出完整任务成功或总状态，避免与最终聚合抢写。
+CODE输入协议：目标observation的`output.evaluation`提供`schema_version=duxue-eval-observation.v1`、`execution_status=completed`、`grading.deterministic`、`observed`及`capture_complete`。`observed`使用v2登记字段（包括带点字段名），工具为`tool_calls:[{name,args}]`，工具断言还需`capture_complete.tool_calls=true`；缺证据/未知字段/非法类型抛执行错误，不填false或通过。每次只判一个检查点，逐项证据随Score metadata保存，不输出完整任务成功或总状态，避免与最终聚合抢写。
 
 LLM调用需先由调度器检查维度适用性、已完成状态、必要图片/历史和已解析rubric；只映射目标observation的input/output/metadata，不会自动收集子链路。布尔/数值输出没有可靠的未知态，缺证据必须在调用前记error，不能依靠提示词强行猜分。
 
-本次仅完成资源初始化；runner/数据同步/评分聚合/人工入队尚未接通。Admin现有实现仍读取旧API来源指标，需要后续适配两个教学维度及原生EVAL来源，并严格分开任务/检查点和人工来源，不能把创建成功当作看板数据链路已完成。旧本地grader暂保留，待同源校准后再退出重复判分路径。
+统一 runner、Dataset 迁移、原生评分与 Admin 新维度聚合已接通，旧本地 grader 仅供历史协议测试，不再由默认执行入口调用。人工校准和自动入队仍未完成。运行协议、复现与限制以[离线评测设计](eval-offline.md)为准。
 
 模型接入验证：Server `.env` 的 `qwen3-vl-flash-2026-01-22` 在Langfuse实调返回Model not exist；供应商模型列表确认Server既有裁判快照使用的 `qwen3.8-flash` 可用，因此改绑后测试成功。没有修改Server `.env`、生产配置或自动评测规则。合成测试使用 `eval-setup-smoke` 环境，结果在 ignored `duxue-server/var/evals/langfuse-connection/results.json`；此测试证明连接及结构化输出可用，不代表模型/裁判质量已验收。

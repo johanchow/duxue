@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 
-# The evaluation must never export traces or child content to the observability backend.
+# Historical offline commands disable telemetry; hosted run enables its explicit Langfuse client.
 os.environ["OTEL_SDK_DISABLED"] = "true"
 
 import argparse
@@ -537,7 +537,7 @@ def cmd_compare(args) -> int:
     return 0
 
 
-def main(argv: list[str] | None = None) -> int:
+def historical_main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m evals")
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -653,6 +653,16 @@ def main(argv: list[str] | None = None) -> int:
         finally:
             _record.reset(token)
     return args.func(args)
+
+
+def main(argv=None):
+    args = list(sys.argv[1:] if argv is None else argv)
+    if args and args[0] in {"validate", "compare", "export"}:
+        return historical_main(args)
+    if args and args[0] == "snapshot":
+        args[0] = "export"
+    from evals.platform.__main__ import main as hosted_main
+    return hosted_main(args)
 
 
 if __name__ == "__main__":

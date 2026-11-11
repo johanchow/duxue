@@ -21,13 +21,32 @@ export const metricPolicy = [
     description: '必需要求全部满足的任务比例；运行成功或门禁放行不能替代。',
   },
   {
-    id: 'answer_quality',
-    label: 'Answer Quality',
-    score: 'eval.answer_quality',
+    id: 'teaching_correctness',
+    label: 'Teaching Correctness',
+    score: 'eval.teaching_correctness',
     unit: 'percent',
     range: [1, 5],
     scale: 20,
-    description: '独立教学质量评分均值 / 5 × 100；当前仍需人工校准。',
+    description: '检查点教学正确性评分均值 / 5 × 100；当前仍需人工校准。',
+  },
+  {
+    id: 'guidance_logic',
+    label: 'Guidance Logic',
+    score: 'eval.guidance_logic',
+    unit: 'percent',
+    range: [1, 5],
+    scale: 20,
+    description:
+      '检查点引导逻辑性评分均值 / 5 × 100；与知识正确性独立，仍需人工校准。',
+  },
+  {
+    id: 'answer_protection',
+    label: 'Answer Protection',
+    score: 'eval.answer_protection',
+    unit: 'percent',
+    range: [0, 1],
+    scale: 100,
+    description: '独立评价实际交付是否遵守答案保护要求，不使用生产门禁通过率。',
   },
   {
     id: 'tool_correctness',
@@ -36,7 +55,8 @@ export const metricPolicy = [
     unit: 'percent',
     range: [0, 1],
     scale: 100,
-    description: '适用任务中工具选择、参数和结果使用正确的比例。',
+    description:
+      '已声明工具调用、参数与禁用工具断言的通过比例；不代表工具结果语义正确。',
   },
   {
     id: 'safety',
@@ -45,8 +65,7 @@ export const metricPolicy = [
     unit: 'percent',
     range: [0, 1],
     scale: 100,
-    description:
-      '独立审核实际交付的安全/答案保护要求，不能使用生产门禁放行率。',
+    description: '独立审核实际交付的安全要求，不能使用生产门禁放行率。',
   },
   {
     id: 'latency',
@@ -104,7 +123,15 @@ function queries(
   production: boolean,
 ) {
   const base = { fromTimestamp: from, toTimestamp: to };
-  const scoreFilters = [...filters, filter('source', 'API')];
+  const scoreFilters = [
+    ...filters,
+    {
+      column: 'source',
+      operator: 'any of',
+      value: ['API', 'EVAL'],
+      type: 'stringOptions',
+    },
+  ];
   const scores = (
     view: string,
     names: string[],
@@ -151,7 +178,9 @@ function queries(
     root,
     numeric: scores('scores-numeric', [
       'eval.overall',
-      'eval.answer_quality',
+      'eval.teaching_correctness',
+      'eval.guidance_logic',
+      'eval.latency_ms',
       'eval.cost_per_task',
       'eval.grading_cost',
     ]),
@@ -159,6 +188,7 @@ function queries(
       'eval.task_success',
       'eval.tool_correctness',
       'eval.safety',
+      'eval.answer_protection',
     ]),
     status: scores('scores-categorical', ['eval.status'], ['stringValue']),
     trend: { ...root, timeDimension: { granularity: 'day' } },
@@ -184,6 +214,7 @@ function number(v: unknown): number | null {
 }
 export function periodSummary(data: {
   taskCount?: number;
+  offline?: boolean;
   root: Row[];
   numeric: Row[];
   boolean: Row[];
@@ -194,6 +225,22 @@ export function periodSummary(data: {
     taskCount = data.taskCount ?? number(root.count_count) ?? 0,
     scores = [...data.numeric, ...data.boolean];
   const metrics: Metric[] = metricPolicy.map((p) => {
+    if (p.id === 'latency' && data.offline) {
+      const row = data.numeric.find((s) => s.name === 'eval.latency_ms');
+      const valid =
+        row &&
+        row.count_count > 0 &&
+        number(row.avg_value) !== null &&
+        row.min_value >= 0;
+      return {
+        id: p.id,
+        label: 'Execution Latency (avg)',
+        unit: p.unit,
+        value: valid ? row.avg_value / 1000 : null,
+        samples: row?.count_count ?? 0,
+        description: '实际执行耗时均值；排除云端评分等待。',
+      };
+    }
     if (p.id === 'latency')
       return {
         id: p.id,
@@ -242,7 +289,7 @@ export function periodSummary(data: {
     metrics,
     status,
     p95Seconds:
-      root.count_count > 0 && number(root.p95_latency) !== null
+      !data.offline && root.count_count > 0 && number(root.p95_latency) !== null
         ? root.p95_latency / 1000
         : null,
     gradingCost:
@@ -267,7 +314,7 @@ export function experimentIdentity(metadata: Row | null | undefined) {
     d = m.config_digest ?? m.config_snapshot?.digest;
   return {
     configDigest: typeof d === 'string' && /^[0-9a-f]{64}$/.test(d) ? d : null,
-    codeVersion: m.git_sha ?? m.code_version ?? null,
+    codeVersion: m.git_sha ?? m.git_commit ?? m.code_version ?? null,
     datasetVersion: m.dataset_version ?? m.dataset_hash ?? null,
     graderVersion: m.grader_version ?? null,
     rubricVersion: m.rubric_digest ?? m.rubric_version ?? null,

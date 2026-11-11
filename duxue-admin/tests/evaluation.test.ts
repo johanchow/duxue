@@ -20,7 +20,7 @@ test('missing scores and cost remain unknown, zero is real, latency is milliseco
     root: [{ count_count: 4, p50_latency: 2800, p95_latency: 6000 }],
     numeric: [
       {
-        name: 'eval.answer_quality',
+        name: 'eval.teaching_correctness',
         avg_value: 4,
         count_count: 3,
         min_value: 3,
@@ -46,7 +46,10 @@ test('missing scores and cost remain unknown, zero is real, latency is milliseco
     status: [],
   });
   assert.equal(s.metrics.find((m) => m.id === 'task_success')?.value, 0);
-  assert.equal(s.metrics.find((m) => m.id === 'answer_quality')?.value, 80);
+  assert.equal(
+    s.metrics.find((m) => m.id === 'teaching_correctness')?.value,
+    80,
+  );
   assert.equal(s.metrics.find((m) => m.id === 'latency')?.value, 2.8);
   assert.equal(s.metrics.find((m) => m.id === 'cost')?.value, 0);
   assert.equal(s.metrics.find((m) => m.id === 'safety')?.value, null);
@@ -120,4 +123,32 @@ test('client binds API key project, coalesces reads and never follows redirects 
       (e as Error).message.includes('401') &&
       !(e as Error).message.includes('secret upstream'),
   );
+});
+test('native scores use the two teaching dimensions and exclude grading wait from offline latency', () => {
+  const q = productionQueries(
+    'production',
+    '2026-11-01T00:00:00Z',
+    '2026-11-08T00:00:00Z',
+  );
+  assert.equal(JSON.stringify(q).includes('eval.answer_quality'), false);
+  assert.ok(JSON.stringify(q.numeric).includes('EVAL'));
+  const s = periodSummary({
+    offline: true,
+    root: [{ count_count: 1, p50_latency: 120000 }],
+    numeric: [
+      {
+        name: 'eval.latency_ms',
+        avg_value: 2800,
+        min_value: 2800,
+        max_value: 2800,
+        count_count: 1,
+      },
+    ],
+    boolean: [],
+    status: [],
+  });
+  assert.equal(s.metrics.find((m) => m.id === 'latency')?.value, 2.8);
+  assert.equal(s.p95Seconds, null);
+  assert.ok(s.metrics.some((m) => m.id === 'guidance_logic'));
+  assert.ok(s.metrics.some((m) => m.id === 'teaching_correctness'));
 });

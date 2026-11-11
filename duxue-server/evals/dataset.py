@@ -12,7 +12,7 @@ from pydantic import ValidationError
 from evals.schema import ASSET_NAME, MAX_WINDOW, EvalCase
 
 ROOT = Path(__file__).resolve().parents[1]
-DATA_DIR = Path(__file__).resolve().parent / "data"
+DATA_DIR = Path(__file__).resolve().parent / "bootstrap" / "2026-11-11"
 CATEGORIES = (
     "teaching-correctness",
     "guidance-logic",

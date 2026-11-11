@@ -1,11 +1,11 @@
 """Standalone Langfuse Code Evaluator; runtime supplies Score/EvaluationResult.
 
 No app imports or external packages. Runner supplies checkpoint evidence in
-metadata.duxue_eval; missing capture must never be treated as an empty trace.
+output.evaluation; missing capture must never be treated as an empty trace.
 """
 import math
 
-VERSION = 'duxue-deterministic.v1'
+VERSION = 'duxue-deterministic.v2'
 
 OUTCOMES = {
     "answer",
@@ -121,8 +121,11 @@ def check(rule, observed, capture):
 
 
 def evaluate(ctx):
-    metadata = ctx.observation.metadata
-    payload = metadata.get('duxue_eval') if type(metadata) is dict else None
+    output = getattr(ctx.observation, 'output', None)
+    metadata = getattr(ctx.observation, 'metadata', None)
+    payload = output.get('evaluation') if type(output) is dict else None
+    if payload is None and type(metadata) is dict:  # historical v1 observations
+        payload = metadata.get('duxue_eval')
     if type(payload) is not dict or payload.get('schema_version') != 'duxue-eval-observation.v1':
         raise ValueError('missing duxue evaluation evidence envelope')
     if payload.get('execution_status') != 'completed':

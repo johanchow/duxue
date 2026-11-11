@@ -102,3 +102,20 @@
 - 2026-11-11 按用户要求仅将subject_competence前3条改为评测，排除作文：数学起步归guidance-logic，阅读证据/修辞辨析归teaching-correctness；批次subject-competence-v1。保留完整文本与选项，移除外部system/直接解答示范和解答包装指令，synthetic/proposed，复用现有语义评分协议。当前41份；175项评测单测及全量静态校验通过，未运行模型或提交。
 
 - 2026-11-11 subject-competence-v1 本地运行，每例1次，自动3 pass/0 fail/0 error，quality均5；主模型qwen3.7-plus-2026-05-26、裁判qwen3.8-flash，沿用上一批快照。阅读题too_long、修辞题multi_question仅诊断；阅读回复直接引用并翻译答案核心证据，可能与保留学生证据提取要求冲突，需人工校准，不改写自动结果。结果在server var/evals/subject-competence-20261111-221402/，未上传Langfuse或提交。
+
+- 2026-11-11 统一Langfuse评测：41例/64检查点已导入5个目的Dataset，Git原数据移至只读bootstrap快照；默认run只读云端并使用原生6个Evaluator，支持固定版本/Experiment审计/resume收分。原则与协议唯一归属[离线评测设计](../../docs/technical/eval-offline.md)。真实全量41例为34pass/6fail/1error，5个Experiment已关联，报告`var/evals/langfuse-unified-all-41/REPORT.md`；失败为未校准裁判结论，不能自动当真实缺陷。图片原生裁判被当前自定义DashScope模型能力检查拒绝，已询问兼容视觉连接；不降级本地评分。Server评测212测试、Admin37测试/类型/构建通过，真实API聚合验证通过；浏览器工具启动失败未视觉验收。保留进行中spec，未提交或部署。
+
+- 2026-11-12 按用户要求从当前执行集移除 turn-visual-leak-00 与 episode-image-switch-and-correction：Langfuse Dataset Item 标为ARCHIVED，历史Experiment/Trace和Git初始化快照保留；默认runner只执行ACTIVE，现为39例。历史41例报告不改写为重跑结果。其余5个未通过的实际交付及裁判理由整理在 `var/evals/langfuse-unified-all-41/remaining-failures.md`。
+- 2026-11-12 核查 Dataset Item 5a13b206-5469-5852-846c-7f53372368ea（turn-incident-01）：教学正确性v4将en-US astonished的 /stɑːn/ 判错，声称应 /stæn/；Cambridge US实际为 /əˈstɑː.nɪʃt/，主要扣分依据错误，应记裁判误判待校准，不据此修改导师回复。原Score 2及历史fail不篡改。六项原生分数挂检查点809a454703488c42，根observation只挂任务汇总，用户须选择检查点查看评分Comment。
+- 2026-11-12 Scores空白定位：Langfuse当前源码DEFAULT_SIDEBAR_HIDDEN_ENVIRONMENTS包含sdk-experiment；ScoresTable默认showAllEnvironments=false，列表与ConnectedObservationDetailView嵌入表均使用该默认。managedEnvironmentPolicy在无显式environment过滤时加none-of内部环境；显式选择sdk-experiment可覆盖默认。与本批9条云端分数environment=sdk-experiment相符，可同时解释列表/检查点tab为空；需用户页面显式过滤验证，当前浏览器连接仍不可用。不是缺分，勿重复上传API评分。来源github.com/langfuse/langfuse：internalEnvironments.ts、ScoresTable.tsx、managedEnvironmentPolicy.ts。
+
+- 2026-11-12 修复根节点汇总Score无Comment：aggregate现为status/task_success写检查点状态、失败维度、裁判原理由及子observation ID；latency写计量范围。补红绿测试，评测213测试与新模块lint通过。为turn-incident-01现有3条API汇总分回填Comment，沿用原ID/值/时间戳，不复制原生EVAL分数；Session未绑定所以空，属于正常离线记录。
+- 2026-11-12 核查实验Error Count=0：图片episode历史实际只执行check-1（生成标题回复、Code通过，语义缺分），check-2..6因前点error为not_run；ARCHIVED为后续用户移出当前集，不否定历史执行。云端任务根15492c5ad5c94e5f实际level=DEFAULT且statusMessage为空；runner将error作为返回字典/Score保存，未映射到观测ERROR。质量fail与执行error须分开：前者不增加平台Error Count，后者当前存在观测状态映射缺口，尚未修复。
+
+- 2026-11-12 修复实验状态上报缺口：任务根在返回前调用report_task_status，将执行/评分error映射ERROR并写原因；pass/fail/not_run保持DEFAULT，质量fail不作系统异常。新增5个红绿回归，评测相关218测试及platform lint通过。真实无模型冒烟Experiment a0910bb7a0611338创建2项：云端读回error根为ERROR、fail根为DEFAULT，Metrics按任务根计1 ERROR/1 DEFAULT。证据`var/evals/status-reporting-verification.json`。SDK5/Public observations接口仅提供读取，无安全的已结束观测更新方法；历史41例原节点未回填，旧Error Count仍0，不重跑/不篡改历史分数。
+
+- 2026-11-12 用户核对两个case看似通过但标fail：云端确认ac67c866(subject-portraits-next-step)、f9c3eb0d(pedagogy-dice-equal-groups)在acceptance-8实验逐例要求false/任务fail，后续unified-all-41实验原生要求及任务汇总均pass；Dataset Item ID跨运行相同，不可当作执行ID。此前仅回填turn-incident-01的旧Comment，本轮补齐acceptance-8及all-41全部已有API汇总空Comment（不动ID/值/时间戳/原生评分），审计文件var/evals/summary-comments-backfill-all.json。
+
+- 2026-11-12 完成Scores默认可见优化：新任务根/检查点与全部Score使用offline-evaluation；SDK会在每个新子节点再次强制sdk-experiment，故任务入口与NativeScorer检查点创建后均通过官方propagate_attributes显式覆盖。6条离线云端规则接受新环境并兼容历史SDK环境，生产规则未改。新增2个红绿回归，评测220测试与platform lint/diff检查通过；真实cone用例1pass，云端读回9条Score全部offline-evaluation、任务根和检查点亦同。验收Experiment e8a44be21a9561d3，证据var/evals/visible-scores-verification-final/cloud-visibility-verification.json；SDK外层item-run包装仍保留内部环境但不承载评分。历史未改写；需清除之前手动SDK环境筛选一次。未commit或部署。
+
+- 2026-11-12 用户授权本地提交统一Langfuse评测及后续修复。提交前review确认41份初始化JSON逐字节不变、运行产物/密钥不入库；再次验证Server评测220测试/静态校验/platform lint，Admin37测试/类型/构建均通过。纳入用例单源、原生评分/Experiment、Admin新维度、汇总Comment、ERROR上报与Scores默认可见；排除无关platform笔记/.vscode/参考PDF。不push或部署，历史质量失败、人工校准和视觉验收限制继续保留。

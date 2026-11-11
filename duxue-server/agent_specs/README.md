@@ -44,4 +44,4 @@ cd duxue-server
 
 `tests/fixtures/`是明确隔离的历史回归输入，由`tests/conftest.py`显式安装；不随镜像发布，不是业务配置维护源。部署前执行`python -m app.agent_specs preflight`验证Admin发布或兼容缓存，失败保留原容器。初次生产接入步骤见[部署文档](../../docs/deployment.md#生产server接入admin配置)。
 
-离线评分组件`evals.semantic-judge`的旧包升级与阶段限制见[离线评测配置](../../docs/technical/eval-offline.md#配置来源与可复现快照)。
+统一离线 runner 不再使用配置包中的旧 `evals.semantic-judge`，独立评分由 Langfuse 原生 Evaluator 承担；执行、快照与限制见[离线评测设计](../../docs/technical/eval-offline.md)。

@@ -122,7 +122,10 @@ export class LangfuseReader {
         );
         const data = Object.fromEntries(pairs);
         return {
-          ...periodSummary(data as Parameters<typeof periodSummary>[0]),
+          ...periodSummary({
+            ...data,
+            offline: kind === 'experiment',
+          } as Parameters<typeof periodSummary>[0]),
           from: from.toISOString(),
           to: to.toISOString(),
         };

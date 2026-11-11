@@ -109,6 +109,6 @@ ADMIN_LANGFUSE_SECRET_KEY=<私钥>
 ADMIN_LANGFUSE_ENVIRONMENT=production
 ```
 
-运行时不读取 Server `.env`。项目必须与凭证匹配；API 不可用时显示错误。数据缺失显示 `—`，实验为空不代表本地评测未执行。现有本地报告不自动导入 Langfuse，指标输入协议见 [技术设计](../docs/technical/design-admin.md#evaluation--langfuse)。
+运行时不读取 Server `.env`。项目必须与凭证匹配；API 不可用时显示错误。数据缺失显示 `—`，实验为空不代表本地评测未执行。历史本地报告不自动导入 Langfuse；统一 runner 已将新执行关联 Experiment，Dataset 与 Evaluator 在 Langfuse 维护。指标输入协议见 [技术设计](../docs/technical/design-admin.md#evaluation--langfuse)。
 
 `npm test` 包含隔离 PG schema 的权限/关联测试；`npx tsx scripts/evaluation-browser-smoke.ts` 仅测试环境使用本地账号进行只读页面验收，不上传结果或发布配置。

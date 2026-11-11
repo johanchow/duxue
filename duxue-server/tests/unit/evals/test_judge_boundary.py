@@ -144,7 +144,7 @@ def test_judge_cases_are_individual_formatted_json_objects():
 
 
 def test_removed_answer_feedback_batch_has_no_runnable_cases():
-    from evals.__main__ import main
+    from evals.__main__ import historical_main as main
     from evals.conversations import load_conversations
 
     assert not any(row.review_batch == "answer-feedback-v1" for row in load_conversations())
@@ -152,7 +152,7 @@ def test_removed_answer_feedback_batch_has_no_runnable_cases():
 
 
 def test_common_cli_dispatches_to_the_generic_judge_runner(monkeypatch):
-    from evals.__main__ import main
+    from evals.__main__ import historical_main as main
 
     received = []
     monkeypatch.setattr(

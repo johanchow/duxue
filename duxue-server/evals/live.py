@@ -30,11 +30,11 @@ def eval_settings() -> SimpleNamespace:
     )
 
 
-def build_backends(spec: ComponentSpec) -> Backends:
+def build_backends(spec: ComponentSpec, *, native_only=False) -> Backends:
     runtime = eval_settings()
     if spec.component_id == "tutoring.turn":
         return Backends(
-            semantic_grader=SemanticGrader(settings_obj=runtime),
+            semantic_grader=None if native_only else SemanticGrader(settings_obj=runtime),
             tutor_model=QwenTutorTurnGateway(spec=spec, settings_obj=runtime),
             backup_model=QwenTutorTurnGateway(
                 spec=COMPONENTS.get("tutoring.turn-backup"), settings_obj=runtime
