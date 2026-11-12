@@ -34,6 +34,11 @@ services:
     image: ${DUXUE_ADMIN_IMAGE:?admin image required}
     restart: unless-stopped
     environment:
+      ADMIN_LANGFUSE_BASE_URL: ${ADMIN_LANGFUSE_BASE_URL:-}
+      ADMIN_LANGFUSE_PROJECT_ID: ${ADMIN_LANGFUSE_PROJECT_ID:-}
+      ADMIN_LANGFUSE_PUBLIC_KEY: ${ADMIN_LANGFUSE_PUBLIC_KEY:-}
+      ADMIN_LANGFUSE_SECRET_KEY: ${ADMIN_LANGFUSE_SECRET_KEY:-}
+      ADMIN_LANGFUSE_ENVIRONMENT: ${ADMIN_LANGFUSE_ENVIRONMENT:-production}
       ADMIN_ENV: prod
       ADMIN_DATABASE_URL: ${ADMIN_DATABASE_URL:?database connection required}
       ADMIN_PUBLIC_ORIGIN: https://admin.duxuelai.xyz

@@ -85,3 +85,37 @@
 - 2026-11-10 用户确认统一评测格式后已实施：全部40份文件使用dialogue-eval.v1，单轮/连续脚本/真实回放共享消息与来源；候选Judge保持快照与候选分离，不伪造对话。格式、迁移命令和执行边界唯一归属[离线评测设计](../../docs/technical/eval-offline.md#四数据契约)。导出保留纯图片及选图引用，不再从后续话术猜任务状态；未取得状态标missing且阻止模型执行。旧真实单步注入状态标reconstructed，不升级标签；旧格式须显式迁移。40份迁移前后执行投影逐项一致；新seed哈希ac221687d261d4b4，旧报告不能跨版本直接比较。最终定向141通过，数据校验/迁移幂等/新文件Ruff及评测目录F-E9/diff检查通过；最近全量964通过/1跳过/3 subtests通过，6项既有PostgreSQL初始化错误仍因本机UID501不存在。其后仅新增迁移器拒绝未知历史的2项回归，定向已通过。保留[验收清单](../specs/eval-dialogue-format.md)，未满足全量绿色退出条件；未运行真实模型、提交或部署。
 
 - 2026-11-10 用户在知悉上述6项PostgreSQL初始化环境错误后授权本地commit；提交评测格式迁移的代码、40份数据、测试、设计和验收清单，保留未完成的全量测试条件。不推送、不部署；此前模型路线/评测成熟度调研笔记及.vscode、参考PDF不纳入本次提交。
+
+- 2026-11-11 离线用例按 5 个 Langfuse Dataset 目的迁移目录，40 个 JSON 内容逐文件哈希保持不变。加载器按 type 递归分派，目的类别校验覆盖全部执行类型；172 项评测单测及全量静态校验通过。当前仍是本地 grader，未上传用例或重跑模型。历史 11 fail / 3 not_run 的完整清单、证据及版本边界见[失败报告](../../docs/technical/eval-failures-2026-11-11.md)，不要把目录改造或专项结果当作质量修复。
+
+- 2026-11-11 用户要求删除历史未全部通过的 7 份评测用例，evals/data 现保留 33 份（13 单轮、4 多轮、15 判官、1 真实回放）。执行器测试所依赖的 3 份历史快照移至 tests/fixtures/eval_protocol，仅做无网络协议测试，不纳入 Dataset；历史结果保留并标明已删除，不视为修复或重新评测通过。
+- 删除后验证：评测相关单元测试 172 passed，全量静态校验通过，当前数据哈希 a52bfe675869865b；未重新执行模型评测。用户随后授权提交本地目录改造、用例删除及配套测试文档。
+
+- 2026-11-11 审阅根目录 pedagogical_action.jsonl：5 条纯文本 instruction/response 样本，extra_info 为 JSON 字符串。可作为教学正确性/引导逻辑候选素材，不能直接把 assistant 当 gold：沙堆例无计算过程却赞许过程，余数例连问六题不符当前小步引导。SocraTeach 的 user 内嵌对话需拆分角色；TutorBench 已有多轮，可固定历史逐点回放，不能宣称生产真实记录或闭环验证。原 system 仅作来源，不覆盖产品 prompt；补显式测试上下文及 rubric，初始 proposed；来源名称不等于真实性/标注可靠性的证明。本轮仅分析，未导入或执行。
+
+- 2026-11-11 用户授权将 pedagogical_action 5条素材改为评测用例：教学正确性2条、引导逻辑3条，批次pedagogical-action-v1。多轮只评最后请求并保留固定历史，system/末条示范隔离，来源metadata/文件哈希保留，测试状态synthetic且标签proposed；规则按产品原则重写。当前38份，174项相关单测及静态校验通过；未运行模型、上传Langfuse或提交。协议与目录说明见[离线设计](../../docs/technical/eval-offline.md#外部教学素材改编pedagogical-action-v1)。
+
+- 2026-11-11 pedagogical-action-v1 首次本地真实运行：复用grading-v2-fixes历史草稿快照，qwen3.7-plus-2026-05-26生成/qwen3.8-flash评分，每例1次，5 pass/0 fail/0 error；quality依次形容词4、布朗尼5、沙堆4、骰子5、余数5。骰子有multi_question诊断但语义断言通过；proposed/uncalibrated未升级，不能作为稳定质量结论。证据在server var/evals/pedagogical-action-20261111-214816/{README.md,results.json,execution.json,config-snapshot.json,audit.jsonl}，未上报Langfuse。
+
+- 2026-11-11 审阅 subject_competence.jsonl 共4条，images均为空，题干人工阅读未发现依赖缺失图片：拍照题的picture是故事对象，figure of speech是修辞。前三条文本条件完整，可改编为小步数学引导/阅读选项保护/修辞辨析；原直接答案不可作为辅导输出要求。作文条缺原完整任务、来源材料及评分量表，输入已有holistic=2不能作为独立评分gold；可改编为仅依据可见作文反馈及缺依据不臆断测试，不能声称复现原评分。仅分析，未导入。
+
+- 2026-11-11 按用户要求仅将subject_competence前3条改为评测，排除作文：数学起步归guidance-logic，阅读证据/修辞辨析归teaching-correctness；批次subject-competence-v1。保留完整文本与选项，移除外部system/直接解答示范和解答包装指令，synthetic/proposed，复用现有语义评分协议。当前41份；175项评测单测及全量静态校验通过，未运行模型或提交。
+
+- 2026-11-11 subject-competence-v1 本地运行，每例1次，自动3 pass/0 fail/0 error，quality均5；主模型qwen3.7-plus-2026-05-26、裁判qwen3.8-flash，沿用上一批快照。阅读题too_long、修辞题multi_question仅诊断；阅读回复直接引用并翻译答案核心证据，可能与保留学生证据提取要求冲突，需人工校准，不改写自动结果。结果在server var/evals/subject-competence-20261111-221402/，未上传Langfuse或提交。
+
+- 2026-11-11 统一Langfuse评测：41例/64检查点已导入5个目的Dataset，Git原数据移至只读bootstrap快照；默认run只读云端并使用原生6个Evaluator，支持固定版本/Experiment审计/resume收分。原则与协议唯一归属[离线评测设计](../../docs/technical/eval-offline.md)。真实全量41例为34pass/6fail/1error，5个Experiment已关联，报告`var/evals/langfuse-unified-all-41/REPORT.md`；失败为未校准裁判结论，不能自动当真实缺陷。图片原生裁判被当前自定义DashScope模型能力检查拒绝，已询问兼容视觉连接；不降级本地评分。Server评测212测试、Admin37测试/类型/构建通过，真实API聚合验证通过；浏览器工具启动失败未视觉验收。保留进行中spec，未提交或部署。
+
+- 2026-11-12 按用户要求从当前执行集移除 turn-visual-leak-00 与 episode-image-switch-and-correction：Langfuse Dataset Item 标为ARCHIVED，历史Experiment/Trace和Git初始化快照保留；默认runner只执行ACTIVE，现为39例。历史41例报告不改写为重跑结果。其余5个未通过的实际交付及裁判理由整理在 `var/evals/langfuse-unified-all-41/remaining-failures.md`。
+- 2026-11-12 核查 Dataset Item 5a13b206-5469-5852-846c-7f53372368ea（turn-incident-01）：教学正确性v4将en-US astonished的 /stɑːn/ 判错，声称应 /stæn/；Cambridge US实际为 /əˈstɑː.nɪʃt/，主要扣分依据错误，应记裁判误判待校准，不据此修改导师回复。原Score 2及历史fail不篡改。六项原生分数挂检查点809a454703488c42，根observation只挂任务汇总，用户须选择检查点查看评分Comment。
+- 2026-11-12 Scores空白定位：Langfuse当前源码DEFAULT_SIDEBAR_HIDDEN_ENVIRONMENTS包含sdk-experiment；ScoresTable默认showAllEnvironments=false，列表与ConnectedObservationDetailView嵌入表均使用该默认。managedEnvironmentPolicy在无显式environment过滤时加none-of内部环境；显式选择sdk-experiment可覆盖默认。与本批9条云端分数environment=sdk-experiment相符，可同时解释列表/检查点tab为空；需用户页面显式过滤验证，当前浏览器连接仍不可用。不是缺分，勿重复上传API评分。来源github.com/langfuse/langfuse：internalEnvironments.ts、ScoresTable.tsx、managedEnvironmentPolicy.ts。
+
+- 2026-11-12 修复根节点汇总Score无Comment：aggregate现为status/task_success写检查点状态、失败维度、裁判原理由及子observation ID；latency写计量范围。补红绿测试，评测213测试与新模块lint通过。为turn-incident-01现有3条API汇总分回填Comment，沿用原ID/值/时间戳，不复制原生EVAL分数；Session未绑定所以空，属于正常离线记录。
+- 2026-11-12 核查实验Error Count=0：图片episode历史实际只执行check-1（生成标题回复、Code通过，语义缺分），check-2..6因前点error为not_run；ARCHIVED为后续用户移出当前集，不否定历史执行。云端任务根15492c5ad5c94e5f实际level=DEFAULT且statusMessage为空；runner将error作为返回字典/Score保存，未映射到观测ERROR。质量fail与执行error须分开：前者不增加平台Error Count，后者当前存在观测状态映射缺口，尚未修复。
+
+- 2026-11-12 修复实验状态上报缺口：任务根在返回前调用report_task_status，将执行/评分error映射ERROR并写原因；pass/fail/not_run保持DEFAULT，质量fail不作系统异常。新增5个红绿回归，评测相关218测试及platform lint通过。真实无模型冒烟Experiment a0910bb7a0611338创建2项：云端读回error根为ERROR、fail根为DEFAULT，Metrics按任务根计1 ERROR/1 DEFAULT。证据`var/evals/status-reporting-verification.json`。SDK5/Public observations接口仅提供读取，无安全的已结束观测更新方法；历史41例原节点未回填，旧Error Count仍0，不重跑/不篡改历史分数。
+
+- 2026-11-12 用户核对两个case看似通过但标fail：云端确认ac67c866(subject-portraits-next-step)、f9c3eb0d(pedagogy-dice-equal-groups)在acceptance-8实验逐例要求false/任务fail，后续unified-all-41实验原生要求及任务汇总均pass；Dataset Item ID跨运行相同，不可当作执行ID。此前仅回填turn-incident-01的旧Comment，本轮补齐acceptance-8及all-41全部已有API汇总空Comment（不动ID/值/时间戳/原生评分），审计文件var/evals/summary-comments-backfill-all.json。
+
+- 2026-11-12 完成Scores默认可见优化：新任务根/检查点与全部Score使用offline-evaluation；SDK会在每个新子节点再次强制sdk-experiment，故任务入口与NativeScorer检查点创建后均通过官方propagate_attributes显式覆盖。6条离线云端规则接受新环境并兼容历史SDK环境，生产规则未改。新增2个红绿回归，评测220测试与platform lint/diff检查通过；真实cone用例1pass，云端读回9条Score全部offline-evaluation、任务根和检查点亦同。验收Experiment e8a44be21a9561d3，证据var/evals/visible-scores-verification-final/cloud-visibility-verification.json；SDK外层item-run包装仍保留内部环境但不承载评分。历史未改写；需清除之前手动SDK环境筛选一次。未commit或部署。
+
+- 2026-11-12 用户授权本地提交统一Langfuse评测及后续修复。提交前review确认41份初始化JSON逐字节不变、运行产物/密钥不入库；再次验证Server评测220测试/静态校验/platform lint，Admin37测试/类型/构建均通过。纳入用例单源、原生评分/Experiment、Admin新维度、汇总Comment、ERROR上报与Scores默认可见；排除无关platform笔记/.vscode/参考PDF。不push或部署，历史质量失败、人工校准和视觉验收限制继续保留。

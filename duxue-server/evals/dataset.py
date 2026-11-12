@@ -12,27 +12,32 @@ from pydantic import ValidationError
 from evals.schema import ASSET_NAME, MAX_WINDOW, EvalCase
 
 ROOT = Path(__file__).resolve().parents[1]
-DATA_DIR = Path(__file__).resolve().parent / "data"
+DATA_DIR = Path(__file__).resolve().parent / "bootstrap" / "2026-11-11"
 CATEGORIES = (
-    "scene_routing", "real_regression", "answer_protection", "pronunciation_context",
-    "visual", "fact_vs_reasoning", "teaching_quality", "safety", "leak_judge", "multi_turn", "conversation_replay",
+    "teaching-correctness",
+    "guidance-logic",
+    "answer-protection-safety",
+    "orchestration-tools",
+    "judge-calibration",
 )
-SINGLE_TURN_CATEGORIES = tuple(c for c in CATEGORIES if c not in {"multi_turn", "leak_judge", "conversation_replay"})
-CATEGORY_TAGS = {
-    "answer_protection": "answer-protection", "pronunciation_context": "pronounce",
-    "visual": "visual", "fact_vs_reasoning": "depth", "teaching_quality": "rubric",
-    "safety": "safety",
-}
+SINGLE_TURN_CATEGORIES = CATEGORIES
+RECORD_TYPES = {"single_turn", "episode", "judge", "conversation_replay"}
 ASSETS_DIR = ROOT / "var" / "eval-assets"
 RESULTS_DIR = ROOT / "var" / "evals"
 
 _PHONE = re.compile(r"(?<!\d)1\d{10}(?!\d)")
 _EMAIL = re.compile(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}")
 _CN_ID = re.compile(r"(?<![\dXx])\d{17}[\dXx](?![\dXx])")
-_UUID = re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", re.IGNORECASE)
+_UUID = re.compile(
+    r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", re.IGNORECASE
+)
 _LONG_NUMBER = re.compile(r"(?<!\d)\d{8,}(?!\d)")
 _DETECTORS = {
-    "phone": _PHONE, "email": _EMAIL, "cn_id": _CN_ID, "uuid": _UUID, "long_number": _LONG_NUMBER,
+    "phone": _PHONE,
+    "email": _EMAIL,
+    "cn_id": _CN_ID,
+    "uuid": _UUID,
+    "long_number": _LONG_NUMBER,
     "data_url": re.compile(r"data:[\w/+.-]+;base64", re.IGNORECASE),
     "storage_path": re.compile(r"\bward/[0-9a-f-]{8,}/", re.IGNORECASE),
     "url": re.compile(r"https?://", re.IGNORECASE),
@@ -56,15 +61,14 @@ def _strings(case: EvalCase) -> list[str]:
     out += [row.text for row in case.history]
     out += [case.context.task_title or ""]
     if case.context.problem:
-        out += [case.context.problem.summary or "", case.context.problem.evidence_summary or ""]
-    expect = case.expect
-    out.extend(expect.criteria)
-    if expect.response:
-        out.append(expect.response.message)
-    out += (
-        expect.lesson_source_contains_any + expect.lesson_source_contains_all
-        + expect.content_contains_any + expect.content_not_contains
-    )
+        out += [
+            case.context.problem.summary or "",
+            case.context.problem.evidence_summary or "",
+        ]
+    out += [r.instructions() for r in case.grading.model_graded]
+    out += case.grading.rationale
+    if case.grading.reference_response:
+        out.append(case.grading.reference_response)
     return out
 
 
@@ -91,23 +95,30 @@ def read_object(path: Path) -> dict:
     return data
 
 
-def _case_files(path: Path) -> list[Path]:
-    if path.is_file():
-        return [path]
-    return sorted(
-        file for file in path.rglob("*.json")
-        if not {"multi_turn", "leak_judge", "conversation_replay"}.intersection(file.relative_to(path).parts)
-    )
+def record_files(path: Path, record_type: str) -> list[Path]:
+    """Select execution format independently of the purpose-based directory."""
+    if not path.exists():
+        raise ValueError(f"dataset path does not exist: {path}")
+    files = [path] if path.is_file() else sorted(path.rglob("*.json"))
+    selected = []
+    for file in files:
+        kind = read_object(file).get("type")
+        if kind not in RECORD_TYPES:
+            raise ValueError(f"{file.name}: unknown record type: {kind}")
+        if kind == record_type:
+            selected.append(file)
+    return sorted(selected, key=lambda file: (file.name, str(file)))
 
 
 def load_cases(path: Path | None = None) -> list[EvalCase]:
     """Single-turn cases from one file or a category tree, in filename order."""
     path = path if path is not None else DATA_DIR
     cases: list[EvalCase] = []
-    for file in _case_files(path):
+    for file in record_files(path, "single_turn"):
         try:
             record = read_object(file)
             from evals.dialogue import TurnRecord
+
             parsed = TurnRecord.model_validate(record)
             if file.stem != parsed.id:
                 raise ValueError("filename must match id")
@@ -131,10 +142,13 @@ def validate_layout(path: Path = DATA_DIR) -> list[str]:
         if file.suffix != ".json":
             problems.append(f"{file.relative_to(path)}: case configs must use .json")
             continue
-        if file.parent == path or file.parent.parent != path or file.parent.name not in CATEGORIES:
+        if (
+            file.parent == path
+            or file.parent.parent != path
+            or file.parent.name not in CATEGORIES
+        ):
             problems.append(f"unexpected dataset file: {file.relative_to(path)}")
             continue
-        category = file.parent.name
         try:
             record = read_object(file)
         except ValueError as error:
@@ -142,45 +156,46 @@ def validate_layout(path: Path = DATA_DIR) -> list[str]:
             continue
         if record.get("id") != file.stem:
             problems.append(f"{file.relative_to(path)}: filename must match id")
-        if category == "conversation_replay":
+        if record.get("type") == "conversation_replay":
             from evals.conversations import load_conversations
+
             try:
                 load_conversations(file)
             except ValueError as error:
                 problems.append(str(error))
             continue
-        if category == "multi_turn":
+        if record.get("type") == "episode":
             from evals.episodes import load_episodes, validate_episodes
+
             try:
                 problems.extend(validate_episodes(load_episodes(file)))
             except ValueError as error:
                 problems.append(str(error))
             continue
-        if category == "leak_judge":
+        if record.get("type") == "judge":
             from evals.judge_boundary import load_cases as load_judge_cases
+
             try:
                 load_judge_cases(file)
             except ValueError as error:
                 problems.append(str(error))
             continue
         try:
-            case = load_cases(file)[0]
+            load_cases(file)[0]
         except (ValueError, IndexError) as error:
             problems.append(str(error))
             continue
-        if category == "scene_routing" and case.component != "companion.intent":
-            problems.append(f"{case.id}: scene_routing requires companion.intent")
-        elif category == "real_regression" and (case.component != "tutoring.turn" or case.source != "real"):
-            problems.append(f"{case.id}: real_regression requires a real tutoring turn")
-        elif category in CATEGORY_TAGS and CATEGORY_TAGS[category] not in case.tags:
-            problems.append(f"{case.id}: missing category tag {CATEGORY_TAGS[category]}")
     return problems
 
 
 def dataset_hash(cases: list[EvalCase]) -> str:
     """Stable id of the dataset content. Results are comparable only when this matches."""
-    payload = [case.model_dump(mode="json") for case in sorted(cases, key=lambda c: c.id)]
-    return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:16]
+    payload = [
+        case.model_dump(mode="json") for case in sorted(cases, key=lambda c: c.id)
+    ]
+    return hashlib.sha256(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True).encode()
+    ).hexdigest()[:16]
 
 
 def validate(cases: list[EvalCase]) -> list[str]:
@@ -194,15 +209,26 @@ def validate(cases: list[EvalCase]) -> list[str]:
         if case.label_status == "confirmed":
             if not case.reviewed_by:
                 problems.append(f"{case.id}: confirmed needs reviewed_by")
-            if not case.expect.is_specific():
-                problems.append(f"{case.id}: confirmed needs an expectation beyond 'no fallback'")
+            if not case.grading.is_specific():
+                problems.append(
+                    f"{case.id}: confirmed needs an expectation beyond 'no fallback'"
+                )
         elif case.reviewed_by:
-            problems.append(f"{case.id}: reviewed_by is set but label_status is {case.label_status}")
+            problems.append(
+                f"{case.id}: reviewed_by is set but label_status is {case.label_status}"
+            )
         if len(case.history) > MAX_WINDOW:
-            problems.append(f"{case.id}: history longer than the production window ({MAX_WINDOW})")
+            problems.append(
+                f"{case.id}: history longer than the production window ({MAX_WINDOW})"
+            )
         if len(case.asset_names) > MAX_WINDOW:
-            problems.append(f"{case.id}: more images than the production window keeps ({MAX_WINDOW})")
-        for name in [*case.asset_names, *(case.expect.selected_images or [])]:
+            problems.append(
+                f"{case.id}: more images than the production window keeps ({MAX_WINDOW})"
+            )
+        for name in [
+            *case.asset_names,
+            *(case.grading.expectation("selected_images", [])),
+        ]:
             if not ASSET_NAME.match(name):
                 problems.append(f"{case.id}: bad asset name {name!r}")
         findings = pii_findings(case)

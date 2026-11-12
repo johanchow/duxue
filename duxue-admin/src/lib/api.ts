@@ -1,3 +1,4 @@
+import { evaluationResponse } from './evaluation-api';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { pool, transaction, audit } from './db';
 import {
@@ -195,6 +196,7 @@ export async function handle(request: Request, parts: string[]) {
     }
     const user = await requireUser(request);
     authorize(user, method, parts);
+    if (parts[0] === 'evaluation') return evaluationResponse(request, parts);
     if (key === 'session' && method === 'GET') return Response.json(user);
     if (key === 'session' && method === 'DELETE') {
       await pool().query('DELETE FROM admin_sessions WHERE token_hash=$1', [

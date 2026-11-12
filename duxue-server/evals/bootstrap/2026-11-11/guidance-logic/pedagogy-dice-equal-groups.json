@@ -1,0 +1,92 @@
+{
+  "schema_version": "dialogue-eval.v2",
+  "id": "pedagogy-dice-equal-groups",
+  "type": "single_turn",
+  "replay_mode": "fixed_history",
+  "conversation_id": "pedagogy-dice-equal-groups",
+  "turn_index": 0,
+  "source": {
+    "kind": "synthetic",
+    "coverage": "authored",
+    "provider": "MathTutor-v6-base",
+    "note": "外部教学样本的评测改编，未验证真实对话来源；不是生产观测。{\"file\": \"pedagogical_action.jsonl\", \"line\": 2, \"file_sha256\": \"71e51a34cc7f98206c3bfdcbd430ccb11476468b737079b2def10e21408f3800\", \"metadata\": {\"category\": \"pedagogical_action\", \"dataset\": \"MathTutor-v6-base\", \"uid\": \"v6ms-01021\", \"kind\": \"mathtutor_scaffolding\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"pedagogy/mathtutor_scaffolding\", \"rank\": 2060, \"supervised_tokens\": 61, \"token_budget\": 265000}, \"system_prompt_id\": \"mathtutor_pedagogy_following\", \"system_prompt_version\": \"v6_finegrained_20260831\"}, \"original_system\": \"Be a friendly, supportive tutor. Guide the student through incremental steps with guiding and probing questions. Pose just one question in this turn, avoid overwhelming the student, and keep the response to at most two sentences.\", \"adaptation\": [\"移除原system指令和最后assistant示范，不作为生产提示或正确答案；重新编写判分标准。\", \"移除user中的教师角色包装，保留题目和学生尝试。\"], \"history_window\": \"执行时只投影当前用户前最多8条消息；全段可见历史保留用于溯源。\"}"
+  },
+  "messages": [
+    {
+      "role": "user",
+      "content": "Problem: Tom and Tim both brought 4, six-sided dice to school. How many total sides are there?\nStudent attempt: Tom and Tim each brought 4 dice, so that's 8 dice in total. Since each die has 6 sides, I just added them up: 8 plus 6 equals 14 sides.",
+      "id": "m1",
+      "images": [],
+      "image_target_refs": []
+    }
+  ],
+  "review_batch": "pedagogical-action-v1",
+  "label_status": "proposed",
+  "reviewed_by": null,
+  "tags": [
+    "pedagogical-action",
+    "external-adaptation",
+    "guidance-logic"
+  ],
+  "flags": [],
+  "note": "把骰子面数的错误加法引导为等组乘法。只评最后一条学生消息后的回复；此前助手消息为固定历史，不要求模型复现原示范。",
+  "checks": [
+    {
+      "id": "check-1",
+      "after_message": "m1",
+      "component": "tutoring.turn",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "problem": {
+            "summary": "Tom和Tim各带4个六面骰子，求总面数。学生先得到8个骰子，再用8+6得到14。",
+            "active_subgoal": "区分组数与每组数量",
+            "substantive_attempts": 1,
+            "hints_given": 0
+          },
+          "task_title": "教学反馈练习",
+          "task_active": true
+        },
+        "note": "为组件评测显式构造的上下文；计数表示当前检查点的测试条件，不声称是原始数据库状态。"
+      },
+      "grading": {
+        "deterministic": [
+          {
+            "id": "outcome_in",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "hint_like"
+            ]
+          },
+          {
+            "id": "outcome_not_in",
+            "field": "outcome",
+            "op": "not_in",
+            "expected": [
+              "fallback"
+            ]
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "quality",
+            "type": "score",
+            "rubric_ref": "teaching-quality.v1",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "肯定共有8个骰子这一正确步骤，明确8+6不能表示8组各6个面。用一个聚焦的提示或问题，引导学生考虑等组相加或乘法；不直接给出48，不替学生完成整段计算，不重复追问已正确得到的骰子数量。保持支持性语气，一轮推进一个概念步骤，不机械要求与参考英文逐字一致。 仅依据当前回复及检查点可见上下文判断；允许自然的中英文表达，不作关键词或句数匹配。",
+            "expected": "pass"
+          }
+        ],
+        "rationale": [
+          "原始示范未作为gold；语义要求按读学的小步引导及已提交答案核验原则重新定义。"
+        ],
+        "aggregation": "all_required"
+      }
+    }
+  ]
+}

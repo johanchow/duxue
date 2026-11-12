@@ -1009,3 +1009,46 @@ nav button:last-child {
     padding: 18px;
   }
 }
+
+.evaluation {
+  min-width: 0;
+  padding: 20px;
+}
+.eval-nav,
+.eval-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  margin: 16px 0;
+}
+.eval-nav a {
+  padding: 8px 12px;
+  border: 1px solid var(--border, #ddd);
+  border-radius: 8px;
+}
+.eval-nav a[aria-current='page'] {
+  background: var(--accent, #2563eb);
+  color: white;
+}
+.eval-table {
+  width: 100%;
+  overflow-x: auto;
+}
+.eval-table table {
+  min-width: 720px;
+  width: 100%;
+  border-collapse: collapse;
+}
+.eval-table th,
+.eval-table td {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border, #ddd);
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+.eval-table small {
+  display: inline-block;
+  max-width: 240px;
+}

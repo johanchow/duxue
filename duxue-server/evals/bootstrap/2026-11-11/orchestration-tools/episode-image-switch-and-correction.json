@@ -1,0 +1,507 @@
+{
+  "id": "episode-image-switch-and-correction",
+  "title": "连续换图与纠正：读取标题、题面及文字插问（不验算）",
+  "inspired_by": "self",
+  "review_batch": "image-review-v1",
+  "label_status": "proposed",
+  "reviewed_by": null,
+  "note": "按用户要求暂绕过数学稳定性，将6轮合成请求改为读取印刷标题/算式和词义，不检查手写答案，不断言数学结论。仍保留真实首图错误批改作为污染源，验证换图、无附件纠正、文字跳出、返回旧图、再发新图及连续指代。每轮继承实际生成的助手回复和图片，不预写后续助手回答。原始事故回放另存conversation_replay/new-image-review-conversation.json，未修改其原文、原裁决或数学期望。标签proposed；真实正文需对照原图人工复核。",
+  "schema_version": "dialogue-eval.v2",
+  "type": "episode",
+  "replay_mode": "generated_history",
+  "source": {
+    "kind": "synthetic",
+    "coverage": "authored",
+    "note": "迁移保留原始来源标签；格式统一不补造原话或缺失的状态证据。"
+  },
+  "messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "图片里的题目是不是都做对了？",
+      "images": [
+        "img-f0b2a66592fb.jpg"
+      ],
+      "image_target_refs": []
+    },
+    {
+      "id": "m2",
+      "role": "assistant",
+      "content": "图片里的题目我帮你检查完了，大部分都做对了，但有两道题需要你再算一遍：\n\n1. **第一题** $47+24$：你写的是 70，个位 $7+4=11$，记得进位哦。\n2. **第二题** $63\\div(21-12)$：括号里 $21-12$ 算错了，不是 9。\n\n其他口算、单位换算和脱式计算都正确。请你把这两道题重新算一下，看看正确答案是多少？",
+      "images": [],
+      "image_target_refs": []
+    },
+    {
+      "id": "m3",
+      "role": "user",
+      "content": "这张是另一页，请只告诉我这页周四旁边印着的标题，不用批改答案。",
+      "images": [
+        "img-4430cfb69b7c.jpg"
+      ],
+      "image_target_refs": []
+    },
+    {
+      "id": "m4",
+      "role": "user",
+      "content": "这不是上一张图片，我说的是刚发的这张新图片。请只告诉我周四旁边的标题，不用批改。",
+      "images": [],
+      "image_target_refs": []
+    },
+    {
+      "id": "m5",
+      "role": "user",
+      "content": "先不检查图片了，lost是什么意思？",
+      "images": [],
+      "image_target_refs": []
+    },
+    {
+      "id": "m6",
+      "role": "user",
+      "content": "回到第一张照片，请只读出周五旁边的标题，不要计算或批改。",
+      "images": [],
+      "image_target_refs": []
+    },
+    {
+      "id": "m7",
+      "role": "user",
+      "content": "再看这页，请只读出第二大题的标题，不要解题或判断对错。",
+      "images": [
+        "img-4430cfb69b7c.jpg"
+      ],
+      "image_target_refs": []
+    },
+    {
+      "id": "m8",
+      "role": "user",
+      "content": "还是这张第二页，请只读出第二大题第一题印刷的算式，不要计算，也不要检查手写答案。",
+      "images": [],
+      "image_target_refs": []
+    }
+  ],
+  "checks": [
+    {
+      "id": "check-1",
+      "after_message": "m3",
+      "component": "tutoring.turn",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "problem": {
+            "summary": "此前做过图片作业；当前只读取照片标题或印刷题面，不检查数学答案",
+            "substantive_attempts": 1,
+            "hints_given": 0
+          }
+        },
+        "note": "保留旧用例注入状态；并非重新从生产数据库取得的完整快照。"
+      },
+      "tags": [
+        "image-context",
+        "actual-history",
+        "no-math-grading"
+      ],
+      "grading": {
+        "deterministic": [
+          {
+            "id": "outcome_in",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "answer"
+            ]
+          },
+          {
+            "id": "outcome_not_in",
+            "field": "outcome",
+            "op": "not_in",
+            "expected": [
+              "fallback"
+            ]
+          },
+          {
+            "id": "selected_images_set_eq",
+            "field": "selected_images",
+            "op": "set_eq",
+            "expected": [
+              "img-4430cfb69b7c.jpg"
+            ]
+          },
+          {
+            "id": "answer_protected_eq",
+            "field": "answer_protected",
+            "op": "eq",
+            "expected": false
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "quality",
+            "type": "score",
+            "rubric_ref": "teaching-quality.v1",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "逐项判断下列用例要求；全部满足为pass，任一违背为fail。仅依据当前回复、上下文和原图，不以生产审核结论替代判断：\n依据新上传第二页原图准确读出周四旁印刷标题；不批改手写答案，不复制首图的旧助手结论。",
+            "expected": "pass"
+          }
+        ],
+        "rationale": [],
+        "aggregation": "all_required"
+      }
+    },
+    {
+      "id": "check-2",
+      "after_message": "m4",
+      "component": "tutoring.turn",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "problem": {
+            "summary": "此前做过图片作业；当前只读取照片标题或印刷题面，不检查数学答案",
+            "substantive_attempts": 1,
+            "hints_given": 0
+          }
+        },
+        "note": "保留旧用例注入状态；并非重新从生产数据库取得的完整快照。"
+      },
+      "tags": [
+        "image-context",
+        "actual-history",
+        "no-math-grading"
+      ],
+      "grading": {
+        "deterministic": [
+          {
+            "id": "outcome_in",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "answer"
+            ]
+          },
+          {
+            "id": "outcome_not_in",
+            "field": "outcome",
+            "op": "not_in",
+            "expected": [
+              "fallback"
+            ]
+          },
+          {
+            "id": "selected_images_set_eq",
+            "field": "selected_images",
+            "op": "set_eq",
+            "expected": [
+              "img-4430cfb69b7c.jpg"
+            ]
+          },
+          {
+            "id": "answer_protected_eq",
+            "field": "answer_protected",
+            "op": "eq",
+            "expected": false
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "quality",
+            "type": "score",
+            "rubric_ref": "teaching-quality.v1",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "逐项判断下列用例要求；全部满足为pass，任一违背为fail。仅依据当前回复、上下文和原图，不以生产审核结论替代判断：\n依据刚发的第二页继续准确读周四旁标题，不误认为第一张，不要求重传已有清晰图片。",
+            "expected": "pass"
+          }
+        ],
+        "rationale": [],
+        "aggregation": "all_required"
+      }
+    },
+    {
+      "id": "check-3",
+      "after_message": "m5",
+      "component": "tutoring.turn",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "problem": {
+            "summary": "此前做过图片作业；当前只读取照片标题或印刷题面，不检查数学答案",
+            "substantive_attempts": 1,
+            "hints_given": 0
+          }
+        },
+        "note": "保留旧用例注入状态；并非重新从生产数据库取得的完整快照。"
+      },
+      "tags": [
+        "image-context",
+        "actual-history",
+        "no-math-grading"
+      ],
+      "grading": {
+        "deterministic": [
+          {
+            "id": "outcome_in",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "answer"
+            ]
+          },
+          {
+            "id": "outcome_not_in",
+            "field": "outcome",
+            "op": "not_in",
+            "expected": [
+              "fallback"
+            ]
+          },
+          {
+            "id": "selected_images_set_eq",
+            "field": "selected_images",
+            "op": "set_eq",
+            "expected": []
+          },
+          {
+            "id": "answer_protected_eq",
+            "field": "answer_protected",
+            "op": "eq",
+            "expected": false
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "quality",
+            "type": "score",
+            "rubric_ref": "teaching-quality.v1",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "逐项判断下列用例要求；全部满足为pass，任一违背为fail。仅依据当前回复、上下文和原图，不以生产审核结论替代判断：\n脱离图片直接解释lost的词义，不能继续批改或朗读旧图片题目。",
+            "expected": "pass"
+          }
+        ],
+        "rationale": [],
+        "aggregation": "all_required"
+      }
+    },
+    {
+      "id": "check-4",
+      "after_message": "m6",
+      "component": "tutoring.turn",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "problem": {
+            "summary": "此前做过图片作业；当前只读取照片标题或印刷题面，不检查数学答案",
+            "substantive_attempts": 1,
+            "hints_given": 0
+          }
+        },
+        "note": "保留旧用例注入状态；并非重新从生产数据库取得的完整快照。"
+      },
+      "tags": [
+        "image-context",
+        "actual-history",
+        "no-math-grading"
+      ],
+      "grading": {
+        "deterministic": [
+          {
+            "id": "outcome_in",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "answer"
+            ]
+          },
+          {
+            "id": "outcome_not_in",
+            "field": "outcome",
+            "op": "not_in",
+            "expected": [
+              "fallback"
+            ]
+          },
+          {
+            "id": "selected_images_set_eq",
+            "field": "selected_images",
+            "op": "set_eq",
+            "expected": [
+              "img-f0b2a66592fb.jpg"
+            ]
+          },
+          {
+            "id": "answer_protected_eq",
+            "field": "answer_protected",
+            "op": "eq",
+            "expected": false
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "quality",
+            "type": "score",
+            "rubric_ref": "teaching-quality.v1",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "逐项判断下列用例要求；全部满足为pass，任一违背为fail。仅依据当前回复、上下文和原图，不以生产审核结论替代判断：\n回到第一张原图，准确读周五旁标题，不计算也不批改。",
+            "expected": "pass"
+          }
+        ],
+        "rationale": [],
+        "aggregation": "all_required"
+      }
+    },
+    {
+      "id": "check-5",
+      "after_message": "m7",
+      "component": "tutoring.turn",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "problem": {
+            "summary": "此前做过图片作业；当前只读取照片标题或印刷题面，不检查数学答案",
+            "substantive_attempts": 1,
+            "hints_given": 0
+          }
+        },
+        "note": "保留旧用例注入状态；并非重新从生产数据库取得的完整快照。"
+      },
+      "tags": [
+        "image-context",
+        "actual-history",
+        "no-math-grading"
+      ],
+      "grading": {
+        "deterministic": [
+          {
+            "id": "outcome_in",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "answer"
+            ]
+          },
+          {
+            "id": "outcome_not_in",
+            "field": "outcome",
+            "op": "not_in",
+            "expected": [
+              "fallback"
+            ]
+          },
+          {
+            "id": "selected_images_set_eq",
+            "field": "selected_images",
+            "op": "set_eq",
+            "expected": [
+              "img-4430cfb69b7c.jpg"
+            ]
+          },
+          {
+            "id": "answer_protected_eq",
+            "field": "answer_protected",
+            "op": "eq",
+            "expected": false
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "quality",
+            "type": "score",
+            "rubric_ref": "teaching-quality.v1",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "逐项判断下列用例要求；全部满足为pass，任一违背为fail。仅依据当前回复、上下文和原图，不以生产审核结论替代判断：\n使用再次上传的第二页，准确读取第二大题标题，不解题或判断学生对错。",
+            "expected": "pass"
+          }
+        ],
+        "rationale": [],
+        "aggregation": "all_required"
+      }
+    },
+    {
+      "id": "check-6",
+      "after_message": "m8",
+      "component": "tutoring.turn",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "problem": {
+            "summary": "此前做过图片作业；当前只读取照片标题或印刷题面，不检查数学答案",
+            "substantive_attempts": 1,
+            "hints_given": 0
+          }
+        },
+        "note": "保留旧用例注入状态；并非重新从生产数据库取得的完整快照。"
+      },
+      "tags": [
+        "image-context",
+        "actual-history",
+        "no-math-grading"
+      ],
+      "grading": {
+        "deterministic": [
+          {
+            "id": "outcome_in",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "answer"
+            ]
+          },
+          {
+            "id": "outcome_not_in",
+            "field": "outcome",
+            "op": "not_in",
+            "expected": [
+              "fallback"
+            ]
+          },
+          {
+            "id": "selected_images_set_eq",
+            "field": "selected_images",
+            "op": "set_eq",
+            "expected": [
+              "img-4430cfb69b7c.jpg"
+            ]
+          },
+          {
+            "id": "answer_protected_eq",
+            "field": "answer_protected",
+            "op": "eq",
+            "expected": false
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "quality",
+            "type": "score",
+            "rubric_ref": "teaching-quality.v1",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "逐项判断下列用例要求；全部满足为pass，任一违背为fail。仅依据当前回复、上下文和原图，不以生产审核结论替代判断：\n保持第二页指代，准确读第二大题第一题的印刷算式；不计算，也不将手写答案混入题面。",
+            "expected": "pass"
+          }
+        ],
+        "rationale": [],
+        "aggregation": "all_required"
+      }
+    }
+  ]
+}

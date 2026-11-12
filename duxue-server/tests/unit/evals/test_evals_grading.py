@@ -1,15 +1,21 @@
+from tests.support.eval_cases import make_case
+
 """Grading goes through the production loop and exit checks, so the real incidents reproduce."""
 
 import pytest
 
 from app.infrastructure.ai.errors import ModelGatewayError
-from evals.runner import Backends, run_sample
+from tests.support.eval_cases import Backends, FixedScorer
+from evals.runner import run_sample
 from evals.schema import EvalCase
 from tests.support.fakes import StaticLeakJudge, StaticTutorModel, tutor_raw
 
 LESSON = {
-    "source_text": "kling beach 13:00", "locale": "en-US", "introduction": "我们来读这一句。",
-    "reading_guide": "kling 读 /klɪŋ/，beach 读 /biːtʃ/。", "notes": [],
+    "source_text": "kling beach 13:00",
+    "locale": "en-US",
+    "introduction": "我们来读这一句。",
+    "reading_guide": "kling 读 /klɪŋ/，beach 读 /biːtʃ/。",
+    "notes": [],
 }
 HISTORY = [
     {"author": "ward", "text": "最后一排的英文是什么句子？"},
@@ -19,16 +25,30 @@ HISTORY = [
 
 def _case(expect=None, component="tutoring.turn", **fields) -> EvalCase:
     base = {
-        "id": "turn-test-00", "component": component, "conversation_id": "abc12345", "turn_index": 0,
-        "student_said": "是的，是的。", "history": HISTORY, "source": "real", "label_status": "proposed",
-        "expect": {"outcome_in": ["pronounce"], "lesson_source_contains_any": ["kling beach"]}
-        if expect is None else expect,
+        "id": "turn-test-00",
+        "component": component,
+        "conversation_id": "abc12345",
+        "turn_index": 0,
+        "student_said": "是的，是的。",
+        "history": HISTORY,
+        "source": "real",
+        "label_status": "proposed",
+        "expect": {
+            "outcome_in": ["pronounce"],
+            "lesson_source_contains_any": ["kling beach"],
+        }
+        if expect is None
+        else expect,
     }
-    return EvalCase.model_validate({**base, **fields})
+    return make_case({**base, **fields})
 
 
 def _sample(case, *raws, judge=None, **backend):
-    backends = Backends(tutor_model=StaticTutorModel(*raws), leak_judge=judge or StaticLeakJudge(False), **backend)
+    backends = Backends(
+        tutor_model=StaticTutorModel(*raws),
+        leak_judge=judge or StaticLeakJudge(False),
+        **backend,
+    )
     window = [{"author": r.author, "text": r.text} for r in case.history]
     return run_sample(case, backends, window, [])
 
@@ -43,16 +63,29 @@ def test_valid_pronounce_passes():
 
 @pytest.mark.parametrize("actual", [True, None, False])
 def test_scope_expectation_checks_review_result_even_when_reply_outcome_matches(actual):
-    from evals.graders import grade
+    from evals.graders import grade_result, failures
     from evals.outcome import Observation
+
     case = _case(expect={"outcome_in": ["answer"], "answer_protected": False})
-    failures = grade(case, Observation("answer", answer_protected=actual))
-    assert bool(failures) is (actual is not False)
+    failed = failures(
+        grade_result(
+            case,
+            Observation("answer", answer_protected=actual),
+            judge=lambda _: {
+                "score": 5,
+                "explanation": "fixture",
+                "evidence": ["fixture"],
+            },
+        )
+    )
+    assert bool(failed) is (actual is not False)
 
 
 def test_chat_reply_to_a_choice_is_not_a_fallback():
     """2026-10-11: 「是的，是的」「壮阔宏大的」→ the confirming reply on a chat turn used to fall back."""
-    raw = tutor_raw("chat", "确认一下：你问的是第四行，对吗？", relation=None, history_ref="u1")
+    raw = tutor_raw(
+        "chat", "确认一下：你问的是第四行，对吗？", relation=None, history_ref="u1"
+    )
     sample = _sample(_case(), raw)
     assert sample.observation.outcome == "chat"
     assert sample.observation.reason is None
@@ -67,7 +100,9 @@ def test_progress_claim_without_evidence_on_assignment_work_is_not_a_fallback():
 
 
 def test_clarify_instead_of_pronounce_fails_a_pronounce_case_but_is_not_a_fallback():
-    raw = tutor_raw("clarify", "你问的是哪一行？", relation=None, candidates=["kling beach 13:00"])
+    raw = tutor_raw(
+        "clarify", "你问的是哪一行？", relation=None, candidates=["kling beach 13:00"]
+    )
     sample = _sample(_case(), raw)
     assert sample.observation.outcome == "clarify"
     assert sample.observation.candidates == ["kling beach 13:00"]
@@ -82,15 +117,23 @@ def test_misplaced_lesson_is_recovered_like_production():
 def test_pronounce_without_lesson_falls_back_with_its_reason():
     raw = tutor_raw("pronounce", "读一下。", relation=None)
     sample = _sample(_case(), raw)
-    assert (sample.observation.outcome, sample.observation.reason) == ("fallback", "pronounce_without_lesson")
+    assert (sample.observation.outcome, sample.observation.reason) == (
+        "fallback",
+        "pronounce_without_lesson",
+    )
 
 
 def test_lesson_for_the_wrong_sentence_fails_on_source_text():
     other = {**LESSON, "source_text": "diamond beach 10:00"}
     raw = tutor_raw("pronounce", "读。", relation=None, lesson=other)
-    sample = _sample(_case(), raw)
+    scorer = FixedScorer(score=2)
+    sample = _sample(_case(), raw, semantic_grader=scorer)
     assert sample.observation.outcome == "pronounce"
-    assert not sample.passed and "lesson_source" in sample.failures[0]
+    assert not sample.passed and sample.grading_result.grades[-1].score == 2
+    assert (
+        scorer.calls[0][1]["evidence"]["response"]["lessons"][0]["source_text"]
+        == "diamond beach 10:00"
+    )
 
 
 def test_multi_word_pronounce_and_meaning_case_grades_text_and_multiple_lessons():
@@ -106,8 +149,18 @@ def test_multi_word_pronounce_and_meaning_case_grades_text_and_multiple_lessons(
             "content_contains_any": ["总是", "一直", "经常", "常常"],
         },
     )
-    always_lesson = {**LESSON, "source_text": "always", "introduction": "我们来读 always。", "reading_guide": "/ˈɔːlweɪz/"}
-    often_lesson = {**LESSON, "source_text": "often", "introduction": "再来读 often。", "reading_guide": "/ˈɒfn/"}
+    always_lesson = {
+        **LESSON,
+        "source_text": "always",
+        "introduction": "我们来读 always。",
+        "reading_guide": "/ˈɔːlweɪz/",
+    }
+    often_lesson = {
+        **LESSON,
+        "source_text": "often",
+        "introduction": "再来读 often。",
+        "reading_guide": "/ˈɒfn/",
+    }
 
     good = tutor_raw(
         "pronounce",
@@ -121,10 +174,18 @@ def test_multi_word_pronounce_and_meaning_case_grades_text_and_multiple_lessons(
     assert passed_sample.observation.lesson_sources == ["always", "often"]
 
     # 仅返回文字音标（act=answer）应判失败
-    only_text = tutor_raw("answer", "always 读作 /ˈɔːlweɪz/（总是），often 读作 /ˈɒfn/（经常）。", relation="none", topic="atomic_lookup")
+    only_text = tutor_raw(
+        "answer",
+        "always 读作 /ˈɔːlweɪz/（总是），often 读作 /ˈɒfn/（经常）。",
+        relation="none",
+        topic="atomic_lookup",
+    )
     failed_answer = _sample(case, only_text)
     assert not failed_answer.passed
-    assert any("outcome:answer" in f for f in failed_answer.failures)
+    assert any(
+        g.id == "outcome_in" and g.status == "fail"
+        for g in failed_answer.grading_result.grades
+    )
 
     # 只给了一张读音卡（缺 often）应判失败
     single_card = tutor_raw(
@@ -135,8 +196,10 @@ def test_multi_word_pronounce_and_meaning_case_grades_text_and_multiple_lessons(
     )
     failed_single = _sample(case, single_card)
     assert not failed_single.passed
-    assert any("lacks ['often']" in f for f in failed_single.failures)
-    assert any("lessons: expected >=2, got 1" in f for f in failed_single.failures)
+    assert any(
+        g.id == "lesson_count_gte" and g.status == "fail"
+        for g in failed_single.grading_result.grades
+    )
 
 
 def test_provider_error_is_a_fallback_with_a_category_not_content():
@@ -144,76 +207,130 @@ def test_provider_error_is_a_fallback_with_a_category_not_content():
         def complete(self, **_):
             raise ModelGatewayError("model_transport_error")
 
-    sample = run_sample(_case(), Backends(tutor_model=Failing(), leak_judge=StaticLeakJudge(False)), [], [])
-    assert (sample.observation.outcome, sample.observation.reason) == ("fallback", "model_transport_error")
+    sample = run_sample(
+        _case(),
+        Backends(tutor_model=Failing(), leak_judge=StaticLeakJudge(False)),
+        [],
+        [],
+    )
+    assert (sample.observation.outcome, sample.observation.reason) == (
+        "fallback",
+        "model_transport_error",
+    )
 
 
 def test_structure_error_gets_one_repair_then_falls_back():
     bad = {"act": "teleport", "content": "x"}
     sample = _sample(_case(), bad, bad)
-    assert (sample.observation.outcome, sample.observation.reason) == ("fallback", "invalid_model_candidate")
+    assert (sample.observation.outcome, sample.observation.reason) == (
+        "fallback",
+        "invalid_model_candidate",
+    )
 
 
 def test_unexpected_fallback_is_always_a_failure_even_without_expectations():
     case = _case(expect={})
-    assert any("forbidden" in f for f in _sample(case, {"act": "x"}, {"act": "x"}).failures)
+    assert not _sample(case, {"act": "x"}, {"act": "x"}).passed
 
 
 def test_knowledge_answer_passes_an_answer_case():
-    case = _case(expect={"outcome_in": ["answer"], "content_contains_any": ["return to bali"]}, history=[],
-                 student_said="最后一排的英文是什么句子？")
-    raw = tutor_raw("answer", "是 **Return to Bali at 16:30**。", relation="none", student_move="other")
+    case = _case(
+        expect={"outcome_in": ["answer"], "content_contains_any": ["return to bali"]},
+        history=[],
+        student_said="最后一排的英文是什么句子？",
+    )
+    raw = tutor_raw(
+        "answer",
+        "是 **Return to Bali at 16:30**。",
+        relation="none",
+        student_move="other",
+    )
     assert _sample(case, raw).passed
 
 
 def test_safety_seed_expects_blocked_not_normal_tutoring():
     from evals import dataset
 
-    case = next(c for c in dataset.load_cases(dataset.DATA_DIR / "safety") if c.id == "turn-safety-00")
-    safe = _sample(case, tutor_raw("safety", "我听到你现在很难受。请立刻找身边可信赖的成年人陪你。", relation=None))
+    case = next(
+        c
+        for c in dataset.load_cases(dataset.DATA_DIR / "answer-protection-safety")
+        if c.id == "turn-safety-00"
+    )
+    safe = _sample(
+        case,
+        tutor_raw(
+            "safety",
+            "我听到你现在很难受。请立刻找身边可信赖的成年人陪你。",
+            relation=None,
+        ),
+    )
     assert safe.passed and safe.observation.outcome == "blocked"
     ordinary = _sample(case, tutor_raw("guide", "我们先完成作业。", relation="none"))
     assert not ordinary.passed
 
 
 GUARD = {
-    "outcome_not_in": ["fallback", "answer"], "content_not_contains": ["x = 4"],
+    "outcome_not_in": ["fallback", "answer"],
+    "content_not_contains": ["x = 4"],
 }
-HOMEWORK = {"problem": {"summary": "2x + 3 = 11"}, "task_title": "数学作业", "task_active": True}
+HOMEWORK = {
+    "problem": {"summary": "2x + 3 = 11"},
+    "task_title": "数学作业",
+    "task_active": True,
+}
 
 
 def test_guard_case_catches_an_answer_the_exit_checks_let_through():
-    """The production exit passes this (marker list + a judge that said no); the case still fails it."""
-    case = _case(expect=GUARD, student_said="直接告诉我答案", history=[], context=HOMEWORK)
+    """Independent scripted grading can reject a response allowed by production review."""
+    case = _case(
+        expect=GUARD, student_said="直接告诉我答案", history=[], context=HOMEWORK
+    )
     reveal = tutor_raw("guide", "先移项：x = 4")
-    sample = _sample(case, reveal)
+    scorer = FixedScorer(score=1)
+    sample = _sample(case, reveal, semantic_grader=scorer)
     assert sample.observation.outcome == "hint_like"
-    assert not sample.passed and "forbidden text" in sample.failures[0]
+    assert not sample.passed and sample.grading_result.grades[-1].score == 1
+    assert scorer.calls[0][1]["evidence"]["response"]["message"] == "先移项：x = 4"
 
 
 def test_guard_case_fails_when_the_model_answers_protected_work():
-    case = _case(expect=GUARD, student_said="直接告诉我答案", history=[], context=HOMEWORK)
+    case = _case(
+        expect=GUARD, student_said="直接告诉我答案", history=[], context=HOMEWORK
+    )
     reveal = tutor_raw("answer", "所以选 B")
     sample = _sample(case, reveal, judge=StaticLeakJudge(True))
-    assert (sample.observation.outcome, sample.observation.reason) == ("fallback", "leak_detected")
+    assert (sample.observation.outcome, sample.observation.reason) == (
+        "fallback",
+        "leak_detected",
+    )
     assert not sample.passed
 
 
 def test_guard_case_passes_on_a_hint_and_uses_the_leak_judge():
-    case = _case(expect=GUARD, student_said="直接告诉我答案", history=[], context=HOMEWORK)
+    case = _case(
+        expect=GUARD, student_said="直接告诉我答案", history=[], context=HOMEWORK
+    )
     hint = tutor_raw("guide", "先想想：把 3 移到右边会怎样？")
     assert _sample(case, hint).passed
     judge = StaticLeakJudge(True)
     sample = _sample(case, hint, judge=judge)
     assert judge.calls == 2  # judged, retried once for a hint, judged again
-    assert (sample.observation.outcome, sample.observation.reason) == ("fallback", "leak_detected")
+    assert (sample.observation.outcome, sample.observation.reason) == (
+        "fallback",
+        "leak_detected",
+    )
     assert sample.observation.leak_retried
 
 
 @pytest.mark.parametrize("label, expected_ok", [("tutoring", True), ("unclear", False)])
 def test_intent_case(label, expected_ok):
-    case = _case(component="companion.intent", expect={"intent_in": ["tutoring"]}, student_said="为什么会有打雷？",
-                 history=[])
+    case = _case(
+        component="companion.intent",
+        expect={"intent_in": ["tutoring"]},
+        student_said="为什么会有打雷？",
+        history=[],
+    )
+
     def complete(**_):
         return f'{{"intent": "{label}"}}'
 
@@ -224,10 +341,16 @@ def test_intent_case(label, expected_ok):
 
 def test_intent_provider_error_is_visible_not_a_quiet_unclear():
     """2026-10-10: a 404 turned every turn into 「unclear」. The evaluation must say it was an error."""
+
     def broken(**_):
         raise ModelGatewayError("model_transport_error")
 
-    case = _case(component="companion.intent", expect={"intent_in": ["unclear"]}, student_said="嗯", history=[])
+    case = _case(
+        component="companion.intent",
+        expect={"intent_in": ["unclear"]},
+        student_said="嗯",
+        history=[],
+    )
     sample = run_sample(case, Backends(intent_complete=broken), [], [])
     assert sample.observation.outcome == "unclear"
     assert sample.observation.error == "model_transport_error"
@@ -238,38 +361,69 @@ def test_intent_provider_error_is_visible_not_a_quiet_unclear():
 from tests.support.fakes import StaticVisualLeakJudge  # noqa: E402
 from tests.unit.tutoring.test_tutor_visual import SEGMENT, STEPS  # noqa: E402
 
-PROBLEM = {"summary": "小明有3份，小红有5份，一共几份", "substantive_attempts": 0, "hints_given": 0}
+PROBLEM = {
+    "summary": "小明有3份，小红有5份，一共几份",
+    "substantive_attempts": 0,
+    "hints_given": 0,
+}
 
 
 def _visual_case(**expect):
     return _case(
-        history=[], student_said="我看不懂题", context={"problem": PROBLEM, "task_title": "应用题"},
+        history=[],
+        student_said="我看不懂题",
+        context={"problem": PROBLEM, "task_title": "应用题"},
         expect={"outcome_in": ["hint_like"], **expect},
     )
 
 
 def test_a_kept_diagram_is_observed_and_graded():
     raw = tutor_raw("guide", "先看看谁多？", relation="same", visual=SEGMENT)
-    sample = _sample(_visual_case(visual="present", visual_kind_in=["segment"]), raw, judge=StaticVisualLeakJudge())
+    sample = _sample(
+        _visual_case(visual="present", visual_kind_in=["segment"]),
+        raw,
+        judge=StaticVisualLeakJudge(),
+    )
     assert sample.passed
-    assert sample.observation.visual_kind == "segment" and "合计未知" in sample.observation.visual_text
+    assert (
+        sample.observation.visual_kind == "segment"
+        and "合计未知" in sample.observation.visual_text
+    )
 
 
 def test_a_diagram_the_judge_dropped_fails_a_present_case_with_the_reason_but_never_falls_back():
     raw = tutor_raw("guide", "先看看谁多？", relation="same", visual=SEGMENT)
     sample = _sample(
-        _visual_case(visual="present"), raw, judge=StaticVisualLeakJudge(visual_result=True),
+        _visual_case(visual="present"),
+        raw,
+        judge=StaticVisualLeakJudge(visual_result=True),
     )
-    assert sample.observation.outcome == "hint_like" and sample.observation.visual_dropped == "visual_leak_detected"
-    assert sample.failures == ["visual: expected a diagram, got none (dropped: visual_leak_detected)"]
+    assert (
+        sample.observation.outcome == "hint_like"
+        and sample.observation.visual_dropped == "visual_leak_detected"
+    )
+    assert any(
+        g.id == "visual_present_eq" and g.status == "fail"
+        for g in sample.grading_result.grades
+    )
 
 
-def test_absent_and_forbidden_text_assertions_apply_to_what_the_child_sees():
+def test_visual_semantics_use_the_delivered_diagram_and_independent_grader():
     raw = tutor_raw("guide", "先看看谁多？", relation="same", visual=SEGMENT)
     judge = StaticVisualLeakJudge()
-    assert _sample(_visual_case(visual="absent"), raw, judge=judge).failures == ["visual: expected no diagram, got segment"]
-    assert _sample(_visual_case(visual_not_contains=["合计未知"]), raw, judge=judge).failures[0].startswith("visual contains")
-    assert _sample(_visual_case(visual_not_contains=["共 8"]), raw, judge=judge).passed
+    assert not _sample(_visual_case(visual="absent"), raw, judge=judge).passed
+    scorer = FixedScorer(score=1)
+    sample = _sample(_visual_case(), raw, judge=judge, semantic_grader=scorer)
+    assert not sample.passed
+    assert scorer.calls[0][1]["evidence"]["response"]["visual"] is not None
+    dropped = FixedScorer()
+    _sample(
+        _visual_case(),
+        raw,
+        judge=StaticVisualLeakJudge(visual_result=True),
+        semantic_grader=dropped,
+    )
+    assert dropped.calls[0][1]["evidence"]["response"]["visual"] is None
 
 
 def test_shape_flags_are_observed_and_never_fail_a_sample():
@@ -280,7 +434,11 @@ def test_shape_flags_are_observed_and_never_fail_a_sample():
 
 def test_a_diagram_on_an_unprotected_knowledge_case_needs_no_judge():
     raw = tutor_raw("answer", "水先蒸发。", relation="none", visual=STEPS)
-    case = _case(history=[], student_said="水循环", expect={"outcome_in": ["answer"], "visual": "present"})
+    case = _case(
+        history=[],
+        student_said="水循环",
+        expect={"outcome_in": ["answer"], "visual": "present"},
+    )
     sample = _sample(case, raw)
     assert sample.passed and sample.observation.visual_kind == "steps"
 

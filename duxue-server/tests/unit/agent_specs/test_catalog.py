@@ -15,7 +15,7 @@ from app.agent_specs.definitions import load_definitions
 def test_catalog_covers_route_business_nodes_gates_tools_and_components():
     catalog = load_catalog()
     assert set(catalog.specs) == {
-        "companion", "planning", "tutoring", "tutoring-vet", "tutoring-retry", "reflection", "task-intake", "review-aspects", "sprint-intake",
+        "eval-grading", "companion", "planning", "tutoring", "tutoring-vet", "tutoring-retry", "reflection", "task-intake", "review-aspects", "sprint-intake",
     }
     assert catalog.step("route", "intent_route").owner == "companion"
     assert catalog.step("check", "tutoring.exit_gate").required

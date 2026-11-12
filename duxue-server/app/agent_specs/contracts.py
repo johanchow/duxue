@@ -23,7 +23,9 @@ def validate_output(unit: ModelUnit, payload: dict) -> None:
     assert schema is not None
     Draft202012Validator(schema).validate(payload)
     unit_id = unit.id
-    if unit_id == "companion.intent":
+    if unit_id == "evals.semantic-judge":
+        pass  # The strict score/verdict/error schema above owns this contract.
+    elif unit_id == "companion.intent":
         if payload["intent"] not in {"planning", "tutoring", "reflection", "unclear"}:
             raise ValueError("invalid intent")
     elif unit_id == "companion.scene-switch":
@@ -66,7 +68,7 @@ def validate_output(unit: ModelUnit, payload: dict) -> None:
 
 def has_python_contract(unit_id: str) -> bool:
     return unit_id in {
-        "companion.intent", "companion.scene-switch", "planning.intake",
+        "evals.semantic-judge", "companion.intent", "companion.scene-switch", "planning.intake",
         "task.intake", "tutoring.turn", "evaluation.review-aspects", "study.sprint-intake",
         "tutoring.image-target", "tutoring.leak-judge", "tutoring.visual-leak-judge",
     }

@@ -92,7 +92,13 @@ def sprint_intake(*, request):
                        "previous": request.previous.model_dump() if request.previous else {}}, ensure_ascii=False)
 
 
+def eval_grade(*, payload, images=None):
+    body = json.dumps(payload, ensure_ascii=False)
+    return [{"type": "text", "text": body}, *image_parts([], images)] if images else body
+
+
 BUILDERS = {
+    "evals.semantic_judge.context": eval_grade,
     "study.sprint_intake.context": sprint_intake,
     "companion.intent.context": intent,
     "companion.scene_switch.context": scene_switch,

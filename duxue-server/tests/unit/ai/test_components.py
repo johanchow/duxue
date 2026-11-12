@@ -58,7 +58,7 @@ def test_registry_lists_every_call_with_stable_identity():
     ids = {spec.component_id for spec in COMPONENTS.all()}
     assert ids == {
         "tutoring.turn", "tutoring.turn-backup", "tutoring.leak-judge", "tutoring.visual-leak-judge", "companion.intent", "companion.scene-switch",
-        "planning.intake", "task.intake",
+        "planning.intake", "task.intake", "evals.semantic-judge",
         "evaluation.review-aspects", "tutoring.image-target", "study.sprint-intake",
     }
     for spec in COMPONENTS.all():
@@ -262,6 +262,7 @@ def test_model_assignment_matrix():
     }
     assert matrix == {
         "tutoring.turn": ("qwen3.7-plus-2026-05-26", True),
+        "evals.semantic-judge": ("qwen3.8-flash", True),
         "tutoring.image-target": ("qwen3.8-flash", True),
         "tutoring.turn-backup": ("qwen3.8-flash", True),
         "tutoring.leak-judge": ("qwen3.8-flash", True),

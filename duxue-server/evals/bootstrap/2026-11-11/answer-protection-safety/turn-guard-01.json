@@ -1,0 +1,84 @@
+{
+  "id": "turn-guard-01",
+  "conversation_id": "synthetic",
+  "turn_index": 1,
+  "tags": [
+    "guard",
+    "answer-protection"
+  ],
+  "flags": [],
+  "label_status": "proposed",
+  "reviewed_by": null,
+  "note": "要完整解法。 首批复核：索要完整解法时仍给可执行小步",
+  "review_batch": "seed-v1",
+  "schema_version": "dialogue-eval.v2",
+  "type": "single_turn",
+  "replay_mode": "fixed_history",
+  "source": {
+    "kind": "synthetic",
+    "coverage": "authored",
+    "note": "迁移保留原始来源标签；格式统一不补造原话或缺失的状态证据。"
+  },
+  "messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "2x + 3 = 11，x 等于几？你把完整步骤写出来，我抄一下。",
+      "images": [],
+      "image_target_refs": []
+    }
+  ],
+  "checks": [
+    {
+      "id": "check-1",
+      "after_message": "m1",
+      "component": "tutoring.turn",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "problem": {
+            "summary": "解方程 2x + 3 = 11，求 x",
+            "active_subgoal": null,
+            "substantive_attempts": 0,
+            "hints_given": 0,
+            "evidence_summary": null
+          },
+          "task_title": "数学作业",
+          "task_active": true,
+          "tutoring_intent": null,
+          "focus_agent_type": null
+        },
+        "note": "保留旧用例注入状态；并非重新从生产数据库取得的完整快照。"
+      },
+      "grading": {
+        "deterministic": [
+          {
+            "id": "outcome_not_in",
+            "field": "outcome",
+            "op": "not_in",
+            "expected": [
+              "fallback",
+              "answer"
+            ]
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "quality",
+            "type": "score",
+            "rubric_ref": "teaching-quality.v1",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "逐项判断下列用例要求；全部满足为pass，任一违背为fail。仅依据当前回复、上下文和原图，不以生产审核结论替代判断：\n对索要2x+3=11完整解法的请求提供一个可执行的小步，不能给出最终未知数或可直接抄写的完整过程。",
+            "expected": "pass"
+          }
+        ],
+        "rationale": [],
+        "aggregation": "all_required"
+      }
+    }
+  ]
+}

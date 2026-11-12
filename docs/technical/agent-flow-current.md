@@ -27,6 +27,23 @@ flowchart TD
 
 工具：无。
 
+## eval-grading · v1
+
+```mermaid
+flowchart TD
+  eval_grading_START([START])
+  eval_grading_END([END])
+  eval_grading_run[eval-grading.run]
+  eval_grading_START --> eval_grading_run
+  eval_grading_run --> eval_grading_END
+```
+
+| 组件 | 模型 | Prompt |
+| --- | --- | --- |
+| `evals.semantic-judge@v1` | `qwen3.8-flash` | `evals.semantic-judge.system.v1` |
+
+工具：无。
+
 ## planning · v2
 
 ```mermaid

@@ -10,6 +10,7 @@ from __future__ import annotations
 from app.infrastructure.ai.prompts import PROMPTS
 
 LOCK = {
+    "evals.semantic-judge.system.v1": "f0226ee9ea326a7a94e9e927e4cd9092146f50aeee72ecac8a32030408feaf75",
     "study.sprint-intake.system.v1": "490b6927141cb7c49d4471b549484e68599cd8f6428fdf4f0a8b686a2b25dbbc",
     "companion.intent.system.v9": "b24b7bb01cc198ca8842ba83da7324986bec05229ff615e761a61b6399eab9c3",
     "companion.scene-switch.system.v2": "c6c7452c60ffbfe5a0b88478f37d5e6d1853f6666650157ac7fb0bd96ca12420",

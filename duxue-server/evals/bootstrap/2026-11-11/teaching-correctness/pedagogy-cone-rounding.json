@@ -1,0 +1,92 @@
+{
+  "schema_version": "dialogue-eval.v2",
+  "id": "pedagogy-cone-rounding",
+  "type": "single_turn",
+  "replay_mode": "fixed_history",
+  "conversation_id": "pedagogy-cone-rounding",
+  "turn_index": 0,
+  "source": {
+    "kind": "synthetic",
+    "coverage": "authored",
+    "provider": "CoreV3-assessment_feedback",
+    "note": "外部教学样本的评测改编，未验证真实对话来源；不是生产观测。{\"file\": \"pedagogical_action.jsonl\", \"line\": 1, \"file_sha256\": \"71e51a34cc7f98206c3bfdcbd430ccb11476468b737079b2def10e21408f3800\", \"metadata\": {\"category\": \"pedagogical_action\", \"dataset\": \"CoreV3-assessment_feedback\", \"uid\": \"v5-42112-7effdd54ac9e\", \"kind\": \"generic_pedagogy\", \"system_variant\": \"general\", \"kcenter\": {\"bucket\": \"pedagogy/answer_assessment\", \"rank\": 33, \"supervised_tokens\": 154, \"token_budget\": 40000}, \"system_prompt_id\": \"answer_assessment\", \"system_prompt_version\": \"v6_finegrained_20260831\"}, \"original_system\": \"Assess the learner's answer accurately. State what is correct, identify the first important error or omission, and give focused feedback or the next correction without unnecessary re-solving.\", \"adaptation\": [\"移除原system指令和最后assistant示范，不作为生产提示或正确答案；重新编写判分标准。\"], \"history_window\": \"执行时只投影当前用户前最多8条消息；全段可见历史保留用于溯源。\"}"
+  },
+  "messages": [
+    {
+      "role": "user",
+      "content": "题目：\n（2023春•岱岳区期末）一个近似圆锥形的沙堆，底面半径3米，高2.5米。如果每立方米沙子重1.5吨，这堆沙子重___1___吨。（得数保留整数）\n\n学生答案：\n35.325\n\n请给出针对性反馈。",
+      "id": "m1",
+      "images": [],
+      "image_target_refs": []
+    }
+  ],
+  "review_batch": "pedagogical-action-v1",
+  "label_status": "proposed",
+  "reviewed_by": null,
+  "tags": [
+    "pedagogical-action",
+    "external-adaptation",
+    "teaching-correctness"
+  ],
+  "flags": [],
+  "note": "识别沙堆重量结果未按要求取整。只评最后一条学生消息后的回复；此前助手消息为固定历史，不要求模型复现原示范。",
+  "checks": [
+    {
+      "id": "check-1",
+      "after_message": "m1",
+      "component": "tutoring.turn",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "problem": {
+            "summary": "圆锥形沙堆底面半径3米，高2.5米，每立方米重1.5吨；求重量，得数保留整数。学生仅提交35.325。",
+            "active_subgoal": "核验学生的数值与题目取整要求",
+            "substantive_attempts": 1,
+            "hints_given": 0
+          },
+          "task_title": "教学反馈练习",
+          "task_active": true
+        },
+        "note": "为组件评测显式构造的上下文；计数表示当前检查点的测试条件，不声称是原始数据库状态。"
+      },
+      "grading": {
+        "deterministic": [
+          {
+            "id": "outcome_in",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "hint_like"
+            ]
+          },
+          {
+            "id": "outcome_not_in",
+            "field": "outcome",
+            "op": "not_in",
+            "expected": [
+              "fallback"
+            ]
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "quality",
+            "type": "score",
+            "rubric_ref": "teaching-quality.v1",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "核验35.325吨是按π≈3.14得到的未取整数值，指出尚未满足保留整数要求，并给出四舍五入到整数的一个可操作提示，让学生完成取整；不直接代填35。学生没有展示计算过程，不能断言其正确使用了公式或掌握了推导。不得要求无必要地重算整题。允许说明π近似造成的数值差异，但不能偏离最终取整要求。 仅依据当前回复及检查点可见上下文判断；允许自然的中英文表达，不作关键词或句数匹配。",
+            "expected": "pass"
+          }
+        ],
+        "rationale": [
+          "原始示范未作为gold；语义要求按读学的小步引导及已提交答案核验原则重新定义。"
+        ],
+        "aggregation": "all_required"
+      }
+    }
+  ]
+}
