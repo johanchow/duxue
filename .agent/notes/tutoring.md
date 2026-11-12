@@ -119,3 +119,7 @@
 - 2026-11-12 完成Scores默认可见优化：新任务根/检查点与全部Score使用offline-evaluation；SDK会在每个新子节点再次强制sdk-experiment，故任务入口与NativeScorer检查点创建后均通过官方propagate_attributes显式覆盖。6条离线云端规则接受新环境并兼容历史SDK环境，生产规则未改。新增2个红绿回归，评测220测试与platform lint/diff检查通过；真实cone用例1pass，云端读回9条Score全部offline-evaluation、任务根和检查点亦同。验收Experiment e8a44be21a9561d3，证据var/evals/visible-scores-verification-final/cloud-visibility-verification.json；SDK外层item-run包装仍保留内部环境但不承载评分。历史未改写；需清除之前手动SDK环境筛选一次。未commit或部署。
 
 - 2026-11-12 用户授权本地提交统一Langfuse评测及后续修复。提交前review确认41份初始化JSON逐字节不变、运行产物/密钥不入库；再次验证Server评测220测试/静态校验/platform lint，Admin37测试/类型/构建均通过。纳入用例单源、原生评分/Experiment、Admin新维度、汇总Comment、ERROR上报与Scores默认可见；排除无关platform笔记/.vscode/参考PDF。不push或部署，历史质量失败、人工校准和视觉验收限制继续保留。
+
+- 2026-11-12 按用户要求更新[离线评测设计](../../docs/technical/eval-offline.md)：补职责架构与执行时序两张原生Mermaid，明确Langfuse维护评测事实、Admin维护业务配置/只读聚合及新标签跳转、本地runner执行与审计；补39 ACTIVE/57检查点、任务根与检查点Score层级、跨Experiment身份、归档和Error Count口径。两图经Mermaid解析通过，JSON示例/本地链接/fence/diff检查通过；仅文档与本笔记，无代码或云端变更，未提交。
+- 2026-11-12 本地Overview显示旧Answer Quality及Safety为空：3021仍为11月11日13:25启动的npm start旧进程，内存旧API只读API来源且取根延迟，未加载新EVAL维度；重新构建并仅重启该本地Admin后验证guidance-logic实验HTTP聚合：TaskSuccess87.5%(8)、TeachingCorrectness96.923%(13)、GuidanceLogic89.231%(13)、AnswerProtection/Safety100%(13)、执行均耗时8.319925s(8)。Overall/Cost无生成，ToolCorrectness该集无工具断言，baseline未选故Delta为空。证据admin .local/overview-latest-verification.json；无业务代码修改或发布。
+- 2026-11-12 用户授权切换新分支提交评测设计文档；分支codex/eval-offline-design。提交前review及两张Mermaid解析、JSON示例、本地链接、Markdown fence和diff检查通过；仅纳入设计文档与对应笔记，不含无关platform笔记、.vscode、参考PDF或本地运行产物。不push或部署。
