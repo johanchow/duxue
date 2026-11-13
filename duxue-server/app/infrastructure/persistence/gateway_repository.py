@@ -143,7 +143,7 @@ class SqlCaptureRepository:
             row.gateway_frame_id,
             device.camera_id,
             row.ward_id,
-            device.assignment_revision,
+            row.assignment_revision if row.assignment_revision is not None else device.assignment_revision,
             utc(row.captured_at),
             row.sha256,
             row.size_bytes,
@@ -160,6 +160,7 @@ class SqlCaptureRepository:
             ward_id=evidence.ward_id,
             gateway_id=evidence.gateway_id,
             gateway_frame_id=evidence.frame_id,
+            assignment_revision=evidence.revision,
             captured_at=evidence.captured_at,
             oss_key=key,
             sha256=evidence.sha256,
@@ -168,6 +169,8 @@ class SqlCaptureRepository:
         )
         self.db.add(row)
         self.db.flush()
+        from app.infrastructure.persistence.evidence_repository import record_accepted_evidence
+        record_accepted_evidence(self.db, row, evidence.revision)
         return AcceptedFrame(row.id, evidence, camera.device_id, key)
 
     def heartbeat(self, gateway_id, boot_id, sequence, cameras, current):

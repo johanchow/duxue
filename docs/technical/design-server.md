@@ -1010,3 +1010,18 @@ Query 由 `app/application/queries/tutoring_evidence.py` 承接，鉴权由 Guar
 ### Task约定提醒增量（2026-11-04）
 
 Task可空列`end_reminder_mode: varchar(20)`由迁移`20261104_34`加入；历史默认NULL，不补造提醒授权。规则与持久化边界唯一归属[Planning约定提醒](domain-planning.md#约定到时提醒2026-11-04本轮待验收)。测试库已从33升级至34并完成本轮回归；生产库尚未执行此迁移，后台通知等现场验收边界见进行中spec。
+
+
+## 近实时观察物理映射（2026-11-12，迁移35）
+
+概念与运行契约由 [Behavior §十](domain-behavior.md#十实现与运行状态2026-11-12) 维护。`20261112_35_behavior_observation` 接续34，新增 `frames.assignment_revision`（可空，不猜测旧帧归属），并新增以下物理表：
+
+| 归属 | 表 |
+|---|---|
+| 采集证据 | `evidence_sequence`、`accepted_evidence` |
+| 观察运行 | `observation_settings`、`observation_windows`、`observation_interpretations`、`observation_jobs`、`observation_cursors` |
+| 观察交付 | `observation_days`、`observation_revisions`、`support_assessments`、`observation_consumer_inbox` |
+| Study / Companion | `help_offer_budgets`、`help_offers`、`support_channels`、`support_receipts` |
+| Evaluation | `reflection_reports`、`reflection_report_versions`、`guardian_report_inbox` |
+
+接收计数器在接收事务中行锁分配，避免数据库 sequence 先分配后乱序提交导致高水位漏消费。观察和报告版本只追加；配置 generation 隔离旧任务。用户数据删除先停用并递增 generation，再删除派生表及证据，保留停用设置作为在途任务围栏。报告来源向量存于不可变版本内，收件索引与报告同事务，不另建冗余报告证据表。

@@ -86,6 +86,10 @@ def analyze_and_generate(
     ward = db.get(Ward, ward_id)
     if ward is None:
         raise HTTPException(404, "ward not found")
+    from app.infrastructure.persistence.models import ObservationSettings
+    observation = db.get(ObservationSettings, ward_id)
+    if observation and (observation.enabled or observation.report_enabled):
+        raise HTTPException(409, "versioned observation owns this ward; legacy analysis disabled")
     start, end = utc_bounds(report_date)
     frames = db.query(Frame).filter(
         Frame.ward_id == ward_id,

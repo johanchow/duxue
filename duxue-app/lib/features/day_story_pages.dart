@@ -22,6 +22,7 @@ import 'sprint_card.dart';
 import 'chat_image_viewer.dart';
 import 'pronunciation_player.dart';
 import 'start_cue_card.dart';
+import 'support_companion_panel.dart';
 import 'visual_block.dart';
 import 'task_status_dialogs.dart';
 
@@ -402,6 +403,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
                 padding: EdgeInsets.fromLTRB(
                     20, 24, 20, stagedImages.isNotEmpty ? 184 : 112),
                 child: Column(children: [
+                  SupportCompanionPanel(wardId: widget.wardId, onAsk: _openPlanChat),
                   if (sprintSetupOpen)
                     _spokenSprintCard()
                   else ...[

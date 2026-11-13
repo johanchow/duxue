@@ -36,7 +36,13 @@ def test_worker_receives_no_secrets(tmp_path, monkeypatch):
     env = compute({}, worker=script)
     assert "DATABASE_URL" not in env
     assert "HOME" not in env
-    assert set(env) <= {"LANG", "LC_CTYPE"}
+    # macOS CoreFoundation can inject its encoding marker after exec even
+    # though Popen receives only LANG. Business variables must remain absent.
+    allowed = {"LANG", "LC_CTYPE"}
+    import sys
+    if sys.platform == "darwin":
+        allowed.add("__CF_USER_TEXT_ENCODING")
+    assert set(env) <= allowed
 
 
 def test_real_unix_transport_and_missing_executor(tmp_path):

@@ -846,7 +846,7 @@ select {
 
 .agent-filters {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(140px, 240px);
+  grid-template-columns: minmax(0, 1fr) minmax(140px, 200px) minmax(180px, 280px);
   align-items: end;
   gap: 16px;
 }
@@ -860,7 +860,7 @@ select {
 }
 @media (max-width: 650px) {
   .agent-filters {
-    grid-template-columns: minmax(0, 1fr) 140px;
+    grid-template-columns: minmax(0, 1fr);
     gap: 10px;
   }
 }

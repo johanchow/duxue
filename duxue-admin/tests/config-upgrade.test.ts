@@ -36,3 +36,34 @@ test('offline upgrade refuses concurrent edits, changed release and unrelated dr
     /草稿已变化/,
   );
 });
+
+import { upgradedWorkflowBaseline } from '../src/lib/config-upgrade';
+import { requireUnchangedWorkflows } from '../src/lib/workflow-policy';
+test('validated migration adopts topology without erasing model debug baseline', () => {
+  const before = {
+    files: {
+      'agents/old.json': { prompt: 'old' },
+      'workflows/old.json': { nodes: [] },
+    },
+  };
+  const after = {
+    files: {
+      ...before.files,
+      'agents/new.json': { prompt: 'new' },
+      'workflows/new.json': { nodes: ['new'] },
+    },
+  };
+  const baseline = upgradedWorkflowBaseline(before, after);
+  assert.doesNotThrow(() => requireUnchangedWorkflows(after, baseline));
+  assert.equal(baseline.files['agents/new.json'], undefined);
+  assert.deepEqual(
+    baseline.files['agents/old.json'],
+    before.files['agents/old.json'],
+  );
+  assert.throws(() =>
+    requireUnchangedWorkflows(
+      { files: { ...after.files, 'workflows/new.json': { nodes: [] } } },
+      baseline,
+    ),
+  );
+});

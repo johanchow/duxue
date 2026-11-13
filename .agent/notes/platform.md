@@ -126,3 +126,24 @@
 - 2026-11-09 PR #90合并e20bb357后线上核验：Deploy Server/Admin、Admin CI和APK发布均success；五个应用容器均为合并SHA、Redis保持原实例，重启0/OOM无。公网API/Admin health200、内部发布公网404，管理台经原私网访问Executor生成35文件目录200。API及两个Worker子进程均持续回执prod R1 loaded、digest与Admin发布/持久缓存一致；业务数据库34可读、Redis认证PING/AOF正常、队列0、Worker pong，五分钟Beat派发29/Worker完成29且六容器日志无错误。正式发布快照真实意图模型调用返回tutoring。磁盘33%剩26GiB。本轮未重启/改配置/发布；未覆盖App真机完整交互或全量模型评测。
 
 - 2026-11-09 Workflow单源修正：原load_catalog仍全局缓存仓库目录，已删除生产9份Workflow副本；完整包编译时验证并持有流程目录，运行/管理目录/调试/离线线程统一读取固定快照，发布回滚下一轮切换。调用预算从当前快照读取，代码仅留注册/安全上限/门禁/协议；Admin保存与发布按DB草稿基线禁止改流程，不开放编排。兼容指纹中的Workflow改从传入包读取，不需改写现有R1（正式只读获取并本机编译，digest原样通过）。未知处理器/条件/引用、伪装门禁、缺预算等编译拒绝；保留原工具授权子集编辑能力。最终Server全量872通过/1跳过/3 subtests，Admin29测试（含真实PG拒绝保存/发布流程修改）、类型/生产构建、Ruff、CLI快照/数据集校验通过；HTTP拉取/固定/断网缓存冷恢复及实际流程切换回滚均有回归。历史夹具仅测试且不入镜像。设计唯一归属[管理台设计](../../docs/technical/design-admin.md)。用户已确认本轮结果并授权分支提交/PR；不部署，不代表全量真实模型评测通过。
+
+- 2026-11-12 摄像头行为链路只读核查：采集/OSS/Frame接入已有实现与五帧真机短测；云端仍走`celery_tasks`每日Batch→`inference`单图描述→`legacy_services`关键词分类/报告，不能视为[Behavior目标设计](../../docs/technical/domain-behavior.md)完成。部分模型结果缺失时按整日遍历补默认在座字段、标记analyzed并落入走神兜底；提交只扫目标UTC日且默认当天，历史补传缺自动补扫；现有分段按帧数乘周期、平滑不看缺口，缺少目标方案的unknown/missing及版本化覆盖契约。本次行为/分类/网关API定向32项通过，只证明现行契约，未运行真实视觉模型或现场采集；未修改业务实现。
+
+- 2026-11-12 用户认可新版行为观察设计与分钟多图/按需帮助评估流程并要求实现；已准备[实施spec](../specs/realtime-behavior-observation.md)，覆盖证据Query、可靠分析任务、观察版本、Study/Companion/App邀请回执与零输入晚间报告。具体计划待feature Gate 1；默认shadow，真实模型质量与现场验收独立于工程测试，尚未修改业务实现。配置须接入Admin唯一发布源并处理旧包兼容；优化与详细验收以spec及领域设计为准。
+
+- 2026-11-12 用户已确认 Gate 1；新观察主链路本地落地，运行入口、配置/迁移、回放及限制统一见 [Behavior §十](../../docs/technical/domain-behavior.md#十实现与运行状态2026-11-12)。真实多图合成冒烟已通过；旧 `.env.test` 的 qwen3-vl-flash 及带日期版本在账号返回 model_not_found，候选包改为已存在视觉组件使用的 qwen3.8-flash，未修改当前发布。默认 shadow，生产未迁移/发布。测试结果与尚未验收项保留在进行中的 spec，不能把帧级回放或合成图通过当成儿童场景质量验收。CLI兼容回归测试应调用 historical_main；macOS子进程可能注入 __CF_USER_TEXT_ENCODING，隔离测试仍禁止数据库及HOME变量。
+
+- 本轮最终验证：Python全量1101通过/1跳过/3子测试通过，Flutter160通过且analyze无问题，真实PostgreSQL迁移与接收提交顺序通过。模型失败已有图片区间记unknown，未接收区间才是missing；旧上传API缺少采集时归属证明，不写新观察证据账本。未提交、未部署；完整限制与待验收范围见观察spec。
+
+- 2026-11-13 用户要求观察链路遵循Admin Workflow/code/LLM Agent标准：新增配置的五条Workflow及六个code Agent，正式模型调用和三个持久化命令均走统一execute_workflow，保留事务/重试边界；详细清单与调试输入见[Behavior §10.4](../../docs/technical/domain-behavior.md#104-admin-workflow-与-agent2026-11-13)。代码仅注册handler及强制协议顺序，节点身份和实际边取自发布包。隔离debug支持合成图片、只读真实证据和一次性SQLite写入。
+- Admin显式import-upgrade需更新只读Workflow基线，同时保留原组件baseline与发布id，否则新增流程无法保存/发布，或误免除新LLM调试。当前测试Admin旧草稿72缺少既有数学工具/评测契约，补齐结构后原草稿升级至74；原Prompt/模型编辑保留，仅原Judge新增math_consistent结构字段，数学工具未新增授权绑定。已发布R9不变。目录在新增组件或旧发布契约不可加载时明确展示待发布草稿，避免将草稿显示为已发布。
+
+- Admin观察改造最终验证：Server1117通过/1跳过/3子测试通过，Admin41测试/类型/生产构建通过；五个Workflow真实HTTP隔离调试成功（合成图，两个LLM各调用一次）。测试草稿74，R9未切换；原草稿模型/Prompt保留。3021管理台与8011执行器已启动；内部HTTP证据仅本地保存，发布仍需Admin持久调试记录及后续质量验收。
+
+- 2026-11-13 用户授权提交本轮观察链路与Admin配置工程实现；现场样本、实机体验和正式发布仍按进行中spec单独验收，不因commit视为已上线。
+
+
+
+- 2026-11-13 业务Workflow整合与目录筛选：主入口behavior-observation，晚间报告单列；按持久任务恢复图阶段并标记continuation；阈值两分支测试通过。测试草稿76，R9未切换。Agent列表新增Workflow/类型/关键词联合筛选。详细设计见domain-behavior §10.4及design-admin。
+- 实拍短测：192.168.10.106摄像头5帧接收及OSS哈希校验通过，调整机位后识别书写/面对材料静止，多人及遮挡保留unknown。一次失败重试后全部任务done；未满足帮助阈值，仍需长测，默认shadow。
+- 发布准备：正式Admin只读导出R1（35文件），存在当前基线所需数学工具/评测契约缺口。升级提案以正式R1为基线，保留正式模型/Prompt；新增15文件，仅原Judge增加math_consistent输出字段，未启用数学工具。不能直接合并触发Server部署；需先升级Admin执行器、审阅/发布兼容配置，再部署Server。GitHub认证可用，本机SSH暂未获授权。

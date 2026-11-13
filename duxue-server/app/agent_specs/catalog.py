@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.agent_specs.definitions import load_definitions
 from app.agent_specs.registrations import WORKFLOW_BINDINGS
+from app.agent_specs.observation_contracts import WORKFLOWS as OBSERVATION_WORKFLOWS
 from app.infrastructure.ai.components import COMPONENTS, ComponentSpec
 
 _REQUIRED_CHECKS = {
@@ -206,7 +207,19 @@ class AgentCatalog:
         self._components: dict[str, StepIdentity] = {}
         referenced: set[str] = set()
         for spec in specs.values():
-            registration = WORKFLOW_BINDINGS[spec.id]
+            if spec.id in OBSERVATION_WORKFLOWS:
+                from app.agent_specs.observation_contracts import workflow_documents
+                expected = workflow_documents()['workflows/'+spec.id+'.json']
+                # Bind mandatory business stages and branch semantics; execute the artifact.
+                actual_nodes = {n.id:n.ref for n in spec.nodes}
+                expected_nodes = {n['id']:n['ref'] for n in expected['nodes']}
+                actual_edges = {(e.source,e.target,e.condition) for e in spec.edges}
+                expected_edges = {(e['from'],e['to'],e.get('condition_id')) for e in expected['edges']}
+                if spec.id == 'behavior-observation' and (actual_nodes != expected_nodes or actual_edges != expected_edges):
+                    raise ValueError('observation required protocol nodes or business branches changed')
+                if spec.id == 'behavior-report' and [n.ref for n in spec.nodes] != ['behavior.report']:
+                    raise ValueError('report required protocol node changed')
+            registration = ({'conditions': {'eligible','ineligible'} if spec.id == 'behavior-observation' else set(), 'handlers':set()} if spec.id in OBSERVATION_WORKFLOWS else WORKFLOW_BINDINGS[spec.id])
             expected_handler = "coordinator" if spec.id == "companion" else spec.id
             if spec.handler != expected_handler:
                 raise ValueError(f"{spec.id}: workflow handler must match its domain")
@@ -301,7 +314,10 @@ class AgentCatalog:
             if path.stem != spec.id or spec.id in specs:
                 raise ValueError(f"invalid agent file {path.name}")
             specs[spec.id] = spec
-        if set(specs) != set(WORKFLOW_BINDINGS):
+        expected = set(WORKFLOW_BINDINGS)
+        if "behavior.visible-activity" in load_definitions().units:
+            expected |= set(OBSERVATION_WORKFLOWS)
+        if set(specs) != expected:
             raise ValueError(f"agent definitions missing or unexpected: {sorted(specs)}")
         return cls(specs, directory)
 

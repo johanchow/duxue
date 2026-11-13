@@ -9,6 +9,7 @@ from fastapi import APIRouter
 
 from app.api.v1 import (
     agent_admin,
+    observation,
     behavior,
     companion,
     device_ingestion,
@@ -25,6 +26,7 @@ from app.api.v1 import (
 router = APIRouter()
 for context_router in (
     system.router,
+    observation.router,
     agent_admin.router,
     identity.router,
     device_ingestion.router,

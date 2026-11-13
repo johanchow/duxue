@@ -26,6 +26,8 @@ def execute_workflow(
     spec: AgentSpec, *, handlers: dict[str, Callable[[dict], object]],
     conditions: dict[str, Callable[[dict], bool]] | None = None,
     initial_state: dict | None = None,
+    entry_node: str | None = None,
+    pause_before: set[str] | None = None,
 ) -> dict:
     """Run reviewed nodes and conditions; no expression or import comes from JSON.
 
@@ -36,7 +38,16 @@ def execute_workflow(
     state["results"] = {}
     state["visited_gates"] = []
     predicates = conditions or {}
+    active_nodes = set()
+    frontier = [entry_node or spec.entry]
+    while frontier:
+        key = frontier.pop()
+        if key == 'END' or key in active_nodes or key in (pause_before or set()): continue
+        spec.node(key)
+        active_nodes.add(key)
+        frontier.extend(edge.target for edge in spec.edges if edge.source == key)
     for node in spec.nodes:
+        if node.id not in active_nodes: continue
         handler_id = node.ref if node.kind in {"agent", "gate"} else node.handler
         if not handler_id or handler_id not in handlers:
             raise ValueError(f"{spec.id}: missing handler for {node.id}")
@@ -44,8 +55,15 @@ def execute_workflow(
     referenced_conditions.update(gate["when"] for gate in spec.required_gates)
     if referenced_conditions - predicates.keys():
         raise ValueError(f"{spec.id}: unknown conditions {sorted(referenced_conditions - predicates.keys())}")
-    current = "START"
+    current = entry_node or "START"
     for _ in range(32):
+        if current in (pause_before or set()):
+            state['continuation'] = current
+            from app.agent_specs.execution_trace import recorder
+            trace = recorder()
+            if trace:
+                with trace.step(kind='continuation', node_id=current, workflow_id=spec.id): pass
+            return state
         if current == "END":
             for gate in spec.required_gates:
                 when = gate["when"]

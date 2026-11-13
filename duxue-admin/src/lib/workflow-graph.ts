@@ -20,7 +20,7 @@ export function workflowGraph(
       id: node.id,
       position: { x: 0, y: 0 },
       data: {
-        label: `${node.kind === 'action' ? 'Action · 固定代码' : node.kind === 'agent' ? `Agent · ${definitions[node.ref]?.implementation === 'code' ? '代码' : '模型'}` : `Gate · ${definitions[node.ref]?.implementation === 'judge' ? '模型 Judge' : '代码门禁'}`}${node.required ? ' · 必经' : ''}\n${node.id}\n${node.ref || node.handler_id || ''}`,
+        label: `${node.kind === 'action' ? 'Action · 固定代码' : node.kind === 'agent' ? `Agent · ${definitions[node.ref]?.implementation === 'code' ? '代码' : '模型'}` : `Gate · ${definitions[node.ref]?.implementation === 'judge' ? '模型 Judge' : '代码门禁'}`}${node.required ? ' · 必经' : ''}\n${definitions[node.ref]?.display_name || node.id}\n${node.ref || node.handler_id || ''}`,
       },
       className: `kind-${node.kind}`,
     })),
@@ -35,7 +35,15 @@ export function workflowGraph(
     id: `edge-${index}`,
     source: edge.from,
     target: edge.to,
-    label: edge.condition_id || '无条件',
+    label:
+      flow.id === 'behavior-observation' && edge.condition_id
+        ? (
+            {
+              eligible: '达到阈值且证据新鲜',
+              ineligible: '未达条件，结束本次观察',
+            } as Record<string, string>
+          )[edge.condition_id] || edge.condition_id
+        : edge.condition_id || '无条件',
     type: 'catalog',
     markerEnd: { type: MarkerType.ArrowClosed },
     data: { index, configuration: edge },

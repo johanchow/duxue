@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.agent_specs.configuration import code_contract
+from app.agent_specs.observation_contracts import FILES as OBSERVATION_FILES, contracts as observation_contracts, WORKFLOWS as OBSERVATION_WORKFLOWS
 from app.agent_specs.definitions import DefinitionCatalog
 from app.agent_specs.registrations import WORKFLOW_BINDINGS
 
@@ -64,7 +65,8 @@ def contract_compatibility(files: dict) -> str:
     # fingerprint algorithm preserves already-published immutable artifacts.
     return digest({
         "files": {**code_contract()["files"],
-                  **{name: doc for name, doc in files.items() if name in WORKFLOW_FILES}},
+                  **(observation_contracts() if OBSERVATION_FILES <= set(files) else {}),
+                  **{name: doc for name, doc in files.items() if name in WORKFLOW_FILES or (OBSERVATION_FILES <= set(files) and name in {f"workflows/{key}.json" for key in OBSERVATION_WORKFLOWS})}},
         "handlers": {key: {field: sorted(items) for field, items in value.items()}
                      for key, value in WORKFLOW_BINDINGS.items()},
         "protocol": 3,
@@ -79,7 +81,13 @@ class CompiledBundle:
 
 
 def compile_bundle(bundle: dict) -> CompiledBundle:
-    contracts = code_contract()
+    contracts = copy.deepcopy(code_contract())
+    file_names = set(bundle.get("files", {})) if isinstance(bundle, dict) else set()
+    has_observation = OBSERVATION_FILES <= file_names
+    if has_observation:
+        contracts["files"].update(observation_contracts())
+        contracts["tool_authority"].update({doc["id"]: [] for doc in observation_contracts().values()})
+    expected_files = set(BUNDLE_FILES) | (OBSERVATION_FILES if has_observation else set())
     if (
         not isinstance(bundle, dict)
         or set(bundle) != {"format_version", "compatibility", "files"}
@@ -87,9 +95,7 @@ def compile_bundle(bundle: dict) -> CompiledBundle:
         or bundle["format_version"] != 3
     ):
         raise ValueError("invalid bundle format")
-    if not isinstance(bundle["files"], dict) or set(bundle["files"]) != set(
-        BUNDLE_FILES
-    ):
+    if not isinstance(bundle["files"], dict) or set(bundle["files"]) != expected_files:
         raise ValueError(
             "bundle files differ from the registered complete configuration manifest"
         )
@@ -102,7 +108,7 @@ def compile_bundle(bundle: dict) -> CompiledBundle:
             "version" in model for model in doc.get("models", [])
         ):
             raise ValueError("manual configuration versions are not supported")
-        if name in WORKFLOW_FILES:
+        if name in WORKFLOW_FILES or (has_observation and name in {f"workflows/{key}.json" for key in OBSERVATION_WORKFLOWS}):
             continue  # Validated by AgentCatalog against code bindings below.
         original = contracts["files"][name]
         try:

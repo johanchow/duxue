@@ -34,6 +34,27 @@ export function assertUpgradeSource(
   } else throw new Error('未知升级来源');
 }
 
+/** Only the explicit, server-validated upgrade command may establish topology.
+ * Keep component baselines intact so newly introduced LLMs still require debug.
+ */
+export function upgradedWorkflowBaseline(baseline: any, upgraded: any) {
+  return {
+    ...baseline,
+    files: {
+      ...Object.fromEntries(
+        Object.entries(baseline.files).filter(
+          ([name]) => !name.startsWith('workflows/'),
+        ),
+      ),
+      ...Object.fromEntries(
+        Object.entries(upgraded.files).filter(([name]) =>
+          name.startsWith('workflows/'),
+        ),
+      ),
+    },
+  };
+}
+
 export async function importConfigUpgrade(
   client: Pick<PoolClient, 'query'>,
   input: {
@@ -67,10 +88,17 @@ export async function importConfigUpgrade(
         baseRelease: release.id,
       })
     ).draft;
-  // Preserve original base_bundle/base_release_id so existing publish checks still apply.
+  // Preserve component baseline and release identity; adopt only the validated migration topology.
   await client.query(
-    'UPDATE agent_drafts SET bundle=$1,revision=revision+1,validation=NULL,updated_at=now() WHERE id=$2',
-    [input.bundle, draft.id],
+    'UPDATE agent_drafts SET bundle=$1,revision=revision+1,validation=NULL,updated_at=now(),base_bundle=$3 WHERE id=$2',
+    [
+      input.bundle,
+      draft.id,
+      upgradedWorkflowBaseline(
+        draft.base_bundle || release.bundle,
+        input.bundle,
+      ),
+    ],
   );
   await audit(client, input.actorId, 'draft.import-upgrade', draft.id, {
     source: input.source,

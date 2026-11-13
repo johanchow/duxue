@@ -13,6 +13,10 @@ import 'package:flutter_test/flutter_test.dart';
 class _ReportApi extends ApiClient {
   _ReportApi()
       : super(baseUrl: 'http://localhost', tokens: const TokenStorage());
+  @override
+  Future<Map<String, dynamic>> eveningReport(String wardId, DateTime day,
+          {int? version}) async =>
+      {'status': 'pending'};
   String status = 'ready';
   bool failReport = false;
   bool failEvidence = false;
