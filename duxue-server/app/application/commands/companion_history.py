@@ -63,3 +63,30 @@ def clear_history(db: Session, *, ward_id: str, command_id: str) -> dict:
     db.commit()
     db.expire_all()
     return result
+
+
+def append_support_invitation(db: Session, *, ward_id: str, offer_id: str, content: str):
+    """Append once through the same Ward/thread version boundary as normal turns.
+
+    Callers hold lock_history before taking the observation policy lock. The
+    separately versioned support.v1 channel owns actions; historical text does
+    not create live buttons in the existing conversational protocol.
+    """
+    from app.infrastructure.persistence.models import CompanionMessage
+    ward = db.get(Ward, ward_id)
+    existing = db.get(CompanionCommand, offer_id)
+    if existing:
+        if existing.ward_id != ward_id or existing.payload_digest != 'support.invitation.v1':
+            raise HTTPException(409, 'invitation command identity conflict')
+        return
+    thread = visible_threads(db, ward_id).order_by(ConversationThread.updated_at.desc()).first()
+    if thread is None:
+        thread = ConversationThread(ward_id=ward_id, history_generation=ward.history_generation, version=0)
+        db.add(thread)
+        db.flush()
+    thread.version += 1
+    db.add(CompanionCommand(id=offer_id, ward_id=ward_id, thread_id=thread.id,
+                           payload_digest='support.invitation.v1', result={'offer_id': offer_id}, completed_at=now()))
+    db.flush()
+    db.add(CompanionMessage(ward_id=ward_id, thread_id=thread.id, command_id=offer_id,
+                           thread_version=thread.version, author_type='companion', content=content))

@@ -1,3 +1,4 @@
+import 'observation_setup.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -670,6 +671,9 @@ class _WardDetailPageState extends ConsumerState<WardDetailPage> {
                 title: Text('绑定/更换学生 App 设备'),
                 subtitle: Text('生成一次性绑定码；换机后旧设备会退出'))),
         const SectionLabel('设备'),
+        AppCard(onTap: () => showModalBottomSheet(context: context, isScrollControlled: true,
+          builder: (_) => ObservationSetup(wardId: widget.wardId)),
+          child: const ListTile(leading: Icon(Icons.visibility_outlined), title: Text('学习观察与晚间报告'))),
         AppCard(
             onTap: _invite,
             child: const ListTile(

@@ -357,6 +357,10 @@ export default function Studio() {
     setMessage(`已切换至R${sequence}，等待加载。`);
   }
   async function editAgent() {
+    if (state?.catalog?.source === 'admin-draft') {
+      await openDraft(state.catalog.source_draft.id, agent.id);
+      return;
+    }
     const current = await api('drafts', 'POST', {});
     await refresh();
     await openDraft(current.id, agent.id);
@@ -450,6 +454,7 @@ export default function Studio() {
               </button>
               {!draftId &&
                 state?.environment.release_id &&
+                state?.catalog?.source !== 'admin-draft' &&
                 (agentCapability?.supported ? (
                   <button
                     className="secondary"
@@ -494,6 +499,14 @@ export default function Studio() {
         {message && (
           <div role="status" className="notice">
             {message}
+          </div>
+        )}
+        {state?.catalog?.source === 'admin-draft' && (
+          <div className="notice">
+            当前目录展示待发布草稿，线上配置尚未切换。
+            <button onClick={() => openDraft(state.catalog.source_draft.id)}>
+              打开待发布配置
+            </button>
           </div>
         )}
         {tab !== 'evaluation' && state?.catalogError && (
@@ -1261,15 +1274,17 @@ export default function Studio() {
         {tab === 'flow-detail' && state?.catalog?.workflows[entityId!] && (
           <>
             <div className="page-actions">
-              {!draftId && state.environment.release_id && (
-                <button
-                  className="secondary"
-                  disabled={busy}
-                  onClick={openPublishedDebug}
-                >
-                  调试已发布配置
-                </button>
-              )}
+              {!draftId &&
+                state.environment.release_id &&
+                state.catalog?.source !== 'admin-draft' && (
+                  <button
+                    className="secondary"
+                    disabled={busy}
+                    onClick={openPublishedDebug}
+                  >
+                    调试已发布配置
+                  </button>
+                )}
               {!draftId && pending && (
                 <button
                   className="secondary"

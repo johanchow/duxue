@@ -5,6 +5,8 @@ from app.agent_specs.catalog import load_catalog
 
 # Display metadata has no effect on execution or the release compatibility hash.
 AGENT_PURPOSES = {
+    "behavior.visible-activity": ("图片可见活动解释", "分钟窗口多图观察；保留未知，不推断内心状态。"),
+    "behavior.support-opportunity": ("帮助机会评估", "达到持续状态条件后评估是否值得询问；不直接发送邀请。"),
     "evals.semantic-judge": ("离线评测裁判", "按用例rubric独立评分；未校准结果不作发布门槛。"),
     "companion.intent": (
         "对话意图路由",
@@ -113,6 +115,17 @@ WORKFLOW_DESCRIPTIONS = {
     "tutoring-vet": "依次进行教学权限、文字答案保护与必要的配图答案保护审核。",
     "tutoring": "执行单轮启发答疑，串联题面定位、模型生成、审核、安全交付与教学事实写入。",
 }
+
+
+from app.agent_specs.observation_contracts import CODE_AGENTS as OBSERVATION_CODE_AGENTS
+COMPONENT_PURPOSES.update({key: (label, '确定性代码 Agent；处理器与协议受代码注册约束。') for key,label in OBSERVATION_CODE_AGENTS.items()})
+WORKFLOW_DESCRIPTIONS.update({
+    'behavior-visible-activity': '受权图片准备 → 多图活动解释 → 时段和证据校验',
+    'behavior-support-opportunity': '受权图片准备 → 帮助机会评估 → 候选证据校验',
+    'behavior-aggregate': '持续状态归并并发布不可变观察日版本',
+    'behavior-invitation': '根据最新观察、授权、额度与冷却决定邀请',
+    'behavior-report': '依据锁定的事实来源生成晚间报告版本',
+})
 
 
 def management_inventory(bundle):

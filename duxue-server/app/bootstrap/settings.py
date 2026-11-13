@@ -72,6 +72,7 @@ class Settings:
     agent_model_timeout_seconds: int = _integer("AGENT_MODEL_TIMEOUT_SECONDS", "20")
     agent_model_enabled: bool = os.getenv("AGENT_MODEL_ENABLED", "").lower() in {"1", "true", "yes"}
     batch_completion_window: str = os.getenv("VLM_BATCH_COMPLETION_WINDOW", "24h")
+    observation_live_invitations_enabled: bool = os.getenv("OBSERVATION_LIVE_INVITATIONS_ENABLED", "false").lower() in {"true", "1"}
     batch_submit_hour: int = int(os.getenv("VLM_BATCH_SUBMIT_HOUR", "22"))
     batch_fallback_after_hours: int = int(os.getenv("VLM_BATCH_FALLBACK_AFTER_HOURS", "20"))
     # Real-time ASR is optional at startup so existing non-voice deployments

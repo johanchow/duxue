@@ -153,6 +153,7 @@ class Frame(Base):
     __tablename__ = "frames"
     __table_args__ = (UniqueConstraint("gateway_id", "gateway_frame_id", name="uq_frame_gateway_identity"),)
     gateway_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    assignment_revision: Mapped[int | None] = mapped_column(Integer, nullable=True)
     gateway_frame_id: Mapped[str | None] = mapped_column(Uuid(as_uuid=False), nullable=True)
     sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
     size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -765,3 +766,184 @@ class LongTermProfile(Base):
     profile_version: Mapped[int] = mapped_column(Integer, default=1)
     calculated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+
+class EvidenceSequence(Base):
+    """Transactional counter: the row lock is held until frame commit."""
+    __tablename__ = 'evidence_sequence'
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    value: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class AcceptedEvidence(Base):
+    __tablename__ = 'accepted_evidence'
+    sequence: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    frame_id: Mapped[str] = mapped_column(ForeignKey('frames.id', ondelete='CASCADE'), unique=True)
+    ward_id: Mapped[str] = mapped_column(ForeignKey('user_wards.id'), index=True)
+    camera_id: Mapped[str] = mapped_column(ForeignKey('devices.id'))
+    assignment_revision: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class ObservationSettings(Base):
+    __tablename__ = 'observation_settings'
+    ward_id: Mapped[str] = mapped_column(ForeignKey('user_wards.id'), primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    timezone: Mapped[str] = mapped_column(String(64), default='Asia/Shanghai')
+    mode: Mapped[str] = mapped_column(String(20), default='shadow')
+    camera_id: Mapped[str | None] = mapped_column(ForeignKey('devices.id'), nullable=True)
+    generation: Mapped[int] = mapped_column(Integer, default=1)
+    policy_version: Mapped[str] = mapped_column(String(40), default='observation.v1')
+    report_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    deadline: Mapped[str] = mapped_column(String(5), default='21:30')
+    report_next_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Explicit known enabled intervals; unknown remains null.
+    observation_ranges: Mapped[list | None] = mapped_column(JSON, nullable=True)
+
+
+class ObservationWindowRecord(Base):
+    __tablename__ = 'observation_windows'
+    __table_args__ = (UniqueConstraint('ward_id', 'camera_id', 'assignment_revision', 'start_at'),)
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
+    ward_id: Mapped[str] = mapped_column(ForeignKey('user_wards.id'), index=True)
+    camera_id: Mapped[str] = mapped_column(ForeignKey('devices.id'))
+    assignment_revision: Mapped[int] = mapped_column(Integer)
+    start_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    end_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    input_version: Mapped[int] = mapped_column(Integer, default=1)
+    status: Mapped[str] = mapped_column(String(20), default='pending')
+    manifest: Mapped[dict] = mapped_column(JSON)
+    generation: Mapped[int] = mapped_column(Integer)
+    attempt_token: Mapped[str | None] = mapped_column(String(36), nullable=True)
+
+
+class ObservationInterpretation(Base):
+    __tablename__ = 'observation_interpretations'
+    window_id: Mapped[str] = mapped_column(ForeignKey('observation_windows.id'), primary_key=True)
+    input_version: Mapped[int] = mapped_column(Integer, primary_key=True)
+    cells: Mapped[list] = mapped_column(JSON)
+    provenance: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class ObservationDayRecord(Base):
+    __tablename__ = 'observation_days'
+    __table_args__ = (UniqueConstraint('ward_id', 'local_date'),)
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
+    ward_id: Mapped[str] = mapped_column(ForeignKey('user_wards.id'), index=True)
+    local_date: Mapped[date] = mapped_column(Date)
+    timezone: Mapped[str] = mapped_column(String(64))
+    revision: Mapped[int] = mapped_column(Integer, default=0)
+    fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+class ObservationRevisionRecord(Base):
+    __tablename__ = 'observation_revisions'
+    day_id: Mapped[str] = mapped_column(ForeignKey('observation_days.id'), primary_key=True)
+    revision: Mapped[int] = mapped_column(Integer, primary_key=True)
+    snapshot: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class ObservationJob(Base):
+    __tablename__ = 'observation_jobs'
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
+    key: Mapped[str] = mapped_column(String(200), unique=True)
+    ward_id: Mapped[str] = mapped_column(ForeignKey('user_wards.id'), index=True)
+    kind: Mapped[str] = mapped_column(String(30))
+    payload: Mapped[dict] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(20), default='pending', index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    token: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+
+
+class ObservationCursor(Base):
+    __tablename__ = 'observation_cursors'
+    name: Mapped[str] = mapped_column(String(40), primary_key=True)
+    value: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class SupportAssessment(Base):
+    __tablename__ = 'support_assessments'
+    fingerprint: Mapped[str] = mapped_column(String(64), primary_key=True)
+    ward_id: Mapped[str] = mapped_column(ForeignKey('user_wards.id'), index=True)
+    result: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class HelpOfferBudgetRecord(Base):
+    __tablename__ = 'help_offer_budgets'
+    ward_id: Mapped[str] = mapped_column(ForeignKey('user_wards.id'), primary_key=True)
+    local_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    reserved_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_reserved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class HelpOfferRecord(Base):
+    __tablename__ = 'help_offers'
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
+    ward_id: Mapped[str] = mapped_column(ForeignKey('user_wards.id'), index=True)
+    local_date: Mapped[date] = mapped_column(Date)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    kind: Mapped[str] = mapped_column(String(30))
+    status: Mapped[str] = mapped_column(String(20))
+    candidate: Mapped[dict] = mapped_column(JSON)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    presented_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    response_command: Mapped[str | None] = mapped_column(String(36), nullable=True, unique=True)
+
+
+class SupportChannel(Base):
+    __tablename__ = 'support_channels'
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
+    ward_id: Mapped[str] = mapped_column(ForeignKey('user_wards.id'), unique=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    handsfree: Mapped[bool] = mapped_column(Boolean, default=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class SupportReceipt(Base):
+    __tablename__ = 'support_receipts'
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    offer_id: Mapped[str] = mapped_column(ForeignKey('help_offers.id'))
+    channel_id: Mapped[str] = mapped_column(ForeignKey('support_channels.id'))
+    medium: Mapped[str] = mapped_column(String(30))
+    presented_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class ObservationConsumerInbox(Base):
+    __tablename__ = 'observation_consumer_inbox'
+    consumer: Mapped[str] = mapped_column(String(40), primary_key=True)
+    event_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    ward_id: Mapped[str] = mapped_column(ForeignKey('user_wards.id'), index=True)
+
+
+class ReflectionReportRecord(Base):
+    __tablename__ = 'reflection_reports'
+    __table_args__ = (UniqueConstraint('ward_id', 'report_date'),)
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
+    ward_id: Mapped[str] = mapped_column(ForeignKey('user_wards.id'), index=True)
+    report_date: Mapped[date] = mapped_column(Date)
+    timezone: Mapped[str] = mapped_column(String(64))
+    current_version: Mapped[int] = mapped_column(Integer, default=0)
+    fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+class ReflectionReportVersion(Base):
+    __tablename__ = 'reflection_report_versions'
+    report_id: Mapped[str] = mapped_column(ForeignKey('reflection_reports.id'), primary_key=True)
+    version: Mapped[int] = mapped_column(Integer, primary_key=True)
+    content: Mapped[dict] = mapped_column(JSON)
+    source_vector: Mapped[dict] = mapped_column(JSON)
+    published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class GuardianReportInbox(Base):
+    __tablename__ = 'guardian_report_inbox'
+    guardian_id: Mapped[str] = mapped_column(ForeignKey('user_guardians.id'), primary_key=True)
+    report_id: Mapped[str] = mapped_column(ForeignKey('reflection_reports.id'), primary_key=True)
+    version: Mapped[int] = mapped_column(Integer)

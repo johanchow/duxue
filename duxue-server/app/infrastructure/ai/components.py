@@ -148,7 +148,7 @@ def invoke_json_component(*, spec: ComponentSpec, user, client=None, settings_ob
             component_id=spec.component_id, component_version=spec.version,
             prompt_id=spec.prompt.id, model_source=model_source,
             definition_digest=spec.definition_digest,
-            input_payload=messages,
+            input_payload=None if spec.component_id.startswith("behavior.") else messages,
         ) as telemetry:
             response = client.chat.completions.create(
                 model=model,
@@ -164,7 +164,7 @@ def invoke_json_component(*, spec: ComponentSpec, user, client=None, settings_ob
             telemetry["tokens_out"] = getattr(usage, "completion_tokens", None)
             raw = (response.choices[0].message.content or "").strip()
             record_model_response(
-                agent_type=spec.agent_label, model=model, content=raw, operation=spec.operation,
+                agent_type=spec.agent_label, model=model, content="[observation payload withheld]" if spec.component_id.startswith("behavior.") else raw, operation=spec.operation,
                 component_id=spec.component_id, component_version=spec.version,
             )
             payload = json.loads(raw)

@@ -181,7 +181,7 @@ class CodeAgentDefinition(BaseModel):
     version: str
     kind: Literal["agent"]
     implementation: Literal["code"]
-    handler_id: Literal["planning", "tutoring", "reflection"]
+    handler_id: str
     input_schema: dict
     output_schema: dict
     error_codes: list[str]
@@ -203,7 +203,9 @@ class DefinitionCatalog:
                 raw = json.loads(path.read_text(encoding="utf-8"))
                 if kind == "agent" and raw.get("implementation") == "code":
                     agent = CodeAgentDefinition.model_validate(raw)
-                    if path.stem != agent.id or agent.id != agent.handler_id + ".session-turn":
+                    from app.agent_specs.observation_contracts import CODE_AGENTS
+                    valid_binding = (agent.handler_id in {'planning', 'tutoring', 'reflection'} and agent.id == agent.handler_id+'.session-turn') or (agent.id in CODE_AGENTS and agent.handler_id == agent.id)
+                    if path.stem != agent.id or not valid_binding:
                         raise ValueError(f"invalid code Agent file {path}")
                     if not set(agent.error_codes).issubset(ERROR_CODES) or "agent_execution_failed" not in agent.error_codes:
                         raise ValueError(f"{agent.id}: unknown Agent error code")

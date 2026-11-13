@@ -43,6 +43,11 @@ CODE_AGENTS = {
 }
 
 
+from app.agent_specs.observation_contracts import WORKFLOWS as OBSERVATION_WORKFLOWS, CODE_AGENTS as OBSERVATION_CODE_AGENTS
+WORKFLOWS.update(OBSERVATION_WORKFLOWS)
+CODE_AGENTS.update({identifier:identifier.replace('.', '-') for identifier in OBSERVATION_CODE_AGENTS})
+
+
 def debug_capabilities():
     return {
         "workflows": sorted(WORKFLOWS),
@@ -67,7 +72,7 @@ def resolve_target(data: DebugInput, catalog):
         else:
             kind, target = "agent", catalog.component(component)[0].id
     if kind == "workflow":
-        if target not in WORKFLOWS or component not in {None, "tutoring-pipeline"}:
+        if target not in WORKFLOWS or (target in OBSERVATION_WORKFLOWS and target not in catalog.workflow_catalog.specs) or component not in {None, "tutoring-pipeline"}:
             raise ValueError(
                 "workflow has no standalone debug adapter or unexpected model override"
             )
@@ -77,6 +82,6 @@ def resolve_target(data: DebugInput, catalog):
             component = component or definition.models[0].component_id
             if component not in {m.component_id for m in definition.models}:
                 raise ValueError("model does not belong to the selected Agent")
-        elif target not in CODE_AGENTS or component is not None:
+        elif target not in CODE_AGENTS or target not in catalog.code_agents or component is not None:
             raise ValueError("component has no independent debug adapter")
     return {"kind": kind, "id": target, "component_id": component}
