@@ -62,7 +62,9 @@ def submit_daily_batches(day: str | None = None) -> int:
     start, end = utc_bounds(target)
     db = SessionLocal()
     try:
-        pending = db.query(Frame).filter(Frame.analyzed.is_(False), Frame.batch_id.is_(None), Frame.captured_at >= start, Frame.captured_at < end).order_by(Frame.captured_at).all()
+        from app.infrastructure.persistence.models import ObservationSettings
+        active_wards = db.query(ObservationSettings.ward_id).filter(ObservationSettings.enabled.is_(True) | ObservationSettings.report_enabled.is_(True))
+        pending = db.query(Frame).filter(Frame.ward_id.not_in(active_wards), Frame.analyzed.is_(False), Frame.batch_id.is_(None), Frame.captured_at >= start, Frame.captured_at < end).order_by(Frame.captured_at).all()
         if not pending:
             return 0
         submitted = 0
@@ -105,6 +107,10 @@ def poll_batches() -> int:
                 for frame in frames:
                     if frame.id in results: by_ward[frame.ward_id][frame.id] = results[frame.id]
                 for ward_id, ward_results in by_ward.items():
+                    from app.infrastructure.persistence.models import ObservationSettings
+                    observation = db.get(ObservationSettings, ward_id)
+                    if observation and (observation.enabled or observation.report_enabled):
+                        continue
                     analyze_and_generate(db, ward_id=ward_id, report_date=batch.batch_date, supplied_results=ward_results)
                 batch.status = "completed"; batch.completed_at = now(); completed += 1
             elif status in {"failed", "expired", "cancelled"}: batch.status = "failed"
@@ -219,3 +225,24 @@ def expire_study_sprints():
 
 from app.agent_specs.release_runtime import register_worker_lifecycle
 register_worker_lifecycle()
+
+
+from app.workers.observation_tasks import (
+    scan_observation_evidence, run_observation_jobs,
+    deliver_observation_events, publish_evening_deadlines,
+)
+for _function in (scan_observation_evidence, run_observation_jobs,
+                  deliver_observation_events, publish_evening_deadlines):
+    celery_app.task(name='duxue.'+_function.__name__)(_observed_task(_function))
+celery_app.conf.beat_schedule.update({
+    'observation-scan': {'task': 'duxue.scan_observation_evidence', 'schedule': 15.0},
+    'observation-jobs': {'task': 'duxue.run_observation_jobs', 'schedule': 5.0},
+    'observation-events': {'task': 'duxue.deliver_observation_events', 'schedule': 5.0},
+    'evening-deadlines': {'task': 'duxue.publish_evening_deadlines', 'schedule': 30.0},
+})
+
+from app.workers.observation_tasks import reconcile_evening_sources
+celery_app.task(name='duxue.reconcile_evening_sources')(_observed_task(reconcile_evening_sources))
+celery_app.conf.beat_schedule['evening-source-reconciliation'] = {
+    'task': 'duxue.reconcile_evening_sources', 'schedule': 300.0,
+}

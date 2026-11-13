@@ -1,3 +1,4 @@
+import { resolveCatalogSource } from './catalog-source';
 import { evaluationResponse } from './evaluation-api';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { pool, transaction, audit } from './db';
@@ -243,14 +244,17 @@ export async function handle(request: Request, parts: string[]) {
             [environmentName],
           )
         ).rows[0];
-        const sourceBundle = active?.bundle || drafts.rows[0]?.bundle;
-        assert(
-          sourceBundle,
-          '管理库尚无配置，请先使用config:import导入完整配置快照',
-          409,
+        const pending = drafts.rows[0];
+        const selected = await resolveCatalogSource(active, pending, (bundle) =>
+          serverCall('catalog', { bundle }),
         );
-        catalog = await serverCall('catalog', { bundle: sourceBundle });
-        if (active) {
+        catalog = selected.catalog;
+        const draftCatalog = selected.draftCatalog;
+        if (draftCatalog) {
+          catalog.source = 'admin-draft';
+          catalog.source_draft = { id: pending.id, revision: pending.revision };
+        }
+        if (active && !draftCatalog) {
           for (const [file, definition] of Object.entries(
             active.bundle.files,
           ) as [string, any][]) {

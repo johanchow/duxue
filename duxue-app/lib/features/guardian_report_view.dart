@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/models.dart';
 import '../providers.dart';
 import '../shared/chat_markdown.dart';
+import 'evening_report_card.dart';
 
 DateTime guardianToday() {
   final day = DateTime.now().toUtc().add(const Duration(hours: 8));
@@ -81,6 +82,7 @@ class _GuardianReportViewState extends ConsumerState<GuardianReportView>
       });
     }
     final key = (wardId: widget.wardId, date: selected);
+    ref.invalidate(eveningReportProvider);
     ref.invalidate(reportProvider(key));
     ref.invalidate(tutoringEvidenceProvider(key));
     ref.invalidate(_evidenceDetailProvider);
@@ -109,6 +111,9 @@ class _GuardianReportViewState extends ConsumerState<GuardianReportView>
     final key = (wardId: widget.wardId, date: selected);
     final report = ref.watch(reportProvider(key));
     final evidence = ref.watch(tutoringEvidenceProvider(key));
+    final evening = ref.watch(eveningReportProvider(
+        (wardId: widget.wardId, date: selected, version: null)));
+    final hasEvening = evening.valueOrNull?['version'] != null;
     final titleStyle = Theme.of(context)
         .textTheme
         .titleLarge
@@ -128,17 +133,19 @@ class _GuardianReportViewState extends ConsumerState<GuardianReportView>
             TextButton(onPressed: _history, child: const Text('历史')),
           ]),
           const Divider(height: 24),
-          Text('学习报告', style: titleStyle),
+          EveningReportCard(wardId: widget.wardId, date: selected),
+          if (!hasEvening) Text('学习报告', style: titleStyle),
           const SizedBox(height: 12),
-          report.when(
-            skipLoadingOnRefresh: false,
-            loading: () => const Padding(
-                padding: EdgeInsets.all(24),
-                child: Center(child: CircularProgressIndicator())),
-            error: (_, __) => _ReadError(
-                '报告加载失败', '重试报告', () => ref.invalidate(reportProvider(key))),
-            data: (data) => _ReportContent(report: data),
-          ),
+          if (!hasEvening)
+            report.when(
+              skipLoadingOnRefresh: false,
+              loading: () => const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Center(child: CircularProgressIndicator())),
+              error: (_, __) => _ReadError(
+                  '报告加载失败', '重试报告', () => ref.invalidate(reportProvider(key))),
+              data: (data) => _ReportContent(report: data),
+            ),
           evidence.when(
             skipLoadingOnRefresh: false,
             loading: () => const Padding(

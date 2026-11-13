@@ -242,6 +242,14 @@ class ApiClient {
               '/wards/$wardId/tutoring-evidence/$problemId',
               queryParameters: {'date': _day(day)}))
           .data as Map);
+  Future<Map<String, dynamic>> eveningReport(String wardId, DateTime day, {int? version}) async {
+    final date = '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
+    final response = await dio.get('/evaluation/evening-reports', queryParameters: {
+      'ward_id': wardId, 'date': date, if (version != null) 'version': version,
+    });
+    return Map<String, dynamic>.from(response.data as Map);
+  }
+
   Future<DailyReport> report(String wardId, DateTime date) async {
     final timer = Stopwatch()..start();
     try {

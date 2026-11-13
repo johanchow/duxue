@@ -99,7 +99,7 @@ def check(args):
     assert snapshot_identity()['digest'] == before
     return 0
 cli.cmd_run = check
-assert cli.main(['run', '--component', 'companion.intent', '--config-snapshot', sys.argv[1]]) == 0
+assert cli.historical_main(['run', '--component', 'companion.intent', '--config-snapshot', sys.argv[1]]) == 0
 print('PASS')
 '''
     env = {**os.environ, 'AGENT_CONFIG_SOURCE': 'admin', 'AGENT_CONFIG_SOURCE_URL': 'http://invalid.invalid'}

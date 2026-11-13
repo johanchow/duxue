@@ -197,3 +197,10 @@ LLM调用需先由调度器检查维度适用性、已完成状态、必要图�
 统一 runner、Dataset 迁移、原生评分与 Admin 新维度聚合已接通，旧本地 grader 仅供历史协议测试，不再由默认执行入口调用。人工校准和自动入队仍未完成。运行协议、复现与限制以[离线评测设计](eval-offline.md)为准。
 
 模型接入验证：Server `.env` 的 `qwen3-vl-flash-2026-01-22` 在Langfuse实调返回Model not exist；供应商模型列表确认Server既有裁判快照使用的 `qwen3.8-flash` 可用，因此改绑后测试成功。没有修改Server `.env`、生产配置或自动评测规则。合成测试使用 `eval-setup-smoke` 环境，结果在 ignored `duxue-server/var/evals/langfuse-connection/results.json`；此测试证明连接及结构化输出可用，不代表模型/裁判质量已验收。
+
+
+### 观察链路配置与显式升级（2026-11-13）
+
+观察Workflow/code/LLM Agent的唯一清单与调试协议见[Behavior §10.4](domain-behavior.md#104-admin-workflow-与-agent2026-11-13)。管理台复用既有目录、Workflow图、配置编辑与调试记录，不新增另一套视觉模型配置入口。
+
+显式 `config:import-upgrade` 在校验完整包、环境和来源修订后，可更新工作草稿的Workflow基线；其他组件仍保留原基线，以继续要求新增/改动模型的真实调试。常规保存与发布仍禁止任意拓扑变更。工作草稿新增组件，或旧发布契约不能被当前Executor读取时，目录显示可加载的草稿并明确标记未发布；不以草稿内容声称线上已生效，也不提供误导的已发布配置调试按钮。

@@ -64,6 +64,8 @@ def execute(request):
             if hasattr(spec.prompt, "text")
             else []
         ) + [{"role": "user", "content": kwargs["user"]}]
+        if spec.component_id.startswith("behavior."):
+            messages = [{"role": "user", "content": "[authorized observation images and context withheld]"}]
         event = {
             "component": spec.component_id,
             "model": spec.model,
@@ -107,6 +109,10 @@ def execute(request):
                     if isinstance(spec.prompt, DynamicPrompt)
                     else data.content
                 )
+                if spec.component_id.startswith("behavior."):
+                    from app.agent_specs.observation_debug import debug_vision
+                    vision, manifest = debug_vision(json.loads(data.content), support=spec.component_id == 'behavior.support-opportunity')
+                    user = vision.prepare(manifest, limit=8 if spec.component_id == 'behavior.visible-activity' else 16)
                 output = components.invoke_json_component(
                     spec=spec, user=user, settings_obj=runtime
                 )
@@ -122,7 +128,11 @@ def execute(request):
                     if target["kind"] == "workflow"
                     else CODE_AGENTS[target["id"]]
                 )
-                if workflow_id in {"tutoring", "reflection"}:
+                if target['id'].startswith('behavior'):
+                    from app.agent_specs.observation_debug import run_observation_debug
+                    output = run_observation_debug(target['id'], data, runtime)
+                    result.update(output=payload(output), content=json.dumps(payload(output), ensure_ascii=False, indent=2))
+                elif workflow_id in {"tutoring", "reflection"}:
                     result.update(run_domain(workflow_id, data, runtime))
                 else:
                     output = run_simple(workflow_id, data)

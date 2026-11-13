@@ -23,5 +23,5 @@
 | 行为采集（读学 Eye） | Go网关/统一接入已实现；自动化及真实摄像头→OSS五帧短测通过，机位/长测/故障现场验收待完成。见 [网关spec](../specs/go-camera-gateway.md) |
 | 轻量计划与主动 Sprint | 本轮已改造实现，待 Gate 2；见 [planning.md](planning.md) 与进行中 spec。测试库已升级至34，生产未迁移 |
 | 陪学答疑与解题凭证 | 主链路已落地。知识讲解视频未做 |
-| 今日自述与晚间实况报告 | 自述已落地。证据版本化的客观报告未做 |
+| 今日自述与晚间实况报告 | 自述已落地。证据版本化客观报告已本地实现、默认shadow，真实样本验收待完成，见进行中观察spec |
 | 孩子理解 / 记忆 | 门面与边界见 [domain-memory](../../docs/technical/domain-memory.md)。自述不写入 Memory |

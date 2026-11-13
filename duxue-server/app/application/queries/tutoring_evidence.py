@@ -97,3 +97,20 @@ def evidence_detail(db, ward_id, day, problem_id):
             for message in messages
         ],
     }
+
+
+def evening_evidence(db, ward_id, day):
+    """All distinct asked problems plus process credentials; no mastery inference."""
+    rows = _day_messages(db, ward_id, day)
+    asked = {problem.id for message, problem in rows if message.evidence_kind == 'question'}
+    credentials = list_evidence(db, ward_id, day)['items']
+    return {
+        'asked_count': len(asked),
+        'verified_count': 0 if not asked else None,
+        'certificates': [{**item, 'source_status': item['status'],
+                          'status': 'in_progress' if item['status'] == 'open' else 'unverified'}
+                         for item in credentials],
+        'missing_reason': 'verification_source_unavailable' if asked else None,
+        'source_refs': [{'problem_id': problem.id, 'last_turn_id': problem.last_turn_id,
+                         'status': problem.status, 'message_id': message.id} for message, problem in rows],
+    }

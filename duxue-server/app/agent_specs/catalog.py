@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.agent_specs.definitions import load_definitions
 from app.agent_specs.registrations import WORKFLOW_BINDINGS
+from app.agent_specs.observation_contracts import WORKFLOWS as OBSERVATION_WORKFLOWS
 from app.infrastructure.ai.components import COMPONENTS, ComponentSpec
 
 _REQUIRED_CHECKS = {
@@ -206,7 +207,23 @@ class AgentCatalog:
         self._components: dict[str, StepIdentity] = {}
         referenced: set[str] = set()
         for spec in specs.values():
-            registration = WORKFLOW_BINDINGS[spec.id]
+            if spec.id in OBSERVATION_WORKFLOWS:
+                # Code owns mandatory protocol order, not configured node IDs.
+                current, seen, refs = 'START', set(), []
+                while current != 'END':
+                    if current in seen:
+                        raise ValueError('observation workflow cannot loop')
+                    seen.add(current)
+                    edges = [edge for edge in spec.edges if edge.source == current]
+                    if len(edges) != 1 or edges[0].condition or edges[0].via:
+                        raise ValueError('observation workflow requires deterministic protocol edges')
+                    current = edges[0].target
+                    if current != 'END':
+                        node = spec.node(current)
+                        refs.append(node.ref)
+                if refs != OBSERVATION_WORKFLOWS[spec.id] or len(spec.nodes) != len(refs):
+                    raise ValueError('observation required protocol nodes were skipped or reordered')
+            registration = ({'conditions': set(), 'handlers': set()} if spec.id in OBSERVATION_WORKFLOWS else WORKFLOW_BINDINGS[spec.id])
             expected_handler = "coordinator" if spec.id == "companion" else spec.id
             if spec.handler != expected_handler:
                 raise ValueError(f"{spec.id}: workflow handler must match its domain")
@@ -301,7 +318,10 @@ class AgentCatalog:
             if path.stem != spec.id or spec.id in specs:
                 raise ValueError(f"invalid agent file {path.name}")
             specs[spec.id] = spec
-        if set(specs) != set(WORKFLOW_BINDINGS):
+        expected = set(WORKFLOW_BINDINGS)
+        if "behavior.visible-activity" in load_definitions().units:
+            expected |= set(OBSERVATION_WORKFLOWS)
+        if set(specs) != expected:
             raise ValueError(f"agent definitions missing or unexpected: {sorted(specs)}")
         return cls(specs, directory)
 

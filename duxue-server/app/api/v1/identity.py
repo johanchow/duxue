@@ -240,6 +240,8 @@ def delete_ward_data(ward_id: str, principal: Principal = Depends(current_guardi
     owned_ward(db, principal.user_id, ward_id)
     # Serialize erasure with in-flight frame commits before removing evidence.
     db.query(Device).filter_by(ward_id=ward_id).order_by(Device.id).with_for_update().all()
+    from app.application.commands.erase_observation import erase_observation
+    erase_observation(db, ward_id)
     # Stop derived/runtime state first.  The database deliberately uses NO
     # ACTION FKs, so erasure is explicit and cannot accidentally leave a
     # replayable summary or trace behind.
