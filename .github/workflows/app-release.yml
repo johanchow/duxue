@@ -42,9 +42,13 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+      - name: Read tested Flutter SDK
+        id: flutter_sdk
+        run: echo "version=$(cat .flutter-version)" >> "$GITHUB_OUTPUT"
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: ${{ steps.flutter_sdk.outputs.version }}
           cache: true
       - name: Restore signing key
         env:

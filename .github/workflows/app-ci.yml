@@ -22,9 +22,13 @@ jobs:
         working-directory: duxue-app
     steps:
       - uses: actions/checkout@v4
+      - name: Read tested Flutter SDK
+        id: flutter_sdk
+        run: echo "version=$(cat .flutter-version)" >> "$GITHUB_OUTPUT"
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: ${{ steps.flutter_sdk.outputs.version }}
           cache: true
       - run: flutter pub get
       - run: flutter analyze
