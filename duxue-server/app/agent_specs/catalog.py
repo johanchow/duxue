@@ -208,22 +208,18 @@ class AgentCatalog:
         referenced: set[str] = set()
         for spec in specs.values():
             if spec.id in OBSERVATION_WORKFLOWS:
-                # Code owns mandatory protocol order, not configured node IDs.
-                current, seen, refs = 'START', set(), []
-                while current != 'END':
-                    if current in seen:
-                        raise ValueError('observation workflow cannot loop')
-                    seen.add(current)
-                    edges = [edge for edge in spec.edges if edge.source == current]
-                    if len(edges) != 1 or edges[0].condition or edges[0].via:
-                        raise ValueError('observation workflow requires deterministic protocol edges')
-                    current = edges[0].target
-                    if current != 'END':
-                        node = spec.node(current)
-                        refs.append(node.ref)
-                if refs != OBSERVATION_WORKFLOWS[spec.id] or len(spec.nodes) != len(refs):
-                    raise ValueError('observation required protocol nodes were skipped or reordered')
-            registration = ({'conditions': set(), 'handlers': set()} if spec.id in OBSERVATION_WORKFLOWS else WORKFLOW_BINDINGS[spec.id])
+                from app.agent_specs.observation_contracts import workflow_documents
+                expected = workflow_documents()['workflows/'+spec.id+'.json']
+                # Bind mandatory business stages and branch semantics; execute the artifact.
+                actual_nodes = {n.id:n.ref for n in spec.nodes}
+                expected_nodes = {n['id']:n['ref'] for n in expected['nodes']}
+                actual_edges = {(e.source,e.target,e.condition) for e in spec.edges}
+                expected_edges = {(e['from'],e['to'],e.get('condition_id')) for e in expected['edges']}
+                if spec.id == 'behavior-observation' and (actual_nodes != expected_nodes or actual_edges != expected_edges):
+                    raise ValueError('observation required protocol nodes or business branches changed')
+                if spec.id == 'behavior-report' and [n.ref for n in spec.nodes] != ['behavior.report']:
+                    raise ValueError('report required protocol node changed')
+            registration = ({'conditions': {'eligible','ineligible'} if spec.id == 'behavior-observation' else set(), 'handlers':set()} if spec.id in OBSERVATION_WORKFLOWS else WORKFLOW_BINDINGS[spec.id])
             expected_handler = "coordinator" if spec.id == "companion" else spec.id
             if spec.handler != expected_handler:
                 raise ValueError(f"{spec.id}: workflow handler must match its domain")

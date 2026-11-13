@@ -11,6 +11,7 @@ from app.agent_specs.admin_bundle import compile_bundle, contract_compatibility,
 from app.agent_specs.observation_contracts import (
     FILES,
     IDS,
+    LEGACY_FILES,
     provision,
     workflow_documents,
 )
@@ -20,13 +21,14 @@ def upgrade(record, *, model=None, activity_prompt=None, support_prompt=None):
     if digest(record["bundle"]) != record["digest"]:
         raise ValueError("source digest mismatch")
     bundle = copy.deepcopy(record["bundle"])
+    old_metadata = {name:{key:doc[key] for key in ("display_name","description") if key in doc} for name,doc in bundle["files"].items()}
     previous = {
         identifier: bundle["files"].get(f"agents/{identifier}.json")
         for identifier in IDS
     }
     # Only registered extension files may be migrated. All unrelated configuration
     # must still pass the existing complete baseline compiler, unchanged.
-    for name in FILES:
+    for name in FILES | LEGACY_FILES:
         bundle["files"].pop(name, None)
     bundle["compatibility"] = contract_compatibility(bundle["files"])
     compile_bundle(bundle)
@@ -49,6 +51,9 @@ def upgrade(record, *, model=None, activity_prompt=None, support_prompt=None):
                 doc["prompt"]["template"] = prompt
         bundle["files"][f"agents/{identifier}.json"] = doc
     bundle["files"].update(workflow_documents())
+    for name,metadata in old_metadata.items():
+        if name in bundle["files"]:
+            bundle["files"][name].update(metadata)
     bundle["compatibility"] = contract_compatibility(bundle["files"])
     compiled = compile_bundle(bundle)
     return {

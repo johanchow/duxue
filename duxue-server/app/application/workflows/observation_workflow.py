@@ -8,8 +8,42 @@ from app.agent_specs.runtime import execute_workflow
 
 
 def execute_observation(workflow_id, handlers):
+    from app.agent_specs.observation_contracts import PHASES
+
     with pin_release():
-        return execute_workflow(load_catalog().spec(workflow_id), handlers=handlers)
+        if workflow_id == "behavior-report":
+            return execute_workflow(load_catalog().spec(workflow_id), handlers=handlers)
+        phase = PHASES[workflow_id]
+        spec = load_catalog().spec("behavior-observation")
+        keys = ["behavior-observation." + key for key in phase]
+        boundary = {
+            edge.target
+            for edge in spec.edges
+            if edge.source == keys[-1] and edge.target != "END"
+        }
+
+        def eligible(state):
+            result = state["results"].get("behavior-observation.eligibility")
+            return bool(result and result.unwrap().get("eligible"))
+
+        return execute_workflow(
+            spec,
+            handlers=handlers,
+            entry_node=keys[0],
+            pause_before=boundary,
+            conditions={
+                "eligible": eligible,
+                "ineligible": lambda state: not eligible(state),
+            },
+        )
+
+
+def check_eligibility(eligible):
+    execute_observation(
+        "behavior-eligibility",
+        {"behavior.eligibility": lambda _state: {"eligible": eligible}},
+    )
+    return eligible
 
 
 def observation_step(identifier):

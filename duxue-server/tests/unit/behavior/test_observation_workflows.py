@@ -52,9 +52,9 @@ def test_production_vision_executes_configured_code_llm_code_without_image_trace
         assert ObservationVision()(payload) == result
     nodes = [e["node_id"] for e in trace.events if e.get("kind") == "agent"]
     assert nodes == [
-        "behavior-visible-activity.0",
-        "behavior-visible-activity.1",
-        "behavior-visible-activity.2",
+        "behavior-observation.prepare",
+        "behavior-observation.activity",
+        "behavior-observation.validate-activity",
     ]
     assert "SECRET" not in str(trace.events)
 
@@ -62,8 +62,6 @@ def test_production_vision_executes_configured_code_llm_code_without_image_trace
 @pytest.mark.parametrize(
     "identifier",
     [
-        "behavior-aggregate",
-        "behavior-invitation",
         "behavior-report",
         "behavior.aggregate",
         "behavior.invitation",
@@ -122,10 +120,10 @@ def test_synthetic_debug_uses_real_workflow_and_no_source_database(observation_r
         trace.capture(),
     ):
         result = run_observation_debug(
-            "behavior-visible-activity", DebugInput(content='{"synthetic":true}')
+            "behavior-observation", DebugInput(content='{"synthetic":true}')
         )
-    assert result["cells"] == []
-    assert len([e for e in trace.events if e.get("kind") == "agent"]) == 3
+    assert result["eligible"] is False
+    assert len([e for e in trace.events if e.get("kind") == "agent"]) == 5
     assert "base64," not in str(trace.events)
 
 
@@ -155,12 +153,12 @@ def test_configuration_cannot_skip_evidence_validation(observation_release):
     from app.agent_specs.admin_bundle import contract_compatibility
 
     bundle = copy.deepcopy(observation_release.bundle)
-    graph = bundle["files"]["workflows/behavior-visible-activity.json"]
+    graph = bundle["files"]["workflows/behavior-observation.json"]
     graph["nodes"].pop()
     graph["edges"][-2]["to"] = "END"
     graph["edges"].pop()
     bundle["compatibility"] = contract_compatibility(bundle["files"])
-    with pytest.raises(ValueError, match="protocol"):
+    with pytest.raises(ValueError):
         compile_bundle(bundle)
 
 
@@ -180,7 +178,7 @@ def test_debug_worker_propagates_explicit_model_runtime(
             "bundle": observation_release.bundle,
             "input": {
                 "target_kind": "workflow",
-                "target_id": "behavior-visible-activity",
+                "target_id": "behavior-observation",
                 "content": '{"synthetic":true}',
             },
         }
@@ -231,3 +229,97 @@ def test_independent_code_debug_without_llm(identifier, observation_release):
         side_effect=AssertionError("code agent called model"),
     ):
         run_observation_debug(identifier, data)
+
+
+def test_business_workflow_eligible_branch_reaches_shadow_delivery(observation_release):
+    import json
+    from datetime import datetime
+
+    from app.agent_specs.observation_debug import run_business_debug
+
+    def window(index):
+        start = T + timedelta(minutes=index)
+        frames = [
+            {
+                "id": f"frame-{index}-{n}",
+                "at": (start + timedelta(seconds=n * 15)).isoformat(),
+            }
+            for n in range(4)
+        ]
+        manifest = {
+            "ward_id": "ward",
+            "camera_id": "camera",
+            "assignment_revision": 1,
+            "start": start.isoformat(),
+            "end": (start + timedelta(minutes=1)).isoformat(),
+            "frames": frames,
+        }
+        cells = [
+            {
+                "start": f["at"],
+                "end": (
+                    datetime.fromisoformat(f["at"]) + timedelta(seconds=15)
+                ).isoformat(),
+                "activity": "still_with_material",
+                "evidence_frame_ids": [f["id"]],
+            }
+            for f in frames
+        ]
+        return {"manifest": manifest, "result": {"cells": cells}}
+
+    current = window(3)
+
+    class Vision(ObservationVision):
+        def prepare(self, payload, *, limit):
+            return [{"type": "text", "text": json.dumps(payload)}]
+
+        def invoke_model(self, identifier, parts):
+            if identifier == "behavior.visible-activity":
+                return current["result"]
+            return {
+                "decision": "offer_help",
+                "evidence_refs": [current["manifest"]["frames"][-1]["id"]],
+                "observed_basis": "visible stillness",
+                "uncertainty_reason": None,
+            }
+
+    trace = Recorder()
+    with (
+        patch(
+            "app.agent_specs.observation_debug.debug_vision",
+            return_value=(Vision(), current["manifest"]),
+        ),
+        trace.capture(),
+    ):
+        result = run_business_debug(
+            {"prior_windows": [window(n) for n in range(3)]}, None
+        )
+    assert result["eligible"] is True
+    assert result["invitation"]["offers"] == [
+        {"kind": "offer_help", "status": "shadow"}
+    ]
+    assert result["invitation"]["presentation"] is None
+    nodes = [e["node_id"] for e in trace.events if e.get("kind") == "agent"]
+    assert nodes == [
+        "behavior-observation." + n
+        for n in [
+            "prepare",
+            "activity",
+            "validate-activity",
+            "aggregate",
+            "eligibility",
+            "support-images",
+            "support",
+            "validate-support",
+            "invitation",
+            "delivery",
+        ]
+    ]
+
+
+def test_only_business_and_report_workflows_are_exposed(observation_release):
+    names = set(observation_release.catalog.workflow_catalog.specs)
+    assert {name for name in names if name.startswith("behavior-")} == {
+        "behavior-observation",
+        "behavior-report",
+    }

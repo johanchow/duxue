@@ -611,7 +611,8 @@ class ObservationCommands:
             return
         observed_at = utc(evidence[-1].captured_at)
         run = {**last, "start": start, "end": end, "observed_at": observed_at}
-        if not eligible_runs([run], self.clock()):
+        from app.application.workflows.observation_workflow import check_eligibility
+        if not check_eligibility(bool(eligible_runs([run], self.clock()))):
             return
         frames = evidence[-16:]
         assignments = {e.assignment_revision for e in frames}

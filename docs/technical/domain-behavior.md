@@ -797,7 +797,7 @@ Schema 合法、接口成功和自动化测试全绿，只能证明部分工程�
 ### 10.1 启用与回退
 
 1. 在目标环境按现有部署流程运行 `alembic upgrade head`，API、Celery worker 与 beat 使用相同版本和配置发布。
-2. Admin 发布包需要完整包含 `behavior.visible-activity`、`behavior.support-opportunity` 两个 LLM Agent、六个 code Agent 及五个 Workflow。旧包继续加载，缺少扩展时不会使用隐藏 Prompt 兜底。可用 `scripts/extend_observation_release.py SOURCE OUTPUT --model MODEL --activity-prompt FILE --support-prompt FILE` 从兼容的完整导出构建导入包；命令只生成文件，不发布。模型名称须在目标账号/端点实测可用，不能沿用过期环境变量值。
+2. Admin 发布包需要完整包含 `behavior.visible-activity`、`behavior.support-opportunity` 两个 LLM Agent、八个 code Agent 及两个业务 Workflow。旧包继续加载，缺少扩展时不会使用隐藏 Prompt 兜底。可用 `scripts/extend_observation_release.py SOURCE OUTPUT --model MODEL --activity-prompt FILE --support-prompt FILE` 从兼容的完整导出构建导入包；命令只生成文件，不发布。模型名称须在目标账号/端点实测可用，不能沿用过期环境变量值。
 3. Guardian 在孩子设置中选择绑定摄像头并开启观察/晚间报告。观察范围缺少权威配置时覆盖率为 unavailable，不以首尾帧之间跨度充当预期采集时间。旧每日分析与手动入口跳过新路径 Ward。
 4. 部署开关 `OBSERVATION_LIVE_INVITATIONS_ENABLED` 默认为 false。Ward 主动打开前台陪伴通道，也不能绕过 shadow。只在 §9.6 验收后设置该开关；仍需 Ward opt-in、有效45秒通道、最新证据与额度门禁。关闭开关并重启服务可恢复 shadow；关闭观察阻止后续推理写回，历史报告保留版本语义。
 5. 报告截止任务按启用 Ward 独立持久化，默认上海21:30；失败重试、重启补处理。观察事件触发晚到图片报告新版本；答疑事实暂每5分钟对当天复核。更早日期的答疑补写尚无事件通知链路。报告与 Guardian 收件索引同事务提交，查询每次校验当前绑定。
@@ -819,20 +819,22 @@ App 使用独立 `support.v1` 卡片协议，复用可见会话中的纯文本�
 
 生产执行、管理目录和隔离调试读取同一份 Admin 完整快照，通过 `execute_workflow` 执行配置的节点/边。持久任务与事务仍是异步边界，不把几分钟的观察过程伪装成一次同步模型调用。
 
-| Workflow | 按实际执行顺序的 Agent |
+| Workflow | 业务流程 |
 |---|---|
-| `behavior-visible-activity` | `behavior.evidence`（code）→ `behavior.visible-activity`（LLM）→ `behavior.validate-activity`（code） |
-| `behavior-support-opportunity` | `behavior.evidence`（code）→ `behavior.support-opportunity`（LLM）→ `behavior.validate-support`（code） |
-| `behavior-aggregate` | `behavior.aggregate`（code）：归并并发布观察日版本 |
-| `behavior-invitation` | `behavior.invitation`（code）：授权、新鲜度、冷却、额度与邀请写入 |
-| `behavior-report` | `behavior.report`（code）：报告来源与不可变版本发布 |
+| `behavior-observation`（行为观察与帮助） | 图片准备 → 活动解释 → 输出校验 → 状态累计 → 持续状态与新鲜度判断；达到阈值后 → 评估图片准备 → 帮助机会评估 → 候选校验 → 规则门禁 → 提示呈现；未达阈值结束本次观察 |
+| `behavior-report`（晚间报告） | 来源锁定、缺失说明、不可变版本发布 |
 
-共2个LLM Agent、6个code Agent；图片准备节点由两个视觉Workflow共享。`behavior_observation.publish_day`、`help_offers.consider`、`evening_reports.publish` 的正式命令也经过对应配置Workflow，不只是图示。确定性代码的实现仍在仓库，Admin可编辑名称/简介；不能上传Python、换任意handler、跳过图片授权/输出校验。模型、Prompt及调用参数仍在Admin编辑。Workflow遵循项目现行只读策略，显式升级改变流程基线，日常编辑不能修改拓扑。
+共2个LLM Agent、8个code Agent；新增code Agent为 `behavior.eligibility` 和 `behavior.delivery`。图片准备复用 `behavior.evidence`，主图中有两个执行位置。原来的四个片段Workflow不再出现在Admin清单中。LLM的模型、Prompt及参数保留在Admin；code Agent实现由受控Python处理器提供，Admin只编辑名称/简介。
 
-**调试输入：** 在两个视觉Workflow或对应LLM Agent的内容框输入 `{"synthetic":true}`，会使用明确标识的四张合成空白图调用真实配置模型；该模式只用于连通性/契约验证，不用于行为质量评分。真实图片输入仍为受权证据manifest，要求调试进程具有对应证据库和存储的只读访问能力；默认Admin本机隔离执行器没有业务库图片，不能直接拿任意OSS链接替代。图片字节不进入Workflow记录。
+持久任务按主图中的受控阶段恢复：`analyze` 执行图片解释段，`publish` 执行状态累计，`assess` 检查实际持续时长/新鲜度后才进入帮助模型，观察事件触发邀请决策，前台通道拉取时执行呈现节点。`execute_workflow` 的阶段入口和暂停边界只由代码绑定提供，调试事件明确记录 `continuation`，不把尚未执行的节点涂成成功。重试、输入版本、删除围栏与独立事务保留；图中的条件分支与执行节点来自同一配置快照。不能把这条跨时间流程当成每张图片都同步调用全部模型。
 
-三个持久化code Workflow可用 `{}` 调试零证据路径；使用一次性SQLite库，固定shadow，不写业务库报告或真实邀请。观察归并可传 `manifest`、模型 `result`、`date`、带时区的 `clock`；邀请可传 `snapshot`、`date`、`clock`。两个校验code Agent输入为 `{"manifest":...,"result":...}`；图片准备code Agent也支持显式synthetic模式。调试结果含实际节点、边、模型调用及失败信息。
+**调试输入：** 在 `behavior-observation` 主Workflow或对应LLM Agent的内容框输入 `{"synthetic":true}`，会使用明确标识的四张合成空白图调用真实配置模型；该模式只用于连通性/契约验证，不用于行为质量评分。真实图片输入仍为受权证据manifest，要求调试进程具有对应证据库和存储的只读访问能力；默认Admin本机隔离执行器没有业务库图片，不能直接拿任意OSS链接替代。图片字节不进入Workflow记录。
+
+晚间报告Workflow及对应持久化code Agent可用 `{}` 调试零证据路径；使用一次性SQLite库，固定shadow，不写业务库报告或真实邀请。观察归并可传 `manifest`、模型 `result`、`date`、带时区的 `clock`；邀请可传 `snapshot`、`date`、`clock`。两个校验code Agent输入为 `{"manifest":...,"result":...}`；图片准备code Agent也支持显式synthetic模式。调试结果含实际节点、边、模型调用及失败信息。
 
 **升级操作：** 从当前Admin发布或现有工作草稿导出完整快照，运行 `scripts/extend_observation_release.py SOURCE OUTPUT`；已有观察LLM时保留其模型/Prompt，初次增加时必须显式传入 `--model`、`--activity-prompt`、`--support-prompt`。输出保留来源id/digest/revision和environment，通过 Admin 的 `npm run config:import-upgrade -- OUTPUT` 导入唯一工作草稿；检测并发修改，不覆盖新的草稿版本。导入不发布，新增LLM仍需同修订真实调试。显式迁移只更新受验证的Workflow基线，不抹去组件差异及模型调试要求。
 
-本轮测试Admin草稿已升级，正式发布指针未切换。真实HTTP调试通过全部5个Workflow（两个视觉流程各1次真实模型请求，其他流程0次），测试图片为合成图。实际摄像头采集、业务库迁移及真实样本质量门槛仍按前节分别验收。
+早期五个阶段Workflow的HTTP验证保留为历史记录；当前业务入口已整合为下述主流程与晚间报告，测试Admin草稿已升级，正式发布指针未切换。实际摄像头与真实样本质量门槛仍需分别验收。
+
+
+2026-11-13业务主流程改造：主Workflow隔离调试在同一记录内串联图片解释、真实状态归并和阈值判断；未达到阈值时不调用帮助模型。可选 `prior_windows:[{manifest,result}]` 为显式调试历史夹具，经过相同区间/引用校验，用于测试持续状态分支，不冒充真实历史。达到阈值分支继续执行模型、候选校验、shadow门禁及呈现复核，所有持久写入仍在一次性数据库。Debug内容上限16KB以容纳有界时序夹具。已用回归测试验证主图全部节点顺序和shadow不呈现；真实HTTP合成空白图验证了未达到阈值分支。

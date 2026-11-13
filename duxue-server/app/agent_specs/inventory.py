@@ -120,6 +120,7 @@ WORKFLOW_DESCRIPTIONS = {
 from app.agent_specs.observation_contracts import CODE_AGENTS as OBSERVATION_CODE_AGENTS
 COMPONENT_PURPOSES.update({key: (label, '确定性代码 Agent；处理器与协议受代码注册约束。') for key,label in OBSERVATION_CODE_AGENTS.items()})
 WORKFLOW_DESCRIPTIONS.update({
+    "behavior-observation": "图片准备 → 活动解释 → 状态累计 → 达到阈值时评估帮助 → 规则门禁 → 提示呈现；各阶段按持久任务恢复。",
     'behavior-visible-activity': '受权图片准备 → 多图活动解释 → 时段和证据校验',
     'behavior-support-opportunity': '受权图片准备 → 帮助机会评估 → 候选证据校验',
     'behavior-aggregate': '持续状态归并并发布不可变观察日版本',

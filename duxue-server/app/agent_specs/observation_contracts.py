@@ -18,22 +18,34 @@ CODE_AGENTS = {
     "behavior.aggregate": "观察日归并",
     "behavior.invitation": "邀请门禁与额度",
     "behavior.report": "晚间报告发布",
+    "behavior.eligibility": "持续状态与新鲜度判断",
+    "behavior.delivery": "提示呈现与过期复核",
+}
+PHASES = {
+    "behavior-visible-activity": ["prepare", "activity", "validate-activity"],
+    "behavior-aggregate": ["aggregate"],
+    "behavior-eligibility": ["eligibility"],
+    "behavior-support-opportunity": ["support-images", "support", "validate-support"],
+    "behavior-invitation": ["invitation"],
+    "behavior-delivery": ["delivery"],
+}
+MAIN_NODES = {
+    "prepare": "behavior.evidence",
+    "activity": "behavior.visible-activity",
+    "validate-activity": "behavior.validate-activity",
+    "aggregate": "behavior.aggregate",
+    "eligibility": "behavior.eligibility",
+    "support-images": "behavior.evidence",
+    "support": "behavior.support-opportunity",
+    "validate-support": "behavior.validate-support",
+    "invitation": "behavior.invitation",
+    "delivery": "behavior.delivery",
 }
 WORKFLOWS = {
-    "behavior-visible-activity": [
-        "behavior.evidence",
-        "behavior.visible-activity",
-        "behavior.validate-activity",
-    ],
-    "behavior-support-opportunity": [
-        "behavior.evidence",
-        "behavior.support-opportunity",
-        "behavior.validate-support",
-    ],
-    "behavior-aggregate": ["behavior.aggregate"],
-    "behavior-invitation": ["behavior.invitation"],
+    "behavior-observation": list(MAIN_NODES.values()),
     "behavior-report": ["behavior.report"],
 }
+LEGACY_FILES = {f"workflows/{name}.json" for name in PHASES}
 FILES = {f"agents/{identifier}.json" for identifier in {*IDS, *CODE_AGENTS}} | {
     f"workflows/{name}.json" for name in WORKFLOWS
 }
@@ -56,20 +68,45 @@ def code_documents():
 
 def workflow_documents():
     result = code_documents()
-    for name, identifiers in WORKFLOWS.items():
-        nodes = [
-            {"id": name + "." + str(index), "kind": "agent", "ref": identifier}
-            for index, identifier in enumerate(identifiers)
-        ]
-        path = ["START", *[n["id"] for n in nodes], "END"]
-        result[f"workflows/{name}.json"] = {
-            "kind": "workflow",
-            "id": name,
-            "handler": name,
-            "entry": nodes[0]["id"],
-            "nodes": nodes,
-            "edges": [{"from": a, "to": b} for a, b in zip(path, path[1:])],
+    for doc in result.values():
+        doc["display_name"] = CODE_AGENTS[doc["id"]]
+    nodes = [
+        {"id": "behavior-observation." + key, "kind": "agent", "ref": ref}
+        for key, ref in MAIN_NODES.items()
+    ]
+    path = ["START", *[n["id"] for n in nodes], "END"]
+    edges = [{"from": a, "to": b} for a, b in zip(path, path[1:])]
+    for edge in edges:
+        if edge["from"] == "behavior-observation.eligibility":
+            edge["condition_id"] = "eligible"
+    edges.append(
+        {
+            "from": "behavior-observation.eligibility",
+            "to": "END",
+            "condition_id": "ineligible",
         }
+    )
+    result["workflows/behavior-observation.json"] = {
+        "kind": "workflow",
+        "id": "behavior-observation",
+        "handler": "behavior-observation",
+        "entry": nodes[0]["id"],
+        "nodes": nodes,
+        "edges": edges,
+    }
+    result["workflows/behavior-report.json"] = {
+        "kind": "workflow",
+        "id": "behavior-report",
+        "handler": "behavior-report",
+        "entry": "behavior-report.publish",
+        "nodes": [
+            {"id": "behavior-report.publish", "kind": "agent", "ref": "behavior.report"}
+        ],
+        "edges": [
+            {"from": "START", "to": "behavior-report.publish"},
+            {"from": "behavior-report.publish", "to": "END"},
+        ],
+    }
     return result
 
 
