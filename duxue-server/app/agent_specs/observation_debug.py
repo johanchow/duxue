@@ -90,6 +90,19 @@ def run_observation_debug(identifier, data, runtime=None):
     value = json.loads(data.content)
     if not isinstance(value, dict):
         raise ValueError("observation debug input must be an object")
+    if identifier == "behavior-observation":
+        return run_business_debug(value, runtime)
+    if identifier == "behavior.eligibility":
+        from app.application.workflows.observation_workflow import check_eligibility
+        from app.contexts.behavior_analysis.domain.support import eligible_runs
+
+        current = (
+            datetime.fromisoformat(value["clock"])
+            if value.get("clock")
+            else datetime.now(timezone.utc)
+        )
+        runs = [{**run, "observed_at": datetime.fromisoformat(run["observed_at"])} for run in value.get("runs", [])]
+        return {"eligible": check_eligibility(bool(eligible_runs(runs, current)))}
     if identifier in {"behavior-visible-activity", "behavior-support-opportunity"}:
         vision, manifest = debug_vision(
             value, support=identifier == "behavior-support-opportunity", runtime=runtime
@@ -181,8 +194,13 @@ def run_persistent_sandbox(identifier, value):
             )
             db.flush()
             if identifier == "behavior-aggregate":
-                if value.get("manifest"):
-                    manifest = value["manifest"]
+                for window_input in value.get(
+                    "windows",
+                    [{"manifest": value["manifest"], "result": value["result"]}]
+                    if value.get("manifest")
+                    else [],
+                ):
+                    manifest = window_input["manifest"]
                     start, end = (
                         datetime.fromisoformat(manifest[key])
                         for key in ("start", "end")
@@ -199,7 +217,7 @@ def run_persistent_sandbox(identifier, value):
                                 for f in manifest["frames"]
                             ),
                         ),
-                        value["result"]["cells"],
+                        window_input["result"]["cells"],
                     )
                     window = m.ObservationWindowRecord(
                         ward_id=ward,
@@ -250,6 +268,11 @@ def run_persistent_sandbox(identifier, value):
                     )
                 )
                 db.flush()
+            if identifier == "behavior-delivery":
+                result = HelpOfferCommands(db, lambda: current).present(
+                    ward, "no-channel"
+                )
+                return {"presented": result is not None, "sandbox": True}
             if identifier == "behavior-invitation":
                 if not value.get("snapshot"):
                     observation = m.ObservationDayRecord(
@@ -270,7 +293,11 @@ def run_persistent_sandbox(identifier, value):
                     db.flush()
                 HelpOfferCommands(db, lambda: current).consider(observation.id)
                 db.flush()
+                presentation = HelpOfferCommands(db, lambda: current).present(
+                    ward, "no-channel"
+                )
                 return {
+                    "presentation": presentation,
                     "offers": [
                         {"kind": o.kind, "status": o.status}
                         for o in db.query(m.HelpOfferRecord)
@@ -287,3 +314,92 @@ def run_persistent_sandbox(identifier, value):
             raise ValueError("unknown observation debug target")
     finally:
         engine.dispose()
+
+
+def run_business_debug(value, runtime):
+    """Run the same business nodes in an isolated DB, preserving conditional assessment."""
+    from app.application.workflows.observation_workflow import check_eligibility
+    from app.contexts.behavior_analysis.domain.support import eligible_runs
+
+    vision, manifest = debug_vision(value, runtime=runtime)
+    response = vision(manifest)
+    day = datetime.fromisoformat(manifest["start"]).date().isoformat()
+    end = datetime.fromisoformat(manifest["end"])
+    aggregate = run_persistent_sandbox(
+        "behavior-aggregate",
+        {
+            "windows": [
+                *value.get("prior_windows", []),
+                {"manifest": manifest, "result": response},
+            ],
+            "date": day,
+            "clock": end.isoformat(),
+        },
+    )
+    snapshot = aggregate["revisions"][-1]
+    runs = []
+    for item in snapshot["runs"]:
+        run = dict(item)
+        run["observed_at"] = max(
+            datetime.fromisoformat(f["at"])
+            for source in [
+                *[w["manifest"] for w in value.get("prior_windows", [])],
+                manifest,
+            ]
+            for f in source["frames"]
+            if f["id"] in run["evidence"]
+        )
+        runs.append(run)
+    ready = check_eligibility(bool(eligible_runs(runs, end)))
+    assessment = None
+    if ready:
+        payload = {
+            **manifest,
+            "trigger": "debug_observed_duration",
+            "observed_period": {
+                "start": snapshot["runs"][-1]["start"],
+                "end": snapshot["runs"][-1]["end"],
+            },
+            "learning_context": {
+                "observed_learning": any(
+                    r["activity"] in {"writing", "reading_material"} for r in runs
+                )
+            },
+        }
+        assessment = vision.assess(payload)
+        from app.contexts.behavior_analysis.domain.support import validate_assessment
+
+        candidate = validate_assessment(
+            {k: v for k, v in assessment.items() if k != "provenance"},
+            [f["id"] for f in manifest["frames"]],
+            has_learning_context=payload["learning_context"]["observed_learning"],
+        )
+        snapshot["candidates"] = (
+            []
+            if candidate is None
+            else [
+                {
+                    **candidate.model_dump(),
+                    "start": runs[-1]["start"],
+                    "end": runs[-1]["end"],
+                    "observed_at": runs[-1]["observed_at"].isoformat(),
+                    "fresh_until": (
+                        runs[-1]["observed_at"] + timedelta(seconds=120)
+                    ).isoformat(),
+                    "assessment_version": "isolated-debug",
+                }
+            ]
+        )
+        delivery = run_persistent_sandbox(
+            "behavior-invitation",
+            {"snapshot": snapshot, "date": day, "clock": end.isoformat()},
+        )
+    return {
+        "observation": snapshot,
+        "eligible": ready,
+        "assessment": assessment,
+        "invitation": delivery if ready else None,
+        "delivery": "not_eligible" if not ready else "shadow",
+        "sandbox": True,
+        "synthetic": value.get("synthetic") is True,
+    }

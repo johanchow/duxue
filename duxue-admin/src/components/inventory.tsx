@@ -12,6 +12,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import { workflowGraph, type Json } from '../lib/workflow-graph';
 import { componentTypes } from '../lib/component-types';
+import { filterAgents } from '../lib/agent-filter';
 import { nodeExecutions, edgeExecutions } from '../lib/execution-inspector';
 
 function CatalogEdge({ id, data, label, markerEnd, style }: EdgeProps) {
@@ -64,14 +65,14 @@ export function AgentInventory({
 }) {
   const [query, setQuery] = useState('');
   const [type, setType] = useState('all');
-  const components = catalog.components || catalog.agents || [];
-  const agents = components.filter(
-    (agent: Json) =>
-      (type === 'all' || agent.type === type) &&
-      `${agent.id} ${agent.name} ${agent.description}`
-        .toLowerCase()
-        .includes(query.toLowerCase()),
-  );
+  const [workflow, setWorkflow] = useState('all');
+  const components: Json[] = catalog.components || catalog.agents || [];
+  const workflows = Object.keys(catalog.workflows || {}).sort();
+  const agents = filterAgents(components as (Json & { id: string })[], {
+    query,
+    type,
+    workflow,
+  });
   return (
     <section>
       <h2>
@@ -106,7 +107,30 @@ export function AgentInventory({
             ))}
           </select>
         </label>
+        <label>
+          所属 Workflow
+          <select
+            aria-label="所属 Workflow"
+            value={workflow}
+            onChange={(event) => setWorkflow(event.target.value)}
+          >
+            <option value="all">全部 Workflow</option>
+            {workflows.map((id) => (
+              <option key={id} value={id}>
+                {id}（
+                {
+                  components.filter((agent) => agent.workflows?.includes(id))
+                    .length
+                }
+                ）
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
+      <p className="muted" role="status">
+        当前匹配 {agents.length} 项
+      </p>
       <div className="table-scroll">
         <table className="inventory-table" aria-label="Agent 列表">
           <thead>
@@ -138,7 +162,12 @@ export function AgentInventory({
                 <td>{componentTypes[agent.type] || agent.implementation}</td>
                 <td>
                   {changedIds.includes(agent.id) ? (
-                    <span className="badge">有待发布修改</span>
+                    <span
+                      className="badge"
+                      title="该 Agent 与草稿基线存在差异；草稿调试可使用修改，发布并加载后才会影响正常运行。"
+                    >
+                      有待发布修改
+                    </span>
                   ) : (
                     <span className="muted">—</span>
                   )}
@@ -283,7 +312,14 @@ export function AgentDetail({
           </span>
         </h2>
         <code>{agent.id}</code>
-        {hasChanges && <span className="badge">有待发布修改</span>}
+        {hasChanges && (
+          <span
+            className="badge"
+            title="该 Agent 与草稿基线存在差异；草稿调试可使用修改，发布并加载后才会影响正常运行。"
+          >
+            有待发布修改
+          </span>
+        )}
         <p>{agent.description}</p>
         <div className="agent-actions">
           {agent.workflows.map((id: string) => (

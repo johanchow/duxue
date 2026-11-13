@@ -151,6 +151,7 @@ class HelpOfferCommands:
                 )
             )
 
+    @observation_step("behavior.delivery")
     def present(self, ward_id, channel_id):
         db = self.db
         from app.application.commands.companion_history import lock_history

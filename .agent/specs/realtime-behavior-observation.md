@@ -132,3 +132,17 @@ status: draft
 
 
 本轮Admin改造验证：Server全量1117 passed、1 skipped、3 subtests passed；Admin41测试、typecheck、生产build通过。5个Workflow通过真实HTTP隔离调试，两条视觉Workflow各1次真实模型请求，其余0次；图片为显式合成空白图，不代替摄像头样本。实际8个Agent、5个Workflow目录读取已验证，code单独调试、配置节点身份切换、禁止跳过授权校验、非法handler拒绝、模型debug运行参数传递均有回归。测试工作草稿ID `84199a20-b77d-4918-a869-c4b9a26a58b2`，revision74；未发布、未改正式环境。测试Admin本地3021和Executor8011已启动，页面HTTP200。内部HTTP调试证据在 `duxue-server/var/observation/admin-workflow-debug.json`（不是Admin发布所需的持久debug_run记录）；发布前仍需在管理台按当前修订完成调试门槛。
+
+
+## 业务主流程与发布准备（2026-11-13）
+
+- [x] 用户要求：整合behavior-observation主图、保留独立晚间报告，补Workflow筛选。
+- [x] 生产任务按图阶段恢复，阈值分支/呈现复核测试通过；Server1117、Admin43测试通过。
+- [x] 测试草稿76及两个Workflow HTTP调试通过；未发布。
+- [x] 真实摄像头短测5帧，失败重试恢复；多人/遮挡仍不确定，不宣称质量通过。
+- [x] 正式Admin R1只读导出，并生成独立升级提案（不覆盖测试或正式账号）。
+- [ ] PR/CI及分阶段Admin部署。
+- [ ] 正式配置审阅、调试/发布与回执。
+- [ ] Server部署、迁移35、指定Ward shadow验收。
+
+正式R1目前缺少数学/评测契约，直接合并自动Server部署会遇配置预检问题；需先更新Admin控制进程与配置再部署Server。本机SSH无访问权限，GitHub Actions认证可用。真实长测/独立质量验收继续保留原待办。

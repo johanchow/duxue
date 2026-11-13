@@ -28,7 +28,7 @@ class DebugContext(BaseModel):
 
 class DebugInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    content: str = Field(min_length=1, max_length=4000)
+    content: str = Field(min_length=1, max_length=16000)
     problem: str = Field(default="", max_length=2000)
     target_kind: Literal["agent", "workflow"] | None = None
     target_id: str | None = Field(default=None, max_length=120)
