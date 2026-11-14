@@ -14,6 +14,7 @@ import { workflowGraph, type Json } from '../lib/workflow-graph';
 import { componentTypes } from '../lib/component-types';
 import { filterAgents } from '../lib/agent-filter';
 import { nodeExecutions, edgeExecutions } from '../lib/execution-inspector';
+import { IconArrowRight, IconCode, IconSearch, IconWorkflow } from './icons';
 
 function CatalogEdge({ id, data, label, markerEnd, style }: EdgeProps) {
   const points = data?.route as { x: number; y: number }[];
@@ -84,11 +85,14 @@ export function AgentInventory({
       <div className="agent-filters">
         <label>
           搜索 Agent
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="名称、ID 或作用"
-          />
+          <span className="search-field">
+            <IconSearch />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="名称、ID 或作用"
+            />
+          </span>
         </label>
         <label>
           类型
@@ -138,9 +142,9 @@ export function AgentInventory({
               <th>Agent / ID</th>
               <th>作用简介</th>
               <th>类型</th>
-              <th>修改状态</th>
+              <th>状态</th>
               <th>所属 Workflow</th>
-              <th>配置</th>
+              <th className="right-cell">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -161,16 +165,19 @@ export function AgentInventory({
                 <td>{agent.description}</td>
                 <td>{componentTypes[agent.type] || agent.implementation}</td>
                 <td>
-                  {changedIds.includes(agent.id) ? (
-                    <span
-                      className="badge"
-                      title="该 Agent 与草稿基线存在差异；草稿调试可使用修改，发布并加载后才会影响正常运行。"
-                    >
-                      有待发布修改
+                  <div className="status-stack">
+                    <span className="muted-tag">
+                      {agent.editable ? '可编辑' : '只读'}
                     </span>
-                  ) : (
-                    <span className="muted">—</span>
-                  )}
+                    {changedIds.includes(agent.id) && (
+                      <span
+                        className="badge"
+                        title="该 Agent 与草稿基线存在差异；草稿调试可使用修改，发布并加载后才会影响正常运行。"
+                      >
+                        有待发布修改
+                      </span>
+                    )}
+                  </div>
                 </td>
                 <td>
                   {agent.workflows.map((id: string) => (
@@ -187,17 +194,17 @@ export function AgentInventory({
                     </a>
                   ))}
                 </td>
-                <td>
-                  {agent.editable ? '可编辑' : '只读'}
+                <td className="right-cell">
                   <a
-                    className="table-link"
+                    className="button-link secondary btn-sm"
                     href={`/agents/${encodeURIComponent(agent.id)}`}
                     onClick={(event) => {
                       event.preventDefault();
                       navigate(event.currentTarget.getAttribute('href')!);
                     }}
                   >
-                    查看详情 →
+                    查看详情
+                    <IconArrowRight size={14} />
                   </a>
                 </td>
               </tr>
@@ -235,11 +242,14 @@ export function WorkflowInventory({
       </p>
       <label>
         搜索 Workflow
-        <input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Workflow ID 或简介"
-        />
+        <span className="search-field">
+          <IconSearch />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Workflow ID 或简介"
+          />
+        </span>
       </label>
       <div className="table-scroll">
         <table className="inventory-table" aria-label="Workflow 列表">
@@ -247,7 +257,7 @@ export function WorkflowInventory({
             <tr>
               <th>Workflow</th>
               <th>简介</th>
-              <th>配置</th>
+              <th className="right-cell">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -267,15 +277,17 @@ export function WorkflowInventory({
                 <td>
                   {catalog.workflow_descriptions?.[flow.id] || '暂无简介'}
                 </td>
-                <td>
+                <td className="right-cell">
                   <a
+                    className="button-link secondary btn-sm"
                     href={`/workflows/${encodeURIComponent(flow.id)}`}
                     onClick={(event) => {
                       event.preventDefault();
                       navigate(event.currentTarget.getAttribute('href')!);
                     }}
                   >
-                    流程与配置 →
+                    流程与配置
+                    <IconArrowRight size={14} />
                   </a>
                 </td>
               </tr>
@@ -305,34 +317,43 @@ export function AgentDetail({
   return (
     <>
       <section aria-label="Agent 详情">
-        <h2>
-          配置信息{' '}
-          <span className="badge">
-            {componentTypes[agent.type] || agent.implementation}
-          </span>
-        </h2>
-        <code>{agent.id}</code>
-        {hasChanges && (
-          <span
-            className="badge"
-            title="该 Agent 与草稿基线存在差异；草稿调试可使用修改，发布并加载后才会影响正常运行。"
-          >
-            有待发布修改
-          </span>
-        )}
-        <p>{agent.description}</p>
-        <div className="agent-actions">
-          {agent.workflows.map((id: string) => (
-            <button
-              className="secondary"
-              key={id}
-              onClick={() => navigate(`/workflows/${encodeURIComponent(id)}`)}
-            >
-              所属 Workflow：{id}
-            </button>
-          ))}
+        <div className="section-head">
+          <div>
+            <h2>
+              配置信息{' '}
+              <span className="badge">
+                {componentTypes[agent.type] || agent.implementation}
+              </span>
+              {hasChanges && (
+                <span
+                  className="badge"
+                  title="该 Agent 与草稿基线存在差异；草稿调试可使用修改，发布并加载后才会影响正常运行。"
+                >
+                  有待发布修改
+                </span>
+              )}
+            </h2>
+            <code>{agent.id}</code>
+          </div>
+          {!!agent.workflows.length && (
+            <div className="page-actions">
+              {agent.workflows.map((id: string) => (
+                <button
+                  className="secondary btn-sm"
+                  key={id}
+                  onClick={() =>
+                    navigate(`/workflows/${encodeURIComponent(id)}`)
+                  }
+                >
+                  <IconWorkflow size={14} />
+                  所属 Workflow：{id}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
-        {editing && <p>当前环境唯一的待发布配置。</p>}
+        <p>{agent.description}</p>
+        {editing && <p className="muted">当前环境唯一的待发布配置。</p>}
       </section>
       {!editing && (
         <section aria-label="Agent 完整配置">
@@ -434,30 +455,26 @@ export function WorkflowExplorer({
     <>
       <section>
         <div className="section-head">
-          <h2>
-            Workflow 流程图 <span className="badge">只读</span>
-          </h2>
+          <div>
+            <h2>
+              Workflow 流程图 <span className="badge">只读</span>
+            </h2>
+            <p className="compact-meta">
+              {flow.id} · {flow.nodes.length} 个 Node · {flow.edges.length} 条
+              Edge · 入口 {flow.entry}
+            </p>
+          </div>
           <div className="page-actions">
-            <button
-              className="secondary"
-              onClick={() => navigate('/workflows')}
-            >
-              返回 Workflow 列表
-            </button>
             <button
               className="secondary"
               onClick={() => setShowWhole(!showWhole)}
             >
+              <IconCode />
               {showWhole ? '收起完整配置' : '查看完整 Workflow 配置'}
             </button>
           </div>
         </div>
-        <h3>{workflowId}</h3>
-        <p>
-          {flow.id} · {flow.nodes.length} 个 Node · {flow.edges.length} 条 Edge
-          · 入口 {flow.entry}
-        </p>
-        <p>
+        <p className="muted">
           点击节点或连线查看配置。实线表示控制流，虚线表示归属关系；重试回路按实际配置保留。
         </p>
         <div className="workflow-canvas" aria-label={`${workflowId} 流程图`}>
@@ -523,21 +540,24 @@ export function WorkflowExplorer({
               )}
               {reference && (
                 <>
-                  <h3>引用组件完整配置 · {selection.reference}</h3>
-                  {['agent', 'gate', 'tool'].includes(reference.kind) && (
-                    <div className="page-actions">
-                      <button
-                        className="secondary"
-                        onClick={() =>
-                          navigate(
-                            `/agents/${encodeURIComponent(reference.id)}`,
-                          )
-                        }
-                      >
-                        打开组件详情
-                      </button>
-                    </div>
-                  )}
+                  <div className="section-head inspector-head">
+                    <h3>引用组件完整配置 · {selection.reference}</h3>
+                    {['agent', 'gate', 'tool'].includes(reference.kind) && (
+                      <div className="page-actions">
+                        <button
+                          className="secondary btn-sm"
+                          onClick={() =>
+                            navigate(
+                              `/agents/${encodeURIComponent(reference.id)}`,
+                            )
+                          }
+                        >
+                          打开组件详情
+                          <IconArrowRight size={14} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
                   <pre>{pretty(reference)}</pre>
                 </>
               )}

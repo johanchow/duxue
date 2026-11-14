@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { metricDelta, type Metric } from '../lib/evaluation-model';
+import { IconArrowLeft, IconArrowRight, IconExternalLink } from './icons';
 const format = (m: Metric) =>
   m.value === null
     ? '—'
@@ -39,42 +40,98 @@ export function Evaluation({ page }: { page: string }) {
   }, [page, days, current, baseline, cursor]);
   return (
     <section className="evaluation">
-      <nav className="eval-nav">
-        {['overview', 'experiments', 'production'].map((p) => (
-          <Link
-            key={p}
-            aria-current={page === p ? 'page' : undefined}
-            href={`/evals/${p}`}
-          >
-            {p[0].toUpperCase() + p.slice(1)}
-          </Link>
-        ))}
-      </nav>
-      <p>
+      <div className="eval-header">
+        <nav className="eval-nav" aria-label="Evaluation 视图">
+          {['overview', 'experiments', 'production'].map((p) => (
+            <Link
+              key={p}
+              aria-current={page === p ? 'page' : undefined}
+              href={`/evals/${p}`}
+            >
+              {p[0].toUpperCase() + p.slice(1)}
+            </Link>
+          ))}
+        </nav>
+        {data?.links && (
+          <div className="eval-external" aria-label="Langfuse 外部入口">
+            {Object.entries(data.links)
+              .filter(([name]) => name !== 'Experiments')
+              .map(([name, url]) => (
+                <a
+                  key={name}
+                  className="button-link secondary btn-sm"
+                  href={String(url)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={`${name} ↗`}
+                >
+                  {name}
+                  <IconExternalLink size={13} />
+                </a>
+              ))}
+          </div>
+        )}
+      </div>
+      <p className="muted">
         Langfuse 为评测数据源；配置与发布仍由 Admin
-        管理。数据可能延迟，页面读取缓存最多 30 秒。
+        管理。数据可能延迟，页面读取缓存最多 30 秒。Test Cases 位于 Datasets
+        内。
       </p>
       <div className="eval-toolbar">
-        <label>
-          时间范围{' '}
-          <select
-            value={days}
-            onChange={(e) => {
-              setDays(Number(e.target.value));
-              setCurrent('');
-              setBaseline('');
-              setCursor('');
-            }}
-          >
-            {(page === 'experiments' ? [7, 30, 90] : [7, 30]).map((n) => (
-              <option key={n} value={n}>
-                最近 {n} 天
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="eval-filters">
+          <label>
+            时间范围
+            <select
+              value={days}
+              onChange={(e) => {
+                setDays(Number(e.target.value));
+                setCurrent('');
+                setBaseline('');
+                setCursor('');
+              }}
+            >
+              {(page === 'experiments' ? [7, 30, 90] : [7, 30]).map((n) => (
+                <option key={n} value={n}>
+                  最近 {n} 天
+                </option>
+              ))}
+            </select>
+          </label>
+          {page === 'overview' && data?.current && (
+            <>
+              <label>
+                当前实验
+                <select
+                  value={current || data.currentId || ''}
+                  onChange={(e) => setCurrent(e.target.value)}
+                >
+                  <option value="">选择实验</option>
+                  {data.experiments.map((e: any) => (
+                    <option key={e.id} value={e.id}>
+                      {e.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                基线实验
+                <select
+                  value={baseline}
+                  onChange={(e) => setBaseline(e.target.value)}
+                >
+                  <option value="">不比较</option>
+                  {data.experiments.map((e: any) => (
+                    <option key={e.id} value={e.id}>
+                      {e.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          )}
+        </div>
         {data && (
-          <span>
+          <span className="badge">
             项目 {data.projectId} ·{' '}
             {page === 'production' ? `环境 ${data.environment}` : '离线实验'}
           </span>
@@ -82,34 +139,39 @@ export function Evaluation({ page }: { page: string }) {
       </div>
       {loading && <p role="status">正在读取 Langfuse…</p>}
       {error && (
-        <p role="alert" className="error">
+        <p role="alert" className="notice error">
           {error}
         </p>
       )}
       {data && (
         <>
-          {data.warning && <p role="status">{data.warning}</p>}
-          <nav className="eval-nav">
-            {Object.entries(data.links)
-              .filter(([name]) => name !== 'Experiments')
-              .map(([name, url]) => (
-                <a
-                  key={name}
-                  href={String(url)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  {name} ↗
-                </a>
-              ))}
-          </nav>
-          <small>
-            以上入口在新标签页打开 Langfuse；Test Cases 位于 Datasets 内。
-          </small>
+          {data.warning && (
+            <p role="status" className="notice">
+              {data.warning}
+            </p>
+          )}
           {page === 'experiments' ? (
             <>
-              <h2>Experiments</h2>
-              <p>仅按配置 digest 精确关联发布记录；未提供摘要时不推测版本。</p>
+              <div className="section-head">
+                <div>
+                  <h2>Experiments</h2>
+                  <p className="compact-meta">
+                    仅按配置 digest 精确关联发布记录；未提供摘要时不推测版本。
+                  </p>
+                </div>
+                <div className="page-actions">
+                  <a
+                    className="button-link secondary btn-sm"
+                    href={data.links.Experiments}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="在 Langfuse 查看实验详情 ↗"
+                  >
+                    在 Langfuse 查看实验详情
+                    <IconExternalLink size={13} />
+                  </a>
+                </div>
+              </div>
               <div className="eval-table">
                 <table>
                   <thead>
@@ -160,60 +222,35 @@ export function Evaluation({ page }: { page: string }) {
                 </table>
               </div>
               {!data.experiments.length && (
-                <p>当前时间范围内没有 Langfuse 实验。</p>
+                <p className="empty">当前时间范围内没有 Langfuse 实验。</p>
               )}
-              <div className="eval-toolbar">
-                {cursor && (
-                  <button onClick={() => setCursor('')}>返回第一页</button>
-                )}
-                {data.cursor && (
-                  <button onClick={() => setCursor(data.cursor)}>下一页</button>
-                )}
-                <a
-                  href={data.links.Experiments}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  在 Langfuse 查看实验详情 ↗
-                </a>
-              </div>
+              {(cursor || data.cursor) && (
+                <div className="page-actions eval-pagination">
+                  {cursor && (
+                    <button
+                      className="secondary btn-sm"
+                      onClick={() => setCursor('')}
+                    >
+                      <IconArrowLeft size={14} />
+                      返回第一页
+                    </button>
+                  )}
+                  {data.cursor && (
+                    <button
+                      className="secondary btn-sm"
+                      onClick={() => setCursor(data.cursor)}
+                    >
+                      下一页
+                      <IconArrowRight size={14} />
+                    </button>
+                  )}
+                </div>
+              )}
             </>
           ) : (
             <>
-              {page === 'overview' && (
-                <div className="eval-toolbar">
-                  <label>
-                    当前实验{' '}
-                    <select
-                      value={current || data.currentId || ''}
-                      onChange={(e) => setCurrent(e.target.value)}
-                    >
-                      <option value="">选择实验</option>
-                      {data.experiments.map((e: any) => (
-                        <option key={e.id} value={e.id}>
-                          {e.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    基线实验{' '}
-                    <select
-                      value={baseline}
-                      onChange={(e) => setBaseline(e.target.value)}
-                    >
-                      <option value="">不比较</option>
-                      {data.experiments.map((e: any) => (
-                        <option key={e.id} value={e.id}>
-                          {e.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-              )}
               {!data.current ? (
-                <p>
+                <p className="empty">
                   当前时间范围内没有实验。离线 runner 的本地报告不会自动成为
                   Langfuse 实验；请先在 Langfuse 建立并上报实验。
                 </p>

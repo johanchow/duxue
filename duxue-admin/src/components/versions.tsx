@@ -46,18 +46,10 @@ export function VersionDetail({
   version,
   currentId,
   compatible,
-  busy,
-  navigate,
-  rollback,
-  canEdit,
 }: {
   version: Doc;
   currentId: string;
   compatible: boolean;
-  busy: boolean;
-  canEdit: boolean;
-  navigate: (url: string) => void;
-  rollback: () => void;
 }) {
   const files = Object.keys(version.bundle.files);
   const [file, setFile] = useState(files[0]);
@@ -66,33 +58,14 @@ export function VersionDetail({
       <div className="section-head">
         <div>
           <h2>
-            R{version.sequence}{' '}
+            配置内容{' '}
             <span className="badge">
               {version.id === currentId ? '当前发布' : '历史版本'}
             </span>
           </h2>
           <small>
-            {time(version.created_at)} · {files.length} 份配置
+            发布于 {time(version.created_at)} · {files.length} 份配置
           </small>
-        </div>
-        <div className="page-actions">
-          <button className="secondary" onClick={() => navigate('/releases')}>
-            返回发布管理
-          </button>
-          <a
-            className="button-link secondary"
-            href={`/api/releases/${version.id}/snapshot`}
-          >
-            下载配置快照
-          </a>
-          {canEdit && (
-            <button
-              disabled={busy || !compatible || version.id === currentId}
-              onClick={rollback}
-            >
-              回滚到此版本
-            </button>
-          )}
         </div>
       </div>
       {version.id === currentId && (

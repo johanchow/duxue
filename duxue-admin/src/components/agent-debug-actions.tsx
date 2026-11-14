@@ -1,4 +1,5 @@
 import type { debugCapability } from '../lib/debug-capability';
+import { IconLock, IconPlay, IconWorkflow } from './icons';
 
 type Props = {
   capability: ReturnType<typeof debugCapability>;
@@ -19,6 +20,7 @@ export function AgentDebugActions(props: Props) {
     return (
       <>
         <span className="badge" title={capability.reason}>
+          <IconLock size={12} />
           未开放独立调试
         </span>
         {capability.workflowId && (
@@ -28,6 +30,7 @@ export function AgentDebugActions(props: Props) {
               props.navigate(`/workflows/${capability.workflowId}`)
             }
           >
+            <IconWorkflow />
             打开所属 Workflow
           </button>
         )}
@@ -45,6 +48,7 @@ export function AgentDebugActions(props: Props) {
         disabled={props.busy}
         onClick={() => props.onDraftDebug(draftId)}
       >
+        <IconPlay />
         调试已保存草稿
       </button>
     );
@@ -56,6 +60,7 @@ export function AgentDebugActions(props: Props) {
         disabled={props.busy}
         onClick={props.onPublishedDebug}
       >
+        <IconPlay />
         调试已发布配置
       </button>
     );

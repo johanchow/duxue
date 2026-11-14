@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useRef, type ReactNode } from 'react';
+import { IconClose } from './icons';
 export function DebugDrawer({
   open,
   onClose,
@@ -58,6 +59,7 @@ export function DebugDrawer({
       <div className="debug-drawer-heading">
         <h2>调试</h2>
         <button className="secondary" onClick={onClose} aria-label="关闭调试">
+          <IconClose />
           关闭
         </button>
       </div>

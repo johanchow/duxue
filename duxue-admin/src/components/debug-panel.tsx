@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { RunView } from './run-view';
+import { IconPlay, IconWorkflow } from './icons';
 type Doc = Record<string, any>;
 import { debugCapability, type DebugTarget } from '../lib/debug-capability';
 export type { DebugTarget } from '../lib/debug-capability';
@@ -121,6 +122,7 @@ export function DebugPanel({
                 className="secondary"
                 onClick={() => navigate(`/workflows/${capability.workflowId}`)}
               >
+                <IconWorkflow />
                 打开所属 Workflow
               </button>
             </div>
@@ -188,6 +190,7 @@ export function DebugPanel({
           {dirty && <p className="notice">请先保存修改，再调试已保存草稿。</p>}
           <div className="page-actions">
             <button disabled={busy || dirty || !content.trim()} onClick={run}>
+              <IconPlay />
               {busy ? '运行中…' : '运行真实调试'}
             </button>
           </div>
@@ -206,6 +209,7 @@ export function DebugPanel({
           {onInspect && (
             <div className="page-actions">
               <button className="secondary" onClick={onInspect}>
+                <IconWorkflow />
                 查看流程执行
               </button>
             </div>
