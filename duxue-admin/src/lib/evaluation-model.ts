@@ -96,6 +96,7 @@ export type Metric = {
   description: string;
 };
 export type Filter = {
+  key?: string;
   column: string;
   operator: string;
   value: unknown;
@@ -174,6 +175,12 @@ function queries(
       ...(production ? [filter('name', 'agent.turn')] : []),
     ],
   };
+  const status = scores('scores-categorical', ['eval.status'], ['stringValue']);
+  // Checkpoint display statuses share the name; task counts must exclude them.
+  status.filters.push({
+    ...filter('metadata', 'task', 'stringObject'),
+    key: 'scope',
+  });
   return {
     root,
     numeric: scores('scores-numeric', [
@@ -190,7 +197,7 @@ function queries(
       'eval.safety',
       'eval.answer_protection',
     ]),
-    status: scores('scores-categorical', ['eval.status'], ['stringValue']),
+    status,
     trend: { ...root, timeDimension: { granularity: 'day' } },
   };
 }

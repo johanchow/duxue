@@ -22,6 +22,15 @@ created: 2026-11-11
 4. 测试并运行真实用例，记录结果与限制，供用户验收。
 
 ## 验证进度与阻塞
+### 2026-11-14 Scores可读性（用户已确认方案，Gate 1）
+- 范围：检查点补API来源`eval.status`，摘要用图标、中文状态、逐项实际值/远端阈值与原始理由；根节点共用格式。质量失败不标系统ERROR，不改Evaluator/阈值。
+- 影响：`evals/platform/reporting.py`、`__main__.py`、`resume.py`及评测设计；Admin状态聚合按`scope=task`避免新增检查点重复计数。
+- 测试：六维混合结果/非默认阈值/缺分及版本异常/未执行节点/幂等/历史resume补展示；相关评测回归。
+- [x] 检查点与根节点可读摘要及幂等状态上报。
+- [x] run/resume均接入，原始评分及理由保留。
+- [x] 评测224测试、Admin相关5测试/类型检查通过；云端用户样例checkpoint/root摘要回读及任务层级统计1条验证通过。未重跑模型，未改原生6条评分；审计`var/evals/score-display-20261114/`。
+- [x] Gate 2：用户后续要求补齐最新单Experiment并确认切分支提交；样例/指定Experiment展示已回读，本地代码纳入本轮提交。未部署，未批量回填同批其他Experiment。
+
 - 8例真实接通运行并用 resume 回收原生评分：6 pass、2 fail，0 error；失败保留，不改业务Prompt或降低标准。
 - Admin 37项测试、类型检查、构建通过；真实 Experiment API 聚合已返回两个教学维度、保护、安全、任务状态和排除评分等待的延迟。
 - 41例真实回归已结束：34 pass、6 fail、1 error，结果在 `duxue-server/var/evals/langfuse-unified-all-41/`；图片原生裁判拒绝现有DashScope自定义模型的JPEG输入，已向用户询问是否接入兼容视觉连接。不能因Code通过而计整例通过，不回退本地Judge。

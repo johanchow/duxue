@@ -42,7 +42,7 @@ _PLANNING_STAGES = frozenset({
 })
 _LANGFUSE_SPANS = frozenset({
     "agent.turn", "agent.route", "agent.workflow", "agent.node", "agent.tool",
-    "agent.check", "llm.request",
+    "agent.check", "llm.request", "agent.execution",
 }) | frozenset(f"planning.{stage}" for stage in _PLANNING_STAGES)
 # These attributes are generated from code-owned enums/counters. Never export
 # arbitrary event payloads from an application span to Langfuse.
@@ -472,8 +472,21 @@ def agent_turn_span() -> Iterator[None]:
             "agent.turn", attributes={"langfuse.observation.type": "agent", "langfuse.trace.name": "companion.turn",
                                       **_workflow_unit_attrs(companion)},
             record_exception=False, set_status_on_exception=False,
-        ):
-            yield
+        ) as turn_span:
+            from app.agent_specs.execution_trace import Recorder, recorder
+            current = recorder()
+            recording = Recorder() if current is None and turn_span.is_recording() and _langfuse_enabled() else None
+            from contextlib import nullcontext
+            with recording.capture() if recording else nullcontext():
+                try:
+                    yield
+                finally:
+                    if recording and recording.events:
+                        with trace.get_tracer("duxue.agent").start_as_current_span(
+                            "agent.execution", attributes={"langfuse.observation.type": "span", **_agent_context_attrs()},
+                            record_exception=False, set_status_on_exception=False,
+                        ) as evidence_span:
+                            set_observation_payload(evidence_span, output=recording.document())
     finally:
         _agent_parent_span.reset(parent_token)
         _pending_subgoal.reset(subgoal_token)
@@ -801,9 +814,10 @@ def model_call_span(*, operation: str, model: str, agent_type: str | None = None
         "langfuse.observation.type": "generation",
         "langfuse.observation.model.name": model,
     }), **workflow_attrs}
+    from app.agent_specs.execution_trace import observe_model
     with trace.get_tracer("duxue.model").start_as_current_span(
         "llm.request", attributes=attrs, record_exception=False, set_status_on_exception=False,
-    ) as span:
+    ) as span, observe_model(component_id, span, input=input_payload, model=model) as model_event:
         if input_payload is not None:
             set_observation_payload(span, input=input_payload)
         result: dict[str, Any] = {"result": "success", "tokens_in": None, "tokens_out": None, "provider_request_id": None}
@@ -817,6 +831,9 @@ def model_call_span(*, operation: str, model: str, agent_type: str | None = None
             raise
         finally:
             duration_ms = round((perf_counter() - started) * 1000)
+            if model_event is not None:
+                model_event.update(tokens_in=result["tokens_in"], tokens_out=result["tokens_out"],
+                                   definition_digest=definition_digest, component_version=component_version)
             attrs_with_result = {**attrs, "llm.result": result["result"]}
             _llm_requests.add(1, attributes=attrs_with_result)
             _llm_duration.record(duration_ms, attributes=attrs_with_result)
@@ -871,7 +888,8 @@ def record_model_response(*, agent_type: str, model: str, content: str, operatio
     """Record one model completion on the active generation and audit sink."""
     summary = _summary(content)
     span = trace.get_current_span()
-    if span.is_recording() and getattr(span, "name", None) == "llm.request":
+    from app.agent_specs.execution_trace import recorder
+    if span.is_recording() and getattr(span, "name", None) == "llm.request" or recorder() is not None:
         set_observation_payload(span, output=content)
     attrs = _attrs(**{
         "agent.type": agent_type,

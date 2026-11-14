@@ -6,12 +6,18 @@ export function DebugDrawer({
   onClose,
   loading = false,
   error,
+  title = '调试',
+  ariaLabel = '调试面板',
+  wide = false,
   children,
 }: {
   open: boolean;
   onClose: () => void;
   loading?: boolean;
   error?: string;
+  title?: string;
+  ariaLabel?: string;
+  wide?: boolean;
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -37,8 +43,8 @@ export function DebugDrawer({
   return (
     <dialog
       ref={ref}
-      className="debug-drawer"
-      aria-label="调试面板"
+      className={wide ? 'debug-drawer wide' : 'debug-drawer'}
+      aria-label={ariaLabel}
       onCancel={(event) => {
         event.preventDefault();
         onClose();
@@ -57,7 +63,7 @@ export function DebugDrawer({
       }}
     >
       <div className="debug-drawer-heading">
-        <h2>调试</h2>
+        <h2>{title}</h2>
         <button className="secondary" onClick={onClose} aria-label="关闭调试">
           <IconClose />
           关闭

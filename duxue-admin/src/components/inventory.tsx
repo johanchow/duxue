@@ -1,5 +1,5 @@
 'use client';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Background,
   BaseEdge,
@@ -466,10 +466,12 @@ export function WorkflowExplorer({
   initialWorkflow,
   navigate,
   execution = [],
+  activeEvent = null,
 }: {
   catalog: Json;
   initialWorkflow: string;
   execution?: Json[];
+  activeEvent?: Json | null;
   navigate: (url: string) => void;
 }) {
   const workflowId = initialWorkflow;
@@ -487,6 +489,28 @@ export function WorkflowExplorer({
         : { nodes: [], edges: [] },
     [flow, catalog.definitions],
   );
+  useEffect(() => {
+    if (!activeEvent || !flow || activeEvent.workflow_id !== workflowId) return;
+    if (activeEvent.kind === 'edge') {
+      const edge = flow.edges?.find(
+        (item: Json) =>
+          edgeExecutions([activeEvent], workflowId, item).length > 0,
+      );
+      if (edge) setSelection({ kind: 'Edge', config: edge });
+      return;
+    }
+    const node = flow.nodes?.find(
+      (item: Json) =>
+        nodeExecutions([activeEvent], workflowId, item).length > 0,
+    );
+    if (node) {
+      setSelection({
+        kind: 'Node',
+        config: node,
+        reference: node.ref,
+      });
+    }
+  }, [activeEvent?.id, workflowId, flow]);
   if (!flow)
     return (
       <section>
@@ -496,6 +520,10 @@ export function WorkflowExplorer({
   const nodes = graph.nodes.map((node) => {
     const config = flow.nodes.find((item: Json) => item.id === node.id);
     const events = config ? nodeExecutions(execution, workflowId, config) : [];
+    const isCurrent =
+      activeEvent &&
+      config &&
+      nodeExecutions([activeEvent], workflowId, config).length > 0;
     return {
       ...node,
       className:
@@ -504,7 +532,10 @@ export function WorkflowExplorer({
           ? events.some((event: Json) => event.status === 'failed')
             ? ' execution-failed'
             : ' execution-visited'
-          : ''),
+          : execution.length
+            ? ' execution-unvisited'
+            : '') +
+        (isCurrent ? ' execution-current' : ''),
     };
   });
   const edges = graph.edges.map((edge) => {
@@ -512,6 +543,19 @@ export function WorkflowExplorer({
       edge.data?.configuration && !edge.data?.relationship
         ? edgeExecutions(execution, workflowId, edge.data.configuration as Json)
         : [];
+    const isCurrent =
+      activeEvent &&
+      edge.data?.configuration &&
+      !edge.data?.relationship &&
+      edgeExecutions([activeEvent], workflowId, edge.data.configuration as Json)
+        .length > 0;
+    if (isCurrent) {
+      return {
+        ...edge,
+        animated: true,
+        style: { ...edge.style, stroke: '#d97706', strokeWidth: 4 },
+      };
+    }
     return events.some((event) => event.selected)
       ? { ...edge, style: { ...edge.style, stroke: '#1b8a62', strokeWidth: 4 } }
       : edge;
@@ -558,6 +602,20 @@ export function WorkflowExplorer({
             edges={edges}
             edgeTypes={edgeTypes}
             fitView
+            fitViewOptions={
+              execution.length
+                ? {
+                    nodes: nodes.filter(
+                      (n) =>
+                        n.className?.includes('execution-visited') ||
+                        n.className?.includes('execution-failed'),
+                    ),
+                    padding: 0.4,
+                    minZoom: 0.5,
+                    maxZoom: 1,
+                  }
+                : undefined
+            }
             minZoom={0.1}
             maxZoom={2}
             nodesDraggable={false}
@@ -615,7 +673,12 @@ export function WorkflowExplorer({
               {reference && (
                 <>
                   <div className="section-head inspector-head">
-                    <h3>引用组件完整配置 · {selection.reference}</h3>
+                    <h3>
+                      {catalog.source === 'execution-snapshot'
+                        ? '执行时组件标识'
+                        : '引用组件完整配置'}{' '}
+                      · {selection.reference}
+                    </h3>
                     {['agent', 'gate', 'tool'].includes(reference.kind) && (
                       <div className="page-actions">
                         <button
@@ -626,7 +689,9 @@ export function WorkflowExplorer({
                             )
                           }
                         >
-                          打开组件详情
+                          {catalog.source === 'execution-snapshot'
+                            ? '打开当前组件配置'
+                            : '打开组件详情'}
                           <IconArrowRight size={14} />
                         </button>
                       </div>

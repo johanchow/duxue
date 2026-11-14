@@ -4,6 +4,12 @@ import {
   periodSummary,
   type Query,
 } from './evaluation-model';
+import {
+  groupBatches,
+  batchProjection,
+  document,
+  type Doc,
+} from './evaluation-batches';
 export type LangfuseSettings = {
   baseUrl: string;
   projectId: string;
@@ -84,6 +90,134 @@ export class LangfuseReader {
       if (cursor) p.set('cursor', cursor);
       return this.request(`experiments?${p}`);
     });
+  }
+  private async pages(path: string, params: URLSearchParams) {
+    const data: Doc[] = [],
+      seen = new Set<string>();
+    for (let page = 0; page < 200; page++) {
+      const r = await this.request(`${path}?${params}`);
+      if (!Array.isArray(r.data)) throw new Error('Langfuse分页结果无效');
+      data.push(...r.data);
+      const cursor = r.meta?.cursor;
+      if (!cursor) return data;
+      if (seen.has(cursor)) throw new Error('Langfuse分页游标重复');
+      seen.add(cursor);
+      params.set('cursor', cursor);
+    }
+    throw new Error('Langfuse结果超过读取上限，请缩小时间范围');
+  }
+  async batches(days: number) {
+    return this.cached(`batches:${days}`, async () => {
+      await this.verified();
+      const all = await this.pages(
+        'experiments',
+        new URLSearchParams({
+          fromStartTime: new Date(Date.now() - days * 86400000).toISOString(),
+          fields: 'core,metadata',
+          limit: '50',
+        }),
+      );
+      return groupBatches(all);
+    });
+  }
+  async batch(run: string, days: number) {
+    return this.cached(`batch:${days}:${run}`, async () => {
+      const group = (await this.batches(days)).find((b: Doc) => b.id === run);
+      if (!group) throw new Error('批次不在当前时间范围内');
+      const items: Doc[] = [];
+      for (const e of group.experiments) {
+        items.push(
+          ...(await this.pages(
+            'experiment-items',
+            new URLSearchParams({
+              experimentId: e.id,
+              fromStartTime: new Date(
+                Date.parse(e.startTime) - 1000,
+              ).toISOString(),
+              fields: 'core,io,itemMetadata,scores',
+              limit: '50',
+              scoreLimit: '20',
+            }),
+          )),
+        );
+      }
+      return batchProjection(group, items);
+    });
+  }
+  async evidence(run: string, itemId: string, days: number) {
+    const batch = await this.batch(run, days);
+    const item = batch.cases.find((c: Doc) => c.id === itemId);
+    if (!item) throw new Error('用例不属于所选批次');
+    return this.cached(`evidence:${run}:${itemId}`, async () => {
+      const e = batch.experiments.find((e: Doc) => e.id === item.experimentId);
+      const from = new Date(Date.parse(e.startTime) - 1000).toISOString();
+      const to = new Date(
+        Date.parse(e.endTime || e.startTime) + 3600000,
+      ).toISOString();
+      const observations = await this.pages(
+        'v2/observations',
+        new URLSearchParams({
+          traceId: item.traceId,
+          fromStartTime: from,
+          toStartTime: to,
+          fields: 'core,basic,io,metadata',
+          limit: '50',
+        }),
+      );
+      const scores = await this.pages(
+        'v3/scores',
+        new URLSearchParams({
+          traceId: item.traceId,
+          fields: 'core,details,subject',
+          limit: '100',
+        }),
+      );
+      const parse = (v: any) => {
+        if (typeof v !== 'string') return v;
+        try {
+          return JSON.parse(v);
+        } catch {
+          return v;
+        }
+      };
+      return {
+        item,
+        scores,
+        observations: observations.map((o) => ({
+          ...o,
+          input: parse(o.input),
+          output: parse(o.output),
+        })),
+      };
+    });
+  }
+  async traceEvidence(traceId: string, date: string) {
+    await this.verified();
+    const from = new Date(`${date}T00:00:00Z`);
+    const observations = await this.pages(
+      'v2/observations',
+      new URLSearchParams({
+        traceId,
+        fromStartTime: from.toISOString(),
+        toStartTime: new Date(+from + 86400000).toISOString(),
+        fields: 'core,basic,io,metadata',
+        limit: '50',
+        environment: this.settings.environment,
+      }),
+    );
+    if (!observations.length)
+      throw new Error('所选环境和日期没有该Trace的可见记录');
+    return {
+      observations: observations.map((o) => {
+        let output = o.output;
+        try {
+          if (typeof output === 'string') output = JSON.parse(output);
+        } catch {
+          /* Preserve raw non-JSON model output. */
+        }
+        return { ...o, output };
+      }),
+    };
   }
   async summary(
     kind: 'production' | 'experiment',

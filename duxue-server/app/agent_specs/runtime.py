@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from langgraph.graph import END, START
 
 from app.agent_specs.catalog import AgentSpec
+from app.agent_specs.execution_trace import record_workflow_execution
 
 
 @dataclass(frozen=True)
@@ -22,6 +23,7 @@ class GateDecision:
         GateVerdict(verdict=self.verdict, reason_code=self.reason_code)
 
 
+@record_workflow_execution
 def execute_workflow(
     spec: AgentSpec, *, handlers: dict[str, Callable[[dict], object]],
     conditions: dict[str, Callable[[dict], bool]] | None = None,
@@ -109,7 +111,7 @@ def execute_workflow(
                 raise ValueError(f"{spec.id}: unknown condition {edge.condition}")
             selected = edge.condition is None or bool(predicates[edge.condition](state))
             from app.agent_specs.execution_trace import record_edge
-            record_edge(spec, edge, selected=selected, value=selected if edge.condition else None)
+            record_edge(spec, edge, selected=selected, value=selected if edge.condition else None, input=state)
             if selected:
                 matching.append(edge)
         if len(matching) != 1:

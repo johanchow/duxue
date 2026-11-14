@@ -1,4 +1,4 @@
-"""Optional, request-local execution evidence. Inactive during normal service calls."""
+"""Request-local execution evidence shared by debugging, evals and sampled tracing."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import date, datetime
 from enum import Enum
+from functools import wraps
 from uuid import UUID
 
 _current = ContextVar("agent_debug_trace", default=None)
@@ -21,7 +22,7 @@ def payload(value, depth=0):
     if isinstance(value, str):
         if value.startswith("data:image/"):
             return "[image bytes omitted]"
-        return value[:20000]
+        return value if len(value) <= 20000 else {"truncated": True, "preview": value[:20000], "original_length": len(value)}
     if isinstance(value, (date, datetime, UUID, Enum)):
         return str(value)
     if hasattr(value, "model_dump"):
@@ -35,7 +36,7 @@ def payload(value, depth=0):
         return {
             str(k): payload(v, depth + 1)
             for k, v in value.items()
-            if k not in {"password", "password_hash", "api_key", "token"}
+            if str(k).lower() not in {"password", "password_hash", "api_key", "token", "secret_key", "authorization", "access_token", "refresh_token"}
         }
     if isinstance(value, (list, tuple, set)):
         return [payload(v, depth + 1) for v in list(value)[:100]]
@@ -47,6 +48,26 @@ class Recorder:
         self.events = []
         self.stack = []
         self.spans = {}
+
+    def document(self):
+        """Freeze executed topology from the active immutable configuration."""
+        from app.agent_specs.catalog import load_catalog
+        from app.agent_specs.definitions import load_definitions
+
+        catalog, definitions = load_catalog(), load_definitions()
+        ids = {e.get("workflow_id") for e in self.events}
+        flows = {key: spec.model_dump(mode="json", by_alias=True)
+                 for key, spec in catalog.specs.items() if key in ids}
+        units = {**definitions.units, **definitions.code_agents,
+                 **definitions.code_gates, **definitions.tools}
+        refs = {n.get("ref") for f in flows.values() for n in f["nodes"]}
+        return {"schema_version": "duxue-execution.v1", "events": self.events,
+                "catalog": {"source": "execution-snapshot", "workflows": flows, "definitions": {
+                    key: {"id": key, "kind": unit.kind,
+                          "implementation": getattr(unit, "implementation", "code"),
+                          "display_name": getattr(unit, "display_name", None)}
+                    for key, unit in units.items() if key in refs}},
+                "capture": "recorded_events_only"}
 
     @contextmanager
     def capture(self):
@@ -66,6 +87,7 @@ class Recorder:
             "workflow_id": workflow_id,
             "input": payload(input),
             "status": "running",
+            "started_at": datetime.now().astimezone().isoformat(),
             **extra,
         }
         self.events.append(event)
@@ -79,11 +101,40 @@ class Recorder:
             raise
         finally:
             event["duration_ms"] = round((time.monotonic() - started) * 1000)
+            event["ended_at"] = datetime.now().astimezone().isoformat()
             self.stack.pop()
 
 
 def recorder():
     return _current.get()
+
+
+def record_workflow_execution(function):
+    @wraps(function)
+    def wrapped(*args, **kwargs):
+        from app.infrastructure.observability.telemetry import (
+            _agent_context_attrs,
+            _langfuse_enabled,
+        )
+        if recorder() is not None or not _langfuse_enabled():
+            return function(*args, **kwargs)
+        from opentelemetry import trace
+        recording = Recorder()
+        with trace.get_tracer("duxue.agent").start_as_current_span(
+            "agent.execution", record_exception=False, set_status_on_exception=False,
+            attributes={"langfuse.observation.type": "span", **_agent_context_attrs()},
+        ) as span:
+            if not span.is_recording():
+                return function(*args, **kwargs)
+            with recording.capture():
+                try:
+                    return function(*args, **kwargs)
+                finally:
+                    from app.infrastructure.observability.telemetry import (
+                        set_observation_payload,
+                    )
+                    set_observation_payload(span, output=recording.document())
+    return wrapped
 
 
 @contextmanager
@@ -116,19 +167,45 @@ def observe_payload(span, *, input=None, output=None):
             events[-1]["output"] = payload(output)
 
 
-def record_edge(spec, edge, *, selected, value=None):
+@contextmanager
+def observe_model(component_id, span, *, input=None, model=None):
+    current = recorder()
+    if current is None:
+        yield None
+        return
+    from app.agent_specs.catalog import load_catalog
+
+    identity = load_catalog().component_identity(component_id) if component_id else None
+    # Isolated debug already wraps the component with a model event.
+    if current.stack and current.stack[-1].get("component_id") == component_id:
+        yield current.stack[-1]
+        return
+    with current.step(kind="model", node_id=identity.node_id if identity else None,
+                      workflow_id=identity.owner if identity else None,
+                      unit_id=identity.unit_id if identity else None,
+                      component_id=component_id, model=model, input=input) as event:
+        current.spans.setdefault(id(span), []).append(event)
+        try:
+            yield event
+        finally:
+            current.spans[id(span)].pop()
+
+
+def record_edge(spec, edge, *, selected, value=None, input=None):
     current = recorder()
     if current:
         current.events.append(
             {
                 "id": str(len(current.events) + 1),
                 "kind": "edge",
+                "parent_id": current.stack[-1]["id"] if current.stack else None,
                 "workflow_id": spec.id,
                 "from": edge.source,
                 "to": edge.target,
                 "condition_id": edge.condition,
                 "selected": selected,
                 "condition_result": value,
+                "input": payload(input),
                 "status": "evaluated",
             }
         )

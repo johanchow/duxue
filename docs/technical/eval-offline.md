@@ -235,6 +235,9 @@ Experiment：一次运行在一个 Dataset 上的结果
 ```
 
 - 任务根节点的 Scores 主要是汇总；详细判分在对应 `eval.checkpoint` 的 Scores / Comment。`output.response` 包含实际 `message`、`visual`、`lessons`，不能只看正文判断裁判是否有依据。
+- 每个已创建 observation 的检查点另有 API 来源 `eval.status`，Comment 首行显示 ✅通过 / ❌不通过 / ⚠️评分或执行异常 / ⏸️未执行，逐项列出维度、实际值、当次 Dataset 的通过阈值和原始裁判理由。数值范围1–5不代表通过线，阈值取自本次固定输入；不硬编码为4。原生 EVAL 分数及理由保持原样，派生状态只做展示和筛选，不算第二次独立评分。任务根节点复用同一摘要格式。
+- 新运行自动生成检查点状态；`resume --out <原目录>`也会为已完成检查点补齐展示，使用目录内固定的`datasets.json`与结果，不重跑模型，不使用后来修改的云端阈值。重复收分更新同一派生状态ID；尚未执行且无observation的检查点只在任务摘要显示，不伪造观测。Langfuse Cloud 原生表格不配置自定义阈值颜色，使用状态文字和图标表达；正常质量不通过仍保持`DEFAULT`，不冒充系统`ERROR`。
+- 状态 Score 的 metadata 使用 `scope=task/checkpoint` 区分层级；Admin 的任务状态计数仅查询`scope=task`，避免把同一任务的多个检查点重复统计。Langfuse Scores中可以按`name=eval.status`及分类值`fail/error`筛选，再结合所属observation查看摘要。
 - 汇总 Comment 写入失败维度、原生裁判理由及检查点 observation ID；它是索引与摘要，不产生第二份独立质量评分。Session 未绑定时为空，不影响 Experiment 关联。
 - 同一 Dataset Item ID 可以出现在多个 Experiment，执行结果用 `experiment_id + trace_id + observation_id` 定位；比较时核对输入版本、业务配置和裁判版本，不能只按用例 ID 判断是哪次运行。
 - 数值 Score 只是评分值，是否通过还取决于 Dataset 的阈值。例如教学正确性 `3` 是有效分数，但在 `min=4` 时仍为 fail。自动裁判理由本身也可能错误，人工复核不能省略。
@@ -273,6 +276,12 @@ Experiment：一次运行在一个 Dataset 上的结果
 `resume` 仅补收已有观测的迟到评分；已经中断的后续多轮仍为 `not_run`，不会悄悄补跑模型。历史本地报告不与新的评分口径直接混算。自动评分不能替代人工校准，不能把此次冒烟通过当作发布门槛。
 
 ## 验证范围
+
+### 节点级执行证据
+
+评测每个已执行检查点在调用业务前打开`eval.execution`观测，使用与Admin调试共用的请求局部`Recorder`采集，在评分前保存`duxue-execution.v1`。output包含`events`和`catalog`（执行当时经过Workflow的nodes/edges/version以及最小组件展示定义）。不含可编辑Prompt副本或凭证，图的事实源仍是本次固定配置。事件保留父子ID、实际节点/条件边、输入输出、状态、起止时间、耗时；重复执行生成独立事件。模型事件含实际消息、提供商原始输出、模型/组件版本、异常类型及已知Token；代码异常被业务捕获为fallback时，前面的失败事件继续保留。超长文本明确标记truncated，未知对象只记类型，不展开服务/连接。
+
+线上在已采样且Langfuse启用的对话入口，以及没有外层采集器的通用Workflow入口记录同协议的`agent.execution`，已存在调试/评测Recorder时复用而不重复包裹。原有模型与业务OTEL spans保留；执行证据与当次Trace关联。未发生的分支不伪造事件，未执行的检查点不生成execution，历史数据缺证据不推断补写。Admin的查看与组件/基线口径见[批次工作台](design-admin.md#批次失败工作台与历史执行图2026-11-14)。
 
 无网络协议与执行测试在 `tests/unit/evals/`，云端 Code 初始化快照测试在 `tests/test_langfuse_deterministic.py`；真实调用单独运行，不混进 pytest。
 

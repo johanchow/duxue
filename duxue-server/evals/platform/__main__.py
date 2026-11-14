@@ -1,6 +1,7 @@
 """Langfuse is authoritative; this CLI only executes code and transports results."""
 
 from __future__ import annotations
+
 import argparse
 import asyncio
 import json
@@ -9,7 +10,8 @@ import subprocess
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from evals.platform.client import connect, dataset_items, dump, RULE_ENVIRONMENTS
+
+from evals.platform.client import RULE_ENVIRONMENTS, connect, dataset_items, dump
 from evals.platform.protocol import hydrate
 
 
@@ -86,20 +88,14 @@ def preflight(client, resources):
 
 def score_comments(result):
     """Explain task aggregation without creating another copy of native grades."""
-    lines = [
-        f"自动汇总：{result['status']}。语义裁判未校准，失败不等于已确认的产品缺陷。"
-    ]
+    from evals.platform.reporting import STATUS_LABELS, checkpoint_comment
+
+    lines = [f"{STATUS_LABELS[result['status']]} · 自动汇总：{result['status']}。"]
     for check in result.get("checks", []):
         lines.append(
             f"{check.get('check_id')}: {check['status']}；详细评分所在 observation={check.get('observation_id', '未执行')}。"
         )
-        if check.get("error"):
-            lines.append(f"执行/收分错误：{check['error']}")
-        for grade in check.get("grades", []):
-            if grade["status"] != "pass":
-                lines.append(
-                    f"{grade['name']}={grade.get('value')} ({grade['status']})：{(grade.get('comment') or grade.get('reason') or '缺少有效评分')[:500]}"
-                )
+        lines.append(checkpoint_comment(check))
     if result.get("error"):
         lines.append(str(result["error"]))
     summary = "\n".join(lines)
@@ -144,11 +140,11 @@ def aggregate(client, configs, result, trace_id, observation_id):
 
 
 def run(args, client, resources):
-    from evals.platform.native import NativeScorer
-    from evals.platform.execution import execute_item
     from app.agent_specs.configuration import read_snapshot, select_offline_snapshot
     from app.agent_specs.definitions import use_definitions
     from evals.configuration import _record
+    from evals.platform.execution import execute_item
+    from evals.platform.native import NativeScorer
 
     version = (
         datetime.fromisoformat(args.version.replace("Z", "+00:00"))
@@ -235,8 +231,9 @@ def run(args, client, resources):
     token = _record.set(snapshot)
     try:
         with use_definitions(definition.catalog):
-            from evals.live import preflight as model_preflight, build_backends
             from app.infrastructure.ai.components import COMPONENTS
+            from evals.live import build_backends
+            from evals.live import preflight as model_preflight
 
             model_preflight()
             backends = {
@@ -270,8 +267,17 @@ def run(args, client, resources):
                         dataset=name,
                         item_id=item.id,
                     )
-                    from evals.platform.reporting import report_task_status
+                    from evals.platform.reporting import (
+                        report_checkpoints,
+                        report_task_status,
+                    )
 
+                    report_checkpoints(
+                        client,
+                        configs["eval.status"],
+                        result,
+                        item.expected_output["checks"],
+                    )
                     report_task_status(client, result)
                     write(output / (item.id + ".json"), result)
                     aggregate(client, configs, result, trace_id, observation_id)

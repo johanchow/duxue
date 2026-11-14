@@ -1,6 +1,8 @@
 """Submit evidence; await scores produced by Langfuse's saved evaluators."""
 
 import time
+from contextlib import contextmanager
+
 from evals.platform.client import dump
 from evals.platform.protocol import summarize_scores
 
@@ -12,6 +14,20 @@ class NativeScorer:
         self.journal = journal
         if journal:
             journal.mkdir(parents=True, exist_ok=True)
+
+    @contextmanager
+    def capture_execution(self, **metadata):
+        from app.agent_specs.execution_trace import Recorder
+        from evals.platform.reporting import call_offline_task
+
+        recording = Recorder()
+        with self.client.start_as_current_observation(name="eval.execution", metadata=metadata) as span:
+            call_offline_task(lambda: None)
+            with recording.capture():
+                try:
+                    yield recording
+                finally:
+                    span.update(output=recording.document())
 
     def evaluate(
         self,
