@@ -428,13 +428,17 @@ def vet_candidate(
 
     def text_leak(state: dict) -> GateDecision:
         record_tutor_fact_gate(outcome=fact_gate(candidate) or "short_fact_reviewed")
-        try:
-            result = _check_text_leak(
-                leak_judge, candidate.shown_text, task_title, problem_summary, list(judge_images or []),
-            )
-        except Exception:  # noqa: BLE001 - a judge failure must reject the candidate
-            result = None
-        state["text_leaks"], state["leak_reason"] = _text_leak_result(result)
+        result = None
+        for _ in range(2):
+            try:
+                result = _check_text_leak(
+                    leak_judge, candidate.shown_text, task_title, problem_summary, list(judge_images or []),
+                )
+            except Exception:  # noqa: BLE001 - a judge failure must reject the candidate
+                result = None
+            state["text_leaks"], state["leak_reason"] = _text_leak_result(result)
+            if state["text_leaks"] is not None:
+                break
         # Only a successful independent review can scope this turn. The persisted
         # permit stays unchanged, and visual review still uses the original trigger.
         if (state["text_leaks"] is False and isinstance(result, dict)

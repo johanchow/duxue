@@ -230,3 +230,25 @@ def test_final_answer_retry_does_not_echo_the_rejected_result(monkeypatch):
     feedback = model.calls[1]['repair_error']
     assert 'final_answer' in feedback
     assert LEAKY['content'] not in feedback
+
+
+def test_transient_judge_failure_recovers_in_place_without_retrying_tutor_model(monkeypatch):
+    class FlakyJudge(StaticLeakJudge):
+        def __init__(self):
+            super().__init__(False)
+            self.calls = 0
+
+        def leaks(self, *, text, task_title, problem_summary, images=None):
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError("transient gateway timeout")
+            return {"leaks": False, "reason": "none"}
+
+    model = StaticTutorModel(HINT)
+    judge = FlakyJudge()
+    result, fallbacks = _run(model, judge, monkeypatch)
+    assert judge.calls == 2
+    assert len(model.calls) == 1
+    assert not result.leak_retried
+    assert result.vetting.failure is None
+    assert fallbacks == []
