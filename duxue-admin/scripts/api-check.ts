@@ -127,5 +127,5 @@ try {
   });
 }
 console.log(
-  'auth, CSRF, concurrent save, immutable contracts, missing debug gate, unchanged active release: PASS',
+  'auth, CSRF, concurrent save, immutable contracts, configuration validation, unchanged active release: PASS',
 );

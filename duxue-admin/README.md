@@ -46,7 +46,7 @@ VLM_API_KEY=模型服务密钥
 
 服务端优先运行Admin完整发布产物（format_version=3，35份JSON），30秒拉取并按应用调用固定快照。Admin模式无兼容发布/缓存时AI调用报配置未就绪，不静默使用代码默认值。本地使用显式导出快照；不再存在仓库业务默认模式。Workflow完整JSON也仅来自Admin，Server不保留流程副本；流程仍只读，保存/发布接口会拒绝流程修改。不支持旧协议加载或数据转换。发布产物无组件手工v号，内部身份由包digest生成；R序号仅在发布管理/历史展示。
 
-Agent详情只调试当前Agent；主备仅限自身模型，动态Prompt输入模板变量JSON。Workflow详情可调试已发布配置或已有已保存草稿；未保存修改禁止调试。完整草稿页可集中选择对象。当前接入的流程及限制见管理台设计。修改模型后，必须实际调试对应的主/备component；共享Prompt变动要覆盖两者。仅改名称/简介无需调用模型；已有发布且无修改时不能重复发布。真实联调脚本`npx tsx scripts/full-release-smoke.ts`会调用导师和意图模型、校验覆盖门禁并发布测试完整包，需要已启动两个服务，会产生真实用量和测试记录。
+Agent详情只调试当前Agent；主备仅限自身模型，动态Prompt输入模板变量JSON。Workflow详情可调试已发布配置或已有已保存草稿；未保存修改禁止调试。完整草稿页可集中选择对象。当前接入的流程及限制见管理台设计。调试用于按需排查，不作为发布前置条件；发布条件与后续Evaluation约束见[管理台设计](../docs/technical/design-admin.md#三数据表与并发)。已有发布且无修改时不能重复发布。真实联调脚本`npx tsx scripts/full-release-smoke.ts`会调用导师和意图模型、执行可选调试并发布测试完整包，需要已启动两个服务，会产生真实用量和测试记录。
 
 
 ## 验证
@@ -61,9 +61,9 @@ npm run test:browser     # 独立浏览器端到端，含发布和回滚
 npm run test:inventory   # 表格/详情深链接、节点/连线、保存刷新、完整配置包校验
 ```
 
-浏览器测试默认使用本机Chrome，其他安装路径用`CHROME_PATH`指定。凭据及截图/联调证据保留在ignored `.local/`。`scripts/api-check.ts`可验证鉴权、CSRF、并发保存、协议只读、模型改动无调试不能发布及禁止空发布，不调用真实模型。
+浏览器测试默认使用本机Chrome，其他安装路径用`CHROME_PATH`指定。凭据及截图/联调证据保留在ignored `.local/`。`scripts/api-check.ts`可验证鉴权、CSRF、并发保存、协议只读、配置校验失败不能发布及禁止空发布，不调用真实模型。
 
-`npx tsx scripts/publication-identity-smoke.ts`验证纯展示修改免模型发布、备用模型精确调试门禁及发布后回滚；会调用真实模型并创建测试记录。
+`npx tsx scripts/publication-identity-smoke.ts`验证纯展示及备用模型修改均可无调试发布，并验证发布后回滚；不调用真实模型，会创建测试发布记录。
 
 ## 账号角色
 
@@ -83,7 +83,7 @@ npm run test:inventory   # 表格/详情深链接、节点/连线、保存刷新
 
 ```bash
 ADMIN_INIT_EMAIL=<管理员邮箱> npm run config:import -- /path/admin-release.json
-# 在页面调试并发布后，导出完整不可变发布身份和产物：
+# 在页面校验并发布后，导出完整不可变发布身份和产物：
 npm run config:export -- ../duxue-server/var/admin/release.json
 # 另存当前已保存草稿，用于离线实验：
 npm run config:export -- ../duxue-server/var/admin/candidate.json --draft

@@ -53,13 +53,6 @@ const tutor = await call(`drafts/${draft.id}/debug`, 'POST', {
   },
 });
 assert.equal(tutor.status, 'succeeded');
-const denied = await call(
-  `drafts/${draft.id}/publish`,
-  'POST',
-  { revision: saved.revision, generation: state.environment.generation },
-  409,
-);
-assert(denied.error.includes('companion.intent'));
 const run = await call(`drafts/${draft.id}/debug`, 'POST', {
   revision: saved.revision,
   input: {
@@ -111,5 +104,5 @@ fs.writeFileSync(
 );
 console.log(JSON.stringify(evidence, null, 2));
 console.log(
-  'complete artifact, exact-unit debug gate, real non-tutoring model, publish, server load and Admin-sourced detail: PASS',
+  'complete artifact, optional real non-tutoring debug, publish, server load and Admin-sourced detail: PASS',
 );

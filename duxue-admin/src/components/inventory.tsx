@@ -14,6 +14,7 @@ import { workflowGraph, type Json } from '../lib/workflow-graph';
 import { componentTypes } from '../lib/component-types';
 import { filterAgents } from '../lib/agent-filter';
 import { nodeExecutions, edgeExecutions } from '../lib/execution-inspector';
+import { IconArrowRight, IconCode, IconSearch, IconWorkflow } from './icons';
 
 function CatalogEdge({ id, data, label, markerEnd, style }: EdgeProps) {
   const points = data?.route as { x: number; y: number }[];
@@ -84,11 +85,14 @@ export function AgentInventory({
       <div className="agent-filters">
         <label>
           搜索 Agent
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="名称、ID 或作用"
-          />
+          <span className="search-field">
+            <IconSearch />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="名称、ID 或作用"
+            />
+          </span>
         </label>
         <label>
           类型
@@ -138,9 +142,9 @@ export function AgentInventory({
               <th>Agent / ID</th>
               <th>作用简介</th>
               <th>类型</th>
-              <th>修改状态</th>
+              <th>状态</th>
               <th>所属 Workflow</th>
-              <th>配置</th>
+              <th className="right-cell">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -169,7 +173,7 @@ export function AgentInventory({
                       有待发布修改
                     </span>
                   ) : (
-                    <span className="muted">—</span>
+                    <span className="muted-tag">已发布</span>
                   )}
                 </td>
                 <td>
@@ -187,17 +191,17 @@ export function AgentInventory({
                     </a>
                   ))}
                 </td>
-                <td>
-                  {agent.editable ? '可编辑' : '只读'}
+                <td className="right-cell">
                   <a
-                    className="table-link"
+                    className="button-link secondary btn-sm"
                     href={`/agents/${encodeURIComponent(agent.id)}`}
                     onClick={(event) => {
                       event.preventDefault();
                       navigate(event.currentTarget.getAttribute('href')!);
                     }}
                   >
-                    查看详情 →
+                    查看详情
+                    <IconArrowRight size={14} />
                   </a>
                 </td>
               </tr>
@@ -235,11 +239,14 @@ export function WorkflowInventory({
       </p>
       <label>
         搜索 Workflow
-        <input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Workflow ID 或简介"
-        />
+        <span className="search-field">
+          <IconSearch />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Workflow ID 或简介"
+          />
+        </span>
       </label>
       <div className="table-scroll">
         <table className="inventory-table" aria-label="Workflow 列表">
@@ -247,7 +254,7 @@ export function WorkflowInventory({
             <tr>
               <th>Workflow</th>
               <th>简介</th>
-              <th>配置</th>
+              <th className="right-cell">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -267,15 +274,17 @@ export function WorkflowInventory({
                 <td>
                   {catalog.workflow_descriptions?.[flow.id] || '暂无简介'}
                 </td>
-                <td>
+                <td className="right-cell">
                   <a
+                    className="button-link secondary btn-sm"
                     href={`/workflows/${encodeURIComponent(flow.id)}`}
                     onClick={(event) => {
                       event.preventDefault();
                       navigate(event.currentTarget.getAttribute('href')!);
                     }}
                   >
-                    流程与配置 →
+                    流程与配置
+                    <IconArrowRight size={14} />
                   </a>
                 </td>
               </tr>
@@ -302,65 +311,151 @@ export function AgentDetail({
   editing: boolean;
 }) {
   const definition = catalog.definitions[agent.id];
+  const fragments = Object.entries(definition?.prompt?.fragments || {}) as [
+    string,
+    Json,
+  ][];
   return (
     <>
       <section aria-label="Agent 详情">
-        <h2>
-          配置信息{' '}
-          <span className="badge">
-            {componentTypes[agent.type] || agent.implementation}
-          </span>
-        </h2>
-        <code>{agent.id}</code>
-        {hasChanges && (
-          <span
-            className="badge"
-            title="该 Agent 与草稿基线存在差异；草稿调试可使用修改，发布并加载后才会影响正常运行。"
-          >
-            有待发布修改
-          </span>
-        )}
-        <p>{agent.description}</p>
-        <div className="agent-actions">
-          {agent.workflows.map((id: string) => (
-            <button
-              className="secondary"
-              key={id}
-              onClick={() => navigate(`/workflows/${encodeURIComponent(id)}`)}
-            >
-              所属 Workflow：{id}
-            </button>
-          ))}
+        <div className="section-head">
+          <div>
+            <h2>
+              基本信息{' '}
+              <span className="badge">
+                {componentTypes[agent.type] || agent.implementation}
+              </span>
+              {hasChanges ? (
+                <span
+                  className="badge"
+                  title="该 Agent 与草稿基线存在差异；草稿调试可使用修改，发布并加载后才会影响正常运行。"
+                >
+                  有待发布修改
+                </span>
+              ) : (
+                <span className="badge badge-neutral">已发布</span>
+              )}
+            </h2>
+            <code>{agent.id}</code>
+          </div>
+          {!!agent.workflows.length && (
+            <div className="page-actions">
+              {agent.workflows.map((id: string) => (
+                <button
+                  className="secondary btn-sm"
+                  key={id}
+                  onClick={() =>
+                    navigate(`/workflows/${encodeURIComponent(id)}`)
+                  }
+                >
+                  <IconWorkflow size={14} />
+                  所属 Workflow：{id}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
-        {editing && <p>当前环境唯一的待发布配置。</p>}
+        <p>{agent.description}</p>
+        {editing && <p className="muted">当前环境唯一的待发布配置。</p>}
       </section>
       {!editing && (
-        <section aria-label="Agent 完整配置">
-          <h2>当前配置</h2>
-          {catalog.source !== 'admin-release' && (
-            <p className="notice">当前展示待发布草稿，尚未应用到运行环境。</p>
-          )}
-          {definition.models && (
-            <>
-              <h3>模型</h3>
-              <pre>
-                {pretty(
-                  definition.models.map(({ version, ...model }: Json) => model),
+        <>
+          <section aria-label="当前配置">
+            <div className="section-head">
+              <h2>当前配置</h2>
+              <span className="badge badge-neutral">
+                {catalog.source !== 'admin-release'
+                  ? '待发布草稿'
+                  : '已发布配置'}
+              </span>
+            </div>
+            {catalog.source !== 'admin-release' && (
+              <p className="notice">当前展示待发布草稿，尚未应用到运行环境。</p>
+            )}
+            {definition.models ? (
+              <>
+                <h3>模型与预算</h3>
+                <div className="model-summary-list">
+                  {definition.models.map((model: Json, index: number) => (
+                    <div
+                      className="model-summary-card"
+                      key={model.component_id || index}
+                    >
+                      <div className="model-summary-title">
+                        <span className="badge badge-neutral">
+                          {index ? '备用模型' : '主模型'}
+                        </span>
+                        <strong>{model.name}</strong>
+                      </div>
+                      <div className="model-summary-meta">
+                        <span>温度 {model.temperature}</span>
+                        <span>Token 上限 {model.max_output_tokens}</span>
+                        <span>超时 {model.timeout_ms}ms</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <h3>主 Prompt</h3>
+                <pre>{definition.prompt.template}</pre>
+                <h3>
+                  具名指令片段 <small>{fragments.length} 项</small>
+                </h3>
+                {fragments.length ? (
+                  fragments.map(([name, value]) => (
+                    <details key={name}>
+                      <summary>
+                        {name}
+                        <small>{value.id}</small>
+                      </summary>
+                      <pre>{value.template}</pre>
+                      <code>
+                        变量：
+                        {Object.keys(value.variables || {}).join('、') || '无'}
+                      </code>
+                    </details>
+                  ))
+                ) : (
+                  <p className="muted">无具名指令片段。</p>
                 )}
-              </pre>
-              <h3>主 Prompt</h3>
-              <pre>{definition.prompt.template}</pre>
-              <h3>Prompt 片段</h3>
-              <pre>{pretty(definition.prompt.fragments || {})}</pre>
-              <h3>工具</h3>
-              <pre>{pretty(definition.tools)}</pre>
-            </>
-          )}
-          <details>
-            <summary>完整 JSON</summary>
-            <pre>{pretty(definition)}</pre>
-          </details>
-        </section>
+                <h3>已启用工具</h3>
+                {definition.tools?.length ? (
+                  <div className="change-tags">
+                    {definition.tools.map((tool: string) => (
+                      <span className="badge badge-neutral" key={tool}>
+                        {tool}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="muted">当前未启用工具。</p>
+                )}
+              </>
+            ) : definition.static_result ? (
+              <>
+                <h3>工具静态正文</h3>
+                <pre>{definition.static_result.guidelines}</pre>
+              </>
+            ) : (
+              <p className="muted">
+                核心实现由服务端代码维护，仅显示名称与简介可在草稿中调整。
+              </p>
+            )}
+          </section>
+          <section aria-label="Agent 完整配置">
+            <div className="section-head">
+              <div>
+                <h2>底层契约与完整定义</h2>
+                <p className="compact-meta">
+                  字段契约、变量绑定、处理器和安全门禁由服务端维护。
+                </p>
+              </div>
+            </div>
+            <details>
+              <summary>查看完整 JSON</summary>
+              <pre>{pretty(definition)}</pre>
+            </details>
+          </section>
+        </>
       )}
     </>
   );
@@ -434,30 +529,26 @@ export function WorkflowExplorer({
     <>
       <section>
         <div className="section-head">
-          <h2>
-            Workflow 流程图 <span className="badge">只读</span>
-          </h2>
+          <div>
+            <h2>
+              Workflow 流程图 <span className="badge">只读</span>
+            </h2>
+            <p className="compact-meta">
+              {flow.id} · {flow.nodes.length} 个 Node · {flow.edges.length} 条
+              Edge · 入口 {flow.entry}
+            </p>
+          </div>
           <div className="page-actions">
-            <button
-              className="secondary"
-              onClick={() => navigate('/workflows')}
-            >
-              返回 Workflow 列表
-            </button>
             <button
               className="secondary"
               onClick={() => setShowWhole(!showWhole)}
             >
+              <IconCode />
               {showWhole ? '收起完整配置' : '查看完整 Workflow 配置'}
             </button>
           </div>
         </div>
-        <h3>{workflowId}</h3>
-        <p>
-          {flow.id} · {flow.nodes.length} 个 Node · {flow.edges.length} 条 Edge
-          · 入口 {flow.entry}
-        </p>
-        <p>
+        <p className="muted">
           点击节点或连线查看配置。实线表示控制流，虚线表示归属关系；重试回路按实际配置保留。
         </p>
         <div className="workflow-canvas" aria-label={`${workflowId} 流程图`}>
@@ -523,21 +614,24 @@ export function WorkflowExplorer({
               )}
               {reference && (
                 <>
-                  <h3>引用组件完整配置 · {selection.reference}</h3>
-                  {['agent', 'gate', 'tool'].includes(reference.kind) && (
-                    <div className="page-actions">
-                      <button
-                        className="secondary"
-                        onClick={() =>
-                          navigate(
-                            `/agents/${encodeURIComponent(reference.id)}`,
-                          )
-                        }
-                      >
-                        打开组件详情
-                      </button>
-                    </div>
-                  )}
+                  <div className="section-head inspector-head">
+                    <h3>引用组件完整配置 · {selection.reference}</h3>
+                    {['agent', 'gate', 'tool'].includes(reference.kind) && (
+                      <div className="page-actions">
+                        <button
+                          className="secondary btn-sm"
+                          onClick={() =>
+                            navigate(
+                              `/agents/${encodeURIComponent(reference.id)}`,
+                            )
+                          }
+                        >
+                          打开组件详情
+                          <IconArrowRight size={14} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
                   <pre>{pretty(reference)}</pre>
                 </>
               )}

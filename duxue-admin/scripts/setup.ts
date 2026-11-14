@@ -141,7 +141,7 @@ async function main() {
         environment: settings.environment,
       });
     });
-    console.log('升级已写入工作草稿，旧调试证据失效；需重新调试、校验及发布');
+    console.log('升级已写入工作草稿，需重新校验并发布；调试可按需执行');
   } else if (command === 'import-config') {
     const source = process.argv[3];
     if (!source) throw new Error('需要Admin导出的快照路径');
@@ -176,7 +176,7 @@ async function main() {
       });
       if (!result.created) throw new Error('已有草稿，导入不会覆盖未发布修改');
     });
-    console.log('配置已导入唯一草稿，需调试并发布后才生效');
+    console.log('配置已导入唯一草稿，需校验并发布后才生效');
   } else if (command === 'admin' || command === 'user') {
     const email = process.env.ADMIN_INIT_EMAIL?.toLowerCase(),
       password = process.env.ADMIN_INIT_PASSWORD,

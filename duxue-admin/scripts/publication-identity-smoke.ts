@@ -66,29 +66,11 @@ draft = await call('drafts/' + draft.id, 'PUT', {
   bundle: draft.bundle,
 });
 await call(`drafts/${draft.id}/validate`, 'POST', { revision: draft.revision });
-const input = { content: '请用两句话解释水为什么会蒸发。' };
-let result = await call(`drafts/${draft.id}/debug`, 'POST', {
-  revision: draft.revision,
-  input: { ...input, component_id: 'tutoring-pipeline' },
-});
-assert.equal(result.status, 'succeeded');
-const blocked = await call(
-  `drafts/${draft.id}/publish`,
-  'POST',
-  { revision: draft.revision, generation: state.environment.generation },
-  409,
-);
-assert(blocked.error.includes('tutoring.turn-backup'));
-result = await call(`drafts/${draft.id}/debug`, 'POST', {
-  revision: draft.revision,
-  input: { ...input, component_id: 'tutoring.turn-backup' },
-});
-assert.equal(result.status, 'succeeded');
-assert(result.covered_components.includes('tutoring.turn-backup'));
 const tested = await call(`drafts/${draft.id}/publish`, 'POST', {
   revision: draft.revision,
   generation: state.environment.generation,
 });
+assert.equal((await call(`releases/${tested.id}/detail`)).debug_run_id, null);
 state = await call('state');
 await call(`releases/${metadata.id}/rollback`, 'POST', {
   generation: state.environment.generation,
@@ -100,12 +82,11 @@ fs.writeFileSync(
       metadata,
       tested,
       current: metadata,
-      coverage: result.covered_components,
     },
     null,
     2,
   ),
 );
 console.log(
-  'backup-only change rejects primary-only evidence; actual backup debug, publication and rollback: PASS',
+  'backup model changes publish without debug; publication and rollback: PASS',
 );

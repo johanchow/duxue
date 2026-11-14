@@ -15,6 +15,29 @@ import { RunView } from './run-view';
 import { DebugPanel, type DebugTarget } from './debug-panel';
 import { DebugDrawer } from './debug-drawer';
 import { debugCapability } from '../lib/debug-capability';
+import { AgentDebugActions } from './agent-debug-actions';
+import {
+  IconAgent,
+  IconArrowLeft,
+  IconCheck,
+  IconClose,
+  IconCode,
+  IconDiff,
+  IconDownload,
+  IconEdit,
+  IconEval,
+  IconEye,
+  IconHistory,
+  IconLogout,
+  IconPackage,
+  IconPlay,
+  IconRefresh,
+  IconRelease,
+  IconRollback,
+  IconSave,
+  IconTrash,
+  IconWorkflow,
+} from './icons';
 
 type Doc = Record<string, any>;
 async function api(path: string, method = 'GET', body?: unknown) {
@@ -291,13 +314,16 @@ export default function Studio() {
         <small>独立账号登录</small>
       </main>
     );
-  const nav = [
-    ['flows', '⌘', 'Workflow'],
-    ['agents', '◉', 'Agent'],
-    ['releases', '↥', '发布管理'],
-    ['runs', '◷', '调试记录'],
-    ['evaluation', '◫', 'Evaluation'],
+  const primaryNav = [
+    { id: 'flows', icon: <IconWorkflow size={16} />, label: 'Workflow' },
+    { id: 'agents', icon: <IconAgent size={16} />, label: 'Agent' },
+    { id: 'releases', icon: <IconRelease size={16} />, label: '发布管理' },
   ];
+  const secondaryNav = [
+    { id: 'runs', icon: <IconHistory size={16} />, label: '调试记录' },
+    { id: 'evaluation', icon: <IconEval size={16} />, label: 'Evaluation' },
+  ];
+  const nav = [...primaryNav, ...secondaryNav];
   const heading =
     tab === 'agent-detail'
       ? agent?.name || 'Agent 详情'
@@ -309,7 +335,7 @@ export default function Studio() {
             ? '待发布配置'
             : tab === 'missing'
               ? '页面不存在'
-              : nav.find((n) => n[0] === tab)?.[2];
+              : nav.find((n) => n.id === tab)?.label;
   const docs = Object.keys(
       draft?.bundle.files || state?.catalog?.bundle.files || {},
     ).filter((path) =>
@@ -335,20 +361,6 @@ export default function Studio() {
         )
       : null;
   const pending = state?.drafts[0];
-  const successful = (state?.runs || []).filter(
-    (item: Doc) =>
-      pending &&
-      item.draft_id === pending.id &&
-      item.revision === pending.revision &&
-      item.status === 'succeeded' &&
-      item.digest === pending.validation?.digest,
-  );
-  const covered = new Set(
-    successful.flatMap((item: Doc) => item.covered_components || []),
-  );
-  const missing = (pending?.required_components || []).filter(
-    (id: string) => !covered.has(id),
-  );
   async function rollback(id: string, sequence: string) {
     await api(`releases/${id}/rollback`, 'POST', {
       generation: state!.environment.generation,
@@ -383,22 +395,33 @@ export default function Studio() {
           AGENT WORKSPACE<span>流程 · 配置 · 版本</span>
         </div>
         <nav>
-          {nav.map(([id, icon, label]) => (
+          {primaryNav.map((item) => (
             <button
-              key={id}
+              key={item.id}
               className={
-                tab === id ||
-                (tab === 'agent-detail' && id === 'agents') ||
-                (tab === 'flow-detail' && id === 'flows') ||
+                tab === item.id ||
+                (tab === 'agent-detail' && item.id === 'agents') ||
+                (tab === 'flow-detail' && item.id === 'flows') ||
                 ((tab === 'config' || tab === 'release-detail') &&
-                  id === 'releases')
+                  item.id === 'releases')
                   ? 'active'
                   : ''
               }
-              onClick={() => setTab(id)}
+              onClick={() => setTab(item.id)}
             >
-              <i>{icon}</i>
-              {label}
+              <i>{item.icon}</i>
+              {item.label}
+            </button>
+          ))}
+          <div className="nav-divider" role="separator" />
+          {secondaryNav.map((item) => (
+            <button
+              key={item.id}
+              className={tab === item.id ? 'active' : ''}
+              onClick={() => setTab(item.id)}
+            >
+              <i>{item.icon}</i>
+              {item.label}
             </button>
           ))}
         </nav>
@@ -417,6 +440,7 @@ export default function Studio() {
               })
             }
           >
+            <IconLogout size={13} />
             退出登录
           </button>
         </div>
@@ -429,7 +453,7 @@ export default function Studio() {
               {state?.environment.name === 'prod' ? 'PROD' : 'TEST'}
             </b>
             <button
-              className="secondary"
+              className="secondary btn-sm"
               disabled={busy}
               onClick={() =>
                 action(async () => {
@@ -438,6 +462,7 @@ export default function Studio() {
                 })
               }
             >
+              <IconRefresh size={14} />
               刷新
             </button>
           </div>
@@ -450,47 +475,121 @@ export default function Studio() {
           {tab === 'agent-detail' && agent && (
             <div className="page-actions">
               <button className="secondary" onClick={() => navigate('/agents')}>
+                <IconArrowLeft />
                 返回 Agent 列表
               </button>
+              {agentCapability && (
+                <AgentDebugActions
+                  capability={agentCapability}
+                  catalogSource={state?.catalog?.source}
+                  sourceDraftId={state?.catalog?.source_draft?.id}
+                  hasRelease={!!state?.environment.release_id}
+                  editingDraftId={draftId || null}
+                  draftLoaded={!!draft}
+                  busy={busy}
+                  onPublishedDebug={openPublishedDebug}
+                  onDraftDebug={(id) => {
+                    if (id === draftId) setDebugOpen(true);
+                    else
+                      navigate(
+                        `/agents/${encodeURIComponent(agent.id)}?draft=${encodeURIComponent(id)}#debug`,
+                      );
+                  }}
+                  navigate={navigate}
+                />
+              )}
+              {!draftId && canEdit && (
+                <button disabled={busy} onClick={() => action(editAgent)}>
+                  <IconEdit />
+                  编辑配置
+                </button>
+              )}
+            </div>
+          )}
+          {tab === 'flow-detail' && state?.catalog?.workflows[entityId!] && (
+            <div className="page-actions">
+              <button
+                className="secondary"
+                onClick={() => navigate('/workflows')}
+              >
+                <IconArrowLeft />
+                返回 Workflow 列表
+              </button>
               {!draftId &&
-                state?.environment.release_id &&
-                state?.catalog?.source !== 'admin-draft' &&
-                (agentCapability?.supported ? (
+                state.environment.release_id &&
+                state.catalog?.source !== 'admin-draft' && (
                   <button
                     className="secondary"
                     disabled={busy}
                     onClick={openPublishedDebug}
                   >
+                    <IconPlay />
                     调试已发布配置
                   </button>
-                ) : (
-                  <>
-                    <span className="badge" title={agentCapability?.reason}>
-                      未开放独立调试
-                    </span>
-                    {agentCapability?.workflowId && (
-                      <button
-                        className="secondary"
-                        onClick={() =>
-                          navigate(`/workflows/${agentCapability.workflowId}`)
-                        }
-                      >
-                        打开所属 Workflow
-                      </button>
-                    )}
-                  </>
-                ))}
-              {draftId && draft && agentCapability?.supported && (
+                )}
+              {!draftId && pending && (
+                <button
+                  className="secondary"
+                  onClick={() =>
+                    navigate(`/workflows/${entityId}?draft=${pending.id}#debug`)
+                  }
+                >
+                  <IconPlay />
+                  调试已保存草稿
+                </button>
+              )}
+              {draftId && draft && (
                 <button
                   className="secondary"
                   onClick={() => setDebugOpen(true)}
                 >
+                  <IconPlay />
                   调试已保存草稿
                 </button>
               )}
-              {!draftId && canEdit && (
-                <button disabled={busy} onClick={() => action(editAgent)}>
-                  编辑配置
+              {draftId && (
+                <button
+                  className="secondary"
+                  onClick={() => navigate(`/workflows/${entityId}`)}
+                >
+                  <IconArrowLeft />
+                  返回已发布配置
+                </button>
+              )}
+            </div>
+          )}
+          {tab === 'release-detail' && specificVersion && (
+            <div className="page-actions">
+              <button
+                className="secondary"
+                onClick={() => navigate('/releases')}
+              >
+                <IconArrowLeft />
+                返回发布管理
+              </button>
+              <a
+                className="button-link secondary"
+                href={`/api/releases/${specificVersion.id}/snapshot`}
+              >
+                <IconDownload />
+                下载配置快照
+              </a>
+              {canEdit && (
+                <button
+                  disabled={
+                    busy ||
+                    specificVersion.bundle.compatibility !==
+                      state?.catalog?.bundle.compatibility ||
+                    specificVersion.id === state!.environment.release_id
+                  }
+                  onClick={() =>
+                    action(() =>
+                      rollback(specificVersion.id, specificVersion.sequence),
+                    )
+                  }
+                >
+                  <IconRollback />
+                  回滚到此版本
                 </button>
               )}
             </div>
@@ -502,9 +601,13 @@ export default function Studio() {
           </div>
         )}
         {state?.catalog?.source === 'admin-draft' && (
-          <div className="notice">
-            当前目录展示待发布草稿，线上配置尚未切换。
-            <button onClick={() => openDraft(state.catalog.source_draft.id)}>
+          <div className="notice notice-row">
+            <span>当前目录展示待发布草稿，线上配置尚未切换。</span>
+            <button
+              className="secondary btn-sm"
+              onClick={() => openDraft(state.catalog.source_draft.id)}
+            >
+              <IconPackage size={14} />
               打开待发布配置
             </button>
           </div>
@@ -564,6 +667,7 @@ export default function Studio() {
                       className="secondary"
                       onClick={() => navigate(`/drafts/${draft.id}`)}
                     >
+                      <IconPackage />
                       完整配置包
                     </button>
                   )}
@@ -572,6 +676,7 @@ export default function Studio() {
                       className="secondary"
                       onClick={() => setDebugOpen(true)}
                     >
+                      <IconPlay />
                       调试已保存草稿
                     </button>
                   )}
@@ -582,6 +687,7 @@ export default function Studio() {
                         disabled={busy || !dirty}
                         onClick={() => action(save)}
                       >
+                        <IconSave />
                         保存草稿
                       </button>
                       <button
@@ -605,12 +711,14 @@ export default function Studio() {
                           })
                         }
                       >
+                        <IconCheck />
                         校验配置
                       </button>
                       <button
                         disabled={busy || dirty}
                         onClick={() => navigate('/releases')}
                       >
+                        <IconRelease />
                         前往发布管理
                       </button>
                     </>
@@ -819,6 +927,7 @@ export default function Studio() {
                       className="text-button"
                       onClick={() => setShowContract(!showContract)}
                     >
+                      <IconCode size={14} />
                       {showContract ? '收起' : '查看'}只读契约与完整定义
                     </button>
                   </div>
@@ -921,7 +1030,7 @@ export default function Studio() {
                           </td>
                           <td className="right-cell">
                             <button
-                              className="secondary"
+                              className="secondary btn-sm"
                               onClick={() =>
                                 action(async () => {
                                   setRun({
@@ -931,6 +1040,7 @@ export default function Studio() {
                                 })
                               }
                             >
+                              <IconEye size={14} />
                               查看详情
                             </button>
                           </td>
@@ -953,7 +1063,11 @@ export default function Studio() {
                     </code>
                   </div>
                   <div className="page-actions">
-                    <button className="secondary" onClick={() => setRun(null)}>
+                    <button
+                      className="secondary btn-sm"
+                      onClick={() => setRun(null)}
+                    >
+                      <IconClose size={14} />
                       收起详情
                     </button>
                   </div>
@@ -1005,6 +1119,7 @@ export default function Studio() {
                       className="secondary"
                       onClick={() => navigate('/releases/' + release.id)}
                     >
+                      <IconEye />
                       查看当前版本
                     </button>
                   )}
@@ -1029,6 +1144,7 @@ export default function Studio() {
                       className="secondary"
                       onClick={() => navigate(`/drafts/${pending.id}#changes`)}
                     >
+                      <IconDiff />
                       查看变更与调试
                     </button>
                   )}
@@ -1037,7 +1153,7 @@ export default function Studio() {
                       {pending ? (
                         <>
                           <button
-                            className="secondary"
+                            className="secondary danger"
                             disabled={busy}
                             onClick={() =>
                               action(async () => {
@@ -1057,6 +1173,7 @@ export default function Studio() {
                               })
                             }
                           >
+                            <IconTrash />
                             放弃修改
                           </button>
                           <button
@@ -1065,12 +1182,14 @@ export default function Studio() {
                               navigate(`/drafts/${pending.id}#changes`)
                             }
                           >
+                            <IconDiff />
                             查看变更
                           </button>
                           <button
                             className="secondary"
                             onClick={() => openDraft(pending.id)}
                           >
+                            <IconEdit />
                             继续编辑
                           </button>
                           <button
@@ -1093,6 +1212,7 @@ export default function Studio() {
                               })
                             }
                           >
+                            <IconCheck />
                             校验配置
                           </button>
                           <button
@@ -1101,12 +1221,12 @@ export default function Studio() {
                               pending.validation?.runtime_ready !== true ||
                               (!pending.changed_ids.length &&
                                 state.environment.release_id !== null) ||
-                              missing.length > 0 ||
                               pending.base_release_id !==
                                 state.environment.release_id
                             }
                             onClick={() => action(publish)}
                           >
+                            <IconRelease />
                             发布到
                             {state?.environment.name === 'prod'
                               ? '正式'
@@ -1119,6 +1239,7 @@ export default function Studio() {
                           className="secondary"
                           onClick={() => navigate('/agents')}
                         >
+                          <IconAgent />
                           管理 Agent
                         </button>
                       )}
@@ -1147,14 +1268,7 @@ export default function Studio() {
                       ? '配置校验通过'
                       : pending.validation
                         ? '运行协议未就绪，暂不能发布'
-                        : '尚未完成校验'}{' '}
-                    ·{' '}
-                    {pending.required_components.length
-                      ? successful.length
-                        ? '已有本次修改的成功调试'
-                        : '尚未完成本次修改的真实调试'
-                      : '仅展示信息变更，无需调用模型'}
-                    {missing.length > 0 && ` · 待验证：${missing.join('、')}`}
+                        : '尚未完成校验'}
                   </p>
                 </>
               ) : (
@@ -1205,17 +1319,18 @@ export default function Studio() {
                         <td>
                           <code>{item.digest.slice(0, 12)}</code>
                         </td>
-                        <td>
+                        <td className="right-cell">
                           <div className="page-actions">
                             <button
-                              className="secondary"
+                              className="secondary btn-sm"
                               onClick={() => navigate('/releases/' + item.id)}
                             >
+                              <IconEye size={14} />
                               查看版本
                             </button>
                             {canEdit && (
                               <button
-                                className="secondary"
+                                className="secondary btn-sm"
                                 disabled={
                                   busy ||
                                   item.id === release?.id ||
@@ -1226,6 +1341,7 @@ export default function Studio() {
                                   action(() => rollback(item.id, item.sequence))
                                 }
                               >
+                                <IconRollback size={14} />
                                 回滚到此版本
                               </button>
                             )}
@@ -1243,18 +1359,10 @@ export default function Studio() {
           <VersionDetail
             key={specificVersion.id}
             version={specificVersion}
-            canEdit={canEdit}
             currentId={state!.environment.release_id}
             compatible={
               specificVersion.bundle.compatibility ===
               state?.catalog?.bundle.compatibility
-            }
-            busy={busy}
-            navigate={navigate}
-            rollback={() =>
-              action(() =>
-                rollback(specificVersion.id, specificVersion.sequence),
-              )
             }
           />
         )}
@@ -1272,72 +1380,31 @@ export default function Studio() {
           <WorkflowInventory catalog={state.catalog} navigate={navigate} />
         )}
         {tab === 'flow-detail' && state?.catalog?.workflows[entityId!] && (
-          <>
-            <div className="page-actions">
-              {!draftId &&
-                state.environment.release_id &&
-                state.catalog?.source !== 'admin-draft' && (
-                  <button
-                    className="secondary"
-                    disabled={busy}
-                    onClick={openPublishedDebug}
-                  >
-                    调试已发布配置
-                  </button>
-                )}
-              {!draftId && pending && (
-                <button
-                  className="secondary"
-                  onClick={() =>
-                    navigate(`/workflows/${entityId}?draft=${pending.id}#debug`)
+          <WorkflowExplorer
+            key={`${entityId}-${draftId || 'release'}`}
+            catalog={
+              graphSnapshot
+                ? {
+                    ...state.catalog,
+                    workflows: Object.fromEntries(
+                      Object.values(graphSnapshot.bundle.files)
+                        .filter((item: any) => item.kind === 'workflow')
+                        .map((item: any) => [item.id, item]),
+                    ),
+                    definitions: Object.fromEntries(
+                      Object.values(graphSnapshot.bundle.files)
+                        .filter((item: any) =>
+                          ['agent', 'gate', 'tool'].includes(item.kind),
+                        )
+                        .map((item: any) => [item.id, item]),
+                    ),
                   }
-                >
-                  调试已保存草稿
-                </button>
-              )}
-              {draftId && draft && (
-                <button
-                  className="secondary"
-                  onClick={() => setDebugOpen(true)}
-                >
-                  调试已保存草稿
-                </button>
-              )}
-              {draftId && (
-                <button
-                  className="secondary"
-                  onClick={() => navigate(`/workflows/${entityId}`)}
-                >
-                  返回已发布配置
-                </button>
-              )}
-            </div>
-            <WorkflowExplorer
-              key={`${entityId}-${draftId || 'release'}`}
-              catalog={
-                graphSnapshot
-                  ? {
-                      ...state.catalog,
-                      workflows: Object.fromEntries(
-                        Object.values(graphSnapshot.bundle.files)
-                          .filter((item: any) => item.kind === 'workflow')
-                          .map((item: any) => [item.id, item]),
-                      ),
-                      definitions: Object.fromEntries(
-                        Object.values(graphSnapshot.bundle.files)
-                          .filter((item: any) =>
-                            ['agent', 'gate', 'tool'].includes(item.kind),
-                          )
-                          .map((item: any) => [item.id, item]),
-                      ),
-                    }
-                  : state.catalog
-              }
-              initialWorkflow={entityId!}
-              navigate={navigate}
-              execution={workflowRun?.events || []}
-            />
-          </>
+                : state.catalog
+            }
+            initialWorkflow={entityId!}
+            navigate={navigate}
+            execution={workflowRun?.events || []}
+          />
         )}
         {(tab === 'missing' ||
           (tab === 'agent-detail' && state?.catalog && !agent) ||

@@ -46,7 +46,7 @@ try {
     assert(
       await page
         .getByRole('button', { name: '发布到测试环境', exact: true })
-        .isDisabled(),
+        .isEnabled(),
     );
     await page.getByRole('button', { name: '继续编辑', exact: true }).click();
     await page
