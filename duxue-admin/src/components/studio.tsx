@@ -15,6 +15,7 @@ import { RunView } from './run-view';
 import { DebugPanel, type DebugTarget } from './debug-panel';
 import { DebugDrawer } from './debug-drawer';
 import { debugCapability } from '../lib/debug-capability';
+import { AgentDebugActions } from './agent-debug-actions';
 
 type Doc = Record<string, any>;
 async function api(path: string, method = 'GET', body?: unknown) {
@@ -335,20 +336,6 @@ export default function Studio() {
         )
       : null;
   const pending = state?.drafts[0];
-  const successful = (state?.runs || []).filter(
-    (item: Doc) =>
-      pending &&
-      item.draft_id === pending.id &&
-      item.revision === pending.revision &&
-      item.status === 'succeeded' &&
-      item.digest === pending.validation?.digest,
-  );
-  const covered = new Set(
-    successful.flatMap((item: Doc) => item.covered_components || []),
-  );
-  const missing = (pending?.required_components || []).filter(
-    (id: string) => !covered.has(id),
-  );
   async function rollback(id: string, sequence: string) {
     await api(`releases/${id}/rollback`, 'POST', {
       generation: state!.environment.generation,
@@ -452,41 +439,25 @@ export default function Studio() {
               <button className="secondary" onClick={() => navigate('/agents')}>
                 返回 Agent 列表
               </button>
-              {!draftId &&
-                state?.environment.release_id &&
-                state?.catalog?.source !== 'admin-draft' &&
-                (agentCapability?.supported ? (
-                  <button
-                    className="secondary"
-                    disabled={busy}
-                    onClick={openPublishedDebug}
-                  >
-                    调试已发布配置
-                  </button>
-                ) : (
-                  <>
-                    <span className="badge" title={agentCapability?.reason}>
-                      未开放独立调试
-                    </span>
-                    {agentCapability?.workflowId && (
-                      <button
-                        className="secondary"
-                        onClick={() =>
-                          navigate(`/workflows/${agentCapability.workflowId}`)
-                        }
-                      >
-                        打开所属 Workflow
-                      </button>
-                    )}
-                  </>
-                ))}
-              {draftId && draft && agentCapability?.supported && (
-                <button
-                  className="secondary"
-                  onClick={() => setDebugOpen(true)}
-                >
-                  调试已保存草稿
-                </button>
+              {agentCapability && (
+                <AgentDebugActions
+                  capability={agentCapability}
+                  catalogSource={state?.catalog?.source}
+                  sourceDraftId={state?.catalog?.source_draft?.id}
+                  hasRelease={!!state?.environment.release_id}
+                  editingDraftId={draftId || null}
+                  draftLoaded={!!draft}
+                  busy={busy}
+                  onPublishedDebug={openPublishedDebug}
+                  onDraftDebug={(id) => {
+                    if (id === draftId) setDebugOpen(true);
+                    else
+                      navigate(
+                        `/agents/${encodeURIComponent(agent.id)}?draft=${encodeURIComponent(id)}#debug`,
+                      );
+                  }}
+                  navigate={navigate}
+                />
               )}
               {!draftId && canEdit && (
                 <button disabled={busy} onClick={() => action(editAgent)}>
@@ -1101,7 +1072,6 @@ export default function Studio() {
                               pending.validation?.runtime_ready !== true ||
                               (!pending.changed_ids.length &&
                                 state.environment.release_id !== null) ||
-                              missing.length > 0 ||
                               pending.base_release_id !==
                                 state.environment.release_id
                             }
@@ -1147,14 +1117,7 @@ export default function Studio() {
                       ? '配置校验通过'
                       : pending.validation
                         ? '运行协议未就绪，暂不能发布'
-                        : '尚未完成校验'}{' '}
-                    ·{' '}
-                    {pending.required_components.length
-                      ? successful.length
-                        ? '已有本次修改的成功调试'
-                        : '尚未完成本次修改的真实调试'
-                      : '仅展示信息变更，无需调用模型'}
-                    {missing.length > 0 && ` · 待验证：${missing.join('、')}`}
+                        : '尚未完成校验'}
                   </p>
                 </>
               ) : (

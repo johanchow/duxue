@@ -39,7 +39,7 @@ test('offline upgrade refuses concurrent edits, changed release and unrelated dr
 
 import { upgradedWorkflowBaseline } from '../src/lib/config-upgrade';
 import { requireUnchangedWorkflows } from '../src/lib/workflow-policy';
-test('validated migration adopts topology without erasing model debug baseline', () => {
+test('validated migration adopts topology without erasing component change baseline', () => {
   const before = {
     files: {
       'agents/old.json': { prompt: 'old' },

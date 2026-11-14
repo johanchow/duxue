@@ -832,7 +832,7 @@ App 使用独立 `support.v1` 卡片协议，复用可见会话中的纯文本�
 
 晚间报告Workflow及对应持久化code Agent可用 `{}` 调试零证据路径；使用一次性SQLite库，固定shadow，不写业务库报告或真实邀请。观察归并可传 `manifest`、模型 `result`、`date`、带时区的 `clock`；邀请可传 `snapshot`、`date`、`clock`。两个校验code Agent输入为 `{"manifest":...,"result":...}`；图片准备code Agent也支持显式synthetic模式。调试结果含实际节点、边、模型调用及失败信息。
 
-**升级操作：** 从当前Admin发布或现有工作草稿导出完整快照，运行 `scripts/extend_observation_release.py SOURCE OUTPUT`；已有观察LLM时保留其模型/Prompt，初次增加时必须显式传入 `--model`、`--activity-prompt`、`--support-prompt`。输出保留来源id/digest/revision和environment，通过 Admin 的 `npm run config:import-upgrade -- OUTPUT` 导入唯一工作草稿；检测并发修改，不覆盖新的草稿版本。导入不发布，新增LLM仍需同修订真实调试。显式迁移只更新受验证的Workflow基线，不抹去组件差异及模型调试要求。
+**升级操作：** 从当前Admin发布或现有工作草稿导出完整快照，运行 `scripts/extend_observation_release.py SOURCE OUTPUT`；已有观察LLM时保留其模型/Prompt，初次增加时必须显式传入 `--model`、`--activity-prompt`、`--support-prompt`。输出保留来源id/digest/revision和environment，通过 Admin 的 `npm run config:import-upgrade -- OUTPUT` 导入唯一工作草稿；检测并发修改，不覆盖新的草稿版本。导入不发布；真实调试可按需执行，发布条件见[管理台设计](design-admin.md#三数据表与并发)。显式迁移只更新受验证的Workflow基线，不抹去组件差异。
 
 早期五个阶段Workflow的HTTP验证保留为历史记录；当前业务入口已整合为下述主流程与晚间报告，测试Admin草稿已升级，正式发布指针未切换。实际摄像头与真实样本质量门槛仍需分别验收。
 

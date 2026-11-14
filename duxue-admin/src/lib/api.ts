@@ -13,7 +13,6 @@ import {
 } from './auth';
 import { config } from './config';
 import { serverCall } from './server';
-import { requiredDebugComponents } from './release-evidence';
 import { workingDraft } from './working-draft';
 import { requireUnchangedWorkflows } from './workflow-policy';
 
@@ -279,10 +278,6 @@ export async function handle(request: Request, parts: string[]) {
         user,
         drafts: drafts.rows.map(({ bundle, base_bundle, ...row }) => ({
           ...row,
-          required_components: requiredDebugComponents(
-            bundle,
-            base_bundle || bundle,
-          ),
           changed_ids: Object.entries(bundle.files)
             .filter(
               ([file, value]) =>
@@ -509,23 +504,11 @@ export async function handle(request: Request, parts: string[]) {
           );
           const evidence = (
             await client.query(
-              "SELECT id,result FROM agent_debug_runs WHERE draft_id=$1 AND revision=$2 AND digest=$3 AND status='succeeded' ORDER BY finished_at DESC",
+              "SELECT id FROM agent_debug_runs WHERE draft_id=$1 AND revision=$2 AND digest=$3 AND status='succeeded' ORDER BY finished_at DESC",
               [draft.id, draft.revision, validation.digest],
             )
           ).rows;
           const debug = evidence[0];
-          const covered = new Set(
-            evidence.flatMap((row) => row.result?.covered_components || []),
-          );
-          const missing = requiredDebugComponents(
-            draft.bundle,
-            draft.base_bundle || draft.bundle,
-          ).filter((unit) => !covered.has(unit));
-          assert(
-            !missing.length,
-            '以下模型需完成同修订真实调试：' + missing.join('、'),
-            409,
-          );
           const id = randomUUID();
           await client.query(
             'INSERT INTO agent_releases(id,draft_id,revision,digest,bundle,validation,debug_run_id,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(draft_id,revision,digest) DO NOTHING',

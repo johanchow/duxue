@@ -323,6 +323,73 @@ test('real database sessions enforce roles, immutable release debugging and imme
       ).rows[0].bundle,
       bundle,
     );
+    // Model and Prompt changes publish without same-revision debug evidence.
+    const changedModelBundle = {
+      ...bundle,
+      files: {
+        ...bundle.files,
+        'agent.json': {
+          id: 'test',
+          models: [{ component_id: 'test', name: 'changed-model' }],
+          prompt: { template: 'changed prompt' },
+        },
+      },
+    };
+    await db.query(
+      'UPDATE agent_drafts SET bundle=$1,base_release_id=$2 WHERE id=$3',
+      [changedModelBundle, release, draft],
+    );
+    const generation = (
+      await db.query(
+        "SELECT generation FROM agent_environments WHERE name='test'",
+      )
+    ).rows[0].generation;
+    const stalePublish = await request(
+      'admin',
+      'POST',
+      `drafts/${draft}/publish`,
+      {
+        revision: 2,
+        generation: Number(generation) - 1,
+      },
+    );
+    assert.equal(stalePublish.status, 409);
+    const publishWithoutDebug = await request(
+      'admin',
+      'POST',
+      `drafts/${draft}/publish`,
+      {
+        revision: 2,
+        generation,
+      },
+    );
+    assert.equal(
+      publishWithoutDebug.status,
+      200,
+      JSON.stringify(await publishWithoutDebug.clone().json()),
+    );
+    const published = await publishWithoutDebug.json();
+    const stored = (
+      await db.query(
+        'SELECT bundle,debug_run_id FROM agent_releases WHERE id=$1',
+        [published.id],
+      )
+    ).rows[0];
+    assert.deepEqual(stored.bundle, changedModelBundle);
+    assert.equal(stored.debug_run_id, null);
+    assert.equal(
+      (
+        await db.query(
+          "SELECT release_id FROM agent_environments WHERE name='test'",
+        )
+      ).rows[0].release_id,
+      published.id,
+    );
+    assert.equal(
+      (await db.query('SELECT state FROM agent_drafts WHERE id=$1', [draft]))
+        .rows[0].state,
+      'published',
+    );
     await db.query("UPDATE admin_users SET role='visitor' WHERE id=$1", [
       owner,
     ]);
