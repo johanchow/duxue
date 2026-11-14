@@ -49,7 +49,11 @@ Progress = Literal["none", "some", "submitted"]
 _WORK_ACTS = frozenset({"answer", "guide"})
 _LESSON_KEYS = ("source_text", "locale", "introduction", "reading_guide", "notes")
 
-SAFE_TEXT = "这件事需要先告诉身边信任的大人。我们先停一下，等你准备好了再继续学习。"
+SAFE_TEXT = (
+    "听起来你现在很难受，先停下来照顾好自己，暂时不用继续学习。"
+    "请先远离危险、确保自己和他人的人身安全，不要伤害自己或别人，"
+    "马上把这件事告诉身边信任的大人（如父母或老师）寻求帮助。"
+)
 FALLBACK_TEXT = "这次暂时没能完成回答，请稍后再试。"
 REMINDER = "先回到正在进行的任务，这个问题可以稍后再问。"
 
