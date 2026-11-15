@@ -67,6 +67,9 @@ def test_upgrade_is_explicit_compilable_and_preserves_models():
         upgraded["bundle"]["files"]["agents/tutoring.turn.json"]["models"]
         == record["bundle"]["files"]["agents/tutoring.turn.json"]["models"]
     )
+    judge_tpl = upgraded["bundle"]["files"]["gates/tutoring.leak-judge.json"]["prompt"]["template"]
+    assert '"math_consistent":true或false或null' in judge_tpl
+    assert "字段沿用既有契约，不加字段。" not in judge_tpl
     bad = copy.deepcopy(upgraded["bundle"])
     bad["files"]["gates/tutoring.leak-judge.json"]["prompt"]["template"] = "old prompt"
     with pytest.raises(ValueError, match="matching tutor and judge"):
