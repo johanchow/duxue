@@ -1,4 +1,5 @@
 import {
+  batchQueries,
   experimentQueries,
   productionQueries,
   periodSummary,
@@ -222,11 +223,12 @@ export class LangfuseReader {
   async summary(
     kind: 'production' | 'experiment',
     days: number,
-    id?: string,
+    id?: string | string[],
     previous = false,
   ) {
+    const key = Array.isArray(id) ? id.join(',') : id || '';
     return this.cached(
-      `summary:${kind}:${days}:${id || ''}:${previous}`,
+      `summary:${kind}:${days}:${key}:${previous}`,
       async () => {
         await this.verified();
         const to = new Date(
@@ -241,7 +243,9 @@ export class LangfuseReader {
                 from.toISOString(),
                 to.toISOString(),
               )
-            : experimentQueries(id!, from.toISOString(), to.toISOString());
+            : Array.isArray(id)
+              ? batchQueries(id, from.toISOString(), to.toISOString())
+              : experimentQueries(id!, from.toISOString(), to.toISOString());
         const pairs = await Promise.all(
           Object.entries(q)
             .filter(([key]) => key !== 'trend')
@@ -265,6 +269,25 @@ export class LangfuseReader {
         };
       },
     );
+  }
+  async batchOverview(run: string, days: number) {
+    return this.cached(`batch-overview:${days}:${run}`, async () => {
+      const group = (await this.batches(days)).find((b: Doc) => b.id === run);
+      if (!group) throw new Error('批次不在当前时间范围内');
+      const ids = group.experiments.map((e: Doc) => e.id);
+      const [summary, ...datasets] = await Promise.all([
+        this.summary('experiment', days, ids),
+        ...group.experiments.map(async (e: Doc) => ({
+          id: e.id,
+          name: e.name,
+          dataset: e.name.includes('/') ? e.name.split('/').slice(1).join('/') : e.name,
+          datasetId: e.datasetId,
+          itemCount: e.itemCount ?? null,
+          summary: await this.summary('experiment', days, e.id),
+        })),
+      ]);
+      return { batch: group, summary, datasets };
+    });
   }
   links() {
     const root = `${this.settings.baseUrl.replace(/\/$/, '')}/project/${encodeURIComponent(this.settings.projectId)}`;

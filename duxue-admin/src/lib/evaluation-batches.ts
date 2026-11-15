@@ -30,7 +30,8 @@ export function groupBatches(experiments: Doc[]) {
       });
     const batch = groups.get(key)!;
     batch.experiments.push(e);
-    if (e.startTime > batch.startTime) batch.startTime = e.startTime;
+    if (e.startTime && (!batch.startTime || e.startTime > batch.startTime))
+      batch.startTime = e.startTime;
     if (
       batch.configDigest !== (e.metadata?.config_digest || null) ||
       batch.graderVersion !== (e.metadata?.grader_version || null) ||
@@ -41,7 +42,7 @@ export function groupBatches(experiments: Doc[]) {
       batch.identityConflict = true;
   }
   return [...groups.values()].sort((a, b) =>
-    b.startTime.localeCompare(a.startTime),
+    String(b.startTime || '').localeCompare(String(a.startTime || '')),
   );
 }
 export function caseProjection(item: Doc) {
@@ -188,6 +189,40 @@ export function batchProjection(batch: Doc, items: Doc[]) {
     });
   }
   const calls = checks.flatMap((c) => c.execution_summary || []);
+  const scoreMap = new Map<string, Doc>();
+  for (const check of checks) {
+    const reqNames = Object.keys(check.requirement?.evaluators || {});
+    const gradeByName = new Map<string, Doc>(
+      (check.grades || []).map((g: Doc) => [String(g.name), g]),
+    );
+    const allNames = new Set<string>([...reqNames, ...gradeByName.keys()]);
+    for (const name of allNames) {
+      if (!scoreMap.has(name))
+        scoreMap.set(name, {
+          name,
+          planned: 0,
+          evaluated: 0,
+          pass: 0,
+          fail: 0,
+          error: 0,
+          not_run: 0,
+        });
+      const entry = scoreMap.get(name)!;
+      entry.planned += 1;
+      const g = gradeByName.get(name) as Doc | undefined;
+      if (check.status === 'not_run' || (!g && check.status === 'unknown')) {
+        entry.not_run += 1;
+      } else if (!g) {
+        entry.error += 1;
+      } else {
+        entry.evaluated += 1;
+        if (g.status === 'pass') entry.pass += 1;
+        else if (g.status === 'fail') entry.fail += 1;
+        else entry.error += 1;
+      }
+    }
+  }
+  const scoreStats = [...scoreMap.values()];
   const runtime = [...new Set(calls.map((c) => c.component_id))].map((id) => {
     const subset = calls.filter((c) => c.component_id === id);
     return {
@@ -203,14 +238,29 @@ export function batchProjection(batch: Doc, items: Doc[]) {
         : null,
     };
   });
+  const datasets = (batch.experiments || []).map((e: Doc) => {
+    const subset = cases.filter((c) => c.experimentId === e.id);
+    const cCounts = counts(subset);
+    const name = e.name?.includes('/')
+      ? e.name.split('/').slice(1).join('/')
+      : e.name || e.id;
+    return {
+      id: e.id,
+      name,
+      total: subset.length,
+      ...cCounts,
+    };
+  });
   return {
     ...batch,
     cases,
     counts: counts(cases),
+    datasets,
     application: counts(cases.filter((c) => !c.calibration)),
     calibration: counts(cases.filter((c) => c.calibration)),
     checkpoints: counts(checks),
     components,
+    scoreStats,
     runtime,
     complete:
       !batch.identityConflict &&

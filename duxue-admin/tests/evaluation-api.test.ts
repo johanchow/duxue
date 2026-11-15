@@ -80,22 +80,24 @@ test('authenticated read aggregation, exact release/draft association and retire
         String(target).endsWith('/projects')
           ? { data: [{ id: 'p' }] }
           : String(target).includes('/experiments?')
-            ? {
-                data: [
-                  {
-                    id: 'e1',
-                    name: 'candidate',
-                    itemCount: 2,
-                    metadata: { config_digest: digest },
-                  },
-                  {
-                    id: 'e2',
-                    name: 'unmatched',
-                    metadata: { config_digest: 'b'.repeat(64) },
-                  },
-                ],
-                meta: { cursor: 'next' },
-              }
+            ? String(target).includes('cursor=next')
+              ? { data: [], meta: {} }
+              : {
+                  data: [
+                    {
+                      id: 'e1',
+                      name: 'candidate',
+                      itemCount: 2,
+                      metadata: { config_digest: digest },
+                    },
+                    {
+                      id: 'e2',
+                      name: 'unmatched',
+                      metadata: { config_digest: 'b'.repeat(64) },
+                    },
+                  ],
+                  meta: { cursor: 'next' },
+                }
             : { data: [] },
       );
     };
@@ -145,6 +147,13 @@ test('authenticated read aggregation, exact release/draft association and retire
       (await request('GET', 'evaluation/overview?current=missing')).status,
       400,
     );
+    const overviewRes = await request('GET', 'evaluation/overview');
+    assert.equal(overviewRes.status, 200);
+    const overview = await overviewRes.json();
+    assert.equal(overview.batches.length, 2);
+    assert.equal(overview.currentBatch.releases[0].id, release);
+    assert.equal(overview.currentBatch.drafts[0].id, draft);
+    assert.equal(overview.datasets.length, 1);
     assert.equal(
       (await request('GET', 'evaluation/production?days=999')).status,
       400,

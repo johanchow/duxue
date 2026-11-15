@@ -216,6 +216,23 @@ export function productionQueries(
 export function experimentQueries(id: string, from: string, to: string) {
   return queries([filter('experimentId', id)], from, to, false);
 }
+export function batchQueries(ids: string[], from: string, to: string) {
+  return queries(
+    ids.length === 1
+      ? [filter('experimentId', ids[0])]
+      : [
+          {
+            column: 'experimentId',
+            operator: 'any of',
+            value: ids,
+            type: 'stringOptions',
+          },
+        ],
+    from,
+    to,
+    false,
+  );
+}
 function number(v: unknown): number | null {
   return typeof v === 'number' && Number.isFinite(v) ? v : null;
 }

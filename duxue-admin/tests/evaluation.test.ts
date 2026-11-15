@@ -5,6 +5,7 @@ import {
   metricDelta,
   productionQueries,
   experimentQueries,
+  batchQueries,
   experimentIdentity,
 } from '../src/lib/evaluation-model';
 import { LangfuseReader } from '../src/lib/langfuse';
@@ -172,4 +173,33 @@ test('native scores use the two teaching dimensions and exclude grading wait fro
   assert.equal(s.p95Seconds, null);
   assert.ok(s.metrics.some((m) => m.id === 'guidance_logic'));
   assert.ok(s.metrics.some((m) => m.id === 'teaching_correctness'));
+});
+test('batchQueries aggregates multiple experiment IDs into a single query set', () => {
+  const bq = batchQueries(
+    ['exp-1', 'exp-2'],
+    '2026-11-14T00:00:00Z',
+    '2026-11-15T00:00:00Z',
+  );
+  assert.ok(
+    bq.status.filters.some(
+      (f) =>
+        f.column === 'experimentId' &&
+        f.operator === 'any of' &&
+        Array.isArray(f.value) &&
+        f.value.length === 2,
+    ),
+  );
+  const single = batchQueries(
+    ['exp-1'],
+    '2026-11-14T00:00:00Z',
+    '2026-11-15T00:00:00Z',
+  );
+  assert.ok(
+    single.status.filters.some(
+      (f) =>
+        f.column === 'experimentId' &&
+        f.operator === '=' &&
+        f.value === 'exp-1',
+    ),
+  );
 });
