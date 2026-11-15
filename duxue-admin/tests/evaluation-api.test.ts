@@ -116,6 +116,16 @@ test('authenticated read aggregation, exact release/draft association and retire
       (await request('GET', 'evaluation/experiments', false)).status,
       401,
     );
+    assert.equal(
+      (await request('GET', 'evaluation/batches', false)).status,
+      401,
+    );
+    assert.equal((await request('GET', 'evaluation/evidence')).status, 400);
+    assert.equal(
+      (await request('GET', 'evaluation/trace?trace=bad&date=2026-11-14'))
+        .status,
+      400,
+    );
     const response = await request('GET', 'evaluation/experiments');
     assert.equal(response.status, 200);
     const data = await response.json();

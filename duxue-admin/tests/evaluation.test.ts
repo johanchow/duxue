@@ -4,6 +4,7 @@ import {
   periodSummary,
   metricDelta,
   productionQueries,
+  experimentQueries,
   experimentIdentity,
 } from '../src/lib/evaluation-model';
 import { LangfuseReader } from '../src/lib/langfuse';
@@ -14,6 +15,26 @@ const settings = {
   secretKey: 'sk-test',
   environment: 'production',
 };
+test('task status counts exclude derived checkpoint status scores', () => {
+  const q = experimentQueries(
+    'experiment',
+    '2026-11-14T00:00:00Z',
+    '2026-11-15T00:00:00Z',
+  );
+  assert.ok(
+    q.status.filters.some(
+      (f) => f.column === 'metadata' && f.key === 'scope' && f.value === 'task',
+    ),
+  );
+  assert.equal(
+    q.numeric.filters.some((f) => f.column === 'metadata'),
+    false,
+  );
+  assert.equal(
+    q.boolean.filters.some((f) => f.column === 'metadata'),
+    false,
+  );
+});
 test('missing scores and cost remain unknown, zero is real, latency is milliseconds', () => {
   const s = periodSummary({
     taskCount: 4,

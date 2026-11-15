@@ -41,3 +41,19 @@ def test_judge_requires_explicit_turn_scope_and_rejects_conflicting_facts():
 
 def test_independent_non_reasoning_scope_is_allowed():
     assert normalize_judge('tutoring.leak-judge', facts(answer_protected=False)).verdict == 'allow'
+
+
+def test_non_protected_practice_allows_verified_student_affirmation():
+    result = normalize_judge('tutoring.leak-judge', facts(
+        answer_protected=False, student_answer_correct=True, affirms_student_answer=True,
+    ))
+    assert result.verdict == 'allow'
+    assert result.reason_code == 'none'
+
+
+def test_non_protected_practice_still_rejects_unverified_affirmation():
+    result = normalize_judge('tutoring.leak-judge', facts(
+        answer_protected=False, student_answer_correct=False, affirms_student_answer=True,
+    ))
+    assert result.verdict == 'deny'
+    assert result.reason_code == 'incorrect_confirmation'

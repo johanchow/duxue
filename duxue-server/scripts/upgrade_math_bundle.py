@@ -20,7 +20,7 @@ TUTOR = """
 计算、等价、解方程、求导、积分、极限必须通过 math 工具获得依据；不要心算后自称已核验。
 先只返回 {"tool":"math","args":{"op":"equivalent","args":{"left":"90-37","right":"53"},"symbols":[],"assumptions":[],"step_ref":"当前题步骤1"}}。
 操作参数：evaluate(expression,precision可选)；equivalent(left,right)；solve(equations,variables)，首期仅单变量单方程，equations写左式减右式；differentiate(expression,variable,order)；integrate(expression,variable,bounds可选)；limit(expression,variable,point,direction)。symbols元素为{name,domain:real|complex|integer}。假设仅接受“变量名:positive|negative|nonzero|nonnegative”，不得编造题面未给定的条件。语法仅数字、声明变量、pi/E/oo、四则、整数幂及sin/cos/tan/exp/log/sqrt/abs单参数调用。
-图片请求携带当前授权image_ref和step_ref；读不清先澄清。输出候选时math_claims=[{request_id:工具返回ID,step_ref:原步骤引用,assertion:equal|not_equal|unknown|result,value:引用result时须原样填写}]。不得自造ID或改变工具结论。unknown/error仅说明未核验，不判错。导师新写的示例计算也必须核验；不要把数值正确说成列式、过程或整题正确。工具结果仅作内部依据，现有答案保护不变。
+图片请求携带当前授权image_ref和step_ref；读不清先澄清。输出候选时math_claims=[{request_id:工具返回ID,step_ref:原步骤引用,assertion:equal|not_equal|unknown|result,value:仅assertion=result时原样填写，其他assertion禁止填写value}]。不得自造ID或改变工具结论。unknown/error仅说明未核验，不判错。导师新写的示例计算也必须核验；不要把数值正确说成列式、过程或整题正确。工具结果仅作内部依据，现有答案保护不变。
 """
 JUDGE = """
 [math.v1]
@@ -48,6 +48,22 @@ def upgrade(record: dict, *, enable=False):
         for doc, addition in ((tutor, TUTOR), (judge, JUDGE)):
             if "[math.v1]" not in doc["prompt"]["template"]:
                 doc["prompt"]["template"] += addition
+        judge_tpl = judge["prompt"]["template"]
+        old_json = (
+            '{"answer_protected":true或false,"student_answer_correct":true或false或null,'
+            '"affirms_student_answer":false,"new_final_answer":false,'
+            '"complete_solution":false,"choice_verdict":false,"premature_conclusion":false}'
+        )
+        new_json = (
+            '{"answer_protected":true或false,"student_answer_correct":true或false或null,'
+            '"affirms_student_answer":false,"new_final_answer":false,'
+            '"complete_solution":false,"choice_verdict":false,"premature_conclusion":false,'
+            '"math_consistent":true或false或null}'
+        )
+        if old_json in judge_tpl:
+            judge_tpl = judge_tpl.replace(old_json, new_json, 1)
+        judge_tpl = judge_tpl.replace("字段沿用既有契约，不加字段。", "不额外发明契约外字段。")
+        judge["prompt"]["template"] = judge_tpl
     bundle["compatibility"] = contract_compatibility(files)
     result["digest"] = compile_bundle(bundle).digest
     # A transformed export is an unpublished proposal, never a released identity.

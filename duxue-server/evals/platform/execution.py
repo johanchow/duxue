@@ -4,8 +4,10 @@ import base64
 import hashlib
 import tempfile
 import time
-from pathlib import Path
+from contextlib import nullcontext
 from dataclasses import asdict
+from pathlib import Path
+
 from evals.platform.protocol import hydrate
 
 
@@ -33,8 +35,8 @@ def materialize_assets(client, item, directory):
 
 
 def turn(case, backend, assets, permit=None):
-    from evals.runner import build_input, _observe_intent, _observe_tutor, _evidence
     from evals.graders import observations
+    from evals.runner import _evidence, _observe_intent, _observe_tutor, build_input
 
     if case.snapshot_origin == "missing":
         raise ValueError("missing_input_snapshot")
@@ -61,8 +63,8 @@ def turn(case, backend, assets, permit=None):
 
 
 def fixed_judge(backend, context, reply, assets):
-    from evals.runner import read_asset
     from evals.judge_boundary import production_summary
+    from evals.runner import read_asset
 
     start = time.perf_counter()
     problem = context.get("problem") or production_summary(
@@ -93,15 +95,17 @@ def fixed_judge(backend, context, reply, assets):
 
 
 def execute_item(client, item, scorer, backends):
-    from evals.dialogue import TurnRecord, EpisodeRecord
+    from app.contexts.tutoring.domain.tutor_permit import AttemptSummary, TutorPermit
     from evals.conversations import (
         ConversationEval,
         GateCheck,
+    )
+    from evals.conversations import (
         turn_case as replay_case,
     )
+    from evals.dialogue import EpisodeRecord, TurnRecord
     from evals.episodes import turn_case as episode_case
     from evals.schema import Utterance
-    from app.contexts.tutoring.domain.tutor_permit import AttemptSummary, TutorPermit
 
     record = hydrate(item)
     checks, total_latency = [], 0
@@ -141,61 +145,63 @@ def execute_item(client, item, scorer, backends):
                 )
                 continue
             spec = item.expected_output["checks"][check["id"]]
-            try:
-                backend = backends[
-                    "companion.intent"
-                    if check["component"] == "companion.intent"
-                    else "tutoring.turn"
-                ]
-                if record["type"] == "single_turn":
-                    observed, evidence, latency, error = turn(
-                        TurnRecord.model_validate(record).to_case(), backend, assets
-                    )
-                elif episode:
-                    step = episode.turns[index]
-                    said = step.student_on.get(prior_outcome, step.student_said)
-                    case = episode_case(episode, index, history, said)
-                    observed, evidence, latency, error = turn(case, backend, assets)
-                elif replay:
-                    parsed = replay.checks[index]
-                    if isinstance(parsed, GateCheck):
-                        original = next(
-                            a for a in replay.attempts if a.id == parsed.attempt_id
+            capture = getattr(scorer, "capture_execution", lambda **kw: nullcontext())
+            with capture(case_id=record["id"], check_id=check["id"]) as execution_recording:
+                try:
+                    backend = backends[
+                        "companion.intent"
+                        if check["component"] == "companion.intent"
+                        else "tutoring.turn"
+                    ]
+                    if record["type"] == "single_turn":
+                        observed, evidence, latency, error = turn(
+                            TurnRecord.model_validate(record).to_case(), backend, assets
+                        )
+                    elif episode:
+                        step = episode.turns[index]
+                        said = step.student_on.get(prior_outcome, step.student_said)
+                        case = episode_case(episode, index, history, said)
+                        observed, evidence, latency, error = turn(case, backend, assets)
+                    elif replay:
+                        parsed = replay.checks[index]
+                        if isinstance(parsed, GateCheck):
+                            original = next(
+                                a for a in replay.attempts if a.id == parsed.attempt_id
+                            )
+                            observed, evidence, latency, error = fixed_judge(
+                                backend,
+                                original.gate.input.model_dump(mode="json"),
+                                original.gate.input.reply,
+                                assets,
+                            )
+                        else:
+                            snapshot = parsed.input_snapshot.permit
+                            permit = TutorPermit(
+                                answer_protected=snapshot.answer_protected,
+                                active_subgoal=snapshot.active_subgoal,
+                                attempt_summary=AttemptSummary(
+                                    **snapshot.attempt_summary.model_dump()
+                                ),
+                            )
+                            observed, evidence, latency, error = turn(
+                                replay_case(replay, parsed), backend, assets, permit
+                            )
+                    else:
+                        candidate = next(
+                            c
+                            for c in record["candidates"]
+                            if c["id"] == check["candidate_id"]
                         )
                         observed, evidence, latency, error = fixed_judge(
-                            backend,
-                            original.gate.input.model_dump(mode="json"),
-                            original.gate.input.reply,
-                            assets,
+                            backend, check["input_snapshot"], candidate["content"], assets
                         )
-                    else:
-                        snapshot = parsed.input_snapshot.permit
-                        permit = TutorPermit(
-                            answer_protected=snapshot.answer_protected,
-                            active_subgoal=snapshot.active_subgoal,
-                            attempt_summary=AttemptSummary(
-                                **snapshot.attempt_summary.model_dump()
-                            ),
-                        )
-                        observed, evidence, latency, error = turn(
-                            replay_case(replay, parsed), backend, assets, permit
-                        )
-                else:
-                    candidate = next(
-                        c
-                        for c in record["candidates"]
-                        if c["id"] == check["candidate_id"]
+                except Exception as exc:
+                    observed, evidence, latency, error = (
+                        {},
+                        {},
+                        0,
+                        f"{type(exc).__name__}: {exc}",
                     )
-                    observed, evidence, latency, error = fixed_judge(
-                        backend, check["input_snapshot"], candidate["content"], assets
-                    )
-            except Exception as exc:
-                observed, evidence, latency, error = (
-                    {},
-                    {},
-                    0,
-                    f"{type(exc).__name__}: {exc}",
-                )
             total_latency += latency
             result = scorer.evaluate(
                 case_id=record["id"],
@@ -206,6 +212,14 @@ def execute_item(client, item, scorer, backends):
                 latency_ms=latency,
                 execution_error=error,
             )
+            if execution_recording is not None:
+                result["execution_summary"] = [
+                    {k: event[k] for k in (
+                        "kind", "unit_id", "component_id", "node_id", "workflow_id", "model",
+                        "status", "duration_ms", "tokens_in", "tokens_out", "definition_digest",
+                    ) if k in event}
+                    for event in execution_recording.events if event["kind"] == "model"
+                ]
             checks.append(result)
             print(f"{record['id']}/{check['id']}: {result['status']}", flush=True)
             if episode:

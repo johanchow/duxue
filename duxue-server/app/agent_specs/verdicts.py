@@ -29,7 +29,7 @@ def normalize_judge(unit_id: str, payload: dict | None) -> GateVerdict:
         if not Draft202012Validator(schema).is_valid(payload):
             return GateVerdict(verdict="unknown", reason_code="invalid_judge_output")
         if not payload["answer_protected"] and any(payload[key] for key in (
-            "affirms_student_answer", "new_final_answer", "complete_solution",
+            "new_final_answer", "complete_solution",
             "choice_verdict", "premature_conclusion",
         )):
             return GateVerdict(verdict="unknown", reason_code="inconsistent_judge_scope")

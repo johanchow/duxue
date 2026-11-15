@@ -1,18 +1,33 @@
 import { langfuse } from './langfuse';
 import { experimentIdentity } from './evaluation-model';
 import { pool } from './db';
+import { compareBatches } from './evaluation-batches';
 export async function evaluationResponse(request: Request, parts: string[]) {
   if (request.method !== 'GET')
     return Response.json({ error: '评测接口仅支持读取' }, { status: 405 });
   const page = parts[1];
   if (
     parts.length !== 2 ||
-    !['overview', 'experiments', 'production'].includes(page)
+    ![
+      'overview',
+      'experiments',
+      'production',
+      'batches',
+      'batch',
+      'evidence',
+      'trace',
+    ].includes(page)
   )
     return Response.json({ error: '页面不存在' }, { status: 404 });
   const params = new URL(request.url).searchParams,
     days = Number(params.get('days') || 7);
-  if (!(page === 'experiments' ? [7, 30, 90] : [7, 30]).includes(days))
+  if (
+    !(
+      ['experiments', 'batches', 'batch', 'evidence'].includes(page)
+        ? [7, 30, 90]
+        : [7, 30]
+    ).includes(days)
+  )
     return Response.json(
       { error: '指标支持7/30天，实验列表另支持90天' },
       { status: 400 },
@@ -26,6 +41,45 @@ export async function evaluationResponse(request: Request, parts: string[]) {
         updatedAt: new Date().toISOString(),
         days,
       };
+    if (page === 'trace') {
+      const trace = params.get('trace') || '',
+        date = params.get('date') || '';
+      if (
+        !/^[a-f0-9]{32}$/i.test(trace) ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+        !Number.isFinite(Date.parse(date)) ||
+        new Date(date).toISOString().slice(0, 10) !== date
+      )
+        return Response.json(
+          { error: '请输入32位Trace ID及有效日期' },
+          { status: 400 },
+        );
+      return Response.json({
+        ...common,
+        ...(await lf.traceEvidence(trace, date)),
+      });
+    }
+    if (page === 'batches')
+      return Response.json({ ...common, batches: await lf.batches(days) });
+    if (page === 'batch' || page === 'evidence') {
+      const run = params.get('run');
+      if (!run) return Response.json({ error: '请选择批次' }, { status: 400 });
+      if (page === 'evidence') {
+        const item = params.get('item');
+        if (!item)
+          return Response.json({ error: '请选择用例' }, { status: 400 });
+        return Response.json({
+          ...common,
+          ...(await lf.evidence(run, item, days)),
+        });
+      }
+      const batch = await lf.batch(run, days);
+      const baselineId = params.get('baseline');
+      const comparison = baselineId
+        ? compareBatches(batch, await lf.batch(baselineId, days))
+        : null;
+      return Response.json({ ...common, batch, comparison });
+    }
     if (page === 'production') {
       const [current, baselineResult] = await Promise.all([
         lf.summary('production', days),

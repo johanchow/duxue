@@ -1,8 +1,10 @@
 """Collect late scores without rerunning application/model calls."""
 
 import json
+
+from evals.platform.__main__ import aggregate, write
 from evals.platform.native import NativeScorer
-from evals.platform.__main__ import write, aggregate
+from evals.platform.reporting import report_checkpoints
 
 
 def resume(client, directory, timeout):
@@ -57,6 +59,9 @@ def resume(client, directory, timeout):
                 result["status"] = next(
                     (s for s in ("error", "fail", "not_run") if s in states), "pass"
                 )
+            report_checkpoints(
+                client, configs["eval.status"], result, item["expectedOutput"]["checks"]
+            )
             write(path, result)
             aggregate(
                 client, configs, result, result["trace_id"], result["observation_id"]

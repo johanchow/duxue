@@ -3,11 +3,20 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { metricDelta, type Metric } from '../lib/evaluation-model';
 import { IconArrowLeft, IconArrowRight, IconExternalLink } from './icons';
+import { EvaluationWorkbench } from './evaluation-workbench';
+import { TraceExecutionLookup } from './workflow-execution';
 const format = (m: Metric) =>
   m.value === null
     ? '—'
     : `${m.unit === 'usd' ? '$' : ''}${m.value.toFixed(m.unit === 'usd' ? 4 : 1)}${m.unit === 'percent' ? '%' : m.unit === 'seconds' ? 's' : ''}`;
 export function Evaluation({ page }: { page: string }) {
+  return page === 'experiments' ? (
+    <EvaluationWorkbench />
+  ) : (
+    <LegacyEvaluation page={page} />
+  );
+}
+function LegacyEvaluation({ page }: { page: string }) {
   const [days, setDays] = useState(7),
     [current, setCurrent] = useState(''),
     [baseline, setBaseline] = useState(''),
@@ -143,6 +152,7 @@ export function Evaluation({ page }: { page: string }) {
           {error}
         </p>
       )}
+      {page === 'production' && <TraceExecutionLookup />}
       {data && (
         <>
           {data.warning && (

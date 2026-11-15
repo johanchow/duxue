@@ -74,3 +74,15 @@
 - 用户要求去掉Dataset的duxue/目录：已按原ID重命名5个集合，回读确认名称无前缀、总数仍5、ID不变；资源清单同步。另核对旧7条生产规则均enabled、environment=production、sampling=1，匹配agent.check或tutoring.result节点；新增6个评估器仍无规则。本轮仅分析Score清理，未删除历史Score、归档额外定义或改自动规则。
 
 - 2026-11-11 用户授权提交 Admin Evaluation/Langfuse 管理集成及资源定义。提交前 Admin 36 项测试、typecheck、生产 build 与 CODE evaluator 19 项测试全部通过；未推送或部署。runner 原生评估接通、Admin 新维度/EVAL 来源适配、真实样本校准仍待完成，提交不表示这些链路已完成。
+
+- 2026-11-14 维护者使用核查：MCP回读当前5个Dataset共39个ACTIVE Item、13条启用规则（7条生产流程信号、6条离线原生评测）；旧“尚未接通/无规则”是历史状态。`EVAL`来源不代表离线，同名`tutor.check_pass`须结合observation的step与最终交付判断；生产规则目前不能给出独立教学质量结论。统一CLI的`run --help`实测通过；全量运行、阈值与收分口径以[评测设计运行说明](../../docs/technical/eval-offline.md#运行复现与结果)为准。本轮只读核查及说明，未启动真实模型、修改云端评分或规则。`agent_specs/README.md`仍留有旧`--component/--samples`示例和Git维护数据描述，当前统一入口不支持这些参数，应采用上述事实源命令。
+
+- 2026-11-14 用户确认Scores可读性优化：run/resume已补检查点状态与图标/阈值/原生理由摘要，协议唯一说明见[查看范围](../../docs/technical/eval-offline.md#任务检查点与查看范围)。Admin任务状态统计同步限定层级，防止检查点重复计数。评测224项、Admin相关5项及类型检查通过；用户13:38:52样例已补展示并云端回读，原始6条EVAL评分保留，未调用模型。审计在`duxue-server/var/evals/score-display-20261114/`；其他历史记录未批量补写，未提交/部署，[进行中spec](../specs/langfuse-unified-evals.md)等待Gate 2。
+
+- 同日按用户要求补齐最新单个Experiment `6ec39017d5c31e97`（`langfuse-20261114-1328-bf75f6ee/teaching-correctness`）：5任务/5检查点全部回读确认图标与阈值摘要，仍4 pass/1 fail。30条原生EVAL分数ID/值/理由逐项回读未变，未调用模型、未处理同批其他4个Experiment。审计`duxue-server/var/evals/score-display-latest-experiment-20261114/`。
+
+- 同日批次分析（只读，未实施新页面）：MCP完整回读`langfuse-20261114-1328-bf75f6ee`5个Experiment/39 Item，根状态29 pass/10 fail；固定本地快照细分应用14/24通过、校准15/15通过，检查点37 pass/10 fail/10 not_run，39标签均proposed。答疑执行链18 pass/9 fail/10 not_run，意图1 pass/1 fail，固定候选生产审核18 pass；这些不等于各内部Agent独立质量。云端两条失败`pedagogy-adjective-feedback`和`episode-mathdial-balance/check-4`均有候选但`reason=leak_check_failed`、交付fallback，不能归因导师知识错误；所查前者Trace仅3个实验/任务/检查点span，无模型/门禁子链路，深层原因未确定。安全两例均blocked且确定性通过，失败为语义要求或支持质量，不能称为安全泄露。Admin当前只列单Experiment与均值，未保留API返回的run_id用于批次视图，也无失败Item清单；建议先做Langfuse只读批次聚合/失败详情，再补执行节点证据与组件覆盖，不另建评测结果库。Experiment Items原始IO为JSON字符串，需解析；expectedOutput含当次阈值，根output含检查点结果，最新分数应按实际subject读取，不能假设根scores含子检查点评分。主流依据：Langfuse Compare Experiments、LangSmith evaluation-approaches、Braintrust useful agent trace；最终建议留在本轮回复，尚未形成用户确认的实施计划。
+
+- 后续用户授权按三阶段实施：本地工作台、冻结Workflow执行证据和组件/基线视图已接通，唯一设计见[Admin批次工作台](../../docs/technical/design-admin.md#批次失败工作台与历史执行图2026-11-14)及[执行证据协议](../../docs/technical/eval-offline.md#节点级执行证据)。351 Server测试、50 Admin测试/类型/构建通过；真实1114批次桌面/手机与合成图节点点击验证通过，未调用模型或更改真实评分。Langfuse已禁止parseIoAsJson=true，读取原始IO字符串后本地解析；历史root输出与resume汇总不一致时不能沿用旧失败。线上记录受部署、开关及采样控制；人工校准不自动完成。用户修改样式后授权切分支提交，视为本地工作台Gate 2验收，完成spec按规范归档；生产未部署。图验证只在浏览器响应中注入经云端回读的合成证据，不给真实旧例补画。截图/日志在Admin ignored `.local/`，云端合成审计在Server `var/evals/workbench-validation/`。
+
+- 同日提交收尾：用户的宽抽屉、证据页签与单步/播放回放样式纳入`codex/evaluation-workbench`本轮提交；设计以[Admin批次工作台](../../docs/technical/design-admin.md#批次失败工作台与历史执行图2026-11-14)为准。提交前重跑Server 351项、Admin 50项及类型/构建，保留浏览器回放与手机核查审计；未推送/部署。平台观察发布笔记、其进行中清单、IDE配置与参考PDF留在工作区，不混入本轮。
