@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 24582,
+  "uid": "coig-exam_coig_exam_sampled_clean_v3.jsonl-823-d554619f31b7",
+  "dataset": "coig-cqia",
+  "record_sha256": "f2c86141ec768af26e95e1da3303bf9530eaedbbdf2befc51397594600b80ed2",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n选择符合题意的选项\n疫情期间，大学生郭岳“硬核”隔离38天，未连累一名亲友。自武汉回乡开始，他就戴了3层口罩和手套，未与任何人交谈；返乡后主动联系社区说明情况，进行自我隔离；出院后继续独居车库隔离，治愈后主动捐献血浆。郭岳“硬核”隔离“硬”在他（）①树立了正确的权利义务观②有较强的社会责任感③具有良好的公民素养④践行了社会主义核心价值观A.①④\tB.②③\tC.①②③④\tD.①③④"
+      },
+      {
+        "role": "assistant",
+        "content": "大学生郭岳“硬核”隔离38天，体现出他具有良好公民素养，强烈的责任意识，对自己、对他人、对社会负责任，树立了正确的权利义务观，践行了社会主义核心价值观，①②③④说法都正确。故选C。"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-823-d554619f31b7\", \"kind\": \"qa\", \"system_variant\": \"general\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 5600, \"supervised_tokens\": 53, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 24582,
+    "subject": "politics",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "公民权利与义务/社会责任",
+    "reason": "结合疫情隔离案例，综合考查权利义务观、社会责任感、公民素养及核心价值观等多个政治学科维度，需要学生具备较高的综合分析与价值判断能力，符合高中政治主观题或高难度选择题的特征。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-21246.json"
+  },
+  "content_review": {
+    "line": 24582,
+    "subject_correct": true,
+    "complete": true,
+    "level": "other_k12",
+    "reason": "考查公民素养、社会责任感、社会主义核心价值观等泛泛价值观判断，属于初中道德与法治范畴，非高中政治特有的哲学/经济学/法治推理深度。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n选择符合题意的选项\n疫情期间，大学生郭岳“硬核”隔离38天，未连累一名亲友。自武汉回乡开始，他就戴了3层口罩和手套，未与任何人交谈；返乡后主动联系社区说明情况，进行自我隔离；出院后继续独居车库隔离，治愈后主动捐献血浆。郭岳“硬核”隔离“硬”在他（）①树立了正确的权利义务观②有较强的社会责任感③具有良好的公民素养④践行了社会主义核心价值观A.①④\tB.②③\tC.①②③④\tD.①③④\n我想先弄清这题需要用哪个概念，以及题目条件怎样联系，请引导我。",
+      "images": []
+    }
+  ]
+}

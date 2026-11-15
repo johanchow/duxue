@@ -1,0 +1,61 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 358,
+  "uid": "cmm-math-16612",
+  "dataset": "cmm-math-multimodal",
+  "record_sha256": "65809202cc0181499fa4a76c95b9577ea295160cd58d71804d1ae447eabdb225",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "<image>\nProblem:\n阅读下面的程序, 若分别输入 $0,1,4,8,9,10$, 则输出的结果是 ( )\n\n<ImageHere>\n\nOptions:\nA. 0,8\nB. 4 , 8\nC. $0,4,8$\nD. $0,1,4,8,9,10$"
+      },
+      {
+        "role": "assistant",
+        "content": "算法的功能是輸入一个数, 判断其是否能被 4 整除, 若能, 则输出该数, 在输入的数中，能被 4 整除的有 $0,4,8$.\n\n答案: C"
+      }
+    ],
+    "images": [
+      "images/af/af49b1c132d91f378602009a5bf89d1d2b1cdd8860da30c78181954973a0c121.jpg"
+    ],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"cmm-math-multimodal\", \"uid\": \"cmm-math-16612\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/math/multimodal/cot\", \"rank\": 355, \"supervised_tokens\": 52, \"token_budget\": 600000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [
+    "a56161049f5dd1c74fa4a34e16f24760f100a53cb94ab45b566.jpg"
+  ],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 358,
+    "subject": "math",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "算法与程序框图（条件语句）",
+    "reason": "题面包含一段伪代码，要求根据输入判断输出。这是中国高中数学课程中“算法初步”章节的典型题型，考察对条件语句（IF-THEN）和取余运算（MOD）的理解，属于高考基础考点范围。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-images-v1/review-358.json"
+  },
+  "content_review": {
+    "line": 358,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "题目考查基本算法语句（INPUT, IF-THEN, PRINT）及取模运算（MOD）的理解，属于高中数学算法初步内容，符合高考层级。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\n<image>\nProblem:\n阅读下面的程序, 若分别输入 $0,1,4,8,9,10$, 则输出的结果是 ( )\n\n<ImageHere>\n\nOptions:\nA. 0,8\nB. 4 , 8\nC. $0,4,8$\nD. $0,1,4,8,9,10$\n我想直接看答案。你能帮我解决吗？",
+      "images": [
+        "a56161049f5dd1c74fa4a34e16f24760f100a53cb94ab45b566.jpg"
+      ]
+    }
+  ]
+}

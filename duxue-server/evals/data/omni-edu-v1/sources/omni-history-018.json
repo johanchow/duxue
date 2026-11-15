@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 25575,
+  "uid": "aquila-all-87622-7965987e26f3",
+  "dataset": "aquilaedu",
+  "record_sha256": "059f9355a1a3cf810efae7ff370addc2cbdda489909389b90605992ed50edb60",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n请在下列每题的四个选项中选出最符合题意的一项。\n6．2019年1月14日，屠呦呦入围BBC“20世纪最伟大的科学家”屠呦呦发现的青蒿素为中医药科技创新和人类健康事业作出了重要贡献，那么下列属于中医学著作的是（　　） ①《伤寒杂病论》②《农政全书》③《天工开物》④《本草纲目》 A．①②\tB．①③\tC．③④\tD．①④"
+      },
+      {
+        "role": "assistant",
+        "content": "属于中医学著作的是①《伤寒杂病论》④《本草纲目》。东汉末年，张仲景写成的《伤寒杂病论》全面阐述了中医的理论和治病原则，他医术高明，医德高尚，后世尊称他为“医圣”。 全面阐述了中医的理论，确立了辨症施治的医疗原则，奠定了中医治疗学的基础。还提出了“治未病”理论，提倡预防疾病。被后人尊称为医圣。明朝医药学家李时珍，在行医的同时，到各地进行实地考察、搜集民间药方，广泛采集标本，并亲自试验药物性能，写成的总结性药物学巨著《本草纲目》，内容丰富，考订详细，附有大量插图。后来陆续被译成多国文字，成为世界医药学重要文献，被誉为“东方医学巨典”。 故选：D。 \n#### 答案是：D"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"aquilaedu\", \"uid\": \"aquila-all-87622-7965987e26f3\", \"kind\": \"qa\", \"system_variant\": \"general\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 6593, \"supervised_tokens\": 187, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 25575,
+    "subject": "history",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "中国古代科技成就（医学著作辨析）",
+    "reason": "考察《伤寒杂病论》、《本草纲目》等中医经典与其他科技著作（如《农政全书》、《天工开物》）的区别，是高中历史中国古代科技部分的常见考点。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-22395.json"
+  },
+  "content_review": {
+    "line": 25575,
+    "subject_correct": true,
+    "complete": true,
+    "level": "other_k12",
+    "reason": "考查《伤寒杂病论》《本草纲目》等古代中医学著作的辨识，属初中历史常识。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n请在下列每题的四个选项中选出最符合题意的一项。\n6．2019年1月14日，屠呦呦入围BBC“20世纪最伟大的科学家”屠呦呦发现的青蒿素为中医药科技创新和人类健康事业作出了重要贡献，那么下列属于中医学著作的是（　　） ①《伤寒杂病论》②《农政全书》③《天工开物》④《本草纲目》 A．①②\tB．①③\tC．③④\tD．①④\n我想直接看答案。你能帮我解决吗？",
+      "images": []
+    }
+  ]
+}

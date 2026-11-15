@@ -1,0 +1,64 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 15206,
+  "uid": "race-high3844.txt-c13a",
+  "dataset": "reading-race",
+  "record_sha256": "2305f47e6ae19cf92c0a7eb6b620de4bd3e69c957fd10641e1534d5a104c7f3d",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Answer the reading-comprehension question from the supplied passage and options. Base the answer only on the passage, reason carefully when needed, and follow the requested answer format."
+      },
+      {
+        "role": "user",
+        "content": "Passage:\nThe south and east of the Great Lakes is famous for the huge amounts of snow it receives. When the snow starts to fall every year, people start discussing the phrase \"lake-effect snow\".\nLake-effect snow which is influenced by the movement of cold air over the relatively warm water of the Great Lakes often comes in late autumn and early winter. Because of the at least 20 degrees' difference between the lake water and the overrunning air, it's easy to form huge amounts of snow.\nAs the cool air crosses the water of Great Lakes, the lowest levels of the atmosphere begin to warm and pick up moisture. This newly warmed atmosphere is lighter than the cold air above it, so it starts rising. As the changed air continues to climb higher and higher, it finally meets much colder atmosphere which changes the moisture into water drops and ice, forming clouds. After this course repeats a number of times, the clouds become heavier and heavier, and then they are changed into snow and fall down.\nThe most important point that decides the amount of snowfall is the direction of the wind. If the wind runs perpendicularly across the lake, there won't be plenty of time for clouds to develop. However, if the wind runs in the opposite direction, clouds will form easily. The longer the cold air travels over the lake, the more moisture it is able to produce, which leads to a greater amount of snow.\nThe largest amount of the lake-effect snow was found across the U.P. of Michigan, the northwestern Pennsylvania and the far southwestern and northwestern New York, which are all along the south or east of the Great Lakes. It has been over 100 inches of snowfall in a winter season.\n\nProblem:\nThe level of the snowfall depends on   _  .\n\nOptions:\nA. the size of the lake\nB. the direction of the wind\nC. the temperature of the lake\nD. the strength of the wind"
+      },
+      {
+        "role": "assistant",
+        "content": "The correct answer is supported by the fourth paragraph, which explicitly states: \"The most important point that decides the amount of snowfall is the direction of the wind.\" The passage further explains that if the wind runs perpendicularly, there is insufficient time for clouds to develop, whereas a wind running in the opposite direction allows clouds to form easily and travel longer over the lake, producing more moisture and snow.\n\nRegarding the other options:\n- Option A (the size of the lake) is not mentioned as a deciding factor in the text.\n- Option C (the temperature of the lake) is mentioned as a condition for forming snow (\"at least 20 degrees' difference\"), but the text identifies wind direction as the specific factor that \"decides the amount.\"\n- Option D (the strength of the wind) is not discussed; the passage focuses on the wind's direction and the distance it travels over the water, not its speed or force.\n\nB"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"reading-race\", \"uid\": \"race-high3844.txt-c13a\", \"kind\": \"reading\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/reading/reading-race\", \"rank\": 1435, \"supervised_tokens\": 195, \"token_budget\": 396000}, \"system_prompt_id\": \"reading_comprehension\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 15206,
+    "subject": "english",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "阅读理解-因果逻辑",
+    "reason": "英文地理/气象科普文，考察影响降雪量的关键因素（风向），需要理解文中的因果链条。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-14329.json"
+  },
+  "content_review": {
+    "line": 15206,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "英文原文阅读理解，考查地理/气象科普类文章的细节理解，符合高考英语阅读题型。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "diagnostic_adaptation": {
+    "id": "omni-english-006",
+    "student_attempt": "我目前只知道这题涉及阅读理解-因果逻辑，还没有写出具体推理或结论。请帮我确定第一步。",
+    "assessment": "insufficient",
+    "feedback_criteria": "学生只报告了知识主题，未给出可核验的具体结果或推理。不得将未作答判为答错，也不能虚构学生的错误步骤或已掌握。给一个切题且可执行的起步或自检提示。",
+    "is_choice": true,
+    "model": "qwen3.8-flash",
+    "authored_revision": "assistant-explicit-insufficient-evidence.v1"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nPassage:\nThe south and east of the Great Lakes is famous for the huge amounts of snow it receives. When the snow starts to fall every year, people start discussing the phrase \"lake-effect snow\".\nLake-effect snow which is influenced by the movement of cold air over the relatively warm water of the Great Lakes often comes in late autumn and early winter. Because of the at least 20 degrees' difference between the lake water and the overrunning air, it's easy to form huge amounts of snow.\nAs the cool air crosses the water of Great Lakes, the lowest levels of the atmosphere begin to warm and pick up moisture. This newly warmed atmosphere is lighter than the cold air above it, so it starts rising. As the changed air continues to climb higher and higher, it finally meets much colder atmosphere which changes the moisture into water drops and ice, forming clouds. After this course repeats a number of times, the clouds become heavier and heavier, and then they are changed into snow and fall down.\nThe most important point that decides the amount of snowfall is the direction of the wind. If the wind runs perpendicularly across the lake, there won't be plenty of time for clouds to develop. However, if the wind runs in the opposite direction, clouds will form easily. The longer the cold air travels over the lake, the more moisture it is able to produce, which leads to a greater amount of snow.\nThe largest amount of the lake-effect snow was found across the U.P. of Michigan, the northwestern Pennsylvania and the far southwestern and northwestern New York, which are all along the south or east of the Great Lakes. It has been over 100 inches of snowfall in a winter season.\n\nProblem:\nThe level of the snowfall depends on   _  .\n\nOptions:\nA. the size of the lake\nB. the direction of the wind\nC. the temperature of the lake\nD. the strength of the wind\n我的尝试：我目前只知道这题涉及阅读理解-因果逻辑，还没有写出具体推理或结论。请帮我确定第一步。\n请检查我已有的理由或结果，只指出可核验的部分，并给一个自检提示。",
+      "images": []
+    }
+  ]
+}

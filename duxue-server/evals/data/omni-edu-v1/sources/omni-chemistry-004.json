@@ -1,0 +1,63 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 21027,
+  "uid": "sciinst-en-26320",
+  "dataset": "sciinstruct-en-rewritten",
+  "record_sha256": "405ae73c56ff81efa86602910f9a073faba919ca74c2865d0499d4f5f61f8a7b",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\nWhich of the following crystals needs to break covalent bonds when melting?\\n(A) HF;\\n(B) Al;\\n(C) KF;\\n(D) SiO_2;"
+      },
+      {
+        "role": "assistant",
+        "content": "To determine which crystal requires breaking covalent bonds upon melting, we must analyze the specific type of crystal lattice and the dominant forces holding the particles together in the solid state for each option. Melting is a phase transition where a solid turns into a liquid; this process requires overcoming the attractive forces that maintain the rigid structure of the solid.\n\n**Step 1: Analyze the bonding and crystal type for each option.**\n\n*   **(A) HF (Hydrogen Fluoride):** HF is a polar covalent molecule. In the solid state, individual HF molecules are held together primarily by strong intermolecular forces, specifically hydrogen bonding and dipole-dipole interactions. While the atoms *within* an HF molecule are connected by covalent bonds, the crystal lattice itself is a **molecular crystal**. When HF melts, the energy supplied is used to overcome the intermolecular forces (hydrogen bonds) between the molecules, not the covalent bonds within the molecules. The molecules remain intact.\n\n*   **(B) Al (Aluminum):** Aluminum is a metal. It forms a **metallic crystal** lattice consisting of positive metal ions (cations) immersed in a \"sea\" of delocalized valence electrons. The forces holding the lattice together are **metallic bonds**. Melting aluminum requires overcoming these metallic bonds, not covalent bonds.\n\n*   **(C) KF (Potassium Fluoride):** KF is formed from a metal (potassium) and a non-metal (fluorine). It is an **ionic crystal** composed of potassium cations ($K^+$) and fluoride anions ($F^-$). The lattice is held together by strong electrostatic attractions known as **ionic bonds**. Melting KF involves overcoming these ionic bonds to allow the ions to move freely.\n\n*   **(D) SiO$_2$ (Silicon Dioxide):** Silicon dioxide (quartz) is a classic example of a **covalent network solid** (or atomic crystal). In this structure, there are no discrete molecules. Instead, every silicon atom is covalently bonded to four oxygen atoms, and every oxygen atom is covalently bonded to two silicon atoms, forming a continuous, giant three-dimensional network. The entire crystal is essentially one giant molecule held together entirely by **covalent bonds**.\n\n**Step 2: Determine which bonds are broken during melting.**\n\n*   For molecular crystals like HF, melting breaks **intermolecular forces** (hydrogen bonds), leaving the intramolecular covalent bonds intact.\n*   For metallic crystals like Al, melting breaks **metallic bonds**.\n*   For ionic crystals like KF, melting breaks **ionic bonds**.\n*   For covalent network solids like SiO$_2$, the only forces holding the structure together are the covalent bonds themselves. Therefore, to melt SiO$_2$, the continuous network must be disrupted, which necessitates breaking the **covalent bonds** between the silicon and oxygen atoms.\n\n**Step 3: Conclusion.**\n\nThe question asks specifically for the crystal that needs to break covalent bonds when melting. While HF contains covalent bonds, they are not broken during the melting process. Only SiO$_2$, being a covalent network solid, requires the breaking of covalent bonds to transition from solid to liquid.\n\nThe correct answer is (D) SiO_2."
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"sciinstruct-en-rewritten\", \"uid\": \"sciinst-en-26320\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 2045, \"supervised_tokens\": 710, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 21027,
+    "subject": "chemistry",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "晶体结构与性质-熔化时破坏的作用力",
+    "reason": "题目要求判断哪种晶体熔化需破坏共价键。这是高中化学物质结构与性质模块的核心考点，考察原子晶体（如SiO2）、分子晶体、离子晶体和金属晶体的微粒间作用力区别，完全符合高考考查范围和能力要求。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-22821.json"
+  },
+  "content_review": {
+    "line": 21027,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "考查不同晶体类型（分子晶体、金属晶体、离子晶体、共价/原子晶体）熔化时克服的作用力，SiO2作为原子晶体熔化需破坏共价键是中国高中化学必修/选择性必修的经典高频考点。参考解析准确。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "diagnostic_adaptation": {
+    "id": "omni-chemistry-004",
+    "student_attempt": "SiO2 is a covalent network solid. In this structure, atoms are connected by strong covalent bonds throughout the entire crystal lattice. To melt it, these bonds must be broken to allow particles to move freely. HF is molecular, so only intermolecular forces break. Al has metallic bonds and KF has ionic bonds. So SiO2 is the one needing covalent bond breaking.",
+    "assessment": "correct",
+    "feedback_criteria": "Verify if the student correctly identifies SiO2 as a covalent network/atomic crystal where melting requires breaking intramolecular covalent bonds, distinguishing this from molecular (HF), metallic (Al), and ionic (KF) crystals where other forces dominate phase changes.",
+    "is_choice": true,
+    "model": "qwen3.8-flash"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\nWhich of the following crystals needs to break covalent bonds when melting?\\n(A) HF;\\n(B) Al;\\n(C) KF;\\n(D) SiO_2;\n我的尝试：SiO2 is a covalent network solid. In this structure, atoms are connected by strong covalent bonds throughout the entire crystal lattice. To melt it, these bonds must be broken to allow particles to move freely. HF is molecular, so only intermolecular forces break. Al has metallic bonds and KF has ionic bonds. So SiO2 is the one needing covalent bond breaking.\n请检查我已有的理由或结果，只指出可核验的部分，并给一个自检提示。",
+      "images": []
+    }
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 23378,
+  "uid": "coig-exam_coig_exam_sampled_clean_v3.jsonl-717-9e0421978395",
+  "dataset": "coig-cqia",
+  "record_sha256": "6d33a59182cc643086aca83a887a6dc9f963d7add9abb0514c4e649f3fc26675",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n请选择正确的选项\n小闽参加了学校组织的“学四史，树理想”系列研学活动，被先辈们的英勇事迹深深感动，他暗下决心要努力成为社会主义合格的建设者和接班人。材料说明（）①情感表达的方式是多种多样的②情感会影响人们的判断和选择③情感是短暂的且会随情境变化④情感可通过有意义的活动获得A．①②B．①④C．②③D．②④"
+      },
+      {
+        "role": "assistant",
+        "content": "题干中小闽参加“学四史，树理想”系列研学活动，被激发了爱国情感和责任感，说明情感可以通过有意义的活动获得；他因此暗下决心要努力成为社会主义合格的建设者和接班人，说明情感会影响我们的判断和选择，驱使我们做出行动，②④正确。①在材料中未体现，不符合题意。③说法错误，情感是相对稳定的，情绪是短暂的且会随情境变化。故选D。"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-717-9e0421978395\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 4396, \"supervised_tokens\": 94, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 23378,
+    "subject": "politics",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "情感的作用与获得方式（道德与法治/思想政治）",
+    "reason": "题目考查高中政治学科中关于情感、价值观及社会实践的知识点，属于高考政治常见题型。题干材料完整，选项清晰，无需额外图表或上下文即可作答。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-23378.json"
+  },
+  "content_review": {
+    "line": 23378,
+    "subject_correct": true,
+    "complete": true,
+    "level": "other_k12",
+    "reason": "考查情感与情绪的区别及情感的作用，属于初中道德与法治（七年级）内容，非高中政治哲学/经济学/法治推理层级。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n请选择正确的选项\n小闽参加了学校组织的“学四史，树理想”系列研学活动，被先辈们的英勇事迹深深感动，他暗下决心要努力成为社会主义合格的建设者和接班人。材料说明（）①情感表达的方式是多种多样的②情感会影响人们的判断和选择③情感是短暂的且会随情境变化④情感可通过有意义的活动获得A．①②B．①④C．②③D．②④\n这题我卡住了。请先帮我拆出一个能动手的小步骤，不要给完整答案。",
+      "images": []
+    }
+  ]
+}

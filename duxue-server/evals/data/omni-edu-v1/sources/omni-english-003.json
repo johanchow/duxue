@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 13945,
+  "uid": "race-high10059.txt-e41b",
+  "dataset": "reading-race",
+  "record_sha256": "6907fddc2eacbf4b2d294c3b027d5bde03c39653775e3625459aef9b0705dd39",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Answer the reading-comprehension question from the supplied passage and options. Base the answer only on the passage, reason carefully when needed, and follow the requested answer format."
+      },
+      {
+        "role": "user",
+        "content": "Passage:\nOpposition is growing to the Berlin Zoo's plans to find a new home for Knut, the moneymaking celebrity polar bear whose popularity has been exploited by environmentalists and even Canadian tourism promoters.\nNo longer cute, and just days before his second birthday, Knut will be given a new home that is expected to include a potential mating partner.\nThe Berlin Zoo, facing the global economic crisis, can't afford the estimated $ 13 million it would take to acquire a female and a new home for them to share. \"It's time for him to go--the sooner he gets a new home the better,\" said senior bear keeper Heiner Kloes.\nBut some Berliners are beginning a campaign, collecting petition   signatures and arguing that he's a tourist draw and a symbol as important as the Brandenburg Gate. \"He means a lot to many people. When you're with him you forget your problems,\" Hartmut Wiedenroth, co-founder of the campaign, told Spiegel Online.\nKnut became an international celebrity in 2007, drawing huge crowds to his cage and _ sales of thousands of Knut toys and Knut-shaped candies.\nThe Vancouver-based Canadian Tourism Commission made Knut a major part of its \"Canada--Keep Exploring\" campaign to draw tourists to the country-- and especially to polar bear country in northern Manitoba to see them in their natural habitat. Environmentalists also used the bear to promote the fight against global warming.\nBut Knut's popularity diminished as his size increased to 210 kilograms, He was photographed at one point snapping   at a child near his cage. In September his keeper, Thomas Doerflein, died of a heart attack. Doerflein, who became a celebrity himself after nursing the tiny ball of white fur when Knut's mother rejected him, had been re-assigned shortly after Knut's first birthday. Some animal rights critics said Knut has been showing unusually aggressive behavior because of his unnatural upbringing.\n\nProblem:\nA campaign is being launched in Berlin  _  .\n\nOptions:\nA. in order to keep Knut in the zoo\nB. by selling Knut-shaped candies\nC. to draw tourists to northern Manitoba\nD. to warn people of global warming"
+      },
+      {
+        "role": "assistant",
+        "content": "The correct option is A because the passage explicitly states that \"some Berliners are beginning a campaign\" to oppose the zoo's plan to move Knut. The text explains that these campaigners argue \"he's a tourist draw and a symbol as important as the Brandenburg Gate,\" implying their goal is to prevent his removal and keep him at the Berlin Zoo.\n\nOption B is incorrect because the sale of \"Knut-shaped candies\" is mentioned as a past event that contributed to his celebrity status in 2007, not as the method or purpose of the current campaign. Option C is incorrect because drawing tourists to northern Manitoba was the goal of the \"Canadian Tourism Commission,\" not the Berlin campaign. Option D is incorrect because using the bear to \"promote the fight against global warming\" was an action taken by \"Environmentalists,\" not the specific purpose of the Berliners' petition.\n\nA"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"reading-race\", \"uid\": \"race-high10059.txt-e41b\", \"kind\": \"reading\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/reading/reading-race\", \"rank\": 174, \"supervised_tokens\": 180, \"token_budget\": 396000}, \"system_prompt_id\": \"reading_comprehension\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 13945,
+    "subject": "english",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "阅读理解-目的意图",
+    "reason": "英文社会新闻，考察发起某项活动（campaign）的目的，需定位关键句。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-14329.json"
+  },
+  "content_review": {
+    "line": 13945,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "英文原文阅读理解，考查细节定位与推理，符合高考英语阅读题型与难度。参考解析正确。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nPassage:\nOpposition is growing to the Berlin Zoo's plans to find a new home for Knut, the moneymaking celebrity polar bear whose popularity has been exploited by environmentalists and even Canadian tourism promoters.\nNo longer cute, and just days before his second birthday, Knut will be given a new home that is expected to include a potential mating partner.\nThe Berlin Zoo, facing the global economic crisis, can't afford the estimated $ 13 million it would take to acquire a female and a new home for them to share. \"It's time for him to go--the sooner he gets a new home the better,\" said senior bear keeper Heiner Kloes.\nBut some Berliners are beginning a campaign, collecting petition   signatures and arguing that he's a tourist draw and a symbol as important as the Brandenburg Gate. \"He means a lot to many people. When you're with him you forget your problems,\" Hartmut Wiedenroth, co-founder of the campaign, told Spiegel Online.\nKnut became an international celebrity in 2007, drawing huge crowds to his cage and _ sales of thousands of Knut toys and Knut-shaped candies.\nThe Vancouver-based Canadian Tourism Commission made Knut a major part of its \"Canada--Keep Exploring\" campaign to draw tourists to the country-- and especially to polar bear country in northern Manitoba to see them in their natural habitat. Environmentalists also used the bear to promote the fight against global warming.\nBut Knut's popularity diminished as his size increased to 210 kilograms, He was photographed at one point snapping   at a child near his cage. In September his keeper, Thomas Doerflein, died of a heart attack. Doerflein, who became a celebrity himself after nursing the tiny ball of white fur when Knut's mother rejected him, had been re-assigned shortly after Knut's first birthday. Some animal rights critics said Knut has been showing unusually aggressive behavior because of his unnatural upbringing.\n\nProblem:\nA campaign is being launched in Berlin  _  .\n\nOptions:\nA. in order to keep Knut in the zoo\nB. by selling Knut-shaped candies\nC. to draw tourists to northern Manitoba\nD. to warn people of global warming\n这题我卡住了。请先帮我拆出一个能动手的小步骤，不要给完整答案。",
+      "images": []
+    }
+  ]
+}

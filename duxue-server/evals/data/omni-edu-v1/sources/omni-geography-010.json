@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 23553,
+  "uid": "coig-exam_coig_exam_sampled_clean_v3.jsonl-1910-012c97bb448c",
+  "dataset": "coig-cqia",
+  "record_sha256": "5e30757ff7b37c5cff575f0595ac0e5c8a109841b2387f67350fce1aef3722f9",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n请根据题目内容选择符合要求的选项\n3.“用工荒”对沿海地区经济可能产生的影响是A.劳动力回流第一产业，第一产业比重提高B.刺激科技创新，促进工业结构优化升级C.劳动力数量减少，平均工资下降D.资金投入减少，生产总值下降"
+      },
+      {
+        "role": "assistant",
+        "content": "本题主要考查“用工荒”对沿海地区经济可能产生的影响。“用工荒”问题产生，源于劳动力缺少，从供求的角度来看，势必劳动力的价格上涨。由于中西部地区自身经济发展快速，提供的就业机会增多，劳动力价格也上涨，更加导致“用工荒”的情况。此情形下，部分劳动力可能回流到了第一产业，但并不代表第一产业的比重提高。由于结构性的用工短缺，此时能刺激东部地区的部分企业调整产业结构，促进工业结构优化升级，加大技术含量，发展新兴产业。企业加大了资金和技术的投入，企业生产总值将不断提升。\n\n因此答案为：B"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-1910-012c97bb448c\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 4571, \"supervised_tokens\": 123, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 23553,
+    "subject": "geography",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "人口迁移与产业结构升级",
+    "reason": "题目考查“用工荒”这一地理/经济现象对沿海地区产业结构的影响。涉及劳动力成本上升倒逼技术创新和产业升级的逻辑，是高中地理人文地理部分或政治经济部分的常见考点，符合高考层级。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-23347.json"
+  },
+  "content_review": {
+    "line": 23553,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "考查'用工荒'对沿海地区产业结构升级的影响，属于高中地理必修二人口迁移与产业转移的综合推理，符合高考层级。参考解析正确指出劳动力短缺会倒逼产业升级。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "Problem:\n请根据题目内容选择符合要求的选项\n3.“用工荒”对沿海地区经济可能产生的影响是A.劳动力回流第一产业，第一产业比重提高B.刺激科技创新，促进工业结构优化升级C.劳动力数量减少，平均工资下降D.资金投入减少，生产总值下降",
+      "images": []
+    }
+  ]
+}

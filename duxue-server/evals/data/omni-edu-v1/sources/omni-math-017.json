@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 10517,
+  "uid": "cmm-math-21408",
+  "dataset": "cmm-math-text",
+  "record_sha256": "6d9d1ef2a92f89fac1808aa44fa5954e58afb4ccc33c99eed8fb3fdabba200d6",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n已知 $z_{1}, z_{2} \\in C,\\left|z_{1}+z_{2}\\right|=2 \\sqrt{2},\\left|z_{1}\\right|=\\sqrt{3},\\left|z_{2}\\right|=\\sqrt{2}$, 则 $\\left|z_{1}-z_{2}\\right|=$ ( )\n\nOptions:\nA. 1\nB. $\\frac{1}{2}$\nC. 2\nD. $\\sqrt{2}$"
+      },
+      {
+        "role": "assistant",
+        "content": "本题可用特值法, 不妨设 $z_{1}=\\sqrt{3}, z_{2}=\\sqrt{2}(\\cos \theta+i \\sin \theta), \theta \\in[0,2 \\pi)$,由于 $\\left|z_{1}+z_{2}\right|=2 \\sqrt{2}$, 可得 $\\sqrt{(\\sqrt{3}+\\sqrt{2} \\cos \theta)^{2}+(\\sqrt{2} \\sin \theta)^{2}}=2 \\sqrt{2}$,解得 $\\cos \theta=\frac{\\sqrt{6}}{4}$,则 $\\left|z_{1}-z_{2}\right|=\\sqrt{(\\sqrt{3}-\\sqrt{2} \\cos \theta)^{2}+(\\sqrt{2} \\sin \theta)^{2}}=\\sqrt{5-6 \\cos \theta}=\\sqrt{2}$, 故选 D."
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"cmm-math-text\", \"uid\": \"cmm-math-21408\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/math/text/cot/other\", \"rank\": 7661, \"supervised_tokens\": 214, \"token_budget\": 1345000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 10517,
+    "subject": "math",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "复数的模与几何意义",
+    "reason": "题目给出两个复数的模及其和的模，求差的模。这利用了平行四边形定则或复数模的性质 $|z_1+z_2|^2 + |z_1-z_2|^2 = 2(|z_1|^2+|z_2|^2)$。这是高中数学选修或必修中复数部分的典型考点，符合高考层级。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-8246.json"
+  },
+  "content_review": {
+    "line": 10517,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "复数模的运算结合余弦定理或向量方法求解，属于高中数学复数模块的典型高考层级题目，需要高中特有的代数与几何综合推理。参考解析用特值法计算过程正确。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "Problem:\n已知 $z_{1}, z_{2} \\in C,\\left|z_{1}+z_{2}\\right|=2 \\sqrt{2},\\left|z_{1}\\right|=\\sqrt{3},\\left|z_{2}\\right|=\\sqrt{2}$, 则 $\\left|z_{1}-z_{2}\\right|=$ ( )\n\nOptions:\nA. 1\nB. $\\frac{1}{2}$\nC. 2\nD. $\\sqrt{2}$",
+      "images": []
+    }
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 25061,
+  "uid": "coig-exam_coig_exam_sampled_clean_v3.jsonl-877-bf61314d052b",
+  "dataset": "coig-cqia",
+  "record_sha256": "86b1f5ca1e917269b4acc7a170c3c0de92e67a0fc7199329fb99e6d39bc25a47",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n根据题目要求选择正确的选项\n曾几何时，由于技术所限，人类眼中的海洋只是邻近的一方水域；随着造船技术的提高和海上罗盘的使用，人类进入地理大发现时代，视野投向更广阔的海域；而今，借助载人深潜器、大洋钻探船等高新技术设备，深海世界的神秘面纱逐步被揭开。这表明（　　）①实践具有社会历史性②实践是认识发展的动力③实践具有直接现实性④实践是认识的目的和归宿。A．①②\tB．①④\tC．②③\tD．③④"
+      },
+      {
+        "role": "assistant",
+        "content": "A\n\n**解析：**\n题干描述了人类对海洋的认识随着造船技术、罗盘、深潜器等实践手段的进步而不断深入，从邻近水域扩展到广阔海域，再到揭开深海世界的神秘面纱。\n1.  **实践具有社会历史性**：不同历史时期，人类受限于当时的技术水平（如古代技术所限、地理大发现时代的技术、现代高新技术设备），对海洋的认识范围和深度不同，体现了实践是历史地发展着的，①符合题意。\n2.  **实践是认识发展的动力**：实践的发展提供了新的认识工具（如罗盘、深潜器），延伸了人类的感官，推动了人类对海洋认识的深化，②符合题意。\n3.  题干强调的是认识随实践工具的发展而深化，并未体现实践将观念转化为现实（直接现实性），也未体现认识最终是为了指导实践（目的和归宿），因此③④与题意不符。\n\n综上所述，①②正确。故选 A。"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-877-bf61314d052b\", \"kind\": \"qa\", \"system_variant\": \"general\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 6079, \"supervised_tokens\": 206, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 25061,
+    "subject": "politics",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "哲学-实践的特征与作用",
+    "reason": "通过人类探索海洋的历史进程，考察马克思主义哲学中“实践”的相关概念（社会历史性、动力等）。这是高中政治必修四《生活与哲学》的标准考题，逻辑严密，符合高考层级。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-21758.json"
+  },
+  "content_review": {
+    "line": 25061,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "运用高中思想政治《生活与哲学》中实践的特征（社会历史性、直接现实性）及实践与认识的辩证关系进行辨析，属高中哲学特有知识。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n根据题目要求选择正确的选项\n曾几何时，由于技术所限，人类眼中的海洋只是邻近的一方水域；随着造船技术的提高和海上罗盘的使用，人类进入地理大发现时代，视野投向更广阔的海域；而今，借助载人深潜器、大洋钻探船等高新技术设备，深海世界的神秘面纱逐步被揭开。这表明（　　）①实践具有社会历史性②实践是认识发展的动力③实践具有直接现实性④实践是认识的目的和归宿。A．①②\tB．①④\tC．②③\tD．③④\n我想直接看答案。你能帮我解决吗？",
+      "images": []
+    }
+  ]
+}

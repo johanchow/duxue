@@ -1,0 +1,82 @@
+{
+  "schema_version": "dialogue-eval.v2",
+  "id": "omni-history-019",
+  "type": "single_turn",
+  "replay_mode": "fixed_history",
+  "source": {
+    "kind": "synthetic",
+    "coverage": "authored",
+    "provider": "coig-cqia",
+    "note": "{\"source_record\": \"sources/omni-history-019.json\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-1216-591948d77465\", \"source_category\": \"subject_competence\"}"
+  },
+  "messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "Problem:\n单选\n英国资产阶级革命、美国独立战争、法国大革命的共同点是\n英国资产阶级革命、美国独立战争、法国大革命的共同点是A.处死了国王B.推翻了专制制度C.打败了外国的武装干涉D.促进了本国资本主义的发展",
+      "images": []
+    }
+  ],
+  "checks": [
+    {
+      "id": "check-1",
+      "after_message": "m1",
+      "component": "tutoring.turn",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "problem": {
+            "summary": "Problem:\n单选\n英国资产阶级革命、美国独立战争、法国大革命的共同点是\n英国资产阶级革命、美国独立战争、法国大革命的共同点是A.处死了国王B.推翻了专制制度C.打败了外国的武装干涉D.促进了本国资本主义的发展",
+            "active_subgoal": "近代西方资产阶级革命比较",
+            "substantive_attempts": 0,
+            "hints_given": 0
+          },
+          "task_title": "本地学科答疑评测",
+          "task_active": true
+        },
+        "note": "Injected evaluation context; not a production database observation."
+      },
+      "grading": {
+        "deterministic": [
+          {
+            "id": "delivered",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "answer"
+            ]
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "correctness",
+            "type": "score",
+            "rubric": "内部完整解题：依据原题和实际图片独立核验最终结论、推导、定义域、单位、条件及各小问覆盖。允许数学等价表达与有依据的异解。1分错误/无解答，2分重要错误，3分方向正确但关键缺漏，4分结论与主要推导正确且完整，5分进一步严谨清晰。只评价实际solution，不要求启发提问。",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "本题知识目标：近代西方资产阶级革命比较。参考答案是上游未认证材料，须独立核验；参考有争议时不得盲从，不因合理异解扣分。",
+            "expected": "pass"
+          }
+        ],
+        "reference_response": "依据所学知识分析选项可知，美国独立战争没有处死国王，英国资产阶级革命中处死了国王查理一世，法国大革命中处死了国王路易十六，所以A项错误；B项美国推翻的是英国的殖民统治，英国和法国推翻的是君主专制，所以B项不正确；C项英国资产阶级革命中没有涉及外国武装干涉，所以C项错误；英国资产阶级革命、美国独立战争、法国大革命后都走上了资本主义发展的道路，都促进了资本主义的发展，所以D项表述正确，故选D。",
+        "rationale": [
+          "Synthetic local adaptation; reference and semantic labels remain proposed."
+        ]
+      }
+    }
+  ],
+  "review_batch": "omni-edu-v1",
+  "label_status": "proposed",
+  "note": "Adapted evaluation task; original system and final assistant are source/scoring-only. No teacher certification.",
+  "conversation_id": "cbbc894551a2e6f90691",
+  "turn_index": 0,
+  "tags": [
+    "subject_competence",
+    "history",
+    "other_k12",
+    "solve"
+  ]
+}

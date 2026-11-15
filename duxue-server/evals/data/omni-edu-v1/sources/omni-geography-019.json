@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 28875,
+  "uid": "scienceqa-9258",
+  "dataset": "scienceqa-text",
+  "record_sha256": "5f9e1e075f359e9625044084a52237e1242a2bd2bb4feff469a88f5fb30fe44b",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\nWhich change best matches the sentence?\nMud is left behind along the sides of a river.\n\nOptions:\nA. erosion\nB. drought\nC. deposition"
+      },
+      {
+        "role": "assistant",
+        "content": "To determine the correct change, let's analyze the key action described in the sentence: \"Mud is left behind along the sides of a river.\"\n\n1.  **Analyze the process of moving sediment**: When water flows in a river, it picks up soil, sand, and mud. The process of wearing away and moving these materials is called **erosion**.\n2.  **Analyze the process of settling sediment**: When the flowing water slows down, it can no longer carry the heavy particles like mud. As a result, these particles drop out of the water and settle on the ground. This process of dropping or \"leaving behind\" sediment is called **deposition**.\n3.  **Evaluate the options**:\n    *   **Erosion** involves the removal and transport of material, not the act of leaving it behind.\n    *   **Drought** refers to a prolonged period of dry weather and lack of water, which is unrelated to the specific action of mud settling.\n    *   **Deposition** specifically describes the event where transported materials (like mud) are dropped or left behind when the energy of the transporting agent (the river) decreases.\n\nSince the sentence describes mud being \"left behind,\" this matches the definition of deposition.\n\nThe answer is C. deposition."
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"scienceqa-text\", \"uid\": \"scienceqa-9258\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/science/scienceqa_direct/text/cot\", \"rank\": 165, \"supervised_tokens\": 269, \"token_budget\": 482000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 28875,
+    "subject": "geography",
+    "level": "other_k12",
+    "complete": true,
+    "topic": "外力作用与地貌（沉积）",
+    "reason": "题目考察河流泥沙沉积现象，属于初中地理或小学科学常识范畴。虽然高中地理也涉及外力作用，但此题选项简单直接，无需复杂推理，且'best matches the sentence'的表述偏向基础概念辨析，未达到高考对成因、过程及影响的深度考查要求。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-science-v1/review-28875.json"
+  },
+  "content_review": {
+    "line": 28875,
+    "subject_correct": true,
+    "complete": true,
+    "level": "other_k12",
+    "reason": "题目考查河流沉积作用的基本定义（泥沙留下），属于小学科学或初中地理的基础概念，未涉及高中地理关于河流地貌发育的综合分析。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "Problem:\nWhich change best matches the sentence?\nMud is left behind along the sides of a river.\n\nOptions:\nA. erosion\nB. drought\nC. deposition",
+      "images": []
+    }
+  ]
+}

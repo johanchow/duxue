@@ -1,0 +1,61 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 9,
+  "uid": "cmm-math-17208",
+  "dataset": "cmm-math-multimodal",
+  "record_sha256": "e4abbbffda7b79004d681e23a75776847e4b7476cac71e770857198a23c1978b",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "<image>\nProblem:\n（2020 秋・香坊区校级期末） 2020 年初, 武汉出现新型冠状病毒肺炎疫情, 并快速席卷我国其他地区，口罩成了重要的防疫物资．某口罩生产厂不断加大投入，高速生产，现对其 2 月 1 日 2 月 9 日连续 9 天的日生产量 $y_{i}$ (单位: 十万只, $i=1,2, \\cdots, 9$ ) 数据作了初步处理, 得到如图所示的散点图及一些统计量的值:\n\n| $\\bar{y}$ | $\\bar{z}$ | $\\sum_{i=1}^{9} t_{i} y_{i}$ | $\\sum_{i=1}^{9} t_{i} z_{i}$ |\n| :-------: | :-------: | :--------------------------: | :--------------------------: |\n|   2.72    |    19     |            139.09            |             1095             |\n\n注: 图中日期代码 $1 \\sim 9$ 分别对应 2 月 1 日 $\\sim 2$ 月 9 日; 表中 $z_{i}=e^{y_{i}}, \\bar{z}=\\frac{1}{9} \\sum_{i=1}^{9} z_{i}$.\n\n（1）由散点图分析, 样本点都集中在曲线 $y=\\ln (b t+a)$ 的附近, 求 $y$ 关于 $t$ 的方程 $y=\\ln (b t+a)$.\n\n（2）估计该厂从什么时候开始日生产量超过四十万只.\n\n参考公式: 回归直线方程是 $v=\\hat{\\beta} \\mu+\\hat{\\alpha}, \\hat{\\beta}=\\frac{\\sum_{i=1}^{n}\\left(\\mu_{i}-\\bar{\\mu}\\right)\\left(v_{i}-\\bar{v}\\right)}{\\sum_{i=1}^{n}(\\mu-\\bar{\\mu})^{2}}=\\frac{\\sum_{i=1}^{n} \\mu_{i} v_{i}-n \\overline{\\mu v}}{\\sum_{i=1}^{n} \\mu_{i}^{2}-n \\bar{\\mu}^{2}}, \\hat{\\alpha}=\\bar{v}-\\hat{\\beta} \\bar{\\mu}$.\n\n参考数据: $e^{4} \\approx 54.6$.\n\n<ImageHere>"
+      },
+      {
+        "role": "assistant",
+        "content": "解：（1）由题意知, $y=\\ln (b t+a)$,\n\n所以 $\\mathrm{z}=e^{y}=b t+a$,\n\n计算 $\\bar{t}=\\frac{1}{9} \\times(1+2+3+4+5+6+7+8+9)=5$,\n\n$\\sum_{i=1}^{9} t_{i}{ }^{2}=1^{2}+2^{2}+3^{2}+4^{2}+5^{2}+6^{2}+7^{2}+8^{2}+9^{2}=285$,\n\n所以 $\\hat{b}=\\frac{\\sum_{i=1}^{9} t_{i} z_{i}-9 \\bar{t} \\cdot \\bar{z}}{\\sum_{i=1}^{9} t_{i}^{2}-9 \\cdot \\bar{t}^{2}}=\\frac{1095-9 \\times 5 \\times 19}{285-9 \\times 5^{2}}=4$,\n\n$\\hat{a}=\\bar{z}-b \\bar{t}=19-4 \\times 5=-1$,\n\n所以 $y$ 关于 $t$ 的方程为 $y=\\ln (4 t-1)$.\n\n(2) 令 $\\ln (4 t-1)>4$, 解得 $t>\\frac{e^{4}+1}{4} \\approx 13.9$, 即 $t \\geqslant 14$,\n\n所以估计该厂从 2 月 14 日开始日生产量超过四十万只."
+      }
+    ],
+    "images": [
+      "images/6e/6e53641442c2262c387d4787cd120dc3530a7f97407615055c4d3afb298ea9fb.jpg"
+    ],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"cmm-math-multimodal\", \"uid\": \"cmm-math-17208\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/math/multimodal/cot\", \"rank\": 6, \"supervised_tokens\": 369, \"token_budget\": 600000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [
+    "ab3eb1be3657255c88d5a7a1be8865eeaf779947c6f5bdfb548.jpg"
+  ],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 9,
+    "subject": "math",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "回归分析（非线性回归模型）",
+    "reason": "题目要求根据散点图进行非线性回归分析，通过换元法将曲线 $y=\\ln(bt+a)$ 转化为线性关系 $z=bt+a$（其中 $z=e^y$），利用最小二乘法公式求回归方程并进行预测。这是高中数学选修课程中统计案例部分的典型题型，属于高考常见考点。题干文字、数据表格及图片信息完整。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-images-v1/review-9.json"
+  },
+  "content_review": {
+    "line": 9,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "题目考查非线性回归分析（通过对数变换转化为线性回归），涉及最小二乘法公式的应用及数据处理，是高中数学统计章节的典型高考题型。题目提供了完整的散点图、统计量表及参考公式，条件充分。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\n<image>\nProblem:\n（2020 秋・香坊区校级期末） 2020 年初, 武汉出现新型冠状病毒肺炎疫情, 并快速席卷我国其他地区，口罩成了重要的防疫物资．某口罩生产厂不断加大投入，高速生产，现对其 2 月 1 日 2 月 9 日连续 9 天的日生产量 $y_{i}$ (单位: 十万只, $i=1,2, \\cdots, 9$ ) 数据作了初步处理, 得到如图所示的散点图及一些统计量的值:\n\n| $\\bar{y}$ | $\\bar{z}$ | $\\sum_{i=1}^{9} t_{i} y_{i}$ | $\\sum_{i=1}^{9} t_{i} z_{i}$ |\n| :-------: | :-------: | :--------------------------: | :--------------------------: |\n|   2.72    |    19     |            139.09            |             1095             |\n\n注: 图中日期代码 $1 \\sim 9$ 分别对应 2 月 1 日 $\\sim 2$ 月 9 日; 表中 $z_{i}=e^{y_{i}}, \\bar{z}=\\frac{1}{9} \\sum_{i=1}^{9} z_{i}$.\n\n（1）由散点图分析, 样本点都集中在曲线 $y=\\ln (b t+a)$ 的附近, 求 $y$ 关于 $t$ 的方程 $y=\\ln (b t+a)$.\n\n（2）估计该厂从什么时候开始日生产量超过四十万只.\n\n参考公式: 回归直线方程是 $v=\\hat{\\beta} \\mu+\\hat{\\alpha}, \\hat{\\beta}=\\frac{\\sum_{i=1}^{n}\\left(\\mu_{i}-\\bar{\\mu}\\right)\\left(v_{i}-\\bar{v}\\right)}{\\sum_{i=1}^{n}(\\mu-\\bar{\\mu})^{2}}=\\frac{\\sum_{i=1}^{n} \\mu_{i} v_{i}-n \\overline{\\mu v}}{\\sum_{i=1}^{n} \\mu_{i}^{2}-n \\bar{\\mu}^{2}}, \\hat{\\alpha}=\\bar{v}-\\hat{\\beta} \\bar{\\mu}$.\n\n参考数据: $e^{4} \\approx 54.6$.\n\n<ImageHere>\n这题我卡住了。请先帮我拆出一个能动手的小步骤，不要给完整答案。",
+      "images": [
+        "ab3eb1be3657255c88d5a7a1be8865eeaf779947c6f5bdfb548.jpg"
+      ]
+    }
+  ]
+}

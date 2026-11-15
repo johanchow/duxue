@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 4859,
+  "uid": "cmm-math-22136",
+  "dataset": "cmm-math-text",
+  "record_sha256": "4678abd6897e21b89dfd496e03aeb1ee6296eab32e0855320ee2a99129a26809",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n设 $0<a<1$, 则随机变量 $X$ 的分布列是:\n\n| $X$ | 0 | $a$ | 1 |\n| :---: | :---: | :---: | :---: |\n| $p$ | $\\frac{1}{3}$ | $\\frac{1}{3}$ | $\\frac{1}{3}$ |\n\n则当 $a$ 在 $(0,1)$ 内增大时 $(\\quad)$\n\nOptions:\nA. $D(X)$ 增大\nB. $D(X)$ 减小\nC. $D(X)$ 先增大后减小\nD. $D(X)$ 先减小后增大"
+      },
+      {
+        "role": "assistant",
+        "content": "答案:D\n\n【解析】由分布列得 $E(X)=\\frac{1+a}{3}$ ，\n\n则 $D(X)=\\left(\\frac{1+a}{3}-0\\right)^{2} \\times \\frac{1}{3}+\\left(\\frac{1+a}{3}-a\\right)^{2} \\times \\frac{1}{3}+\\left(\\frac{1+a}{3}-1\\right)^{2} \\times \\frac{1}{3}$\n\n$=\\frac{2}{9}\\left(a-\\frac{1}{2}\\right)^{2}+\\frac{1}{6}$\n\n则当 $a$ 在 $(0,1)$ 内增大时, $D(X)$ 先减小后增大，故选 $\\mathrm{D}$."
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"cmm-math-text\", \"uid\": \"cmm-math-22136\", \"kind\": \"qa\", \"system_variant\": \"none\", \"kcenter\": {\"bucket\": \"subject/math/text/cot/other\", \"rank\": 2003, \"supervised_tokens\": 172, \"token_budget\": 1345000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 4859,
+    "subject": "math",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "离散型随机变量的方差",
+    "reason": "给定分布列，分析参数a变化时方差D(X)的变化趋势。需要计算期望E(X)和方差D(X)的表达式，并研究函数的单调性。这是高中数学选择性必修中统计部分的核心考点，涉及函数与导数（或二次函数性质）的结合，符合高考层级。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-8246.json"
+  },
+  "content_review": {
+    "line": 4859,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "考查离散型随机变量的期望与方差及其随参数变化的单调性，属于高中数学概率统计核心内容，符合高考层级。参考解析中D(X)化简结果及结论正确。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "Problem:\n设 $0<a<1$, 则随机变量 $X$ 的分布列是:\n\n| $X$ | 0 | $a$ | 1 |\n| :---: | :---: | :---: | :---: |\n| $p$ | $\\frac{1}{3}$ | $\\frac{1}{3}$ | $\\frac{1}{3}$ |\n\n则当 $a$ 在 $(0,1)$ 内增大时 $(\\quad)$\n\nOptions:\nA. $D(X)$ 增大\nB. $D(X)$ 减小\nC. $D(X)$ 先增大后减小\nD. $D(X)$ 先减小后增大",
+      "images": []
+    }
+  ]
+}

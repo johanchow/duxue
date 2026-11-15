@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 21682,
+  "uid": "sciq-736",
+  "dataset": "sciq",
+  "record_sha256": "75ca16ad914be77ef49b40dfc767cf03fe47dd50e7d7843e5fae5a47aaf5aeb5",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\nWhat type of terminal releases neurotransmitters at a synapse?\n\nOptions:\n- axon\n- acetylcholine,\n- secretion\n- chloride"
+      },
+      {
+        "role": "assistant",
+        "content": "At a synapse, the transmission of signals relies on specific structures within the neuron. The supporting facts state that neurotransmitters are released by the axon terminal. Since the axon terminal is the specialized end of the axon, the axon is the correct structure responsible for this release. The other options are incorrect because acetylcholine is a specific type of neurotransmitter rather than a terminal, secretion is the process of releasing substances, and chloride is an ion. Therefore, the part of the neuron that releases neurotransmitters is the axon.\n\nAnswer: axon"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"sciq\", \"uid\": \"sciq-736\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 2700, \"supervised_tokens\": 115, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 21682,
+    "subject": "biology",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "神经调节/突触传递",
+    "reason": "考察突触前膜释放神经递质的结构基础（轴突末梢/突触小体）。这是高中生物必修三《稳态与环境》中神经调节部分的核心知识点，符合高考层级。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-science-v1/review-24709.json"
+  },
+  "content_review": {
+    "line": 21682,
+    "subject_correct": true,
+    "complete": true,
+    "level": "other_k12",
+    "reason": "考查突触处轴突末梢释放神经递质，属于初中或高中基础记忆知识点，以英文简单选项呈现，无综合推理，不符合高考层级要求。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "Problem:\nWhat type of terminal releases neurotransmitters at a synapse?\n\nOptions:\n- axon\n- acetylcholine,\n- secretion\n- chloride",
+      "images": []
+    }
+  ]
+}

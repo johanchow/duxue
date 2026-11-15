@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 20666,
+  "uid": "cjeval-18218",
+  "dataset": "cjeval-original",
+  "record_sha256": "77843ecbe27840473c8082838dc3b28ac080cb0bf09d78c79ef3d7a6403e3058",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n题目内容: Imagine this, somebody hides free books on the subway for you to find and read. Sounds exciting? Well, British actress Emma Watson, 26, is doing it! She is known for acting as Hermione Granger in the Harry Potter movies. Watson hid 100 copies of a book called Mom & Me & Mom (2013) on London's subway. The book is from US writer Maya Angelou. It tells about the writer's relationship with her mother. Watson wrote of the book, “This book is one I have read before and is one of my favorites. I can't wait to hear your thoughts!” These books were put in different places on the subway. People saw Watson doing the same thing on the New York Subway this month. With each book, there is a handwritten note by Watson. She asked people to “take special care of the books” if they found them. She also wrote that “when you are finished, please leave it on the subway again for someone else to find.” Watson's work is part of a movement called Books on the Underground. It calls on people to leave their books on the subway, so other people can enjoy them too. Hollie Belton, a woman in London, started the movement in 2012. She loves reading on the subway. She noticed that a lot of people shared her habit, so she got the idea. Over the years, Belton has left over 2,000 books of her own. The movement has attracted more and more people. Watson is a book lover as well. That's why she tried it. Earlier this year, Watson set up her own online book club Our Shared Shelf. She reads a book every month with others. Mom & Me & Mom is the club's book for November. (1) 题目内容: What can we infer from the text? 选项: A. Subways are the best place to sell books. B. More and more people begin to take the subway. C. Emma Watson makes a lot of money by selling books online. D. Emma Watson likes sharing her feelings about books with others. (2) 题目内容: If a passenger finds a hidden book on the subway, __. 选项: A. he must return it to Emma Watson B. he can read it for free without taking it away C. he can find a photo of Emma's in the book D. he can exchange his thoughts with Emma on the subway (3) 题目内容: The text mainly talks about __. 选项: A. Emma Watson's favorite book B. how kind and helpful Emma Watson is C. why Hollie Belton started the reading project D. a movement called Books on the Underground"
+      },
+      {
+        "role": "assistant",
+        "content": "【分析】本文介绍了英国女演员艾玛·沃特森将免费书籍藏在地铁上的行为，旨在鼓励大家阅读，并呼吁人们参与“地铁书籍”活动。\\n(1) 推理判断题：通过艾玛·沃特森的话“我迫不及待地想听听你的想法！”我们可以推断她喜欢与他人分享阅读心得。正确答案为D。\\n(2) 细节理解题：根据文章中艾玛的请求“如果找到这些书，请特别小心保管”及“当你读完后，请再次把它留在地铁上，让其他人也能找到”推断，发现书籍的乘客可以免费阅读，但之后需要把书留在地铁上供他人发现。正确答案为B。\\n(3) 主旨大意题：文章主要论述了由霍莉·贝尔顿发起且由沃特森参与的“地铁书籍”活动，该活动让人们在地铁上免费共享书籍。正确答案为D。"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"cjeval-original\", \"uid\": \"cjeval-18218\", \"kind\": \"qa\", \"system_variant\": \"general\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 1684, \"supervised_tokens\": 187, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 20666,
+    "subject": "english",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "英语阅读理解/主旨与推断",
+    "reason": "题目为关于Emma Watson发起图书共享运动的英文文章，附带选择题。考察推断隐含意义、理解具体行为动机及概括文章主旨，完全符合高考英语阅读理解的命题规范和难度要求。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-21664.json"
+  },
+  "content_review": {
+    "line": 20666,
+    "subject_correct": true,
+    "complete": true,
+    "level": "other_k12",
+    "reason": "英文原文阅读理解，考查细节推断与主旨概括，文本难度和题型属于初中英语水平，非高中课程特有深度。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "Problem:\n题目内容: Imagine this, somebody hides free books on the subway for you to find and read. Sounds exciting? Well, British actress Emma Watson, 26, is doing it! She is known for acting as Hermione Granger in the Harry Potter movies. Watson hid 100 copies of a book called Mom & Me & Mom (2013) on London's subway. The book is from US writer Maya Angelou. It tells about the writer's relationship with her mother. Watson wrote of the book, “This book is one I have read before and is one of my favorites. I can't wait to hear your thoughts!” These books were put in different places on the subway. People saw Watson doing the same thing on the New York Subway this month. With each book, there is a handwritten note by Watson. She asked people to “take special care of the books” if they found them. She also wrote that “when you are finished, please leave it on the subway again for someone else to find.” Watson's work is part of a movement called Books on the Underground. It calls on people to leave their books on the subway, so other people can enjoy them too. Hollie Belton, a woman in London, started the movement in 2012. She loves reading on the subway. She noticed that a lot of people shared her habit, so she got the idea. Over the years, Belton has left over 2,000 books of her own. The movement has attracted more and more people. Watson is a book lover as well. That's why she tried it. Earlier this year, Watson set up her own online book club Our Shared Shelf. She reads a book every month with others. Mom & Me & Mom is the club's book for November. (1) 题目内容: What can we infer from the text? 选项: A. Subways are the best place to sell books. B. More and more people begin to take the subway. C. Emma Watson makes a lot of money by selling books online. D. Emma Watson likes sharing her feelings about books with others. (2) 题目内容: If a passenger finds a hidden book on the subway, __. 选项: A. he must return it to Emma Watson B. he can read it for free without taking it away C. he can find a photo of Emma's in the book D. he can exchange his thoughts with Emma on the subway (3) 题目内容: The text mainly talks about __. 选项: A. Emma Watson's favorite book B. how kind and helpful Emma Watson is C. why Hollie Belton started the reading project D. a movement called Books on the Underground",
+      "images": []
+    }
+  ]
+}

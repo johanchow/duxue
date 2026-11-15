@@ -1,0 +1,63 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 22681,
+  "uid": "coig-exam_coig_exam_sampled_clean_v3.jsonl-1631-8bf0fe516146",
+  "dataset": "coig-cqia",
+  "record_sha256": "5eaaf5825a8f0609ea57f68c885ac96ceadded7fe7d9ba945372aedd745fcdb0",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n回答下列问题\n玉米是一种二倍体异花传粉作物，可作为研究遗传规律的实验材料。玉米子粒的饱满与凹陷是一对相对性状，受一对等位基因控制\n在一对等位基因控制的相对性状中，杂合子通常表现的性状是___________。"
+      },
+      {
+        "role": "assistant",
+        "content": "显性性状\n\n在一对等位基因控制的相对性状中，杂合子中存在控制该性状的一对等位基因，其通常表现的性状是显性性状"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-1631-8bf0fe516146\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 3699, \"supervised_tokens\": 34, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 22681,
+    "subject": "biology",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "孟德尔遗传规律-显隐性判断",
+    "reason": "基于玉米遗传实验背景，考查一对等位基因控制下杂合子表现型（显性性状）的基本概念，是高中生物遗传模块的基础必考知识点。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-21246.json"
+  },
+  "content_review": {
+    "line": 22681,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "考查一对等位基因控制的相对性状中杂合子表现的性状（显性性状），属于高中生物必修二遗传学核心概念，符合高考要求。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "diagnostic_adaptation": {
+    "id": "omni-biology-004",
+    "student_attempt": "杂合子通常表现隐性性状，因为显性基因往往是不完全显性或共显性，而隐性基因在纯合时才表达，但在杂合状态下有时也会掩盖显性效应。",
+    "assessment": "incorrect",
+    "feedback_criteria": "指出孟德尔遗传定律中，在一对等位基因控制的相对性状里，杂合子通常表现的是显性性状。纠正学生关于“杂合子表现隐性”或混淆不完全显性/共显性与一般情况的错误概念。",
+    "is_choice": false,
+    "model": "qwen3.8-flash"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n回答下列问题\n玉米是一种二倍体异花传粉作物，可作为研究遗传规律的实验材料。玉米子粒的饱满与凹陷是一对相对性状，受一对等位基因控制\n在一对等位基因控制的相对性状中，杂合子通常表现的性状是___________。\n我的尝试：杂合子通常表现隐性性状，因为显性基因往往是不完全显性或共显性，而隐性基因在纯合时才表达，但在杂合状态下有时也会掩盖显性效应。\n请检查我已有的理由或结果，只指出可核验的部分，并给一个自检提示。",
+      "images": []
+    }
+  ]
+}

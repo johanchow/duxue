@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 24033,
+  "uid": "coig-chinese_traditional_translate_classical_chinese.jsonl-243-d60280315da8",
+  "dataset": "coig-cqia",
+  "record_sha256": "549ba87fcb1661d34c39cd4f43372a11c8e8c10068342e06c0bf23b67141b9c5",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n翻译成现代文：\n宗元善为文，尝作《梓人传》，以为： 梓人不执斧斤刀锯之技，专以寻引、规矩、绳墨度群木之材，视栋宇之制，相高深、圆方、短长之宜，指麾众工，各趋其事，不胜任者退之。"
+      },
+      {
+        "role": "assistant",
+        "content": "柳宗元善于撰写文章，曾经作过一篇《梓人传》，讲道： 有一位木匠，不肯去做斧砍锯析这一类手艺活计，却专门用长尺、圆规、方尺、墨斗审度各种木料的用场，检视房屋的规制，观察高度、方圆、长短是否合度，指挥着众多的木工，各自去干自己的活计，对不能将任务承担起来的人们，便将他们辞退。"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-chinese_traditional_translate_classical_chinese.jsonl-243-d60280315da8\", \"kind\": \"qa\", \"system_variant\": \"general\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 5051, \"supervised_tokens\": 97, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 24033,
+    "subject": "chinese",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "文言文翻译（柳宗元《梓人传》）",
+    "reason": "选自唐代古文运动代表人物柳宗元的文章，涉及实词、虚词及句式理解，是典型的高中语文文言文阅读与翻译训练素材。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-21246.json"
+  },
+  "content_review": {
+    "line": 24033,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "文言文翻译为现代汉语是高考语文全国卷及各省卷的必考题型。本段出自《旧唐书·柳宗元传》相关记载，涉及实词（梓人、寻引、规矩、绳墨）、虚词及句式，符合高考文言文翻译的难度和要求。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "Problem:\n翻译成现代文：\n宗元善为文，尝作《梓人传》，以为： 梓人不执斧斤刀锯之技，专以寻引、规矩、绳墨度群木之材，视栋宇之制，相高深、圆方、短长之宜，指麾众工，各趋其事，不胜任者退之。",
+      "images": []
+    }
+  ]
+}

@@ -1,0 +1,63 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 11447,
+  "uid": "cmm-math-21927",
+  "dataset": "cmm-math-text",
+  "record_sha256": "e9ebce19cb682b030c361cf7ad5e0efd1e6719c5931e9e90e94908ef66fb4d0c",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n应用反证法推出矛盾的推导过程中要把下列哪些作为条件使用: \\$ \\qquad \\$\n(1)结论相反的判断，即假设(2)原命题的条件(3)公理、定理、定义等(4)原结论"
+      },
+      {
+        "role": "assistant",
+        "content": "答案: (1)(2)(3)\n\n【解析】应用反证法推出矛盾的推导过程中,\n\n作为条件使用的通常有:\n\n(1)结论相反的判断，即假设;\n\n(2)原命题的条件;\n\n(3)公理、定理、定义等\n\n故答案为: (1)(2)(3).\n\n【分析】利用反证法的定义以及特征即可得出结果."
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"cmm-math-text\", \"uid\": \"cmm-math-21927\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/math/text/cot/other\", \"rank\": 8591, \"supervised_tokens\": 85, \"token_budget\": 1345000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 11447,
+    "subject": "math",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "反证法原理",
+    "reason": "考察反证法的逻辑步骤（假设结论不成立、结合原条件推导矛盾），属于高中选修或必修中的逻辑推理部分，符合高考考查范围。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-6143.json"
+  },
+  "content_review": {
+    "line": 11447,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "反证法的逻辑步骤是高中数学（选修/逻辑推理部分）的知识点，涉及命题证明方法，属于高考层级。参考答案(1)(2)(3)正确。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "diagnostic_adaptation": {
+    "id": "omni-math-016",
+    "student_attempt": "反证法就是假设结论不成立，然后推出矛盾。所以在推导过程中，我们只需要使用这个“假设”作为条件，去证明它会导致错误即可，不需要原来的命题条件，否则就乱套了。所以选(1)。",
+    "assessment": "incorrect",
+    "feedback_criteria": "指出学生的核心误区：反证法的推导过程是在“原命题的条件”加上“结论的否定”共同构成的前提下进行的，缺一不可。仅使用假设而忽略原条件无法构成完整的逻辑环境来导出矛盾。需引导学生回顾反证法定义中关于前提条件的描述。",
+    "is_choice": false,
+    "model": "qwen3.8-flash"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n应用反证法推出矛盾的推导过程中要把下列哪些作为条件使用: \\$ \\qquad \\$\n(1)结论相反的判断，即假设(2)原命题的条件(3)公理、定理、定义等(4)原结论\n我的尝试：反证法就是假设结论不成立，然后推出矛盾。所以在推导过程中，我们只需要使用这个“假设”作为条件，去证明它会导致错误即可，不需要原来的命题条件，否则就乱套了。所以选(1)。\n请检查我已有的理由或结果，只指出可核验的部分，并给一个自检提示。",
+      "images": []
+    }
+  ]
+}

@@ -1,0 +1,63 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 26329,
+  "uid": "coig-chinese_traditional_translate_classical_chinese.jsonl-170-73412723e06d",
+  "dataset": "coig-cqia",
+  "record_sha256": "3b793297a06dae33062449e6b38e3a2535a2495153b4c41312d983f9ac001587",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n以军礼同邦国，大师之礼，用众也；大均之礼，恤众也；大田之礼，简众也；大役之礼，任众也；大封之礼，合众也。\n把这句话翻译成现代文。"
+      },
+      {
+        "role": "assistant",
+        "content": "用军礼协同天下各国：大军出征之礼，是利用民众的义勇；大校比以平均赋税之礼，是忧虑民众的赋税不均；举行大田猎之礼，是为了检阅徒众和战车；大兴劳役之礼，是为了任用民众的劳动力；大规模勘定疆界之礼，是为了聚合民众。"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-chinese_traditional_translate_classical_chinese.jsonl-170-73412723e06d\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 7347, \"supervised_tokens\": 74, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 26329,
+    "subject": "chinese",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "文言文翻译（文言译白话）",
+    "reason": "选自《周礼》，涉及军礼的具体内容。要求将古文译为现代文，属于高中语文文言文基础能力考查。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-24845.json"
+  },
+  "content_review": {
+    "line": 26329,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "考查《周礼》中军礼相关文言文的现代汉语翻译，涉及古代典章制度术语的理解，属于高中语文文言文阅读翻译能力范畴。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "diagnostic_adaptation": {
+    "id": "omni-chinese-020",
+    "student_attempt": "用军礼来团结国家：大军出征的礼仪，是为了使用民众；大均之礼，是体恤民众；大田之礼，是检阅民众；大役之礼，是任用民众；大封之礼，是聚合民众。",
+    "assessment": "incorrect",
+    "feedback_criteria": "重点核查对‘大师’、‘大均’、‘大田’等专有名词及对应动词的理解。参考译文指出‘大师’指军队出征，‘用众’指利用义勇；‘大均’指平均赋税，‘恤众’指忧虑赋税不均；‘大田’指田猎，‘简众’指检阅徒众战车。学生将‘大师’译为‘大军出征’尚可，但将‘用众’简单译为‘使用民众’丢失了‘义勇’的内涵；更关键的是将‘大均’直译且未解释其‘平均赋税’的背景，导致‘恤众’含义模糊；将‘大田’译为‘检阅民众’而非‘检阅徒众和战车’，对象错误。需指出具体术语翻译不准导致的语义偏差。",
+    "is_choice": false,
+    "model": "qwen3.8-flash"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n以军礼同邦国，大师之礼，用众也；大均之礼，恤众也；大田之礼，简众也；大役之礼，任众也；大封之礼，合众也。\n把这句话翻译成现代文。\n我的尝试：用军礼来团结国家：大军出征的礼仪，是为了使用民众；大均之礼，是体恤民众；大田之礼，是检阅民众；大役之礼，是任用民众；大封之礼，是聚合民众。\n请检查我已有的理由或结果，只指出可核验的部分，并给一个自检提示。",
+      "images": []
+    }
+  ]
+}

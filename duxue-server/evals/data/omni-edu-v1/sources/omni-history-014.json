@@ -1,0 +1,64 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 21442,
+  "uid": "aquila-all-23622-c2cce027e303",
+  "dataset": "aquilaedu",
+  "record_sha256": "839127ba8515c24a2053ae88639ecd49de66a29f116e2461617129e08ac9deea",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n请选择正确的选项：12. 1988年1月21日，第一个台湾返乡探亲团抵达北京，在八达岭长城上，他们欢呼“到家了”。\n此时他们“离家”长达（    ） A. 38年    B. 39年    C. 43年    D. 93年"
+      },
+      {
+        "role": "assistant",
+        "content": "【解析】结合所学知识可知，1988年1月21日，第一个台湾返乡探亲团抵达北京，在八达岭长城上，他们欢呼“到家了”；而他们“离家”是由于1949年在国共内战中，国民党败逃到台湾后，美国第七舰队阻挠解放台湾，从而形成台湾与大陆分离的局面，因此此时（1988年）他们“离家”（1949年）长达39年了。所以只有选项B符合题意，故选B。 \n#### 答案是：B"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"aquilaedu\", \"uid\": \"aquila-all-23622-c2cce027e303\", \"kind\": \"qa\", \"system_variant\": \"general\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 2460, \"supervised_tokens\": 118, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 21442,
+    "subject": "history",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "海峡两岸关系（台湾问题）",
+    "reason": "题面考查1988年台湾探亲团与1949年两岸隔绝的历史时间跨度计算，属于高中历史必修中祖国统一大业相关知识点，材料完整。",
+    "review_model": "qwen3.8-max",
+    "review_file": "var/evals/omni-curation-v1/review-21442.json"
+  },
+  "content_review": {
+    "line": 21442,
+    "subject_correct": true,
+    "complete": true,
+    "level": "other_k12",
+    "reason": "用1988减去1949得出39年，属于简单的年代计算和初中历史常识（两岸分离），无需高中层级推理。参考解析无误。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "diagnostic_adaptation": {
+    "id": "omni-history-014",
+    "student_attempt": "我目前只知道这题涉及海峡两岸关系（台湾问题），还没有写出具体推理或结论。请帮我确定第一步。",
+    "assessment": "insufficient",
+    "feedback_criteria": "学生只报告了知识主题，未给出可核验的具体结果或推理。不得将未作答判为答错，也不能虚构学生的错误步骤或已掌握。给一个切题且可执行的起步或自检提示。",
+    "is_choice": true,
+    "model": "qwen3.8-flash",
+    "authored_revision": "assistant-explicit-insufficient-evidence.v1"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n请选择正确的选项：12. 1988年1月21日，第一个台湾返乡探亲团抵达北京，在八达岭长城上，他们欢呼“到家了”。\n此时他们“离家”长达（    ） A. 38年    B. 39年    C. 43年    D. 93年\n我的尝试：我目前只知道这题涉及海峡两岸关系（台湾问题），还没有写出具体推理或结论。请帮我确定第一步。\n请检查我已有的理由或结果，只指出可核验的部分，并给一个自检提示。",
+      "images": []
+    }
+  ]
+}

@@ -1,0 +1,63 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 25254,
+  "uid": "coig-chinese_traditional_translate_classical_chinese.jsonl-562-23184b0a3789",
+  "dataset": "coig-cqia",
+  "record_sha256": "106a05a4403c236652d9a0e3465b1c3ab27fc51e15f8e2f771124b7fc6f6f3a2",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n翻译成现代文：\n选人并至，文书多，不可寻勘，真伪纷杂，吏因得大为奸巧。选人一蹉跌，或十年不得官。\n答案："
+      },
+      {
+        "role": "assistant",
+        "content": "候选的官员一同到来，文书繁多，无法逐一核查，真假混杂，官吏因此得以大肆舞弊。候选人一旦稍有差错，有的甚至十年都得不到官职。"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-chinese_traditional_translate_classical_chinese.jsonl-562-23184b0a3789\", \"kind\": \"qa\", \"system_variant\": \"general\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 6272, \"supervised_tokens\": 35, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 25254,
+    "subject": "chinese",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "文言文翻译",
+    "reason": "要求将一段古代汉语翻译成现代文，考察文言实词、虚词及句式理解，是高考语文文言文阅读部分的常见题型。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-22267.json"
+  },
+  "content_review": {
+    "line": 25254,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "文言文句子翻译为现代汉语，是高考语文文言文阅读的常规题型。所给文段涉及古代选官制度，翻译需落实关键词语，符合高考层级要求。参考译文准确。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "diagnostic_adaptation": {
+    "student_attempt": "我认为“吏因得大为奸巧”是说官吏因此表现得很聪明、很灵巧，是在夸他们办事机灵。",
+    "assessment": "incorrect",
+    "feedback_criteria": "具体误区是将奸巧当褒义；联系文书真伪纷杂、无法寻勘的语境辨识舞弊含义，只帮助纠正这一处，不直接译出整段。",
+    "is_choice": false,
+    "id": "omni-chinese-014",
+    "model": "assistant_authored_content_review"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n翻译成现代文：\n选人并至，文书多，不可寻勘，真伪纷杂，吏因得大为奸巧。选人一蹉跌，或十年不得官。\n答案：\n我的尝试：我认为“吏因得大为奸巧”是说官吏因此表现得很聪明、很灵巧，是在夸他们办事机灵。\n请检查我已有的理由或结果，只指出可核验的部分，并给一个自检提示。",
+      "images": []
+    }
+  ]
+}

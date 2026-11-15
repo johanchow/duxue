@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 23592,
+  "uid": "coig-exam_coig_exam_sampled_clean_v3.jsonl-588-ce6b3e28e87a",
+  "dataset": "coig-cqia",
+  "record_sha256": "4bac91203512b0f21fbae5d17dbaeedeae56b8fdbaa5804f9843e9518212624d",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n请选择正确答案\n乡村网红“巧妇九妹”不但自己富裕了，还利用电商平台帮助贫困村民致富，被评为2018年度全国三农人物。她的经历说明（　　）①我国允许并鼓励先富带动后富，逐步实现共同富裕②每个人都应抓住一切条件富起来③脱贫攻坚是社会发展的核心工作④合理运用科技手段可以创造出更好的经济效益A．①②③\tB．③④\tC．①④\tD．②④"
+      },
+      {
+        "role": "assistant",
+        "content": "共同富裕不是同时富裕，而是一部分人一部分地区先富起来，先富的帮助后富的，逐步实现共同富裕，以此分析材料可知，乡村网红“巧妇九妹”的行为是先富带动后富、奉献社会的行为；表明合理运用科技手段可以创造出更好的经济效益，①④是正确的选项；②选项要诚实劳动、合法致富；③选项脱贫攻坚是社会发展的重要工作之一。故选：C。"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-588-ce6b3e28e87a\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 4610, \"supervised_tokens\": 91, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 23592,
+    "subject": "politics",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "共同富裕/科技与经济",
+    "reason": "题目通过“巧妇九妹”案例考查共同富裕、先富带后富以及科技对经济的作用。选项②“抓住一切条件”表述绝对化，③“核心工作”表述错误（经济建设为中心），需运用高中政治经济学常识进行辨析，符合高考题型特征。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-24845.json"
+  },
+  "content_review": {
+    "line": 23592,
+    "subject_correct": true,
+    "complete": true,
+    "level": "other_k12",
+    "reason": "考查先富带动后富、共同富裕等概念，但仅停留在初中道法层面的简单判断，未涉及高中《经济生活》分配制度的深层机制分析。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n请选择正确答案\n乡村网红“巧妇九妹”不但自己富裕了，还利用电商平台帮助贫困村民致富，被评为2018年度全国三农人物。她的经历说明（　　）①我国允许并鼓励先富带动后富，逐步实现共同富裕②每个人都应抓住一切条件富起来③脱贫攻坚是社会发展的核心工作④合理运用科技手段可以创造出更好的经济效益A．①②③\tB．③④\tC．①④\tD．②④\n我不知道如何开始，请给我一个具体的起步提示，不要直接解完整题。",
+      "images": []
+    }
+  ]
+}

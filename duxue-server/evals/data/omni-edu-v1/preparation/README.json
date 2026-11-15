@@ -1,0 +1,12 @@
+{
+  "screening_models": [
+    "qwen3.8-max",
+    "qwen3.8-flash"
+  ],
+  "content_audit_model": "qwen3.8-max",
+  "adaptation_model": "qwen3.8-flash",
+  "status": "proposed",
+  "evaluation_model_calls": 0,
+  "upstream_train_sha256": "7dae4223a009a772efd767d03ef6113dfe11e461b8d8dad4437b578142f84078",
+  "native_diagnostic_or_tutoring_records_claimed": false
+}

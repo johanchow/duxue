@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 23833,
+  "uid": "coig-exam_coig_exam_sampled_clean_v3.jsonl-1843-2710fc8bd907",
+  "dataset": "coig-cqia",
+  "record_sha256": "a2640ff0e3ce6241fa2ffc24694650cf08f3569be71ae4e781a834927ff96b69",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n请选择正确的选项\n11月底“青岛号”在北太平洋行驶途中，遇到热带风暴。当热带风暴中心位于其正北方向时，该海域盛行A．东北风B．西北风C．东南风D．西南风"
+      },
+      {
+        "role": "assistant",
+        "content": "本题考查天气系统低压（气旋）风向。热带风暴即热带低压（气旋），当其中心位于正北方，该海域处于热带气旋南部，该地位于北半球，所以应该是“西南风”。所以本题选择D选项。"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-1843-2710fc8bd907\", \"kind\": \"qa\", \"system_variant\": \"general\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 4851, \"supervised_tokens\": 51, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 23833,
+    "subject": "geography",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "大气运动/风向判断",
+    "reason": "题目考察热带气旋（台风）的风向分布规律。根据北半球气旋逆时针旋转的原理，中心位于正北时，南侧吹西南风。这是高中地理自然地理部分关于天气系统的核心考点，完全符合高考层级。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-25083.json"
+  },
+  "content_review": {
+    "line": 23833,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "考查北半球热带气旋（低压系统）不同方位的风向判断，需要运用高中地理天气系统中气旋气流旋转规律进行空间推理，符合高考层级。参考解析正确。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "Problem:\n请选择正确的选项\n11月底“青岛号”在北太平洋行驶途中，遇到热带风暴。当热带风暴中心位于其正北方向时，该海域盛行A．东北风B．西北风C．东南风D．西南风",
+      "images": []
+    }
+  ]
+}

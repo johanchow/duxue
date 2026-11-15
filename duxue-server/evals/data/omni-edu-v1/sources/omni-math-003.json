@@ -1,0 +1,61 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 353,
+  "uid": "cmm-math-20696",
+  "dataset": "cmm-math-multimodal",
+  "record_sha256": "b38548aa29d6b549943ad822ce22974c69f977b9f6ca10190eaa538cb903cc0a",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "<image>\nProblem:\n求三个不相等的实数 $a, b, c$ 最大值的程序框图如图所示, 则空白判断框内应为 $($ )\n\n<ImageHere>\n\nOptions:\nA. $a>b$ ?\nB. $a>c$ ?\nC. $a>b$ 或 $a>c$ ?\nD. $a>b$ 且 $a>c$ ?"
+      },
+      {
+        "role": "assistant",
+        "content": "由题意, 程序求 $a, b, c$ 中的最大值,第 1 步, 比较 $a$ 与 $b 、 c$ 的大小，当 $a$ 比 $b 、 c$ 都大时，输出 $a$ 的值;当 $a$ 不能比 $b 、 c$ 都大时, 进入第 2 步;第 2 步, 由于 $a$ 不是最大值, 所以比较 $b 、 c$ 的大小,当 $b>c$ 时, 输出 $b$; 当 $b<c$ 时, 输出 $c$,综上所述, 空白判断框内应填上: $a>b$ 且 $a>c$ ?, 故选 D."
+      }
+    ],
+    "images": [
+      "images/e6/e672359ff09fbd18c35c61ac270b441a71917a55774c4a49ca2beda9d3454e9f.jpg"
+    ],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"cmm-math-multimodal\", \"uid\": \"cmm-math-20696\", \"kind\": \"qa\", \"system_variant\": \"general\", \"kcenter\": {\"bucket\": \"subject/math/multimodal/cot\", \"rank\": 350, \"supervised_tokens\": 166, \"token_budget\": 600000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [
+    "acf0c7595f000d135575ea89ce02437e54dae949b75e8b8b6f3.jpg"
+  ],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 353,
+    "subject": "math",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "程序框图（算法流程图）的逻辑推理",
+    "reason": "题面包含完整的文字描述和清晰的程序框图图片。题目要求根据输出最大值的逻辑补全判断条件，属于高中数学必修课程中“算法与程序框图”的知识点，符合高考基础题或选择题的难度特征。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-images-v1/review-353.json"
+  },
+  "content_review": {
+    "line": 353,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "题目考查程序框图的逻辑结构（选择结构），属于高中数学算法初步章节的典型考点，需要理解条件判断与分支流向，符合高考层级要求。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "<image>\nProblem:\n求三个不相等的实数 $a, b, c$ 最大值的程序框图如图所示, 则空白判断框内应为 $($ )\n\n<ImageHere>\n\nOptions:\nA. $a>b$ ?\nB. $a>c$ ?\nC. $a>b$ 或 $a>c$ ?\nD. $a>b$ 且 $a>c$ ?",
+      "images": [
+        "acf0c7595f000d135575ea89ce02437e54dae949b75e8b8b6f3.jpg"
+      ]
+    }
+  ]
+}

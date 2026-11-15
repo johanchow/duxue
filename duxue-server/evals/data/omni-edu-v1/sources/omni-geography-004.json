@@ -1,0 +1,63 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 25224,
+  "uid": "coig-exam_coig_exam_sampled_clean_v3.jsonl-1783-12d3acd4529c",
+  "dataset": "coig-cqia",
+  "record_sha256": "397b1e872318397a09901f2e01098d576622391c1e8e59322efa3c073a0f9b0a",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n请选择正确的选项\n气候异常是当今人类面临的重大环境问题，它严重威胁与影响人类的生存和生活。\n今年4月，太平洋周边某些国家出现异常高温干旱天气，有专家认为这与厄尔尼诺有关。根据厄尔尼诺影响的一般规律判断，发生干旱的国家可能是A.日本B.泰国C.智利D.秘鲁"
+      },
+      {
+        "role": "assistant",
+        "content": "厄尔尼诺是南太平洋赤道附近的海水增温的现象；它的影响使得美洲西海岸的智利、秘鲁多雨；日本大部分地区多雨；东南亚气候变得干旱，泰国干旱严重。选B正确。\n\n因此答案为：B"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-1783-12d3acd4529c\", \"kind\": \"qa\", \"system_variant\": \"general\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 6242, \"supervised_tokens\": 50, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 25224,
+    "subject": "geography",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "厄尔尼诺现象及其影响",
+    "reason": "题目考查厄尔尼诺现象对太平洋周边国家气候的影响规律，需要运用大气环流、海陆热力性质差异等高中地理核心原理进行推理，属于典型的高考地理选择题。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-24049.json"
+  },
+  "content_review": {
+    "line": 25224,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "考查厄尔尼诺现象及其对全球气候异常的影响规律，属于高中地理大气环流与海气相互作用的典型高考考点。参考解析正确。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "diagnostic_adaptation": {
+    "id": "omni-geography-004",
+    "student_attempt": "厄尔尼诺导致太平洋东部海水升温，气流上升，所以智利和秘鲁应该干旱。日本在西部，受暖流影响可能高温，但泰国离得远，不受影响。我觉得选C或D比较合理，因为东边热了西边就冷？",
+    "assessment": "incorrect",
+    "feedback_criteria": "指出学生对沃克环流异常机制的理解错误。厄尔尼诺发生时，赤道太平洋中东部海温升高，对流增强，导致秘鲁、智利等地降水增多而非干旱；而西太平洋（如东南亚、澳大利亚）因下沉气流增强出现干旱。需引导学生修正“东旱西涝”的错误直觉，确认泰国位于西太平洋边缘，符合干旱特征。",
+    "is_choice": true,
+    "model": "qwen3.8-flash"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n请选择正确的选项\n气候异常是当今人类面临的重大环境问题，它严重威胁与影响人类的生存和生活。\n今年4月，太平洋周边某些国家出现异常高温干旱天气，有专家认为这与厄尔尼诺有关。根据厄尔尼诺影响的一般规律判断，发生干旱的国家可能是A.日本B.泰国C.智利D.秘鲁\n我的尝试：厄尔尼诺导致太平洋东部海水升温，气流上升，所以智利和秘鲁应该干旱。日本在西部，受暖流影响可能高温，但泰国离得远，不受影响。我觉得选C或D比较合理，因为东边热了西边就冷？\n请检查我已有的理由或结果，只指出可核验的部分，并给一个自检提示。",
+      "images": []
+    }
+  ]
+}

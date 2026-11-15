@@ -1,0 +1,64 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 25914,
+  "uid": "coig-exam_coig_exam_sampled_clean_v3.jsonl-22-5651729d5b56",
+  "dataset": "coig-cqia",
+  "record_sha256": "fdfbcde66e2f091bc51ad408fc69b367ae42d27d7b4023bff00447774570db47",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n阅读下面这首清诗，回答问题。\n晓过赵北口①查慎行十里风埃②过鄚州，忽开双眼见清流。绿杨影里平桥路，数尽渔船数白鸥。【注】①赵北口：位于白洋淀东岸，是一座千年重镇。②风埃：被风吹起的尘土。\n(1)诗歌写鄚州一带的情况，有何作用？(2)最后一句中的“数”字有什么表达效果？"
+      },
+      {
+        "role": "assistant",
+        "content": "(1)一方面交代行踪，另一方面鄚州的尘土飞扬与赵北口的水流清澈形成对比，突出作者睁眼后对所见之景的惊喜。(2)“数”字既写出了作者的悠闲与陶醉，又侧面表现了赵北口的水上景物之美。\n\n(1)本题考查对诗文内容的理解与分析。“十里风埃过鄚州”是说经过了很远的路程，满面风尘经过了鄚州，交代了诗人的行踪。而诗句“忽开双眼见清流”写鄚州的尘士飞扬，这与赵北口的水流清澈形成鲜明的对比，运用了对比映衬的表现手法，所以写“鄚州一带的情况”意在形成对比，突出表现赵北口的水流清澈、景致美好的特点，从而表达了作者的惊喜之情。(2)考查对词语的赏析。对于词语的赏析，要在把握诗文内容的基础上，结合诗文的主旨和具体的诗句分析作答。这类试题涉及到古诗的“炼字”技巧。采用答题格式是：先解释词语的意思，再结合诗句分析表达的内容，最后写其表达效果。“数尽渔船数白鸥”的意思是：数尽了过往的渔船，又去数一数飞翔的白鸥。这里反复用“数”字，既写出了作者被赵北口的优美景致所陶醉，突出表现了作者的闲适的心境。据此理解赏析作答。"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-22-5651729d5b56\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 6932, \"supervised_tokens\": 284, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 25914,
+    "subject": "chinese",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "古代诗歌鉴赏（意象、炼字、作用）",
+    "reason": "题目提供完整清诗及注释，要求分析诗句作用及炼字效果，属于高中语文古诗文阅读典型考点，符合高考层级。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-25914.json"
+  },
+  "content_review": {
+    "line": 25914,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "清代查慎行诗歌鉴赏，考查诗句作用分析及炼字（'数'字的表达效果），属于高考语文古代诗歌阅读的标准题型和考查能力层级。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "diagnostic_adaptation": {
+    "id": "omni-chinese-021",
+    "student_attempt": "我目前只知道这题涉及古代诗歌鉴赏（意象、炼字、作用），还没有写出具体推理或结论。请帮我确定第一步。",
+    "assessment": "insufficient",
+    "feedback_criteria": "学生只报告了知识主题，未给出可核验的具体结果或推理。不得将未作答判为答错，也不能虚构学生的错误步骤或已掌握。给一个切题且可执行的起步或自检提示。",
+    "is_choice": false,
+    "model": "qwen3.8-flash",
+    "authored_revision": "assistant-explicit-insufficient-evidence.v1"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n阅读下面这首清诗，回答问题。\n晓过赵北口①查慎行十里风埃②过鄚州，忽开双眼见清流。绿杨影里平桥路，数尽渔船数白鸥。【注】①赵北口：位于白洋淀东岸，是一座千年重镇。②风埃：被风吹起的尘土。\n(1)诗歌写鄚州一带的情况，有何作用？(2)最后一句中的“数”字有什么表达效果？\n我的尝试：我目前只知道这题涉及古代诗歌鉴赏（意象、炼字、作用），还没有写出具体推理或结论。请帮我确定第一步。\n请检查我已有的理由或结果，只指出可核验的部分，并给一个自检提示。",
+      "images": []
+    }
+  ]
+}

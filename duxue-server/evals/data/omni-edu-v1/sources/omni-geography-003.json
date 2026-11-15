@@ -1,0 +1,63 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 22335,
+  "uid": "coig-exam_coig_exam_sampled_clean_v3.jsonl-1813-849b15696230",
+  "dataset": "coig-cqia",
+  "record_sha256": "a924ee8ba405fe0b221ca41162228ef15ece0c31ae29836092c07ba7a374d3aa",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n阅读材料回答问题\n古乡沟位于青藏高原东南部，上游地区有6条冰川，沟谷有厚度达300多米的堆积物．中游河谷狭窄．冰川末端深入森林带．每年夏秋季常有冰川泥石流爆发，其破坏力在世界上是罕见的．\n分析古乡沟夏秋季节冰川泥石流破坏力巨大的原因．"
+      },
+      {
+        "role": "assistant",
+        "content": "深厚的松散堆积物提供了异常丰富的物质条件；夏秋气温高，冰川强烈消融．此时降水较为丰沛，冰川融水与降水叠加，提供了极为丰沛的水源；狭窄的河谷，巨大的落差，积累了巨大的能量．\n\n泥石流破坏力巨大的原因主要考虑三个因素：地质条件，岩石风化破裂，为提供大量固体物质；地貌条件，倾斜度越大，带来灾害越严重；水源条件，水流流量和速度越大，灾害越严重．\n\n“古乡沟位于青藏高原东南部”说明地形坡度大；材料中提到上游地区有6条冰川，夏秋季冰雪融水重大，同时降水也多，提供了充足的水源条件；沟谷有厚度达300多米的堆积物，提供了丰富的物质条件；狭窄的河谷，落差大，水流急，为泥石流发生积累具体的能量．所以破坏力巨大．"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-1813-849b15696230\", \"kind\": \"qa\", \"system_variant\": \"none\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 3353, \"supervised_tokens\": 179, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 22335,
+    "subject": "geography",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "自然灾害成因分析（冰川泥石流）",
+    "reason": "结合青藏高原地理背景，分析冰川泥石流的形成条件及破坏力原因，需要运用自然地理原理进行综合推理，符合高考地理主观题特征。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-20115.json"
+  },
+  "content_review": {
+    "line": 22335,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "考查青藏高原古乡沟冰川泥石流破坏力巨大的原因，需从物质条件（松散堆积物）、水源条件（冰川融水+降水）、地形条件（落差大、河谷窄）三个维度综合分析，为高考地理自然灾害模块典型主观题。参考解析准确全面。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "diagnostic_adaptation": {
+    "id": "omni-geography-003",
+    "student_attempt": "夏秋气温高，冰川融化加上降水多，水源充足。沟谷有300米厚堆积物，物质丰富。中游河谷狭窄且落差大，水流急，动能大，所以破坏力强。",
+    "assessment": "correct",
+    "feedback_criteria": "检查学生是否准确提取了三个核心要素：1.物质条件（深厚松散堆积物）；2.水源条件（冰川融水+夏季降水叠加）；3.动力/地形条件（狭窄河谷、巨大落差导致能量积累）。若这三点逻辑清晰且对应材料信息，判定为正确。",
+    "is_choice": false,
+    "model": "qwen3.8-flash"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n阅读材料回答问题\n古乡沟位于青藏高原东南部，上游地区有6条冰川，沟谷有厚度达300多米的堆积物．中游河谷狭窄．冰川末端深入森林带．每年夏秋季常有冰川泥石流爆发，其破坏力在世界上是罕见的．\n分析古乡沟夏秋季节冰川泥石流破坏力巨大的原因．\n我的尝试：夏秋气温高，冰川融化加上降水多，水源充足。沟谷有300米厚堆积物，物质丰富。中游河谷狭窄且落差大，水流急，动能大，所以破坏力强。\n请检查我已有的理由或结果，只指出可核验的部分，并给一个自检提示。",
+      "images": []
+    }
+  ]
+}

@@ -1,0 +1,63 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 6141,
+  "uid": "cmm-math-18575",
+  "dataset": "cmm-math-text",
+  "record_sha256": "77e95970a9d79038ee708cbb6ac462036fd8ed8f12182aec94e19f022002cd70",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n10. 一个直角三角形的三边成等比数列, 则较小锐角的正弦值是\n\n答案 $\\frac{\\sqrt{5}-1}{2}$"
+      },
+      {
+        "role": "assistant",
+        "content": "设三边为 $a, a q, a q^{2}(q>1)$,\n\n则 $\\left(a q^{2}\\right)^{2}=(a q)^{2}+a^{2}, \\therefore q^{2}=\\frac{\\sqrt{5}+1}{2}$.\n\n较小锐角记为 $\\theta$, 则 $\\sin \\theta=\\frac{1}{q^{2}}=\\frac{\\sqrt{5}-1}{2}$."
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"cmm-math-text\", \"uid\": \"cmm-math-18575\", \"kind\": \"qa\", \"system_variant\": \"general\", \"kcenter\": {\"bucket\": \"subject/math/text/cot/other\", \"rank\": 3285, \"supervised_tokens\": 102, \"token_budget\": 1345000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 6141,
+    "subject": "math",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "等比数列与三角函数",
+    "reason": "直角三角形三边成等比数列，设边长为a, aq, aq^2，由勾股定理得1+q^2=q^4，进而求出sin值。这需要综合运用数列性质、方程求解和三角函数定义，是高中数学中数列与三角结合的典型难题，符合高考层级。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-8246.json"
+  },
+  "content_review": {
+    "line": 6141,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "直角三角形三边成等比数列结合三角函数求值，涉及等比数列性质与勾股定理的综合运用，属于高考层级。参考解析推导正确：q⁴=q²+1解得q²=(√5+1)/2，sinθ=1/q²=(√5-1)/2。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "diagnostic_adaptation": {
+    "id": "omni-math-021",
+    "student_attempt": "设三边为 $a, aq, aq^2$ ($q>1$)。由勾股定理 $(aq^2)^2 = (aq)^2 + a^2$，化简得 $q^4 - q^2 - 1 = 0$。解得 $q^2 = \\frac{\\sqrt{5}+1}{2}$。较小锐角正弦值为对边比斜边，即 $\\frac{a}{aq^2} = \\frac{1}{q^2} = \\frac{2}{\\sqrt{5}+1} = \\frac{\\sqrt{5}-1}{2}$。",
+    "assessment": "correct",
+    "feedback_criteria": "检查学生是否正确建立等比数列与勾股定理的关系，是否准确求解关于 $q^2$ 的方程，以及是否正确识别较小锐角的对边与斜边关系并计算倒数。若推导逻辑严密且结果匹配参考答案，判定为正确。",
+    "is_choice": false,
+    "model": "qwen3.8-flash"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n10. 一个直角三角形的三边成等比数列, 则较小锐角的正弦值是\n\n答案 $\\frac{\\sqrt{5}-1}{2}$\n我的尝试：设三边为 $a, aq, aq^2$ ($q>1$)。由勾股定理 $(aq^2)^2 = (aq)^2 + a^2$，化简得 $q^4 - q^2 - 1 = 0$。解得 $q^2 = \\frac{\\sqrt{5}+1}{2}$。较小锐角正弦值为对边比斜边，即 $\\frac{a}{aq^2} = \\frac{1}{q^2} = \\frac{2}{\\sqrt{5}+1} = \\frac{\\sqrt{5}-1}{2}$。\n请检查我已有的理由或结果，只指出可核验的部分，并给一个自检提示。",
+      "images": []
+    }
+  ]
+}

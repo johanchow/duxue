@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 19441,
+  "uid": "coig-exam_coig_exam_sampled_clean_v3.jsonl-1551-f717a4988790",
+  "dataset": "coig-cqia",
+  "record_sha256": "7d2a0a114f8fcd4a8599910a9ea8fa4001b1c333bbef7f8add2d948dafb55771",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n按要求填写空格处的内容\n.基因工程中可以通过PCR技术扩增目的基因。回答下列问题。\n生物体细胞内的DNA复制开始时，解开DNA双链的酶是________。在体外利用PCR技术扩增目的基因时，使反应体系中的模板DNA解链为单链的条件是________。上述两个解链过程的共同点是破坏了DNA双链分子中的________。"
+      },
+      {
+        "role": "assistant",
+        "content": "解旋酶；加热至90～95℃；氢键"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-1551-f717a4988790\", \"kind\": \"qa\", \"system_variant\": \"general\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 459, \"supervised_tokens\": 15, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 19441,
+    "subject": "biology",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "基因工程-DNA复制与PCR技术原理",
+    "reason": "题目考察体内DNA复制解链酶（解旋酶）与体外PCR变性条件（高温）的区别及共同点（破坏氢键）。这是高中生物选修模块《生物技术实践》或选择性必修《生物技术与工程》中的核心考点，符合高考生物命题规范。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-24138.json"
+  },
+  "content_review": {
+    "line": 19441,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "考查DNA复制中解旋酶的作用、PCR高温变性条件及两者共同破坏氢键的原理，属于高中生物选修（基因工程/PCR技术）核心知识点。参考解析正确。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "Problem:\n按要求填写空格处的内容\n.基因工程中可以通过PCR技术扩增目的基因。回答下列问题。\n生物体细胞内的DNA复制开始时，解开DNA双链的酶是________。在体外利用PCR技术扩增目的基因时，使反应体系中的模板DNA解链为单链的条件是________。上述两个解链过程的共同点是破坏了DNA双链分子中的________。",
+      "images": []
+    }
+  ]
+}

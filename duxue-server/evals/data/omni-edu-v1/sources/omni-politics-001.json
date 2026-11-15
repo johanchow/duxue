@@ -1,0 +1,63 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 26220,
+  "uid": "coig-exam_coig_exam_sampled_clean_v3.jsonl-759-1009a351dae5",
+  "dataset": "coig-cqia",
+  "record_sha256": "0334bc1117257c7680d8ff6ab39377f82d7895d15223573864e6319628246479",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n请选择正确的选项\n2018年5月4日，习近平在纪念马克思200周年诞辰大会上发表讲话。他指出，国家之魂，文以化之，文以铸之。我们发展社会主义先进文化，推动中华优秀传统文化创造性转化、创新性发展不断铸就中华文化新辉煌。发展社会主义先进文化需要（　　）①坚持以马克思主义为指导②继承与发展中华优秀传统文化③结合当今时代条件，不忘初心，吸收外来，面向未来④坚守中华文化立场，立足当代中国现实A．①②③\tB．①②④\tC．①③④\tD．①②③④"
+      },
+      {
+        "role": "assistant",
+        "content": "党的十九大报告指出“发展中国特色社会主义文化，就是以马克思主义为指导，坚守中华文化立场，立足当代中国现实，结合当今时代条件，发展面向现代化、面向世界、面向未来的，民族的科学的大众的社会主义文化，推动社会主义精神文明和物质文明协调发展”，故①③④是正确的；我们还知道发展先进文化，我们还要继承与发展中华优秀传统文化，故②也是正确的。\n\n因此答案为：D"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-759-1009a351dae5\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 7238, \"supervised_tokens\": 83, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 26220,
+    "subject": "politics",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "发展社会主义先进文化/马克思主义指导地位",
+    "reason": "题目考查高中思想政治必修内容中关于文化建设、指导思想及传统文化转化的知识点，属于典型的高考政治选择题。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-26220.json"
+  },
+  "content_review": {
+    "line": 26220,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "考查发展中国特色社会主义文化的指导思想、立场、时代条件等，涉及高中思想政治《文化生活》模块的综合理解与判断，符合高考层级。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "diagnostic_adaptation": {
+    "id": "omni-politics-001",
+    "student_attempt": "题目问发展社会主义先进文化需要什么。①坚持马克思主义指导是根本，正确；②继承优秀传统文化也是重要内容，正确；③结合时代条件、吸收外来等符合“面向未来”的要求，正确；④坚守中华文化立场、立足现实也是十九大报告强调的，正确。四个选项都符合题意，所以选D。",
+    "assessment": "correct",
+    "feedback_criteria": "检查学生是否准确识别了①②③④四项均属于发展社会主义先进文化的必要举措。确认其推理逻辑是否基于对“创造性转化、创新性发展”及“以我为主、为我所用”等原则的正确理解。若学生能指出所有选项均无误并选择D，则判定为正确。",
+    "is_choice": true,
+    "model": "qwen3.8-flash"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n请选择正确的选项\n2018年5月4日，习近平在纪念马克思200周年诞辰大会上发表讲话。他指出，国家之魂，文以化之，文以铸之。我们发展社会主义先进文化，推动中华优秀传统文化创造性转化、创新性发展不断铸就中华文化新辉煌。发展社会主义先进文化需要（　　）①坚持以马克思主义为指导②继承与发展中华优秀传统文化③结合当今时代条件，不忘初心，吸收外来，面向未来④坚守中华文化立场，立足当代中国现实A．①②③\tB．①②④\tC．①③④\tD．①②③④\n我的尝试：题目问发展社会主义先进文化需要什么。①坚持马克思主义指导是根本，正确；②继承优秀传统文化也是重要内容，正确；③结合时代条件、吸收外来等符合“面向未来”的要求，正确；④坚守中华文化立场、立足现实也是十九大报告强调的，正确。四个选项都符合题意，所以选D。\n请检查我已有的理由或结果，只指出可核验的部分，并给一个自检提示。",
+      "images": []
+    }
+  ]
+}

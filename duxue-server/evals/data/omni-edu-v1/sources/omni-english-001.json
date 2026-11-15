@@ -1,0 +1,67 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 14741,
+  "uid": "race-high13953.txt-943a",
+  "dataset": "reading-race",
+  "record_sha256": "7cbc29d3dd957b88392e3d3eeae1a2cc93c162415446e5f379a9de89b08fbaf8",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Answer the reading-comprehension question from the supplied passage and options. Base the answer only on the passage, reason carefully when needed, and follow the requested answer format."
+      },
+      {
+        "role": "user",
+        "content": "Passage:\nAlmost anyone who has read a travel brochure about Africa has heard of a story ----- that elephants can get drunk by eating the fermented   marula fruit rotting   on the ground. Books have even been written to prove the truth of the phenomenon.\nBut a study published in the journalPhysiological and Biochemical Zoologytells a very different story.\nSteve Morris, a biologist at the University of Bristol in England and an author of the study, says there is nothing in the biology of either the African elephant or the marula fruit to support the stories. Morris says, \"People just want to believe in drunken elephants.\"\nThe marula tree, a member of the same family as the mango  , grows widely in Africa. Its sweet, yellow fruit is used for making jam, wine and beer. \"The first mistake of the drunken-elephant theory is that it's unlikely that an elephant would eat the fruit if it were rotten,\" Morris says. \"Elephants eat the fruit right off the tree, not when it's rotten on the ground,\" he explains.\nOther experts add that if an elephant were to eat the fruit on the ground, it wouldn't wait for the fruit to ferment. Michelle Gadd, an African wildlife specialist, says that elephants and many other animals, including birds and monkeys, are too fond of marula fruit to let it rot.\nIf fermented fruit on the ground is out of the question, so is the concept that the fruit could ferment in the stomach of elephants, according to the study authors. Food takes between 12 and 46 hours to pass through an elephant's digestive   system, the authors point out, which is not enough for the fruit to ferment.\nSupposing that _ happened, it's still highly improbable that the food would produce enough alcohol to make an elephant drunk. Through calculations of body weight, elephant digestion rates, and other factors, the authors conclude that it would take about 1.9 litres of alcohol to make an elephant drunk.\n\nProblem:\nWhich of the following is Mr. Morris's opinion?\n\nOptions:\nA. Elephants prefer mangoes to the marula fruit.\nB. Elephants will not eat the marula fruit if it is rotten.\nC. The marula tree and the mango belong to different families.\nD. There are several connections between elephants and the marula fruit."
+      },
+      {
+        "role": "assistant",
+        "content": "Option B is correct because the passage explicitly quotes Mr. Morris stating, \"The first mistake of the drunken-elephant theory is that it's unlikely that an elephant would eat the fruit if it were rotten,\" and further clarifies, \"Elephants eat the fruit right off the tree, not when it's rotten on the ground.\" This directly supports the idea that elephants avoid eating rotten marula fruit.\n\nOption A is incorrect because the passage mentions that the marula tree is a \"member of the same family as the mango,\" but it never states that elephants prefer mangoes over marula fruit. Option C is incorrect because the text states the opposite: the marula tree and the mango belong to the \"same family.\" Option D is too vague and does not capture Mr. Morris's specific opinion regarding the behavior of elephants toward rotten fruit, which is the focus of the question.\n\nB"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"reading-race\", \"uid\": \"race-high13953.txt-943a\", \"kind\": \"reading\", \"system_variant\": \"general\", \"kcenter\": {\"bucket\": \"subject/reading/reading-race\", \"rank\": 970, \"supervised_tokens\": 180, \"token_budget\": 396000}, \"system_prompt_id\": \"reading_comprehension\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 14741,
+    "subject": "english",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "阅读理解-观点态度",
+    "reason": "英文议论文/说明文，考察对研究者Steve Morris观点的理解，需要区分事实与观点，符合高考要求。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-14329.json"
+  },
+  "content_review": {
+    "line": 14741,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "英文原文阅读理解，考查人物观点的细节定位与辨析，篇幅、词汇量和推理深度均符合高考英语阅读标准，题面完整。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nPassage:\nAlmost anyone who has read a travel brochure about Africa has heard of a story ----- that elephants can get drunk by eating the fermented   marula fruit rotting   on the ground. Books have even been written to prove the truth of the phenomenon.\nBut a study published in the journalPhysiological and Biochemical Zoologytells a very different story.\nSteve Morris, a biologist at the University of Bristol in England and an author of the study, says there is nothing in the biology of either the African elephant or the marula fruit to support the stories. Morris says, \"People just want to believe in drunken elephants.\"\nThe marula tree, a member of the same family as the mango  , grows widely in Africa. Its sweet, yellow fruit is used for making jam, wine and beer. \"The first mistake of the drunken-elephant theory is that it's unlikely that an elephant would eat the fruit if it were rotten,\" Morris says. \"Elephants eat the fruit right off the tree, not when it's rotten on the ground,\" he explains.\nOther experts add that if an elephant were to eat the fruit on the ground, it wouldn't wait for the fruit to ferment. Michelle Gadd, an African wildlife specialist, says that elephants and many other animals, including birds and monkeys, are too fond of marula fruit to let it rot.\nIf fermented fruit on the ground is out of the question, so is the concept that the fruit could ferment in the stomach of elephants, according to the study authors. Food takes between 12 and 46 hours to pass through an elephant's digestive   system, the authors point out, which is not enough for the fruit to ferment.\nSupposing that _ happened, it's still highly improbable that the food would produce enough alcohol to make an elephant drunk. Through calculations of body weight, elephant digestion rates, and other factors, the authors conclude that it would take about 1.9 litres of alcohol to make an elephant drunk.\n\nProblem:\nWhich of the following is Mr. Morris's opinion?\n\nOptions:\nA. Elephants prefer mangoes to the marula fruit.\nB. Elephants will not eat the marula fruit if it is rotten.\nC. The marula tree and the mango belong to different families.\nD. There are several connections between elephants and the marula fruit.\n我不会这道题。先给我一个能自己尝试的小提示。",
+      "images": []
+    },
+    {
+      "id": "m2",
+      "role": "user",
+      "content": "这个提示我还没理解，请换一种说法或拆细一点；先别给最终答案。",
+      "images": []
+    },
+    {
+      "id": "m3",
+      "role": "user",
+      "content": "我想自己接着做，请结合刚才的讲解，只提醒下一步该检查什么。",
+      "images": []
+    }
+  ]
+}

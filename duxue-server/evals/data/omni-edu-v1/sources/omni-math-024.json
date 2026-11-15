@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 3631,
+  "uid": "cmm-math-17531",
+  "dataset": "cmm-math-text",
+  "record_sha256": "540e7be7bc20c09bd1b6ea7b17ce3b800349a98b8d6aa574a86dbf847789e4e7",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n如果两个函数的图象经过平移后能够重合, 那么这两个函数称为 “和谐” 函数. 下列函数中与 $g(x)=\\sqrt{2}$ $\\sin \\left(x+\\frac{\\pi}{4}\\right)$ 能构成 “和谐” 函数的是 ( )\n\nOptions:\nA. $ f(x)=\\sin \\left(x+\\frac{\\pi}{4}\\right)$\n\nB $\\cdot f(x)=2 \\sin \\left(x-\\frac{\\pi}{4}\\right)$\n\nC $\\cdot f(x)=\\sqrt{2} \\sin \\left(\\frac{x}{2}+\\frac{\\pi}{4}\\right)$\n\nD $\\cdot f(x)=\\sqrt{2} \\sin \\left(x+\\frac{\\pi}{4}\\right)+2$"
+      },
+      {
+        "role": "assistant",
+        "content": ": 将函数 $g(x)$ 图象上的所有的点向上平移 2 个单位长度, 即得到函数 $f(x)=\\sqrt{2} \\sin \\left(x+\\frac{\\pi}{4}\\right)+2$ 的图象,故选 D.\n\n答案: D"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"cmm-math-text\", \"uid\": \"cmm-math-17531\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/math/text/cot/other\", \"rank\": 775, \"supervised_tokens\": 62, \"token_budget\": 1345000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 3631,
+    "subject": "math",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "三角函数图象变换（平移）",
+    "reason": "考察正弦型函数的振幅、周期及相位对图象的影响，特别是通过平移重合的条件（振幅和周期必须相同），属于高中必修或选择性必修内容，符合高考考点。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-11185.json"
+  },
+  "content_review": {
+    "line": 3631,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "三角函数图象的平移变换（振幅相同才能通过平移重合）是中国高中数学三角函数章节的核心考点，符合高考层级。参考解析正确。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n如果两个函数的图象经过平移后能够重合, 那么这两个函数称为 “和谐” 函数. 下列函数中与 $g(x)=\\sqrt{2}$ $\\sin \\left(x+\\frac{\\pi}{4}\\right)$ 能构成 “和谐” 函数的是 ( )\n\nOptions:\nA. $ f(x)=\\sin \\left(x+\\frac{\\pi}{4}\\right)$\n\nB $\\cdot f(x)=2 \\sin \\left(x-\\frac{\\pi}{4}\\right)$\n\nC $\\cdot f(x)=\\sqrt{2} \\sin \\left(\\frac{x}{2}+\\frac{\\pi}{4}\\right)$\n\nD $\\cdot f(x)=\\sqrt{2} \\sin \\left(x+\\frac{\\pi}{4}\\right)+2$\n这题我卡住了。请先帮我拆出一个能动手的小步骤，不要给完整答案。",
+      "images": []
+    }
+  ]
+}

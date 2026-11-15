@@ -1,0 +1,63 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 22642,
+  "uid": "aquila-all-231858-9fda0b583a50",
+  "dataset": "aquilaedu",
+  "record_sha256": "b9a4f973a72c1b38d290fd1f8c804b34587391e38c777c68fe7d390c4865c453",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n请选择正确的选项。\n2018年8月20日，共产党员黄群、宋月才、姜开斌面对台风和巨浪，挺身而出，英勇无惧，为保护国家重点试验平台壮烈牺牲，他们（　　） ①用宝贵生命践行了入党誓言 ②不忘初心、牢记使命，履职尽责 ③是习近平新时代中国特色社会主义思想的忠实践行者 ④误读了生命至上的内涵 A．①②③\tB．①②④\tC．①③④\tD．②③④"
+      },
+      {
+        "role": "assistant",
+        "content": "共产党员黄群、宋月才、姜开斌英勇牺牲的烈士的行为是不怕牺牲、敢于担当、勇往直前的大无畏精神，用宝贵生命践行了入党誓言，不忘初心、牢记使命，履职尽责，是习近平新时代中国特色社会主义思想的忠实践行者，其事迹完美诠释了人生的价值在于创造和奉献，奉献使人快乐，使人充实，使人高尚。因此选项①②③正确；选项④错误，体现了生命至上的内涵。 故选：A。 \n#### 答案是：A"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"aquilaedu\", \"uid\": \"aquila-all-231858-9fda0b583a50\", \"kind\": \"qa\", \"system_variant\": \"none\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 3660, \"supervised_tokens\": 105, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 22642,
+    "subject": "politics",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "高中思想政治-价值观与党员责任",
+    "reason": "题目涉及共产党员牺牲事迹及政治评价，符合高中思想政治课程中关于人生价值、理想信念的内容，需要运用政治学科术语进行判断，属于高考层级。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-19817.json"
+  },
+  "content_review": {
+    "line": 22642,
+    "subject_correct": true,
+    "complete": true,
+    "level": "other_k12",
+    "reason": "考查党员先锋模范作用及人生价值在于奉献，属于泛泛价值观判断，初中生凭借基本道德认知即可直接作答，无高中政治学科特有的理论深度或复杂推理。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "diagnostic_adaptation": {
+    "id": "omni-politics-017",
+    "student_attempt": "我认为④是错误的。题目中三位党员为保护国家财产牺牲，这恰恰体现了对生命价值（包括集体利益、国家安全）的崇高追求，而不是误读“生命至上”。在政治学科语境下，“生命至上”不仅指个体生物性存活，更包含为了更大正义和公共利益而奉献的精神。因此排除含④的选项B、C、D，答案应为A。",
+    "assessment": "correct",
+    "feedback_criteria": "导师应确认学生正确识别了④的错误性质，并理解“生命至上”在英雄模范事迹中的辩证含义（即精神生命的升华与集体利益的维护）。若学生仅凭排除法得出A但未解释④为何错，则需引导其深化对价值观的理解；若学生能清晰阐述①②③的正确性及④的逻辑谬误，则给予肯定。",
+    "is_choice": true,
+    "model": "qwen3.8-flash"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n请选择正确的选项。\n2018年8月20日，共产党员黄群、宋月才、姜开斌面对台风和巨浪，挺身而出，英勇无惧，为保护国家重点试验平台壮烈牺牲，他们（　　） ①用宝贵生命践行了入党誓言 ②不忘初心、牢记使命，履职尽责 ③是习近平新时代中国特色社会主义思想的忠实践行者 ④误读了生命至上的内涵 A．①②③\tB．①②④\tC．①③④\tD．②③④\n我的尝试：我认为④是错误的。题目中三位党员为保护国家财产牺牲，这恰恰体现了对生命价值（包括集体利益、国家安全）的崇高追求，而不是误读“生命至上”。在政治学科语境下，“生命至上”不仅指个体生物性存活，更包含为了更大正义和公共利益而奉献的精神。因此排除含④的选项B、C、D，答案应为A。\n请检查我已有的理由或结果，只指出可核验的部分，并给一个自检提示。",
+      "images": []
+    }
+  ]
+}

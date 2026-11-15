@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 14007,
+  "uid": "race-high19525.txt-32ab",
+  "dataset": "reading-race",
+  "record_sha256": "f23ed2e85c31b31275211659de14c57784dd9e330caef73f972b31a952ed9792",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Answer the reading-comprehension question from the supplied passage and options. Base the answer only on the passage, reason carefully when needed, and follow the requested answer format."
+      },
+      {
+        "role": "user",
+        "content": "Passage:\nWhat's the most expensive place to station an employee overseas? London? Tokyo? Sao Paulo? Try Luanda, Angola.\nThat's the finding of a survey by Mercer, the world's largest human resources consulting firm, headquartered in New York City. Two African cities (Luanda, N'Djamena) were in the top 10, along with four (Moscow, Geneva, Zurich, Bern) in Europe, three (Tokyo, Singapore, Hong Kong) in Asia and one (Sydney) in Australia. Switzerland alone has three cities in the top 10.\nMercer's 2013 Cost of Living Survey examined data from 214 cities worldwide, comparing a market basket of over 200 goods and services, including unfurnished luxury two-bedroom apartments or three-bedroom houses, movie tickets, blue jeans, international newspapers, coffee, fast food restaurant meals, gasoline, milk and soda.\nIf it sounds odd that Angola would be the most expensive, Mercer's Barb Marder explains that\"Despite being one of Africa's major oil producers, Angola is a  ly poor country yet expensive for expatriates   since imported goods can be dear. In addition, finding secure living accommodations that meet the standards of expatriates can be challenging and quite costly.\"The survey found similar supply issues in N'Djamena, Chad, the other top 10 city in Africa.\nMercer measured locations worldwide against New York, on a U.S. dollar basis, meaning that exchange rate shifts could impact the rankings. For example, although Tokyo is Asia's most expensive city for people who live in a foreign country, the weakening of the Japanese yen against the dollar makes it seem cheaper than it was a year ago. Canada, too, has become a   bargain as the U.S. dollar strengthens against the Canadian dollar.\nMeasurements were taken in March, 2013.\nWhat's the trend in the United States?\"Overall, U.S. cities either remain stable in the ranking or have slightly decreased due to the movement of the U.S. dollar against the majority of currencies worldwide,\"explains Mercer's Steven Nurney. However, that may change as real estate  prices rise nationwide. New York is the nation's most expensive place to station expatriates.\nWhile housing is generally the most important factor in the survey rankings, the survey revealed some other significant differences in prices. For example, you may need a vodka chaser after paying $ 8.29 for a cup of coffee in Moscow, but the same coffee in Managua, Nicaragua would cost only $ 1.54. Expect to pay $ 20.10 for a movie ticket in London, versus $ 5.91 in Johannesburg.\n\nProblem:\nOne reason why the cost of living for employees overseas in Angola is high is that    .\n\nOptions:\nA. the quality of life there is superior\nB. its imported goods cost a lot of money\nC. the rent for an apartment is really high\nD. the living environment is human-friendly"
+      },
+      {
+        "role": "assistant",
+        "content": "The correct answer is supported by the fourth paragraph, where Mercer's Barb Marder explains that \"Angola is a ... poor country yet expensive for expatriates since imported goods can be dear.\" The word \"dear\" in this context means expensive, directly confirming that the high cost of imported goods is a primary reason for the high cost of living.\n\nOption A is incorrect because the passage describes Angola as a \"poor country\" and notes challenges in finding secure accommodations, rather than suggesting a superior quality of life. Option C is not the best answer because, while the text mentions that finding \"secure living accommodations\" is \"costly,\" it explicitly attributes the high cost to the difficulty of finding secure housing and the price of imported goods; the specific reason cited for the general expense in the quote is the cost of imported items. Option D is incorrect as the passage highlights challenges and high costs, not a \"human-friendly\" environment.\n\nB"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"reading-race\", \"uid\": \"race-high19525.txt-32ab\", \"kind\": \"reading\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/reading/reading-race\", \"rank\": 236, \"supervised_tokens\": 191, \"token_budget\": 396000}, \"system_prompt_id\": \"reading_comprehension\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 14007,
+    "subject": "english",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "English Reading Comprehension - Economic/Social Report Analysis",
+    "reason": "The passage is a news report on cost-of-living surveys, involving economic concepts (exchange rates, expatriate costs, market basket). The question asks for a specific reason for Angola's high cost ('imported goods can be dear'). The length, structure, and informational density are consistent with Gaokao-level non-fiction reading tasks.",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-15014.json"
+  },
+  "content_review": {
+    "line": 14007,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "英文原文阅读理解，考查细节理解（imported goods can be dear），符合高考英语阅读要求。参考解析正确。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nPassage:\nWhat's the most expensive place to station an employee overseas? London? Tokyo? Sao Paulo? Try Luanda, Angola.\nThat's the finding of a survey by Mercer, the world's largest human resources consulting firm, headquartered in New York City. Two African cities (Luanda, N'Djamena) were in the top 10, along with four (Moscow, Geneva, Zurich, Bern) in Europe, three (Tokyo, Singapore, Hong Kong) in Asia and one (Sydney) in Australia. Switzerland alone has three cities in the top 10.\nMercer's 2013 Cost of Living Survey examined data from 214 cities worldwide, comparing a market basket of over 200 goods and services, including unfurnished luxury two-bedroom apartments or three-bedroom houses, movie tickets, blue jeans, international newspapers, coffee, fast food restaurant meals, gasoline, milk and soda.\nIf it sounds odd that Angola would be the most expensive, Mercer's Barb Marder explains that\"Despite being one of Africa's major oil producers, Angola is a  ly poor country yet expensive for expatriates   since imported goods can be dear. In addition, finding secure living accommodations that meet the standards of expatriates can be challenging and quite costly.\"The survey found similar supply issues in N'Djamena, Chad, the other top 10 city in Africa.\nMercer measured locations worldwide against New York, on a U.S. dollar basis, meaning that exchange rate shifts could impact the rankings. For example, although Tokyo is Asia's most expensive city for people who live in a foreign country, the weakening of the Japanese yen against the dollar makes it seem cheaper than it was a year ago. Canada, too, has become a   bargain as the U.S. dollar strengthens against the Canadian dollar.\nMeasurements were taken in March, 2013.\nWhat's the trend in the United States?\"Overall, U.S. cities either remain stable in the ranking or have slightly decreased due to the movement of the U.S. dollar against the majority of currencies worldwide,\"explains Mercer's Steven Nurney. However, that may change as real estate  prices rise nationwide. New York is the nation's most expensive place to station expatriates.\nWhile housing is generally the most important factor in the survey rankings, the survey revealed some other significant differences in prices. For example, you may need a vodka chaser after paying $ 8.29 for a cup of coffee in Moscow, but the same coffee in Managua, Nicaragua would cost only $ 1.54. Expect to pay $ 20.10 for a movie ticket in London, versus $ 5.91 in Johannesburg.\n\nProblem:\nOne reason why the cost of living for employees overseas in Angola is high is that    .\n\nOptions:\nA. the quality of life there is superior\nB. its imported goods cost a lot of money\nC. the rent for an apartment is really high\nD. the living environment is human-friendly\n我想先弄清这题需要用哪个概念，以及题目条件怎样联系，请引导我。",
+      "images": []
+    }
+  ]
+}

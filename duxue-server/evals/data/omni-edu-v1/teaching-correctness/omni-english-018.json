@@ -1,0 +1,82 @@
+{
+  "schema_version": "dialogue-eval.v2",
+  "id": "omni-english-018",
+  "type": "single_turn",
+  "replay_mode": "fixed_history",
+  "source": {
+    "kind": "synthetic",
+    "coverage": "authored",
+    "provider": "reading-race",
+    "note": "{\"source_record\": \"sources/omni-english-018.json\", \"uid\": \"race-high238.txt-3ded\", \"source_category\": \"subject_competence\"}"
+  },
+  "messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "Passage:\nCareercast.com is out with its list of best and worst jobs of 2012. It's bad news for the writer of this story, but much brighter for the folks who program the code that keeps this website busy.\nUsing a method that looked at physical demands, work environment, income, stress and hiring outlook, career Website Careercast.com, ranked the top 200 jobs. They also ranked the jobs with the most stress. Not surprisingly, none of the most stressful jobs show up on the best jobs list.\nAt the top is software engineer and at the bottom is the lumberjack. Cutting trees failed to skate above the bottom 10 percent in all ranking categories, except income. \"Unemployment for lumberjacks is very high, and the demand for their services is expected to continue to fall through 2016. And while working outside all day may seem like a great job perk , being a lumberjack not only is considered the worst job, but also one of the world's most dangerous,\" according to Careercast.com. And, for that most dangerous job, a lumberjack earns a little more than $32,000 a year. That's about $56,000 less than the easy job of a software engineer, which has the average salary at $88,000 a year, according to Careercast.\nHere's a complete look at the best and worst jobs. And, take a look at the most stressful jobs. You may be surprised.\nBest Jobs                     Worst Jobs             Most Stressful Jobs\nSoftware Engineer                   Lumberjack              Enlisted Soldier\nActuary                         Dairy Farmer                Firefighter\nHuman Resources Manager         Enlisted Military Soldier       Airline Pilot\nDental Hygienist                    Oil Rig Worker         Military General\nFinancial Planner                   Reporter (Newspaper)        Police Officer\nAudiologist                     Waiter/Waitress         Event Coordinator\nOccupational Therapist              Meter Reader                Public Relations Executive\nOnline Advertising Manager          Dishwasher              Corporate Executive Computer Systems Analyst          Butcher                 Photojournalist\nMathematician                       Broadcaster             Taxi Driver\n\nProblem:\nWhich of the following was not considered when Careercast.com ranked the top 200 jobs?\n\nOptions:\nA. Hiring outlook.\nB. Pressure.\nC. Mental demands.\nD. Salary.",
+      "images": []
+    }
+  ],
+  "checks": [
+    {
+      "id": "check-1",
+      "after_message": "m1",
+      "component": "tutoring.turn",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "problem": {
+            "summary": "Passage:\nCareercast.com is out with its list of best and worst jobs of 2012. It's bad news for the writer of this story, but much brighter for the folks who program the code that keeps this website busy.\nUsing a method that looked at physical demands, work environment, income, stress and hiring outlook, career Website Careercast.com, ranked the top 200 jobs. They also ranked the jobs with the most stress. Not surprisingly, none of the most stressful jobs show up on the best jobs list.\nAt the top is software engineer and at the bottom is the lumberjack. Cutting trees failed to skate above the bottom 10 percent in all ranking categories, except income. \"Unemployment for lumberjacks is very high, and the demand for their services is expected to continue to fall through 2016. And while working outside all day may seem like a great job perk , being a lumberjack not only is considered the worst job, but also one of the world's most dangerous,\" according to Careercast.com. And, for that most dangerous job, a lumberjack earns a little more than $32,000 a year. That's about $56,000 less than the easy job of a software engineer, which has the average salary at $88,000 a year, according to Careercast.\nHere's a complete look at the best and worst jobs. And, take a look at the most stressful jobs. You may be surprised.\nBest Jobs                     Worst Jobs             Most Stressful Jobs\nSoftware Engineer                   Lumberjack              Enlisted Soldier\nActuary                         Dairy Farmer                Firefighter\nHuman Resources Manager         Enlisted Military Soldier       Airline Pilot\nDental Hygienist                    Oil Rig Worker         Military General\nFinancial Planner                   Reporter (Newspaper)        Police Officer\nAudiologist                     Waiter/Waitress         Event Coordinator\nOccupational Therapist              Meter Reader                Public Relations Executive\nOnline Advertising Manager          Dishwasher              Corporate Executive Computer Systems Analyst          Butcher                 Photojournalist\nMathematician                       Broadcaster             Taxi Driver\n\nProblem:\nWhich of the following was not considered when Careercast.com ranked the top 200 jobs?\n\nOptions:\nA. Hiring outlook.\nB. Pressure.\nC. Mental demands.\nD. Salary.",
+            "active_subgoal": "Reading Comprehension - Information Retrieval",
+            "substantive_attempts": 0,
+            "hints_given": 0
+          },
+          "task_title": "本地学科答疑评测",
+          "task_active": true
+        },
+        "note": "Injected evaluation context; not a production database observation."
+      },
+      "grading": {
+        "deterministic": [
+          {
+            "id": "delivered",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "answer"
+            ]
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "correctness",
+            "type": "score",
+            "rubric": "内部完整解题：依据原题和实际图片独立核验最终结论、推导、定义域、单位、条件及各小问覆盖。允许数学等价表达与有依据的异解。1分错误/无解答，2分重要错误，3分方向正确但关键缺漏，4分结论与主要推导正确且完整，5分进一步严谨清晰。只评价实际solution，不要求启发提问。",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "本题知识目标：Reading Comprehension - Information Retrieval。参考答案是上游未认证材料，须独立核验；参考有争议时不得盲从，不因合理异解扣分。",
+            "expected": "pass"
+          }
+        ],
+        "reference_response": "The passage explicitly lists the criteria used by Careercast.com to rank the jobs in the second paragraph: \"Using a method that looked at physical demands, work environment, income, stress and hiring outlook...\"\n\nOption C (\"Mental demands\") is the correct answer because it is the only factor listed in the options that does not appear in this specific list. The passage mentions \"physical demands\" but makes no reference to mental demands.\n\nRegarding the other options:\n*   **A (Hiring outlook)** is incorrect because the text explicitly includes \"hiring outlook\" in the list of criteria.\n*   **B (Pressure)** is incorrect because the text mentions \"stress,\" which is synonymous with pressure in this context.\n*   **D (Salary)** is incorrect because the text includes \"income\" in the list, and the third paragraph further discusses specific salary figures ($32,000 vs. $88,000), confirming that financial compensation was a factor.\n\nC",
+        "rationale": [
+          "Synthetic local adaptation; reference and semantic labels remain proposed."
+        ]
+      }
+    }
+  ],
+  "review_batch": "omni-edu-v1",
+  "label_status": "proposed",
+  "note": "Adapted evaluation task; original system and final assistant are source/scoring-only. No teacher certification.",
+  "conversation_id": "34e7fbb3587649d89984",
+  "turn_index": 0,
+  "tags": [
+    "subject_competence",
+    "english",
+    "gaokao_equivalent",
+    "solve"
+  ]
+}

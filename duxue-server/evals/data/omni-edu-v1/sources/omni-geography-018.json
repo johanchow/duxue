@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 25190,
+  "uid": "sciq-9315",
+  "dataset": "sciq",
+  "record_sha256": "39cedf2fed26c923e5a6168de956255bd9bfcb19ccd375f3f0675ae9da89f437",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\nWhat is the hardest type of coal?\n\nOptions:\n- anthracite\n- Bituminous\n- lignite\n- peat"
+      },
+      {
+        "role": "assistant",
+        "content": "Coal forms through different stages of heat and pressure, which determine its hardness and carbon content. Among the types listed, anthracite is the hardest because it has undergone the highest degree of metamorphism, transforming it into a metamorphic rock. This intense geological process results in a dense, hard material with a high carbon content and low impurities. Because of this high purity and metamorphic nature, anthracite burns more cleanly and causes less pollution than softer coals like bituminous, lignite, or peat. Therefore, the hardest type of coal is anthracite."
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"sciq\", \"uid\": \"sciq-9315\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 6208, \"supervised_tokens\": 117, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 25190,
+    "subject": "geography",
+    "level": "other_k12",
+    "complete": true,
+    "topic": "煤炭类型硬度",
+    "reason": "题目询问最硬的煤（anthracite，无烟煤）。这是初中地理或科学中关于自然资源的基础事实记忆，高考地理通常考查煤炭分布、开采条件或对环境影响，而非单纯的物理属性排序。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-science-v1/review-21709.json"
+  },
+  "content_review": {
+    "line": 25190,
+    "subject_correct": true,
+    "complete": true,
+    "level": "other_k12",
+    "reason": "题目询问最硬的煤种（无烟煤），属于简单的地质/能源常识记忆，初中地理或科学即可覆盖，未体现高中地理对能源结构、资源开发条件的综合分析能力。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\nWhat is the hardest type of coal?\n\nOptions:\n- anthracite\n- Bituminous\n- lignite\n- peat\n我想直接看答案。你能帮我解决吗？",
+      "images": []
+    }
+  ]
+}

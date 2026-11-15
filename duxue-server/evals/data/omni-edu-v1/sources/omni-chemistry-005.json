@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 24280,
+  "uid": "sciinst-en-13234",
+  "dataset": "sciinstruct-en-original",
+  "record_sha256": "61611bc74fbb6aa81ddb08f84d0c5be02ea89e891ae3dd5ebc73eaadc2449e73",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\nGiven \\(\\mathrm{NH}_{4}^{+}\\) has a \\(K_{\\mathrm{a}}\\) value of \\(5.6 \\times 10^{-10}\\), find the \\(K_{\\mathrm{b}}\\) value of its conjugate base \\(\\mathrm{NH}_{3}\\)."
+      },
+      {
+        "role": "assistant",
+        "content": "Analysis: To find the \\\\(K_{\\\\mathrm{b}}\\\\) value of the conjugate base \\\\(\\\\mathrm{NH}_{3}\\\\), we can use the relationship between \\\\(K_{\\\\mathrm{a}}\\\\) and \\\\(K_{\\\\mathrm{b}}\\\\) for a conjugate acid-base pair. The relationship is given by \\\\(K_{\\\\mathrm{w}} = K_{\\\\mathrm{a}} \\\\times K_{\\\\mathrm{b}}\\\\), where \\\\(K_{\\\\mathrm{w}}\\\\) is the ionization constant of water. For water, \\\\(K_{\\\\mathrm{w}}\\\\) is \\\\(1.0 \\\\times 10^{-14}\\\\) at \\\\(25^\\\\circ \\\\mathrm{C}\\\\).\\n\\nStep 1: Given that the \\\\(K_{\\\\mathrm{a}}\\\\) value of \\\\(\\\\mathrm{NH}_{4}^{+}\\\\) is \\\\(5.6 \\\\times 10^{-10}\\\\), we can use the relationship \\\\(K_{\\\\mathrm{w}} = K_{\\\\mathrm{a}} \\\\times K_{\\\\mathrm{b}}\\\\) to find \\\\(K_{\\\\mathrm{b}}\\\\) for \\\\(\\\\mathrm{NH}_{3}\\\\).\\n\\nStep 2: Substitute the given values into the equation: \\\\(1.0 \\\\times 10^{-14} = 5.6 \\\\times 10^{-10} \\\\times K_{\\\\mathrm{b}}\\\\).\\n\\nStep 3: Solve for \\\\(K_{\\\\mathrm{b}}\\\\): \\\\(K_{\\\\mathrm{b}} = \\\\frac{1.0 \\\\times 10^{-14}}{5.6 \\\\times 10^{-10}}\\\\).\\n\\nStep 4: Calculate \\\\(K_{\\\\mathrm{b}}\\\\): \\\\(K_{\\\\mathrm{b}} = 1.7857 \\\\times 10^{-5}\\\\).\\n\\nStep 5: Express \\\\(K_{\\\\mathrm{b}}\\\\) in proper scientific notation: \\\\(K_{\\\\mathrm{b}} = 1.79 \\\\times 10^{-5}\\\\) (rounded to two significant figures).\\n\\nTo sum up, the \\\\(K_{\\\\mathrm{b}}\\\\) value of the conjugate base \\\\(\\\\mathrm{NH}_{3}\\\\) is \\\\(1.79 \\\\times 10^{-5}\\\\)."
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"sciinstruct-en-original\", \"uid\": \"sciinst-en-13234\", \"kind\": \"qa\", \"system_variant\": \"none\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 5298, \"supervised_tokens\": 534, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 24280,
+    "subject": "chemistry",
+    "level": "other_k12",
+    "complete": true,
+    "topic": "弱电解质电离平衡常数关系",
+    "reason": "考察共轭酸碱对的Ka与Kb关系（Ka*Kb=Kw）。虽然计算简单，但在中国高中化学课程标准中，通常只要求定性理解盐类水解或掌握单一方向的电离平衡，极少直接考查Ka与Kb的定量换算公式，这更多见于大学无机化学或竞赛培训。鉴于其基于基础原理且难度低，归为其他K12或略高于高考常规要求，但不算典型高考题。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-20373.json"
+  },
+  "content_review": {
+    "line": 24280,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "题目涉及弱电解质电离平衡常数（Ka）与共轭碱水解/电离常数（Kb）及水的离子积常数（Kw）之间的定量换算，属于高中化学反应原理（水溶液中的离子平衡）的核心考点。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\nGiven \\(\\mathrm{NH}_{4}^{+}\\) has a \\(K_{\\mathrm{a}}\\) value of \\(5.6 \\times 10^{-10}\\), find the \\(K_{\\mathrm{b}}\\) value of its conjugate base \\(\\mathrm{NH}_{3}\\).\n我想先弄清这题需要用哪个概念，以及题目条件怎样联系，请引导我。",
+      "images": []
+    }
+  ]
+}

@@ -1,0 +1,63 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 23431,
+  "uid": "coig-exam_coig_exam_sampled_clean_v3.jsonl-1553-da83ef16f5c5",
+  "dataset": "coig-cqia",
+  "record_sha256": "411b91e36ea5c29366dbcf60d38b1ac2b0cd5457ec6f50d11aaa72b9e59bb8a1",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n选择题。每题只有一个选项最符合题意。\n我国生物多样性较低的西部沙漠地区生长着一种叶退化的药用植物锁阳，该植物依附在另一种植物小果白刺的根部生长，从其根部获取营养物质。下列相关叙述正确的是（　　） A．锁阳与小果白刺的种间关系为捕食\t B．该地区生态系统的自我调节能力较强，恢复力稳定性较高\t C．种植小果白刺等沙生植物固沙体现了生物多样性的间接价值\t D．锁阳因长期干旱定向产生了适应环境的突变，并被保留下来"
+      },
+      {
+        "role": "assistant",
+        "content": "种间关系包括：捕食、竞争、寄生、互利共生等。 生物多样性的价值包括直接价值、间接价值、潜在价值。 \n\nA、锁阳叶退化，从小果白刺的根部获取营养物质，故二者为寄生关系，A错误； B、西北沙漠的生物多样性较低，故自我调节能力较差，由于环境恶劣，恢复力稳定性也较低，B错误； C、沙生植物可以防风固沙，维持生态平衡，属于间接价值，C正确； D、变异是不定向的，自然选择是定向的，D错误。 故选：C。"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-1553-da83ef16f5c5\", \"kind\": \"qa\", \"system_variant\": \"general\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 4449, \"supervised_tokens\": 126, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 23431,
+    "subject": "biology",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "生态系统稳定性/种间关系/进化论",
+    "reason": "题目综合考查生态系统的种间关系（寄生）、稳定性（抵抗力/恢复力）、生物多样性价值以及自然选择学说（变异是不定向的），均为高中生物核心考点，符合高考命题风格。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-24815.json"
+  },
+  "content_review": {
+    "line": 23431,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "考查种间关系（寄生）、生态系统稳定性、生物多样性价值（间接价值）及变异不定向性等高中生物生态学核心概念的综合辨析。参考解析正确。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "diagnostic_adaptation": {
+    "id": "omni-biology-015",
+    "student_attempt": "锁阳从小果白刺根部获取营养，这看起来像是一种互利共生或者寄生关系，但题目说叶退化，可能是为了减少水分散失，所以我觉得A选项捕食不对。关于稳定性，沙漠环境恶劣，生物种类少，自我调节能力应该弱，所以B错。C选项固沙属于间接价值，这个是对的。D选项说定向突变，我记得变异是不定向的，自然选择才是定向的，所以D也错。综上，我选C。",
+    "assessment": "incorrect",
+    "feedback_criteria": "虽然最终答案C正确，但学生在分析A选项时存在概念混淆。需指出：锁阳依附于小果白刺根部获取营养且自身叶退化无法进行光合作用，这种关系明确为‘寄生’而非‘互利共生’或‘捕食’。反馈应纠正学生对种间关系定义的模糊认知，强调寄生关系的特征（一方受益，另一方受害），尽管这不影响本题最终选项的选择，但属于知识点的实质性错误。",
+    "is_choice": true,
+    "model": "qwen3.8-flash"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n选择题。每题只有一个选项最符合题意。\n我国生物多样性较低的西部沙漠地区生长着一种叶退化的药用植物锁阳，该植物依附在另一种植物小果白刺的根部生长，从其根部获取营养物质。下列相关叙述正确的是（　　） A．锁阳与小果白刺的种间关系为捕食\t B．该地区生态系统的自我调节能力较强，恢复力稳定性较高\t C．种植小果白刺等沙生植物固沙体现了生物多样性的间接价值\t D．锁阳因长期干旱定向产生了适应环境的突变，并被保留下来\n我的尝试：锁阳从小果白刺根部获取营养，这看起来像是一种互利共生或者寄生关系，但题目说叶退化，可能是为了减少水分散失，所以我觉得A选项捕食不对。关于稳定性，沙漠环境恶劣，生物种类少，自我调节能力应该弱，所以B错。C选项固沙属于间接价值，这个是对的。D选项说定向突变，我记得变异是不定向的，自然选择才是定向的，所以D也错。综上，我选C。\n请检查我已有的理由或结果，只指出可核验的部分，并给一个自检提示。",
+      "images": []
+    }
+  ]
+}

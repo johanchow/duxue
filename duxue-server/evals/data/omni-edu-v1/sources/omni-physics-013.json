@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 29744,
+  "uid": "scienceqa-1556",
+  "dataset": "scienceqa-text",
+  "record_sha256": "c55003aff678cdee58ba54b4321726fe96d9bbee5e843e0ff48b4ffea9de0b98",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\nWhich mug of cocoa has a lower temperature?\n\nOptions:\nA. the mug of cocoa with less thermal energy\nB. the mug of cocoa with more thermal energy"
+      },
+      {
+        "role": "assistant",
+        "content": "Matter is made of tiny particles called atoms. Atoms are always moving.\nThe energy of moving atoms is called thermal energy. The total amount of thermal energy in matter depends on three things: the type of matter, the amount of matter, and how fast the atoms are moving.\nTemperature measures how hot or cold matter is. If the atoms in matter slow down, the temperature goes down. The matter now has both less thermal energy and a lower temperature.\nWhat happens if the amount of matter changes? A 2-kilogram brick at 70°F has twice as much thermal energy as a 1-kilogram brick at 70°F. The two bricks have the same temperature, but the larger brick has twice as many atoms. So, it has twice as much thermal energy.\nThe two mugs of cocoa are made of the same material and have the same mass. So, the mug of cocoa with less thermal energy has a lower temperature."
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"scienceqa-text\", \"uid\": \"scienceqa-1556\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/science/scienceqa_direct/text/cot\", \"rank\": 1034, \"supervised_tokens\": 198, \"token_budget\": 482000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 29744,
+    "subject": "physics",
+    "level": "other_k12",
+    "complete": true,
+    "topic": "温度与内能的关系",
+    "reason": "考察热学中温度与热能的直观联系。题目表述模糊（未说明质量、比热容相同），仅凭直觉判断。高中物理热学要求严谨的状态参量分析和公式推导，此题缺乏必要的控制变量条件，属于不严谨的科普级问题，无法作为高考等效题。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-science-v1/review-28875.json"
+  },
+  "content_review": {
+    "line": 29744,
+    "subject_correct": true,
+    "complete": true,
+    "level": "other_k12",
+    "reason": "考查热能与温度的关系，在物质种类和质量相同的前提下比较温度高低，属于初中甚至小学科学的热学常识，不涉及高中热力学机制或实验。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "Problem:\nWhich mug of cocoa has a lower temperature?\n\nOptions:\nA. the mug of cocoa with less thermal energy\nB. the mug of cocoa with more thermal energy",
+      "images": []
+    }
+  ]
+}

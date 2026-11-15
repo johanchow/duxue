@@ -1,0 +1,64 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 23516,
+  "uid": "coig-exam_coig_exam_sampled_clean_v3.jsonl-563-dd38dcdd514d",
+  "dataset": "coig-cqia",
+  "record_sha256": "cd9e66e437578eefd1b08c23d481d0d17802bb4852bd85acac3c59c4a2180c89",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n根据题目内容选择符合要求的选项。\n2021年8月20日，第十三届全国人大常委会第30次会议通过《个人信息保护法》,自2021年11月1日起实施。11月8日，新兴县法院公开审理《个人信息保护法》实施后本县首例侵犯公民个人信息案件。被告人陈某2021年1月至1月期间，利用手机店主的身份，未经顾客同意，将多名顾客手机信息出售给他人，从中获利。据此回答下列小题。\n被告人陈某侵犯了顾客的（）A．个人信息权B．隐私权C．名誉权D．财产权"
+      },
+      {
+        "role": "assistant",
+        "content": "A\n\n**解析：**\n根据题干描述，被告人陈某利用手机店主身份，未经顾客同意，将多名顾客的**手机信息**（如姓名、电话号码等）出售给他人并获利。\n1.  **法律依据**：《中华人民共和国个人信息保护法》明确规定，个人信息是以电子或者其他方式记录的与已识别或者可识别的自然人有关的各种信息。陈某出售顾客手机信息的行为，直接违反了该法关于个人信息处理的规定，侵犯了顾客的**个人信息权**。\n2.  **选项辨析**：\n    *   **A项**：手机信息属于典型的个人信息，陈某非法出售该信息，直接侵犯了个人信息权，符合题意。\n    *   **B项**：隐私权主要保护自然人的私人生活安宁和不愿为他人知晓的私密空间、私密活动、私密信息。虽然部分个人信息可能涉及隐私，但题干明确引用《个人信息保护法》且行为特征是“出售信息”，在法律定性上优先适用个人信息权的保护范畴。\n    *   **C项**：名誉权涉及对他人社会评价的降低，题干未提及陈某有侮辱、诽谤等行为，故排除。\n    *   **D项**：财产权涉及对财产的占有、使用、收益和处分，陈某侵犯的是顾客的信息权益，而非直接侵占顾客的财物，故排除。\n\n综上，陈某的行为主要侵犯了顾客的个人信息权。"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-563-dd38dcdd514d\", \"kind\": \"qa\", \"system_variant\": \"none\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 4534, \"supervised_tokens\": 278, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 23516,
+    "subject": "politics",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "公民权利-个人信息保护",
+    "reason": "结合《个人信息保护法》案例，考查侵犯的权利类型（隐私权vs个人信息权等）。这属于高中政治《法律与生活》模块的内容，涉及具体法律概念辨析，符合新高考政治命题趋势。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-22685.json"
+  },
+  "content_review": {
+    "line": 23516,
+    "subject_correct": true,
+    "complete": true,
+    "level": "other_k12",
+    "reason": "结合《个人信息保护法》案例判断侵犯何种权利，属于初中道德与法治（道法）中法律常识与基本权利辨识的内容，未达到高中政治法治模块的深度推理要求。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "diagnostic_adaptation": {
+    "id": "omni-politics-015",
+    "student_attempt": "我目前只知道这题涉及公民权利-个人信息保护，还没有写出具体推理或结论。请帮我确定第一步。",
+    "assessment": "insufficient",
+    "feedback_criteria": "学生只报告了知识主题，未给出可核验的具体结果或推理。不得将未作答判为答错，也不能虚构学生的错误步骤或已掌握。给一个切题且可执行的起步或自检提示。",
+    "is_choice": true,
+    "model": "qwen3.8-flash",
+    "authored_revision": "assistant-explicit-insufficient-evidence.v1"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n根据题目内容选择符合要求的选项。\n2021年8月20日，第十三届全国人大常委会第30次会议通过《个人信息保护法》,自2021年11月1日起实施。11月8日，新兴县法院公开审理《个人信息保护法》实施后本县首例侵犯公民个人信息案件。被告人陈某2021年1月至1月期间，利用手机店主的身份，未经顾客同意，将多名顾客手机信息出售给他人，从中获利。据此回答下列小题。\n被告人陈某侵犯了顾客的（）A．个人信息权B．隐私权C．名誉权D．财产权\n我的尝试：我目前只知道这题涉及公民权利-个人信息保护，还没有写出具体推理或结论。请帮我确定第一步。\n请检查我已有的理由或结果，只指出可核验的部分，并给一个自检提示。",
+      "images": []
+    }
+  ]
+}

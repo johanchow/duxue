@@ -1,0 +1,70 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 1987,
+  "uid": "cmm-math-16453",
+  "dataset": "cmm-math-multimodal",
+  "record_sha256": "1a75d8aba0653713c975143a848b2e0b9b3022478de5763b922d39e20fc61410",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "<image>\nProblem:\n如图 2-3-43, 三棱雉 $P-A B C$ 中, 已知 $\\triangle A B C$ 是等腰直角三角形, $\\angle A B C=90^{\\circ}, \\triangle P A C$ 是直角三角形, $\\angle P A C=90^{\\circ}$, 平面 $P A C \\perp$ 平面 $A B C$.求证：平面 $P A B \\perp$ 平面 $P B C$.\n\n<ImageHere>\n\n图 2-3-43"
+      },
+      {
+        "role": "assistant",
+        "content": "$\\because$ 平面 $P A C \\perp$ 平面 $A B C ，$ 平面 $P A C \\cap$ 平面 $A B C=A C, P A \\perp A C$,\n\n$\\therefore P A \\perp$ 平面 $A B C$. 又 $B C \\subset$ 平面 $A B C$,\n\n$\\therefore P A \\perp B C$.\n\n又 $\\because A B \\perp B C, A B \\cap P A=A, A B \\subset$ 平面 $P A B$,\n\n$P A \\subset$ 平面 $P A B, \\therefore B C \\perp$ 平面 $P A B$. 又 $B C \\subset$ 平面 $P B C, \\therefore$ 平面 $P A B \\perp$ 平面 $P B C$."
+      }
+    ],
+    "images": [
+      "images/3d/3de53f39ed25be202137e898786e98012e31c9f97b471b400e71e811fe80244f.jpg"
+    ],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"cmm-math-multimodal\", \"uid\": \"cmm-math-16453\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/math/multimodal/cot\", \"rank\": 1984, \"supervised_tokens\": 189, \"token_budget\": 600000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [
+    "a4c9d8a931353018c3dadcfece916451a0520b2457527282fec.jpg"
+  ],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 1987,
+    "subject": "math",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "空间中直线与平面、平面与平面的位置关系（面面垂直的证明）",
+    "reason": "题目要求证明三棱锥中两个平面互相垂直，涉及线面垂直判定定理和性质定理的综合运用。这是高中数学立体几何部分的核心考点，属于高考常见题型。题干文字完整，配图清晰展示了三棱锥P-ABC的结构，条件充分。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-images-v1/review-1987.json"
+  },
+  "content_review": {
+    "line": 1987,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "考查立体几何中面面垂直的证明，涉及线面垂直判定定理、面面垂直性质定理，是高中立体几何的核心考点。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "diagnostic_adaptation": {
+    "id": "omni-math-014",
+    "student_attempt": "我目前只知道这题涉及空间中直线与平面、平面与平面的位置关系（面面垂直的证明），还没有写出具体推理或结论。请帮我确定第一步。",
+    "assessment": "insufficient",
+    "feedback_criteria": "学生只报告了知识主题，未给出可核验的具体结果或推理。不得将未作答判为答错，也不能虚构学生的错误步骤或已掌握。给一个切题且可执行的起步或自检提示。",
+    "is_choice": false,
+    "model": "qwen3.8-flash",
+    "authored_revision": "assistant-explicit-insufficient-evidence.v1"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\n<image>\nProblem:\n如图 2-3-43, 三棱雉 $P-A B C$ 中, 已知 $\\triangle A B C$ 是等腰直角三角形, $\\angle A B C=90^{\\circ}, \\triangle P A C$ 是直角三角形, $\\angle P A C=90^{\\circ}$, 平面 $P A C \\perp$ 平面 $A B C$.求证：平面 $P A B \\perp$ 平面 $P B C$.\n\n<ImageHere>\n\n图 2-3-43\n我的尝试：我目前只知道这题涉及空间中直线与平面、平面与平面的位置关系（面面垂直的证明），还没有写出具体推理或结论。请帮我确定第一步。\n请检查我已有的理由或结果，只指出可核验的部分，并给一个自检提示。",
+      "images": [
+        "a4c9d8a931353018c3dadcfece916451a0520b2457527282fec.jpg"
+      ]
+    }
+  ]
+}

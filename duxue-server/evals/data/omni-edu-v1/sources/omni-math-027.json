@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 8174,
+  "uid": "cmm-math-23141",
+  "dataset": "cmm-math-text",
+  "record_sha256": "6bdc769d0371aef1d19135ce6fae79375188d7b00300b2f62ef17512774e4fdb",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n13. 用数学归纳法证明不等式 $\\frac{1}{n+1}+\\frac{1}{n+2}+\\ldots+\\frac{1}{n+n}>\\frac{13}{24}$ 的过程中, 由 $\\mathrm{n}=\\mathrm{k}$ 推导 $\\mathrm{n}=\\mathrm{k}$ +1 时, 不等式的左边增加的式子是"
+      },
+      {
+        "role": "assistant",
+        "content": ": 解答: 不等式的左边增加的式子是 $\\frac{1}{2 k+1}+\\frac{1}{2 k+2}-\\frac{1}{k+1}=\\frac{1}{(2 k+1)(2 k+2)}$, 故填 $\\frac{1}{(2 k+1)(2 k+2)}$.\n\n分析: 本题主要考查了数学归纳法证明不等式, 解决问题的关键是根据数学归纳法证明不等式的步骤分析计算即可"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"cmm-math-text\", \"uid\": \"cmm-math-23141\", \"kind\": \"qa\", \"system_variant\": \"general\", \"kcenter\": {\"bucket\": \"subject/math/text/cot/other\", \"rank\": 5318, \"supervised_tokens\": 106, \"token_budget\": 1345000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 8174,
+    "subject": "math",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "数学归纳法步骤分析",
+    "reason": "考察数学归纳法从 $n=k$ 到 $n=k+1$ 时项的变化规律，属于高中数列与不等式证明中的经典考点，虽然新高考可能弱化纯技巧性归纳法，但仍属高中课程范围内。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-11185.json"
+  },
+  "content_review": {
+    "line": 8174,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "考查数学归纳法证明不等式时从n=k到n=k+1左边增加的项，属于高中数学推理与证明内容。参考解析计算正确：f(k+1)-f(k)=1/(2k+1)+1/(2k+2)-1/(k+1)=1/((2k+1)(2k+2))。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n13. 用数学归纳法证明不等式 $\\frac{1}{n+1}+\\frac{1}{n+2}+\\ldots+\\frac{1}{n+n}>\\frac{13}{24}$ 的过程中, 由 $\\mathrm{n}=\\mathrm{k}$ 推导 $\\mathrm{n}=\\mathrm{k}$ +1 时, 不等式的左边增加的式子是\n我不知道如何开始，请给我一个具体的起步提示，不要直接解完整题。",
+      "images": []
+    }
+  ]
+}

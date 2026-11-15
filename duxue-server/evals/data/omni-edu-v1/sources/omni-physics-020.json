@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 22091,
+  "uid": "aquila-all-94968-881e32c0f926",
+  "dataset": "aquilaedu",
+  "record_sha256": "8e3f5e0e616f35c9cb898d492d026cc16f09fc08d7eba426d8f0566358464ee0",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\nDo read the question and furnish the right answer.\nQuestion: You can scuff your socked feet on a shag carpet and shock a friend because of\nOptions: (A) electromagnetism  (B) electric youth  (C) bad breeding  (D) gravity"
+      },
+      {
+        "role": "assistant",
+        "content": "Explanation: When you scuff your socked feet on a shag carpet, you create friction between your feet and the carpet. This friction generates static electricity. As a result, an imbalance of charges occurs, with an excess of electrons building up on your body. When you touch your friend, the excess electrons transfer from your body to your friend's body, resulting in a small electric shock. This phenomenon is a result of electromagnetism, which is the branch of physics that deals with the interaction of electric currents or fields and magnetic fields. Therefore, the correct answer is (A) electromagnetism.  \n#### The answer is: A"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"aquilaedu\", \"uid\": \"aquila-all-94968-881e32c0f926\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 3109, \"supervised_tokens\": 129, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 22091,
+    "subject": "physics",
+    "level": "other_k12",
+    "complete": true,
+    "topic": "静电现象",
+    "reason": "题目询问在地毯上摩擦袜子后电击朋友的原因。选项包括电磁力、重力等。这是初中物理或小学科学级别的静电常识题。虽然涉及物理概念，但难度远低于高考物理要求（高考物理侧重定量计算和复杂模型，此类定性常识多出现在初中或趣味科普中）。根据指令'不含小学、初中基础题'，此题层级判定为other_k12（初中水平），而非gaokao_equivalent。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-19419.json"
+  },
+  "content_review": {
+    "line": 22091,
+    "subject_correct": true,
+    "complete": true,
+    "level": "other_k12",
+    "reason": "摩擦起电产生静电放电现象属于初中物理静电常识，且选项含明显干扰项（electric youth, bad breeding），无需高中电磁学深度知识。英文出题考查物理知识，学科归类正确。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\nDo read the question and furnish the right answer.\nQuestion: You can scuff your socked feet on a shag carpet and shock a friend because of\nOptions: (A) electromagnetism  (B) electric youth  (C) bad breeding  (D) gravity\n我不知道如何开始，请给我一个具体的起步提示，不要直接解完整题。",
+      "images": []
+    }
+  ]
+}

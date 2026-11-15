@@ -1,0 +1,62 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 23112,
+  "uid": "coig-chinese_traditional_translate_classical_chinese.jsonl-167-d608dc1774d9",
+  "dataset": "coig-cqia",
+  "record_sha256": "85316761cb74c9acd4b713601d32f6bc44b9da166915e1648d0c00ac5647d48c",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n三国，蜀先主为汉中王，拜关羽为前将军，假节钺，屯江陵。是岁，羽留兵屯公安、南郡，以备吴，而率兵攻魏将曹仁于樊。\n翻译成现代文："
+      },
+      {
+        "role": "assistant",
+        "content": "三国时期，蜀国先主刘备尚为汉中王的时候，他任命关羽为前将军，授予其符节斧钺，让他率兵驻扎在江陵地区，这一年，关羽留下部分兵力驻守公安和南郡两地，以防备吴国，自己亲率主力北上，进攻驻守樊城的魏国大将曹仁所部。"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-chinese_traditional_translate_classical_chinese.jsonl-167-d608dc1774d9\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 4130, \"supervised_tokens\": 76, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 23112,
+    "subject": "chinese",
+    "topic": "史传文言翻译、拜与假节钺",
+    "reason": "保留完整史传句群，需理解官职任命、授予符节及留兵/率兵的关系，属于高中史传翻译要求。",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "review_model": "assistant_content_review"
+  },
+  "content_review": {
+    "line": 23112,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "保留完整史传句群，需理解官职任命、授予符节及留兵/率兵的关系，属于高中史传翻译要求。",
+    "reference_issue": "助手阅读未发现影响作答的明确矛盾；未获教师认证"
+  },
+  "diagnostic_adaptation": {
+    "student_attempt": "刘备为汉中王时，任命关羽为前将军，授予符节斧钺，让他驻守江陵。关羽留下部分兵力防备吴国，自己率兵攻打樊城的曹仁。",
+    "assessment": "correct",
+    "feedback_criteria": "学生对拜、假节钺及两支兵力的关系理解正确；可确认这些已展示的译意，不推断其已掌握整篇史传。",
+    "is_choice": false,
+    "id": "omni-chinese-006",
+    "model": "assistant_authored_content_review"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n三国，蜀先主为汉中王，拜关羽为前将军，假节钺，屯江陵。是岁，羽留兵屯公安、南郡，以备吴，而率兵攻魏将曹仁于樊。\n翻译成现代文：\n我的尝试：刘备为汉中王时，任命关羽为前将军，授予符节斧钺，让他驻守江陵。关羽留下部分兵力防备吴国，自己率兵攻打樊城的曹仁。\n请检查我已有的理由或结果，只指出可核验的部分，并给一个自检提示。",
+      "images": []
+    }
+  ]
+}

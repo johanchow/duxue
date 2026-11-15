@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 21796,
+  "uid": "coig-exam_coig_exam_sampled_clean_v3.jsonl-1280-528b2808c563",
+  "dataset": "coig-cqia",
+  "record_sha256": "74eb7bb4792d6d03550360f9edffeab393ac96915458e0a43ab2ba052492fe45",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n请根据题目内容选择符合要求的选项\n蒋介石曾写道：“对毛泽东应召来渝后之方针，决以诚挚待之。政治与军事应整个解决，但对政治之要求，予以极度之宽容。而对军事则严格之统一，不稍迁就。”这里的“渝”指的是（）A．广州B．瑞金C．西安D．重庆"
+      },
+      {
+        "role": "assistant",
+        "content": "本题考查重庆谈判的相关史实。抗日战争胜利后，为了进一步赢得准备内战的时间，也为了欺骗人民，蒋介石接连三次打电报邀请毛泽东赴重庆谈判。\n\n因此答案为：D"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-1280-528b2808c563\", \"kind\": \"qa\", \"system_variant\": \"general\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 2814, \"supervised_tokens\": 43, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 21796,
+    "subject": "history",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "重庆谈判背景",
+    "reason": "考查解放战争时期重庆谈判的相关史实，包括地点简称“渝”的指代。结合蒋介石日记材料进行历史情境判断，符合高中历史关于中国近现代史的考查范围和能力要求。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-19399.json"
+  },
+  "content_review": {
+    "line": 21796,
+    "subject_correct": true,
+    "complete": true,
+    "level": "other_k12",
+    "reason": "考查重庆谈判中'渝'即重庆的简称及基本史实，属初中历史常识性记忆。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n请根据题目内容选择符合要求的选项\n蒋介石曾写道：“对毛泽东应召来渝后之方针，决以诚挚待之。政治与军事应整个解决，但对政治之要求，予以极度之宽容。而对军事则严格之统一，不稍迁就。”这里的“渝”指的是（）A．广州B．瑞金C．西安D．重庆\n我不知道如何开始，请给我一个具体的起步提示，不要直接解完整题。",
+      "images": []
+    }
+  ]
+}

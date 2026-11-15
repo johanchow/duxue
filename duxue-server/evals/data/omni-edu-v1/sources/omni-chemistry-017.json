@@ -1,0 +1,63 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 22196,
+  "uid": "sciinst-en-16667",
+  "dataset": "sciinstruct-en-original",
+  "record_sha256": "bc89dd51c039109d1a6ab7d53d8ae3be86b0e56fb3e64194914acbb5ee121583",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\nWhat are the main methods of metal corrosion prevention? How do the principles of these corrosion prevention methods differ?"
+      },
+      {
+        "role": "assistant",
+        "content": "Analysis: Metal corrosion is a natural process where metals react with their environment, leading to the deterioration of the material. To prevent corrosion, various methods are employed, each based on different principles to impede the corrosion process. The main methods include coating, cathodic protection, alloying, and the use of corrosion inhibitors. \\n\\nStep 1: Coating - This method involves applying a layer of paint, plastic, or another corrosion-resistant material to the surface of the metal. The coating acts as a barrier, preventing oxygen and moisture from coming into contact with the metal surface. This interrupts the electrochemical reactions that cause corrosion. \\n\\nStep 2: Cathodic Protection - This technique uses the principles of electrochemistry to protect the metal. A more reactive metal (such as zinc in the case of galvanizing) or an impressed current from an external power source is used to polarize the metal surface to be protected (the cathode), making it a less active site for corrosion. This method is commonly used for structures like underground pipelines, ship hulls, and offshore structures.\\n\\nStep 3: Alloying - By combining two or more metals, or by adding other elements to a metal, the resulting alloy can have improved corrosion resistance compared to its constituent metals. For example, stainless steel is an alloy of iron with chromium and nickel, which forms a passive oxide layer on the surface that prevents further corrosion.\\n\\nStep 4: Corrosion Inhibitors - These are substances that, when added to the environment in small quantities, can significantly reduce the corrosion rate of a metal. They work by adsorbing onto the metal surface and forming a protective film, or by altering the electrochemical reaction to slow down the corrosion process. Inhibitors are often used in coolants, oils, and water systems.\\n\\nTo sum up, the main methods of metal corrosion prevention differ in their principles: coating provides a physical barrier, cathodic protection uses electrochemical reactions to shift the corrosion to a sacrificial anode, alloying modifies the metal's composition to resist corrosion, and corrosion inhibitors chemically slow down the corrosion process. Each method has its advantages and is chosen based on the specific application and environment where the metal is used."
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"sciinstruct-en-original\", \"uid\": \"sciinst-en-16667\", \"kind\": \"qa\", \"system_variant\": \"none\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 3214, \"supervised_tokens\": 455, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 22196,
+    "subject": "chemistry",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "金属腐蚀与防护",
+    "reason": "考查金属防腐的主要方法（如牺牲阳极保护法、外加电流阴极保护法等）及其原理，属于高中化学电化学应用的核心考点。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-20189.json"
+  },
+  "content_review": {
+    "line": 22196,
+    "subject_correct": true,
+    "complete": true,
+    "level": "other_k12",
+    "reason": "英文出题的化学知识题仍归chemistry。但金属防腐蚀方法（涂层、阴极保护、合金化、缓蚀剂）属于泛泛常识，初中化学已涉及，无需高中特有综合推理，按规则标other_k12。参考解析无明显错误。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "diagnostic_adaptation": {
+    "id": "omni-chemistry-017",
+    "student_attempt": "The main methods are painting and galvanizing. Painting works by blocking water. Galvanizing uses zinc which is less reactive than iron, so it protects the iron surface from rusting directly without corroding itself.",
+    "assessment": "incorrect",
+    "feedback_criteria": "Identify the specific error in the explanation of galvanizing/cathodic protection: Zinc is MORE reactive (more easily oxidized) than iron, acting as a sacrificial anode, not less reactive. Check if the student confuses reactivity series principles. Feedback should correct the misconception about relative reactivity while acknowledging the barrier principle for painting.",
+    "is_choice": false,
+    "model": "qwen3.8-flash"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\nWhat are the main methods of metal corrosion prevention? How do the principles of these corrosion prevention methods differ?\n我的尝试：The main methods are painting and galvanizing. Painting works by blocking water. Galvanizing uses zinc which is less reactive than iron, so it protects the iron surface from rusting directly without corroding itself.\n请检查我已有的理由或结果，只指出可核验的部分，并给一个自检提示。",
+      "images": []
+    }
+  ]
+}

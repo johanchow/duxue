@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 24993,
+  "uid": "coig-chinese_traditional_translate_classical_chinese.jsonl-213-5c40f672e06f",
+  "dataset": "coig-cqia",
+  "record_sha256": "1c6f24ae914aa655ea821c418fb2bad5487fb43152c15a1923b95248e586eb70",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n翻译成现代文：\n甫至汉中，欲以浑瑊代楚琳镇凤翔，陆贽上奏，以为： 楚琳杀帅助贼，其罪固大，但以乘舆未复，大憝犹存，勤王之师悉在畿内，急宣速告，晷刻是争。\n答案："
+      },
+      {
+        "role": "assistant",
+        "content": "刚到达汉中，（德宗）打算让浑瑊代替李楚琳镇守凤翔，陆贽上奏认为：李楚琳杀害主帅、助长贼势，他的罪过固然很大，但只因皇帝车驾尚未返回，大逆之徒依然存在，勤王的军队全在京城附近，紧急宣诏、迅速通报，连片刻时间都要争取。"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-chinese_traditional_translate_classical_chinese.jsonl-213-5c40f672e06f\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 6011, \"supervised_tokens\": 81, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 24993,
+    "subject": "chinese",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "文言文翻译",
+    "reason": "提供陆贽奏疏片段，要求翻译为现代文。涉及官职、军事术语及文言句式，属于高中语文文言文阅读常规训练内容。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-23595.json"
+  },
+  "content_review": {
+    "line": 24993,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "考查唐代史料（陆贽奏议）的文言文翻译，涉及'乘舆''大憝''畿内''晷刻'等高中课标要求的文言实词和文化常识，属于典型的高考文言文翻译题。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "Problem:\n翻译成现代文：\n甫至汉中，欲以浑瑊代楚琳镇凤翔，陆贽上奏，以为： 楚琳杀帅助贼，其罪固大，但以乘舆未复，大憝犹存，勤王之师悉在畿内，急宣速告，晷刻是争。\n答案：",
+      "images": []
+    }
+  ]
+}

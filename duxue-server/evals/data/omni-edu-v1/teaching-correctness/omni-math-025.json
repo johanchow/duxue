@@ -1,0 +1,82 @@
+{
+  "schema_version": "dialogue-eval.v2",
+  "id": "omni-math-025",
+  "type": "single_turn",
+  "replay_mode": "fixed_history",
+  "source": {
+    "kind": "synthetic",
+    "coverage": "authored",
+    "provider": "cmm-math-text",
+    "note": "{\"source_record\": \"sources/omni-math-025.json\", \"uid\": \"cmm-math-20165\", \"source_category\": \"subject_competence\"}"
+  },
+  "messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "Problem:\n某城市在发展过程中, 交通状况逐渐受到大家更多的关注,据有关数据统计显示, 从上午 6 时到 9 时, 车辆通过该市某一段路段的用时 $y$ (分钟)与车辆进入该路段的时刻 $t$ 之间的关系可近似地用如下函数给出: $y=-\\frac{1}{8} t^{3}-\\frac{3}{4} t^{2}+36 t-\\frac{629}{4}$. 则在这段时间内, 通过该路段用时最多的时刻是( )\n\nOptions:\nA. 6 时\nB. 7 时\nC. 8 时\nD. 9 时",
+      "images": []
+    }
+  ],
+  "checks": [
+    {
+      "id": "check-1",
+      "after_message": "m1",
+      "component": "tutoring.turn",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "problem": {
+            "summary": "Problem:\n某城市在发展过程中, 交通状况逐渐受到大家更多的关注,据有关数据统计显示, 从上午 6 时到 9 时, 车辆通过该市某一段路段的用时 $y$ (分钟)与车辆进入该路段的时刻 $t$ 之间的关系可近似地用如下函数给出: $y=-\\frac{1}{8} t^{3}-\\frac{3}{4} t^{2}+36 t-\\frac{629}{4}$. 则在这段时间内, 通过该路段用时最多的时刻是( )\n\nOptions:\nA. 6 时\nB. 7 时\nC. 8 时\nD. 9 时",
+            "active_subgoal": "导数在生活中的应用/三次函数极值",
+            "substantive_attempts": 0,
+            "hints_given": 0
+          },
+          "task_title": "本地学科答疑评测",
+          "task_active": true
+        },
+        "note": "Injected evaluation context; not a production database observation."
+      },
+      "grading": {
+        "deterministic": [
+          {
+            "id": "delivered",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "answer"
+            ]
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "correctness",
+            "type": "score",
+            "rubric": "内部完整解题：依据原题和实际图片独立核验最终结论、推导、定义域、单位、条件及各小问覆盖。允许数学等价表达与有依据的异解。1分错误/无解答，2分重要错误，3分方向正确但关键缺漏，4分结论与主要推导正确且完整，5分进一步严谨清晰。只评价实际solution，不要求启发提问。",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "本题知识目标：导数在生活中的应用/三次函数极值。参考答案是上游未认证材料，须独立核验；参考有争议时不得盲从，不因合理异解扣分。",
+            "expected": "pass"
+          }
+        ],
+        "reference_response": "解析 :令 $y^{\\prime}=-\\frac{3}{8} t^{2}-\\frac{3}{2} t+36=0$, 即 $3 t^{2}+12 t-36 \\times 8=0$, 解得\n$t=8$ 或 $t=-12$ (舍去).\n\n当 $0<t<8$ 时, $y^{\\prime}>0$;\n\n当 $t>8$ 时, $y^{\\prime}<0$.\n\n所以当 $t=8$ 时，函数有极大值，也是最大值.\n\n答案: $\\mathrm{C}$",
+        "rationale": [
+          "Synthetic local adaptation; reference and semantic labels remain proposed."
+        ]
+      }
+    }
+  ],
+  "review_batch": "omni-edu-v1",
+  "label_status": "proposed",
+  "note": "Adapted evaluation task; original system and final assistant are source/scoring-only. No teacher certification.",
+  "conversation_id": "31681ef299aef4581184",
+  "turn_index": 0,
+  "tags": [
+    "subject_competence",
+    "math",
+    "gaokao_equivalent",
+    "solve"
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 25058,
+  "uid": "qasc-4531",
+  "dataset": "qasc",
+  "record_sha256": "fc84f517a08c1033c73447e7193d4852c5e35ed840b1e5b3ab1ca13a45ce645f",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\nWhat causes breezes?\n\nOptions:\nA. stable temperatures\nB. a tree falling\nC. uneven heating of the earth\nD. degrees Celsius\nE. Earth's atmosphere circulation\nF. fissures of hot, acidic water\nG. movement of the planets\nH. moon phases"
+      },
+      {
+        "role": "assistant",
+        "content": "Breezes are a type of wind caused by differences in air pressure. These pressure differences arise because the Earth's surface is heated unevenly by the sun; for example, land heats up and cools down faster than water. This uneven heating of the Earth's surface causes wind to form as air moves from areas of high pressure to areas of low pressure to balance the temperature differences. Specific examples of these local winds include sea breezes, land breezes, and monsoons. Therefore, the primary cause of breezes is the uneven heating of the earth. The correct answer is C."
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"qasc\", \"uid\": \"qasc-4531\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 6076, \"supervised_tokens\": 119, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 25058,
+    "subject": "geography",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "热力环流成因",
+    "reason": "题目询问风的成因，正确答案指向地表受热不均。这是高中地理大气运动部分的核心原理（热力环流），需要理解气压差与空气流动的关系，符合高考层级。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-science-v1/review-25860.json"
+  },
+  "content_review": {
+    "line": 25058,
+    "subject_correct": true,
+    "complete": true,
+    "level": "other_k12",
+    "reason": "考查风（breezes）的成因是地表受热不均，属于初中地理/科学常识，无需高中课程特有的综合推理或深度知识。英文出题但考查地理知识，学科归类正确。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "diagnostic_adaptation": {
+    "id": "omni-geography-017",
+    "student_attempt": "我目前只知道这题涉及热力环流成因，还没有写出具体推理或结论。请帮我确定第一步。",
+    "assessment": "insufficient",
+    "feedback_criteria": "学生只报告了知识主题，未给出可核验的具体结果或推理。不得将未作答判为答错，也不能虚构学生的错误步骤或已掌握。给一个切题且可执行的起步或自检提示。",
+    "is_choice": true,
+    "model": "qwen3.8-flash",
+    "authored_revision": "assistant-explicit-insufficient-evidence.v1"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\nWhat causes breezes?\n\nOptions:\nA. stable temperatures\nB. a tree falling\nC. uneven heating of the earth\nD. degrees Celsius\nE. Earth's atmosphere circulation\nF. fissures of hot, acidic water\nG. movement of the planets\nH. moon phases\n我的尝试：我目前只知道这题涉及热力环流成因，还没有写出具体推理或结论。请帮我确定第一步。\n请检查我已有的理由或结果，只指出可核验的部分，并给一个自检提示。",
+      "images": []
+    }
+  ]
+}

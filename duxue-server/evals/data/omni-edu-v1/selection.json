@@ -1,0 +1,4113 @@
+{
+  "source_revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "tasks": [
+    {
+      "id": "omni-chinese-001",
+      "source_record": "sources/omni-chinese-001.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "chinese",
+      "level": "gaokao_equivalent",
+      "family_id": "b422e96245e478242efd",
+      "scenario": "episode",
+      "split": "holdout",
+      "level_review": {
+        "status": "proposed",
+        "topic": "文言文翻译",
+        "reason": "考查文言文翻译成现代汉语，属于高中语文语言文字应用/古诗文阅读常见题型，难度与高考相当。参考译文基本准确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chinese-002",
+      "source_record": "sources/omni-chinese-002.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "chinese",
+      "level": "gaokao_equivalent",
+      "family_id": "fdc878038de7552ba1b4",
+      "scenario": "episode",
+      "split": "holdout",
+      "level_review": {
+        "status": "proposed",
+        "topic": "古诗生活气息与语言赏析",
+        "reason": "完整《插秧歌》诗句及鉴赏设问，需从场景、口语与表现手法组织证据；原注编号存在但不编造注释。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chinese-003",
+      "source_record": "sources/omni-chinese-003.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "chinese",
+      "level": "gaokao_equivalent",
+      "family_id": "a1571bc09d253ad836bb",
+      "scenario": "stuck",
+      "split": "holdout",
+      "level_review": {
+        "status": "proposed",
+        "topic": "文言文翻译（文言译白话）",
+        "reason": "考查文言文翻译成现代汉语，涉及明代军事史料，句式与词汇难度符合高考文言文翻译要求。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chinese-004",
+      "source_record": "sources/omni-chinese-004.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "chinese",
+      "level": "gaokao_equivalent",
+      "family_id": "146ca4404658cc3250a0",
+      "scenario": "answer_request",
+      "split": "holdout",
+      "level_review": {
+        "status": "proposed",
+        "topic": "现代文阅读感悟概括",
+        "reason": "刘心武《掐辫子》文学类文本阅读，要求概括感悟并结合文本说明，属于高考语文现代文阅读中常见的探究/概括题，文本长度和分析深度符合高考层级。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chinese-005",
+      "source_record": "sources/omni-chinese-005.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "chinese",
+      "level": "gaokao_equivalent",
+      "family_id": "0f085bda34d5e7c3efb5",
+      "scenario": "initial_hint",
+      "split": "holdout",
+      "level_review": {
+        "status": "proposed",
+        "topic": "文言文阅读（概括与分析）",
+        "reason": "明代王世贞《宗子相集序》文言文阅读理解，考查对原文内容的概括与赏析，涉及文学史背景、人物形象分析、文言词句理解等，文本长度、深度及设问方式均符合高考语文文言文阅读的层级要求。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chinese-006",
+      "source_record": "sources/omni-chinese-006.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "chinese",
+      "level": "gaokao_equivalent",
+      "family_id": "5feeb036b24e572d3bba",
+      "scenario": "correct",
+      "split": "holdout",
+      "level_review": {
+        "status": "proposed",
+        "topic": "史传文言翻译、拜与假节钺",
+        "reason": "保留完整史传句群，需理解官职任命、授予符节及留兵/率兵的关系，属于高中史传翻译要求。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chinese-007",
+      "source_record": "sources/omni-chinese-007.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "chinese",
+      "level": "gaokao_equivalent",
+      "family_id": "fa6e549447f103fc9666",
+      "scenario": "incorrect",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "文言语境中的造门与先容",
+        "reason": "需根据旧交、请书、授函的语境翻译造门与先容，避免字面误解；不要求补出题面未给全名。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chinese-008",
+      "source_record": "sources/omni-chinese-008.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "chinese",
+      "level": "gaokao_equivalent",
+      "family_id": "529181e7edf6636b23f5",
+      "scenario": "insufficient",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "词语辨析与搭配",
+        "reason": "考查近义词在具体语境中的辨析与运用（串联/联系、呈现/展示），属于高中语文语言文字应用典型题型，符合高考层级。参考解析逻辑合理。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chinese-009",
+      "source_record": "sources/omni-chinese-009.json",
+      "category": "subject_competence",
+      "dataset": "teaching-correctness",
+      "execution_target": "solve",
+      "subject": "chinese",
+      "level": "other_k12",
+      "family_id": "3a9cd680bb843de9d3d8",
+      "scenario": "complete_solution",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "古诗词鉴赏与文化常识",
+        "reason": "助手内容复核：仅询问羽扇纶巾指谁，是文化知识识记，不作为高考层级推理证据。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chinese-010",
+      "source_record": "sources/omni-chinese-010.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "chinese",
+      "level": "gaokao_equivalent",
+      "family_id": "39196f443d017f96ce7f",
+      "scenario": "concept_clarification",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "汉字读音辨析",
+        "reason": "考查多音字及易错字读音（灸jiǔ、创chuāng、劲jìng），属于高中语文语言文字应用中的字音辨析，符合高考层级。参考解析判断正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chinese-011",
+      "source_record": "sources/omni-chinese-011.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "chinese",
+      "level": "gaokao_equivalent",
+      "family_id": "63db6b93b9ed51e13386",
+      "scenario": "stuck",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "文言文翻译",
+        "reason": "文言文翻译为现代汉语，涉及汉代匈奴单于、伊邪莫演等历史语境下的文言句式与词义理解，属于高考语文文言文翻译题型。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chinese-012",
+      "source_record": "sources/omni-chinese-012.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "chinese",
+      "level": "gaokao_equivalent",
+      "family_id": "e7aad5b00401e46a796f",
+      "scenario": "correct",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "成语语境与谦敬对象",
+        "reason": "四个完整成语语境，要求辨析自谦用语的使用对象，符合高中语言文字应用。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chinese-013",
+      "source_record": "sources/omni-chinese-013.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "chinese",
+      "level": "gaokao_equivalent",
+      "family_id": "464014652e7b7867a610",
+      "scenario": "answer_request",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "史传文言翻译、主语与动作关系",
+        "reason": "完整史传句群，需解释蚁附、缘屋、格斩及省略主语，符合高中翻译要求。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chinese-014",
+      "source_record": "sources/omni-chinese-014.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "chinese",
+      "level": "gaokao_equivalent",
+      "family_id": "c1091fccb41e719d0324",
+      "scenario": "incorrect",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "文言文翻译",
+        "reason": "文言文句子翻译为现代汉语，是高考语文文言文阅读的常规题型。所给文段涉及古代选官制度，翻译需落实关键词语，符合高考层级要求。参考译文准确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chinese-015",
+      "source_record": "sources/omni-chinese-015.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "chinese",
+      "level": "gaokao_equivalent",
+      "family_id": "ff47d9946c37ec600f68",
+      "scenario": "insufficient",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "文言文翻译",
+        "reason": "出自《淮南子》的文言文翻译，涉及神话意象与道家哲学概念，词汇和句式难度达到高考文言文翻译水平。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chinese-016",
+      "source_record": "sources/omni-chinese-016.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "chinese",
+      "level": "gaokao_equivalent",
+      "family_id": "49c77506e39d4eda0e3c",
+      "scenario": "correct",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "现代文阅读-段落作用分析",
+        "reason": "提供完整现代文阅读材料（议论文），考查首段作用分析，属于高中语文现代文阅读典型题型，需要结合论证结构作答。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chinese-017",
+      "source_record": "sources/omni-chinese-017.json",
+      "category": "subject_competence",
+      "dataset": "teaching-correctness",
+      "execution_target": "solve",
+      "subject": "chinese",
+      "level": "other_k12",
+      "family_id": "e427b277987fd60db6ad",
+      "scenario": "complete_solution",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "短语、修辞与复句辨析",
+        "reason": "短语结构、夸张和递进复句为初中语文基础，不计高考层级。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chinese-018",
+      "source_record": "sources/omni-chinese-018.json",
+      "category": "subject_competence",
+      "dataset": "teaching-correctness",
+      "execution_target": "solve",
+      "subject": "chinese",
+      "level": "gaokao_equivalent",
+      "family_id": "d8dbf1ce416556894b91",
+      "scenario": "complete_solution",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "文言文翻译",
+        "reason": "考查唐代史料（陆贽奏议）的文言文翻译，涉及'乘舆''大憝''畿内''晷刻'等高中课标要求的文言实词和文化常识，属于典型的高考文言文翻译题。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chinese-019",
+      "source_record": "sources/omni-chinese-019.json",
+      "category": "subject_competence",
+      "dataset": "teaching-correctness",
+      "execution_target": "solve",
+      "subject": "chinese",
+      "level": "gaokao_equivalent",
+      "family_id": "a0c333f2e18532171a69",
+      "scenario": "complete_solution",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "文言文翻译（柳宗元《梓人传》）",
+        "reason": "文言文翻译为现代汉语是高考语文全国卷及各省卷的必考题型。本段出自《旧唐书·柳宗元传》相关记载，涉及实词（梓人、寻引、规矩、绳墨）、虚词及句式，符合高考文言文翻译的难度和要求。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chinese-020",
+      "source_record": "sources/omni-chinese-020.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "chinese",
+      "level": "gaokao_equivalent",
+      "family_id": "621c64b74b152c205bf6",
+      "scenario": "incorrect",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "文言文翻译（文言译白话）",
+        "reason": "考查《周礼》中军礼相关文言文的现代汉语翻译，涉及古代典章制度术语的理解，属于高中语文文言文阅读翻译能力范畴。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chinese-021",
+      "source_record": "sources/omni-chinese-021.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "chinese",
+      "level": "gaokao_equivalent",
+      "family_id": "7a8b0bb2695a96dc2279",
+      "scenario": "insufficient",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "古代诗歌鉴赏（意象、炼字、作用）",
+        "reason": "清代查慎行诗歌鉴赏，考查诗句作用分析及炼字（'数'字的表达效果），属于高考语文古代诗歌阅读的标准题型和考查能力层级。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chinese-022",
+      "source_record": "sources/omni-chinese-022.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "chinese",
+      "level": "gaokao_equivalent",
+      "family_id": "5c11d9d767b12c258866",
+      "scenario": "initial_hint",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "现代文阅读-信息筛选与整合/观点分析",
+        "reason": "长篇实用类/文学类文本阅读（访谈），要求筛选整合信息、概括分析内容要点，文本长度、设问方式及选项辨析均符合高考语文现代文阅读的典型特征。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chinese-023",
+      "source_record": "sources/omni-chinese-023.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "chinese",
+      "level": "gaokao_equivalent",
+      "family_id": "7a0841fe2555985e2d6f",
+      "scenario": "concept_clarification",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "语病辨析",
+        "reason": "考查病句辨析（结构混乱、搭配不当、语序不当），属于高中语文语言文字应用核心考点，符合高考层级。参考解析对各选项的病因分析准确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chinese-024",
+      "source_record": "sources/omni-chinese-024.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "chinese",
+      "level": "other_k12",
+      "family_id": "ec5230d0238353aa3280",
+      "scenario": "stuck",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "水浒传人物情节",
+        "reason": "小说人物、情节后果识记，作为K12名著阅读，不计高考层级。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chinese-025",
+      "source_record": "sources/omni-chinese-025.json",
+      "category": "subject_competence",
+      "dataset": "teaching-correctness",
+      "execution_target": "solve",
+      "subject": "chinese",
+      "level": "gaokao_equivalent",
+      "family_id": "40d766e02be916caa8fd",
+      "scenario": "complete_solution",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "现代文阅读（环境描写作用）",
+        "reason": "提供红柯小说《麦子》全文，设问分析环境描写用意，属于高考语文文学类文本阅读中常见的鉴赏分析题，需要结合文本进行综合推理，符合高考层级。参考解析从交代背景、衬托人物、暗示主题三方面作答，合理。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chinese-026",
+      "source_record": "sources/omni-chinese-026.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "chinese",
+      "level": "gaokao_equivalent",
+      "family_id": "ec2cfdefdfe2a5e2ffdc",
+      "scenario": "answer_request",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "现代诗歌鉴赏（意象、主旨、比较阅读）",
+        "reason": "考查陈毅革命诗歌的意象理解、精神分析及与课内《梅岭三章》的比较阅读，属于高中语文诗歌鉴赏综合题，需结合教材知识作答。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chinese-027",
+      "source_record": "sources/omni-chinese-027.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "chinese",
+      "level": "gaokao_equivalent",
+      "family_id": "e92dd564786c931228a4",
+      "scenario": "initial_hint",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "现代文阅读-论述类文本信息筛选与推断",
+        "reason": "提供较长论述类文本（朱良志《一丸冷月的韵味》节选），要求理解文意并判断选项正误，符合高考语文现代文阅读（论述类文本）的典型形式与深度。参考解析准确指出D项曲解原文。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chinese-028",
+      "source_record": "sources/omni-chinese-028.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "chinese",
+      "level": "gaokao_equivalent",
+      "family_id": "6275a3ee4777ae550d61",
+      "scenario": "concept_clarification",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "文言文翻译",
+        "reason": "文言文翻译为现代汉语，文本出自《资治通鉴》唐末五代史事，包含官职名、人名及较复杂的文言句式，属于高考语文文言文翻译的典型难度与题型。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chinese-029",
+      "source_record": "sources/omni-chinese-029.json",
+      "category": "subject_competence",
+      "dataset": "teaching-correctness",
+      "execution_target": "solve",
+      "subject": "chinese",
+      "level": "gaokao_equivalent",
+      "family_id": "430a31de7610025f7ada",
+      "scenario": "complete_solution",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "现代文阅读（小说鉴赏-对比手法）",
+        "reason": "现代文文学类文本阅读，要求从对比手法角度分析人物情感并列举文中事例，属于高考语文现代文阅读典型题型，具备高中长度和深度的原文阅读与综合分析要求。题面中原文重复粘贴一次但不影响作答完整性。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chinese-030",
+      "source_record": "sources/omni-chinese-030.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "chinese",
+      "level": "other_k12",
+      "family_id": "ec3cee940732bfa189ba",
+      "scenario": "correct",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "文言文翻译",
+        "reason": "甲文为苏轼《记承天寺夜游》，系统编初中语文教材篇目；乙文为《东坡志林·游沙湖》。题目要求翻译课内文言句子，属于初中文言文基础考查，不符合高考层级。参考译文正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-math-001",
+      "source_record": "sources/omni-math-001.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "math",
+      "level": "gaokao_equivalent",
+      "family_id": "c4ea34b29c1d558caae8",
+      "scenario": "episode",
+      "split": "holdout",
+      "level_review": {
+        "status": "proposed",
+        "topic": "函数的零点与方程的根",
+        "reason": "题目考查函数零点与方程根的关系，利用数形结合思想（绝对值函数图像与常数函数图像的交点）求解参数范围，是高中数学函数的基础核心考点，符合高考层级。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-math-002",
+      "source_record": "sources/omni-math-002.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "math",
+      "level": "gaokao_equivalent",
+      "family_id": "848f2e514e7606a93e56",
+      "scenario": "episode",
+      "split": "holdout",
+      "level_review": {
+        "status": "proposed",
+        "topic": "弧长公式与数轴上的动点问题",
+        "reason": "题目考查勒洛三角形（定宽曲线）的周长计算及数轴上的点移动问题。利用弧长公式计算三段弧长之和（即周长），结合数轴平移求解，属于高中数学几何与代数综合应用，难度适中，符合高考层级。参考解析中关于边长等于弧长的表述虽有符号混用（AB既指线段又指弧长），但计算逻辑正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-math-003",
+      "source_record": "sources/omni-math-003.json",
+      "category": "subject_competence",
+      "dataset": "teaching-correctness",
+      "execution_target": "solve",
+      "subject": "math",
+      "level": "gaokao_equivalent",
+      "family_id": "0fe93a0763d8509db50e",
+      "scenario": "complete_solution",
+      "split": "holdout",
+      "level_review": {
+        "status": "proposed",
+        "topic": "程序框图（算法流程图）的逻辑推理",
+        "reason": "题目考查程序框图的逻辑结构（选择结构），属于高中数学算法初步章节的典型考点，需要理解条件判断与分支流向，符合高考层级要求。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-math-004",
+      "source_record": "sources/omni-math-004.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "math",
+      "level": "gaokao_equivalent",
+      "family_id": "8a14bfff7138ac2191b4",
+      "scenario": "answer_request",
+      "split": "holdout",
+      "level_review": {
+        "status": "proposed",
+        "topic": "算法与程序框图（条件语句）",
+        "reason": "题目考查基本算法语句（INPUT, IF-THEN, PRINT）及取模运算（MOD）的理解，属于高中数学算法初步内容，符合高考层级。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-math-005",
+      "source_record": "sources/omni-math-005.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "math",
+      "level": "gaokao_equivalent",
+      "family_id": "fa4552c14db833972bb2",
+      "scenario": "initial_hint",
+      "split": "holdout",
+      "level_review": {
+        "status": "proposed",
+        "topic": "球的体积与截面性质",
+        "reason": "题目考查球的截面性质（勾股定理求半径）及球体积公式计算，属于高中立体几何基础题，符合高考层级。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-math-006",
+      "source_record": "sources/omni-math-006.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "math",
+      "level": "gaokao_equivalent",
+      "family_id": "767729c1dc651340dd90",
+      "scenario": "incorrect",
+      "split": "holdout",
+      "level_review": {
+        "status": "proposed",
+        "topic": "含绝对值方程的根的个数问题",
+        "reason": "考查含绝对值函数的图像与方程根的个数问题，属于高中函数与方程的典型综合应用，难度适中。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-math-007",
+      "source_record": "sources/omni-math-007.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "math",
+      "level": "gaokao_equivalent",
+      "family_id": "beadc6835c59f816afb1",
+      "scenario": "insufficient",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "三视图还原几何体及体积计算",
+        "reason": "题目考查由三视图还原空间几何体（半球）并计算体积，涉及网格读数及球体积公式，属于高中立体几何常规考题，符合高考层级。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-math-008",
+      "source_record": "sources/omni-math-008.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "math",
+      "level": "gaokao_equivalent",
+      "family_id": "424acdef7852b2c5d674",
+      "scenario": "correct",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "统计图表分析（增长率与增长量的区别）",
+        "reason": "题目考查统计图表（增长率折线图）的分析，核心在于区分“增长率”与“增长量/总量”的关系（增长率为正即总量增加），这是高中统计章节及函数应用中的常见易错点，具备一定的高中数学思维要求。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-math-009",
+      "source_record": "sources/omni-math-009.json",
+      "category": "subject_competence",
+      "dataset": "teaching-correctness",
+      "execution_target": "solve",
+      "subject": "math",
+      "level": "gaokao_equivalent",
+      "family_id": "b84e3f2265cc22c56ddd",
+      "scenario": "complete_solution",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "算法与程序框图、分段函数、不等式求解",
+        "reason": "题目通过算法语句（伪代码）定义分段函数，考查对算法逻辑的理解以及分段函数不等式的求解（涉及对数函数和三角函数），属于高中数学算法初步与函数综合题，符合高考要求。图片清晰展示了算法流程。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-math-010",
+      "source_record": "sources/omni-math-010.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "math",
+      "level": "gaokao_equivalent",
+      "family_id": "5441c8acc8c362ccd573",
+      "scenario": "concept_clarification",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "二项式定理",
+        "reason": "题目结合杨辉三角考查二项式定理展开式的系数规律。虽然可以通过简单的数字累加规律（初中水平）解决，但其背景知识（二项式系数）及通项公式的应用属于高中数学核心内容，且题目形式常见于高中练习，保守判定为高考层级。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-math-011",
+      "source_record": "sources/omni-math-011.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "math",
+      "level": "gaokao_equivalent",
+      "family_id": "0226183313f453093806",
+      "scenario": "stuck",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "回归分析（非线性回归模型）",
+        "reason": "题目考查非线性回归分析（通过对数变换转化为线性回归），涉及最小二乘法公式的应用及数据处理，是高中数学统计章节的典型高考题型。题目提供了完整的散点图、统计量表及参考公式，条件充分。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-math-012",
+      "source_record": "sources/omni-math-012.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "math",
+      "level": "gaokao_equivalent",
+      "family_id": "2a1a7f16cc961c10f737",
+      "scenario": "incorrect",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "频率分布直方图与分层抽样、古典概型概率计算",
+        "reason": "考查频率分布直方图的读取、分层抽样计算以及古典概型概率计算，是高中统计与概率的标准综合题型。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-math-013",
+      "source_record": "sources/omni-math-013.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "math",
+      "level": "gaokao_equivalent",
+      "family_id": "ec5fa289b7732c5545f0",
+      "scenario": "answer_request",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "算法与程序框图（伪代码）",
+        "reason": "题目考查伪代码的阅读与循环结构的执行追踪（While循环），涉及变量迭代更新，是高中数学算法语句部分的典型考题，符合高考层级。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-math-014",
+      "source_record": "sources/omni-math-014.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "math",
+      "level": "gaokao_equivalent",
+      "family_id": "fb63730a36ac4afafa6b",
+      "scenario": "insufficient",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "空间中直线与平面、平面与平面的位置关系（面面垂直的证明）",
+        "reason": "考查立体几何中面面垂直的证明，涉及线面垂直判定定理、面面垂直性质定理，是高中立体几何的核心考点。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-math-015",
+      "source_record": "sources/omni-math-015.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "math",
+      "level": "gaokao_equivalent",
+      "family_id": "370e5a9699efeb367534",
+      "scenario": "correct",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "分层抽样与简单随机抽样的综合应用",
+        "reason": "分层抽样、系统抽样与简单随机抽样的综合辨析与应用是中国高中数学（统计）课程的特有要求，符合高考层级。参考解析逻辑正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-math-016",
+      "source_record": "sources/omni-math-016.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "math",
+      "level": "gaokao_equivalent",
+      "family_id": "0b7e57c7f4e619c44fcb",
+      "scenario": "incorrect",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "反证法原理",
+        "reason": "反证法的逻辑步骤是高中数学（选修/逻辑推理部分）的知识点，涉及命题证明方法，属于高考层级。参考答案(1)(2)(3)正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-math-017",
+      "source_record": "sources/omni-math-017.json",
+      "category": "subject_competence",
+      "dataset": "teaching-correctness",
+      "execution_target": "solve",
+      "subject": "math",
+      "level": "gaokao_equivalent",
+      "family_id": "c8a1f1d09a167d32dd5f",
+      "scenario": "complete_solution",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "复数的模与几何意义",
+        "reason": "复数模的运算结合余弦定理或向量方法求解，属于高中数学复数模块的典型高考层级题目，需要高中特有的代数与几何综合推理。参考解析用特值法计算过程正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-math-018",
+      "source_record": "sources/omni-math-018.json",
+      "category": "subject_competence",
+      "dataset": "teaching-correctness",
+      "execution_target": "solve",
+      "subject": "math",
+      "level": "gaokao_equivalent",
+      "family_id": "d4a2abe1a4c5b988c85f",
+      "scenario": "complete_solution",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "离散型随机变量的方差",
+        "reason": "考查离散型随机变量的期望与方差及其随参数变化的单调性，属于高中数学概率统计核心内容，符合高考层级。参考解析中D(X)化简结果及结论正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-math-019",
+      "source_record": "sources/omni-math-019.json",
+      "category": "subject_competence",
+      "dataset": "teaching-correctness",
+      "execution_target": "solve",
+      "subject": "math",
+      "level": "gaokao_equivalent",
+      "family_id": "978ed308641b0c8f3127",
+      "scenario": "complete_solution",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "古典概型概率计算",
+        "reason": "互斥事件概率加法公式P(C)=P(A)+P(B)，属于高中数学概率统计内容。参考解析计算1/7+12/35=5/35+12/35=17/35正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-math-020",
+      "source_record": "sources/omni-math-020.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "math",
+      "level": "gaokao_equivalent",
+      "family_id": "f36e9abe41d42921077d",
+      "scenario": "insufficient",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "合情推理与演绎推理概念辨析",
+        "reason": "考查高中数学选修中推理与证明章节的类比推理、演绎推理、归纳推理、合情推理的概念辨析，属于高中课程特有知识。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-math-021",
+      "source_record": "sources/omni-math-021.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "math",
+      "level": "gaokao_equivalent",
+      "family_id": "261cc514866be433279a",
+      "scenario": "correct",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "等比数列与三角函数",
+        "reason": "直角三角形三边成等比数列结合三角函数求值，涉及等比数列性质与勾股定理的综合运用，属于高考层级。参考解析推导正确：q⁴=q²+1解得q²=(√5+1)/2，sinθ=1/q²=(√5-1)/2。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-math-022",
+      "source_record": "sources/omni-math-022.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "math",
+      "level": "gaokao_equivalent",
+      "family_id": "c23a7e3865ced991f5c9",
+      "scenario": "initial_hint",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "复数的几何意义与模的最值",
+        "reason": "复数模的几何意义，|z|=1表示单位圆，|z-2-2i|表示圆上点到(2,2)的距离，最大值为圆心距加半径=2√2+1。属于高中数学复数与解析几何综合。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-math-023",
+      "source_record": "sources/omni-math-023.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "math",
+      "level": "gaokao_equivalent",
+      "family_id": "5d93888e7c2478058681",
+      "scenario": "concept_clarification",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "幂函数解析式与不等式求解",
+        "reason": "幂函数概念、通过对应值确定指数α、解含绝对值的幂函数不等式，均为高中数学必修内容，属于高考层级。参考解析中由(1/2)^α=√2/2得α=1/2，再解|x|^(1/2)≤2得-4≤x≤4，过程正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-math-024",
+      "source_record": "sources/omni-math-024.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "math",
+      "level": "gaokao_equivalent",
+      "family_id": "a953735064572e8e7601",
+      "scenario": "stuck",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "三角函数图象变换（平移）",
+        "reason": "三角函数图象的平移变换（振幅相同才能通过平移重合）是中国高中数学三角函数章节的核心考点，符合高考层级。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-math-025",
+      "source_record": "sources/omni-math-025.json",
+      "category": "subject_competence",
+      "dataset": "teaching-correctness",
+      "execution_target": "solve",
+      "subject": "math",
+      "level": "gaokao_equivalent",
+      "family_id": "31681ef299aef4581184",
+      "scenario": "complete_solution",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "导数在生活中的应用/三次函数极值",
+        "reason": "利用导数求三次函数在闭区间上的最大值，属于中国高中数学导数应用的典型高考题。参考解析求导及判断极值过程正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-math-026",
+      "source_record": "sources/omni-math-026.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "math",
+      "level": "gaokao_equivalent",
+      "family_id": "b90a4b271e8facd4e91c",
+      "scenario": "answer_request",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "新定义运算与集合元素计数",
+        "reason": "新定义运算结合集合元素计数，需要分类讨论奇偶性与因数分解，属于高中数学集合与逻辑推理的典型高考题型。参考解析枚举完整，答案15正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-math-027",
+      "source_record": "sources/omni-math-027.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "math",
+      "level": "gaokao_equivalent",
+      "family_id": "6510e0c1767864f6aef7",
+      "scenario": "initial_hint",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "数学归纳法步骤分析",
+        "reason": "考查数学归纳法证明不等式时从n=k到n=k+1左边增加的项，属于高中数学推理与证明内容。参考解析计算正确：f(k+1)-f(k)=1/(2k+1)+1/(2k+2)-1/(k+1)=1/((2k+1)(2k+2))。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-math-028",
+      "source_record": "sources/omni-math-028.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "math",
+      "level": "gaokao_equivalent",
+      "family_id": "22641dde84c1bbb697f8",
+      "scenario": "concept_clarification",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "相关点法求轨迹方程",
+        "reason": "求轨迹方程，利用中点坐标公式代入圆的方程，属于高中解析几何典型题型。参考解析正确，选C。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-math-029",
+      "source_record": "sources/omni-math-029.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "math",
+      "level": "other_k12",
+      "family_id": "f18b062f46550cfeb992",
+      "scenario": "initial_hint",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "程序框图与几何概型（随机模拟法）",
+        "reason": "考查利用随机模拟（蒙特卡洛方法）估计圆周率，结合程序框图。虽然涉及几何概型（高中内容），但核心逻辑是简单的面积比估算，且算法框图阅读在新课标中已弱化，题目本身思维深度较浅，更接近信息技术或初中数学拓展内容。不过考虑到几何概型是高中特有概念，勉强可算gaokao，但鉴于算法章节删除及题目简单性，保守定为other_k12或gaokao边缘。此处因涉及几何概型公式推导，修正为gaokao_equivalent可能更妥？不，根据指令“平移中点、地理常识等一律other_k12”，此题逻辑过于直白（数点算比例），且依赖旧教材算法框图，判other_k12更稳妥。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-math-030",
+      "source_record": "sources/omni-math-030.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "math",
+      "level": "other_k12",
+      "family_id": "845a90b466d514074964",
+      "scenario": "incorrect",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "数列与数学建模（找规律）",
+        "reason": "题目通过火柴棒搭三角形寻找数量规律（等差数列），虽然涉及数列概念，但这种图形计数找规律是小学奥数及初中数学的常见题型，思维深度较浅，不具备高中数学特有的抽象推理或复杂计算特征。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-english-001",
+      "source_record": "sources/omni-english-001.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "english",
+      "level": "gaokao_equivalent",
+      "family_id": "d676fd8dfca8c56f0c98",
+      "scenario": "episode",
+      "split": "holdout",
+      "level_review": {
+        "status": "proposed",
+        "topic": "阅读理解-观点态度",
+        "reason": "英文原文阅读理解，考查人物观点的细节定位与辨析，篇幅、词汇量和推理深度均符合高考英语阅读标准，题面完整。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-english-002",
+      "source_record": "sources/omni-english-002.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "english",
+      "level": "gaokao_equivalent",
+      "family_id": "b8901fb86b7850855436",
+      "scenario": "episode",
+      "split": "holdout",
+      "level_review": {
+        "status": "proposed",
+        "topic": "英语阅读理解-细节判断",
+        "reason": "英文原文阅读理解，考查细节判断（participants had to report the clues they used = tell reasons for their judgments），学术类说明文，长度和难度符合高考英语阅读。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-english-003",
+      "source_record": "sources/omni-english-003.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "english",
+      "level": "gaokao_equivalent",
+      "family_id": "39e2e0160fdb2aa65497",
+      "scenario": "stuck",
+      "split": "holdout",
+      "level_review": {
+        "status": "proposed",
+        "topic": "阅读理解-目的意图",
+        "reason": "英文原文阅读理解，考查细节定位与推理，符合高考英语阅读题型与难度。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-english-004",
+      "source_record": "sources/omni-english-004.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "english",
+      "level": "gaokao_equivalent",
+      "family_id": "34fbd8177cd46c7f2b26",
+      "scenario": "answer_request",
+      "split": "holdout",
+      "level_review": {
+        "status": "proposed",
+        "topic": "阅读理解-推理判断",
+        "reason": "考查英文文章阅读理解，属于英语学科。文本为科普类说明文，介绍病毒构建电池的研究，篇幅较长，需综合多处信息进行推断（如prototype状态、与传统电池对比优势等），符合高考英语阅读理解的长度和推理深度。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-english-005",
+      "source_record": "sources/omni-english-005.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "english",
+      "level": "gaokao_equivalent",
+      "family_id": "74739d9d32d94174297b",
+      "scenario": "initial_hint",
+      "split": "holdout",
+      "level_review": {
+        "status": "proposed",
+        "topic": "Reading Comprehension - Narrative Details",
+        "reason": "英文原文阅读理解，考查记叙文的推理判断，符合高考英语阅读题型。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-english-006",
+      "source_record": "sources/omni-english-006.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "english",
+      "level": "gaokao_equivalent",
+      "family_id": "51a7d68ba448614896f7",
+      "scenario": "insufficient",
+      "split": "holdout",
+      "level_review": {
+        "status": "proposed",
+        "topic": "阅读理解-因果逻辑",
+        "reason": "英文原文阅读理解，考查地理/气象科普类文章的细节理解，符合高考英语阅读题型。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-english-007",
+      "source_record": "sources/omni-english-007.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "english",
+      "level": "gaokao_equivalent",
+      "family_id": "16791004f7c23cc094d1",
+      "scenario": "correct",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "阅读理解-细节比对",
+        "reason": "考查英文文章阅读理解，属于英语学科。文本为关于多哈城市变迁的记叙/说明文，篇幅适中，题目要求逐项比对原文细节进行正误判断（如时间、地点、人物回忆），符合高考英语阅读理解的典型题型和难度。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-english-008",
+      "source_record": "sources/omni-english-008.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "english",
+      "level": "gaokao_equivalent",
+      "family_id": "c055a9dd855ccd9e6052",
+      "scenario": "incorrect",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "Reading Comprehension - Biographical Details",
+        "reason": "英文原文阅读理解，考查细节理解与推断，篇幅和难度符合高考英语阅读要求，题面完整。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-english-009",
+      "source_record": "sources/omni-english-009.json",
+      "category": "subject_competence",
+      "dataset": "teaching-correctness",
+      "execution_target": "solve",
+      "subject": "english",
+      "level": "gaokao_equivalent",
+      "family_id": "229ae45ba615f84d94fc",
+      "scenario": "complete_solution",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "英语阅读理解-细节理解",
+        "reason": "英文原文阅读理解，考查细节定位（ski adventure对应electronic ski jacket），篇幅和难度符合高考英语阅读。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-english-010",
+      "source_record": "sources/omni-english-010.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "english",
+      "level": "gaokao_equivalent",
+      "family_id": "82acc5ad105addf99308",
+      "scenario": "concept_clarification",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "代词用法 (one vs it)",
+        "reason": "考查英语代词one与it的用法辨析，属于高中英语语法核心考点，题面完整。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-english-011",
+      "source_record": "sources/omni-english-011.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "english",
+      "level": "gaokao_equivalent",
+      "family_id": "f2d035fd70c1092fb47d",
+      "scenario": "stuck",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "Reading Comprehension - Argumentative Text",
+        "reason": "英文原文议论文阅读，考查细节判断（选not true的选项），符合高考英语阅读层级。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-english-012",
+      "source_record": "sources/omni-english-012.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "english",
+      "level": "gaokao_equivalent",
+      "family_id": "0db4f8ae264755531e56",
+      "scenario": "insufficient",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "阅读理解-人物传记/概念理解",
+        "reason": "英文原文阅读理解，考查对文中特定概念（Nash Equilibrium）的细节理解，符合高考英语阅读题型。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-english-013",
+      "source_record": "sources/omni-english-013.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "english",
+      "level": "gaokao_equivalent",
+      "family_id": "09b4c3970a57f508b5b4",
+      "scenario": "answer_request",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "Reading Comprehension - Main Idea/Attitude",
+        "reason": "英文原文说明文阅读，考查观点细节理解，符合高考英语阅读层级。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-english-014",
+      "source_record": "sources/omni-english-014.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "english",
+      "level": "gaokao_equivalent",
+      "family_id": "4ee1be030db45c918e36",
+      "scenario": "correct",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "Reading Comprehension - Character Analysis",
+        "reason": "英文原文记叙文阅读，考查人物性格/主旨推断，符合高考英语阅读层级。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-english-015",
+      "source_record": "sources/omni-english-015.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "english",
+      "level": "gaokao_equivalent",
+      "family_id": "33a041d7d41ae0a1533d",
+      "scenario": "incorrect",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "Reading Comprehension - Genre Identification",
+        "reason": "考查英文原文阅读理解，属于英语学科。文章涉及经济现象与社会问题的关联分析，要求判断文章出处（报纸版面），需要一定的语篇体裁意识和综合推断能力，符合高考英语阅读理解的典型题型和难度。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-english-016",
+      "source_record": "sources/omni-english-016.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "english",
+      "level": "gaokao_equivalent",
+      "family_id": "723a3f5837c760384ee7",
+      "scenario": "insufficient",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "Reading Comprehension - Practical Information/Advert",
+        "reason": "英文原文应用文阅读，考查信息检索与匹配，属于高考英语常见题型。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-english-017",
+      "source_record": "sources/omni-english-017.json",
+      "category": "subject_competence",
+      "dataset": "teaching-correctness",
+      "execution_target": "solve",
+      "subject": "english",
+      "level": "gaokao_equivalent",
+      "family_id": "be085aa33296c0bf7a15",
+      "scenario": "complete_solution",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "英语词汇辨析/动词搭配",
+        "reason": "考查英语词汇辨析与语境应用，属于英语学科。在单句语境中辨析动词搭配（overcome challenges），是高考英语完形填空或词汇题的常见考点。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-english-018",
+      "source_record": "sources/omni-english-018.json",
+      "category": "subject_competence",
+      "dataset": "teaching-correctness",
+      "execution_target": "solve",
+      "subject": "english",
+      "level": "gaokao_equivalent",
+      "family_id": "34e7fbb3587649d89984",
+      "scenario": "complete_solution",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "Reading Comprehension - Information Retrieval",
+        "reason": "考查英文文章阅读理解，属于英语学科。文本含表格与多段论述，需对比原文列举的排名标准（physical demands, work environment, income, stress and hiring outlook）与选项进行排除推理，符合高考英语阅读理解的长度和细节辨析要求。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-english-019",
+      "source_record": "sources/omni-english-019.json",
+      "category": "subject_competence",
+      "dataset": "teaching-correctness",
+      "execution_target": "solve",
+      "subject": "english",
+      "level": "gaokao_equivalent",
+      "family_id": "71fbdcfbc6adde1d2205",
+      "scenario": "complete_solution",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "阅读理解-叙事逻辑/推断",
+        "reason": "英文原文阅读理解，涉及泰坦尼克号历史事件的叙述，但考查的是文本细节理解（SOS rockets=signal for help），非单纯历史常识，篇幅和推理符合高考英语阅读。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-english-020",
+      "source_record": "sources/omni-english-020.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "english",
+      "level": "gaokao_equivalent",
+      "family_id": "4fd719b2ec5571a39c2e",
+      "scenario": "correct",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "英语阅读理解-科技与社会争议",
+        "reason": "考查英文文章阅读理解，属于英语学科。文本涉及剧院手机干扰及信号屏蔽设备的讨论，需理解blocking devices的功能描述并据此判断选项，属于高中英语阅读常见的话题与推理深度。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-english-021",
+      "source_record": "sources/omni-english-021.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "english",
+      "level": "gaokao_equivalent",
+      "family_id": "61874902ce475202deb5",
+      "scenario": "incorrect",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "阅读理解-定义匹配",
+        "reason": "英文原文阅读理解，考查医学科普类文章的细节匹配，符合高考英语阅读题型。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-english-022",
+      "source_record": "sources/omni-english-022.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "english",
+      "level": "gaokao_equivalent",
+      "family_id": "b470eca89c56a1fb5e47",
+      "scenario": "initial_hint",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "英语阅读理解-主旨/目的",
+        "reason": "英文原文阅读理解，考查文章主旨/目的推断，篇幅和深度符合高考英语阅读标准，题面完整。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-english-023",
+      "source_record": "sources/omni-english-023.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "english",
+      "level": "gaokao_equivalent",
+      "family_id": "54d75f6936fcc52b2812",
+      "scenario": "concept_clarification",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "English Reading Comprehension - Economic/Social Report Analysis",
+        "reason": "英文原文阅读理解，考查细节理解（imported goods can be dear），符合高考英语阅读要求。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-english-024",
+      "source_record": "sources/omni-english-024.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "english",
+      "level": "gaokao_equivalent",
+      "family_id": "d19e369e96a07180717e",
+      "scenario": "stuck",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "Reading Comprehension - Specific Action/Detail",
+        "reason": "英文原文阅读理解，考查细节信息提取，符合高考英语阅读题型。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-english-025",
+      "source_record": "sources/omni-english-025.json",
+      "category": "subject_competence",
+      "dataset": "teaching-correctness",
+      "execution_target": "solve",
+      "subject": "english",
+      "level": "gaokao_equivalent",
+      "family_id": "1616250f6b549600197e",
+      "scenario": "complete_solution",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "阅读理解-观点态度/数据解读",
+        "reason": "英文原文阅读理解，考查细节理解（more than half insist carpooling is too inconvenient → most people think it is inconvenient），篇幅和词汇符合高考英语阅读。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-english-026",
+      "source_record": "sources/omni-english-026.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "english",
+      "level": "gaokao_equivalent",
+      "family_id": "804c3ecfbc2d704313d6",
+      "scenario": "answer_request",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "英语阅读理解（细节推断）",
+        "reason": "英文原文阅读理解，考查细节推断（holistic thinking与valuing others的关系），文章长度、词汇和推理深度符合高考英语阅读要求。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-english-027",
+      "source_record": "sources/omni-english-027.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "english",
+      "level": "gaokao_equivalent",
+      "family_id": "87fcf58fa991f7a306ff",
+      "scenario": "initial_hint",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "Reading Comprehension - Detail & Inference",
+        "reason": "英文原文阅读理解，考查细节推断，符合高考英语阅读题型与难度。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-english-028",
+      "source_record": "sources/omni-english-028.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "english",
+      "level": "other_k12",
+      "family_id": "74d952a2647b0077f4ad",
+      "scenario": "concept_clarification",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "记叙文阅读-卡特家族音乐史",
+        "reason": "考查英文原文阅读理解，属于英语学科。题目为细节理解题，文本和设问难度较低，符合初中英语水平，不属于高考层级特有的综合推理或长难文本阅读。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-english-029",
+      "source_record": "sources/omni-english-029.json",
+      "category": "subject_competence",
+      "dataset": "teaching-correctness",
+      "execution_target": "solve",
+      "subject": "english",
+      "level": "other_k12",
+      "family_id": "618947643c47fa41547a",
+      "scenario": "complete_solution",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "英语阅读理解/主旨与推断",
+        "reason": "英文原文阅读理解，考查细节推断与主旨概括，文本难度和题型属于初中英语水平，非高中课程特有深度。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-english-030",
+      "source_record": "sources/omni-english-030.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "english",
+      "level": "other_k12",
+      "family_id": "430d607040b9283bc86e",
+      "scenario": "insufficient",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "英语阅读理解-自传/历史叙事",
+        "reason": "将Frederick Douglass自传英文片段译为中文后出题，仍归english；考查基本细节理解，初中水平即可作答。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-physics-001",
+      "source_record": "sources/omni-physics-001.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "physics",
+      "level": "gaokao_equivalent",
+      "family_id": "0ca9b9010eb6fffeceee",
+      "scenario": "correct",
+      "split": "holdout",
+      "level_review": {
+        "status": "proposed",
+        "topic": "光电效应方程应用",
+        "reason": "考查光电效应方程Ek=hν-W及红限波长概念，需进行eV与J的单位换算和代数运算，属于高中物理近代物理部分的高考层级内容。参考解析计算步骤完整且结果正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-physics-002",
+      "source_record": "sources/omni-physics-002.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "physics",
+      "level": "gaokao_equivalent",
+      "family_id": "7338544ccf7c862554e6",
+      "scenario": "episode",
+      "split": "holdout",
+      "level_review": {
+        "status": "proposed",
+        "topic": "动量定理的应用",
+        "reason": "英文出题的物理知识题，考查动量定理（冲量-动量关系）在缓冲中的应用，涉及FΔt=Δp的定量分析，为高中物理典型考点。参考解析逻辑正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-physics-003",
+      "source_record": "sources/omni-physics-003.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "physics",
+      "level": "gaokao_equivalent",
+      "family_id": "88646e2bb88883382b14",
+      "scenario": "incorrect",
+      "split": "holdout",
+      "level_review": {
+        "status": "proposed",
+        "topic": "运动学基本概念",
+        "reason": "综合考查时间间隔与时刻、质点模型适用条件、参考系与相对运动、位移与平均速度等高中物理必修一核心概念，需多概念辨析，符合高考层级。参考解析逻辑正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-physics-004",
+      "source_record": "sources/omni-physics-004.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "physics",
+      "level": "gaokao_equivalent",
+      "family_id": "e73f71134a36d3343268",
+      "scenario": "insufficient",
+      "split": "holdout",
+      "level_review": {
+        "status": "proposed",
+        "topic": "电容器耐压值与电场强度关系",
+        "reason": "考查平行板电容器匀强电场公式E=U/d及介质击穿场强概念，属于高中物理选修3-1静电场内容，计算过程与结果正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-physics-005",
+      "source_record": "sources/omni-physics-005.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "physics",
+      "level": "gaokao_equivalent",
+      "family_id": "1d522e3384fe2b261b4c",
+      "scenario": "concept_clarification",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "开普勒第三定律",
+        "reason": "考查开普勒第三定律的比例计算，需要利用T²∝r³进行数值估算，属于高中物理万有引力章节的典型高考题型。参考解析计算过程及结果正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-physics-006",
+      "source_record": "sources/omni-physics-006.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "physics",
+      "level": "gaokao_equivalent",
+      "family_id": "804b10fb962b287ca34a",
+      "scenario": "stuck",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "牛顿第三定律与反冲运动",
+        "reason": "英文出题的物理知识题，考查牛顿第三定律在火箭发射中的应用，属于高中物理力学核心内容。参考解析正确运用作用力与反作用力关系，结论无误。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-physics-007",
+      "source_record": "sources/omni-physics-007.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "physics",
+      "level": "gaokao_equivalent",
+      "family_id": "440458f658f10f9cdb78",
+      "scenario": "answer_request",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "电场强度的定义式计算",
+        "reason": "利用E=F/|q|计算电场强度大小，涉及矢量方向与电荷正负的关系判断，属于高中物理静电场基本公式应用，符合高考层级要求。参考解析计算正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-physics-008",
+      "source_record": "sources/omni-physics-008.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "physics",
+      "level": "gaokao_equivalent",
+      "family_id": "8a53f72a8651868fc9dd",
+      "scenario": "correct",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "电源内阻与路端电压",
+        "reason": "考查闭合电路欧姆定律、电源内阻分压及电功率P=U²/R的综合应用，属于高中物理典型综合分析题，推理过程和结论正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-physics-009",
+      "source_record": "sources/omni-physics-009.json",
+      "category": "subject_competence",
+      "dataset": "teaching-correctness",
+      "execution_target": "solve",
+      "subject": "physics",
+      "level": "other_k12",
+      "family_id": "b85a5dacf59e31800d2f",
+      "scenario": "complete_solution",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "摩擦起电与导体绝缘条件",
+        "reason": "摩擦起电、导体与绝缘体的区别、接地导走电荷等均为初中物理静电学基础知识，不涉及高中特有的定量分析或深层机制推理。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-physics-010",
+      "source_record": "sources/omni-physics-010.json",
+      "category": "subject_competence",
+      "dataset": "teaching-correctness",
+      "execution_target": "solve",
+      "subject": "physics",
+      "level": "other_k12",
+      "family_id": "68d9b810fb3de3863fc8",
+      "scenario": "complete_solution",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "科学探究/控制变量法",
+        "reason": "考查科学探究中'提出有价值问题'的能力，属于初中物理科学探究方法层面的常识判断，不涉及高中物理特有的定量分析或综合推理。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-physics-011",
+      "source_record": "sources/omni-physics-011.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "physics",
+      "level": "other_k12",
+      "family_id": "0ed955d916a22868aa65",
+      "scenario": "initial_hint",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "质点模型的适用条件",
+        "reason": "质点模型的判断条件（物体大小形状对所研究问题是否可忽略）是高中物理必修一最基础的概念辨析，无需复杂数学推理，属于基础概念识记层面。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-physics-012",
+      "source_record": "sources/omni-physics-012.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "physics",
+      "level": "other_k12",
+      "family_id": "75ae4ee46cccbaced781",
+      "scenario": "concept_clarification",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "热传递方式",
+        "reason": "考查热传递三种方式（传导、对流、辐射）在汽车散热器中的应用，属于初中物理常识性知识，高中虽涉及但不构成高考层级综合推理。参考解析物理原理正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-physics-013",
+      "source_record": "sources/omni-physics-013.json",
+      "category": "subject_competence",
+      "dataset": "teaching-correctness",
+      "execution_target": "solve",
+      "subject": "physics",
+      "level": "other_k12",
+      "family_id": "52b38f809bea13a041a9",
+      "scenario": "complete_solution",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "温度与内能的关系",
+        "reason": "考查热能与温度的关系，在物质种类和质量相同的前提下比较温度高低，属于初中甚至小学科学的热学常识，不涉及高中热力学机制或实验。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-physics-014",
+      "source_record": "sources/omni-physics-014.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "physics",
+      "level": "other_k12",
+      "family_id": "0aacff97ec716ca3b143",
+      "scenario": "incorrect",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "原电池电极名称",
+        "reason": "考查电池两极名称（阳极和阴极/正极和负极），属于初中科学常识，高中生甚至小学生也能直接回答。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-physics-015",
+      "source_record": "sources/omni-physics-015.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "physics",
+      "level": "other_k12",
+      "family_id": "29ff88c56239a1b99603",
+      "scenario": "insufficient",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "绝对零度与温标换算",
+        "reason": "绝对零度与摄氏温标的换算（-273.15°C）是初中物理热学基础常识，无需高中层级推理即可回答。题目为英文出题但考查物理知识，学科归类正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-physics-016",
+      "source_record": "sources/omni-physics-016.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "physics",
+      "level": "other_k12",
+      "family_id": "3be08b60aed2ceb2eaf6",
+      "scenario": "stuck",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "惯性/牛顿第一定律的应用",
+        "reason": "考查惯性概念，属于初中物理常识（牛顿第一定律的定性应用），无需高中特有综合推理，按规则应标other_k12。参考解析物理原理正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-physics-017",
+      "source_record": "sources/omni-physics-017.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "physics",
+      "level": "other_k12",
+      "family_id": "8d497a6da0b645691236",
+      "scenario": "correct",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "声学基础/噪声防护",
+        "reason": "考查佩戴何种物品可减小进入耳朵的声波振幅，属于生活常识级别的声学知识，小学或初中即可直接回答，不涉及高中特有的综合推理或深度计算。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-physics-018",
+      "source_record": "sources/omni-physics-018.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "physics",
+      "level": "other_k12",
+      "family_id": "d3b13aa246e2e2c6dc3e",
+      "scenario": "answer_request",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "摩擦力与生活常识",
+        "reason": "考查不同路面（油渍）对刹车摩擦力的影响，属于摩擦力与日常生活的常识判断，小学或初中即可回答，不具备高考层级的深度或综合推理。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-physics-019",
+      "source_record": "sources/omni-physics-019.json",
+      "category": "subject_competence",
+      "dataset": "teaching-correctness",
+      "execution_target": "solve",
+      "subject": "physics",
+      "level": "other_k12",
+      "family_id": "6d911e1811cb5191f5a3",
+      "scenario": "complete_solution",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "重力概念及生活应用",
+        "reason": "设想没有重力的情景（水不往下流、大气逃逸等）属于初中物理重力概念的定性理解与想象，不涉及高中力学定量计算或深层机制。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-physics-020",
+      "source_record": "sources/omni-physics-020.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "physics",
+      "level": "other_k12",
+      "family_id": "15059ff103f2148f04d6",
+      "scenario": "initial_hint",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "静电现象",
+        "reason": "摩擦起电产生静电放电现象属于初中物理静电常识，且选项含明显干扰项（electric youth, bad breeding），无需高中电磁学深度知识。英文出题考查物理知识，学科归类正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chemistry-001",
+      "source_record": "sources/omni-chemistry-001.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "chemistry",
+      "level": "gaokao_equivalent",
+      "family_id": "ef90f39fa472b0a725f5",
+      "scenario": "incorrect",
+      "split": "holdout",
+      "level_review": {
+        "status": "proposed",
+        "topic": "热化学方程式与燃烧热/生成热的关系",
+        "reason": "考查石墨标准摩尔燃烧焓与二氧化碳标准摩尔生成焐的关系，需要理解燃烧热和生成热的严格定义及对应热化学方程式，属于中国高中化学反应原理（热化学）的核心考点。参考解析逻辑正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chemistry-002",
+      "source_record": "sources/omni-chemistry-002.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "chemistry",
+      "level": "gaokao_equivalent",
+      "family_id": "6248b9f3f6f568fa90b7",
+      "scenario": "episode",
+      "split": "holdout",
+      "level_review": {
+        "status": "proposed",
+        "topic": "硫及其化合物-硫化氢的性质",
+        "reason": "考查H2S中硫处于最低价态（-2）只能作还原剂不能作氧化剂的氧化还原规律，以及其水溶液呈弱酸性等性质，属于中国高中化学元素化合物与氧化还原反应的综合应用。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chemistry-003",
+      "source_record": "sources/omni-chemistry-003.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "chemistry",
+      "level": "gaokao_equivalent",
+      "family_id": "07522170b4b32bc5d070",
+      "scenario": "insufficient",
+      "split": "holdout",
+      "level_review": {
+        "status": "proposed",
+        "topic": "无机化工流程与氧化还原反应",
+        "reason": "涉及工业流程分析、氧化还原反应判断、酸性氧化物概念、基于化学方程式的物质的量计算以及环保常识，属于典型的中国高考化学工艺流程题。参考解析中C选项计算过程：200g MoS₂为1.25mol，对应需Al 2.5mol即67.5g（参考解析写64g系用MoO₃摩尔质量144×1.25=180g再算得约67.5g，其表述'64g'有轻微计算笔误但不影响结论C错误）。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chemistry-004",
+      "source_record": "sources/omni-chemistry-004.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "chemistry",
+      "level": "gaokao_equivalent",
+      "family_id": "2b268454096f609542e2",
+      "scenario": "correct",
+      "split": "holdout",
+      "level_review": {
+        "status": "proposed",
+        "topic": "晶体结构与性质-熔化时破坏的作用力",
+        "reason": "考查不同晶体类型（分子晶体、金属晶体、离子晶体、共价/原子晶体）熔化时克服的作用力，SiO2作为原子晶体熔化需破坏共价键是中国高中化学必修/选择性必修的经典高频考点。参考解析准确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chemistry-005",
+      "source_record": "sources/omni-chemistry-005.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "chemistry",
+      "level": "gaokao_equivalent",
+      "family_id": "ce00fd7ca094ee8ef0fc",
+      "scenario": "concept_clarification",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "弱电解质电离平衡常数关系",
+        "reason": "题目涉及弱电解质电离平衡常数（Ka）与共轭碱水解/电离常数（Kb）及水的离子积常数（Kw）之间的定量换算，属于高中化学反应原理（水溶液中的离子平衡）的核心考点。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chemistry-006",
+      "source_record": "sources/omni-chemistry-006.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "chemistry",
+      "level": "gaokao_equivalent",
+      "family_id": "4db8a7a095d0ba526a8e",
+      "scenario": "stuck",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "卤化银的性质递变规律（颜色、溶解度、键型）",
+        "reason": "考查AgF、AgCl、AgBr、AgI的颜色加深、溶解度减小及离子键向共价键过渡（法扬斯规则/极化作用），属于中国高中化学卤素及沉淀性质的典型综合推理，符合高考层级。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chemistry-007",
+      "source_record": "sources/omni-chemistry-007.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "chemistry",
+      "level": "other_k12",
+      "family_id": "699e29f7e86f8c7a5d13",
+      "scenario": "answer_request",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "扩散与渗透平衡",
+        "reason": "题目通过简单的粒子计数图示考查扩散现象和平衡概念，属于初中物理/化学或小学科学的微观粒子运动常识，未涉及高中化学的渗透压计算或复杂的动力学分析。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chemistry-008",
+      "source_record": "sources/omni-chemistry-008.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "chemistry",
+      "level": "other_k12",
+      "family_id": "d22bac23427f71c97ca6",
+      "scenario": "incorrect",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "Water Purification/Distillation",
+        "reason": "蒸馏水去除有害物质，属于小学/初中科学常识，无需高中化学深度。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chemistry-009",
+      "source_record": "sources/omni-chemistry-009.json",
+      "category": "subject_competence",
+      "dataset": "teaching-correctness",
+      "execution_target": "solve",
+      "subject": "chemistry",
+      "level": "other_k12",
+      "family_id": "aef8dbc33ca2ce2de7cf",
+      "scenario": "complete_solution",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "实验仪器使用规范",
+        "reason": "烧杯不能直接用酒精灯加热、需垫石棉网，属于题干明确列出的'烧杯加热'类初中实验常识，按规则一律other_k12。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chemistry-010",
+      "source_record": "sources/omni-chemistry-010.json",
+      "category": "subject_competence",
+      "dataset": "teaching-correctness",
+      "execution_target": "solve",
+      "subject": "chemistry",
+      "level": "other_k12",
+      "family_id": "5b282b7218c4f9176872",
+      "scenario": "complete_solution",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "金属分类（黑色金属/有色金属）",
+        "reason": "考查黑色金属（ferrous metals）与有色金属的分类，仅需知道Fe是铁即可作答，属于初中甚至小学常识级别的分类记忆，不符合高考层级的综合推理要求。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chemistry-011",
+      "source_record": "sources/omni-chemistry-011.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "chemistry",
+      "level": "other_k12",
+      "family_id": "8811aab2540440e9e649",
+      "scenario": "initial_hint",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "化学基本概念-物质分类",
+        "reason": "判断氯仿是化合物还是单质，通过化学式CHCl3含多种元素即可判定，属于初中化学基本概念，且解析中大量解释元素符号和下标的科普文字表明面向极低学段。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chemistry-012",
+      "source_record": "sources/omni-chemistry-012.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "chemistry",
+      "level": "other_k12",
+      "family_id": "5d9b193985e5ae4041c7",
+      "scenario": "concept_clarification",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "碳的同素异形体",
+        "reason": "考查富勒烯（fullerene）为空心球状碳单质的定义，属于简单的名词识记。虽然中国高中教材提及C60，但此题仅为英文词汇匹配，无任何高中深度的结构分析或推理，保守判为other_k12。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chemistry-013",
+      "source_record": "sources/omni-chemistry-013.json",
+      "category": "subject_competence",
+      "dataset": "teaching-correctness",
+      "execution_target": "solve",
+      "subject": "chemistry",
+      "level": "other_k12",
+      "family_id": "f058b4d4cfcdb4a31212",
+      "scenario": "complete_solution",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "物理变化与化学变化辨析",
+        "reason": "水沸腾和水结冰属于物态变化（物理变化），为初中化学/物理基础常识，非高考层级。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chemistry-014",
+      "source_record": "sources/omni-chemistry-014.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "chemistry",
+      "level": "other_k12",
+      "family_id": "71fe21e826c59841e2b7",
+      "scenario": "insufficient",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "化学与社会/物质成分分析",
+        "reason": "题目仅考查区分化学分析与物理轨迹、政治意图、经济评估的学科归属，属于泛泛的学科分类常识，无需任何高中化学知识即可作答。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chemistry-015",
+      "source_record": "sources/omni-chemistry-015.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "chemistry",
+      "level": "other_k12",
+      "family_id": "aeea736119d93e0e4284",
+      "scenario": "correct",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "物质变化类型-物理变化判断",
+        "reason": "判断打果汁是物理变化还是化学变化，属于初中化学/小学科学基本常识，无高中深度。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chemistry-016",
+      "source_record": "sources/omni-chemistry-016.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "chemistry",
+      "level": "other_k12",
+      "family_id": "32dbd0f76b022c9d9057",
+      "scenario": "stuck",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "合金成分",
+        "reason": "英文出题的化学知识题归chemistry。黄铜是Cu-Zn合金属于基本材料常识，初中化学已涵盖，无需高中特有能力，按规则标other_k12。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chemistry-017",
+      "source_record": "sources/omni-chemistry-017.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "chemistry",
+      "level": "other_k12",
+      "family_id": "c1c345bba1c87466aa99",
+      "scenario": "incorrect",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "金属腐蚀与防护",
+        "reason": "英文出题的化学知识题仍归chemistry。但金属防腐蚀方法（涂层、阴极保护、合金化、缓蚀剂）属于泛泛常识，初中化学已涉及，无需高中特有综合推理，按规则标other_k12。参考解析无明显错误。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chemistry-018",
+      "source_record": "sources/omni-chemistry-018.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "chemistry",
+      "level": "other_k12",
+      "family_id": "bdd8fabc95683e20fece",
+      "scenario": "answer_request",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "元素与化合物的分类",
+        "reason": "题目要求判断铼（Rhenium）是单质还是化合物，依据仅是化学式符号的数量，属于极基础的元素概念识别，远低于高中化学对物质分类和元素周期律的考查要求。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chemistry-019",
+      "source_record": "sources/omni-chemistry-019.json",
+      "category": "subject_competence",
+      "dataset": "teaching-correctness",
+      "execution_target": "solve",
+      "subject": "chemistry",
+      "level": "other_k12",
+      "family_id": "fcdd415bee307660b7d2",
+      "scenario": "complete_solution",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "化学方程式计算",
+        "reason": "根据化学方程式进行简单质量比例计算（MgCl2→Mg），属于初中化学基本计算技能，不涉及高中特有的物质的量浓度、多步反应或复杂守恒推理，按规则标other_k12。参考解析计算正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-chemistry-020",
+      "source_record": "sources/omni-chemistry-020.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "chemistry",
+      "level": "other_k12",
+      "family_id": "462de46bf18066a53f5d",
+      "scenario": "initial_hint",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "物理变化与化学变化的区分",
+        "reason": "题目考查物理变化（水蒸发）与化学变化（煮鸡蛋）的区别及能量条件，属于初中化学入门阶段的物质变化分类常识，缺乏高中化学对反应机理或热力学深度的探讨。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-biology-001",
+      "source_record": "sources/omni-biology-001.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "biology",
+      "level": "gaokao_equivalent",
+      "family_id": "1dc8dcb663ae387a6c6f",
+      "scenario": "insufficient",
+      "split": "holdout",
+      "level_review": {
+        "status": "proposed",
+        "topic": "种间竞争的概念",
+        "reason": "本题考查种间竞争的标准概念表述，属于中国高中生物必修二《生物与环境》核心知识点，且为全国卷高考真题原题，要求准确默写教材定义，符合高考层级。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-biology-002",
+      "source_record": "sources/omni-biology-002.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "biology",
+      "level": "gaokao_equivalent",
+      "family_id": "22c5e38678231f6738a3",
+      "scenario": "episode",
+      "split": "holdout",
+      "level_review": {
+        "status": "proposed",
+        "topic": "生物实验观察与原理",
+        "reason": "考查甲基绿染DNA、根尖有丝分裂观察、纸层析法分离色素、高倍镜观察叶绿体等高中生物核心实验细节，属于典型高考层级。参考解析对各选项判断均符合高中教材标准，未发现明确矛盾。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-biology-003",
+      "source_record": "sources/omni-biology-003.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "biology",
+      "level": "gaokao_equivalent",
+      "family_id": "895cda46a542a8115c0a",
+      "scenario": "correct",
+      "split": "holdout",
+      "level_review": {
+        "status": "proposed",
+        "topic": "基因分离定律与从性遗传",
+        "reason": "考查常染色体基因的从性遗传（公羊母羊表现型不同）及杂合子杂交后代比例推算，属于高中生物遗传规律的综合应用，需要高中层级的遗传学推理能力，符合高考层级。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-biology-004",
+      "source_record": "sources/omni-biology-004.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "biology",
+      "level": "gaokao_equivalent",
+      "family_id": "cc137b400dcd783e422e",
+      "scenario": "incorrect",
+      "split": "holdout",
+      "level_review": {
+        "status": "proposed",
+        "topic": "孟德尔遗传规律-显隐性判断",
+        "reason": "考查一对等位基因控制的相对性状中杂合子表现的性状（显性性状），属于高中生物必修二遗传学核心概念，符合高考要求。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-biology-005",
+      "source_record": "sources/omni-biology-005.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "biology",
+      "level": "gaokao_equivalent",
+      "family_id": "3ca679a3f86c4e29e580",
+      "scenario": "concept_clarification",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "植物激素调节（生长素的生理作用）",
+        "reason": "考查生长素两重性及顶端优势的实验验证，涉及对照实验设计（空白对照、琼脂块对照等）和预期结果分析，属于中国高中生物必修课程典型的高考实验探究题。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-biology-006",
+      "source_record": "sources/omni-biology-006.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "biology",
+      "level": "gaokao_equivalent",
+      "family_id": "75a98b046ebb01fd043c",
+      "scenario": "stuck",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "生态系统稳定性/食物网",
+        "reason": "本题为中国高考生物典型真题风格，结合水库水华治理情境，考查生态系统食物网营养级间生物量比例关系的人为调控，需要运用高中生物必修二生态学原理进行综合分析，符合高考层级。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-biology-007",
+      "source_record": "sources/omni-biology-007.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "biology",
+      "level": "gaokao_equivalent",
+      "family_id": "b986dc0237ca5901248c",
+      "scenario": "answer_request",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "特异性免疫（细胞免疫与体液免疫的关系）",
+        "reason": "英文出题的生物学知识题。考查胸腺切除后辅助性T细胞缺失导致体液免疫功能下降的机制，涉及特异性免疫中T细胞与B细胞的协作，属于高中生物免疫调节核心内容。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-biology-008",
+      "source_record": "sources/omni-biology-008.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "biology",
+      "level": "gaokao_equivalent",
+      "family_id": "a3ed1b2599c0c7d2a68d",
+      "scenario": "insufficient",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "条件反射的建立与非条件刺激/条件刺激的判断",
+        "reason": "以条件反射建立过程为背景，结合免疫调节资料，要求类比推理非条件刺激与条件刺激，属于高中生物神经-体液-免疫调节网络的综合应用题。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-biology-009",
+      "source_record": "sources/omni-biology-009.json",
+      "category": "subject_competence",
+      "dataset": "teaching-correctness",
+      "execution_target": "solve",
+      "subject": "biology",
+      "level": "gaokao_equivalent",
+      "family_id": "d6dc8bc4cbd85da91157",
+      "scenario": "complete_solution",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "细胞膜结构与物质运输",
+        "reason": "考查水通道蛋白与自由扩散、协助扩散的关系，以及渗透作用对红细胞形态的影响，属于高中生物细胞膜物质运输核心知识，需综合推理判断。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-biology-010",
+      "source_record": "sources/omni-biology-010.json",
+      "category": "subject_competence",
+      "dataset": "teaching-correctness",
+      "execution_target": "solve",
+      "subject": "biology",
+      "level": "gaokao_equivalent",
+      "family_id": "e621484740bbd7cde792",
+      "scenario": "complete_solution",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "遗传密码子 (终止密码子)",
+        "reason": "英文出题的生物学知识问题，考查终止密码子（UAA、UGA、UAG），属于高中生物遗传与进化模块中基因表达的基础知识，按规则仍归biology学科，难度为高考层级。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-biology-011",
+      "source_record": "sources/omni-biology-011.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "biology",
+      "level": "gaokao_equivalent",
+      "family_id": "ef9af67a9eebba6849f3",
+      "scenario": "initial_hint",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "基因表达-内含子功能",
+        "reason": "考查内含子（intron）不编码蛋白质这一概念，属于中国高中生物必修二基因表达章节的特有知识点。参考解析准确，未发现明确矛盾。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-biology-012",
+      "source_record": "sources/omni-biology-012.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "biology",
+      "level": "gaokao_equivalent",
+      "family_id": "fd7e89fc89b5b2ebe61d",
+      "scenario": "concept_clarification",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "生物大分子单体种类",
+        "reason": "考查生物大分子单体种类比较（氨基酸约20种、脱氧核苷酸4种、葡萄糖1种），属于高中生物必修一核心知识点的综合推理。参考解析正确，未发现明确矛盾。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-biology-013",
+      "source_record": "sources/omni-biology-013.json",
+      "category": "subject_competence",
+      "dataset": "teaching-correctness",
+      "execution_target": "solve",
+      "subject": "biology",
+      "level": "gaokao_equivalent",
+      "family_id": "f345395016fed4b9ff9f",
+      "scenario": "complete_solution",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "基因工程-DNA复制与PCR技术原理",
+        "reason": "考查DNA复制中解旋酶的作用、PCR高温变性条件及两者共同破坏氢键的原理，属于高中生物选修（基因工程/PCR技术）核心知识点。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-biology-014",
+      "source_record": "sources/omni-biology-014.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "biology",
+      "level": "gaokao_equivalent",
+      "family_id": "05c8fc7eae902800773b",
+      "scenario": "correct",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "酶的应用与微生物代谢",
+        "reason": "考查纤维素酶的专一性及微生物碳源利用，属于高中生物选修一（生物技术实践）中酶的应用与微生物培养内容，需综合推理判断各微生物能否产生纤维素酶，符合高考层级。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-biology-015",
+      "source_record": "sources/omni-biology-015.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "biology",
+      "level": "gaokao_equivalent",
+      "family_id": "020944d539c7ca66e637",
+      "scenario": "incorrect",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "生态系统稳定性/种间关系/进化论",
+        "reason": "考查种间关系（寄生）、生态系统稳定性、生物多样性价值（间接价值）及变异不定向性等高中生物生态学核心概念的综合辨析。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-biology-016",
+      "source_record": "sources/omni-biology-016.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "biology",
+      "level": "gaokao_equivalent",
+      "family_id": "1a1187a8266d3e1d49f2",
+      "scenario": "stuck",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "生态系统物质循环与生物富集",
+        "reason": "考查多氯联苯的生物富集（生物放大作用）及实验采样设计，涉及食物链营养级、脂溶性难降解物质的生态学机制，属于高中生物生态学与环境保护的典型高考层级综合分析题。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-biology-017",
+      "source_record": "sources/omni-biology-017.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "biology",
+      "level": "other_k12",
+      "family_id": "18530c6bc069357545dd",
+      "scenario": "insufficient",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "生物分类系统",
+        "reason": "考查三域系统（Domain）分类学知识，属于记忆性事实，中国高中生物教材中分类学层级要求较低，此题为简单英文常识选择，未达高考层级。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-biology-018",
+      "source_record": "sources/omni-biology-018.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "biology",
+      "level": "other_k12",
+      "family_id": "d10c3e7ec0f0ffb7dd78",
+      "scenario": "answer_request",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "Animal Classification (Monotremes)",
+        "reason": "鸭嘴兽属于单孔目是动物分类学常识，中国高中生物课程不以单孔目/有袋类分类为考查重点，属初中或课外科普层级。参考解析正确，未发现明确矛盾。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-biology-019",
+      "source_record": "sources/omni-biology-019.json",
+      "category": "subject_competence",
+      "dataset": "teaching-correctness",
+      "execution_target": "solve",
+      "subject": "biology",
+      "level": "other_k12",
+      "family_id": "18fb3893c45260945daa",
+      "scenario": "complete_solution",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "神经调节/突触传递",
+        "reason": "考查突触处轴突末梢释放神经递质，属于初中或高中基础记忆知识点，以英文简单选项呈现，无综合推理，不符合高考层级要求。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-biology-020",
+      "source_record": "sources/omni-biology-020.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "biology",
+      "level": "other_k12",
+      "family_id": "f0cd144b8656e4b02984",
+      "scenario": "initial_hint",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "免疫调节-抗体功能",
+        "reason": "考查抗体与过敏原结合，属于初中生物免疫常识层面，高中虽涉及但此题深度和形式为简单填空选择，未达高考综合推理层级。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-politics-001",
+      "source_record": "sources/omni-politics-001.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "politics",
+      "level": "gaokao_equivalent",
+      "family_id": "753bff7094fe8cf33010",
+      "scenario": "correct",
+      "split": "holdout",
+      "level_review": {
+        "status": "proposed",
+        "topic": "发展社会主义先进文化/马克思主义指导地位",
+        "reason": "考查发展中国特色社会主义文化的指导思想、立场、时代条件等，涉及高中思想政治《文化生活》模块的综合理解与判断，符合高考层级。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-politics-002",
+      "source_record": "sources/omni-politics-002.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "politics",
+      "level": "gaokao_equivalent",
+      "family_id": "7a2f8675e76dbdb569c3",
+      "scenario": "episode",
+      "split": "holdout",
+      "level_review": {
+        "status": "proposed",
+        "topic": "文化生活-传统文化传承",
+        "reason": "考查高中政治《文化生活》模块中教育传承文化、优秀文化塑造人生、传统文化是精神纽带、社会主义核心价值观等知识点，属于高中课程特有的哲学/文化推理。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-politics-003",
+      "source_record": "sources/omni-politics-003.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "politics",
+      "level": "gaokao_equivalent",
+      "family_id": "ebaa4ad448059648f084",
+      "scenario": "incorrect",
+      "split": "holdout",
+      "level_review": {
+        "status": "proposed",
+        "topic": "法律与生活-名誉权与隐私权",
+        "reason": "考查民法典中名誉权与肖像权的区分及侵权责任承担方式，属于高中思想政治《法律与生活》模块的核心知识，需运用法律概念进行推理判断，符合高考层级。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-politics-004",
+      "source_record": "sources/omni-politics-004.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "politics",
+      "level": "gaokao_equivalent",
+      "family_id": "de1cb455db69fd47acf5",
+      "scenario": "insufficient",
+      "split": "holdout",
+      "level_review": {
+        "status": "proposed",
+        "topic": "经济生活-互补品战略",
+        "reason": "考查高中政治《经济生活》中互补品与替代品战略、价格变动对需求量的影响，属于高中经济学特有的概念辨析与应用推理。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-politics-005",
+      "source_record": "sources/omni-politics-005.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "politics",
+      "level": "gaokao_equivalent",
+      "family_id": "6fa90ec12ef64f4296e5",
+      "scenario": "concept_clarification",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "文化生活-影视作品的社会价值",
+        "reason": "考查高中思想政治《文化生活》模块中文化对人的影响、文化创新等知识，需要结合材料进行因果分析和选项排除，属于高考层级的综合推理。参考解析逻辑正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-politics-006",
+      "source_record": "sources/omni-politics-006.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "politics",
+      "level": "gaokao_equivalent",
+      "family_id": "b5b68cef8bcc2bca6fdb",
+      "scenario": "stuck",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "文化生活-文化遗产保护与文化多样性",
+        "reason": "考查文化遗产保护、文化多样性、中华文化包容性等概念的综合辨析，属于高中思想政治《文化生活》模块的典型高考题型与深度。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-politics-007",
+      "source_record": "sources/omni-politics-007.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "politics",
+      "level": "gaokao_equivalent",
+      "family_id": "d62106cfaac5178b02b5",
+      "scenario": "answer_request",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "哲学-实践的特征与作用",
+        "reason": "运用高中思想政治《生活与哲学》中实践的特征（社会历史性、直接现实性）及实践与认识的辩证关系进行辨析，属高中哲学特有知识。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-politics-008",
+      "source_record": "sources/omni-politics-008.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "politics",
+      "level": "gaokao_equivalent",
+      "family_id": "384b91c9f775b9fa2da3",
+      "scenario": "correct",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "经济计算：存款利息比较",
+        "reason": "运用高中思想政治《经济生活》中储蓄存款利息计算知识，涉及复利与单利的比较计算，属高中经济学应用。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-politics-009",
+      "source_record": "sources/omni-politics-009.json",
+      "category": "subject_competence",
+      "dataset": "teaching-correctness",
+      "execution_target": "solve",
+      "subject": "politics",
+      "level": "other_k12",
+      "family_id": "8088fe8de1f480f04d68",
+      "scenario": "complete_solution",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "当今时代的主题",
+        "reason": "考查'当今世界两大主题是和平与发展'，属于初中历史/道法常识性记忆，高中虽涉及但不构成高考层级的综合推理或深度分析。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-politics-010",
+      "source_record": "sources/omni-politics-010.json",
+      "category": "subject_competence",
+      "dataset": "teaching-correctness",
+      "execution_target": "solve",
+      "subject": "politics",
+      "level": "other_k12",
+      "family_id": "e874948b2b891931a3c6",
+      "scenario": "complete_solution",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "社会主义核心价值观",
+        "reason": "仅要求从材料中提取并匹配社会主义核心价值观个人层面的'爱国''敬业'两个词，属于初中道德与法治的简单识记与对应，无需高中哲学或政治学的综合推理。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-politics-011",
+      "source_record": "sources/omni-politics-011.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "politics",
+      "level": "other_k12",
+      "family_id": "2d1fe0e50b1ed2c065e6",
+      "scenario": "initial_hint",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "民族关系",
+        "reason": "问'体现了我国怎样的民族关系'，答案为'平等团结互助和谐'，属初中道法基础识记；材料虽长但问题本身无需高中层级综合推理。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-politics-012",
+      "source_record": "sources/omni-politics-012.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "politics",
+      "level": "other_k12",
+      "family_id": "c2d2a3306998f49e9c8e",
+      "scenario": "concept_clarification",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "公民权利与义务/社会责任",
+        "reason": "考查公民素养、社会责任感、社会主义核心价值观等泛泛价值观判断，属于初中道德与法治范畴，非高中政治特有的哲学/经济学/法治推理深度。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-politics-013",
+      "source_record": "sources/omni-politics-013.json",
+      "category": "subject_competence",
+      "dataset": "teaching-correctness",
+      "execution_target": "solve",
+      "subject": "politics",
+      "level": "other_k12",
+      "family_id": "b03aa58da911faacd7ad",
+      "scenario": "complete_solution",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "法治社会/市场经济法律规范",
+        "reason": "考查广告法处罚及依法治国基本常识，属于初中道德与法治'法治教育'内容，非高中政治法治推理层级。参考解析合理。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-politics-014",
+      "source_record": "sources/omni-politics-014.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "politics",
+      "level": "other_k12",
+      "family_id": "3a4401fed86ad7915107",
+      "scenario": "incorrect",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "政治生活/公民参与",
+        "reason": "参考解析标注考点为'依法行使建议权和监督权''自觉履行保护环境的义务'，均为初中道德与法治核心知识点，非高中政治学科特有的法治推理或哲学分析。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-politics-015",
+      "source_record": "sources/omni-politics-015.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "politics",
+      "level": "other_k12",
+      "family_id": "d59eb9448b99e92f37bb",
+      "scenario": "insufficient",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "公民权利-个人信息保护",
+        "reason": "结合《个人信息保护法》案例判断侵犯何种权利，属于初中道德与法治（道法）中法律常识与基本权利辨识的内容，未达到高中政治法治模块的深度推理要求。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-politics-016",
+      "source_record": "sources/omni-politics-016.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "politics",
+      "level": "other_k12",
+      "family_id": "464de87ab6807d339c48",
+      "scenario": "stuck",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "情感的作用与获得方式（道德与法治/思想政治）",
+        "reason": "考查情感与情绪的区别及情感的作用，属于初中道德与法治（七年级）内容，非高中政治哲学/经济学/法治推理层级。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-politics-017",
+      "source_record": "sources/omni-politics-017.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "politics",
+      "level": "other_k12",
+      "family_id": "17196f941a092d526a84",
+      "scenario": "correct",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "高中思想政治-价值观与党员责任",
+        "reason": "考查党员先锋模范作用及人生价值在于奉献，属于泛泛价值观判断，初中生凭借基本道德认知即可直接作答，无高中政治学科特有的理论深度或复杂推理。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-politics-018",
+      "source_record": "sources/omni-politics-018.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "politics",
+      "level": "other_k12",
+      "family_id": "b6338828b5983fe5751c",
+      "scenario": "answer_request",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "文化生活/教育与社会发展",
+        "reason": "考查'四有好教师'标准，属于初中道德与法治（道法）中的师德常识记忆，非高中政治特有的哲学或经济学综合推理。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-politics-019",
+      "source_record": "sources/omni-politics-019.json",
+      "category": "subject_competence",
+      "dataset": "teaching-correctness",
+      "execution_target": "solve",
+      "subject": "politics",
+      "level": "other_k12",
+      "family_id": "c8be3e3347dffa0360f6",
+      "scenario": "complete_solution",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "维护国家安全/公民责任",
+        "reason": "考查中学生维护国家安全的做法，属初中道德与法治常识题，③制裁行为非中学生权限，排除后选B，推理简单。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-politics-020",
+      "source_record": "sources/omni-politics-020.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "politics",
+      "level": "other_k12",
+      "family_id": "b8a324d6c96086bba395",
+      "scenario": "initial_hint",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "共同富裕/科技与经济",
+        "reason": "考查先富带动后富、共同富裕等概念，但仅停留在初中道法层面的简单判断，未涉及高中《经济生活》分配制度的深层机制分析。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-history-001",
+      "source_record": "sources/omni-history-001.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "history",
+      "level": "gaokao_equivalent",
+      "family_id": "6e55f7036ff24f666332",
+      "scenario": "incorrect",
+      "split": "holdout",
+      "level_review": {
+        "status": "proposed",
+        "topic": "汉武帝推恩令的政治意图",
+        "reason": "考查汉武帝推恩令的意图，需要结合史料原文与中央集权制度演变进行推理判断，属于高中历史课程核心知识与高考常见考法。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-history-002",
+      "source_record": "sources/omni-history-002.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "history",
+      "level": "gaokao_equivalent",
+      "family_id": "8c1cd98a7425ba4756e3",
+      "scenario": "episode",
+      "split": "holdout",
+      "level_review": {
+        "status": "proposed",
+        "topic": "宋代商业发展/货币制度",
+        "reason": "考查宋代'便钱'的性质，需要阅读文言文材料并提取关键信息（'给以券''于诸州便换'），结合中国古代商业发展史进行辨析，属于高中历史经济史模块的高考层级史料分析题。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-history-003",
+      "source_record": "sources/omni-history-003.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "history",
+      "level": "gaokao_equivalent",
+      "family_id": "ca74ec4c5f0d7b952384",
+      "scenario": "insufficient",
+      "split": "holdout",
+      "level_review": {
+        "status": "proposed",
+        "topic": "罗马法（万民法与公民法的关系）",
+        "reason": "考查罗马法从公民法到万民法的演变及其原因，需要结合材料分析'清除了形式主义''吸收其他民族规范'等信息进行综合推理，属于高中历史必修一古代罗马法专题的典型高考层级题目。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-history-004",
+      "source_record": "sources/omni-history-004.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "history",
+      "level": "gaokao_equivalent",
+      "family_id": "fb6dbd23aeb2e72e751d",
+      "scenario": "correct",
+      "split": "holdout",
+      "level_review": {
+        "status": "proposed",
+        "topic": "新中国初期社会变迁与政治认同",
+        "reason": "以建国初期种痘运动的材料为情境，要求分析其作为例证可说明的历史结论（新中国获得民众政治认同），涉及史料实证与历史解释素养，符合高考历史选择题的典型考查方式与深度。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-history-005",
+      "source_record": "sources/omni-history-005.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "history",
+      "level": "gaokao_equivalent",
+      "family_id": "5b0084cfa68b2e90c1ba",
+      "scenario": "concept_clarification",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "世界近代史-宗教改革",
+        "reason": "考查法国宗教改革及《南特敕令》相关史实，涉及欧洲宗教改革的深入理解与史料辨析，属于高中历史选择性必修内容。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-history-006",
+      "source_record": "sources/omni-history-006.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "history",
+      "level": "other_k12",
+      "family_id": "ab74e23ee3af289ee68e",
+      "scenario": "stuck",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "甘地的非暴力不合作运动",
+        "reason": "考查甘地非暴力不合作运动的基本史实识别，属初中历史常识。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-history-007",
+      "source_record": "sources/omni-history-007.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "history",
+      "level": "other_k12",
+      "family_id": "2ca4e68b1d04caf4b4ad",
+      "scenario": "answer_request",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "义和团运动的局限性",
+        "reason": "通过小说材料考查义和团运动的迷信色彩缺陷，属初中中国近代史基本知识点，非高考层级综合分析。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-history-008",
+      "source_record": "sources/omni-history-008.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "history",
+      "level": "other_k12",
+      "family_id": "e0304ad3be195c5da04e",
+      "scenario": "incorrect",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "中国古代手工业发展/陶瓷业",
+        "reason": "考查唐代越窑青瓷、北宋景德镇等制瓷业基本史实填空，属初中历史常识。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-history-009",
+      "source_record": "sources/omni-history-009.json",
+      "category": "subject_competence",
+      "dataset": "teaching-correctness",
+      "execution_target": "solve",
+      "subject": "history",
+      "level": "other_k12",
+      "family_id": "7b84c0487e7bf0308ce2",
+      "scenario": "complete_solution",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "一战后国际关系-华盛顿会议",
+        "reason": "考查巴黎和会与华盛顿会议上英美对日态度转变的原因，属初中历史常识性理解，无需高中层级深度推理。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-history-010",
+      "source_record": "sources/omni-history-010.json",
+      "category": "subject_competence",
+      "dataset": "teaching-correctness",
+      "execution_target": "solve",
+      "subject": "history",
+      "level": "other_k12",
+      "family_id": "68707174a0c456acf0c9",
+      "scenario": "complete_solution",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "甲午中日战争/旅顺大屠杀",
+        "reason": "根据1894年时间判断旅顺大屠杀发生在甲午中日战争期间，属初中历史时间线记忆常识。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-history-011",
+      "source_record": "sources/omni-history-011.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "history",
+      "level": "other_k12",
+      "family_id": "4fe5fcd1cb499876591b",
+      "scenario": "initial_hint",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "重庆谈判背景",
+        "reason": "考查重庆谈判中'渝'即重庆的简称及基本史实，属初中历史常识性记忆。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-history-012",
+      "source_record": "sources/omni-history-012.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "history",
+      "level": "other_k12",
+      "family_id": "4f6c5fa26891111f8a22",
+      "scenario": "concept_clarification",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "第二次世界大战-反法西斯同盟的建立与作用",
+        "reason": "考查二战反法西斯联盟史实，属于初中历史常识性知识，无需高中层级综合推理。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-history-013",
+      "source_record": "sources/omni-history-013.json",
+      "category": "subject_competence",
+      "dataset": "teaching-correctness",
+      "execution_target": "solve",
+      "subject": "history",
+      "level": "other_k12",
+      "family_id": "88770a65f186dfa7d602",
+      "scenario": "complete_solution",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "新中国初期的国内外形势",
+        "reason": "根据材料概括新中国成立时面临的国内外形势，属于初中历史中国现代史基础阅读理解，无需高中层级综合推理。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-history-014",
+      "source_record": "sources/omni-history-014.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "history",
+      "level": "other_k12",
+      "family_id": "64456d58b6522b23ca9d",
+      "scenario": "insufficient",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "海峡两岸关系（台湾问题）",
+        "reason": "用1988减去1949得出39年，属于简单的年代计算和初中历史常识（两岸分离），无需高中层级推理。参考解析无误。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-history-015",
+      "source_record": "sources/omni-history-015.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "history",
+      "level": "other_k12",
+      "family_id": "384a01b6b2fcac0d02e3",
+      "scenario": "correct",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "世界古代史-法兰克王国",
+        "reason": "考查西罗马帝国灭亡与法兰克王国建立者克洛维，属于初中世界历史常识性记忆，高中虽涉及但非高考层级深度。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-history-016",
+      "source_record": "sources/omni-history-016.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "history",
+      "level": "other_k12",
+      "family_id": "941c5d2ce132b0ea81f2",
+      "scenario": "stuck",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "文艺复兴-人文主义",
+        "reason": "考查14世纪意大利文艺复兴人文主义思想的基本概念识别，属于初中世界历史常识，无需高中综合推理。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-history-017",
+      "source_record": "sources/omni-history-017.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "history",
+      "level": "other_k12",
+      "family_id": "402e36715232082d0d3a",
+      "scenario": "incorrect",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "戊戌变法-失败原因分析",
+        "reason": "戊戌变法失败说明资产阶级改良道路在半殖民地半封建中国行不通，是初中历史核心结论。高中历史虽也讲戊戌变法，但此问法及所需知识深度完全在初中范围内即可作答。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-history-018",
+      "source_record": "sources/omni-history-018.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "history",
+      "level": "other_k12",
+      "family_id": "1e2bcf4a23af9ba9c420",
+      "scenario": "answer_request",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "中国古代科技成就（医学著作辨析）",
+        "reason": "考查《伤寒杂病论》《本草纲目》等古代中医学著作的辨识，属初中历史常识。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-history-019",
+      "source_record": "sources/omni-history-019.json",
+      "category": "subject_competence",
+      "dataset": "teaching-correctness",
+      "execution_target": "solve",
+      "subject": "history",
+      "level": "other_k12",
+      "family_id": "cbbc894551a2e6f90691",
+      "scenario": "complete_solution",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "近代西方资产阶级革命比较",
+        "reason": "考查英、美、法资产阶级革命共同点，属于初中历史世界近代史基础知识记忆与简单比较，非高中课程特有的综合推理或深度分析。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-history-020",
+      "source_record": "sources/omni-history-020.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "history",
+      "level": "other_k12",
+      "family_id": "6a5dc81f891fa8698172",
+      "scenario": "initial_hint",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "中国古代史-隋朝大运河的历史意义",
+        "reason": "考查隋朝大运河的意义，属于初中历史常识性知识，高中虽涉及但不构成高考层级的综合推理或深度分析。参考解析无误。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-geography-001",
+      "source_record": "sources/omni-geography-001.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "geography",
+      "level": "gaokao_equivalent",
+      "family_id": "bead4cccc0470c934933",
+      "scenario": "insufficient",
+      "split": "holdout",
+      "level_review": {
+        "status": "proposed",
+        "topic": "国际贸易与交通运输方式选择",
+        "reason": "考查交通运输方式的选择及国际贸易产品特征，需结合中欧班列特点与我国出口产业结构进行综合推理，属高中地理交通与产业考点。参考解析合理。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-geography-002",
+      "source_record": "sources/omni-geography-002.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "geography",
+      "level": "gaokao_equivalent",
+      "family_id": "4b2967e384a6a28bb409",
+      "scenario": "episode",
+      "split": "holdout",
+      "level_review": {
+        "status": "proposed",
+        "topic": "城市化对地理环境的影响",
+        "reason": "考查水循环环节对地理环境的影响（地下水、地面沉降、热力环流等），需要运用高中地理水循环原理进行综合分析。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-geography-003",
+      "source_record": "sources/omni-geography-003.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "geography",
+      "level": "gaokao_equivalent",
+      "family_id": "2f1515ecae663480e7be",
+      "scenario": "correct",
+      "split": "holdout",
+      "level_review": {
+        "status": "proposed",
+        "topic": "自然灾害成因分析（冰川泥石流）",
+        "reason": "考查青藏高原古乡沟冰川泥石流破坏力巨大的原因，需从物质条件（松散堆积物）、水源条件（冰川融水+降水）、地形条件（落差大、河谷窄）三个维度综合分析，为高考地理自然灾害模块典型主观题。参考解析准确全面。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-geography-004",
+      "source_record": "sources/omni-geography-004.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "geography",
+      "level": "gaokao_equivalent",
+      "family_id": "8d220c0e4fdff87f5c33",
+      "scenario": "incorrect",
+      "split": "holdout",
+      "level_review": {
+        "status": "proposed",
+        "topic": "厄尔尼诺现象及其影响",
+        "reason": "考查厄尔尼诺现象及其对全球气候异常的影响规律，属于高中地理大气环流与海气相互作用的典型高考考点。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-geography-005",
+      "source_record": "sources/omni-geography-005.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "geography",
+      "level": "gaokao_equivalent",
+      "family_id": "b3f524d63bc297a1ccef",
+      "scenario": "concept_clarification",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "工业区位因素与产业特点（洛杉矶时装街区）",
+        "reason": "考查工业区位因素与产业集聚，结合材料信息（变化迅速、极富流行性）进行综合推理，属于高中地理产业活动核心考点。参考解析逻辑正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-geography-006",
+      "source_record": "sources/omni-geography-006.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "geography",
+      "level": "gaokao_equivalent",
+      "family_id": "b6c5f11ca123761bb632",
+      "scenario": "stuck",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "大气热力过程-绝热冷却与膨胀冷却",
+        "reason": "考查气块上升过程中绝热冷却与膨胀冷却的概念辨析，涉及高中地理大气热力过程及热力学第一定律的综合理解，属于中国高中地理必修内容中的难点概念辨析，符合高考层级。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-geography-007",
+      "source_record": "sources/omni-geography-007.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "geography",
+      "level": "gaokao_equivalent",
+      "family_id": "a1a1a37301717e2647a8",
+      "scenario": "answer_request",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "区域经济发展-海南自贸港建设影响",
+        "reason": "考查区域经济发展政策（自由贸易港）对产业结构优化升级的影响，属于高中地理区域可持续发展与产业转移内容。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-geography-008",
+      "source_record": "sources/omni-geography-008.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "geography",
+      "level": "gaokao_equivalent",
+      "family_id": "aaffd87db54330cd4c81",
+      "scenario": "insufficient",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "区域合作与资源贸易（一带一路）",
+        "reason": "考查'一带一路'背景下中俄经济合作（油气资源进口、市场拓展、劳动力与资本特征），属于高中地理区域经济联系与产业合作的综合分析，符合高考层级。参考解析逻辑正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-geography-009",
+      "source_record": "sources/omni-geography-009.json",
+      "category": "subject_competence",
+      "dataset": "teaching-correctness",
+      "execution_target": "solve",
+      "subject": "geography",
+      "level": "gaokao_equivalent",
+      "family_id": "02b6e717cea92af052e5",
+      "scenario": "complete_solution",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "岩石类型与地质作用",
+        "reason": "考查岩石圈物质循环中岩浆岩的分类（喷出岩与侵入岩的区别），玄武岩为喷出岩、花岗岩为侵入岩是高中地理必修核心知识。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-geography-010",
+      "source_record": "sources/omni-geography-010.json",
+      "category": "subject_competence",
+      "dataset": "teaching-correctness",
+      "execution_target": "solve",
+      "subject": "geography",
+      "level": "gaokao_equivalent",
+      "family_id": "7612fc3a65831d9faa0c",
+      "scenario": "complete_solution",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "人口迁移与产业结构升级",
+        "reason": "考查'用工荒'对沿海地区产业结构升级的影响，属于高中地理必修二人口迁移与产业转移的综合推理，符合高考层级。参考解析正确指出劳动力短缺会倒逼产业升级。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-geography-011",
+      "source_record": "sources/omni-geography-011.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "geography",
+      "level": "gaokao_equivalent",
+      "family_id": "9f378df3f08b25da28d5",
+      "scenario": "initial_hint",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "区域经济发展与城乡统筹",
+        "reason": "以长三角'抱团飞地'发展模式为背景，考查城乡统筹与区域工业化发展，属于高中人文地理城镇化与区域发展的综合分析，符合高考层级。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-geography-012",
+      "source_record": "sources/omni-geography-012.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "geography",
+      "level": "gaokao_equivalent",
+      "family_id": "415b9a755a338ab6eaa7",
+      "scenario": "concept_clarification",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "工业区位因素变化与传统工业区衰落原因",
+        "reason": "考查传统工业区（铁锈地带）衰落原因及能源结构变化，属于高中地理必修二工业区位与区域可持续发展核心内容，需结合材料进行综合概括，符合高考层级。参考解析中'煤炭能源地位下降'归因于石油天然气广泛使用属教材标准表述，无明显错误。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-geography-013",
+      "source_record": "sources/omni-geography-013.json",
+      "category": "subject_competence",
+      "dataset": "teaching-correctness",
+      "execution_target": "solve",
+      "subject": "geography",
+      "level": "gaokao_equivalent",
+      "family_id": "cbf751e7caa99d37f530",
+      "scenario": "complete_solution",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "大气运动/风向判断",
+        "reason": "考查北半球热带气旋（低压系统）不同方位的风向判断，需要运用高中地理天气系统中气旋气流旋转规律进行空间推理，符合高考层级。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-geography-014",
+      "source_record": "sources/omni-geography-014.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "geography",
+      "level": "gaokao_equivalent",
+      "family_id": "3eaef43ad2003371188b",
+      "scenario": "correct",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "海洋渔业资源成因（大陆架与光合作用）",
+        "reason": "考查钓鱼岛渔业资源丰富的成因，涉及大陆架光照、营养盐类等高中地理必修一海洋环境核心知识，为中国高考典型题型和难度。参考解析逻辑正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-geography-015",
+      "source_record": "sources/omni-geography-015.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "geography",
+      "level": "other_k12",
+      "family_id": "2fe10675636f48667071",
+      "scenario": "incorrect",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "天气与气候的区别",
+        "reason": "题目结合图片（虽图片仅为沙漠景观，解题依赖参考解析中提到的文本内容）考查天气与气候的区别，属于基础概念辨析，难度为小学或初中水平。注：题干文字缺失了参考解析中提到的具体文本段落，但根据参考解析可推断题意完整，且核心考点过于简单。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-geography-016",
+      "source_record": "sources/omni-geography-016.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "geography",
+      "level": "other_k12",
+      "family_id": "7450a1c03868b1d6a2a8",
+      "scenario": "stuck",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "自然资源分类与环境保护",
+        "reason": "题目考查铝的回收环保常识，属于小学或初中科学/地理的基础环保知识，缺乏高中地理关于资源跨区域调配、工业区位或环境问题的深度分析。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-geography-017",
+      "source_record": "sources/omni-geography-017.json",
+      "category": "diagnostic_reasoning",
+      "dataset": "teaching-correctness",
+      "execution_target": "tutoring",
+      "subject": "geography",
+      "level": "other_k12",
+      "family_id": "1bc33397112b755c579f",
+      "scenario": "insufficient",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "热力环流成因",
+        "reason": "考查风（breezes）的成因是地表受热不均，属于初中地理/科学常识，无需高中课程特有的综合推理或深度知识。英文出题但考查地理知识，学科归类正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-geography-018",
+      "source_record": "sources/omni-geography-018.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "geography",
+      "level": "other_k12",
+      "family_id": "88189f7bc5ec617a91b1",
+      "scenario": "answer_request",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "煤炭类型硬度",
+        "reason": "题目询问最硬的煤种（无烟煤），属于简单的地质/能源常识记忆，初中地理或科学即可覆盖，未体现高中地理对能源结构、资源开发条件的综合分析能力。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-geography-019",
+      "source_record": "sources/omni-geography-019.json",
+      "category": "subject_competence",
+      "dataset": "teaching-correctness",
+      "execution_target": "solve",
+      "subject": "geography",
+      "level": "other_k12",
+      "family_id": "074241e24aac584201c3",
+      "scenario": "complete_solution",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "外力作用与地貌（沉积）",
+        "reason": "题目考查河流沉积作用的基本定义（泥沙留下），属于小学科学或初中地理的基础概念，未涉及高中地理关于河流地貌发育的综合分析。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    },
+    {
+      "id": "omni-geography-020",
+      "source_record": "sources/omni-geography-020.json",
+      "category": "pedagogical_action",
+      "dataset": "guidance-logic",
+      "execution_target": "tutoring",
+      "subject": "geography",
+      "level": "other_k12",
+      "family_id": "4226c91db1ad442e03d6",
+      "scenario": "initial_hint",
+      "split": "development",
+      "level_review": {
+        "status": "proposed",
+        "topic": "世界地理/区域特征识别",
+        "reason": "通过生鱼片/樱花判断日本、圣彼得堡/芭蕾舞判断俄罗斯、水上市场判断泰国，属于初中世界地理国家文化标志的简单识记，小学或初中生亦可直接回答，不符合高考层级。参考解析正确。",
+        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
+      }
+    }
+  ],
+  "excluded": [
+    {
+      "line": 19846,
+      "review": {
+        "line": 19846,
+        "subject_correct": false,
+        "complete": true,
+        "level": "other_k12",
+        "reason": "考查诸子百家代表人物的历史常识，属于初中历史/文化常识范畴，非高中语文学科特有的语言文字应用或深度文本阅读。学科应归history。",
+        "reference_issue": "未发现明确矛盾"
+      }
+    },
+    {
+      "line": 23445,
+      "reason": "参考解析遗漏可见错别字，待核原卷"
+    },
+    {
+      "line": 20274,
+      "review": {
+        "line": 20274,
+        "subject_correct": false,
+        "complete": true,
+        "level": "other_k12",
+        "reason": "虽然形式上是阅读理解，但所给文本明显是由英文机器翻译而来的中文（如'国子学''关书院胡同''阳光提供了浓厚的阴凉'等生硬表达），且题目仅考查表层信息提取，无高中语文阅读应有的深度推理或鉴赏，不符合中国高中语文课程特有的原文阅读标准。学科标注chinese不当，实质为外语阅读的中译版。",
+        "reference_issue": "参考解析答案B本身能从文中找到依据，但该文本系外文机翻，不应作为中国语文学科试题"
+      }
+    },
+    {
+      "line": 22410,
+      "reason": "模型判题缺题/题组不清晰，保守排除"
+    },
+    {
+      "line": 24845,
+      "review": {
+        "line": 24845,
+        "subject_correct": true,
+        "complete": true,
+        "level": "out_of_scope",
+        "reason": "将现代文翻译为文言文属于大学古代汉语或专业训练内容，不在中国高中语文课程标准考查范围内。高中语文考查的是文言文译为现代汉语，而非反向翻译。",
+        "reference_issue": "参考译文中'硃温'应为'朱温'，存在错字；且原文提及王郜、秦宗权两事，参考译文将其省略合并，翻译不够完整准确。"
+      }
+    },
+    {
+      "line": 20405,
+      "review": {
+        "line": 20405,
+        "subject_correct": false,
+        "complete": true,
+        "level": "other_k12",
+        "reason": "虽然指令为中文'请读完文章后对问题进行回答'，但阅读材料本身是中文（关于Lomography在中国的介绍），并非外语文章阅读。根据规则'译成中文的外语阅读不冒充chinese'及'只有考查英语文章阅读/语法词汇才归english'，本题考查的是中文文本阅读理解，不应归为english学科；且内容为泛泛的文化现象介绍，缺乏高中语文特有的深度分析或语言文字应用考查，属other_k12层级。",
+        "reference_issue": "参考解析正确提取了原文信息，未发现事实性错误，但学科分类有误"
+      }
+    },
+    {
+      "line": 21559,
+      "review": {
+        "line": 21559,
+        "subject_correct": false,
+        "complete": true,
+        "level": "other_k12",
+        "reason": "同line 20405，阅读材料为中文（讲述某人收集动物建动物园的故事），非英文原文阅读，不能归为english学科。内容属于一般性叙事阅读理解，无高中语文特有的文学鉴赏或复杂推理深度，属other_k12。",
+        "reference_issue": "参考解析依据原文得出答案D，逻辑正确，未发现事实性错误，但学科分类有误"
+      }
+    },
+    {
+      "line": 20396,
+      "review": {
+        "line": 20396,
+        "subject_correct": false,
+        "complete": true,
+        "level": "other_k12",
+        "reason": "题目为中文阅读理解，内容为诺贝尔经济学奖得主的新闻报道翻译。根据规则'译成中文的外语阅读不冒充chinese'，且该题仅考查简单信息提取（委员会主席的赞扬），无高中语文特有的文学分析或复杂论述推理，属于初中水平的中文信息筛选，应标other_k12。学科标注english错误，因为全文为中文。",
+        "reference_issue": "未发现明确矛盾"
+      }
+    },
+    {
+      "line": 22840,
+      "review": {
+        "line": 22840,
+        "subject_correct": false,
+        "complete": true,
+        "level": "other_k12",
+        "reason": "考查无线电站塔功能（发射器），属于通信常识/信息技术基础，不涉及高中物理特有的电磁波传播机制、调制解调原理等深度推理，归为other_k12。学科归属勉强可算物理但更偏信息技术常识。参考解析结论D正确。",
+        "reference_issue": "未发现明确矛盾"
+      }
+    },
+    {
+      "line": 26355,
+      "review": {
+        "line": 26355,
+        "subject_correct": false,
+        "complete": true,
+        "level": "other_k12",
+        "reason": "本题为典型的初中科学综合分类题，涉及物理（直线/曲线运动）、化学（混合物/纯净物）、地理（海洋水/陆地水）、生物（体内/体外受精）多学科分类标准，属于初中科学课程范畴，非高中物理专属内容。学科标注physics错误。",
+        "reference_issue": "参考解析结论正确，但本题不应归为单一物理学科"
+      }
+    },
+    {
+      "line": 21952,
+      "review": {
+        "line": 21952,
+        "subject_correct": true,
+        "complete": true,
+        "level": "out_of_scope",
+        "reason": "使用无限长直导线磁场公式B=μ₀I/(2πr)进行定量计算，该公式在中国高中物理课程标准中不作要求（高中仅定性了解直线电流磁场方向），属于大学普通物理内容。",
+        "reference_issue": "未发现明确矛盾"
+      }
+    },
+    {
+      "line": 23446,
+      "review": {
+        "line": 23446,
+        "subject_correct": true,
+        "complete": true,
+        "level": "out_of_scope",
+        "reason": "考查顺磁质、抗磁质、铁磁质的相对磁导率分类，属于大学普通物理电磁学内容，超出中国高中物理课程标准范围。参考解析物理上正确。",
+        "reference_issue": "未发现明确矛盾"
+      }
+    },
+    {
+      "line": 21846,
+      "review": {
+        "line": 21846,
+        "subject_correct": true,
+        "complete": true,
+        "level": "out_of_scope",
+        "reason": "要求系统比较静电场与感生（涡旋）电场的保守性、散度、旋度及麦克斯韦方程组框架下的性质，涉及∇·E、∇×E等算符，属于大学电磁学内容，远超高中课程要求。参考解析物理上正确。",
+        "reference_issue": "未发现明确矛盾"
+      }
+    },
+    {
+      "line": 24860,
+      "review": {
+        "line": 24860,
+        "subject_correct": true,
+        "complete": true,
+        "level": "out_of_scope",
+        "reason": "英文出题且考查氧化还原反应与伏打电池的关系，按规则应归english学科；同时内容本身为高中化学知识，但语言形式不符合中国高考中文命题规范。",
+        "reference_issue": "未发现明确矛盾"
+      }
+    },
+    {
+      "line": 30360,
+      "review": {
+        "line": 30360,
+        "subject_correct": true,
+        "complete": true,
+        "level": "out_of_scope",
+        "reason": "英文出题考查单质（elementary substance）与化合物的区分，按规则应归english学科；且该知识点为小学/初中化学基础概念。",
+        "reference_issue": "未发现明确矛盾"
+      }
+    },
+    {
+      "line": 26375,
+      "reason": "参考解析对选项A分析自相矛盾，待核原卷"
+    },
+    {
+      "line": 22625,
+      "review": {
+        "line": 22625,
+        "subject_correct": false,
+        "complete": true,
+        "level": "other_k12",
+        "reason": "题目虽标注chemistry，但考查布朗运动与扩散的区别、蒸发吸热与内能变化，属于中国初中物理分子动理论与热学常识，非化学学科核心知识，且为初中层级。参考解析将C判为正确存在争议：手变干主要是蒸发（汽化）而非扩散，但A、B、D均明显错误，C在初中语境下勉强可选；更关键的是学科归属应为physics。",
+        "reference_issue": "学科分类错误，应为physics；且本题为初中物理分子动理论题，属other_k12"
+      }
+    },
+    {
+      "line": 23297,
+      "review": {
+        "line": 23297,
+        "subject_correct": true,
+        "complete": true,
+        "level": "out_of_scope",
+        "reason": "氨酰-tRNA合成酶对氨基酸和tRNA的双重特异性识别属于大学生物化学/分子生物学内容，超出中国高中生物课程标准要求（高中仅要求了解翻译的基本过程及tRNA转运氨基酸的功能，不涉及该酶的特异性机制）。",
+        "reference_issue": "未发现明确矛盾"
+      }
+    },
+    {
+      "line": 20360,
+      "review": {
+        "line": 20360,
+        "subject_correct": false,
+        "complete": true,
+        "level": "other_k12",
+        "reason": "题目考查克隆羊多利属于第三次科技革命哪一领域，这是初中历史常识题，非高中生物课程特有的知识或机制推理。学科应归为history而非biology。",
+        "reference_issue": "未发现明确矛盾"
+      }
+    },
+    {
+      "line": 22040,
+      "review": {
+        "line": 22040,
+        "subject_correct": false,
+        "complete": true,
+        "level": "other_k12",
+        "reason": "题目以《寂静的春天》为背景考查环境保护意识，属于初中历史/道法层面的阅读理解与价值观判断，不涉及高中生物特有的生态学机制或实验推理。学科应归为history。",
+        "reference_issue": "未发现明确矛盾"
+      }
+    },
+    {
+      "line": 23017,
+      "review": {
+        "line": 23017,
+        "subject_correct": false,
+        "complete": true,
+        "level": "other_k12",
+        "reason": "第(1)问种群概念虽在高中生物学，但第(2)问用惯性解释猎豹转弯被甩开是初中物理常识。整体深度和推理要求偏低，且涉及物理惯性知识，不符合高考生物层级。",
+        "reference_issue": "未发现明确矛盾"
+      }
+    },
+    {
+      "line": 24447,
+      "review": {
+        "line": 24447,
+        "subject_correct": false,
+        "complete": true,
+        "level": "other_k12",
+        "reason": "通过列举国际冲突事件判断当今世界局部动荡，属于初中历史/地理常识层面的时事判断，不涉及高中政治特有的国际关系理论或哲学综合推理。且学科更偏向初中历史/道法。",
+        "reference_issue": "未发现明确矛盾"
+      }
+    },
+    {
+      "line": 23834,
+      "review": {
+        "line": 23834,
+        "subject_correct": false,
+        "complete": true,
+        "level": "other_k12",
+        "reason": "英国脱欧与欧洲一体化进程属于历史学科（世界现代史/当代国际关系）范畴，而非政治学科。且该知识点在初中历史中已有涉及，属泛化常识判断，未体现高中历史特有的深度推理。参考解析正确。",
+        "reference_issue": "学科标注错误，应为history"
+      }
+    },
+    {
+      "line": 21661,
+      "review": {
+        "line": 21661,
+        "subject_correct": false,
+        "complete": true,
+        "level": "other_k12",
+        "reason": "本题为中文翻译后的外语新闻阅读理解，考查从文本中提取'戈尔巴乔夫因病无法出席''南希·里根也无法前来'等事实信息的能力，不涉及任何历史学科知识或推理。按规则应归为english，且难度仅为浅层信息检索，属other_k12。参考解析正确。",
+        "reference_issue": "学科标注错误，译成中文的外语阅读不冒充chinese或对应学科，应归english；同时不属于历史学科"
+      }
+    },
+    {
+      "line": 21677,
+      "reason": "参考解析历史年代错误，待核原卷"
+    },
+    {
+      "line": 23069,
+      "review": {
+        "line": 23069,
+        "subject_correct": false,
+        "complete": true,
+        "level": "english",
+        "reason": "原文为英文阅读理解材料（关于Renaissance music及Bernardino Cirillo），译成中文后仍属外语阅读考查，按规则应归english学科，不能冒充语文或历史。",
+        "reference_issue": "参考解析将外文翻译阅读题误判为历史学科，且答案B与原文逻辑一致但学科归类错误"
+      }
+    },
+    {
+      "line": 23359,
+      "review": {}
+    },
+    {
+      "line": 21148,
+      "review": {}
+    },
+    {
+      "line": 19145,
+      "review": {}
+    },
+    {
+      "line": 22337,
+      "review": {}
+    },
+    {
+      "line": 19785,
+      "review": {}
+    },
+    {
+      "line": 22325,
+      "review": {}
+    },
+    {
+      "line": 25714,
+      "reason": "题面单选与参考双选矛盾，待核原卷"
+    },
+    {
+      "line": 20441,
+      "review": {
+        "line": 20441,
+        "subject_correct": false,
+        "complete": true,
+        "level": "other_k12",
+        "reason": "虽然提供了中文阅读材料，但考查内容为根据文本对比休斯顿与Galveston受灾程度的简单信息提取与推断，属于初中语文阅读理解难度，不涉及高中语言文字应用或高考层级的复杂逻辑推理。学科应归为chinese而非geography。",
+        "reference_issue": "参考解析逻辑正确，但学科分类错误，此题为中文阅读理解题而非地理学科题"
+      }
+    },
+    {
+      "line": 22026,
+      "reason": "助手内容复核：现代汉语反译文言不属于本批高中语文目标，替换为正向翻译/阅读/语言题。"
+    },
+    {
+      "line": 20842,
+      "reason": "助手内容复核：现代汉语反译文言不属于本批高中语文目标，替换为正向翻译/阅读/语言题。"
+    },
+    {
+      "line": 23595,
+      "reason": "助手内容复核：现代汉语反译文言不属于本批高中语文目标，替换为正向翻译/阅读/语言题。"
+    },
+    {
+      "line": 24387,
+      "reason": "助手内容复核：现代汉语反译文言不属于本批高中语文目标，替换为正向翻译/阅读/语言题。"
+    },
+    {
+      "line": 21190,
+      "reason": "助手内容复核：现代汉语反译文言不属于本批高中语文目标，替换为正向翻译/阅读/语言题。"
+    },
+    {
+      "line": 22965,
+      "reason": "助手内容复核：现代汉语反译文言不属于本批高中语文目标，替换为正向翻译/阅读/语言题。"
+    },
+    {
+      "line": 22596,
+      "reason": "助手内容复核：现代汉语反译文言不属于本批高中语文目标，替换为正向翻译/阅读/语言题。"
+    }
+  ],
+  "review_status": "proposed"
+}

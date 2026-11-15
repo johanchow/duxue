@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 20497,
+  "uid": "aquila-all-257432-875692e4bcee",
+  "dataset": "aquilaedu",
+  "record_sha256": "38e03751697a9c1dffe4cc7ef623c7b4bfee8f3ad94df55fb2e52b2a0a27083e",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n选择符合题意的选项。\n“他反对任何形式的暴力，他的身体虽然是柔弱的，但他的学说和精神感召力却比100艘英国军舰更有力量”材料中的“他”指的是（　　） A．华盛顿\tB．林肯\tC．甘地\tD．纳赛尔"
+      },
+      {
+        "role": "assistant",
+        "content": "1920年，甘地号召印度民众开展非暴力不合作运动。群众斗争掀起一波又一波的浪潮，1922年发生了农民焚烧警察局的事件，甘地认为这超出了非暴力不合作运动的范围，决定停止运动。1930年，甘地再次发起非暴力不合作运动。这次运动主要采取不服从形式，所以又被称为“文明不服从运动”。甘地领导的印度非暴力不合作运动，打击了英国的殖民统治，增强了印度的民族自尊心，为印度独立奠定了基础。据“他反对任何形式的暴力，他的身体虽然是柔弱的，但他的学说和精神感召力却比100艘英国军舰更有力量。”及所学知识可知，材料中的“他”指的是甘地，选项C符合题意。 \n#### 答案是：C"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"aquilaedu\", \"uid\": \"aquila-all-257432-875692e4bcee\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 1515, \"supervised_tokens\": 165, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 20497,
+    "subject": "history",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "甘地的非暴力不合作运动",
+    "reason": "通过'反对暴力''比英国军舰更有力量'等材料描述，考查辨识历史人物甘地及其非暴力不合作思想，属高中历史典型考点。",
+    "review_model": "qwen3.8-max",
+    "review_file": "var/evals/omni-curation-v1/review-24754.json"
+  },
+  "content_review": {
+    "line": 20497,
+    "subject_correct": true,
+    "complete": true,
+    "level": "other_k12",
+    "reason": "考查甘地非暴力不合作运动的基本史实识别，属初中历史常识。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n选择符合题意的选项。\n“他反对任何形式的暴力，他的身体虽然是柔弱的，但他的学说和精神感召力却比100艘英国军舰更有力量”材料中的“他”指的是（　　） A．华盛顿\tB．林肯\tC．甘地\tD．纳赛尔\n这题我卡住了。请先帮我拆出一个能动手的小步骤，不要给完整答案。",
+      "images": []
+    }
+  ]
+}

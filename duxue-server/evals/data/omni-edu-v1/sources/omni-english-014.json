@@ -1,0 +1,63 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 15559,
+  "uid": "race-high13328.txt-1cc3",
+  "dataset": "reading-race",
+  "record_sha256": "c01c10913547fef26f1511cd2b37e9cee5ddf9f1a7d3d163bc7d0ab3eb5a4df5",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Answer the reading-comprehension question from the supplied passage and options. Base the answer only on the passage, reason carefully when needed, and follow the requested answer format."
+      },
+      {
+        "role": "user",
+        "content": "Passage:\nAt the age of 16, Julia Butterfly Hill quit school and worked at a restaurant. For many years, she was only interested in making money and material things. Then one day she had a serious car accident, which changed her life. Hill said: \"I realized I wanted to find a more powerful purpose for being here on this planet.\"\nAs soon as she recovered, Hill traveled to California. There she saw ancient redwood trees, which are the largest trees in the whole world. The wood from redwood trunks is very hard. So the Pacific Lumber Company cut down many of the huge redwoods to use for construction. There are not many forests of these trees left. Many environmental activists want to protect the remaining trees. The redwoods are very important to the environment.\nIn 1997 Hill learned a group called Earth First was working to protect a particular group of trees. They decided to send someone up into a redwood tree, hoping this would stop the company from cutting the trees down. Julia Butterfly Hill volunteered.\nHill lived in the tree for over two years without ever coming down. Her home was a 6-by-8-foot tree house, 180 feet up. It is always cold and wet in a redwood tree. There were even very serious winter storms while Hill was in the tree. The wind and cold almost knocked Hill out of the tree. But she did not fall -- she survived.\nFinally, after years of arguing, the company decided to protect Luna, the tree Hill lived in. They signed an agreement to never cut down this huge redwood tree or the trees around it. When Hill put her feet on the earth again, she began to cry. But from that moment on Hill hasn't stopped working to protect the environment.\n\nProblem:\nWhat can we learn about Julia Butterfly Hill from the text?\n\nOptions:\nA. She has a sense of social responsibility.\nB. She failed to protect the redwood tree.\nC. She built a new house in the forest.\nD. She is a self-centered woman"
+      },
+      {
+        "role": "assistant",
+        "content": "The correct option is A because the passage illustrates Hill's dedication to a cause greater than herself. After realizing she wanted \"a more powerful purpose for being here on this planet,\" she volunteered to live in a redwood tree for over two years to stop a company from cutting it down. Her persistence through \"very serious winter storms\" and her continued work to \"protect the environment\" after descending demonstrate a strong commitment to the welfare of others and the planet, which defines a sense of social responsibility.\n\nOption B is incorrect because the text states the company \"decided to protect Luna\" and signed an agreement \"to never cut down this huge redwood tree,\" meaning she succeeded. Option C is incorrect because her home was a \"6-by-8-foot tree house\" built inside an existing tree, not a new house built on the ground in the forest. Option D is incorrect because her actions were driven by a desire to protect the environment and a \"powerful purpose,\" directly contradicting the idea that she is self-centered.\n\nA"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"reading-race\", \"uid\": \"race-high13328.txt-1cc3\", \"kind\": \"reading\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/reading/reading-race\", \"rank\": 1788, \"supervised_tokens\": 208, \"token_budget\": 396000}, \"system_prompt_id\": \"reading_comprehension\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 15559,
+    "subject": "english",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "Reading Comprehension - Character Analysis",
+    "reason": "English reading passage with multiple-choice questions testing inference and main idea understanding, typical of high school English exams.",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-15559.json"
+  },
+  "content_review": {
+    "line": 15559,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "英文原文记叙文阅读，考查人物性格/主旨推断，符合高考英语阅读层级。参考解析正确。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "diagnostic_adaptation": {
+    "id": "omni-english-014",
+    "student_attempt": "I think the answer is A. The text says she volunteered to live in a tree for two years despite cold and storms to stop logging. This shows she cares about the environment more than her own comfort, which fits 'social responsibility'. Option B is wrong because the company agreed to protect the tree.",
+    "assessment": "correct",
+    "feedback_criteria": "Verify if the student correctly identifies Option A as the answer. Check if the reasoning links Hill's sacrifice (living in the tree) and persistence to the concept of social responsibility. Ensure the student refutes Option B by citing the successful protection of Luna. Do not require analysis of C or D unless mentioned.",
+    "is_choice": true,
+    "model": "qwen3.8-flash"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nPassage:\nAt the age of 16, Julia Butterfly Hill quit school and worked at a restaurant. For many years, she was only interested in making money and material things. Then one day she had a serious car accident, which changed her life. Hill said: \"I realized I wanted to find a more powerful purpose for being here on this planet.\"\nAs soon as she recovered, Hill traveled to California. There she saw ancient redwood trees, which are the largest trees in the whole world. The wood from redwood trunks is very hard. So the Pacific Lumber Company cut down many of the huge redwoods to use for construction. There are not many forests of these trees left. Many environmental activists want to protect the remaining trees. The redwoods are very important to the environment.\nIn 1997 Hill learned a group called Earth First was working to protect a particular group of trees. They decided to send someone up into a redwood tree, hoping this would stop the company from cutting the trees down. Julia Butterfly Hill volunteered.\nHill lived in the tree for over two years without ever coming down. Her home was a 6-by-8-foot tree house, 180 feet up. It is always cold and wet in a redwood tree. There were even very serious winter storms while Hill was in the tree. The wind and cold almost knocked Hill out of the tree. But she did not fall -- she survived.\nFinally, after years of arguing, the company decided to protect Luna, the tree Hill lived in. They signed an agreement to never cut down this huge redwood tree or the trees around it. When Hill put her feet on the earth again, she began to cry. But from that moment on Hill hasn't stopped working to protect the environment.\n\nProblem:\nWhat can we learn about Julia Butterfly Hill from the text?\n\nOptions:\nA. She has a sense of social responsibility.\nB. She failed to protect the redwood tree.\nC. She built a new house in the forest.\nD. She is a self-centered woman\n我的尝试：I think the answer is A. The text says she volunteered to live in a tree for two years despite cold and storms to stop logging. This shows she cares about the environment more than her own comfort, which fits 'social responsibility'. Option B is wrong because the company agreed to protect the tree.\n请检查我已有的理由或结果，只指出可核验的部分，并给一个自检提示。",
+      "images": []
+    }
+  ]
+}

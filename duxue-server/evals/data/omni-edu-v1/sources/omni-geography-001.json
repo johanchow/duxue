@@ -1,0 +1,64 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 19932,
+  "uid": "coig-exam_coig_exam_sampled_clean_v3.jsonl-1932-3a5edda4cf78",
+  "dataset": "coig-cqia",
+  "record_sha256": "6a93376fb18788c3121dcc2705efa88ac19b692a00abe0544cdcabed11059b7c",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n单选题\n17.近年来，我国各地往返欧洲的火车班列激增。下列通过火车班列由我国出口到欧洲的产品中，贸易额最大的可能是（　　）A.咖啡豆\tB.葡萄酒\tC.家具\tD.电视机"
+      },
+      {
+        "role": "assistant",
+        "content": "C\n\n**解析：**\n1.  **排除法分析选项**：\n    *   **A. 咖啡豆**：我国并非咖啡主要产区，咖啡豆主要依赖进口（如从巴西、越南等国），而非大量出口到欧洲。\n    *   **B. 葡萄酒**：欧洲（如法国、意大利、西班牙）是世界著名的葡萄酒产区，我国向欧洲出口葡萄酒的贸易额相对较小，且欧洲更多是向我国出口葡萄酒。\n    *   **D. 电视机**：虽然我国是电视机生产大国，但电视机属于高价值、易碎且体积较大的电子产品，通常通过海运集装箱运输以降低成本，或者通过空运高附加值部件。虽然中欧班列有运输电子产品，但相比家具等大宗商品，其在该线路上的贸易额占比通常不如家具显著（且部分高端电视品牌在欧洲有本地组装或销售策略）。\n    *   **C. 家具**：我国是世界最大的家具生产国和出口国，拥有完整的产业链和成本优势。家具属于体积大、重量大、不适合空运但适合铁路运输的货物。中欧班列（如“长安号”、“义新欧”等）开通的重要目的之一就是解决海运时间长、空运成本高的问题，非常适合运输家具、日用品等“重货”。近年来，通过中欧班列出口的家具、小商品等占据了很大比例。\n\n2.  **结论**：综合我国产业结构、产品特性及中欧班列的运输优势，家具是我国出口到欧洲且通过火车班列运输贸易额最大的产品之一。\n\n故选 **C**。"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-1932-3a5edda4cf78\", \"kind\": \"qa\", \"system_variant\": \"general\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 950, \"supervised_tokens\": 319, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 19932,
+    "subject": "geography",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "国际贸易与交通运输方式选择",
+    "reason": "题目考察中欧班列出口产品的贸易额判断。需要结合中国工业优势（如家电、家具）、欧洲市场需求以及运输成本等因素进行分析。这是高中地理人文地理部分关于产业活动和交通布局的典型应用题。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-23382.json"
+  },
+  "content_review": {
+    "line": 19932,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "考查交通运输方式的选择及国际贸易产品特征，需结合中欧班列特点与我国出口产业结构进行综合推理，属高中地理交通与产业考点。参考解析合理。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "diagnostic_adaptation": {
+    "id": "omni-geography-001",
+    "student_attempt": "我目前只知道这题涉及国际贸易与交通运输方式选择，还没有写出具体推理或结论。请帮我确定第一步。",
+    "assessment": "insufficient",
+    "feedback_criteria": "学生只报告了知识主题，未给出可核验的具体结果或推理。不得将未作答判为答错，也不能虚构学生的错误步骤或已掌握。给一个切题且可执行的起步或自检提示。",
+    "is_choice": true,
+    "model": "qwen3.8-flash",
+    "authored_revision": "assistant-explicit-insufficient-evidence.v1"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n单选题\n17.近年来，我国各地往返欧洲的火车班列激增。下列通过火车班列由我国出口到欧洲的产品中，贸易额最大的可能是（　　）A.咖啡豆\tB.葡萄酒\tC.家具\tD.电视机\n我的尝试：我目前只知道这题涉及国际贸易与交通运输方式选择，还没有写出具体推理或结论。请帮我确定第一步。\n请检查我已有的理由或结果，只指出可核验的部分，并给一个自检提示。",
+      "images": []
+    }
+  ]
+}

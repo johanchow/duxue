@@ -1,0 +1,66 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 19144,
+  "uid": "coig-exam_coig_exam_sampled_clean_v3.jsonl-135-934737db2806",
+  "dataset": "coig-cqia",
+  "record_sha256": "d0ed1eb2b7b2e0aae3d36c29fdc42b85c153e53bb229be6466b3a9863f61ebdd",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n根据材料回答问题\n插秧歌杨万里田夫抛秧田妇接，小儿拔秧大儿插。笠是兜鍪①蓑是甲，雨从头上湿到胛②。唤渠③朝餐歇半霎，低头折腰只不答：“秧根未牢莳未匝④，照管鹅儿与雏鸭。”\n《唐宋诗》中评价本诗有“一股活泼泼的生活气息”，请结合全诗简要分析。"
+      },
+      {
+        "role": "assistant",
+        "content": "诗歌充满了农村生活气息。①描写一家老小冒雨插秧的日常劳动场景，分工合作，秩序井然，显得活泼而富有情趣；②运用口语，语言浅白流畅，生活气息浓郁。\n\n《插秧歌》是南宋诗人、文学家杨万里创作的一首七言古诗。该诗生动地描绘了江南农户全家总动员插秧的情景，充满了农村生活气息。“田夫抛秧田妇接，小儿拔秧大儿插。笠是兜鍪蓑是甲，雨从头上湿到胛”意思是种田的农夫将秧苗抛在半空，农妇一把接住，小儿子把秧苗拔起，大儿子再把秧苗插入水中。斗笠作头盔蓑衣作盔甲，雨水从头流入脖颈沾湿肩膀。这四句写出了一家老小冒雨插秧热火朝天的劳动场面，拔秧活轻，小儿干，接秧也轻，田妇干，抛秧插秧活重，田夫和大儿干，分工明确，秩序井然，显得活泼而富有情趣。结句“秧根未稳莳未匝，照管鹅儿与雏鸭”似乎是田夫对送饭老人的回答：“您瞧这稻苗还不栽稳，再说这块田还没插完，您把饭放这儿，我们呆会儿就吃，您得赶紧回去照看好那帮鸡鸭鹅们，它们要来到田里，可就糟了。”这两句极富生活的气息，运用口语，用生动朴实的语言勾勒出一位时时尽力、事事操心、爱惜劳动成果的农人形象。"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-135-934737db2806\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 162, \"supervised_tokens\": 339, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 19144,
+    "subject": "chinese",
+    "topic": "古诗生活气息与语言赏析",
+    "reason": "完整《插秧歌》诗句及鉴赏设问，需从场景、口语与表现手法组织证据；原注编号存在但不编造注释。",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "review_model": "assistant_content_review"
+  },
+  "content_review": {
+    "line": 19144,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "完整《插秧歌》诗句及鉴赏设问，需从场景、口语与表现手法组织证据；原注编号存在但不编造注释。",
+    "reference_issue": "助手阅读未发现影响作答的明确矛盾；未获教师认证"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n根据材料回答问题\n插秧歌杨万里田夫抛秧田妇接，小儿拔秧大儿插。笠是兜鍪①蓑是甲，雨从头上湿到胛②。唤渠③朝餐歇半霎，低头折腰只不答：“秧根未牢莳未匝④，照管鹅儿与雏鸭。”\n《唐宋诗》中评价本诗有“一股活泼泼的生活气息”，请结合全诗简要分析。\n我不会这道题。先给我一个能自己尝试的小提示。",
+      "images": []
+    },
+    {
+      "id": "m2",
+      "role": "user",
+      "content": "这个提示我还没理解，请换一种说法或拆细一点；先别给最终答案。",
+      "images": []
+    },
+    {
+      "id": "m3",
+      "role": "user",
+      "content": "我想自己接着做，请结合刚才的讲解，只提醒下一步该检查什么。",
+      "images": []
+    }
+  ]
+}

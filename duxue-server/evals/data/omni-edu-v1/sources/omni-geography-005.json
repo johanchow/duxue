@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 22267,
+  "uid": "coig-exam_coig_exam_sampled_clean_v3.jsonl-1963-93c081bcacd7",
+  "dataset": "coig-cqia",
+  "record_sha256": "abc2f93d437758f15d37762f6a0f4b78926e41b32da82966af033851e2f25706",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n时装是具有鲜明时尚感的服装，其特点是变化迅速、极富流行性和周期性。洛杉矶时尚街区是世界著名的时尚专区，街区内集聚了众多的时装企业，集时装设计、销售等于一体。这些时装企业一般不直接加工时装，而是将加工环节转给分包企业，生产灵活、产品款多量少，价格相宜。据此完成6～8题。\n为了进一步提高市场竞争力，洛杉矶时装企业应采取的最有效措施是A.快速更新产品B.改进生产技术C.扩大生产规模D.拓展国际市场"
+      },
+      {
+        "role": "assistant",
+        "content": "根据时装企业的特点可以看出变化迅速、极富流行性和周期性，因此进一步提高市场竞争力，只有快速更新产品．\n\n因此答案为：A"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-1963-93c081bcacd7\", \"kind\": \"qa\", \"system_variant\": \"general\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 3285, \"supervised_tokens\": 27, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 22267,
+    "subject": "geography",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "工业区位因素与产业特点（洛杉矶时装街区）",
+    "reason": "题目提供完整的背景材料，考察高中地理中关于工业集聚、生产灵活性及市场竞争策略的知识点，属于典型的高考地理选择题。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-22267.json"
+  },
+  "content_review": {
+    "line": 22267,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "考查工业区位因素与产业集聚，结合材料信息（变化迅速、极富流行性）进行综合推理，属于高中地理产业活动核心考点。参考解析逻辑正确。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n时装是具有鲜明时尚感的服装，其特点是变化迅速、极富流行性和周期性。洛杉矶时尚街区是世界著名的时尚专区，街区内集聚了众多的时装企业，集时装设计、销售等于一体。这些时装企业一般不直接加工时装，而是将加工环节转给分包企业，生产灵活、产品款多量少，价格相宜。据此完成6～8题。\n为了进一步提高市场竞争力，洛杉矶时装企业应采取的最有效措施是A.快速更新产品B.改进生产技术C.扩大生产规模D.拓展国际市场\n我想先弄清这题需要用哪个概念，以及题目条件怎样联系，请引导我。",
+      "images": []
+    }
+  ]
+}

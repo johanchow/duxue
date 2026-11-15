@@ -1,0 +1,82 @@
+{
+  "schema_version": "dialogue-eval.v2",
+  "id": "omni-english-009",
+  "type": "single_turn",
+  "replay_mode": "fixed_history",
+  "source": {
+    "kind": "synthetic",
+    "coverage": "authored",
+    "provider": "aquilaedu",
+    "note": "{\"source_record\": \"sources/omni-english-009.json\", \"uid\": \"aquila-all-140406-f1f1bb936787\", \"source_category\": \"subject_competence\"}"
+  },
+  "messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "Problem:\nPlease study the piece and supply the right response.\nClothes can make phone calls, play music, dial your pal's number, keep you warm during cold weather and operate your computer?\nThis is not a fantasy  A British company, called Electrotextiles, has created a wide range of clothes -- clothes that have minds of their own! Scientists, working for the company, have invented a kind of fabric that can be blended  with flexible electronic materials to create intelligent clothing  The result are electronic garments \nIf you think the wearer has to be wired to different devices, think again  These designer clothes are wire-free, soft to touch and washable!! Like any electronic device, these high-tech clothes have to be powered  Currently, a tiny nine-volt battery serves the purpose  But the researchers hope that in the near future the clothes will generate electricity by using body heat  These clothes are 100 percent shock proof, they say \nThe Electrotextiles team has also created the world's first cloth keyboard  This keyboard can be sewn into your trousers or skirt  To use this device, you will have to sit down and tap on your lap! These 'lap- tap' gadgets  are all set to take over laptop computers!\nAnother useful garment is the shirt-cum-mobile phone  This handy invention enables drivers to chat comfortably with others at the wheel! Other popular electronic wear include the denim  jacket with flexible earphones sewn into the hood  and the electronic ski jacket with a built-in heater  The ski jacket is also programmed to send signals to a satellite  This technology is known as global positioning system and can be used to track lost skiers and wandering kids \nHaving completed the cloth keyboard, scientists have already started to work on a new project--a necktie that can be used as a computer mouse  What is the next? Do you have any idea?\nQuestion:   If you are going on a ski adventure, which device do you need?\nOptions: (A) The cloth keyboard   (B) The electronic ski jacket   (C) The necktie to be used as a mouse   (D) The denim jacket with earphones",
+      "images": []
+    }
+  ],
+  "checks": [
+    {
+      "id": "check-1",
+      "after_message": "m1",
+      "component": "tutoring.turn",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "problem": {
+            "summary": "Problem:\nPlease study the piece and supply the right response.\nClothes can make phone calls, play music, dial your pal's number, keep you warm during cold weather and operate your computer?\nThis is not a fantasy  A British company, called Electrotextiles, has created a wide range of clothes -- clothes that have minds of their own! Scientists, working for the company, have invented a kind of fabric that can be blended  with flexible electronic materials to create intelligent clothing  The result are electronic garments \nIf you think the wearer has to be wired to different devices, think again  These designer clothes are wire-free, soft to touch and washable!! Like any electronic device, these high-tech clothes have to be powered  Currently, a tiny nine-volt battery serves the purpose  But the researchers hope that in the near future the clothes will generate electricity by using body heat  These clothes are 100 percent shock proof, they say \nThe Electrotextiles team has also created the world's first cloth keyboard  This keyboard can be sewn into your trousers or skirt  To use this device, you will have to sit down and tap on your lap! These 'lap- tap' gadgets  are all set to take over laptop computers!\nAnother useful garment is the shirt-cum-mobile phone  This handy invention enables drivers to chat comfortably with others at the wheel! Other popular electronic wear include the denim  jacket with flexible earphones sewn into the hood  and the electronic ski jacket with a built-in heater  The ski jacket is also programmed to send signals to a satellite  This technology is known as global positioning system and can be used to track lost skiers and wandering kids \nHaving completed the cloth keyboard, scientists have already started to work on a new project--a necktie that can be used as a computer mouse  What is the next? Do you have any idea?\nQuestion:   If you are going on a ski adventure, which device do you need?\nOptions: (A) The cloth keyboard   (B) The electronic ski jacket   (C) The necktie to be used as a mouse   (D) The denim jacket with earphones",
+            "active_subgoal": "英语阅读理解-细节理解",
+            "substantive_attempts": 0,
+            "hints_given": 0
+          },
+          "task_title": "本地学科答疑评测",
+          "task_active": true
+        },
+        "note": "Injected evaluation context; not a production database observation."
+      },
+      "grading": {
+        "deterministic": [
+          {
+            "id": "delivered",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "answer"
+            ]
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "correctness",
+            "type": "score",
+            "rubric": "内部完整解题：依据原题和实际图片独立核验最终结论、推导、定义域、单位、条件及各小问覆盖。允许数学等价表达与有依据的异解。1分错误/无解答，2分重要错误，3分方向正确但关键缺漏，4分结论与主要推导正确且完整，5分进一步严谨清晰。只评价实际solution，不要求启发提问。",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "本题知识目标：英语阅读理解-细节理解。参考答案是上游未认证材料，须独立核验；参考有争议时不得盲从，不因合理异解扣分。",
+            "expected": "pass"
+          }
+        ],
+        "reference_response": "Explanation: The answer is B) The electronic ski jacket. This is because the electronic ski jacket mentioned in the passage has several specific features that would be useful for a ski adventure. It has a built-in heater to keep the wearer warm in cold weather conditions, and it is also programmed to send signals to a satellite using global positioning system technology. This means that it can be used to track lost skiers and provide location information. Additionally, the passage mentions that the jacket is part of the range of electronic garments created by the company, suggesting that it is a high-tech piece of clothing with advanced features.  \n#### The answer is: B",
+        "rationale": [
+          "Synthetic local adaptation; reference and semantic labels remain proposed."
+        ]
+      }
+    }
+  ],
+  "review_batch": "omni-edu-v1",
+  "label_status": "proposed",
+  "note": "Adapted evaluation task; original system and final assistant are source/scoring-only. No teacher certification.",
+  "conversation_id": "229ae45ba615f84d94fc",
+  "turn_index": 0,
+  "tags": [
+    "subject_competence",
+    "english",
+    "gaokao_equivalent",
+    "solve"
+  ]
+}

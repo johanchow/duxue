@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 24049,
+  "uid": "coig-exam_coig_exam_sampled_clean_v3.jsonl-1815-f9a88d91e38e",
+  "dataset": "coig-cqia",
+  "record_sha256": "a5b3731591166bc7e4a7ed876388feb7f1aafd370a9c438c8d7af2e1dde3a298",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n在每小题给出的四个选项中，只有一项是符合题目要求的．\n20世纪80年代开始，长江三角洲地区某县村办企业涌现，形成“村村冒烟”现象。2016年该县开始实施村集体经济“抱团飞地”发展模式：由县、镇统筹，整合腾退的村办企业建设用地指标和补贴资金，各村以股份合作形式（抱团）在发展条件优越的城镇（飞地）联合建设创新创业中心，并建立保证各村收益的机制。\n“抱团飞地”发展模式，主要体现了A.城乡统筹创新\tB.生活方式创新C.农业发展创新\tD.科学技术创新"
+      },
+      {
+        "role": "assistant",
+        "content": "该县的抱团飞地发展模式，是由县镇统筹，整合腾退，村办企业建设用地指标和补贴资金，这样主要体现了城乡统筹的创新，A对。这种模式没有加大科技投入，并未体现科学技术的创新，D错。生活方式的创新是受文化影响的，与当地企业发展模式无关，B错。该地的抱团飞的发展模式是对村办企业，属于工业生产，对农业发展创新没有影响，C错。故选A。"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-1815-f9a88d91e38e\", \"kind\": \"qa\", \"system_variant\": \"none\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 5067, \"supervised_tokens\": 92, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 24049,
+    "subject": "geography",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "区域经济发展与城乡统筹",
+    "reason": "题目涉及长江三角洲地区村办企业转型及“抱团飞地”模式，考查区域地理中产业转移、城乡一体化等核心概念，符合高中地理课程标准及高考命题方向。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-24049.json"
+  },
+  "content_review": {
+    "line": 24049,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "以长三角'抱团飞地'发展模式为背景，考查城乡统筹与区域工业化发展，属于高中人文地理城镇化与区域发展的综合分析，符合高考层级。参考解析正确。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n在每小题给出的四个选项中，只有一项是符合题目要求的．\n20世纪80年代开始，长江三角洲地区某县村办企业涌现，形成“村村冒烟”现象。2016年该县开始实施村集体经济“抱团飞地”发展模式：由县、镇统筹，整合腾退的村办企业建设用地指标和补贴资金，各村以股份合作形式（抱团）在发展条件优越的城镇（飞地）联合建设创新创业中心，并建立保证各村收益的机制。\n“抱团飞地”发展模式，主要体现了A.城乡统筹创新\tB.生活方式创新C.农业发展创新\tD.科学技术创新\n我不知道如何开始，请给我一个具体的起步提示，不要直接解完整题。",
+      "images": []
+    }
+  ]
+}

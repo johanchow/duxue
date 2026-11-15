@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 30673,
+  "uid": "scienceqa-6661",
+  "dataset": "scienceqa-text",
+  "record_sha256": "8fb461ed7137020e48b071d3767fd337ea78fb6a5b9ca168ad4c749f4540e87b",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\nWhat do these two changes have in common?\nwater boiling on a stove\na puddle freezing into ice on a cold night\n\nOptions:\nA. Both are caused by cooling.\nB. Both are only physical changes.\nC. Both are chemical changes.\nD. Both are caused by heating."
+      },
+      {
+        "role": "assistant",
+        "content": "Chemical changes and physical changes are two common ways matter can change.\nIn a chemical change, the type of matter changes. The types of matter before and after a chemical change are always different.\nSome chemical changes are caused by heating or cooling. For example, burning a piece of paper is a chemical change caused by heating. When paper gets hot enough, it re­acts with oxygen in the air and burns. The paper and oxygen change into ash and smoke.\nIn a physical change, the type of matter stays the same. The types of matter before and after a physical change are always the same.\nA change of state is a type of physical change. Changes of state can be caused by heating or cooling. For example, ice melting is a physical change that can be caused by heating. Ice and liquid water are made of the same type of matter: water.\nThe law of conservation of mass says that all physical and chemical changes conserve mass. Conserve means to keep the same. So, the total mass before a physical or chemical change is equal to the total mass after the change.\nStep 1: Think about each change.\nWater boiling on the stove is a change of state. So, it is a physical change. The liquid changes into a gas, but a different type of matter is not formed.\nA puddle freezing into ice on a cold night is a change of state. So, it is a physical change. Liquid water freezes and becomes solid, but it is still made of water. A different type of matter is not formed.\nStep 2: Look at each answer choice.\nBoth are only physical changes.\nBoth changes are physical changes. No new matter is created.\nBoth are chemical changes.\nBoth changes are physical changes. They are not chemical changes.\nBoth are caused by heating.\nWater boiling is caused by heating. But a puddle freezing is not.\nBoth are caused by cooling.\nA puddle freezing is caused by cooling. But water boiling is not."
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"scienceqa-text\", \"uid\": \"scienceqa-6661\", \"kind\": \"qa\", \"system_variant\": \"general\", \"kcenter\": {\"bucket\": \"subject/science/scienceqa_direct/text/cot\", \"rank\": 1963, \"supervised_tokens\": 416, \"token_budget\": 482000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 30673,
+    "subject": "chemistry",
+    "level": "other_k12",
+    "complete": true,
+    "topic": "物理变化与化学变化辨析",
+    "reason": "考察水沸腾和结冰均为物理变化的概念。虽然涉及化学基础概念，但题目形式简单直接，属于初中科学/化学入门知识，未达到高考化学对物质结构、反应原理等深度推理的要求。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-science-v1/review-29426.json"
+  },
+  "content_review": {
+    "line": 30673,
+    "subject_correct": true,
+    "complete": true,
+    "level": "other_k12",
+    "reason": "水沸腾和水结冰属于物态变化（物理变化），为初中化学/物理基础常识，非高考层级。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "Problem:\nWhat do these two changes have in common?\nwater boiling on a stove\na puddle freezing into ice on a cold night\n\nOptions:\nA. Both are caused by cooling.\nB. Both are only physical changes.\nC. Both are chemical changes.\nD. Both are caused by heating.",
+      "images": []
+    }
+  ]
+}

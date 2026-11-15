@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 24785,
+  "uid": "cjeval-20655",
+  "dataset": "cjeval-original",
+  "record_sha256": "dc2a1946acfe35c0ea64297e52ece1bd93f0a1ba4cc0c1fec03cf8a6ebacbff9",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n题目内容: 阅读下列诗歌并回答问题。无题<sup>①</sup> 陈毅生为革命死不泣，莽莽神州叹沉沦。魂兮归来大地红，短暂人间三十六<sup>②</sup>。注①此诗为陈毅同志在梅山所作。②三十六：指36年（即36岁），因为陈毅1901年生，1936年被围梅山，他做好了牺牲的准备。 (1) 请结合全诗，解释“大地红”的含义。 (2) 这首诗体现了陈毅同志怎样的革命精神？ (3) 这首诗与《梅岭三章》中哪一首表达的信念相同？这种信念是什么？"
+      },
+      {
+        "role": "assistant",
+        "content": "(1) '大地红'象征革命的胜利，反动统治被推翻，全国人民获得解放。通过用'红'来描述大地，表达了革命的火焰已经燃遍了整个国土，标志着革命胜利的曙光已经照耀神州大地，反映了反动统治的灭亡和人民的解放。\n(2) 这首诗展现了陈毅同志在面对死亡时依然坚守革命信念的精神。他认为个人的生死轻如鸿毛，把人民的利益放在首位，体现了他无私奉献、不怕牺牲的革命英雄精神。\n(3) '魂兮归来大地红'与《梅岭三章》中'人间遍种自由花'的主题一致，突显了革命必胜的坚定信念。无论在何种艰难困苦的环境中，革命者都深信革命终将胜利，人民将获得自由。陈毅同志在短暂的人生中始终坚守这一信念，迎难而上。"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"cjeval-original\", \"uid\": \"cjeval-20655\", \"kind\": \"qa\", \"system_variant\": \"general\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 5803, \"supervised_tokens\": 166, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 24785,
+    "subject": "chinese",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "现代诗歌鉴赏（意象、主旨、比较阅读）",
+    "reason": "要求解释诗歌意象含义、概括革命精神并与《梅岭三章》进行比较阅读，符合高中语文现代诗歌鉴赏的能力要求，涉及文本细读与互文性分析。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-21639.json"
+  },
+  "content_review": {
+    "line": 24785,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "考查陈毅革命诗歌的意象理解、精神分析及与课内《梅岭三章》的比较阅读，属于高中语文诗歌鉴赏综合题，需结合教材知识作答。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n题目内容: 阅读下列诗歌并回答问题。无题<sup>①</sup> 陈毅生为革命死不泣，莽莽神州叹沉沦。魂兮归来大地红，短暂人间三十六<sup>②</sup>。注①此诗为陈毅同志在梅山所作。②三十六：指36年（即36岁），因为陈毅1901年生，1936年被围梅山，他做好了牺牲的准备。 (1) 请结合全诗，解释“大地红”的含义。 (2) 这首诗体现了陈毅同志怎样的革命精神？ (3) 这首诗与《梅岭三章》中哪一首表达的信念相同？这种信念是什么？\n我想直接看答案。你能帮我解决吗？",
+      "images": []
+    }
+  ]
+}

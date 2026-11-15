@@ -1,0 +1,67 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 20632,
+  "uid": "coig-chinese_traditional_translate_classical_chinese.jsonl-340-6458e5503d50",
+  "dataset": "coig-cqia",
+  "record_sha256": "d04b197f7d122855dfe218b59ec0efbc2108cd37145698cf83b3b04667b1c34c",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n诸将白广恩、高汝利、左光先、梁甫先行后皆降。陈永福以先射中自成目，保山巅不敢下，自成折箭为誓，招之，亦降。惟高杰以窃自成妻走延安，为李过所追，折而东，渡宜川，绝蒲津以守。\n把这句话翻译成现代文。"
+      },
+      {
+        "role": "assistant",
+        "content": "白广恩、高汝利、左光先、梁甫等将领先后投降，陈永福因先前射中自成的眼睛，便在山顶上自保而不敢下，自成折断箭杆为誓，招抚他，他也投降了，只有高杰因窃走自成的妻子而逃到延安，被李过追赶，便折而向东，从宜川渡过黄河，绝断蒲津以固守。"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-chinese_traditional_translate_classical_chinese.jsonl-340-6458e5503d50\", \"kind\": \"qa\", \"system_variant\": \"none\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 1650, \"supervised_tokens\": 93, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 20632,
+    "subject": "chinese",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "文言文翻译",
+    "reason": "提供一段明末农民战争相关的文言材料，要求翻译成现代文。这是高中语文文言文阅读的核心题型之一，考查实词、虚词理解及句式转换，符合高考层级要求。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-26267.json"
+  },
+  "content_review": {
+    "line": 20632,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "考查文言文翻译成现代汉语，属于高中语文语言文字应用/古诗文阅读常见题型，难度与高考相当。参考译文基本准确。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n诸将白广恩、高汝利、左光先、梁甫先行后皆降。陈永福以先射中自成目，保山巅不敢下，自成折箭为誓，招之，亦降。惟高杰以窃自成妻走延安，为李过所追，折而东，渡宜川，绝蒲津以守。\n把这句话翻译成现代文。\n我不会这道题。先给我一个能自己尝试的小提示。",
+      "images": []
+    },
+    {
+      "id": "m2",
+      "role": "user",
+      "content": "这个提示我还没理解，请换一种说法或拆细一点；先别给最终答案。",
+      "images": []
+    },
+    {
+      "id": "m3",
+      "role": "user",
+      "content": "我想自己接着做，请结合刚才的讲解，只提醒下一步该检查什么。",
+      "images": []
+    }
+  ]
+}

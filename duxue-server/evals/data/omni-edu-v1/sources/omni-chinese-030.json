@@ -1,0 +1,63 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 25441,
+  "uid": "coig-exam_coig_exam_sampled_clean_v3.jsonl-303-5adb48d4a3c2",
+  "dataset": "coig-cqia",
+  "record_sha256": "f90ccb0893adb73d04ecffa2ab3a51d3c48691afc0485ec08e0907a6b90bb7a5",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n古文阅读\n阅读下列文言文，完成下面小题。【甲】元丰六年十月十二日夜，解衣欲睡，月色入户，欣然起行。念无与为乐者，遂至承天寺寻张怀民。怀民亦未寝，相与步于中庭。庭下如积水空明，水中藻、荇交横，盖竹柏影也。何夜无月？何处无竹柏？但少闲人如吾两人者耳。（《记承天寺夜游》）【乙】黄州东南三十里为沙湖，亦曰螺师店。予买田其间，因往相田，得疾。闻麻桥人庞安常善医而聋，遂往求疗。安常虽聋，而颖悟绝人，以纸画字，书不数字，辄深了人意。余戏之曰余以手为口君以眼为耳皆一时异人也疾愈，与之同游清泉寺。寺在蕲水郭门外二里许，有王逸少洗笔泉，水极甘，下临兰溪，溪水西流。余作歌云：“山下兰芽短浸溪，松间沙路净无泥，萧萧暮雨子规啼。谁道人生无再少？门前流水尚能西！休将白发唱黄鸡。”是日剧饮而归。（《东坡志林·游沙湖》）\n古文阅读\n阅读下列文言文，完成下面小题。【甲】元丰六年十月十二日夜，解衣欲睡，月色入户，欣然起行。念无与为乐者，遂至承天寺寻张怀民。怀民亦未寝，相与步于中庭。庭下如积水空明，水中藻、荇交横，盖竹柏影也。何夜无月？何处无竹柏？但少闲人如吾两人者耳。（《记承天寺夜游》）【乙】黄州东南三十里为沙湖，亦曰螺师店。予买田其间，因往相田，得疾。闻麻桥人庞安常善医而聋，遂往求疗。安常虽聋，而颖悟绝人，以纸画字，书不数字，辄深了人意。余戏之曰余以手为口君以眼为耳皆一时异人也疾愈，与之同游清泉寺。寺在蕲水郭门外二里许，有王逸少洗笔泉，水极甘，下临兰溪，溪水西流。余作歌云：“山下兰芽短浸溪，松间沙路净无泥，萧萧暮雨子规啼。谁道人生无再少？门前流水尚能西！休将白发唱黄鸡。”是日剧饮而归。（《东坡志林·游沙湖》）\n翻译句子。庭下如积水空明，水中藻、荇交横，盖竹柏影也。"
+      },
+      {
+        "role": "assistant",
+        "content": "庭院中的月光如积水般清明澄澈，（可以看到）水中有藻、荇交错纵横，大概是竹子和柏树的影子吧。\n\n本题考查句子翻译。答此题要做到：字字落实，意译、直译相结合，意译为主。句中的关键字词有：庭下：庭院中；空明：清明澄澈；交横：交错纵横；盖：大概是。"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-303-5adb48d4a3c2\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 6459, \"supervised_tokens\": 84, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 25441,
+    "subject": "chinese",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "文言文翻译",
+    "reason": "选取苏轼经典篇目《记承天寺夜游》，要求翻译指定句子，属于高中语文文言文基础巩固题，难度适中但符合高考对文言实词虚词及句式的考查要求。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-22657.json"
+  },
+  "content_review": {
+    "line": 25441,
+    "subject_correct": true,
+    "complete": true,
+    "level": "other_k12",
+    "reason": "甲文为苏轼《记承天寺夜游》，系统编初中语文教材篇目；乙文为《东坡志林·游沙湖》。题目要求翻译课内文言句子，属于初中文言文基础考查，不符合高考层级。参考译文正确。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "diagnostic_adaptation": {
+    "id": "omni-chinese-030",
+    "student_attempt": "庭院的地面上好像积满了水，清澈透明，水中还有藻、荇交错纵横，原来是竹子和柏树的影子。",
+    "assessment": "correct",
+    "feedback_criteria": "检查学生是否准确翻译了“空明”（清澈透明/澄澈）、“交横”（交错纵横）和“盖”（原来是/大概是）。若译文通顺且关键实词虚词解释无误，判定为正确。无需纠结于“积水”是比喻还是直译，只要体现出月光如水般的质感即可。",
+    "is_choice": false,
+    "model": "qwen3.8-flash"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n古文阅读\n阅读下列文言文，完成下面小题。【甲】元丰六年十月十二日夜，解衣欲睡，月色入户，欣然起行。念无与为乐者，遂至承天寺寻张怀民。怀民亦未寝，相与步于中庭。庭下如积水空明，水中藻、荇交横，盖竹柏影也。何夜无月？何处无竹柏？但少闲人如吾两人者耳。（《记承天寺夜游》）【乙】黄州东南三十里为沙湖，亦曰螺师店。予买田其间，因往相田，得疾。闻麻桥人庞安常善医而聋，遂往求疗。安常虽聋，而颖悟绝人，以纸画字，书不数字，辄深了人意。余戏之曰余以手为口君以眼为耳皆一时异人也疾愈，与之同游清泉寺。寺在蕲水郭门外二里许，有王逸少洗笔泉，水极甘，下临兰溪，溪水西流。余作歌云：“山下兰芽短浸溪，松间沙路净无泥，萧萧暮雨子规啼。谁道人生无再少？门前流水尚能西！休将白发唱黄鸡。”是日剧饮而归。（《东坡志林·游沙湖》）\n古文阅读\n阅读下列文言文，完成下面小题。【甲】元丰六年十月十二日夜，解衣欲睡，月色入户，欣然起行。念无与为乐者，遂至承天寺寻张怀民。怀民亦未寝，相与步于中庭。庭下如积水空明，水中藻、荇交横，盖竹柏影也。何夜无月？何处无竹柏？但少闲人如吾两人者耳。（《记承天寺夜游》）【乙】黄州东南三十里为沙湖，亦曰螺师店。予买田其间，因往相田，得疾。闻麻桥人庞安常善医而聋，遂往求疗。安常虽聋，而颖悟绝人，以纸画字，书不数字，辄深了人意。余戏之曰余以手为口君以眼为耳皆一时异人也疾愈，与之同游清泉寺。寺在蕲水郭门外二里许，有王逸少洗笔泉，水极甘，下临兰溪，溪水西流。余作歌云：“山下兰芽短浸溪，松间沙路净无泥，萧萧暮雨子规啼。谁道人生无再少？门前流水尚能西！休将白发唱黄鸡。”是日剧饮而归。（《东坡志林·游沙湖》）\n翻译句子。庭下如积水空明，水中藻、荇交横，盖竹柏影也。\n我的尝试：庭院的地面上好像积满了水，清澈透明，水中还有藻、荇交错纵横，原来是竹子和柏树的影子。\n请检查我已有的理由或结果，只指出可核验的部分，并给一个自检提示。",
+      "images": []
+    }
+  ]
+}

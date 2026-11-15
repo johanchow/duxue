@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 8963,
+  "uid": "cmm-math-17184",
+  "dataset": "cmm-math-text",
+  "record_sha256": "25d1a6d9f933f9170ca89d5cc554178b90c834c1e9261f15d47b0bd41bb3d253",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n（2019春・河南期中）围棋盒子中有多粒黑子和白子, 已知从中取出 2 粒都是黑子的概率为 $\\frac{1}{7}$,都是白子的概率是 $\\frac{12}{35}$, 求从中任意取出 2 粒恰好是同一色的概率."
+      },
+      {
+        "role": "assistant",
+        "content": "解: 设 “从中取出 2 粒都是黑子” 为事件 $A$,\n\n“从中取出 2 粒都是白子” 为事件 $B$,\n\n“任意取出 2 粒恰好是同一色” 为事件 $C, \\cdots$ (2 分)\n\n则 $C=A \\cup B$, 且事件 $A$ 与 $B$ 互斥… (4 分)\n\n所以 $P(C)=P(A)+P(B)=\\frac{1}{7}+\\frac{12}{35}=\\frac{17}{35}$.\n\n即任意取出 2 粒恰好是同一色的概率为 $\\frac{17}{35} . \\cdots$ (10 分)"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"cmm-math-text\", \"uid\": \"cmm-math-17184\", \"kind\": \"qa\", \"system_variant\": \"general\", \"kcenter\": {\"bucket\": \"subject/math/text/cot/other\", \"rank\": 6107, \"supervised_tokens\": 168, \"token_budget\": 1345000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 8963,
+    "subject": "math",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "古典概型概率计算",
+    "reason": "考察互斥事件概率加法公式及组合数计算，属于高中数学统计与概率模块的核心考点。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-5156.json"
+  },
+  "content_review": {
+    "line": 8963,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "互斥事件概率加法公式P(C)=P(A)+P(B)，属于高中数学概率统计内容。参考解析计算1/7+12/35=5/35+12/35=17/35正确。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "Problem:\n（2019春・河南期中）围棋盒子中有多粒黑子和白子, 已知从中取出 2 粒都是黑子的概率为 $\\frac{1}{7}$,都是白子的概率是 $\\frac{12}{35}$, 求从中任意取出 2 粒恰好是同一色的概率.",
+      "images": []
+    }
+  ]
+}

@@ -1,6 +1,14 @@
 # 读学系统 — 离线评测
 
-> 更新：2026-11-12。本文维护评测架构、职责边界、执行及结果协议。教学规则见 [Tutoring Domain](domain-tutoring.md)，页面、鉴权与指标口径见 [Admin 设计](design-admin.md#evaluation--langfuse)。
+> 更新：2026-11-15。本文维护评测架构、职责边界、执行及结果协议。教学规则见 [Tutoring Domain](domain-tutoring.md)，页面、鉴权与指标口径见 [Admin 设计](design-admin.md#evaluation--langfuse)。
+
+## 执行模式
+
+默认 `python -m evals run` 使用下述 Langfuse 托管用例和原生评分。用户另行授权的 Omni-Edu 本地批次使用 **`python -m evals.local`**：只读取仓库文件、使用本地评分适配器，不连接 Langfuse Dataset、Evaluator、Scores，也不上传遥测。两条入口显式分开，不在云端出错时自动切换。原有托管用例不受本地批次变更影响。
+
+本地模式的用例/逐例要求唯一维护在 `duxue-server/evals/data/omni-edu-v1/`；评分执行复用既有 `evals/grading.py`、`evals/semantic.py`，模型和业务/独立裁判提示词取自固定 Admin 配置快照。内部完整解题另使用版本化的 evaluation-only `evals/local/solve-prompt.txt`，模型及参数沿用快照导师；该提示不进入生产配置或 Ward 链路。本地批次不复制在线 Evaluator 定义，也不把结果写回线上用例。
+
+下列 Langfuse 单源及原生评分规则针对**默认托管模式**，不适用于上述显式本地模式。
 
 ## 事实源与边界
 
@@ -193,7 +201,103 @@ sequenceDiagram
 
 LLM 映射为 `input → input`、`output.response → output`、`output.evaluation → metadata`。Code 读取 `output.evaluation`。规则采样率为1，按检查点要求执行；原生分数保留裁判版本、理由和证据。人工复核使用现有共用队列，自动入队尚未实现。
 
-## 运行、复现与结果
+## Omni-Edu 本地文件评测
+
+### 数据与审核口径
+
+入口：[`evals/data/omni-edu-v1/README.md`](../../duxue-server/evals/data/omni-edu-v1/README.md)。固定上游 Hugging Face revision `67b2607f7bd01185c2c47087aa7591e435b77ac6`；完整 69,999 条原始快照仍在 ignored `var/evals/datasets/omni-edu-v1/`，本批只复制所选原始记录及图片。
+
+| 主目的 | 本批数量 | Dataset 归属 |
+|---|---:|---|
+| 学科完整解题 | 42 | teaching-correctness |
+| 学生作答诊断 | 72 | teaching-correctness |
+| 教学引导 | 96 | guidance-logic |
+
+语数外各30，其他六科各20。210个任务、234个检查点，其中12个三轮脚本、18个图文任务；开发168/封存42，按题目家族隔离。原题文字精确去重，并对语义家族建议作复核，不宣称经过教师完整近重复认证。阅读材料和题组仍按一个来源任务计数。
+
+当前有 **138个高考同等层级 proposed 标签**（解题21、诊断52、引导65），经模型辅助审阅和明确的助手内容复核，**教师确认数为0**。语文26/数学28/英语27/物理8/化学6/生物16/政治8/历史5/地理14；总数达到至少105，物理/化学/政治/历史未达到各科一半，不能宣称九科高考覆盖同等充分。上游部分试题适用历史课程范围，不据此认证现行考试大纲全覆盖。
+
+为保持高中九科场景的可比性，本批题面来自所选学科题目；72条诊断的学生尝试及96条辅导请求/脚本为**显式合成改编**，不能声称是Omni-Edu原生真实师生对话。`category`表示本项目测试目标，原始类别保留在 `sources/` 中。学生正确、错误、证据不足各24条；证据不足脚本明确声明尚未写出推理，不把完整正确答案误标为信息不足。选择/判断题不要求导师逐项确认候选项对错。
+
+`selection.json`维护配额、来源引用及审核依据；`sources/`保存原system、题面、原assistant及改编记录；两个目的目录保存`dialogue-eval.v2`执行记录；`assets/`为选中图片的本地审计镜像；`manifest.json`记录文件哈希。原system、末条assistant及诊断制作依据仅供追溯/评分，不能进入被测请求；已明确提交的合成学生答案属于合法输入证据。参考材料仍未经教师认证，评分要求允许合理异解并要求独立核验。合成制作模型的诊断意见仅留在来源记录，不作为评分指令，避免把错误意见或逐项确认选项的要求传给裁判。
+
+### OSS 图片引用
+
+本批18张图片使用自有阿里云 OSS，未上传 Langfuse 原生媒体。`assets.oss.json`为稳定引用事实源，构建器同步生成`manifest.assets`及各`manifest.tasks[].assets`映射；消息中的`images`继续保存逻辑文件名，由映射解析为OSS对象，避免把存储协议塞进题面。引用示例：
+
+```json
+{
+  "provider": "oss",
+  "bucket_alias": "eval",
+  "key": "evals/omni-edu-v1/images/<完整SHA256>.jpg",
+  "sha256": "<完整SHA256>",
+  "content_type": "image/jpeg",
+  "size_bytes": 12345
+}
+```
+
+`eval`映射到服务端`.env`的`OSS_BUCKET_NAME`（兼容`OSS_BUCKET`），使用既有OSS凭据和公网endpoint，独立于摄像bucket。上传显式设置对象private和防覆盖；已存在的对象只回读核验，不修改权限或覆盖。注册引用前逐张回读核对长度及完整SHA256。使用[OSS防覆盖请求头](https://www.alibabacloud.com/help/en/oss/developer-reference/prevent-objects-from-being-overwritten-by-objects-that-have-the-same-names-2)，凭据、临时签名URL不写入Dataset。
+
+实际`run`在模型调用前只下载筛选任务所需图片到本次输出的`resolved-assets/`，核验后传给导师和本地裁判；OSS不可访问、缺图或摘要错误即停止，不回退到本地镜像。原有运行命令不变。静态`validate`和`--preflight-only`不访问OSS，不证明远端对象当前可读取；可单独执行：
+
+```bash
+# 回读本批全部OSS图片并核验，不调用模型或Langfuse
+.venv/bin/python -m evals.local.assets check --data evals/data/omni-edu-v1
+
+# 幂等上传所选图片，全部回读通过后重建引用及manifest
+.venv/bin/python -m evals.local.assets upload --data evals/data/omni-edu-v1
+```
+
+这一步完成本批本地执行器的OSS引用，未导入Langfuse Dataset。将来托管模式需保留此对象映射并适配其图片解析、评分与Trace外链，不能直接沿用当前强制Langfuse原生媒体的迁移命令；网页预览及云端视觉裁判的临时授权另行适配。
+
+### 独立启动
+
+以下命令均从 `duxue-server/` 执行。静态校验只需要项目开发环境；真实运行需要项目 `.env` 中的模型凭据及**本地完整配置快照**，不需Langfuse凭据，不读取在线Admin发布。现有设置模块会读取`.env`的必要配置，但本地评测不连接业务数据库。
+
+```bash
+# 只校验本地文件，不联网、不调用模型
+.venv/bin/python -m evals.local validate --data evals/data/omni-edu-v1
+
+# 固定配置与图片能力预检，不调用模型；输出目录必须是新目录
+.venv/bin/python -m evals.local run --data evals/data/omni-edu-v1 \
+  --config-snapshot <本地完整配置快照.json> \
+  --out var/evals/omni-preflight --preflight-only
+
+# 先跑一个开发用例；会调用导师、必要门禁和本地独立质量裁判
+.venv/bin/python -m evals.local run --data evals/data/omni-edu-v1 \
+  --config-snapshot <本地完整配置快照.json> \
+  --case omni-math-021 --out var/evals/omni-one
+
+# 专门跑高考层级、数学、教学正确性子集；筛选条件取交集
+.venv/bin/python -m evals.local run --data evals/data/omni-edu-v1 \
+  --config-snapshot <本地完整配置快照.json> \
+  --dataset teaching-correctness --subject math --level gaokao_equivalent \
+  --out var/evals/omni-math-gaokao
+
+# 日常开发只跑开发集；正式评估时可另选holdout，或不加split跑全部210
+.venv/bin/python -m evals.local run --data evals/data/omni-edu-v1 \
+  --config-snapshot <本地完整配置快照.json> \
+  --split development --samples 3 --workers 2 --out var/evals/omni-dev
+
+# 全部本地210任务，每例一次采样
+.venv/bin/python -m evals.local run --data evals/data/omni-edu-v1 \
+  --config-snapshot <本地完整配置快照.json> \
+  --samples 1 --workers 2 --out var/evals/omni-all
+```
+
+支持重复 `--dataset/--subject/--level/--case/--split`；同字段为并集、字段间为交集。`--samples`指定重复采样，`--workers`限制1至8；不同采样全部计入结果，不低分重抽。`--allow-incomplete`仅用于明确接受配额缺口的开发子集，不覆盖结构错误；完整本批不需此参数。输出不能放在输入数据目录内。
+
+配置中需有`tutoring.turn`、备用、生产门禁及`evals.semantic-judge`等既有组件；本地质量裁判须与导师/备用型号不同。含图子集要求导师、备用与质量裁判都声明支持图片，实际图片字节传入请求，缺图/不支持为error。若快照授权数学工具，本地须按[部署说明](../deployment.md#数学执行器与配置升级)准备计算执行器并设置`MATH_ENGINE_SOCKET`；未运行执行器时如实保留unknown/失败，不冒充已核验。
+
+### 执行和结果
+
+解题目标调用evaluation-only无状态适配器，给出完整解答，记录模型参数与独立解题提示词哈希；不走Ward答案披露策略，也不冒充生产辅导通过。诊断/引导复用生产`run_tutor_turn()`和现有本地`SemanticGrader`。多轮使用实际前序导师回复，数据库上下文为显式注入，不证明生产数据库状态机闭环；脚本未要求学生实际完成最终答案，不能外推“独立解出率”。
+
+每次运行保存配置快照、数据副本、代码哈希、评分模型/提示词身份、逐任务实际交付与评分理由，以及`results.json`。按学科、高考层级、Dataset、执行目标、开发/封存集分报；任务、重复采样、检查点分母独立。缺图、未被业务兜底处理的执行异常、评分异常或缺分为error；业务兜底作为无有效帮助的fail处理。前序失败后的多轮检查点为not_run。质量分仍uncalibrated，不能以自动通过宣称高中九科稳定可靠。
+
+校验/运行错误退出2，有质量失败或样本执行错误退出1，全通过退出0。`--preflight-only`只生成预检与复现资料，不生成伪造的评测分数。确定性重建使用`.venv/bin/python -m evals.local.prepare --data evals/data/omni-edu-v1`，读取已审阅recipe和本地source，不调用模型或重新标注；内容编辑后须重建manifest并重新校验。
+
+## 托管模式运行、复现与结果
 
 在 `duxue-server/` 下执行：
 

@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 25505,
+  "uid": "coig-chinese_traditional_translate_classical_chinese.jsonl-542-ba13bcaeda69",
+  "dataset": "coig-cqia",
+  "record_sha256": "10fa9ae07422599c8b634ba8bb2be6c149983a03bf0e1b1758550dd3907a2e3c",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n翻译成现代文：\n假令单于初立，欲委身中国，未知利害，私使伊邪莫演诈降以卜吉凶，受之，亏德沮善，令单于自疏，不亲边吏；或者设为反间，欲因而生隙，受之，适合其策，使得归曲而责直。\n答案："
+      },
+      {
+        "role": "assistant",
+        "content": "此外，还可作这样的假设；单于新即位，想依靠中国，但不知这样做的利害，暗中指使伊邪莫演诈降，以占卜吉凶。中国如果接受，便有亏道义，败坏美德，使单于同中国疏远，不与中国边疆的官员友好相处。或许是单于故意设下的反间计，想借此生仇，如果中国接纳他的归降，正好中了单于的计策，使匈奴可以把过错归到中国头上，从而理直气壮地责备我们。"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-chinese_traditional_translate_classical_chinese.jsonl-542-ba13bcaeda69\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 6523, \"supervised_tokens\": 112, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 25505,
+    "subject": "chinese",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "文言文翻译",
+    "reason": "提供汉代史书片段（出自《汉书·匈奴传》等类似语境），要求翻译成现代文，是典型的高考语文文言文阅读翻译题，考查实词、虚词及特殊句式的理解。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-23255.json"
+  },
+  "content_review": {
+    "line": 25505,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "文言文翻译为现代汉语，涉及汉代匈奴单于、伊邪莫演等历史语境下的文言句式与词义理解，属于高考语文文言文翻译题型。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n翻译成现代文：\n假令单于初立，欲委身中国，未知利害，私使伊邪莫演诈降以卜吉凶，受之，亏德沮善，令单于自疏，不亲边吏；或者设为反间，欲因而生隙，受之，适合其策，使得归曲而责直。\n答案：\n这题我卡住了。请先帮我拆出一个能动手的小步骤，不要给完整答案。",
+      "images": []
+    }
+  ]
+}

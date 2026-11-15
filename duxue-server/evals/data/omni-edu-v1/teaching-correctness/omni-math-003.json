@@ -1,0 +1,84 @@
+{
+  "schema_version": "dialogue-eval.v2",
+  "id": "omni-math-003",
+  "type": "single_turn",
+  "replay_mode": "fixed_history",
+  "source": {
+    "kind": "synthetic",
+    "coverage": "authored",
+    "provider": "cmm-math-multimodal",
+    "note": "{\"source_record\": \"sources/omni-math-003.json\", \"uid\": \"cmm-math-20696\", \"source_category\": \"subject_competence\"}"
+  },
+  "messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "<image>\nProblem:\n求三个不相等的实数 $a, b, c$ 最大值的程序框图如图所示, 则空白判断框内应为 $($ )\n\n<ImageHere>\n\nOptions:\nA. $a>b$ ?\nB. $a>c$ ?\nC. $a>b$ 或 $a>c$ ?\nD. $a>b$ 且 $a>c$ ?",
+      "images": [
+        "acf0c7595f000d135575ea89ce02437e54dae949b75e8b8b6f3.jpg"
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "id": "check-1",
+      "after_message": "m1",
+      "component": "tutoring.turn",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "problem": {
+            "summary": "<image>\nProblem:\n求三个不相等的实数 $a, b, c$ 最大值的程序框图如图所示, 则空白判断框内应为 $($ )\n\n<ImageHere>\n\nOptions:\nA. $a>b$ ?\nB. $a>c$ ?\nC. $a>b$ 或 $a>c$ ?\nD. $a>b$ 且 $a>c$ ?",
+            "active_subgoal": "程序框图（算法流程图）的逻辑推理",
+            "substantive_attempts": 0,
+            "hints_given": 0
+          },
+          "task_title": "本地学科答疑评测",
+          "task_active": true
+        },
+        "note": "Injected evaluation context; not a production database observation."
+      },
+      "grading": {
+        "deterministic": [
+          {
+            "id": "delivered",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "answer"
+            ]
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "correctness",
+            "type": "score",
+            "rubric": "内部完整解题：依据原题和实际图片独立核验最终结论、推导、定义域、单位、条件及各小问覆盖。允许数学等价表达与有依据的异解。1分错误/无解答，2分重要错误，3分方向正确但关键缺漏，4分结论与主要推导正确且完整，5分进一步严谨清晰。只评价实际solution，不要求启发提问。",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "本题知识目标：程序框图（算法流程图）的逻辑推理。参考答案是上游未认证材料，须独立核验；参考有争议时不得盲从，不因合理异解扣分。",
+            "expected": "pass"
+          }
+        ],
+        "reference_response": "由题意, 程序求 $a, b, c$ 中的最大值,第 1 步, 比较 $a$ 与 $b 、 c$ 的大小，当 $a$ 比 $b 、 c$ 都大时，输出 $a$ 的值;当 $a$ 不能比 $b 、 c$ 都大时, 进入第 2 步;第 2 步, 由于 $a$ 不是最大值, 所以比较 $b 、 c$ 的大小,当 $b>c$ 时, 输出 $b$; 当 $b<c$ 时, 输出 $c$,综上所述, 空白判断框内应填上: $a>b$ 且 $a>c$ ?, 故选 D.",
+        "rationale": [
+          "Synthetic local adaptation; reference and semantic labels remain proposed."
+        ]
+      }
+    }
+  ],
+  "review_batch": "omni-edu-v1",
+  "label_status": "proposed",
+  "note": "Adapted evaluation task; original system and final assistant are source/scoring-only. No teacher certification.",
+  "conversation_id": "0fe93a0763d8509db50e",
+  "turn_index": 0,
+  "tags": [
+    "subject_competence",
+    "math",
+    "gaokao_equivalent",
+    "solve"
+  ]
+}

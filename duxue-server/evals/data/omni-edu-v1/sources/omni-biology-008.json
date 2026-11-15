@@ -1,0 +1,64 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 22935,
+  "uid": "coig-exam_coig_exam_sampled_clean_v3.jsonl-1674-76dbc3e367a9",
+  "dataset": "coig-cqia",
+  "record_sha256": "9ec6ae02ee490363f9b0ee57fd88c81555296be97e660db0106be6e047f1361a",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n回答下列问题\n资料1：给动物刺激A，产生某反射活动；给动物刺激B，不产生该反射活动。如果同时给动物刺激A和刺激B，经过多次重复后，不给动物刺激A，只给刺激B也可以产生该反射活动。其中刺激A称为非条件刺激，刺激B称为条件刺激。 资料2：给大鼠服用药物C可引起抗体水平下降。给大鼠服用糖精则抗体水平不变。 若同时给大鼠服用药物C和糖精，经过多次重复后，只给大鼠服用糖精，结果引起抗体水平下降。 资料3：有些激素能够抑制免疫反应，有些激素则能够促进免疫反应。 资料4：食物中蛋白质缺乏导致严重营养不良时，动物的淋巴组织萎缩，免疫反应下降。\n回答下列问题\n资料1：给动物刺激A，产生某反射活动；给动物刺激B，不产生该反射活动。如果同时给动物刺激A和刺激B，经过多次重复后，不给动物刺激A，只给刺激B也可以产生该反射活动。其中刺激A称为非条件刺激，刺激B称为条件刺激。 资料2：给大鼠服用药物C可引起抗体水平下降。给大鼠服用糖精则抗体水平不变。 若同时给大鼠服用药物C和糖精，经过多次重复后，只给大鼠服用糖精，结果引起抗体水平下降。 资料3：有些激素能够抑制免疫反应，有些激素则能够促进免疫反应。 资料4：食物中蛋白质缺乏导致严重营养不良时，动物的淋巴组织萎缩，免疫反应下降。\n如果把糖精引起动物免疫反应的改变视为反射活动，则在该反射的建立过程中 非条件刺激是____，条件刺激是____。"
+      },
+      {
+        "role": "assistant",
+        "content": "比较资料1和2，给大鼠服用药物C（刺激A）可引起抗体水平下降（某反射活动），给大鼠服用糖精（刺激B）则抗体水平不变（不产生某反射）。多次重复后只给大鼠服用糖精（刺激B）也会引起抗体水平下降（产生某反射）。\n\n因此答案为：药物C\t\t糖精"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-1674-76dbc3e367a9\", \"kind\": \"qa\", \"system_variant\": \"general\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 3953, \"supervised_tokens\": 76, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 22935,
+    "subject": "biology",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "条件反射的建立与非条件刺激/条件刺激的判断",
+    "reason": "题目通过实验资料考查生物学中神经调节的条件反射机制，特别是非条件刺激和条件刺激的逻辑推导。这是高中生物必修模块的重点难点，符合高考理综生物部分的考查深度和形式。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-23378.json"
+  },
+  "content_review": {
+    "line": 22935,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "以条件反射建立过程为背景，结合免疫调节资料，要求类比推理非条件刺激与条件刺激，属于高中生物神经-体液-免疫调节网络的综合应用题。参考解析正确。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "diagnostic_adaptation": {
+    "id": "omni-biology-008",
+    "student_attempt": "我目前只知道这题涉及条件反射的建立与非条件刺激/条件刺激的判断，还没有写出具体推理或结论。请帮我确定第一步。",
+    "assessment": "insufficient",
+    "feedback_criteria": "学生只报告了知识主题，未给出可核验的具体结果或推理。不得将未作答判为答错，也不能虚构学生的错误步骤或已掌握。给一个切题且可执行的起步或自检提示。",
+    "is_choice": false,
+    "model": "qwen3.8-flash",
+    "authored_revision": "assistant-explicit-insufficient-evidence.v1"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n回答下列问题\n资料1：给动物刺激A，产生某反射活动；给动物刺激B，不产生该反射活动。如果同时给动物刺激A和刺激B，经过多次重复后，不给动物刺激A，只给刺激B也可以产生该反射活动。其中刺激A称为非条件刺激，刺激B称为条件刺激。 资料2：给大鼠服用药物C可引起抗体水平下降。给大鼠服用糖精则抗体水平不变。 若同时给大鼠服用药物C和糖精，经过多次重复后，只给大鼠服用糖精，结果引起抗体水平下降。 资料3：有些激素能够抑制免疫反应，有些激素则能够促进免疫反应。 资料4：食物中蛋白质缺乏导致严重营养不良时，动物的淋巴组织萎缩，免疫反应下降。\n回答下列问题\n资料1：给动物刺激A，产生某反射活动；给动物刺激B，不产生该反射活动。如果同时给动物刺激A和刺激B，经过多次重复后，不给动物刺激A，只给刺激B也可以产生该反射活动。其中刺激A称为非条件刺激，刺激B称为条件刺激。 资料2：给大鼠服用药物C可引起抗体水平下降。给大鼠服用糖精则抗体水平不变。 若同时给大鼠服用药物C和糖精，经过多次重复后，只给大鼠服用糖精，结果引起抗体水平下降。 资料3：有些激素能够抑制免疫反应，有些激素则能够促进免疫反应。 资料4：食物中蛋白质缺乏导致严重营养不良时，动物的淋巴组织萎缩，免疫反应下降。\n如果把糖精引起动物免疫反应的改变视为反射活动，则在该反射的建立过程中 非条件刺激是____，条件刺激是____。\n我的尝试：我目前只知道这题涉及条件反射的建立与非条件刺激/条件刺激的判断，还没有写出具体推理或结论。请帮我确定第一步。\n请检查我已有的理由或结果，只指出可核验的部分，并给一个自检提示。",
+      "images": []
+    }
+  ]
+}

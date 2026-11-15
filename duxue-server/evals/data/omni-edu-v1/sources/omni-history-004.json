@@ -1,0 +1,63 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 24213,
+  "uid": "coig-exam_coig_exam_sampled_clean_v3.jsonl-1313-92576023e895",
+  "dataset": "coig-cqia",
+  "record_sha256": "057475cf9eaa6cba69ec8009a8c7940c752398f889f63826cd6bedfcf0f0f600",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n选择题\n建国初期，一位老大爷谈到种痘运动说：“现在的国家真好，共产党毛主席处处关心我们，从解放后，没听说哪个地方闹天花，也看不见有麻子的孩子啦。我家的四个孩子，要是在过去请‘花先生’栽‘花’，顶少也得一石来粮。”这则材料作为例证，可用来说明（）A.社会主义改造成效显著B.新中国获得民众政治认同C.民主政治建设扎实推进D.卫生防疫体系的全面建立"
+      },
+      {
+        "role": "assistant",
+        "content": "从材料可以看出，民众对中共领导全国人民抗击天花等疫病所取得的成果十分认同，这从侧面反映出新中国获得了民众的政治认同，B项正确；材料没有体现三大改造的内容，排除A项；材料与民主政治无关，排除C项；“全面建立”不符合建国初期的史实，排除D项。"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-1313-92576023e895\", \"kind\": \"qa\", \"system_variant\": \"general\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 5231, \"supervised_tokens\": 67, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 24213,
+    "subject": "history",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "新中国初期社会变迁与政治认同",
+    "reason": "通过种痘运动的民间口述史料，考察建国初期卫生防疫与社会治理对民众政治认同的影响。属于高中历史'中华人民共和国成立和社会主义建设'单元的典型情境题。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-22965.json"
+  },
+  "content_review": {
+    "line": 24213,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "以建国初期种痘运动的材料为情境，要求分析其作为例证可说明的历史结论（新中国获得民众政治认同），涉及史料实证与历史解释素养，符合高考历史选择题的典型考查方式与深度。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "diagnostic_adaptation": {
+    "id": "omni-history-004",
+    "student_attempt": "材料中老大爷提到“现在的国家真好”、“共产党毛主席处处关心我们”，并将过去请‘花先生’栽花的昂贵成本与现在免费种痘对比，表达了对新政权的感激和认可。这种民众发自内心的拥护，体现了新中国获得了广泛的政治认同。A项社会主义改造主要涉及生产关系变革，C项民主政治侧重制度建设，D项“全面建立”在建国初期尚不准确且非材料主旨。故选B。",
+    "assessment": "correct",
+    "feedback_criteria": "确认学生是否准确提取了材料中民众对政府防疫工作的正面评价（如感激、认可），并正确将其关联到“政治认同”这一核心概念。检查学生排除其他选项的理由是否合理：A项需指出材料未涉及所有制变革；C项需指出材料未涉及选举或立法等民主程序；D项需指出“全面建立”不符合史实或材料仅体现局部成效而非体系全貌。若学生逻辑清晰且结论正确，判定为正确。",
+    "is_choice": true,
+    "model": "qwen3.8-flash"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n选择题\n建国初期，一位老大爷谈到种痘运动说：“现在的国家真好，共产党毛主席处处关心我们，从解放后，没听说哪个地方闹天花，也看不见有麻子的孩子啦。我家的四个孩子，要是在过去请‘花先生’栽‘花’，顶少也得一石来粮。”这则材料作为例证，可用来说明（）A.社会主义改造成效显著B.新中国获得民众政治认同C.民主政治建设扎实推进D.卫生防疫体系的全面建立\n我的尝试：材料中老大爷提到“现在的国家真好”、“共产党毛主席处处关心我们”，并将过去请‘花先生’栽花的昂贵成本与现在免费种痘对比，表达了对新政权的感激和认可。这种民众发自内心的拥护，体现了新中国获得了广泛的政治认同。A项社会主义改造主要涉及生产关系变革，C项民主政治侧重制度建设，D项“全面建立”在建国初期尚不准确且非材料主旨。故选B。\n请检查我已有的理由或结果，只指出可核验的部分，并给一个自检提示。",
+      "images": []
+    }
+  ]
+}
