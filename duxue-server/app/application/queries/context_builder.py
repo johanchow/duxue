@@ -20,6 +20,7 @@ class ContextBuilder:
         agent_type: str,
         context_refs: list[str],
         context_spec: ContextSpec | None = None,
+        grade_stage: str | None = None,
     ) -> ContextEnvelope:
         spec = context_spec or ContextSpec()
         bundle = self.memory.resolve_context(
@@ -34,13 +35,16 @@ class ContextBuilder:
                 token_budget=spec.token_budget,
             )
         )
+        actor: dict = {"ward_id": ward_id, "role": actor_role}
+        if grade_stage:
+            actor["grade_stage"] = grade_stage
         return ContextEnvelope(
             run={
                 "run_id": run_id,
                 "agent_type": agent_type,
                 "context_refs": context_refs,
             },
-            actor={"ward_id": ward_id, "role": actor_role},
+            actor=actor,
             objective={"agent_type": agent_type},
             session={},
             evidence_refs=bundle.evidence_refs,

@@ -56,6 +56,7 @@ from app.infrastructure.persistence.models import (
     TutoringMessage,
     TutoringProblem,
     TutoringSession,
+    Ward,
     now,
 )
 from fastapi import HTTPException
@@ -274,10 +275,13 @@ class TutoringWorkflow:
         transition("tutoring", "START", "tutoring.turn")
         turn = invocation.turn
         policy = PolicyRegistry()
+        ward = self.db.get(Ward, invocation.ward_id)
+        grade_stage = ward.grade_stage if isinstance(ward, Ward) else None
         envelope = ContextBuilder(SqlAlchemyMemoryFacade(self.db)).build(
             run_id=invocation.run_id, ward_id=invocation.ward_id, actor_id=invocation.ward_id,
             actor_role="ward", agent_type="tutoring", context_refs=invocation.context_refs,
             context_spec=policy.context_spec("tutoring"),
+            grade_stage=grade_stage,
         )
         session = self._find_session(invocation.ward_id, turn.get("study_session_id"))
         tutor = (

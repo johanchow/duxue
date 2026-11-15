@@ -29,3 +29,16 @@ class MathEngineAdapter:
                 return MathResult.model_validate_json(raw)
         except (OSError, ValueError):
             return MathResult(status="unknown", error_code="unavailable")
+
+
+class SubprocessMathEngineAdapter:
+    """Explicit non-production adapter running the isolated child worker directly."""
+
+    def __init__(self, *, timeout: float = 2.0):
+        self.timeout = timeout
+
+    def execute(self, request: MathInput) -> MathResult:
+        from math_executor.server import compute
+
+        payload = request.model_dump(exclude={"image_ref", "step_ref"})
+        return MathResult.model_validate(compute(payload, timeout=self.timeout))

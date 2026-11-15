@@ -92,3 +92,25 @@ def test_compose_has_enforced_permission_boundaries():
     assert "env_file" not in engine
     assert engine["pids_limit"] == 16
     assert not any("/var/run/docker.sock" in v for v in engine["volumes"])
+
+
+def test_subprocess_adapter_and_production_socket_enforcement(monkeypatch):
+    from app.bootstrap.math_engine import math_engine
+    from app.infrastructure.math_engine.adapter import (
+        MathEngineAdapter,
+        SubprocessMathEngineAdapter,
+    )
+
+    monkeypatch.setenv("MATH_ENGINE_MODE", "subprocess")
+    monkeypatch.setenv("APP_ENV", "test")
+    engine = math_engine()
+    assert isinstance(engine, SubprocessMathEngineAdapter)
+    res = engine.execute(MathInput(op="equivalent", args={"left": "6*7", "right": "42"}))
+    assert res.status == "ok" and res.verdict == "equal"
+
+    monkeypatch.setenv("APP_ENV", "production")
+    with pytest.raises(ValueError, match="production requires MATH_ENGINE_MODE=socket"):
+        math_engine()
+
+    monkeypatch.setenv("MATH_ENGINE_MODE", "socket")
+    assert isinstance(math_engine(), MathEngineAdapter)

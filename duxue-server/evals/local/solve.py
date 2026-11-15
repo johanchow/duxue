@@ -21,6 +21,8 @@ def identity(spec):
         "model": spec.model,
         "temperature": spec.temperature,
         "max_output_tokens": spec.max_tokens,
+        "enable_thinking": bool(getattr(spec, "enable_thinking", False)),
+        "thinking_budget": getattr(spec, "thinking_budget", None),
         "prompt_id": "evals.local.solve.v1",
         "prompt_sha256": hashlib.sha256(PROMPT.encode()).hexdigest(),
     }
@@ -29,25 +31,24 @@ def identity(spec):
 def complete(case, spec, images):
     if images and not spec.accepts_images:
         raise ValueError("solution model cannot receive required images")
-    from app.infrastructure.ai.client import dashscope_client
+    from app.infrastructure.ai.components import complete_json_chat
 
     # This adapter is deliberately not a production TutorTurnLoop invocation.
     # The model/parameters stay pinned; the explicit evaluation prompt has its own digest.
     user = [{"type": "text", "text": case.student_said}]
     user.extend({"type": "image_url", "image_url": {"url": u}} for u in images)
-    with dashscope_client(timeout=spec.timeout_seconds or 60) as client:
-        response = client.chat.completions.create(
-            model=spec.model,
-            temperature=spec.temperature,
-            max_tokens=spec.max_tokens,
-            messages=[
-                {"role": "system", "content": PROMPT},
-                {"role": "user", "content": user},
-            ],
-            response_format={"type": "json_object"},
-            extra_body={"enable_thinking": False},
-        )
-    choice = response.choices[0]
-    if choice.finish_reason == "length":
+    completion = complete_json_chat(
+        timeout=spec.timeout_seconds or 60,
+        model=spec.model,
+        temperature=spec.temperature,
+        max_tokens=spec.max_tokens,
+        messages=[
+            {"role": "system", "content": PROMPT},
+            {"role": "user", "content": user},
+        ],
+        enable_thinking=bool(getattr(spec, "enable_thinking", False)),
+        thinking_budget=getattr(spec, "thinking_budget", None),
+    )
+    if completion.finish_reason == "length":
         raise ValueError("solution output truncated")
-    return Solution.model_validate(json.loads(choice.message.content or "")).solution
+    return Solution.model_validate(json.loads(completion.raw)).solution

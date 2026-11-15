@@ -72,6 +72,8 @@ def fallback_text(failure: str | None, leak_reason: str | None = None) -> str:
             "incorrect_confirmation": "这次回答还没有充分依据确认你的答案是否正确，所以暂时不能给出对错结论。你可以选一道题，我们一起核对解题过程。",
             "premature_conclusion": "这次回答跳过了必要的计算或检查，还不能把结论当作已经验证。你可以说说已经做到哪一步，我们一起补上验证。",
         }.get(leak_reason, FALLBACK_TEXT)
+    if failure == "math_inconsistent":
+        return "这次回答中的计算核验未通过，暂时不能直接给出结论。你可以说说你列出的算式或做到哪一步，我们一起逐步核对。"
     if failure in {"pronounce_without_lesson", "lesson_markup", "segment_not_in_source"}:
         return "这次没能生成可用的发音内容。你可以指定要读的单词或句子，再试一次。"
     return FALLBACK_TEXT

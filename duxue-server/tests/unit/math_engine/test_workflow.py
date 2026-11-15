@@ -289,3 +289,139 @@ def test_image_fraction_answer_passes_actual_candidate_pipeline():
         assert result.failure is None
         assert result.candidate.image_review.questions[0].verdict == 'correct'
         assert result.candidate.math_claims[0].assertion == 'equal'
+
+
+def test_transient_unavailable_is_not_cached_and_failure_codes_are_decoupled():
+    from tests.support.fakes import StaticTutorModel
+
+    flaky_calls = 0
+
+    class FlakyEngine:
+        def execute(self, request):
+            nonlocal flaky_calls
+            flaky_calls += 1
+            if flaky_calls == 1:
+                return MathResult(status="unknown", error_code="unavailable")
+            return MathResult.model_validate(execute(request.model_dump()))
+
+    ledger = MathVerification(FlakyEngine(), {"turn_id": "t"}, set())
+    first = ledger.run({"op": "equivalent", "args": {"left": "6*7", "right": "42"}})
+    second = ledger.run({"op": "equivalent", "args": {"left": "6*7", "right": "42"}})
+    assert first["error_code"] == "unavailable"
+    assert second["status"] == "ok" and second["verdict"] == "equal"
+    assert flaky_calls == 2
+
+    compiled = compile_bundle(
+        upgrade(
+            read_snapshot(),
+            enable=True,
+            enable_thinking=True,
+            thinking_budget=4096,
+            judge_thinking_budget=1024,
+        )["bundle"]
+    )
+    assert compiled.catalog.units["tutoring.turn"].models[0].enable_thinking is True
+    assert compiled.catalog.units["tutoring.turn"].models[0].thinking_budget == 4096
+    assert compiled.catalog.units["tutoring.turn"].models[1].enable_thinking is False
+    assert compiled.catalog.units["tutoring.leak-judge"].models[0].thinking_budget == 1024
+
+    with use_definitions(compiled.catalog):
+        tools = TutorToolbox(
+            None,
+            tutoring_session_id=None,
+            problem=None,
+            task_title=None,
+            task_active=False,
+            window=[],
+            math_engine=Engine(),
+        )
+        bad_math = run_tutor_turn(
+            Model(),
+            {"turn_id": "t1"},
+            "90-37=53对吗",
+            [],
+            [],
+            tools,
+            permit=TutorPermitPolicy.permit(None),
+            leak_judge=Judge(False),
+            task_title=None,
+            problem_summary="90-37=53",
+        )
+        assert bad_math.vetting.failure == "math_inconsistent"
+
+        outage = run_tutor_turn(
+            Model(),
+            {"turn_id": "t2"},
+            "90-37=53对吗",
+            [],
+            [],
+            TutorToolbox(
+                None,
+                tutoring_session_id=None,
+                problem=None,
+                task_title=None,
+                task_active=False,
+                window=[],
+                math_engine=Engine(),
+            ),
+            permit=TutorPermitPolicy.permit(None),
+            leak_judge=Judge(None),
+            task_title=None,
+            problem_summary="90-37=53",
+        )
+        assert outage.vetting.failure == "math_check_failed"
+
+        pronounce_judge = Judge(False)
+        pronounce_raw = {
+            "act": "pronounce",
+            "content": "**apple** 是苹果。",
+            "pronounce": {
+                "lesson": {
+                    "source_text": "apple",
+                    "locale": "en-US",
+                    "introduction": "apple",
+                    "reading_guide": "/ˈæp.əl/",
+                    "notes": [],
+                }
+            },
+        }
+        pron = run_tutor_turn(
+            StaticTutorModel(pronounce_raw),
+            {"turn_id": "t3"},
+            "apple怎么读",
+            [],
+            [],
+            TutorToolbox(
+                None,
+                tutoring_session_id=None,
+                problem=None,
+                task_title=None,
+                task_active=False,
+                window=[],
+                math_engine=Engine(),
+            ),
+            permit=TutorPermitPolicy.permit(None),
+            leak_judge=pronounce_judge,
+            task_title=None,
+            problem_summary=None,
+        )
+        assert pron.vetting.failure is None
+        assert pronounce_judge.math_contexts == []
+
+
+def test_ward_grade_stage_reaches_tutoring_context_envelope(db):
+    from app.application.workflows.tutoring_workflow import TutoringWorkflow
+    from tests.application.study.test_tutoring_workflow_usecase import _ask
+    from tests.support.factories import create_study_session, create_task, create_ward
+    from tests.support.fakes import StaticTutorModel
+
+    ward = create_ward(db, grade_stage="high")
+    session = create_study_session(
+        db, ward=ward, task=create_task(db, ward=ward, title="高三导数")
+    )
+    db.commit()
+    model = StaticTutorModel(tutor_raw(content="先求定义域与导函数。"))
+    workflow = TutoringWorkflow(db, turn_model=model, leak_judge=StaticLeakJudge(False))
+    outcome = _ask(db, workflow, session, "讨论单调性")
+    assert model.calls[0]["envelope"]["actor"]["grade_stage"] == "high"
+    assert "grade_stage" not in outcome.context_snapshot["actor"]

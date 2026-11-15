@@ -98,3 +98,28 @@ def test_summary_reports_p90_latency_and_leak_retry_diagnostics():
         "fallbacks": 1,
         "fallback_reasons": {"leak_detected": 1},
     }
+
+
+def test_math_preflight_blocks_when_enabled_executor_is_down(monkeypatch):
+    from types import SimpleNamespace
+
+    from app.agent_specs.admin_bundle import compile_bundle
+    from app.agent_specs.configuration import read_snapshot
+    from app.agent_specs.definitions import use_definitions
+    from evals import live
+    from scripts.upgrade_math_bundle import upgrade
+
+    monkeypatch.setattr(live, "settings", SimpleNamespace(dashscope_api_key="test-key"))
+    compiled = compile_bundle(upgrade(read_snapshot(), enable=True)["bundle"])
+    with use_definitions(compiled.catalog):
+        monkeypatch.setenv("MATH_ENGINE_MODE", "socket")
+        monkeypatch.setenv("MATH_ENGINE_SOCKET", "/tmp/nonexistent-duxue-math.sock")
+        try:
+            live.preflight()
+        except SystemExit as exc:
+            assert "数学执行器预检未通过" in str(exc)
+        else:
+            raise AssertionError("preflight should fail when socket executor is down")
+
+        monkeypatch.setenv("MATH_ENGINE_MODE", "subprocess")
+        live.preflight()

@@ -33,6 +33,12 @@ def parser():
             q.add_argument("--samples", type=int, default=1)
             q.add_argument("--workers", type=int, default=2)
             q.add_argument(
+                "--math-engine-mode",
+                choices=("auto", "socket", "subprocess"),
+                default="auto",
+                help="Math execution transport for local evaluation (default: auto)",
+            )
+            q.add_argument(
                 "--allow-incomplete",
                 action="store_true",
                 help="Run reviewed subset despite explicit quota gaps",
@@ -99,6 +105,7 @@ def run(args, validation):
                 "started_at": datetime.now(timezone.utc).isoformat(),
                 "mode": "local_files_local_scores",
                 "langfuse_used": False,
+                "math_engine_mode": os.environ.get("MATH_ENGINE_MODE", "socket"),
                 "config_digest": snapshot["digest"],
                 "validation": validation,
                 "selected_ids": [e["id"] for e, _ in tasks],
@@ -191,6 +198,14 @@ def main(argv=None):
             )
         os.environ["AGENT_CONFIG_SOURCE"] = "snapshot"
         os.environ["AGENT_CONFIG_SNAPSHOT"] = str(args.config_snapshot.resolve())
+        if args.math_engine_mode in {"socket", "subprocess"}:
+            os.environ["MATH_ENGINE_MODE"] = args.math_engine_mode
+        elif not os.environ.get("MATH_ENGINE_MODE") and not os.environ.get(
+            "MATH_ENGINE_SOCKET"
+        ):
+            socket_file = Path("/run/math/engine.sock")
+            if not socket_file.exists():
+                os.environ["MATH_ENGINE_MODE"] = "subprocess"
         return run(args, validation)
     except (ValueError, OSError, KeyError) as exc:
         print(f"Local evaluation error: {exc}", file=sys.stderr)

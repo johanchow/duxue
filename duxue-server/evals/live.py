@@ -13,11 +13,26 @@ from evals.runner import Backends
 from evals.semantic import SemanticGrader
 
 
-def preflight() -> None:
+def preflight(*, check_math_executor: bool = True) -> None:
     if not settings.dashscope_api_key:
         raise SystemExit(
             "缺少 DASHSCOPE_API_KEY / VLM_API_KEY：真实模型评测需要联网和密钥。离线校验请用 `validate`。"
         )
+    if check_math_executor:
+        from app.agent_specs.definitions import load_definitions
+        from app.application.ports.math_engine import MathInput
+        from app.bootstrap.math_engine import math_engine
+
+        tutor_unit = load_definitions().units.get("tutoring.turn")
+        if tutor_unit and "tutoring.math" in tutor_unit.tools:
+            probe = math_engine().execute(
+                MathInput(op="equivalent", args={"left": "6*7", "right": "42"})
+            )
+            if probe.status != "ok" or probe.verdict != "equal":
+                raise SystemExit(
+                    f"tutoring.math 已启用但数学执行器预检未通过（status={probe.status}, error={probe.error_code}）；"
+                    "请先启动 math-engine 服务或设置 MATH_ENGINE_MODE=subprocess。"
+                )
 
 
 def eval_settings() -> SimpleNamespace:

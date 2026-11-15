@@ -315,8 +315,8 @@ FACT_REPLY_MAX_CHARS = 120
 # 判官必须还能认出来。
 JUDGE_RECENT_PROBLEMS = 3
 JUDGE_RECENT_STUDENT_UTTERANCES = 3
-# 越过作业答案边界时重试一次；判官自身失败不重试。
-LEAK_RETRY_REASONS = frozenset({"leak_detected"})
+# 越过作业答案边界或数学核验不一致时重试一次；判官自身失败不重试。
+LEAK_RETRY_REASONS = frozenset({"leak_detected", "math_inconsistent"})
 def __getattr__(name):
     if name == "LEAK_REPAIR":
         return render_fragment("tutoring.turn", "leak_prefix")
@@ -541,18 +541,33 @@ def run_tutor_turn(
             })
             ledger = getattr(tools, "math_verification", None)
             if ledger is not None:
+                needs_semantic_math = (
+                    candidate.act not in {"pronounce", "safety", "redirect"}
+                    or bool(candidate.math_claims)
+                    or bool(ledger.records)
+                )
                 try:
                     ledger.validate(candidate.math_claims)
-                    check = getattr(leak_judge, "check_math", None)
-                    checked = check(text=candidate.content + ("\n" + describe(candidate.visual) if candidate.visual else ""),
-                                    context={"problem": problem_summary,
-                                             "candidate_turn": candidate.turn.model_dump() if candidate.turn else None,
-                                             **ledger.context(candidate.math_claims)},
-                                    images=list(judge_images or [])) if check else None
+                    if needs_semantic_math:
+                        check = getattr(leak_judge, "check_math", None)
+                        checked = None
+                        if check is not None:
+                            math_ctx = {
+                                "problem": problem_summary,
+                                "candidate_turn": candidate.turn.model_dump() if candidate.turn else None,
+                                **ledger.context(candidate.math_claims),
+                            }
+                            math_text = candidate.content + ("\n" + describe(candidate.visual) if candidate.visual else "")
+                            for _ in range(2):
+                                checked = check(text=math_text, context=math_ctx, images=list(judge_images or []))
+                                if checked is not None:
+                                    break
+                    else:
+                        checked = True
                 except Exception:  # noqa: BLE001 - independent math check fails closed
                     checked = None
                 if checked is not True:
-                    return Vetting(candidate, None, "leak_check_failed" if checked is None else "leak_detected",
+                    return Vetting(candidate, None, "math_check_failed" if checked is None else "math_inconsistent",
                                    "math_inconsistent")
             checked_summary = (json.dumps({"problem": problem_summary, **ledger.context(candidate.math_claims)},
                                           ensure_ascii=False) if ledger is not None else problem_summary)
