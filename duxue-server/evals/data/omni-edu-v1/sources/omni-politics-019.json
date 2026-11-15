@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 23433,
+  "uid": "coig-exam_coig_exam_sampled_clean_v3.jsonl-539-f91ac7e97665",
+  "dataset": "coig-cqia",
+  "record_sha256": "7eeae2d408e73838c2ee578b619fd7757f09b50ec6c852a4f7966b57ef7cc749",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n选择\n5.2021年2月19日，中央军委授予祁发宝“卫国戍边英雄团长”荣誉称号，追授陈红军“卫国戍边英雄”荣誉称号，给陈祥榕、肖思远、王焯冉追记一等功，向英雄学习，做维护国家安全的主角，我们中学生可以（）①增强维护国家安全的意识②为维护国家安全工作提供便利和协助③制裁破坏国家安全的行为④崇尚英雄，以英雄为榜样，从我做起A.①②③B.①②④C.①③④D.②③④"
+      },
+      {
+        "role": "assistant",
+        "content": "本题考查维护国家安全方面的知识。①②④：依据教材知识，结合材料，向英雄学习，做维护国家安全的主角，我们中学生就要增强维护国家安全的意识，为维护国家安全工作提供便利和协助，崇尚英雄，以英雄为榜样，从我做起，所以①②④说法正确；③：错误，制裁破坏国家安全的行为不是中学生能做的；故本题选B。"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-539-f91ac7e97665\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 4451, \"supervised_tokens\": 84, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 23433,
+    "subject": "politics",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "维护国家安全/公民责任",
+    "reason": "题目考查中学生如何履行维护国家安全的义务，涉及政治常识中公民的权利与义务、国家安全意识等知识点，符合高中思想政治课程要求。选项③“制裁”主体错误，需具备高中政治辨析能力。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-24845.json"
+  },
+  "content_review": {
+    "line": 23433,
+    "subject_correct": true,
+    "complete": true,
+    "level": "other_k12",
+    "reason": "考查中学生维护国家安全的做法，属初中道德与法治常识题，③制裁行为非中学生权限，排除后选B，推理简单。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "Problem:\n选择\n5.2021年2月19日，中央军委授予祁发宝“卫国戍边英雄团长”荣誉称号，追授陈红军“卫国戍边英雄”荣誉称号，给陈祥榕、肖思远、王焯冉追记一等功，向英雄学习，做维护国家安全的主角，我们中学生可以（）①增强维护国家安全的意识②为维护国家安全工作提供便利和协助③制裁破坏国家安全的行为④崇尚英雄，以英雄为榜样，从我做起A.①②③B.①②④C.①③④D.②③④",
+      "images": []
+    }
+  ]
+}

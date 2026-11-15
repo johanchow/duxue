@@ -1,0 +1,82 @@
+{
+  "schema_version": "dialogue-eval.v2",
+  "id": "omni-chinese-017",
+  "type": "single_turn",
+  "replay_mode": "fixed_history",
+  "source": {
+    "kind": "synthetic",
+    "coverage": "authored",
+    "provider": "coig-cqia",
+    "note": "{\"source_record\": \"sources/omni-chinese-017.json\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-71-4716bad11067\", \"source_category\": \"subject_competence\"}"
+  },
+  "messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "Problem:\n请选择正确选项\n下列表述正确的一项是（）　　A.“热得难受”是补充短语，“基础设施”是主谓短语，“重视语文”是动宾短语。　　B.“托尔斯泰这对眼睛里有一百只眼珠。”这句话运用了比输的修辞。　　C.“我们背负着它，播种着，耕耘着，收获着，欣喜地走向生命的远方。”这句话中的标点符号使用正确。　　D.“这十多个少年，委实没有一个不会凫水的，而且两三个还是弄潮的好手。”是并列关系复句。",
+      "images": []
+    }
+  ],
+  "checks": [
+    {
+      "id": "check-1",
+      "after_message": "m1",
+      "component": "tutoring.turn",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "problem": {
+            "summary": "Problem:\n请选择正确选项\n下列表述正确的一项是（）　　A.“热得难受”是补充短语，“基础设施”是主谓短语，“重视语文”是动宾短语。　　B.“托尔斯泰这对眼睛里有一百只眼珠。”这句话运用了比输的修辞。　　C.“我们背负着它，播种着，耕耘着，收获着，欣喜地走向生命的远方。”这句话中的标点符号使用正确。　　D.“这十多个少年，委实没有一个不会凫水的，而且两三个还是弄潮的好手。”是并列关系复句。",
+            "active_subgoal": "短语、修辞与复句辨析",
+            "substantive_attempts": 0,
+            "hints_given": 0
+          },
+          "task_title": "本地学科答疑评测",
+          "task_active": true
+        },
+        "note": "Injected evaluation context; not a production database observation."
+      },
+      "grading": {
+        "deterministic": [
+          {
+            "id": "delivered",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "answer"
+            ]
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "correctness",
+            "type": "score",
+            "rubric": "内部完整解题：依据原题和实际图片独立核验最终结论、推导、定义域、单位、条件及各小问覆盖。允许数学等价表达与有依据的异解。1分错误/无解答，2分重要错误，3分方向正确但关键缺漏，4分结论与主要推导正确且完整，5分进一步严谨清晰。只评价实际solution，不要求启发提问。",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "本题知识目标：短语、修辞与复句辨析。参考答案是上游未认证材料，须独立核验；参考有争议时不得盲从，不因合理异解扣分。",
+            "expected": "pass"
+          }
+        ],
+        "reference_response": "A.“基础设施”是偏正短语；B.“眼睛里有一百只眼珠”运用了夸张的修辞；D.句中的“而且”表递进关系，故本句是递进关系复句；故选C。",
+        "rationale": [
+          "Synthetic local adaptation; reference and semantic labels remain proposed."
+        ]
+      }
+    }
+  ],
+  "review_batch": "omni-edu-v1",
+  "label_status": "proposed",
+  "note": "Adapted evaluation task; original system and final assistant are source/scoring-only. No teacher certification.",
+  "conversation_id": "e427b277987fd60db6ad",
+  "turn_index": 0,
+  "tags": [
+    "subject_competence",
+    "chinese",
+    "other_k12",
+    "solve"
+  ]
+}

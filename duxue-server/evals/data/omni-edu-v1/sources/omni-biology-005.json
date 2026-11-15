@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 24185,
+  "uid": "coig-exam_coig_exam_sampled_clean_v3.jsonl-1682-33c9013424c7",
+  "dataset": "coig-cqia",
+  "record_sha256": "400c337a844a5e24cdae790941bc74fce7d218d268b07e3cf72b476f328be828",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n阅读材料回答下列问题。\n为了验证“植物主茎顶芽产生的生长素能够抑制侧芽生长”，某同学进行了以下实验： ①选取健壮、生长状态一致的幼小植株，分为甲、乙、丙、丁4组，甲组植株不做任何处理，其他三组植株均切除顶芽。然后乙组植株切口不做处理；丙组植株切口处放置不含生长素的琼脂块；丁组植株切口处放置含有适宜浓度生长素的琼脂块。 ②将上述4组植株置于相同的适宜条件下培养。\n各组植株侧芽的预期生长情况分别为：甲组____；乙组____；丙组____；丁组____。"
+      },
+      {
+        "role": "assistant",
+        "content": "生长受抑制    生长   生长   生长受抑制\n\n甲组有顶芽所以侧芽生长受抑制，乙组没有顶芽，不会产生生长素抑制侧芽生长，侧芽生长；丙组也没有顶芽所以侧芽生长；丁组虽没有顶芽，但是有含有生长素的琼脂块，生长素会运输到侧芽抑制侧芽生长。"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-1682-33c9013424c7\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 5203, \"supervised_tokens\": 83, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 24185,
+    "subject": "biology",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "植物激素调节（生长素的生理作用）",
+    "reason": "经典的顶端优势实验设计题，考查生长素对侧芽生长的抑制作用及实验对照分析，是高中生物遗传与稳态环境中的高频考点。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-19752.json"
+  },
+  "content_review": {
+    "line": 24185,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "考查生长素两重性及顶端优势的实验验证，涉及对照实验设计（空白对照、琼脂块对照等）和预期结果分析，属于中国高中生物必修课程典型的高考实验探究题。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n阅读材料回答下列问题。\n为了验证“植物主茎顶芽产生的生长素能够抑制侧芽生长”，某同学进行了以下实验： ①选取健壮、生长状态一致的幼小植株，分为甲、乙、丙、丁4组，甲组植株不做任何处理，其他三组植株均切除顶芽。然后乙组植株切口不做处理；丙组植株切口处放置不含生长素的琼脂块；丁组植株切口处放置含有适宜浓度生长素的琼脂块。 ②将上述4组植株置于相同的适宜条件下培养。\n各组植株侧芽的预期生长情况分别为：甲组____；乙组____；丙组____；丁组____。\n我想先弄清这题需要用哪个概念，以及题目条件怎样联系，请引导我。",
+      "images": []
+    }
+  ]
+}

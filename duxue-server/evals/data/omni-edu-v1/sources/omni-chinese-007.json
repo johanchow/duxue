@@ -1,0 +1,62 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 23190,
+  "uid": "coig-chinese_traditional_translate_classical_chinese.jsonl-145-328a18c9d928",
+  "dataset": "coig-cqia",
+  "record_sha256": "40aaaebd33bb35ec673ed4891b549d739e1a5614a5801fdcdbfc3bb8ab39d34a",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n将下面句子翻译成现代文：\n云以逢休与子长旧交，将造门，希致先容，逢休许之久矣。云临期请书，逢休授之一函，甚草创。云微有惑，因潜起阅之。"
+      },
+      {
+        "role": "assistant",
+        "content": "顾云因为知道高逢休与刘子长是老朋友，他想要去登门拜访刘子长，希望高逢休先给刘子长写封信引介一下，高逢休答应好长时间了，顾云临行前请他快把引介信写来，高逢休使给了他一封，但是很潦草不庄重，顾云有些疑惑，于是躲起来偷偷地阅读。"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-chinese_traditional_translate_classical_chinese.jsonl-145-328a18c9d928\", \"kind\": \"qa\", \"system_variant\": \"general\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 4208, \"supervised_tokens\": 89, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 23190,
+    "subject": "chinese",
+    "topic": "文言语境中的造门与先容",
+    "reason": "需根据旧交、请书、授函的语境翻译造门与先容，避免字面误解；不要求补出题面未给全名。",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "review_model": "assistant_content_review"
+  },
+  "content_review": {
+    "line": 23190,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "需根据旧交、请书、授函的语境翻译造门与先容，避免字面误解；不要求补出题面未给全名。",
+    "reference_issue": "助手阅读未发现影响作答的明确矛盾；未获教师认证"
+  },
+  "diagnostic_adaptation": {
+    "student_attempt": "我把“将造门”理解成将要建造大门，“先容”理解成先整理容貌，认为这段说的是修门和打扮。",
+    "assessment": "incorrect",
+    "feedback_criteria": "误解的是语境中的造门与先容。可引导联系旧交、请书、授函理解拜访和引介关系，不能直接代译整段。",
+    "is_choice": false,
+    "id": "omni-chinese-007",
+    "model": "assistant_authored_content_review"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n将下面句子翻译成现代文：\n云以逢休与子长旧交，将造门，希致先容，逢休许之久矣。云临期请书，逢休授之一函，甚草创。云微有惑，因潜起阅之。\n我的尝试：我把“将造门”理解成将要建造大门，“先容”理解成先整理容貌，认为这段说的是修门和打扮。\n请检查我已有的理由或结果，只指出可核验的部分，并给一个自检提示。",
+      "images": []
+    }
+  ]
+}

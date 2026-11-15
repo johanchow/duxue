@@ -1,0 +1,84 @@
+{
+  "schema_version": "dialogue-eval.v2",
+  "id": "omni-math-009",
+  "type": "single_turn",
+  "replay_mode": "fixed_history",
+  "source": {
+    "kind": "synthetic",
+    "coverage": "authored",
+    "provider": "cmm-math-multimodal",
+    "note": "{\"source_record\": \"sources/omni-math-009.json\", \"uid\": \"cmm-math-17121\", \"source_category\": \"subject_competence\"}"
+  },
+  "messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "<image>\nProblem:\n015 春-九江期末) 如图所示的一个算法, 其作用是输入 $x$ 的值, 输出相应 $y$ 的值, 若要使输出的 $y$ 的值为正数, 求输入的 $x$ 值的取值范围.\n\n<ImageHere>",
+      "images": [
+        "a0df4955e850229dbf414ae9f3c5080bb3f84aa54d9f0c1f306.jpg"
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "id": "check-1",
+      "after_message": "m1",
+      "component": "tutoring.turn",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "problem": {
+            "summary": "<image>\nProblem:\n015 春-九江期末) 如图所示的一个算法, 其作用是输入 $x$ 的值, 输出相应 $y$ 的值, 若要使输出的 $y$ 的值为正数, 求输入的 $x$ 值的取值范围.\n\n<ImageHere>",
+            "active_subgoal": "算法与程序框图、分段函数、不等式求解",
+            "substantive_attempts": 0,
+            "hints_given": 0
+          },
+          "task_title": "本地学科答疑评测",
+          "task_active": true
+        },
+        "note": "Injected evaluation context; not a production database observation."
+      },
+      "grading": {
+        "deterministic": [
+          {
+            "id": "delivered",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "answer"
+            ]
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "correctness",
+            "type": "score",
+            "rubric": "内部完整解题：依据原题和实际图片独立核验最终结论、推导、定义域、单位、条件及各小问覆盖。允许数学等价表达与有依据的异解。1分错误/无解答，2分重要错误，3分方向正确但关键缺漏，4分结论与主要推导正确且完整，5分进一步严谨清晰。只评价实际solution，不要求启发提问。",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "本题知识目标：算法与程序框图、分段函数、不等式求解。参考答案是上游未认证材料，须独立核验；参考有争议时不得盲从，不因合理异解扣分。",
+            "expected": "pass"
+          }
+        ],
+        "reference_response": "解：根据程序算法语言, 得分段函数\n\n$y=f(x)=\\left\\{\\begin{array}{l}\\ln (-x), x<0 \\\\ \\sin x, 0 \\leq x \\leq 2 \\pi ; \\\\ 0, x>2 \\pi\\end{array}\\right.$\n\n当 $x<0$ 时, 由 $\\ln (-x)>0$, 得 $x<-1$;\n\n当 $0 \\leqslant x \\leqslant 2 \\pi$ 时, 由 $y=\\sin x>0$, 解得 $0<x<\\pi$;\n\n当 $x>2 \\pi$ 时, $y=0$, 不符合题意;\n\n所以, 输入的 $x$ 的取值范围是 $(-\\infty,-1) \\cup(0, \\pi)$.",
+        "rationale": [
+          "Synthetic local adaptation; reference and semantic labels remain proposed."
+        ]
+      }
+    }
+  ],
+  "review_batch": "omni-edu-v1",
+  "label_status": "proposed",
+  "note": "Adapted evaluation task; original system and final assistant are source/scoring-only. No teacher certification.",
+  "conversation_id": "b84e3f2265cc22c56ddd",
+  "turn_index": 0,
+  "tags": [
+    "subject_competence",
+    "math",
+    "gaokao_equivalent",
+    "solve"
+  ]
+}

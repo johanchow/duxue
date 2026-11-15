@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 25628,
+  "uid": "coig-exam_coig_exam_sampled_clean_v3.jsonl-1037-321750b6fab5",
+  "dataset": "coig-cqia",
+  "record_sha256": "4cda6aea5ec93e9510ed55024399ff0723969be9073f5f06eabab1560e09be76",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n单项选择题，从下面4个选项中选择最佳正确选项\n14世纪，意大利艺术家开始以更写实的手法描绘人物形象，诗人们则更关注人的天性。这表明当时文艺作品宣扬的思想是A.神权至上\tB.人文主义\tC.君权神授\tD.浪漫主义"
+      },
+      {
+        "role": "assistant",
+        "content": "14世纪，意大利艺术家开始以更写实的手法描绘人物形象，诗人们则更关注人的天性，这就是人文主义，故B符合题意；宗教主张神权至上，封建君主主张君权神授，在文学表现手法上浪漫主义与现实主义相对，故ACD均不符合题意。故选B。"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-1037-321750b6fab5\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 6646, \"supervised_tokens\": 66, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 25628,
+    "subject": "history",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "文艺复兴-人文主义",
+    "reason": "通过描述14世纪意大利艺术和诗歌的特征，考查对文艺复兴核心思想“人文主义”的理解，属于高中历史课程标准内的核心知识点，符合高考选择题的考查逻辑。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-23255.json"
+  },
+  "content_review": {
+    "line": 25628,
+    "subject_correct": true,
+    "complete": true,
+    "level": "other_k12",
+    "reason": "考查14世纪意大利文艺复兴人文主义思想的基本概念识别，属于初中世界历史常识，无需高中综合推理。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n单项选择题，从下面4个选项中选择最佳正确选项\n14世纪，意大利艺术家开始以更写实的手法描绘人物形象，诗人们则更关注人的天性。这表明当时文艺作品宣扬的思想是A.神权至上\tB.人文主义\tC.君权神授\tD.浪漫主义\n这题我卡住了。请先帮我拆出一个能动手的小步骤，不要给完整答案。",
+      "images": []
+    }
+  ]
+}

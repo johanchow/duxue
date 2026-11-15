@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 23276,
+  "uid": "coig-exam_coig_exam_sampled_clean_v3.jsonl-1321-d0cf18a59ddf",
+  "dataset": "coig-cqia",
+  "record_sha256": "bca02c7241e973a240de25cd05a09a19f7df2b2865aa6e1ea430cdd59867ca07",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n请在下列每题的四个选项中选出最符合题意的一项。\n22．当今世界的两大主题是（　　）A．和平与发展B．稳定与发展C．和平与安全D．和平与人权"
+      },
+      {
+        "role": "assistant",
+        "content": "20世纪八九十年代，东西方冷战结束，国际形势趋于缓和，和平和发展成为世界的发展趋势，成为当今世界的两大主题．故选A．"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-1321-d0cf18a59ddf\", \"kind\": \"qa\", \"system_variant\": \"general\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 4294, \"supervised_tokens\": 32, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 23276,
+    "subject": "politics",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "当今时代的主题",
+    "reason": "考查政治学科中关于国际形势的基本观点‘和平与发展’，属于高中思想政治必修内容，题干完整。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-25914.json"
+  },
+  "content_review": {
+    "line": 23276,
+    "subject_correct": true,
+    "complete": true,
+    "level": "other_k12",
+    "reason": "考查'当今世界两大主题是和平与发展'，属于初中历史/道法常识性记忆，高中虽涉及但不构成高考层级的综合推理或深度分析。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "Problem:\n请在下列每题的四个选项中选出最符合题意的一项。\n22．当今世界的两大主题是（　　）A．和平与发展B．稳定与发展C．和平与安全D．和平与人权",
+      "images": []
+    }
+  ]
+}

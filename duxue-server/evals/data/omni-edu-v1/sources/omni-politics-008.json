@@ -1,0 +1,63 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 19754,
+  "uid": "aquila-all-194264-0dc21b164a1e",
+  "dataset": "aquilaedu",
+  "record_sha256": "41c0e653ca8674bed6bd66816d5fab6cec03f5ef80a0db179350e9e4d44bb5a8",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n请选择正确选项。\n按现行规定， 金融机构人民币存款利率（年利率）一年期为 3% ， 两 年期为 3.75% ． 老陈有 10 000 元闲置资金， 准备存两年， 那么， 这笔钱以一 年期连续存（第一期利息计入第二期本金）两年的利息比存一个两年期的利 息 （　　） A ． 少 141 元 B ． 多 141 元 C ． 少 150 元 D ． 多 150 元"
+      },
+      {
+        "role": "assistant",
+        "content": "析： 按一年期连续存（第一期利息计入第二期本金）两年的利息为： 10 000 元 *3% + （ 10 000 元 + 10 000 元 *3% ） *3%=609 元； 如果存一个两年期的 利息为： 10 000 元 *3.75%*2=750 元； 750 元 ﹣ 609 元 =141 元。 因此， 一年期 连续存（第一期利息计入第二期本金）两年的利息比存一个两年期的利息少 141 元， 故正确答案选 A 。 \n#### 答案是：A"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"aquilaedu\", \"uid\": \"aquila-all-194264-0dc21b164a1e\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 772, \"supervised_tokens\": 165, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 19754,
+    "subject": "politics",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "经济计算：存款利息比较",
+    "reason": "政治学科中的经济生活部分，考察单利与复利的计算对比。这是中国高中政治高考常见的计算型选择题，需要运用经济学公式进行推理。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-22175.json"
+  },
+  "content_review": {
+    "line": 19754,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "运用高中思想政治《经济生活》中储蓄存款利息计算知识，涉及复利与单利的比较计算，属高中经济学应用。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "diagnostic_adaptation": {
+    "id": "omni-politics-008",
+    "student_attempt": "一年期连存利息：第一年10000*3%=300，第二年(10000+300)*3%=309，共609元。两年期整存利息：10000*3.75%*2=750元。差额750-609=141元。因为609<750，所以连存比整存少141元，选A。",
+    "assessment": "correct",
+    "feedback_criteria": "检查学生是否正确计算了复利（第一期利息计入本金）和单利（或定期利息公式），并准确得出两者差额为141元且方向为“少”。若计算过程清晰且结果与选项A对应，判定为正确。",
+    "is_choice": true,
+    "model": "qwen3.8-flash"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n请选择正确选项。\n按现行规定， 金融机构人民币存款利率（年利率）一年期为 3% ， 两 年期为 3.75% ． 老陈有 10 000 元闲置资金， 准备存两年， 那么， 这笔钱以一 年期连续存（第一期利息计入第二期本金）两年的利息比存一个两年期的利 息 （　　） A ． 少 141 元 B ． 多 141 元 C ． 少 150 元 D ． 多 150 元\n我的尝试：一年期连存利息：第一年10000*3%=300，第二年(10000+300)*3%=309，共609元。两年期整存利息：10000*3.75%*2=750元。差额750-609=141元。因为609<750，所以连存比整存少141元，选A。\n请检查我已有的理由或结果，只指出可核验的部分，并给一个自检提示。",
+      "images": []
+    }
+  ]
+}

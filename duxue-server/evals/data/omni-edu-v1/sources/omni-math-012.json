@@ -1,0 +1,69 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 1097,
+  "uid": "cmm-math-17272",
+  "dataset": "cmm-math-multimodal",
+  "record_sha256": "29ff258668723c1ed5f98750a5f28241c2c4040f3fd924d0bff9c0adbbc03cad",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "<image>\nProblem:\n（2021・山东模拟）为贯彻落实中央、自治区和南宁市关于新冠肺炎疫情防控工作的决策部署，严格落实联防联控机制、严格执行报告制度, 落实疫情管理. 某高中学校, 为此制定了很多防疫制度, 新规章制度实施一段时间后, 学校就新规章制度的执行、认知程度随机抽取 100 名学生进行问卷调查, 调查卷共有 20 个问题, 每个问题 5 分, 调查结束后, 发现这 100 名学生的成绩都在 [75，100]内，按成绩分成 5 组：第 1 组[75，80），第 2 组[80，85），第 3 组[85，90），第 4 组 $[90 ， 95 ）$, 第 5 组 $[95,100]$, 绘制成如图所示的频率分布直方图, 现在用分层抽样的方法在第 3 , 4 组共选取 5 人对新规章制度作深入学习, 再从中选取 2 人深入的了解学习、执行的情况, 则选取的 2 人来自于不同组的概率为 \\$ \\qquad \\$ .\n\n<ImageHere>"
+      },
+      {
+        "role": "assistant",
+        "content": "解: 由题可知第 3 组的人数为 $0.06 \\times 5 \\times 100=30$; 第 4 组的人数为 $0.04 \\times 5 \\times 100=20$.现在用分层抽样的方法在第 3,4 组共 50 人中选取 5 人对新规章制度作深入学习, 即抽取比例为 $\\frac{5}{50}=\\frac{1}{10}$,\n\n则采用分层抽样在两组中选取的人数分别为 3,2 ,\n\n则选取的 2 人来自于不同组的概率为 $\\frac{C_{3}{ }^{1} \\cdot C_{2}{ }^{1}}{C_{5}{ }^{2}}=\\frac{3}{5}$,\n\n故答案为: $\\frac{3}{5}$."
+      }
+    ],
+    "images": [
+      "images/00/00dceaa7231a552025e65eb3b36add199f47e8ead8ca3667f313b54ad0b54983.jpg"
+    ],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"cmm-math-multimodal\", \"uid\": \"cmm-math-17272\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/math/multimodal/cot\", \"rank\": 1094, \"supervised_tokens\": 189, \"token_budget\": 600000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [
+    "ac4e4ee4dc2904214fe2fe555c10c322577db5d265f41967e47.jpg"
+  ],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 1097,
+    "subject": "math",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "频率分布直方图与分层抽样、古典概型概率计算",
+    "reason": "题目包含完整的文字描述和清晰的频率分布直方图。考查内容涉及高中数学统计模块中的频率分布直方图读取（确定各组频率/人数）、分层抽样原理以及古典概型的概率计算，属于典型的高考数学题型及难度范围。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-images-v1/review-1097.json"
+  },
+  "content_review": {
+    "line": 1097,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "考查频率分布直方图的读取、分层抽样计算以及古典概型概率计算，是高中统计与概率的标准综合题型。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "diagnostic_adaptation": {
+    "id": "omni-math-012",
+    "student_attempt": "第3组频率是0.06，人数为0.06×5×100=30人；第4组频率是0.04，人数为0.04×5×100=20人。分层抽样从两组共50人中抽5人，抽取比例为1/10，所以第3组抽3人，第4组抽2人。最后求概率时，我列式计算了C(3,1)·C(2,1)/C(5,2)，但算出来结果是3/10。",
+    "assessment": "incorrect",
+    "feedback_criteria": "学生正确读取了直方图数据并准确计算出各组应抽取的人数（3人和2人），但在最后的组合数运算中出现了计算错误。评测时应指出其思路完全正确，仅需重新核对分母 C(5,2) 的值即可得出正确答案。",
+    "is_choice": false,
+    "model": "qwen3.8-flash"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\n<image>\nProblem:\n（2021・山东模拟）为贯彻落实中央、自治区和南宁市关于新冠肺炎疫情防控工作的决策部署，严格落实联防联控机制、严格执行报告制度, 落实疫情管理. 某高中学校, 为此制定了很多防疫制度, 新规章制度实施一段时间后, 学校就新规章制度的执行、认知程度随机抽取 100 名学生进行问卷调查, 调查卷共有 20 个问题, 每个问题 5 分, 调查结束后, 发现这 100 名学生的成绩都在 [75，100]内，按成绩分成 5 组：第 1 组[75，80），第 2 组[80，85），第 3 组[85，90），第 4 组 $[90 ， 95 ）$, 第 5 组 $[95,100]$, 绘制成如图所示的频率分布直方图, 现在用分层抽样的方法在第 3 , 4 组共选取 5 人对新规章制度作深入学习, 再从中选取 2 人深入的了解学习、执行的情况, 则选取的 2 人来自于不同组的概率为 \\$ \\qquad \\$ .\n\n<ImageHere>\n我的尝试：第3组频率是0.06，人数为0.06×5×100=30人；第4组频率是0.04，人数为0.04×5×100=20人。分层抽样从两组共50人中抽5人，抽取比例为1/10，所以第3组抽3人，第4组抽2人。最后求概率时，我列式计算了C(3,1)·C(2,1)/C(5,2)，但算出来结果是3/10。\n请检查我已有的理由或结果，只指出可核验的部分，并给一个自检提示。",
+      "images": [
+        "ac4e4ee4dc2904214fe2fe555c10c322577db5d265f41967e47.jpg"
+      ]
+    }
+  ]
+}

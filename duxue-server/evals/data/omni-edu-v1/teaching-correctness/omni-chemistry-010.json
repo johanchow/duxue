@@ -1,0 +1,82 @@
+{
+  "schema_version": "dialogue-eval.v2",
+  "id": "omni-chemistry-010",
+  "type": "single_turn",
+  "replay_mode": "fixed_history",
+  "source": {
+    "kind": "synthetic",
+    "coverage": "authored",
+    "provider": "sciinstruct-en-original",
+    "note": "{\"source_record\": \"sources/omni-chemistry-010.json\", \"uid\": \"sciinst-en-24768\", \"source_category\": \"subject_competence\"}"
+  },
+  "messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "Problem:\nMetals are divided into two major categories: ferrous and non-ferrous metals. Which of the following metals belongs to the ferrous metal category?\\nA、\\(\\mathrm{Pb}\\)\\nB、Co\\nC、\\(\\mathrm{Fe}\\)\\nD、\\(\\mathrm{Cu}\\)",
+      "images": []
+    }
+  ],
+  "checks": [
+    {
+      "id": "check-1",
+      "after_message": "m1",
+      "component": "tutoring.turn",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "problem": {
+            "summary": "Problem:\nMetals are divided into two major categories: ferrous and non-ferrous metals. Which of the following metals belongs to the ferrous metal category?\\nA、\\(\\mathrm{Pb}\\)\\nB、Co\\nC、\\(\\mathrm{Fe}\\)\\nD、\\(\\mathrm{Cu}\\)",
+            "active_subgoal": "金属分类（黑色金属/有色金属）",
+            "substantive_attempts": 0,
+            "hints_given": 0
+          },
+          "task_title": "本地学科答疑评测",
+          "task_active": true
+        },
+        "note": "Injected evaluation context; not a production database observation."
+      },
+      "grading": {
+        "deterministic": [
+          {
+            "id": "delivered",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "answer"
+            ]
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "correctness",
+            "type": "score",
+            "rubric": "内部完整解题：依据原题和实际图片独立核验最终结论、推导、定义域、单位、条件及各小问覆盖。允许数学等价表达与有依据的异解。1分错误/无解答，2分重要错误，3分方向正确但关键缺漏，4分结论与主要推导正确且完整，5分进一步严谨清晰。只评价实际solution，不要求启发提问。",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "本题知识目标：金属分类（黑色金属/有色金属）。参考答案是上游未认证材料，须独立核验；参考有争议时不得盲从，不因合理异解扣分。",
+            "expected": "pass"
+          }
+        ],
+        "reference_response": "Analysis: To determine which of the given metals belongs to the ferrous metal category, we need to understand the definition of ferrous metals. Ferrous metals are metals that contain iron. Non-ferrous metals, on the other hand, do not contain iron.\\n\\nStep 1: Examine each metal option to determine if it contains iron.\\n- Option A: Pb is the chemical symbol for lead, which is a non-ferrous metal.\\n- Option B: Co is the chemical symbol for cobalt, which is also a non-ferrous metal.\\n- Option C: Fe is the chemical symbol for iron, which is a ferrous metal.\\n- Option D: Cu is the chemical symbol for copper, which is a non-ferrous metal.\\n\\nStep 2: Compare the results from Step 1 with the definition of ferrous metals.\\n- Only option C, Fe (iron), contains iron and therefore belongs to the ferrous metal category.\\n\\nTo sum up, the answer to the question is option C, \\\\(\\\\mathrm{Fe}\\\\).",
+        "rationale": [
+          "Synthetic local adaptation; reference and semantic labels remain proposed."
+        ]
+      }
+    }
+  ],
+  "review_batch": "omni-edu-v1",
+  "label_status": "proposed",
+  "note": "Adapted evaluation task; original system and final assistant are source/scoring-only. No teacher certification.",
+  "conversation_id": "5b282b7218c4f9176872",
+  "turn_index": 0,
+  "tags": [
+    "subject_competence",
+    "chemistry",
+    "other_k12",
+    "solve"
+  ]
+}

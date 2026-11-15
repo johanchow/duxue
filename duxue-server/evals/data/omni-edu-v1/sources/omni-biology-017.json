@@ -1,0 +1,64 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 20983,
+  "uid": "sciq-7748",
+  "dataset": "sciq",
+  "record_sha256": "d7d0c07fd4d344ec801dc15e4abb84588a4919f703e7462b41214b6ed71fda3c",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\nWhat relatively new addition to and highest level of the system of taxonomic classification includes just three divisions, the eukarya, the archaea, and the bacteria?\n\nOptions:\n- domain\n- content\n- branch\n- element"
+      },
+      {
+        "role": "assistant",
+        "content": "The system of taxonomic classification was updated in the 1990s to include a new, highest level called the domain. This addition was motivated by the discovery that certain single-celled organisms, now known as Archaea, were genetically and biochemically distinct from both Bacteria and Eukarya. Consequently, scientists divided all life into exactly three groups at this top tier: the domain Eukarya (organisms with nuclei), the domain Archaea (single-celled organisms without nuclei often found in extreme environments), and the domain Bacteria (another group of single-celled organisms without nuclei). Since \"domain\" is the only term that fits the description of being a relatively new, highest-level classification containing these three specific divisions, it is the correct answer.\n\nAnswer: domain"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"sciq\", \"uid\": \"sciq-7748\", \"kind\": \"qa\", \"system_variant\": \"general\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 2001, \"supervised_tokens\": 158, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 20983,
+    "subject": "biology",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "生物分类系统",
+    "reason": "三域系统（Domain: Eukarya, Archaea, Bacteria）是高中生物分类学部分的核心更新内容，取代了传统的五界系统，是高考常见考点。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-science-v1/review-20642.json"
+  },
+  "content_review": {
+    "line": 20983,
+    "subject_correct": true,
+    "complete": true,
+    "level": "other_k12",
+    "reason": "考查三域系统（Domain）分类学知识，属于记忆性事实，中国高中生物教材中分类学层级要求较低，此题为简单英文常识选择，未达高考层级。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "diagnostic_adaptation": {
+    "id": "omni-biology-017",
+    "student_attempt": "我目前只知道这题涉及生物分类系统，还没有写出具体推理或结论。请帮我确定第一步。",
+    "assessment": "insufficient",
+    "feedback_criteria": "学生只报告了知识主题，未给出可核验的具体结果或推理。不得将未作答判为答错，也不能虚构学生的错误步骤或已掌握。给一个切题且可执行的起步或自检提示。",
+    "is_choice": true,
+    "model": "qwen3.8-flash",
+    "authored_revision": "assistant-explicit-insufficient-evidence.v1"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\nWhat relatively new addition to and highest level of the system of taxonomic classification includes just three divisions, the eukarya, the archaea, and the bacteria?\n\nOptions:\n- domain\n- content\n- branch\n- element\n我的尝试：我目前只知道这题涉及生物分类系统，还没有写出具体推理或结论。请帮我确定第一步。\n请检查我已有的理由或结果，只指出可核验的部分，并给一个自检提示。",
+      "images": []
+    }
+  ]
+}

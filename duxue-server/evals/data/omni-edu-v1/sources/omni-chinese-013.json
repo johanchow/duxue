@@ -1,0 +1,54 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 22553,
+  "uid": "coig-chinese_traditional_translate_classical_chinese.jsonl-626-8e2cfdef7914",
+  "dataset": "coig-cqia",
+  "record_sha256": "0c2a04fc15e58fbb446901be5dedb6f61ba81b3d95b8bd356599a680cfeb4ab2",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n翻译成现代文：\n斯须，门外倚梯登城，或烧城屋，蚁附乱进，矢下如雨，牙门、郡守各缘屋出，与其卒兵相得。姜维率会左右战，手杀五六人，众既格斩维，争赴杀会。会时年四十，将士死者数百人。"
+      },
+      {
+        "role": "assistant",
+        "content": "片刻之间，门外有人架着梯子登上城墙，有人焚烧城楼房屋，士兵如蚂蚁般蜂拥乱进，箭矢如雨点般落下。牙门将、郡守各自顺着屋脊冲出，与自己的士兵会合。姜维率领钟会左右的亲兵迎战，亲手杀死五六人。众人格杀了姜维后，又争着上前斩杀钟会。钟会当时四十岁，死去的将士有数百人。"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-chinese_traditional_translate_classical_chinese.jsonl-626-8e2cfdef7914\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 3571, \"supervised_tokens\": 94, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 22553,
+    "subject": "chinese",
+    "topic": "史传文言翻译、主语与动作关系",
+    "reason": "完整史传句群，需解释蚁附、缘屋、格斩及省略主语，符合高中翻译要求。",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "review_model": "assistant_content_review"
+  },
+  "content_review": {
+    "line": 22553,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "完整史传句群，需解释蚁附、缘屋、格斩及省略主语，符合高中翻译要求。",
+    "reference_issue": "助手阅读未发现影响作答的明确矛盾；未获教师认证"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n翻译成现代文：\n斯须，门外倚梯登城，或烧城屋，蚁附乱进，矢下如雨，牙门、郡守各缘屋出，与其卒兵相得。姜维率会左右战，手杀五六人，众既格斩维，争赴杀会。会时年四十，将士死者数百人。\n我想直接看答案。你能帮我解决吗？",
+      "images": []
+    }
+  ]
+}

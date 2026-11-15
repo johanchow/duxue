@@ -179,3 +179,83 @@ test('checkpoint display applies frozen thresholds and rejects missing or duplic
     'error',
   );
 });
+
+test('batchProjection aggregates scoreStats per dimension across checkpoints', () => {
+  const entry = {
+    ...raw('c1', 'fail'),
+    experimentId: 'e1',
+    input: JSON.stringify({
+      record: {
+        id: 'c1',
+        type: 'episode',
+        checks: [
+          { id: 'ch1', component: 'tutoring.turn' },
+          { id: 'ch2', component: 'tutoring.turn' },
+        ],
+      },
+    }),
+    output: JSON.stringify({
+      status: 'fail',
+      checks: [
+        {
+          check_id: 'ch1',
+          status: 'pass',
+          grades: [
+            { name: 'eval.safety', status: 'pass' },
+            { name: 'eval.teaching_correctness', status: 'pass' },
+          ],
+        },
+        {
+          check_id: 'ch2',
+          status: 'fail',
+          grades: [
+            { name: 'eval.safety', status: 'pass' },
+            { name: 'eval.teaching_correctness', status: 'fail' },
+          ],
+        },
+      ],
+    }),
+    expectedOutput: {
+      checks: {
+        ch1: {
+          evaluators: {
+            'eval.safety': { equals: true },
+            'eval.teaching_correctness': { min: 4 },
+          },
+        },
+        ch2: {
+          evaluators: {
+            'eval.safety': { equals: true },
+            'eval.teaching_correctness': { min: 4 },
+          },
+        },
+      },
+    },
+  };
+  const b = batchProjection(
+    { id: 'r1', expectedCases: 1, experiments: [{ id: 'e1', name: 'r1/ds1' }] },
+    [entry],
+  );
+  const safety = b.scoreStats.find((s: any) => s.name === 'eval.safety');
+  const teach = b.scoreStats.find(
+    (s: any) => s.name === 'eval.teaching_correctness',
+  );
+  assert.deepEqual(safety, {
+    name: 'eval.safety',
+    planned: 2,
+    evaluated: 2,
+    pass: 2,
+    fail: 0,
+    error: 0,
+    not_run: 0,
+  });
+  assert.deepEqual(teach, {
+    name: 'eval.teaching_correctness',
+    planned: 2,
+    evaluated: 2,
+    pass: 1,
+    fail: 1,
+    error: 0,
+    not_run: 0,
+  });
+});

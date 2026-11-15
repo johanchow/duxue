@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 22916,
+  "uid": "coig-exam_coig_exam_sampled_clean_v3.jsonl-1893-0048b2d9c3c6",
+  "dataset": "coig-cqia",
+  "record_sha256": "b3cbc5fa986f3122a0ea8307f89614746379979493d9434b3042235f648335c6",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n请根据相关知识点及材料回答问题\n多氯联苯曾被广泛使用，进入环境后难以降解，被公认为环境污染的元凶之一。美国于1929年最先使用，1978年禁用。时至今日，美国某湖虽然鱼类丰富，但由于存在多氯联苯污染，湖边仍立着“不建议食用鱼类”的警示牌。\n分析该湖鱼类体内多氯联苯的来源，列出应采集的样品种类及采样点的位置，并说明理由。"
+      },
+      {
+        "role": "assistant",
+        "content": "**1. 多氯联苯在鱼类体内的来源**\n多氯联苯（PCBs）具有难降解、脂溶性强和生物富集的特点。该湖鱼类体内的多氯联苯主要来源于：\n*   **历史残留**：美国曾广泛使用多氯联苯，虽已禁用多年，但其进入环境后极难降解，长期残留于湖泊底泥中。\n*   **食物链富集（生物放大作用）**：底泥中的多氯联苯被浮游生物或底栖生物吸收，随后通过食物链逐级传递。由于多氯联苯易溶于脂肪且不易排出，随着营养级的升高，其在生物体内的浓度逐级增加，最终在处于食物链较高层级的鱼类体内达到高浓度。\n\n**2. 应采集的样品种类及采样点位置**\n\n| 样品类型 | 采样点位置 | 理由 |\n| :--- | :--- | :--- |\n| **底泥** | 湖泊底部，特别是沉积物较厚的区域 | 多氯联苯难溶于水，易吸附在颗粒物上并沉降到底泥中。底泥是污染物的主要“汇”和二次污染源，是分析污染本底的关键。 |\n| **浮游生物/底栖生物** | 水体表层（浮游生物）及湖底（底栖生物） | 作为食物链的初级消费者，它们直接吸收环境中的污染物，是污染物进入食物链的起点，用于验证生物富集的初始环节。 |\n| **不同营养级的鱼类** | 湖泊不同水域（如近岸、湖心），涵盖不同食性（草食性、肉食性）和不同体型的鱼 | 用于验证生物放大作用。通过对比不同营养级鱼类体内的浓度，可证实污染物随食物链传递而富集的现象；不同水域采样可评估污染分布的均匀性。 |\n| **湖水** | 水体不同深度 | 虽然多氯联苯主要吸附在颗粒物和生物体内，但检测水体可辅助判断污染物是否处于溶解或悬浮状态，以及是否存在持续释放。 |\n\n**3. 总结**\n该湖鱼类体内的多氯联苯主要源于历史排放残留于底泥中的污染物，经食物链逐级富集所致。采样需覆盖“底泥（源头）→浮游/底栖生物（初级富集）→鱼类（高级富集）”这一完整路径，以科学解释警示牌设立的依据。"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-1893-0048b2d9c3c6\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 3934, \"supervised_tokens\": 520, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 22916,
+    "subject": "biology",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "生态系统物质循环与生物富集",
+    "reason": "题目要求分析多氯联苯在湖泊生态系统中的来源、采样点及理由。这涉及食物链、生物富集作用等高中生物生态学核心概念，需要结合材料进行逻辑推理和方案设计，符合高考生物非选择题的命题风格。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-23382.json"
+  },
+  "content_review": {
+    "line": 22916,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "考查多氯联苯的生物富集（生物放大作用）及实验采样设计，涉及食物链营养级、脂溶性难降解物质的生态学机制，属于高中生物生态学与环境保护的典型高考层级综合分析题。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n请根据相关知识点及材料回答问题\n多氯联苯曾被广泛使用，进入环境后难以降解，被公认为环境污染的元凶之一。美国于1929年最先使用，1978年禁用。时至今日，美国某湖虽然鱼类丰富，但由于存在多氯联苯污染，湖边仍立着“不建议食用鱼类”的警示牌。\n分析该湖鱼类体内多氯联苯的来源，列出应采集的样品种类及采样点的位置，并说明理由。\n这题我卡住了。请先帮我拆出一个能动手的小步骤，不要给完整答案。",
+      "images": []
+    }
+  ]
+}

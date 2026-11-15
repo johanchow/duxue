@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 21758,
+  "uid": "coig-exam_coig_exam_sampled_clean_v3.jsonl-1362-91a2ea8665a5",
+  "dataset": "coig-cqia",
+  "record_sha256": "69500359bd8f9e194811e7770dff263da8ff1c1f18d6c21dac8d5194f6e98891",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n阅读材料，回答问题\n材料三：20世纪70年代，一些发达国家因为工业生产主要集中在煤炭、钢铁、电力、机械、化工等部门，生产结构单一；煤炭能源地位下降；世界性钢铁过剩；新技术革命的冲击，传统的生产和组织形式不适应时代发展的要求；用地紧张；环境污染严重；资源短缺等。经历了老工业基地在经历了重工业化时期的繁荣后走向衰落，大量工厂倒闭，到处是闲置的厂房和被遗弃的锈迹斑斑的设备，因此这些老工业基地如俄罗斯的乌拉尔山、美国的俄亥俄州被形象地统称为“铁锈地带”。\n阅读材料，回答问题\n材料三：20世纪70年代，一些发达国家因为工业生产主要集中在煤炭、钢铁、电力、机械、化工等部门，生产结构单一；煤炭能源地位下降；世界性钢铁过剩；新技术革命的冲击，传统的生产和组织形式不适应时代发展的要求；用地紧张；环境污染严重；资源短缺等。经历了老工业基地在经历了重工业化时期的繁荣后走向衰落，大量工厂倒闭，到处是闲置的厂房和被遗弃的锈迹斑斑的设备，因此这些老工业基地如俄罗斯的乌拉尔山、美国的俄亥俄州被形象地统称为“铁锈地带”。\n材料三中“煤炭能源地位下降”主要是因为什么？依据材料，概括“铁锈地带”出现的原因。"
+      },
+      {
+        "role": "assistant",
+        "content": "**“煤炭能源地位下降”的主要原因：**\n石油和天然气的广泛使用（或新能源的开发利用）。\n\n**“铁锈地带”出现的原因（依据材料概括）：**\n1. **产业结构单一**：工业生产主要集中在煤炭、钢铁等传统部门，缺乏多元化。\n2. **能源地位变化**：煤炭作为主要能源的地位下降。\n3. **市场供需失衡**：世界性钢铁过剩，产品滞销。\n4. **技术冲击**：新技术革命冲击，传统生产和组织形式落后，不适应时代发展。\n5. **环境与资源问题**：用地紧张、环境污染严重、资源短缺。\n6. **产业衰退后果**：大量工厂倒闭，设备闲置废弃，导致经济衰落。"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-1362-91a2ea8665a5\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 2776, \"supervised_tokens\": 151, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 21758,
+    "subject": "geography",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "工业区位因素变化与传统工业区衰落原因",
+    "reason": "题目要求依据材料分析“煤炭能源地位下降”的原因及概括“铁锈地带”出现的地理/经济原因。涉及世界地理中传统工业区（如鲁尔区、美国东北部）的衰落机制，属于高中地理必修二或选择性必修中的核心考点，符合高考层级。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-21758.json"
+  },
+  "content_review": {
+    "line": 21758,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "考查传统工业区（铁锈地带）衰落原因及能源结构变化，属于高中地理必修二工业区位与区域可持续发展核心内容，需结合材料进行综合概括，符合高考层级。参考解析中'煤炭能源地位下降'归因于石油天然气广泛使用属教材标准表述，无明显错误。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n阅读材料，回答问题\n材料三：20世纪70年代，一些发达国家因为工业生产主要集中在煤炭、钢铁、电力、机械、化工等部门，生产结构单一；煤炭能源地位下降；世界性钢铁过剩；新技术革命的冲击，传统的生产和组织形式不适应时代发展的要求；用地紧张；环境污染严重；资源短缺等。经历了老工业基地在经历了重工业化时期的繁荣后走向衰落，大量工厂倒闭，到处是闲置的厂房和被遗弃的锈迹斑斑的设备，因此这些老工业基地如俄罗斯的乌拉尔山、美国的俄亥俄州被形象地统称为“铁锈地带”。\n阅读材料，回答问题\n材料三：20世纪70年代，一些发达国家因为工业生产主要集中在煤炭、钢铁、电力、机械、化工等部门，生产结构单一；煤炭能源地位下降；世界性钢铁过剩；新技术革命的冲击，传统的生产和组织形式不适应时代发展的要求；用地紧张；环境污染严重；资源短缺等。经历了老工业基地在经历了重工业化时期的繁荣后走向衰落，大量工厂倒闭，到处是闲置的厂房和被遗弃的锈迹斑斑的设备，因此这些老工业基地如俄罗斯的乌拉尔山、美国的俄亥俄州被形象地统称为“铁锈地带”。\n材料三中“煤炭能源地位下降”主要是因为什么？依据材料，概括“铁锈地带”出现的原因。\n我想先弄清这题需要用哪个概念，以及题目条件怎样联系，请引导我。",
+      "images": []
+    }
+  ]
+}

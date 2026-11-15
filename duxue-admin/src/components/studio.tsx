@@ -821,6 +821,48 @@ export default function Studio() {
                                   />
                                 </label>
                               ))}
+                              <label>
+                                思考模式
+                                <select
+                                  value={model.enable_thinking ? 'on' : 'off'}
+                                  onChange={(e) => {
+                                    const n = structuredClone(doc);
+                                    const enabled = e.target.value === 'on';
+                                    n.models[index].enable_thinking = enabled;
+                                    if (!enabled) {
+                                      delete n.models[index].thinking_budget;
+                                    }
+                                    edit(n);
+                                  }}
+                                >
+                                  <option value="off">关闭</option>
+                                  <option value="on">开启 (Hidden CoT)</option>
+                                </select>
+                              </label>
+                              {model.enable_thinking ? (
+                                <label>
+                                  思考预算(可选)
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    max="32768"
+                                    step="1"
+                                    placeholder="默认模型上限"
+                                    value={model.thinking_budget ?? ''}
+                                    onChange={(e) => {
+                                      const n = structuredClone(doc);
+                                      const raw = e.target.value.trim();
+                                      if (!raw) {
+                                        delete n.models[index].thinking_budget;
+                                      } else {
+                                        n.models[index].thinking_budget =
+                                          Number(raw);
+                                      }
+                                      edit(n);
+                                    }}
+                                  />
+                                </label>
+                              ) : null}
                             </div>
                           ))}
                           <h3>主 Prompt</h3>

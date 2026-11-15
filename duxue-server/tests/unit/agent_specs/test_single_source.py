@@ -289,3 +289,32 @@ def test_image_review_output_budget_can_fit_a_full_page_without_becoming_unbound
     assert ModelDefinition.model_validate(values).max_output_tokens == 8192
     with pytest.raises(ValidationError):
         ModelDefinition.model_validate({**values, 'max_output_tokens': 16385})
+
+
+def test_thinking_model_parameters_compile_without_breaking_compatibility():
+    import copy
+
+    from app.agent_specs.definitions import ModelDefinition
+    from pydantic import ValidationError
+
+    base = dict(
+        name='qwen3.8-max',
+        component_id='tutoring.turn',
+        timeout_ms=90000,
+        temperature=0,
+        max_output_tokens=4096,
+    )
+    with pytest.raises(ValidationError, match='enable_thinking'):
+        ModelDefinition.model_validate({**base, 'enable_thinking': False, 'thinking_budget': 1024})
+    with pytest.raises(ValidationError):
+        ModelDefinition.model_validate({**base, 'enable_thinking': True, 'thinking_budget': 32769})
+
+    original = snapshot_bundle()
+    thinking = copy.deepcopy(original)
+    thinking['files']['agents/tutoring.turn.json']['models'][0]['enable_thinking'] = True
+    thinking['files']['agents/tutoring.turn.json']['models'][0]['thinking_budget'] = 4096
+    assert thinking['compatibility'] == contract_compatibility(original['files'])
+    compiled = compile_bundle(thinking)
+    model = compiled.catalog.units['tutoring.turn'].models[0]
+    assert model.enable_thinking is True
+    assert model.thinking_budget == 4096

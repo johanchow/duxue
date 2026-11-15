@@ -1,0 +1,82 @@
+{
+  "schema_version": "dialogue-eval.v2",
+  "id": "omni-math-018",
+  "type": "single_turn",
+  "replay_mode": "fixed_history",
+  "source": {
+    "kind": "synthetic",
+    "coverage": "authored",
+    "provider": "cmm-math-text",
+    "note": "{\"source_record\": \"sources/omni-math-018.json\", \"uid\": \"cmm-math-22136\", \"source_category\": \"subject_competence\"}"
+  },
+  "messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "Problem:\n设 $0<a<1$, 则随机变量 $X$ 的分布列是:\n\n| $X$ | 0 | $a$ | 1 |\n| :---: | :---: | :---: | :---: |\n| $p$ | $\\frac{1}{3}$ | $\\frac{1}{3}$ | $\\frac{1}{3}$ |\n\n则当 $a$ 在 $(0,1)$ 内增大时 $(\\quad)$\n\nOptions:\nA. $D(X)$ 增大\nB. $D(X)$ 减小\nC. $D(X)$ 先增大后减小\nD. $D(X)$ 先减小后增大",
+      "images": []
+    }
+  ],
+  "checks": [
+    {
+      "id": "check-1",
+      "after_message": "m1",
+      "component": "tutoring.turn",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "problem": {
+            "summary": "Problem:\n设 $0<a<1$, 则随机变量 $X$ 的分布列是:\n\n| $X$ | 0 | $a$ | 1 |\n| :---: | :---: | :---: | :---: |\n| $p$ | $\\frac{1}{3}$ | $\\frac{1}{3}$ | $\\frac{1}{3}$ |\n\n则当 $a$ 在 $(0,1)$ 内增大时 $(\\quad)$\n\nOptions:\nA. $D(X)$ 增大\nB. $D(X)$ 减小\nC. $D(X)$ 先增大后减小\nD. $D(X)$ 先减小后增大",
+            "active_subgoal": "离散型随机变量的方差",
+            "substantive_attempts": 0,
+            "hints_given": 0
+          },
+          "task_title": "本地学科答疑评测",
+          "task_active": true
+        },
+        "note": "Injected evaluation context; not a production database observation."
+      },
+      "grading": {
+        "deterministic": [
+          {
+            "id": "delivered",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "answer"
+            ]
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "correctness",
+            "type": "score",
+            "rubric": "内部完整解题：依据原题和实际图片独立核验最终结论、推导、定义域、单位、条件及各小问覆盖。允许数学等价表达与有依据的异解。1分错误/无解答，2分重要错误，3分方向正确但关键缺漏，4分结论与主要推导正确且完整，5分进一步严谨清晰。只评价实际solution，不要求启发提问。",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "本题知识目标：离散型随机变量的方差。参考答案是上游未认证材料，须独立核验；参考有争议时不得盲从，不因合理异解扣分。",
+            "expected": "pass"
+          }
+        ],
+        "reference_response": "答案:D\n\n【解析】由分布列得 $E(X)=\\frac{1+a}{3}$ ，\n\n则 $D(X)=\\left(\\frac{1+a}{3}-0\\right)^{2} \\times \\frac{1}{3}+\\left(\\frac{1+a}{3}-a\\right)^{2} \\times \\frac{1}{3}+\\left(\\frac{1+a}{3}-1\\right)^{2} \\times \\frac{1}{3}$\n\n$=\\frac{2}{9}\\left(a-\\frac{1}{2}\\right)^{2}+\\frac{1}{6}$\n\n则当 $a$ 在 $(0,1)$ 内增大时, $D(X)$ 先减小后增大，故选 $\\mathrm{D}$.",
+        "rationale": [
+          "Synthetic local adaptation; reference and semantic labels remain proposed."
+        ]
+      }
+    }
+  ],
+  "review_batch": "omni-edu-v1",
+  "label_status": "proposed",
+  "note": "Adapted evaluation task; original system and final assistant are source/scoring-only. No teacher certification.",
+  "conversation_id": "d4a2abe1a4c5b988c85f",
+  "turn_index": 0,
+  "tags": [
+    "subject_competence",
+    "math",
+    "gaokao_equivalent",
+    "solve"
+  ]
+}

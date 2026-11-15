@@ -1,0 +1,82 @@
+{
+  "schema_version": "dialogue-eval.v2",
+  "id": "omni-english-025",
+  "type": "single_turn",
+  "replay_mode": "fixed_history",
+  "source": {
+    "kind": "synthetic",
+    "coverage": "authored",
+    "provider": "reading-race",
+    "note": "{\"source_record\": \"sources/omni-english-025.json\", \"uid\": \"race-high10209.txt-f5e2\", \"source_category\": \"subject_competence\"}"
+  },
+  "messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "Passage:\nWhile car sharing is a concept that's catching on, old-fashioned carpooling where a group of people take turns driving each other to work has always faced a resistance  . In a study on traffic problems by ABC News, 84% of those who drive to work say that they still do it alone. More than half those lone riders insist that carpooling is just too inconvenient, and 18% say they simple don't know anyone to share a ride with.\nNow technology makes carpooling easier and more fun. NuRide, a company provided an online carpooling service last year, offers daily travelers in the Washington area not just a web-based list of would-be carpoolers but also a way to arrange a trip online. Here's how it works: rider seekers enter the positions where their trip will begin and end, the time they want to leave and if they're willing to drive or just ride in someone else's car. The website's search engine then looks for matches and makes lists of the names of traveling companions, along with the car model and the exact time and place to meet for each trip. People who want to share the ride can show their interest in joining in online and then meet their car mates when it's time to go.\nNuRide users aren't riding with total strangers. They are required to provide the name of their employer and a work e-mail address, both of which need to be checked before being listed on the website.\nTo attract users, NuRide offers a frequent rider prize: anyone who shares a ride gets a $1 credit. So far, 2,300 people have signed up. NuRide CEO Rick Steele said that more than 50,000 rides have been arranged on the website, resulting in 1.4 million fewer miles driven and 650 fewer tons of automobile emissions  .\n\nProblem:\nWhat has the study found about people's opinion on carpooling?\n\nOptions:\nA. Most people think it is inconvenient.\nB. Only 18% can find their road mates.\nC. Some people consider it dangerous.\nD. Half of the people accept the idea..",
+      "images": []
+    }
+  ],
+  "checks": [
+    {
+      "id": "check-1",
+      "after_message": "m1",
+      "component": "tutoring.turn",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "problem": {
+            "summary": "Passage:\nWhile car sharing is a concept that's catching on, old-fashioned carpooling where a group of people take turns driving each other to work has always faced a resistance  . In a study on traffic problems by ABC News, 84% of those who drive to work say that they still do it alone. More than half those lone riders insist that carpooling is just too inconvenient, and 18% say they simple don't know anyone to share a ride with.\nNow technology makes carpooling easier and more fun. NuRide, a company provided an online carpooling service last year, offers daily travelers in the Washington area not just a web-based list of would-be carpoolers but also a way to arrange a trip online. Here's how it works: rider seekers enter the positions where their trip will begin and end, the time they want to leave and if they're willing to drive or just ride in someone else's car. The website's search engine then looks for matches and makes lists of the names of traveling companions, along with the car model and the exact time and place to meet for each trip. People who want to share the ride can show their interest in joining in online and then meet their car mates when it's time to go.\nNuRide users aren't riding with total strangers. They are required to provide the name of their employer and a work e-mail address, both of which need to be checked before being listed on the website.\nTo attract users, NuRide offers a frequent rider prize: anyone who shares a ride gets a $1 credit. So far, 2,300 people have signed up. NuRide CEO Rick Steele said that more than 50,000 rides have been arranged on the website, resulting in 1.4 million fewer miles driven and 650 fewer tons of automobile emissions  .\n\nProblem:\nWhat has the study found about people's opinion on carpooling?\n\nOptions:\nA. Most people think it is inconvenient.\nB. Only 18% can find their road mates.\nC. Some people consider it dangerous.\nD. Half of the people accept the idea..",
+            "active_subgoal": "阅读理解-观点态度/数据解读",
+            "substantive_attempts": 0,
+            "hints_given": 0
+          },
+          "task_title": "本地学科答疑评测",
+          "task_active": true
+        },
+        "note": "Injected evaluation context; not a production database observation."
+      },
+      "grading": {
+        "deterministic": [
+          {
+            "id": "delivered",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "answer"
+            ]
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "correctness",
+            "type": "score",
+            "rubric": "内部完整解题：依据原题和实际图片独立核验最终结论、推导、定义域、单位、条件及各小问覆盖。允许数学等价表达与有依据的异解。1分错误/无解答，2分重要错误，3分方向正确但关键缺漏，4分结论与主要推导正确且完整，5分进一步严谨清晰。只评价实际solution，不要求启发提问。",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "本题知识目标：阅读理解-观点态度/数据解读。参考答案是上游未认证材料，须独立核验；参考有争议时不得盲从，不因合理异解扣分。",
+            "expected": "pass"
+          }
+        ],
+        "reference_response": "The correct answer is supported by the sentence: \"More than half those lone riders insist that carpooling is just too inconvenient.\" Since \"more than half\" constitutes a majority, this directly confirms that most people (specifically the majority of those who drive alone) find carpooling inconvenient, making Option A correct.\n\nOption B is incorrect because the text states that 18% say they \"don't know anyone to share a ride with,\" which is a reason for not carpooling, not a statistic about how many successfully found road mates. Option C is not mentioned in the passage, as there is no reference to people considering carpooling dangerous. Option D is incorrect because the text says \"More than half... insist that carpooling is just too inconvenient,\" indicating rejection of the idea rather than acceptance.\n\nA",
+        "rationale": [
+          "Synthetic local adaptation; reference and semantic labels remain proposed."
+        ]
+      }
+    }
+  ],
+  "review_batch": "omni-edu-v1",
+  "label_status": "proposed",
+  "note": "Adapted evaluation task; original system and final assistant are source/scoring-only. No teacher certification.",
+  "conversation_id": "1616250f6b549600197e",
+  "turn_index": 0,
+  "tags": [
+    "subject_competence",
+    "english",
+    "gaokao_equivalent",
+    "solve"
+  ]
+}

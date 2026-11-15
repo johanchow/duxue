@@ -1,0 +1,64 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 13858,
+  "uid": "race-high221.txt-24e0",
+  "dataset": "reading-race",
+  "record_sha256": "d8ae7a8852f654b1e9f9198b3f9b41ba600633575c88fb79b6eb797c717bbb77",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Answer the reading-comprehension question from the supplied passage and options. Base the answer only on the passage, reason carefully when needed, and follow the requested answer format."
+      },
+      {
+        "role": "user",
+        "content": "Passage:\nHere is some information about several famous local bakeries  in Indiana, the US. They serve as a social gathering place for locals.\nMaple Lane Bakery\nAt 8260 S. State Rd. Claypool, IN. (574) 566-2917, it offers a variety of cooked pies, cookies, and bread. With 20 years' experience Maple Lane Bakery has specialized in the making of pies. The menu includes peach pie $7.19, berry pie $ 7.70, apple pie $7.19 and banana pie $6.99. Feel free to place an order at least 24 hours in advance.\nBetty's cakes & Candy Shop\nAt 816 E. Winona Avenue Warsaw, IN. (574) 269-1231, it specializes in cakes and offers cookies and candies. The chocolate cookies are sold at $ 8.99 a dozen. Betty's cakes & Candy Shop, started half a century ago, specializes in wedding cakes and birthday cakes. Buying a cake from Betty's will not disappoint you as they are always excellent.\nCrepes' Quality Bakery\nAt 217S. Cavin Street Ligonier, IN.(260) 894-3024, this third generation bakery is located downtown Ligonier. It offers cookies and cupcakes, and specializes in rolls and bread. If you plan to buy cookies for the office or work area, you had better get there early as the building workers arrive just before 5:00 am waiting for the doors to open.\nOlympia Candy Kitchen\nAt 136N. Main Street Goshen, IN. (574) 533-5040, it has been welcoming visitors for almost a century in its unchanged location in downtown Goshen, Indiana. Its tradition began in 1912 when Greek Nicholas began making his own chocolates. Today this family-owned operation offers all kinds of candies and boxed candies. If you need an order, you should call ahead of time to see if they can meet your request.\n\nProblem:\nIf you want to order a birthday cake, you are advised to call   _  .\n\nOptions:\nA. (574) 566-2917\nB. (574) 533-5040\nC. (260) 894-3024\nD. (574) 269-1231"
+      },
+      {
+        "role": "assistant",
+        "content": "The correct option is D because the passage explicitly states that **Betty's cakes & Candy Shop** \"specializes in wedding cakes and birthday cakes.\" The contact information provided for this specific bakery is \"(574) 269-1231.\" Therefore, to order a birthday cake, one should call this number.\n\nThe other options are incorrect based on the text:\n*   **Option A** ((574) 566-2917) belongs to **Maple Lane Bakery**, which specializes in \"cooked pies, cookies, and bread,\" not cakes.\n*   **Option B** ((574) 533-5040) is the number for **Olympia Candy Kitchen**, which offers \"all kinds of candies and boxed candies.\"\n*   **Option C** ((260) 894-3024) is for **Crepes' Quality Bakery**, which specializes in \"rolls and bread\" and offers cookies and cupcakes, but the text does not mention birthday cakes.\n\nD"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"reading-race\", \"uid\": \"race-high221.txt-24e0\", \"kind\": \"reading\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/reading/reading-race\", \"rank\": 87, \"supervised_tokens\": 225, \"token_budget\": 396000}, \"system_prompt_id\": \"reading_comprehension\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 13858,
+    "subject": "english",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "Reading Comprehension - Practical Information/Advert",
+    "reason": "English advertisement/informational text about bakeries with a specific detail lookup question (phone number for birthday cakes).",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-15559.json"
+  },
+  "content_review": {
+    "line": 13858,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "英文原文应用文阅读，考查信息检索与匹配，属于高考英语常见题型。参考解析正确。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "diagnostic_adaptation": {
+    "id": "omni-english-016",
+    "student_attempt": "我目前只知道这题涉及Reading Comprehension - Practical Information/Advert，还没有写出具体推理或结论。请帮我确定第一步。",
+    "assessment": "insufficient",
+    "feedback_criteria": "学生只报告了知识主题，未给出可核验的具体结果或推理。不得将未作答判为答错，也不能虚构学生的错误步骤或已掌握。给一个切题且可执行的起步或自检提示。",
+    "is_choice": true,
+    "model": "qwen3.8-flash",
+    "authored_revision": "assistant-explicit-insufficient-evidence.v1"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nPassage:\nHere is some information about several famous local bakeries  in Indiana, the US. They serve as a social gathering place for locals.\nMaple Lane Bakery\nAt 8260 S. State Rd. Claypool, IN. (574) 566-2917, it offers a variety of cooked pies, cookies, and bread. With 20 years' experience Maple Lane Bakery has specialized in the making of pies. The menu includes peach pie $7.19, berry pie $ 7.70, apple pie $7.19 and banana pie $6.99. Feel free to place an order at least 24 hours in advance.\nBetty's cakes & Candy Shop\nAt 816 E. Winona Avenue Warsaw, IN. (574) 269-1231, it specializes in cakes and offers cookies and candies. The chocolate cookies are sold at $ 8.99 a dozen. Betty's cakes & Candy Shop, started half a century ago, specializes in wedding cakes and birthday cakes. Buying a cake from Betty's will not disappoint you as they are always excellent.\nCrepes' Quality Bakery\nAt 217S. Cavin Street Ligonier, IN.(260) 894-3024, this third generation bakery is located downtown Ligonier. It offers cookies and cupcakes, and specializes in rolls and bread. If you plan to buy cookies for the office or work area, you had better get there early as the building workers arrive just before 5:00 am waiting for the doors to open.\nOlympia Candy Kitchen\nAt 136N. Main Street Goshen, IN. (574) 533-5040, it has been welcoming visitors for almost a century in its unchanged location in downtown Goshen, Indiana. Its tradition began in 1912 when Greek Nicholas began making his own chocolates. Today this family-owned operation offers all kinds of candies and boxed candies. If you need an order, you should call ahead of time to see if they can meet your request.\n\nProblem:\nIf you want to order a birthday cake, you are advised to call   _  .\n\nOptions:\nA. (574) 566-2917\nB. (574) 533-5040\nC. (260) 894-3024\nD. (574) 269-1231\n我的尝试：我目前只知道这题涉及Reading Comprehension - Practical Information/Advert，还没有写出具体推理或结论。请帮我确定第一步。\n请检查我已有的理由或结果，只指出可核验的部分，并给一个自检提示。",
+      "images": []
+    }
+  ]
+}

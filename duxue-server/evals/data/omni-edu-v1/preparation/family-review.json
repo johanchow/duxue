@@ -1,0 +1,82 @@
+{
+  "status": "proposed",
+  "model": "qwen3.8-max",
+  "proposals": {
+    "chinese": {
+      "groups": [
+        {
+          "ids": [
+            "omni-chinese-004",
+            "omni-chinese-025"
+          ],
+          "reason": "两题均包含完全相同的阅读材料文本（刘心武《掐辫子》和红柯《麦子》全文重复出现），属于共用同一组阅读材料的题目家族。"
+        },
+        {
+          "ids": [
+            "omni-chinese-016",
+            "omni-chinese-027"
+          ],
+          "reason": "两题均包含完全相同的阅读材料文本（向学笙《中秋团圆，有你有我、有家有国》和朱良志《一丸冷月的韵味》全文重复出现），属于共用同一组阅读材料的题目家族。"
+        },
+        {
+          "ids": [
+            "omni-chinese-022",
+            "omni-chinese-029"
+          ],
+          "reason": "两题均包含完全相同的阅读材料文本（《对话〈钟南山：苍生在上〉作者》和刘平《牛魂》全文重复出现），属于共用同一组阅读材料的题目家族。"
+        },
+        {
+          "ids": [
+            "omni-chinese-005",
+            "omni-chinese-030"
+          ],
+          "reason": "两题均包含完全相同的文言文阅读材料（王世贞《〈宗子相集〉序》以及苏轼《记承天寺夜游》与《东坡志林·游沙湖》全文重复出现），属于共用同一组阅读材料的题目家族。"
+        }
+      ]
+    },
+    "math": {
+      "groups": []
+    },
+    "chemistry": {
+      "groups": []
+    },
+    "geography": {
+      "groups": []
+    },
+    "history": {
+      "groups": []
+    },
+    "politics": {
+      "groups": [
+        {
+          "ids": [
+            "omni-politics-011"
+          ],
+          "reason": "该条目内部question字段中同一段关于十八洞村精准扶贫的材料被完整重复了两次，属于同一材料/原题重复。其余题目虽涉及相近知识点（如传统文化、扶贫等），但材料来源、情境和设问均不同，不构成同题或同材料家族。"
+        }
+      ]
+    },
+    "english": {
+      "groups": [
+        {
+          "ids": [
+            "omni-english-029"
+          ],
+          "reason": "该条目包含同一篇文章（Emma Watson在地铁藏书的Books on the Underground活动）下的三道不同小题，属于共用同一阅读材料的材料家族。"
+        }
+      ]
+    },
+    "biology": {
+      "groups": []
+    },
+    "physics": {
+      "groups": []
+    }
+  },
+  "disposition": {
+    "chinese": "Reject all four proposed pairs: inspected full questions/endings; material titles and bodies differ. Longest exact shared substrings are only 9–15 characters (mostly Problem/reading wrappers). No merger.",
+    "politics": "Singleton denotes repetition within one record, not cross-task family duplication.",
+    "english": "Singleton is a multi-question record and remains one task, not multiple independent tasks."
+  },
+  "family_grouping": "normalized exact question text with semantic suggestions reviewed; not a teacher-certified semantic dedup benchmark"
+}

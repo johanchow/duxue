@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 24524,
+  "uid": "coig-exam_coig_exam_sampled_clean_v3.jsonl-1434-f0056d256a2e",
+  "dataset": "coig-cqia",
+  "record_sha256": "cb1017930df98305941efdcc36ed2bd1fb3bec8c92f89f7e89f70cf908407959",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n请选择正确的选项或最佳答案\n在巴黎和会上，为了拉拢日本，英、法、美无视中国的反对和抗议，决定把德国在山东的一切权益转让给日本。但是在华盛顿会议上，英美支持中国收回山东主权的要求。英美态度发生转变是因为（　　）A.尊重和维护中国主权\t　　　　　　　　B.中国综合国力的提高\tC.遏制日本独霸中国\t　　　　　　　　　　D.二战即将爆发"
+      },
+      {
+        "role": "assistant",
+        "content": "在巴黎和会上，为了拉拢日本，英、法、美无视中国的反对和抗议，决定把德国在山东的一切权益转让给日本。但是在华盛顿会议上，英美支持中国收回山东主权的要求。英美态度发生转变是因为遏制日本独霸中国。依据所学知识可知，一战时美国将目光投向了欧洲战场，导致日本急剧扩大在华势力；一战结束后美国想重新染指中国，但是碍于日本势力过大，所以拉上其他国家一同提出了召开华盛顿会议，解决所谓的列强在亚太地区的矛盾，但是本质是为了遏制日本的势力，为自己谋取利益，华盛顿会议的一个作用就是使中国从日本一家独大沦为了列强共同掌握。故选C。"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-1434-f0056d256a2e\", \"kind\": \"qa\", \"system_variant\": \"general\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 5542, \"supervised_tokens\": 143, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 24524,
+    "subject": "history",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "一战后国际关系-华盛顿会议",
+    "reason": "题目考查巴黎和会与华盛顿会议期间英美对华政策转变的原因，需要结合当时的国际格局（遏制日本扩张）进行历史逻辑推理，符合高中历史关于近代外交和国际关系的考查深度。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-24815.json"
+  },
+  "content_review": {
+    "line": 24524,
+    "subject_correct": true,
+    "complete": true,
+    "level": "other_k12",
+    "reason": "考查巴黎和会与华盛顿会议上英美对日态度转变的原因，属初中历史常识性理解，无需高中层级深度推理。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "Problem:\n请选择正确的选项或最佳答案\n在巴黎和会上，为了拉拢日本，英、法、美无视中国的反对和抗议，决定把德国在山东的一切权益转让给日本。但是在华盛顿会议上，英美支持中国收回山东主权的要求。英美态度发生转变是因为（　　）A.尊重和维护中国主权\t　　　　　　　　B.中国综合国力的提高\tC.遏制日本独霸中国\t　　　　　　　　　　D.二战即将爆发",
+      "images": []
+    }
+  ]
+}

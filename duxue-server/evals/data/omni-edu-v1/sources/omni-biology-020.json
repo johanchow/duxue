@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 26423,
+  "uid": "qasc-7874",
+  "dataset": "qasc",
+  "record_sha256": "494cefc0db7e92df9a40bbbd54f1808c7da749701f8f9ae2afbf0c78012b2bb9",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n_ bind to allergens.\n\nOptions:\nA. to stay warm\nB. mammals\nC. fur and fat\nD. animals\nE. protect them\nF. Most plants\nG. Antibodies\nH. Chemical energy"
+      },
+      {
+        "role": "assistant",
+        "content": "Antibodies are large, Y-shaped proteins specifically designed to recognize and bind to antigens. In the context of an allergic reaction, allergens function as antigens. Since the provided facts state that allergens are also called antigens, it follows that antibodies are the substances that bind to them to trigger the immune response. Therefore, the correct completion is that antibodies bind to allergens.\n\nAnswer: G (Antibodies)"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"qasc\", \"uid\": \"qasc-7874\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 7441, \"supervised_tokens\": 87, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 26423,
+    "subject": "biology",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "免疫调节-抗体功能",
+    "reason": "题目考查抗体与过敏原的结合，属于高中生物必修模块《稳态与环境》中的免疫调节核心知识点。尽管选项中有干扰项，但考点明确对应高中课程标准。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-science-v1/review-25860.json"
+  },
+  "content_review": {
+    "line": 26423,
+    "subject_correct": true,
+    "complete": true,
+    "level": "other_k12",
+    "reason": "考查抗体与过敏原结合，属于初中生物免疫常识层面，高中虽涉及但此题深度和形式为简单填空选择，未达高考综合推理层级。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n_ bind to allergens.\n\nOptions:\nA. to stay warm\nB. mammals\nC. fur and fat\nD. animals\nE. protect them\nF. Most plants\nG. Antibodies\nH. Chemical energy\n我不知道如何开始，请给我一个具体的起步提示，不要直接解完整题。",
+      "images": []
+    }
+  ]
+}

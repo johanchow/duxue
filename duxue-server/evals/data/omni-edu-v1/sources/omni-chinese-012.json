@@ -1,0 +1,62 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 25735,
+  "uid": "coig-exam_coig_exam_sampled_clean_v3.jsonl-146-24d7607d189f",
+  "dataset": "coig-cqia",
+  "record_sha256": "120a9ad72dfbc09cdc4a24a675f7469cf92bf20f7f438c3b0529adc84c478fec",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n选择符合题意的选项\n下列各句中，划线的成语便用不恰当的一项是（　　）A．这名运动员看上去一副弱不胜衣的样子，实际上，他身体健，骨骼强健，耐力和速度非一般人可比。\tB．在座的各位都是本领域的顶尖专家，我们请大家来，就是想听听各位的高见，大家不必客气。就姑妄言之吧。\tC．他闲来无事，就经常上网发一些飞短流长的帖子，结果不仅弄得与同事邻里的关系很紧张，甚至还惹上了官司。\tD．唐玄宗虽早就觉察到安安禄山有反叛之心，但并没有及时除掉他，反而放虎归山，让他出任范阳节度使，这未免有点蹊跷"
+      },
+      {
+        "role": "assistant",
+        "content": "A．弱不胜衣：形容人很瘦弱，连衣服都承受不起。符合语境。B．姑妄言之：姑且随便说说，不一定有什么道理。自谦之词。用于“大家”，对象错。可改为“各抒己见”。C．飞短流长：指散播谣言，中伤他人。符合语境。D．放虎归山：把老虎放回山去。比喻把坏人放回老巢，留下祸根。符合语境“唐玄宗虽早就觉察到安安禄山有反叛之心，但并没有及时除掉他”。\n\n因此答案为：B"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-146-24d7607d189f\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 6753, \"supervised_tokens\": 127, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 25735,
+    "subject": "chinese",
+    "topic": "成语语境与谦敬对象",
+    "reason": "四个完整成语语境，要求辨析自谦用语的使用对象，符合高中语言文字应用。",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "review_model": "assistant_content_review"
+  },
+  "content_review": {
+    "line": 25735,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "四个完整成语语境，要求辨析自谦用语的使用对象，符合高中语言文字应用。",
+    "reference_issue": "助手阅读未发现影响作答的明确矛盾；未获教师认证"
+  },
+  "diagnostic_adaptation": {
+    "student_attempt": "“姑妄言之”是自谦的话，自己可以说，题里却用它让在座专家发表意见，我觉得使用对象不合适。",
+    "assessment": "correct",
+    "feedback_criteria": "学生已展示对自谦用语使用对象的正确辨析；可解释谦敬原则并引导自行检查，不能要求导师确认具体选项。",
+    "is_choice": true,
+    "id": "omni-chinese-012",
+    "model": "assistant_authored_content_review"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n选择符合题意的选项\n下列各句中，划线的成语便用不恰当的一项是（　　）A．这名运动员看上去一副弱不胜衣的样子，实际上，他身体健，骨骼强健，耐力和速度非一般人可比。\tB．在座的各位都是本领域的顶尖专家，我们请大家来，就是想听听各位的高见，大家不必客气。就姑妄言之吧。\tC．他闲来无事，就经常上网发一些飞短流长的帖子，结果不仅弄得与同事邻里的关系很紧张，甚至还惹上了官司。\tD．唐玄宗虽早就觉察到安安禄山有反叛之心，但并没有及时除掉他，反而放虎归山，让他出任范阳节度使，这未免有点蹊跷\n我的尝试：“姑妄言之”是自谦的话，自己可以说，题里却用它让在座专家发表意见，我觉得使用对象不合适。\n请检查我已有的理由或结果，只指出可核验的部分，并给一个自检提示。",
+      "images": []
+    }
+  ]
+}

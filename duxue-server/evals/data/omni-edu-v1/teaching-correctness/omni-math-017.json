@@ -1,0 +1,82 @@
+{
+  "schema_version": "dialogue-eval.v2",
+  "id": "omni-math-017",
+  "type": "single_turn",
+  "replay_mode": "fixed_history",
+  "source": {
+    "kind": "synthetic",
+    "coverage": "authored",
+    "provider": "cmm-math-text",
+    "note": "{\"source_record\": \"sources/omni-math-017.json\", \"uid\": \"cmm-math-21408\", \"source_category\": \"subject_competence\"}"
+  },
+  "messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "Problem:\n已知 $z_{1}, z_{2} \\in C,\\left|z_{1}+z_{2}\\right|=2 \\sqrt{2},\\left|z_{1}\\right|=\\sqrt{3},\\left|z_{2}\\right|=\\sqrt{2}$, 则 $\\left|z_{1}-z_{2}\\right|=$ ( )\n\nOptions:\nA. 1\nB. $\\frac{1}{2}$\nC. 2\nD. $\\sqrt{2}$",
+      "images": []
+    }
+  ],
+  "checks": [
+    {
+      "id": "check-1",
+      "after_message": "m1",
+      "component": "tutoring.turn",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "problem": {
+            "summary": "Problem:\n已知 $z_{1}, z_{2} \\in C,\\left|z_{1}+z_{2}\\right|=2 \\sqrt{2},\\left|z_{1}\\right|=\\sqrt{3},\\left|z_{2}\\right|=\\sqrt{2}$, 则 $\\left|z_{1}-z_{2}\\right|=$ ( )\n\nOptions:\nA. 1\nB. $\\frac{1}{2}$\nC. 2\nD. $\\sqrt{2}$",
+            "active_subgoal": "复数的模与几何意义",
+            "substantive_attempts": 0,
+            "hints_given": 0
+          },
+          "task_title": "本地学科答疑评测",
+          "task_active": true
+        },
+        "note": "Injected evaluation context; not a production database observation."
+      },
+      "grading": {
+        "deterministic": [
+          {
+            "id": "delivered",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "answer"
+            ]
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "correctness",
+            "type": "score",
+            "rubric": "内部完整解题：依据原题和实际图片独立核验最终结论、推导、定义域、单位、条件及各小问覆盖。允许数学等价表达与有依据的异解。1分错误/无解答，2分重要错误，3分方向正确但关键缺漏，4分结论与主要推导正确且完整，5分进一步严谨清晰。只评价实际solution，不要求启发提问。",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "本题知识目标：复数的模与几何意义。参考答案是上游未认证材料，须独立核验；参考有争议时不得盲从，不因合理异解扣分。",
+            "expected": "pass"
+          }
+        ],
+        "reference_response": "本题可用特值法, 不妨设 $z_{1}=\\sqrt{3}, z_{2}=\\sqrt{2}(\\cos \theta+i \\sin \theta), \theta \\in[0,2 \\pi)$,由于 $\\left|z_{1}+z_{2}\right|=2 \\sqrt{2}$, 可得 $\\sqrt{(\\sqrt{3}+\\sqrt{2} \\cos \theta)^{2}+(\\sqrt{2} \\sin \theta)^{2}}=2 \\sqrt{2}$,解得 $\\cos \theta=\frac{\\sqrt{6}}{4}$,则 $\\left|z_{1}-z_{2}\right|=\\sqrt{(\\sqrt{3}-\\sqrt{2} \\cos \theta)^{2}+(\\sqrt{2} \\sin \theta)^{2}}=\\sqrt{5-6 \\cos \theta}=\\sqrt{2}$, 故选 D.",
+        "rationale": [
+          "Synthetic local adaptation; reference and semantic labels remain proposed."
+        ]
+      }
+    }
+  ],
+  "review_batch": "omni-edu-v1",
+  "label_status": "proposed",
+  "note": "Adapted evaluation task; original system and final assistant are source/scoring-only. No teacher certification.",
+  "conversation_id": "c8a1f1d09a167d32dd5f",
+  "turn_index": 0,
+  "tags": [
+    "subject_competence",
+    "math",
+    "gaokao_equivalent",
+    "solve"
+  ]
+}

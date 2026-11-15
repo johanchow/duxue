@@ -1,0 +1,52 @@
+{
+  "structural_status": "passed",
+  "acceptance_status": "passed",
+  "tasks": 210,
+  "unique_problem_families": 210,
+  "categories": {
+    "pedagogical_action": 96,
+    "diagnostic_reasoning": 72,
+    "subject_competence": 42
+  },
+  "subjects": {
+    "chinese": 30,
+    "math": 30,
+    "english": 30,
+    "physics": 20,
+    "chemistry": 20,
+    "biology": 20,
+    "politics": 20,
+    "history": 20,
+    "geography": 20
+  },
+  "gaokao_level_proposed": 138,
+  "gaokao_level_teacher_confirmed": 0,
+  "gaokao_by_category": {
+    "pedagogical_action": 65,
+    "diagnostic_reasoning": 52,
+    "subject_competence": 21
+  },
+  "gaokao_by_subject": {
+    "chinese": 26,
+    "math": 28,
+    "english": 27,
+    "physics": 8,
+    "chemistry": 6,
+    "biology": 16,
+    "politics": 8,
+    "history": 5,
+    "geography": 14
+  },
+  "image_tasks": 18,
+  "episodes": 12,
+  "checkpoints": 234,
+  "split_counts": {
+    "holdout": 42,
+    "development": 168
+  },
+  "gaps": [],
+  "data_digest": "e0f155397e07ac33fea32f88e9c132c607987153743b659d91fc91df6c0717b4",
+  "source_revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "image_storage": "oss",
+  "oss_images": 18
+}

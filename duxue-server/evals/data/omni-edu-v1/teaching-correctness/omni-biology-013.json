@@ -1,0 +1,82 @@
+{
+  "schema_version": "dialogue-eval.v2",
+  "id": "omni-biology-013",
+  "type": "single_turn",
+  "replay_mode": "fixed_history",
+  "source": {
+    "kind": "synthetic",
+    "coverage": "authored",
+    "provider": "coig-cqia",
+    "note": "{\"source_record\": \"sources/omni-biology-013.json\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-1551-f717a4988790\", \"source_category\": \"subject_competence\"}"
+  },
+  "messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "Problem:\n按要求填写空格处的内容\n.基因工程中可以通过PCR技术扩增目的基因。回答下列问题。\n生物体细胞内的DNA复制开始时，解开DNA双链的酶是________。在体外利用PCR技术扩增目的基因时，使反应体系中的模板DNA解链为单链的条件是________。上述两个解链过程的共同点是破坏了DNA双链分子中的________。",
+      "images": []
+    }
+  ],
+  "checks": [
+    {
+      "id": "check-1",
+      "after_message": "m1",
+      "component": "tutoring.turn",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "problem": {
+            "summary": "Problem:\n按要求填写空格处的内容\n.基因工程中可以通过PCR技术扩增目的基因。回答下列问题。\n生物体细胞内的DNA复制开始时，解开DNA双链的酶是________。在体外利用PCR技术扩增目的基因时，使反应体系中的模板DNA解链为单链的条件是________。上述两个解链过程的共同点是破坏了DNA双链分子中的________。",
+            "active_subgoal": "基因工程-DNA复制与PCR技术原理",
+            "substantive_attempts": 0,
+            "hints_given": 0
+          },
+          "task_title": "本地学科答疑评测",
+          "task_active": true
+        },
+        "note": "Injected evaluation context; not a production database observation."
+      },
+      "grading": {
+        "deterministic": [
+          {
+            "id": "delivered",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "answer"
+            ]
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "correctness",
+            "type": "score",
+            "rubric": "内部完整解题：依据原题和实际图片独立核验最终结论、推导、定义域、单位、条件及各小问覆盖。允许数学等价表达与有依据的异解。1分错误/无解答，2分重要错误，3分方向正确但关键缺漏，4分结论与主要推导正确且完整，5分进一步严谨清晰。只评价实际solution，不要求启发提问。",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "本题知识目标：基因工程-DNA复制与PCR技术原理。参考答案是上游未认证材料，须独立核验；参考有争议时不得盲从，不因合理异解扣分。",
+            "expected": "pass"
+          }
+        ],
+        "reference_response": "解旋酶；加热至90～95℃；氢键",
+        "rationale": [
+          "Synthetic local adaptation; reference and semantic labels remain proposed."
+        ]
+      }
+    }
+  ],
+  "review_batch": "omni-edu-v1",
+  "label_status": "proposed",
+  "note": "Adapted evaluation task; original system and final assistant are source/scoring-only. No teacher certification.",
+  "conversation_id": "f345395016fed4b9ff9f",
+  "turn_index": 0,
+  "tags": [
+    "subject_competence",
+    "biology",
+    "gaokao_equivalent",
+    "solve"
+  ]
+}

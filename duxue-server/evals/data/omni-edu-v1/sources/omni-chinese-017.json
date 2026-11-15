@@ -1,0 +1,54 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 23137,
+  "uid": "coig-exam_coig_exam_sampled_clean_v3.jsonl-71-4716bad11067",
+  "dataset": "coig-cqia",
+  "record_sha256": "b1a32424420f1c3f795bc345357f1d223a39b0db70f2bcfcde4470693018f96c",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n请选择正确选项\n下列表述正确的一项是（）　　A.“热得难受”是补充短语，“基础设施”是主谓短语，“重视语文”是动宾短语。　　B.“托尔斯泰这对眼睛里有一百只眼珠。”这句话运用了比输的修辞。　　C.“我们背负着它，播种着，耕耘着，收获着，欣喜地走向生命的远方。”这句话中的标点符号使用正确。　　D.“这十多个少年，委实没有一个不会凫水的，而且两三个还是弄潮的好手。”是并列关系复句。"
+      },
+      {
+        "role": "assistant",
+        "content": "A.“基础设施”是偏正短语；B.“眼睛里有一百只眼珠”运用了夸张的修辞；D.句中的“而且”表递进关系，故本句是递进关系复句；故选C。"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-71-4716bad11067\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 4155, \"supervised_tokens\": 48, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 23137,
+    "subject": "chinese",
+    "topic": "短语、修辞与复句辨析",
+    "reason": "短语结构、夸张和递进复句为初中语文基础，不计高考层级。",
+    "level": "other_k12",
+    "complete": true,
+    "review_model": "assistant_content_review"
+  },
+  "content_review": {
+    "line": 23137,
+    "subject_correct": true,
+    "complete": true,
+    "level": "other_k12",
+    "reason": "短语结构、夸张和递进复句为初中语文基础，不计高考层级。",
+    "reference_issue": "助手阅读未发现影响作答的明确矛盾；未获教师认证"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "Problem:\n请选择正确选项\n下列表述正确的一项是（）　　A.“热得难受”是补充短语，“基础设施”是主谓短语，“重视语文”是动宾短语。　　B.“托尔斯泰这对眼睛里有一百只眼珠。”这句话运用了比输的修辞。　　C.“我们背负着它，播种着，耕耘着，收获着，欣喜地走向生命的远方。”这句话中的标点符号使用正确。　　D.“这十多个少年，委实没有一个不会凫水的，而且两三个还是弄潮的好手。”是并列关系复句。",
+      "images": []
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 4011,
+  "uid": "cmm-math-20468",
+  "dataset": "cmm-math-text",
+  "record_sha256": "f50834fc89dc76580f5bcead5bdc0e4645a785b53ff274a9d2b01d1adb7edb48",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n下列正确的是 ( )\n\nOptions:\nA. 类比推理是由特殊到一般的推理\n\nB. 演绎推理是由特殊到一般的推理\n\nC. 归纳推理是由个别到一般的推理\n\nD. 合情推理可以作为证明的步骤"
+      },
+      {
+        "role": "assistant",
+        "content": "解析：解答：对于 $\\mathrm{A}$, 类比推理是从个别到个别的推理,故 $\\mathrm{A}$ 错; 对于 $\\mathrm{B}$ : 演绎推理是由一般到特殊的推理, 故 $\\mathrm{B}$ 错; 对于 $\\mathrm{C}$ : 归纳推理是由个别到一般的推理, 是正确的; 对于 $\\mathrm{D}$ : 合情推理不可以作为证明的步骤, 故 D 错; 因此选 C.\n\n分析: 本题主要考查了归纳推理、合情推理的含义与作用、类比推理、演绎推理的意义, 解决问题的关键是根据推理定义直接判定即可."
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"cmm-math-text\", \"uid\": \"cmm-math-20468\", \"kind\": \"qa\", \"system_variant\": \"general\", \"kcenter\": {\"bucket\": \"subject/math/text/cot/other\", \"rank\": 1155, \"supervised_tokens\": 139, \"token_budget\": 1345000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 4011,
+    "subject": "math",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "合情推理与演绎推理概念辨析",
+    "reason": "考察对类比、归纳、演绎等推理方式定义的准确理解，属于高中数学选修2-2（或新教材选择性必修）中推理与证明章节的基础概念题。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-5156.json"
+  },
+  "content_review": {
+    "line": 4011,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "考查高中数学选修中推理与证明章节的类比推理、演绎推理、归纳推理、合情推理的概念辨析，属于高中课程特有知识。参考解析正确。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "diagnostic_adaptation": {
+    "id": "omni-math-020",
+    "student_attempt": "我目前只知道这题涉及合情推理与演绎推理概念辨析，还没有写出具体推理或结论。请帮我确定第一步。",
+    "assessment": "insufficient",
+    "feedback_criteria": "学生只报告了知识主题，未给出可核验的具体结果或推理。不得将未作答判为答错，也不能虚构学生的错误步骤或已掌握。给一个切题且可执行的起步或自检提示。",
+    "is_choice": true,
+    "model": "qwen3.8-flash",
+    "authored_revision": "assistant-explicit-insufficient-evidence.v1"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n下列正确的是 ( )\n\nOptions:\nA. 类比推理是由特殊到一般的推理\n\nB. 演绎推理是由特殊到一般的推理\n\nC. 归纳推理是由个别到一般的推理\n\nD. 合情推理可以作为证明的步骤\n我的尝试：我目前只知道这题涉及合情推理与演绎推理概念辨析，还没有写出具体推理或结论。请帮我确定第一步。\n请检查我已有的理由或结果，只指出可核验的部分，并给一个自检提示。",
+      "images": []
+    }
+  ]
+}

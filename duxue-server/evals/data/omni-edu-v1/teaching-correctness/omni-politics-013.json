@@ -1,0 +1,82 @@
+{
+  "schema_version": "dialogue-eval.v2",
+  "id": "omni-politics-013",
+  "type": "single_turn",
+  "replay_mode": "fixed_history",
+  "source": {
+    "kind": "synthetic",
+    "coverage": "authored",
+    "provider": "aquilaedu",
+    "note": "{\"source_record\": \"sources/omni-politics-013.json\", \"uid\": \"aquila-all-181892-4de9bdb6e7c0\", \"source_category\": \"subject_competence\"}"
+  },
+  "messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "Problem:\n请根据材料回答下列问题。\n材料一：2015年9月1日，被称为“史上最严”的广告法正式施行，该法明确规定，广告不得使用“国家级”“最高级”“最佳”等用语违反该规定，由工商行政管理部门责令停止发布广告，对广告主处二十万元以上一百万元以下的罚款，情节严重的，可以吊销营业执照 材料二：因栗子的外包装牛皮纸袋上写有“杭州最好的炒货店铺”，杭州方林富炒货店受到杭州市西湖区市场监督管理局的处罚，被要求停止发布使用顶级词汇的广告，并被罚款20万元（2）一个“最”字，价值20万元，方林富觉得冤，网友也为他鸣不平请结合材料一和材料二谈谈你对此事的看法",
+      "images": []
+    }
+  ],
+  "checks": [
+    {
+      "id": "check-1",
+      "after_message": "m1",
+      "component": "tutoring.turn",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "problem": {
+            "summary": "Problem:\n请根据材料回答下列问题。\n材料一：2015年9月1日，被称为“史上最严”的广告法正式施行，该法明确规定，广告不得使用“国家级”“最高级”“最佳”等用语违反该规定，由工商行政管理部门责令停止发布广告，对广告主处二十万元以上一百万元以下的罚款，情节严重的，可以吊销营业执照 材料二：因栗子的外包装牛皮纸袋上写有“杭州最好的炒货店铺”，杭州方林富炒货店受到杭州市西湖区市场监督管理局的处罚，被要求停止发布使用顶级词汇的广告，并被罚款20万元（2）一个“最”字，价值20万元，方林富觉得冤，网友也为他鸣不平请结合材料一和材料二谈谈你对此事的看法",
+            "active_subgoal": "法治社会/市场经济法律规范",
+            "substantive_attempts": 0,
+            "hints_given": 0
+          },
+          "task_title": "本地学科答疑评测",
+          "task_active": true
+        },
+        "note": "Injected evaluation context; not a production database observation."
+      },
+      "grading": {
+        "deterministic": [
+          {
+            "id": "delivered",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "answer"
+            ]
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "correctness",
+            "type": "score",
+            "rubric": "内部完整解题：依据原题和实际图片独立核验最终结论、推导、定义域、单位、条件及各小问覆盖。允许数学等价表达与有依据的异解。1分错误/无解答，2分重要错误，3分方向正确但关键缺漏，4分结论与主要推导正确且完整，5分进一步严谨清晰。只评价实际solution，不要求启发提问。",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "本题知识目标：法治社会/市场经济法律规范。参考答案是上游未认证材料，须独立核验；参考有争议时不得盲从，不因合理异解扣分。",
+            "expected": "pass"
+          }
+        ],
+        "reference_response": "#### 答案是：（2）①同情“弱势群体”是人之常情，但法不容情，法律的威严不可践踏。②依照法律规定，20万元的处罚并不高，方林富有权利申请行政复议，或向法院起诉。③上述现象表明，社会主义法治建设虽然取得了巨大成就，依然任重道远。④依法治国要求国家公职人员必须依法行政，公民要严格遵守法律。⑤坚持“法律面前人人平等”，任何组织和个人都没有超越法律的特权。⑥严格按照社会主义法治的基本要求办事，做到：有法可依、有法必依、执法必严、违法必究。⑦我们要认真学法，法律不允许做的事情坚决不做，逐步增强守法意识，树立法治观念等。",
+        "rationale": [
+          "Synthetic local adaptation; reference and semantic labels remain proposed."
+        ]
+      }
+    }
+  ],
+  "review_batch": "omni-edu-v1",
+  "label_status": "proposed",
+  "note": "Adapted evaluation task; original system and final assistant are source/scoring-only. No teacher certification.",
+  "conversation_id": "b03aa58da911faacd7ad",
+  "turn_index": 0,
+  "tags": [
+    "subject_competence",
+    "politics",
+    "other_k12",
+    "solve"
+  ]
+}

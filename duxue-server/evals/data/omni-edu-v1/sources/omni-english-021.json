@@ -1,0 +1,63 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 14556,
+  "uid": "race-high23258.txt-288c",
+  "dataset": "reading-race",
+  "record_sha256": "2ba376ecc8b9c260d0e5abcc945f981e00f3a097bda1c265e403d6f0b9df94b2",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Answer the reading-comprehension question from the supplied passage and options. Base the answer only on the passage, reason carefully when needed, and follow the requested answer format."
+      },
+      {
+        "role": "user",
+        "content": "Passage:\nThe medical term for a broken bone is a fracture.But there are different kinds of fractures.A single fracture is when a bone is broken in just one place.You may have heard the term hairline fracture.This is a single fracture that is very small,like the width of a hair.A complete fracture is when the bone comes apart.When a bone is broken in more than two places or gets crushed.the name for it is a comminuted fracture.Still another condition is called a bowing fracture.This happens with a bone that bends but does not break.It happens mostly in children.Ever heard of a greenstick fracture? This is when a bone is bent and breaks along only one side,like a young stick of wood.Another kind of break is an open or compound fracture.This is when the bone breaks the skin. This is very serious.Along with the bone damage there is a risk of infection in the open wound.\nA lot of things happen as the body reacts to all injury like a broken bone.You might suddenly feel lightheaded.You might also feel sick to your stomach.People who are seriously injured can go into shock.They might feel cold,dizzy and unable to think clearly.Shock requires immediate medical attention.But while broken bones can be painful,they are generally not life-threatening.\nStill,broken bones should be treated quickly because they can restrict blood flow or cause nerve damage.Also,the break will start to repair itself, so you want to make sure the bone is lined up correctly.\nX-rays are taken to see the break.Treatment depends on the kind of fracture that is identified. A doctor sets a broken bone to make sure it is in the correct position.Severe breaks may require an operation to hold the bone together with metal plates and screws.Then,a hard  _ may be put around the area of the break to hold the bone in place while it heals.Casts are usually worn for one to two months.In some cases,instead of a cast,a splint made of plastic or metal will be secured over the area to restrict movement.\n\nProblem:\nIf a bone is bent but does not break, it belongs to\n\nOptions:\nA. a hair line fracture\nB. a bowing fracture\nC. a greenstick fracture\nD. an open fracture"
+      },
+      {
+        "role": "assistant",
+        "content": "The correct option is B because the passage explicitly defines this condition in the sentence: \"Still another condition is called a bowing fracture. This happens with a bone that bends but does not break.\" This directly matches the scenario described in the question.\n\nOption A is incorrect because a hairline fracture is described as a \"single fracture that is very small,\" implying a break has occurred. Option C is incorrect because a greenstick fracture is defined as a bone that \"bends and breaks along only one side.\" Option D is incorrect because an open fracture is when \"the bone breaks the skin.\" Since the question specifies a bone that bends but does *not* break, only the bowing fracture fits the description.\n\nB"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"reading-race\", \"uid\": \"race-high23258.txt-288c\", \"kind\": \"reading\", \"system_variant\": \"general\", \"kcenter\": {\"bucket\": \"subject/reading/reading-race\", \"rank\": 785, \"supervised_tokens\": 145, \"token_budget\": 396000}, \"system_prompt_id\": \"reading_comprehension\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 14556,
+    "subject": "english",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "阅读理解-定义匹配",
+    "reason": "英文科普说明文，考察根据文中定义识别骨折类型，属于基础细节题，难度适中。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-14329.json"
+  },
+  "content_review": {
+    "line": 14556,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "英文原文阅读理解，考查医学科普类文章的细节匹配，符合高考英语阅读题型。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "diagnostic_adaptation": {
+    "id": "omni-english-021",
+    "student_attempt": "题目问骨头弯曲但未断裂的情况。文中提到greenstick fracture是'bent and breaks along only one side'，也就是弯了但有一侧断了。而bowing fracture是'bends but does not break'。虽然两者都涉及弯曲，但题目强调'does not break'，所以我倾向于选C，因为greenstick更常见于儿童且描述中有bent这个词，可能出题人混淆了概念或者我理解有误，但根据字面意思似乎C更接近'弯曲'这个动作的显著特征。",
+    "assessment": "incorrect",
+    "feedback_criteria": "指出学生在区分bowing fracture和greenstick fracture时的关键错误：题目明确限定'does not break'（未断裂），而文中定义greenstick fracture包含'breaks along only one side'（一侧断裂）。引导学生重新阅读文中对bowing fracture的定义'This happens with a bone that bends but does not break'，确认其完全匹配题干条件，从而纠正选择。",
+    "is_choice": true,
+    "model": "qwen3.8-flash"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nPassage:\nThe medical term for a broken bone is a fracture.But there are different kinds of fractures.A single fracture is when a bone is broken in just one place.You may have heard the term hairline fracture.This is a single fracture that is very small,like the width of a hair.A complete fracture is when the bone comes apart.When a bone is broken in more than two places or gets crushed.the name for it is a comminuted fracture.Still another condition is called a bowing fracture.This happens with a bone that bends but does not break.It happens mostly in children.Ever heard of a greenstick fracture? This is when a bone is bent and breaks along only one side,like a young stick of wood.Another kind of break is an open or compound fracture.This is when the bone breaks the skin. This is very serious.Along with the bone damage there is a risk of infection in the open wound.\nA lot of things happen as the body reacts to all injury like a broken bone.You might suddenly feel lightheaded.You might also feel sick to your stomach.People who are seriously injured can go into shock.They might feel cold,dizzy and unable to think clearly.Shock requires immediate medical attention.But while broken bones can be painful,they are generally not life-threatening.\nStill,broken bones should be treated quickly because they can restrict blood flow or cause nerve damage.Also,the break will start to repair itself, so you want to make sure the bone is lined up correctly.\nX-rays are taken to see the break.Treatment depends on the kind of fracture that is identified. A doctor sets a broken bone to make sure it is in the correct position.Severe breaks may require an operation to hold the bone together with metal plates and screws.Then,a hard  _ may be put around the area of the break to hold the bone in place while it heals.Casts are usually worn for one to two months.In some cases,instead of a cast,a splint made of plastic or metal will be secured over the area to restrict movement.\n\nProblem:\nIf a bone is bent but does not break, it belongs to\n\nOptions:\nA. a hair line fracture\nB. a bowing fracture\nC. a greenstick fracture\nD. an open fracture\n我的尝试：题目问骨头弯曲但未断裂的情况。文中提到greenstick fracture是'bent and breaks along only one side'，也就是弯了但有一侧断了。而bowing fracture是'bends but does not break'。虽然两者都涉及弯曲，但题目强调'does not break'，所以我倾向于选C，因为greenstick更常见于儿童且描述中有bent这个词，可能出题人混淆了概念或者我理解有误，但根据字面意思似乎C更接近'弯曲'这个动作的显著特征。\n请检查我已有的理由或结果，只指出可核验的部分，并给一个自检提示。",
+      "images": []
+    }
+  ]
+}

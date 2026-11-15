@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 20325,
+  "uid": "aquila-all-237423-da01f5329df2",
+  "dataset": "aquilaedu",
+  "record_sha256": "3010d1be127ac99587c5f9f85abbe055437c0c0aa0ef650fc2bd669e103b0e50",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n请根据题目内容选择符合要求的选项。\n组成下列多聚体的单体的种类最多的是（    ） A. 血红蛋白 B DNA C. 淀粉 D. 纤维素"
+      },
+      {
+        "role": "assistant",
+        "content": "多糖、蛋白质、核酸等生物大分子都是由许多基本组成单位（单体）连接而成，多糖的单体是单糖，蛋白质的单体是氨基酸，核酸的单体是核苷酸。 【详解】血红蛋白属于蛋白质，构成蛋白质的单体是氨基酸，约有20种；组成DNA的单体是脱氧核苷酸，有4种；组成淀粉和纤维素的单体是葡萄糖，所以单体种类最多的是血红蛋白。 故选A。 \n#### 答案是：A"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"aquilaedu\", \"uid\": \"aquila-all-237423-da01f5329df2\", \"kind\": \"qa\", \"system_variant\": \"none\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 1343, \"supervised_tokens\": 99, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 20325,
+    "subject": "biology",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "生物大分子单体种类",
+    "reason": "考察蛋白质（血红蛋白）、DNA、淀粉、纤维素的单体组成。血红蛋白由多种氨基酸组成，DNA由4种脱氧核苷酸组成，多糖由单一葡萄糖组成。这是高中生物必修一的核心考点，需要掌握不同生物大分子的化学本质。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-23352.json"
+  },
+  "content_review": {
+    "line": 20325,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "考查生物大分子单体种类比较（氨基酸约20种、脱氧核苷酸4种、葡萄糖1种），属于高中生物必修一核心知识点的综合推理。参考解析正确，未发现明确矛盾。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n请根据题目内容选择符合要求的选项。\n组成下列多聚体的单体的种类最多的是（    ） A. 血红蛋白 B DNA C. 淀粉 D. 纤维素\n我想先弄清这题需要用哪个概念，以及题目条件怎样联系，请引导我。",
+      "images": []
+    }
+  ]
+}

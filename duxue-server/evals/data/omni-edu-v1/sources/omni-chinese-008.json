@@ -1,0 +1,64 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 25606,
+  "uid": "coig-exam_coig_exam_sampled_clean_v3.jsonl-100-9d4d839390dc",
+  "dataset": "coig-cqia",
+  "record_sha256": "06e75e3adc7241f49d3586c6be5745b7f958c1455ed4f941fd18e65e6fda91ef",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n请根据题目内容选择符合要求的选项\n依次填入下列各句横线处的词语，最恰当的一项是（）美，是每个时代的艺术家共同的追求，将美献给人民，是每个时代的艺术家不变的责任。在春光明媚、万物复苏的三月，漫步中国美术馆，一条以“时代”为名的长线，将颗颗承载着艺术之美的珍珠起来，出中国美术与中华民族同呼吸共命运，经百年跨越形成的恢弘面貌。在“美在新时代——中国美术馆典藏精品特展（第二期）”上，近300件作品以两大篇章分别了近现代名家大师的经典作品和党的十八大以来美术家创作的新近佳作。A．串联呈现展示\tB．联系呈现展示C．串联展示呈现\tD．联系展示呈现"
+      },
+      {
+        "role": "assistant",
+        "content": "串联：一个一个地联系；贯穿连接；串通联络；把几个电器或元器件一个接一个相继连接起来，电路中的电流顺次通过。联系：联络、接洽；也指事物之间的有机关联。结合第一个横线处是用于形容用“时代”为名的长线将颗颗承载着艺术之美的珍珠连接起来，应选填“串联”；故排除BD；呈现：显现；展示出。展示：清楚地摆出来或明显地表现出来。结合第二个横线处是用于形容中国美术馆的展览将中国美术与中华民族同呼吸共命运，经百年跨越形成的恢弘面貌展示出来可知，该处应选填“呈现”；结合第三个横线处是用于形容近300件作品清楚明显地表现了近现代名家大师的经典作品和党的十八大以来美术家创作的新近佳作可知，该处应选填“展示”。故选A。"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-100-9d4d839390dc\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 6624, \"supervised_tokens\": 184, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 25606,
+    "subject": "chinese",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "词语辨析与搭配",
+    "reason": "考查近义词“串联/联系”、“呈现/展示”在具体语境中的辨析与搭配，属于高考语文语言文字运用部分的典型题型。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-26220.json"
+  },
+  "content_review": {
+    "line": 25606,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "考查近义词在具体语境中的辨析与运用（串联/联系、呈现/展示），属于高中语文语言文字应用典型题型，符合高考层级。参考解析逻辑合理。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "diagnostic_adaptation": {
+    "id": "omni-chinese-008",
+    "student_attempt": "我目前只知道这题涉及词语辨析与搭配，还没有写出具体推理或结论。请帮我确定第一步。",
+    "assessment": "insufficient",
+    "feedback_criteria": "学生只报告了知识主题，未给出可核验的具体结果或推理。不得将未作答判为答错，也不能虚构学生的错误步骤或已掌握。给一个切题且可执行的起步或自检提示。",
+    "is_choice": true,
+    "model": "qwen3.8-flash",
+    "authored_revision": "assistant-explicit-insufficient-evidence.v1"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n请根据题目内容选择符合要求的选项\n依次填入下列各句横线处的词语，最恰当的一项是（）美，是每个时代的艺术家共同的追求，将美献给人民，是每个时代的艺术家不变的责任。在春光明媚、万物复苏的三月，漫步中国美术馆，一条以“时代”为名的长线，将颗颗承载着艺术之美的珍珠起来，出中国美术与中华民族同呼吸共命运，经百年跨越形成的恢弘面貌。在“美在新时代——中国美术馆典藏精品特展（第二期）”上，近300件作品以两大篇章分别了近现代名家大师的经典作品和党的十八大以来美术家创作的新近佳作。A．串联呈现展示\tB．联系呈现展示C．串联展示呈现\tD．联系展示呈现\n我的尝试：我目前只知道这题涉及词语辨析与搭配，还没有写出具体推理或结论。请帮我确定第一步。\n请检查我已有的理由或结果，只指出可核验的部分，并给一个自检提示。",
+      "images": []
+    }
+  ]
+}

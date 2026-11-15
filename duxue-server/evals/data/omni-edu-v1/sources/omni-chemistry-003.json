@@ -1,0 +1,64 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 24852,
+  "uid": "cjeval-3942",
+  "dataset": "cjeval-original",
+  "record_sha256": "4c3ca708f87b4358da985dec0d1736870cb26e5fb35b8bb444ea04e01aeef97d",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n题目内容: 诺贝尔化学奖得主施罗克等人发现，钼金属的卡宾化合物是高效的烯烃复分解催化剂。在工业中，钼（Mo）的提炼过程如下：\n①$2 \\text{MoS}_2 + 7 \\text{O}_2 \\xrightarrow{高温} 2 \\text{MoO}_3 + 4 \\text{SO}_2$；②$\\text{MoO}_3 + 2\\text{NH}_3 \\cdot \\text{H}_2\\text{O} \\rightarrow (\\text{NH}_4)_2\\text{MoO}_4 + \\text{H}_2\\text{O}$；\n③$(\\text{NH}_4)_2\\text{MoO}_4 + 2\\text{HCl} \\rightarrow \\text{H}_2\\text{MoO}_4 \\downarrow + 2\\text{NH}_4\\text{Cl}$；④$\\text{H}_2\\text{MoO}_4 \\xrightarrow{加热} \\text{MoO}_3 + \\text{H}_2\\text{O}$；\n⑤$2\\text{Al} + \\text{MoO}_3 \\xrightarrow{高温} \\text{Mo} + \\text{Al}_2\\text{O}_3$。以下分析正确的是（   ）选项: A. 反应①中钼矿石经历氧化反应 B. $\\text{MoO}_3$是酸性氧化物，$\\text{(NH}_4)_2\\text{MoO}_4$是一种铵盐 C. 冶炼钼时，将200g $\\text{MoS}_2$完全转化为钼，理论上需要32g铝 D. 反应中产生的废气可不经处理直接排放"
+      },
+      {
+        "role": "assistant",
+        "content": "A选项：在反应①中，$\\text{MoS}_2$与氧气反应生成$\\text{MoO}_3$和$\\text{SO}_2$，说明$\\text{MoS}_2$被氧化了，因此A正确。\\nB选项：$\\text{(NH}_4)_2\\text{MoO}_4$中含有铵根$\\text{NH}_4^+$，所以是铵盐。$\\text{MoO}_3$与碱反应能生成盐和水，表现出酸性，是酸性氧化物，所以B正确。\\nC选项：根据摩尔质量，$\\text{MoS}_2$和$\\text{Mo}$的摩尔质量比为160g:96g，所以从200g $\\text{MoS}_2$中可得到120g $\\text{Mo}$。根据反应方程式，$\\text{MoO}_3$与$\\text{Al}$的摩尔比为1:2，则200g $\\text{MoS}_2$理论上需64g铝，而非32g，故C错误。\\nD选项：反应中产生的$\\text{SO}_2$是有害气体，不可直接排放，需经过处理，故D错误。综上所述，正确答案为AB。"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"cjeval-original\", \"uid\": \"cjeval-3942\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 5870, \"supervised_tokens\": 269, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 24852,
+    "subject": "chemistry",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "无机化工流程与氧化还原反应",
+    "reason": "涉及钼的冶炼流程、化学方程式分析、酸性氧化物定义及简单计算，属于典型的高中化学工业流程题，符合高考层级。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-25974.json"
+  },
+  "content_review": {
+    "line": 24852,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "涉及工业流程分析、氧化还原反应判断、酸性氧化物概念、基于化学方程式的物质的量计算以及环保常识，属于典型的中国高考化学工艺流程题。参考解析中C选项计算过程：200g MoS₂为1.25mol，对应需Al 2.5mol即67.5g（参考解析写64g系用MoO₃摩尔质量144×1.25=180g再算得约67.5g，其表述'64g'有轻微计算笔误但不影响结论C错误）。",
+    "reference_issue": "参考解析C选项中铝的质量计算数值64g存在轻微计算误差，正确应为67.5g，但判断C错误的结论正确"
+  },
+  "diagnostic_adaptation": {
+    "id": "omni-chemistry-003",
+    "student_attempt": "我目前只知道这题涉及无机化工流程与氧化还原反应，还没有写出具体推理或结论。请帮我确定第一步。",
+    "assessment": "insufficient",
+    "feedback_criteria": "学生只报告了知识主题，未给出可核验的具体结果或推理。不得将未作答判为答错，也不能虚构学生的错误步骤或已掌握。给一个切题且可执行的起步或自检提示。",
+    "is_choice": true,
+    "model": "qwen3.8-flash",
+    "authored_revision": "assistant-explicit-insufficient-evidence.v1"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n题目内容: 诺贝尔化学奖得主施罗克等人发现，钼金属的卡宾化合物是高效的烯烃复分解催化剂。在工业中，钼（Mo）的提炼过程如下：\n①$2 \\text{MoS}_2 + 7 \\text{O}_2 \\xrightarrow{高温} 2 \\text{MoO}_3 + 4 \\text{SO}_2$；②$\\text{MoO}_3 + 2\\text{NH}_3 \\cdot \\text{H}_2\\text{O} \\rightarrow (\\text{NH}_4)_2\\text{MoO}_4 + \\text{H}_2\\text{O}$；\n③$(\\text{NH}_4)_2\\text{MoO}_4 + 2\\text{HCl} \\rightarrow \\text{H}_2\\text{MoO}_4 \\downarrow + 2\\text{NH}_4\\text{Cl}$；④$\\text{H}_2\\text{MoO}_4 \\xrightarrow{加热} \\text{MoO}_3 + \\text{H}_2\\text{O}$；\n⑤$2\\text{Al} + \\text{MoO}_3 \\xrightarrow{高温} \\text{Mo} + \\text{Al}_2\\text{O}_3$。以下分析正确的是（   ）选项: A. 反应①中钼矿石经历氧化反应 B. $\\text{MoO}_3$是酸性氧化物，$\\text{(NH}_4)_2\\text{MoO}_4$是一种铵盐 C. 冶炼钼时，将200g $\\text{MoS}_2$完全转化为钼，理论上需要32g铝 D. 反应中产生的废气可不经处理直接排放\n我的尝试：我目前只知道这题涉及无机化工流程与氧化还原反应，还没有写出具体推理或结论。请帮我确定第一步。\n请检查我已有的理由或结果，只指出可核验的部分，并给一个自检提示。",
+      "images": []
+    }
+  ]
+}

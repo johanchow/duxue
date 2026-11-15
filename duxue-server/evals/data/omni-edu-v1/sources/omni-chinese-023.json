@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 21344,
+  "uid": "coig-exam_coig_exam_sampled_clean_v3.jsonl-215-d22125159039",
+  "dataset": "coig-cqia",
+  "record_sha256": "934ca2eb8eb3a83d002e9ea62c18121762acc613a6297b5eb51f62defc177332",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n请根据题目内容选择符合要求的选项\n下列各句中没有语病的一句是（　　）A．尤瓦尔・赫拉利写作了《人类简史》一经上市就登上了以色列畅销书排行榜第一名，蝉联榜首长达100周，30多个国家争相购买版权。\tB．英国著名物理学家霍金通过自己杰出的大脑，倾尽毕生精力，以整个宇宙为研究对象，试图解开关于时空和存在的本质。\tC．文化创意产业属于知识密集型新兴产业，具有高知识、高融合性、高带动性等优势，是创建宜居“智慧新城”的有力推手。\tD．无论是在天津，还是在比赛现场，都有支持热爱天津女排的一批球迷与这支队伍同呼吸共命运。"
+      },
+      {
+        "role": "assistant",
+        "content": "A．结构混乱，“尤瓦尔・赫拉利写作了《人类简史》一经上市就登上了以色列畅销书排行榜第一名”由“尤瓦尔・赫拉利写作了《人类简史》”与“《人类简史》一经上市就登上了以色列畅销书排行榜第一名”两个句子构成，将“写作了”改为“写作的”；B．搭配不当，“解开”与“本质”搭配不当，将“解开”改为“确定”；C．表述正确；D．语序不当，“一批”为数量短语，应该放在动词性定语的前面，将“一批”放至“支持”的前面。故选：C。"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-215-d22125159039\", \"kind\": \"qa\", \"system_variant\": \"general\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 2362, \"supervised_tokens\": 140, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 21344,
+    "subject": "chinese",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "语病辨析",
+    "reason": "要求选出没有语病的一项，涉及成分残缺、搭配不当、语序混乱等语法错误识别。这是高考语文基础知识板块的经典题型，完全符合高考层级。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-24138.json"
+  },
+  "content_review": {
+    "line": 21344,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "考查病句辨析（结构混乱、搭配不当、语序不当），属于高中语文语言文字应用核心考点，符合高考层级。参考解析对各选项的病因分析准确。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n请根据题目内容选择符合要求的选项\n下列各句中没有语病的一句是（　　）A．尤瓦尔・赫拉利写作了《人类简史》一经上市就登上了以色列畅销书排行榜第一名，蝉联榜首长达100周，30多个国家争相购买版权。\tB．英国著名物理学家霍金通过自己杰出的大脑，倾尽毕生精力，以整个宇宙为研究对象，试图解开关于时空和存在的本质。\tC．文化创意产业属于知识密集型新兴产业，具有高知识、高融合性、高带动性等优势，是创建宜居“智慧新城”的有力推手。\tD．无论是在天津，还是在比赛现场，都有支持热爱天津女排的一批球迷与这支队伍同呼吸共命运。\n我想先弄清这题需要用哪个概念，以及题目条件怎样联系，请引导我。",
+      "images": []
+    }
+  ]
+}

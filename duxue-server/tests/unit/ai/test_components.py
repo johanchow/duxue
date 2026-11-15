@@ -303,3 +303,103 @@ def test_text_only_components_never_send_image_parts(spans):
 def test_intake_components_get_a_longer_timeout_than_the_default():
     assert COMPONENTS.get("planning.intake").timeout_seconds == 60
     assert COMPONENTS.get("task.intake").timeout_seconds == 60
+
+
+def test_thinking_mode_streams_chunks_hides_cot_and_records_reasoning_tokens(monkeypatch):
+    from dataclasses import replace
+
+    from app.infrastructure.observability import telemetry
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+        InMemorySpanExporter,
+    )
+
+    class StreamingClient:
+        def __init__(self):
+            self.calls: list[dict] = []
+            self.chat = SimpleNamespace(completions=SimpleNamespace(create=self.create))
+
+        def create(self, **kwargs):
+            self.calls.append(kwargs)
+            return iter(
+                [
+                    SimpleNamespace(
+                        id="req-think-1",
+                        choices=[
+                            SimpleNamespace(
+                                finish_reason=None,
+                                delta=SimpleNamespace(
+                                    reasoning_content="SECRET_COT_STEP_1", content=None
+                                ),
+                            )
+                        ],
+                        usage=None,
+                    ),
+                    SimpleNamespace(
+                        id="req-think-1",
+                        choices=[
+                            SimpleNamespace(
+                                finish_reason=None,
+                                delta=SimpleNamespace(
+                                    reasoning_content=None, content="```json\n{\"intent\":"
+                                ),
+                            )
+                        ],
+                        usage=None,
+                    ),
+                    SimpleNamespace(
+                        id="req-think-1",
+                        choices=[
+                            SimpleNamespace(
+                                finish_reason="stop",
+                                delta=SimpleNamespace(
+                                    reasoning_content=None, content="\"tutoring\"}\n```"
+                                ),
+                            )
+                        ],
+                        usage=SimpleNamespace(
+                            prompt_tokens=20,
+                            completion_tokens=55,
+                            completion_tokens_details=SimpleNamespace(
+                                reasoning_tokens=42
+                            ),
+                        ),
+                    ),
+                ]
+            )
+
+    monkeypatch.setenv("OTEL_SDK_DISABLED", "false")
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    monkeypatch.setattr(telemetry.trace, "get_tracer", provider.get_tracer)
+    monkeypatch.setattr(telemetry, "_write_debug_audit", lambda *_args: None)
+
+    spec = replace(
+        COMPONENTS.get("companion.intent"),
+        enable_thinking=True,
+        thinking_budget=2048,
+    )
+    client = StreamingClient()
+    payload = invoke_json_component(
+        spec=spec, user="这道导数压轴题怎么做", client=client, settings_obj=_settings()
+    )
+    assert payload == {"intent": "tutoring"}
+    call = client.calls[0]
+    assert call["stream"] is True
+    assert call["stream_options"] == {"include_usage": True}
+    assert call["extra_body"] == {"enable_thinking": True, "thinking_budget": 2048}
+
+    generation = next(
+        s for s in exporter.get_finished_spans() if s.name == "llm.request"
+    )
+    assert generation.attributes["llm.enable_thinking"] is True
+    assert generation.attributes["llm.thinking_budget"] == 2048
+    assert generation.attributes["llm.tokens_reasoning"] == 42
+    assert json.loads(generation.attributes["langfuse.observation.usage_details"]) == {
+        "input": 20,
+        "output": 55,
+        "reasoning": 42,
+    }
+    assert "SECRET_COT_STEP_1" not in json.dumps(dict(generation.attributes))

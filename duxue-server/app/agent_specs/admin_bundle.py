@@ -48,7 +48,14 @@ def _frozen(doc):
         result.pop("description", None)
     if result.get("implementation") in {"llm", "judge"}:
         for model in result["models"]:
-            for key in ("name", "temperature", "max_output_tokens", "timeout_ms"):
+            for key in (
+                "name",
+                "temperature",
+                "max_output_tokens",
+                "timeout_ms",
+                "enable_thinking",
+                "thinking_budget",
+            ):
                 model.pop(key, None)
         result["prompt"].pop("template")
         for fragment in result["prompt"].get("fragments", {}).values():

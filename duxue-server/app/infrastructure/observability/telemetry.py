@@ -789,6 +789,8 @@ def model_call_span(*, operation: str, model: str, agent_type: str | None = None
                     component_id: str | None = None, component_version: str | None = None,
                     prompt_id: str | None = None, model_source: str | None = None,
                     definition_digest: str | None = None,
+                    enable_thinking: bool | None = None,
+                    thinking_budget: int | None = None,
                     input_payload: Any = None) -> Iterator[dict[str, Any]]:
     started = perf_counter()
     if component_id is not None:
@@ -809,6 +811,8 @@ def model_call_span(*, operation: str, model: str, agent_type: str | None = None
         "ai.definition_digest": definition_digest,
         "langfuse.observation.metadata.definition_digest": definition_digest,
         "ai.model_source": model_source,
+        "llm.enable_thinking": enable_thinking,
+        "llm.thinking_budget": thinking_budget,
         # These are mapping keys, not prompt/completion payloads. Langfuse
         # also exports the controlled Agent spans enclosing this generation.
         "langfuse.observation.type": "generation",
@@ -820,7 +824,13 @@ def model_call_span(*, operation: str, model: str, agent_type: str | None = None
     ) as span, observe_model(component_id, span, input=input_payload, model=model) as model_event:
         if input_payload is not None:
             set_observation_payload(span, input=input_payload)
-        result: dict[str, Any] = {"result": "success", "tokens_in": None, "tokens_out": None, "provider_request_id": None}
+        result: dict[str, Any] = {
+            "result": "success",
+            "tokens_in": None,
+            "tokens_out": None,
+            "tokens_reasoning": None,
+            "provider_request_id": None,
+        }
         try:
             yield result
         except Exception as error:
@@ -832,8 +842,15 @@ def model_call_span(*, operation: str, model: str, agent_type: str | None = None
         finally:
             duration_ms = round((perf_counter() - started) * 1000)
             if model_event is not None:
-                model_event.update(tokens_in=result["tokens_in"], tokens_out=result["tokens_out"],
-                                   definition_digest=definition_digest, component_version=component_version)
+                model_event.update(
+                    tokens_in=result["tokens_in"],
+                    tokens_out=result["tokens_out"],
+                    tokens_reasoning=result["tokens_reasoning"],
+                    enable_thinking=enable_thinking,
+                    thinking_budget=thinking_budget,
+                    definition_digest=definition_digest,
+                    component_version=component_version,
+                )
             attrs_with_result = {**attrs, "llm.result": result["result"]}
             _llm_requests.add(1, attributes=attrs_with_result)
             _llm_duration.record(duration_ms, attributes=attrs_with_result)
@@ -841,16 +858,21 @@ def model_call_span(*, operation: str, model: str, agent_type: str | None = None
                 _llm_tokens.add(result["tokens_in"], attributes={**attrs, "llm.direction": "input"})
             if result["tokens_out"] is not None:
                 _llm_tokens.add(result["tokens_out"], attributes={**attrs, "llm.direction": "output"})
-            for key in ("provider_request_id", "tokens_in", "tokens_out"):
+            if result["tokens_reasoning"] is not None:
+                _llm_tokens.add(result["tokens_reasoning"], attributes={**attrs, "llm.direction": "reasoning"})
+            for key in ("provider_request_id", "tokens_in", "tokens_out", "tokens_reasoning"):
                 if result[key] is not None:
                     span.set_attribute(f"llm.{key}", result[key])
-            if result["tokens_in"] is not None or result["tokens_out"] is not None:
+            if result["tokens_in"] is not None or result["tokens_out"] is not None or result["tokens_reasoning"] is not None:
+                usage_details: dict[str, int] = {
+                    "input": result["tokens_in"] or 0,
+                    "output": result["tokens_out"] or 0,
+                }
+                if result["tokens_reasoning"] is not None:
+                    usage_details["reasoning"] = result["tokens_reasoning"]
                 span.set_attribute(
                     "langfuse.observation.usage_details",
-                    json.dumps({
-                        "input": result["tokens_in"] or 0,
-                        "output": result["tokens_out"] or 0,
-                    }),
+                    json.dumps(usage_details),
                 )
             span.set_attribute("llm.duration_ms", duration_ms)
 

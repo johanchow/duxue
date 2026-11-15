@@ -1,0 +1,82 @@
+{
+  "schema_version": "dialogue-eval.v2",
+  "id": "omni-geography-019",
+  "type": "single_turn",
+  "replay_mode": "fixed_history",
+  "source": {
+    "kind": "synthetic",
+    "coverage": "authored",
+    "provider": "scienceqa-text",
+    "note": "{\"source_record\": \"sources/omni-geography-019.json\", \"uid\": \"scienceqa-9258\", \"source_category\": \"subject_competence\"}"
+  },
+  "messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "Problem:\nWhich change best matches the sentence?\nMud is left behind along the sides of a river.\n\nOptions:\nA. erosion\nB. drought\nC. deposition",
+      "images": []
+    }
+  ],
+  "checks": [
+    {
+      "id": "check-1",
+      "after_message": "m1",
+      "component": "tutoring.turn",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "problem": {
+            "summary": "Problem:\nWhich change best matches the sentence?\nMud is left behind along the sides of a river.\n\nOptions:\nA. erosion\nB. drought\nC. deposition",
+            "active_subgoal": "外力作用与地貌（沉积）",
+            "substantive_attempts": 0,
+            "hints_given": 0
+          },
+          "task_title": "本地学科答疑评测",
+          "task_active": true
+        },
+        "note": "Injected evaluation context; not a production database observation."
+      },
+      "grading": {
+        "deterministic": [
+          {
+            "id": "delivered",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "answer"
+            ]
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "correctness",
+            "type": "score",
+            "rubric": "内部完整解题：依据原题和实际图片独立核验最终结论、推导、定义域、单位、条件及各小问覆盖。允许数学等价表达与有依据的异解。1分错误/无解答，2分重要错误，3分方向正确但关键缺漏，4分结论与主要推导正确且完整，5分进一步严谨清晰。只评价实际solution，不要求启发提问。",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "本题知识目标：外力作用与地貌（沉积）。参考答案是上游未认证材料，须独立核验；参考有争议时不得盲从，不因合理异解扣分。",
+            "expected": "pass"
+          }
+        ],
+        "reference_response": "To determine the correct change, let's analyze the key action described in the sentence: \"Mud is left behind along the sides of a river.\"\n\n1.  **Analyze the process of moving sediment**: When water flows in a river, it picks up soil, sand, and mud. The process of wearing away and moving these materials is called **erosion**.\n2.  **Analyze the process of settling sediment**: When the flowing water slows down, it can no longer carry the heavy particles like mud. As a result, these particles drop out of the water and settle on the ground. This process of dropping or \"leaving behind\" sediment is called **deposition**.\n3.  **Evaluate the options**:\n    *   **Erosion** involves the removal and transport of material, not the act of leaving it behind.\n    *   **Drought** refers to a prolonged period of dry weather and lack of water, which is unrelated to the specific action of mud settling.\n    *   **Deposition** specifically describes the event where transported materials (like mud) are dropped or left behind when the energy of the transporting agent (the river) decreases.\n\nSince the sentence describes mud being \"left behind,\" this matches the definition of deposition.\n\nThe answer is C. deposition.",
+        "rationale": [
+          "Synthetic local adaptation; reference and semantic labels remain proposed."
+        ]
+      }
+    }
+  ],
+  "review_batch": "omni-edu-v1",
+  "label_status": "proposed",
+  "note": "Adapted evaluation task; original system and final assistant are source/scoring-only. No teacher certification.",
+  "conversation_id": "074241e24aac584201c3",
+  "turn_index": 0,
+  "tags": [
+    "subject_competence",
+    "geography",
+    "other_k12",
+    "solve"
+  ]
+}

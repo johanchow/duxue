@@ -71,6 +71,14 @@ class ModelDefinition(BaseModel):
     temperature: float = Field(ge=0, le=2)
     max_output_tokens: int = Field(gt=0, le=16384)
     timeout_ms: int = Field(gt=0, le=120000)
+    enable_thinking: bool = False
+    thinking_budget: int | None = Field(default=None, gt=0, le=32768)
+
+    @model_validator(mode="after")
+    def valid_thinking(self):
+        if self.thinking_budget is not None and not self.enable_thinking:
+            raise ValueError(f"{self.component_id}: thinking_budget requires enable_thinking=true")
+        return self
 
 
 class ModelUnit(BaseModel):

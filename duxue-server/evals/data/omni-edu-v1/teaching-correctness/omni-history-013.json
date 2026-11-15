@@ -1,0 +1,82 @@
+{
+  "schema_version": "dialogue-eval.v2",
+  "id": "omni-history-013",
+  "type": "single_turn",
+  "replay_mode": "fixed_history",
+  "source": {
+    "kind": "synthetic",
+    "coverage": "authored",
+    "provider": "coig-cqia",
+    "note": "{\"source_record\": \"sources/omni-history-013.json\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-1452-185525a7f2b0\", \"source_category\": \"subject_competence\"}"
+  },
+  "messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "Problem:\n请阅读以下材料回答\n材料一：新中国继承的是一个国民经济濒于崩溃的烂摊子，生产萎缩，物价飞涨，民生困苦。中国人民有没有能力把生产恢复起来，这是一个严峻考验。新中国虽然得到苏联和东欧等国的承认和支持，但美国拒绝承认。中国人民能否冲破以美国为首的帝国主人国家的政治孤立和经济封锁，创造有利的外部条件以建设国家，这是又一个严峻考验。﹣﹣摘编自《中国共产党的九十年》\n据材料一，概括中华人民共和国成立时所面临的国内外严峻形势。",
+      "images": []
+    }
+  ],
+  "checks": [
+    {
+      "id": "check-1",
+      "after_message": "m1",
+      "component": "tutoring.turn",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "problem": {
+            "summary": "Problem:\n请阅读以下材料回答\n材料一：新中国继承的是一个国民经济濒于崩溃的烂摊子，生产萎缩，物价飞涨，民生困苦。中国人民有没有能力把生产恢复起来，这是一个严峻考验。新中国虽然得到苏联和东欧等国的承认和支持，但美国拒绝承认。中国人民能否冲破以美国为首的帝国主人国家的政治孤立和经济封锁，创造有利的外部条件以建设国家，这是又一个严峻考验。﹣﹣摘编自《中国共产党的九十年》\n据材料一，概括中华人民共和国成立时所面临的国内外严峻形势。",
+            "active_subgoal": "新中国初期的国内外形势",
+            "substantive_attempts": 0,
+            "hints_given": 0
+          },
+          "task_title": "本地学科答疑评测",
+          "task_active": true
+        },
+        "note": "Injected evaluation context; not a production database observation."
+      },
+      "grading": {
+        "deterministic": [
+          {
+            "id": "delivered",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "answer"
+            ]
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "correctness",
+            "type": "score",
+            "rubric": "内部完整解题：依据原题和实际图片独立核验最终结论、推导、定义域、单位、条件及各小问覆盖。允许数学等价表达与有依据的异解。1分错误/无解答，2分重要错误，3分方向正确但关键缺漏，4分结论与主要推导正确且完整，5分进一步严谨清晰。只评价实际solution，不要求启发提问。",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "本题知识目标：新中国初期的国内外形势。参考答案是上游未认证材料，须独立核验；参考有争议时不得盲从，不因合理异解扣分。",
+            "expected": "pass"
+          }
+        ],
+        "reference_response": "国内：经济濒于崩溃；国际：帝国主义国家的孤立和封锁。\n\n由材料“新中国继承的是一个国民经济濒于崩溃的烂摊子”，可得出经济濒于崩溃。由材料“以美国为首的帝国主人国家的政治孤立和经济封锁”，可得出帝国主义国家的孤立和封锁。",
+        "rationale": [
+          "Synthetic local adaptation; reference and semantic labels remain proposed."
+        ]
+      }
+    }
+  ],
+  "review_batch": "omni-edu-v1",
+  "label_status": "proposed",
+  "note": "Adapted evaluation task; original system and final assistant are source/scoring-only. No teacher certification.",
+  "conversation_id": "88770a65f186dfa7d602",
+  "turn_index": 0,
+  "tags": [
+    "subject_competence",
+    "history",
+    "other_k12",
+    "solve"
+  ]
+}

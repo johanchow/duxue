@@ -75,10 +75,25 @@ export async function evaluationResponse(request: Request, parts: string[]) {
       }
       const batch = await lf.batch(run, days);
       const baselineId = params.get('baseline');
-      const comparison = baselineId
-        ? compareBatches(batch, await lf.batch(baselineId, days))
+      const baselineBatch = baselineId ? await lf.batch(baselineId, days) : null;
+      const comparison = baselineBatch
+        ? compareBatches(batch, baselineBatch)
         : null;
-      return Response.json({ ...common, batch, comparison });
+      return Response.json({
+        ...common,
+        batch,
+        baseline: baselineBatch
+          ? {
+              id: baselineBatch.id,
+              counts: baselineBatch.counts,
+              datasets: baselineBatch.datasets,
+              components: baselineBatch.components,
+              scoreStats: baselineBatch.scoreStats,
+              total: baselineBatch.cases.length,
+            }
+          : null,
+        comparison,
+      });
     }
     if (page === 'production') {
       const [current, baselineResult] = await Promise.all([
@@ -95,6 +110,65 @@ export async function evaluationResponse(request: Request, parts: string[]) {
         warning: baselineResult.error
           ? `基线不可用：${baselineResult.error}；请检查 Langfuse 历史数据访问范围。`
           : null,
+      });
+    }
+    if (page === 'overview') {
+      const rawBatches = await lf.batches(days);
+      const batches = await Promise.all(
+        rawBatches.map(async (b: any) => {
+          const releases = b.configDigest
+            ? (
+                await pool().query(
+                  'SELECT id,sequence FROM agent_releases WHERE digest=$1 ORDER BY sequence DESC LIMIT 10',
+                  [b.configDigest],
+                )
+              ).rows
+            : [];
+          const drafts = b.configDigest
+            ? (
+                await pool().query(
+                  "SELECT id,title,revision FROM agent_drafts WHERE state='working' AND validation->>'digest'=$1",
+                  [b.configDigest],
+                )
+              ).rows
+            : [];
+          return {
+            ...b,
+            releases,
+            drafts,
+          };
+        }),
+      );
+      const currentId = params.get('current') || batches[0]?.id || '',
+        baselineId = params.get('baseline') || '';
+      if (
+        [currentId, baselineId].some(
+          (id) => id && !batches.some((b: any) => b.id === id),
+        )
+      )
+        return Response.json(
+          { error: '所选批次不在当前列表中，请调整时间范围或选择批次' },
+          { status: 400 },
+        );
+      const [currentOverview, baselineOverview] = await Promise.all([
+        currentId ? lf.batchOverview(currentId, days) : null,
+        baselineId ? lf.batchOverview(baselineId, days) : null,
+      ]);
+      const currentBatch =
+          batches.find((b: any) => b.id === currentId) || null,
+        baselineBatch =
+          batches.find((b: any) => b.id === baselineId) || null;
+      return Response.json({
+        ...common,
+        batches,
+        currentId,
+        baselineId: baselineId || null,
+        currentBatch,
+        baselineBatch,
+        current: currentOverview?.summary || null,
+        baseline: baselineOverview?.summary || null,
+        datasets: currentOverview?.datasets || [],
+        baselineDatasets: baselineOverview?.datasets || [],
       });
     }
     const result = await lf.experiments({

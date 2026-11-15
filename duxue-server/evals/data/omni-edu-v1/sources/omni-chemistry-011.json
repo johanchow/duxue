@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 29805,
+  "uid": "scienceqa-12534",
+  "dataset": "scienceqa-text",
+  "record_sha256": "5040c22c21ede28cc52310cd0f341983a893901ec84c09f765dece828d2ef4d7",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\nComplete the statement.\nChloroform is ().\n\nOptions:\nA. a compound\nB. an elementary substance"
+      },
+      {
+        "role": "assistant",
+        "content": "Every substance around you is made of one or more chemical elements, or types of atoms. Substances that are made of only one chemical element are elementary substances. Substances that are made of two or more chemical elements bonded together are compounds.\nEvery chemical element is represented by its own symbol. For some elements, the symbol is one capital letter. For other elements, the symbol is one capital letter and one lowercase letter. For example, the symbol for the element fluorine is F, and the symbol for the element beryllium is Be.\nThe symbol for each element in a substance is shown in the substance's chemical formula.\nAn elementary substance is represented by a chemical formula that contains only one symbol.\nThe symbol may be followed by a subscript. A subscript is text that is smaller and placed lower than the normal line of text. A subscript is included when the atoms in the elementary substance are bonded to form molecules. The subscript tells you the number of atoms in each molecule.\nFor example, the chemical formula for the elementary substance oxygen is O2. The formula has a subscript of 2. This subscript tells you that there are two atoms in the molecule represented by this chemical formula.\nThe chemical element represented by the symbol O is also called oxygen. So, the formula O2 tells you that each molecule of O2 contains two oxygen atoms.\nA compound is represented by a chemical formula that contains multiple symbols.\nFor example, in the compound beryllium fluoride, there is one beryllium atom for every two fluorine atoms. This combination is shown in the compound's chemical formula, BeF2. In the formula, the symbol Be represents one beryllium atom. The symbol F followed by the subscript 2 represents two fluorine atoms.\nYou can tell whether chloroform is an elementary substance or a compound by counting the number of symbols in its chemical formula. A symbol contains either one capital letter or a capital letter followed by one or two lowercase letters.\nThe chemical formula for chloroform is CHCl3. This formula contains three symbols: C for carbon, H for hydrogen, and Cl for chlorine. So, the formula tells you that chloroform is made of three chemical elements bonded together.\nSubstances made of two or more chemical elements bonded together are compounds. So, chloroform is a compound."
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"scienceqa-text\", \"uid\": \"scienceqa-12534\", \"kind\": \"qa\", \"system_variant\": \"none\", \"kcenter\": {\"bucket\": \"subject/science/scienceqa_direct/text/cot\", \"rank\": 1095, \"supervised_tokens\": 484, \"token_budget\": 482000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 29805,
+    "subject": "chemistry",
+    "level": "other_k12",
+    "complete": true,
+    "topic": "化学基本概念-物质分类",
+    "reason": "考察氯仿是化合物还是单质，属于初中化学基础概念辨析，高中化学虽涉及但通常结合更复杂的结构或性质考察，此题过于简单，归为其他K12层级。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-science-v1/review-29991.json"
+  },
+  "content_review": {
+    "line": 29805,
+    "subject_correct": true,
+    "complete": true,
+    "level": "other_k12",
+    "reason": "判断氯仿是化合物还是单质，通过化学式CHCl3含多种元素即可判定，属于初中化学基本概念，且解析中大量解释元素符号和下标的科普文字表明面向极低学段。参考解析正确。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\nComplete the statement.\nChloroform is ().\n\nOptions:\nA. a compound\nB. an elementary substance\n我不知道如何开始，请给我一个具体的起步提示，不要直接解完整题。",
+      "images": []
+    }
+  ]
+}

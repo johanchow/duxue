@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 26056,
+  "uid": "coig-chinese_traditional_translate_classical_chinese.jsonl-419-f39779477d1c",
+  "dataset": "coig-cqia",
+  "record_sha256": "980d16997c67e6e636fede63fdc66e4c01295022b7c485f32b65283cef0b2538",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n承畴以贼在商、雒，闻官兵至，必先走汉中，而大军由潼关入，反在其后，乃令文诏由阌乡取山路至雒南、商州，直捣贼巢，复从山阳、镇安、洵阳驰入汉中，遏其奔轶。\n帮我把这句话翻译成现代文"
+      },
+      {
+        "role": "assistant",
+        "content": "承畴认为敌军在商州和雒南两地，如果听说官兵过去，一定会先逃往汉中，那时大军由潼关进入汉中，反而会落在贼寇的后面。于是命令文诏从阌乡取山路到商州和雒南，直捣贼窝，然后再从山阳、镇安、洵阳等地赶到汉中来，阻止他们逃跑。"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-chinese_traditional_translate_classical_chinese.jsonl-419-f39779477d1c\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 7074, \"supervised_tokens\": 82, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 26056,
+    "subject": "chinese",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "文言文翻译（文言译白话）",
+    "reason": "提供一段清代军事行动相关的文言文，要求翻译成现代文。考察实词解释、虚词用法及句子通顺度，是高中语文文言文阅读的核心考点。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-19943.json"
+  },
+  "content_review": {
+    "line": 26056,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "考查文言文翻译成现代汉语，涉及明代军事史料，句式与词汇难度符合高考文言文翻译要求。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n承畴以贼在商、雒，闻官兵至，必先走汉中，而大军由潼关入，反在其后，乃令文诏由阌乡取山路至雒南、商州，直捣贼巢，复从山阳、镇安、洵阳驰入汉中，遏其奔轶。\n帮我把这句话翻译成现代文\n这题我卡住了。请先帮我拆出一个能动手的小步骤，不要给完整答案。",
+      "images": []
+    }
+  ]
+}

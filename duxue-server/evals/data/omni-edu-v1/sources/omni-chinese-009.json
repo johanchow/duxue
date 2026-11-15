@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 22435,
+  "uid": "coig-chinese_traditional_trad-multi-choice-100-2.jsonl-96-7c4f6ca3c3c3",
+  "dataset": "coig-cqia",
+  "record_sha256": "9abcc0e6edaddddc68c6feb287e73fceda283d6d3f9b7ef1eacd14958a344a50",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n苏轼在《念奴娇·赤壁怀古》中提到了\"羽扇纶巾，谈笑间，樯橹灰飞烟灭\"，\"羽扇纶巾\"形容的是下面哪位历史人物？\n\nA.诸葛亮\n\nB.周瑜\n\nC.曹操"
+      },
+      {
+        "role": "assistant",
+        "content": "形容态度从容。宋·苏轼《念奴娇·赤壁怀古》词：“遥想公瑾当年， 小乔初嫁了，雄姿英发。羽扇纶巾，谈笑间，樯橹灰飞烟灭。”公瑾即周瑜。后来成书的《三国演义》为了刻画蜀汉正统形象，及美化诸葛亮，把周瑜的羽扇纶巾“给了”诸葛亮。\n故本题选B。"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-chinese_traditional_trad-multi-choice-100-2.jsonl-96-7c4f6ca3c3c3\", \"kind\": \"qa\", \"system_variant\": \"none\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 3453, \"supervised_tokens\": 93, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 22435,
+    "subject": "chinese",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "古诗词鉴赏与文化常识",
+    "reason": "考察苏轼《念奴娇·赤壁怀古》中典故人物的辨析，涉及对诗词意象的理解及相关历史文学常识，是高中语文古诗文阅读的常见题型。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-23668.json"
+  },
+  "content_review": {
+    "line": 22435,
+    "subject_correct": true,
+    "complete": true,
+    "level": "other_k12",
+    "reason": "助手内容复核：仅询问羽扇纶巾指谁，是文化知识识记，不作为高考层级推理证据。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "Problem:\n苏轼在《念奴娇·赤壁怀古》中提到了\"羽扇纶巾，谈笑间，樯橹灰飞烟灭\"，\"羽扇纶巾\"形容的是下面哪位历史人物？\n\nA.诸葛亮\n\nB.周瑜\n\nC.曹操",
+      "images": []
+    }
+  ]
+}

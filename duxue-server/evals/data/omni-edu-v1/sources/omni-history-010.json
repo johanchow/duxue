@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 20798,
+  "uid": "coig-exam_coig_exam_sampled_clean_v3.jsonl-1091-096858b3bfed",
+  "dataset": "coig-cqia",
+  "record_sha256": "ea72c01aa20e7505538ef2c5dcc40a2452a7e1c17bdef7af9394354f2481786d",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n根据题目内容选择正确的选项\n1894年12月20日，美国纽约的《世界报》用了两个版面的篇幅，刊登了一篇爆炸性的新闻报道，标题是《旅顺大屠杀》。新闻报道的“旅顺大屠杀”发生在A．鸦片战争期间B．第二次鸦片战争期间C．甲午中日战争期间D．八国联军侵华战争期间"
+      },
+      {
+        "role": "assistant",
+        "content": "依据题干信息：“1894年12月20日、旅顺大屠杀”，结合所学可知，1894年年日本发动了甲午中日战争，1894年12月日本制造了旅顺大屠杀，C项符合题意，故此题选C。"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-1091-096858b3bfed\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 1816, \"supervised_tokens\": 64, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 20798,
+    "subject": "history",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "甲午中日战争/旅顺大屠杀",
+    "reason": "考察近代史重大事件的时间定位，属于高中历史必修内容，是典型的高考选择题考点。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-21617.json"
+  },
+  "content_review": {
+    "line": 20798,
+    "subject_correct": true,
+    "complete": true,
+    "level": "other_k12",
+    "reason": "根据1894年时间判断旅顺大屠杀发生在甲午中日战争期间，属初中历史时间线记忆常识。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "Problem:\n根据题目内容选择正确的选项\n1894年12月20日，美国纽约的《世界报》用了两个版面的篇幅，刊登了一篇爆炸性的新闻报道，标题是《旅顺大屠杀》。新闻报道的“旅顺大屠杀”发生在A．鸦片战争期间B．第二次鸦片战争期间C．甲午中日战争期间D．八国联军侵华战争期间",
+      "images": []
+    }
+  ]
+}

@@ -1,0 +1,63 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 25626,
+  "uid": "coig-exam_coig_exam_sampled_clean_v3.jsonl-1545-968e4a338cd0",
+  "dataset": "coig-cqia",
+  "record_sha256": "5a6278804edb41e7f483ee45b82c3089c7a9c13c2782e32fd6f913f8674bd1ff",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n回答下列问题\n某种羊的性别决定为XY型．已知其有角和无角由位于常染色体上的等位基因（N/n）控制；黑毛和白毛由等位基因（M/m）控制，且黑毛对白毛为显性\n公羊中基因型为NN或者Nn的表现为有角，nn无角；母羊中基因型为NN的表现为有角，nn或Nn无角．若多对杂合体公羊与杂合体母羊杂交，则理论上，子一代群体中母羊的表现型及其比例为　　；公羊的表现型及其比例为　　．"
+      },
+      {
+        "role": "assistant",
+        "content": "有角：无角=1：3      有角：无角=3：1\n\n多对杂合体公羊与杂合体母羊杂交，Nn×Nn→NN、Nn、nn，比例为1：2：1．由于母羊中基因型为NN的表现为有角，nn或Nn无角，所以子一代群体中母羊的表现型及其比例为有角：无角=1：3；由于公羊中基因型为NN或者Nn的表现为有角，nn无角，所以子一代群体中公羊的表现型及其比例为有角：无角=3：1．"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-1545-968e4a338cd0\", \"kind\": \"qa\", \"system_variant\": \"general\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 6644, \"supervised_tokens\": 135, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 25626,
+    "subject": "biology",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "基因分离定律与从性遗传",
+    "reason": "题目涉及常染色体遗传、显隐性关系以及性别对表现型的影响（从性遗传），需要运用孟德尔遗传定律进行概率计算，属于高中生物遗传学的核心难点和高频考点。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-24049.json"
+  },
+  "content_review": {
+    "line": 25626,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "考查常染色体基因的从性遗传（公羊母羊表现型不同）及杂合子杂交后代比例推算，属于高中生物遗传规律的综合应用，需要高中层级的遗传学推理能力，符合高考层级。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "diagnostic_adaptation": {
+    "id": "omni-biology-003",
+    "student_attempt": "亲本均为Nn，子代基因型比例为NN:Nn:nn=1:2:1。对于母羊，只有NN表现为有角，其余为无角，故有角:无角=1:3。对于公羊，NN和Nn均表现为有角，仅nn为无角，故有角:无角=3:1。",
+    "assessment": "correct",
+    "feedback_criteria": "检查学生是否正确推导了子一代的基因型比例（1:2:1），并准确应用了题目给定的性别特异性表现型规则：母羊中仅NN为有角，公羊中NN和Nn均为有角。若比例计算正确且逻辑清晰，判定为正确。",
+    "is_choice": false,
+    "model": "qwen3.8-flash"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n回答下列问题\n某种羊的性别决定为XY型．已知其有角和无角由位于常染色体上的等位基因（N/n）控制；黑毛和白毛由等位基因（M/m）控制，且黑毛对白毛为显性\n公羊中基因型为NN或者Nn的表现为有角，nn无角；母羊中基因型为NN的表现为有角，nn或Nn无角．若多对杂合体公羊与杂合体母羊杂交，则理论上，子一代群体中母羊的表现型及其比例为　　；公羊的表现型及其比例为　　．\n我的尝试：亲本均为Nn，子代基因型比例为NN:Nn:nn=1:2:1。对于母羊，只有NN表现为有角，其余为无角，故有角:无角=1:3。对于公羊，NN和Nn均表现为有角，仅nn为无角，故有角:无角=3:1。\n请检查我已有的理由或结果，只指出可核验的部分，并给一个自检提示。",
+      "images": []
+    }
+  ]
+}

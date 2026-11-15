@@ -1,0 +1,82 @@
+{
+  "schema_version": "dialogue-eval.v2",
+  "id": "omni-chemistry-019",
+  "type": "single_turn",
+  "replay_mode": "fixed_history",
+  "source": {
+    "kind": "synthetic",
+    "coverage": "authored",
+    "provider": "cjeval-original",
+    "note": "{\"source_record\": \"sources/omni-chemistry-019.json\", \"uid\": \"cjeval-3582\", \"source_category\": \"subject_competence\"}"
+  },
+  "messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "Problem:\n题目内容: 在工业生产中，通过电解氯化镁可以获得金属镁，电解反应的化学方程式为：$\\text{MgCl}_{\\text{2}}\\begin{array}{c}\\underline{\\underline{直流电}}\\\\\\end{array}\\text{Mg+Cl}_{\\text{2}}\\uparrow $。请计算：生产15吨金属镁，理论上需要电解多少吨氯化镁？",
+      "images": []
+    }
+  ],
+  "checks": [
+    {
+      "id": "check-1",
+      "after_message": "m1",
+      "component": "tutoring.turn",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "problem": {
+            "summary": "Problem:\n题目内容: 在工业生产中，通过电解氯化镁可以获得金属镁，电解反应的化学方程式为：$\\text{MgCl}_{\\text{2}}\\begin{array}{c}\\underline{\\underline{直流电}}\\\\\\end{array}\\text{Mg+Cl}_{\\text{2}}\\uparrow $。请计算：生产15吨金属镁，理论上需要电解多少吨氯化镁？",
+            "active_subgoal": "化学方程式计算",
+            "substantive_attempts": 0,
+            "hints_given": 0
+          },
+          "task_title": "本地学科答疑评测",
+          "task_active": true
+        },
+        "note": "Injected evaluation context; not a production database observation."
+      },
+      "grading": {
+        "deterministic": [
+          {
+            "id": "delivered",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "answer"
+            ]
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "correctness",
+            "type": "score",
+            "rubric": "内部完整解题：依据原题和实际图片独立核验最终结论、推导、定义域、单位、条件及各小问覆盖。允许数学等价表达与有依据的异解。1分错误/无解答，2分重要错误，3分方向正确但关键缺漏，4分结论与主要推导正确且完整，5分进一步严谨清晰。只评价实际solution，不要求启发提问。",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "本题知识目标：化学方程式计算。参考答案是上游未认证材料，须独立核验；参考有争议时不得盲从，不因合理异解扣分。",
+            "expected": "pass"
+          }
+        ],
+        "reference_response": "根据题目中的化学方程式，每生成1摩尔金属Mg，需要消耗1摩尔的MgCl2。已知Mg的摩尔质量为24g/mol，MgCl2的摩尔质量为95g/mol。因此，利用比例关系可以计算出生产15吨金属镁所需的氯化镁的质量。设需要x吨氯化镁，则有：\n95g MgCl2 → 24g Mg\nx吨 MgCl2 → 15吨 Mg\n按照比例关系，可以列出方程：\n95/24 = x/15\n通过解方程得出x的值为：\nx = (95/24) * 15\nx = 59.375\n所以，理论上需要59.375吨氯化镁来生产15吨金属镁。这个计算要求我们掌握化学反应中质量守恒定律，以及如何根据化学方程式进行物质的量的计算。",
+        "rationale": [
+          "Synthetic local adaptation; reference and semantic labels remain proposed."
+        ]
+      }
+    }
+  ],
+  "review_batch": "omni-edu-v1",
+  "label_status": "proposed",
+  "note": "Adapted evaluation task; original system and final assistant are source/scoring-only. No teacher certification.",
+  "conversation_id": "fcdd415bee307660b7d2",
+  "turn_index": 0,
+  "tags": [
+    "subject_competence",
+    "chemistry",
+    "other_k12",
+    "solve"
+  ]
+}

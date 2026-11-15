@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 21113,
+  "uid": "sciinst-en-15311",
+  "dataset": "sciinstruct-en-rewritten",
+  "record_sha256": "246e0380c516bec80321b91a37702912f2a322fb813c4c212270d2643ddfafdd",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\nAccording to the sequence of \\(\\mathrm{AgF}\\), \\(\\mathrm{AgCl}\\), \\(\\mathrm{AgBr}\\), \\(\\mathrm{AgI}\\), which of the following statements correctly describes the changes in properties? \\n(A) Color becomes darker; \\n(B) Solubility becomes smaller; \\n(C) Transition from ionic bond to covalent bond \\n(D) Both (A), (B), and (C) are correct."
+      },
+      {
+        "role": "assistant",
+        "content": "To determine the correct statement regarding the sequence of silver halides ($\\mathrm{AgF}$, $\\mathrm{AgCl}$, $\\mathrm{AgBr}$, $\\mathrm{AgI}$), we must analyze the trends in color, solubility, and bond character as we move down Group 17 from Fluorine to Iodine.\n\n**Step 1: Analyze the trend in color.**\nThe color of silver halides is determined by the energy gap between the valence band and the conduction band, which corresponds to the energy of light absorbed. As the size of the halide ion increases from $\\mathrm{F}^-$ to $\\mathrm{I}^-$, the energy gap decreases. Consequently, the wavelength of light absorbed shifts from the ultraviolet region into the visible spectrum.\n- $\\mathrm{AgF}$: Absorbs in the UV; appears colorless (white in solid form but often described as colorless in solution context or pale).\n- $\\mathrm{AgCl}$: Absorbs violet/blue light; appears white.\n- $\\mathrm{AgBr}$: Absorbs blue/green light; appears pale yellow or cream.\n- $\\mathrm{AgI}$: Absorbs green/yellow light; appears deep yellow.\nThus, the color becomes progressively darker from $\\mathrm{AgF}$ to $\\mathrm{AgI}$. Statement (A) is correct.\n\n**Step 2: Analyze the trend in solubility.**\nThe solubility of ionic compounds in water depends on the balance between lattice energy (energy holding the crystal together) and hydration energy (energy released when ions interact with water).\n- As the halide ion size increases ($\\mathrm{F}^- < \\mathrm{Cl}^- < \\mathrm{Br}^- < \\mathrm{I}^-$), the lattice energy decreases, but the hydration energy decreases even more significantly because larger ions interact less strongly with water molecules.\n- Additionally, according to Fajans' rules (discussed in Step 3), the increasing covalent character makes the lattice less susceptible to disruption by polar water molecules.\n- $\\mathrm{AgF}$ is highly soluble in water.\n- $\\mathrm{AgCl}$ is sparingly soluble.\n- $\\mathrm{AgBr}$ is even less soluble.\n- $\\mathrm{AgI}$ is the least soluble.\nTherefore, solubility decreases across the sequence. Statement (B) is correct.\n\n**Step 3: Analyze the trend in bond character.**\nThe nature of the bond is governed by Fajans' rules, which state that covalent character increases with:\n1.  Higher charge on the cation (constant here, $\\mathrm{Ag}^+$).\n2.  Larger size of the anion (increases from $\\mathrm{F}^-$ to $\\mathrm{I}^-$).\n3.  Greater polarizing power of the cation and polarizability of the anion.\nAs the size of the halide ion increases, its electron cloud becomes more diffuse and easily distorted (more polarizable) by the $\\mathrm{Ag}^+$ cation.\n- $\\mathrm{AgF}$: Small $\\mathrm{F}^-$ is hard to polarize; the bond is predominantly ionic.\n- $\\mathrm{AgCl}$, $\\mathrm{AgBr}$, $\\mathrm{AgI}$: As the anion size increases, polarization increases, leading to significant electron sharing. The bond character shifts from ionic towards covalent. $\\mathrm{AgI}$ exhibits the most covalent character among the four.\nThus, there is a transition from ionic to covalent bonding. Statement (C) is correct.\n\n**Conclusion:**\nSince Statement (A) regarding the darkening of color, Statement (B) regarding the decrease in solubility, and Statement (C) regarding the transition from ionic to covalent bonding are all factually correct for the sequence $\\mathrm{AgF} \\to \\mathrm{AgCl} \\to \\mathrm{AgBr} \\to \\mathrm{AgI}$, the comprehensive option is the correct choice.\n\nThe final answer is (D)."
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"sciinstruct-en-rewritten\", \"uid\": \"sciinst-en-15311\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 2131, \"supervised_tokens\": 889, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 21113,
+    "subject": "chemistry",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "卤化银的性质递变规律（颜色、溶解度、键型）",
+    "reason": "考察元素周期律在卤素化合物性质上的体现，包括AgX的颜色加深、溶度积减小以及极化作用导致的共价性增强。这是高中化学选修物质结构与性质或无机化学部分的常见考点，符合高考要求。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-20587.json"
+  },
+  "content_review": {
+    "line": 21113,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "考查AgF、AgCl、AgBr、AgI的颜色加深、溶解度减小及离子键向共价键过渡（法扬斯规则/极化作用），属于中国高中化学卤素及沉淀性质的典型综合推理，符合高考层级。参考解析正确。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\nAccording to the sequence of \\(\\mathrm{AgF}\\), \\(\\mathrm{AgCl}\\), \\(\\mathrm{AgBr}\\), \\(\\mathrm{AgI}\\), which of the following statements correctly describes the changes in properties? \\n(A) Color becomes darker; \\n(B) Solubility becomes smaller; \\n(C) Transition from ionic bond to covalent bond \\n(D) Both (A), (B), and (C) are correct.\n这题我卡住了。请先帮我拆出一个能动手的小步骤，不要给完整答案。",
+      "images": []
+    }
+  ]
+}

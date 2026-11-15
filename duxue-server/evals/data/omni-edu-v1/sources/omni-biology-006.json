@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 24619,
+  "uid": "coig-exam_coig_exam_sampled_clean_v3.jsonl-1666-26c393ef01c2",
+  "dataset": "coig-cqia",
+  "record_sha256": "506ef11328dd95d88b8594c607b1275683c58a897b30dba9dcd6f68f990813d8",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n请根据材料回答下列问题\n因含N、P元素的污染物大量流入，我国某大型水库曾连续爆发“水华”。为防治“水华”，在控制上游污染源的同时，研究人员依据生态学原理尝试在水库中投放以藻类和浮游动物为食的鲢鱼和鳙鱼，对该水库生态系统进行修复，取得了明显效果。\n投放鲢、鳙这一方法是通过人为干预，调整了该生态系统食物网中相关物种生物积累量的___，从而达到改善水质的目的。"
+      },
+      {
+        "role": "assistant",
+        "content": "比值（或比例）\n\n**解析：**\n投放以藻类和浮游动物为食的鲢鱼和鳙鱼，增加了食物网中更高营养级的生物量。这一措施改变了生态系统中不同营养级生物（特别是藻类与鱼类之间）的生物积累量之间的**比值**（或比例关系）。通过人为调整这种比例，增加了藻类的消耗量，降低了藻类密度，从而抑制了“水华”爆发，达到改善水质的目的。这体现了生态工程中利用生物种间关系调整生态系统结构（食物网）的原理。"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-1666-26c393ef01c2\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 5637, \"supervised_tokens\": 116, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 24619,
+    "subject": "biology",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "生态系统稳定性/食物网",
+    "reason": "考察生态学中通过调整物种数量（生物积累量/种群密度）来修复生态系统的原理，涉及高中生物必修三《稳态与环境》中的生态系统功能与保护，符合高考生物非选择题填空的特征。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-19121.json"
+  },
+  "content_review": {
+    "line": 24619,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "本题为中国高考生物典型真题风格，结合水库水华治理情境，考查生态系统食物网营养级间生物量比例关系的人为调控，需要运用高中生物必修二生态学原理进行综合分析，符合高考层级。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n请根据材料回答下列问题\n因含N、P元素的污染物大量流入，我国某大型水库曾连续爆发“水华”。为防治“水华”，在控制上游污染源的同时，研究人员依据生态学原理尝试在水库中投放以藻类和浮游动物为食的鲢鱼和鳙鱼，对该水库生态系统进行修复，取得了明显效果。\n投放鲢、鳙这一方法是通过人为干预，调整了该生态系统食物网中相关物种生物积累量的___，从而达到改善水质的目的。\n这题我卡住了。请先帮我拆出一个能动手的小步骤，不要给完整答案。",
+      "images": []
+    }
+  ]
+}

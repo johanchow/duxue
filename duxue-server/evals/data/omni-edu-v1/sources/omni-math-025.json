@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 6684,
+  "uid": "cmm-math-20165",
+  "dataset": "cmm-math-text",
+  "record_sha256": "7ca180c2cc09b0db58f479367919dc8ca0bb25754f3e956fd916c66de5584698",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n某城市在发展过程中, 交通状况逐渐受到大家更多的关注,据有关数据统计显示, 从上午 6 时到 9 时, 车辆通过该市某一段路段的用时 $y$ (分钟)与车辆进入该路段的时刻 $t$ 之间的关系可近似地用如下函数给出: $y=-\\frac{1}{8} t^{3}-\\frac{3}{4} t^{2}+36 t-\\frac{629}{4}$. 则在这段时间内, 通过该路段用时最多的时刻是( )\n\nOptions:\nA. 6 时\nB. 7 时\nC. 8 时\nD. 9 时"
+      },
+      {
+        "role": "assistant",
+        "content": "解析 :令 $y^{\\prime}=-\\frac{3}{8} t^{2}-\\frac{3}{2} t+36=0$, 即 $3 t^{2}+12 t-36 \\times 8=0$, 解得\n$t=8$ 或 $t=-12$ (舍去).\n\n当 $0<t<8$ 时, $y^{\\prime}>0$;\n\n当 $t>8$ 时, $y^{\\prime}<0$.\n\n所以当 $t=8$ 时，函数有极大值，也是最大值.\n\n答案: $\\mathrm{C}$"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"cmm-math-text\", \"uid\": \"cmm-math-20165\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/math/text/cot/other\", \"rank\": 3828, \"supervised_tokens\": 141, \"token_budget\": 1345000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 6684,
+    "subject": "math",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "导数在生活中的应用/三次函数极值",
+    "reason": "虽然可以通过代入端点值验证，但本质考查三次函数的单调性或极值问题，通常作为高考导数应用题出现。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-7750.json"
+  },
+  "content_review": {
+    "line": 6684,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "利用导数求三次函数在闭区间上的最大值，属于中国高中数学导数应用的典型高考题。参考解析求导及判断极值过程正确。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "Problem:\n某城市在发展过程中, 交通状况逐渐受到大家更多的关注,据有关数据统计显示, 从上午 6 时到 9 时, 车辆通过该市某一段路段的用时 $y$ (分钟)与车辆进入该路段的时刻 $t$ 之间的关系可近似地用如下函数给出: $y=-\\frac{1}{8} t^{3}-\\frac{3}{4} t^{2}+36 t-\\frac{629}{4}$. 则在这段时间内, 通过该路段用时最多的时刻是( )\n\nOptions:\nA. 6 时\nB. 7 时\nC. 8 时\nD. 9 时",
+      "images": []
+    }
+  ]
+}

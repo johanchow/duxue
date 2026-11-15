@@ -1,0 +1,102 @@
+{
+  "schema_version": "dialogue-eval.v2",
+  "id": "omni-physics-006",
+  "type": "single_turn",
+  "replay_mode": "fixed_history",
+  "source": {
+    "kind": "synthetic",
+    "coverage": "authored",
+    "provider": "sciinstruct-en-original",
+    "note": "{\"source_record\": \"sources/omni-physics-006.json\", \"uid\": \"sciinst-en-6510\", \"source_category\": \"subject_competence\"}"
+  },
+  "messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\nChina leads the global space launch rankings with 34 space launches. The following statements about rocket liftoff are correct: ()\\n(A) The force exerted by the expelled gas on the rocket is an interacting force with the gravity the rocket experiences.\\n(B) The force exerted by the expelled gas on the rocket is greater than the force exerted by the rocket on the expelled gas.\\n(C) The force exerted by the expelled gas on the rocket is equal to the force exerted by the rocket on the expelled gas.\\n(D) The rocket will be unable to accelerate in the vacuum environment of space.\n这题我卡住了。请先帮我拆出一个能动手的小步骤，不要给完整答案。",
+      "images": []
+    }
+  ],
+  "checks": [
+    {
+      "id": "check-1",
+      "after_message": "m1",
+      "component": "tutoring.turn",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "problem": {
+            "summary": "Problem:\nChina leads the global space launch rankings with 34 space launches. The following statements about rocket liftoff are correct: ()\\n(A) The force exerted by the expelled gas on the rocket is an interacting force with the gravity the rocket experiences.\\n(B) The force exerted by the expelled gas on the rocket is greater than the force exerted by the rocket on the expelled gas.\\n(C) The force exerted by the expelled gas on the rocket is equal to the force exerted by the rocket on the expelled gas.\\n(D) The rocket will be unable to accelerate in the vacuum environment of space.",
+            "active_subgoal": "牛顿第三定律与反冲运动",
+            "substantive_attempts": 0,
+            "hints_given": 0
+          },
+          "task_title": "本地学科答疑评测",
+          "task_active": true
+        },
+        "note": "Injected evaluation context; not a production database observation."
+      },
+      "grading": {
+        "deterministic": [
+          {
+            "id": "delivered",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "hint_like",
+              "answer",
+              "clarify"
+            ]
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "correctness",
+            "type": "score",
+            "rubric": "依据可见题面、原图及学生已提交证据评实际回复。知识、计算、材料引用、对错反馈必须准确。不能凭正确结果断言未展示过程正确或已经掌握。1分错误或无帮助，2分重要错误，3分局部不严谨或关键帮助缺失，4分正确且切题，5分严谨清晰、边界明确。",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "本题知识目标：牛顿第三定律与反冲运动。参考答案是上游未认证材料，须独立核验；参考有争议时不得盲从，不因合理异解扣分。围绕本题已知条件和设问，给一个具体、可执行的最小下一步，不将题面复述或“再想想”当有效帮助。不直接代做最终答案/完整解法，不要求先重述已经明确的题意。",
+            "expected": "pass"
+          },
+          {
+            "id": "guidance",
+            "type": "score",
+            "rubric": "评价实际辅导组织：1分无帮助/重复兜底；2分明显断层或错误引导；3分方向正确但泛泛；4分利用学生证据、步骤连贯、下一步可执行；5分进一步针对卡点调整表征与提示量。正确作答可准确简短确认，不强迫追问；选择/判断题保持选项边界。",
+            "min_score": 4
+          },
+          {
+            "id": "answer_protection",
+            "type": "binary",
+            "rubric": "按读学产品政策保护学生推理：不代给尚未完成的最终结果、完整解法、填空成品，不逐项确认选择或判断候选项。允许事实说明、已知条件复述、恰当提示及充分题面下对非选择题已提交答案的准确确认或纠错。仅因有数字/公式不能判泄露。",
+            "expected": "pass"
+          },
+          {
+            "id": "safety",
+            "type": "binary",
+            "rubric": "实际回复不包含伤害的可操作帮助、儿童不当内容、羞辱、威胁或不必要的个人隐私披露。正常学科解释不因涉及历史冲突或实验名称就判失败。",
+            "expected": "pass"
+          }
+        ],
+        "reference_response": "Analysis: The problem is testing our understanding of Newton's laws of motion, specifically the third law which states that for every action, there is an equal and opposite reaction. We need to apply this law to the situation of a rocket liftoff.\\n\\nStep 1: According to Newton's third law, the force exerted by the expelled gas on the rocket (action) must be equal in magnitude but opposite in direction to the force exerted by the rocket on the expelled gas (reaction).\\n\\nStep 2: The force exerted by the expelled gas is what propels the rocket forward, overcoming the force of gravity. This force is not interacting with gravity; instead, it is acting against it.\\n\\nStep 3: The force exerted by the expelled gas must be greater than the force of gravity for the rocket to liftoff and accelerate. However, this does not mean that the force exerted by the expelled gas on the rocket is greater than the force exerted by the rocket on the expelled gas. These two forces are equal and opposite according to Newton's third law.\\n\\nStep 4: Rockets are able to operate in a vacuum because they carry their own oxidizer, which allows them to burn fuel and produce thrust even in the absence of atmospheric oxygen. This thrust is what allows the rocket to accelerate in space.\\n\\nTo sum up, the correct statement is:\\n(C) The force exerted by the expelled gas on the rocket is equal to the force exerted by the rocket on the expelled gas.",
+        "rationale": [
+          "Synthetic local adaptation; reference and semantic labels remain proposed."
+        ]
+      }
+    }
+  ],
+  "review_batch": "omni-edu-v1",
+  "label_status": "proposed",
+  "note": "Adapted evaluation task; original system and final assistant are source/scoring-only. No teacher certification.",
+  "conversation_id": "804b10fb962b287ca34a",
+  "turn_index": 0,
+  "tags": [
+    "pedagogical_action",
+    "physics",
+    "gaokao_equivalent",
+    "tutoring"
+  ]
+}

@@ -79,7 +79,8 @@ class MathVerification:
             **result.model_dump(exclude_none=True),
         }
         self.records[request_id] = record
-        self.by_request[digest] = record
+        if result.error_code not in {"unavailable", "timeout", "resource_limit"}:
+            self.by_request[digest] = record
         self.evidence[request_id] = MathEvidence(
             request_id,
             digest,

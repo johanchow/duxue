@@ -1,0 +1,69 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 81,
+  "uid": "cmm-math-14584",
+  "dataset": "cmm-math-multimodal",
+  "record_sha256": "c10cff752767d23691d3af2e75d587714dead5e825861ec56b91a0840abbda88",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "<image>\nProblem:\n若方程 $\\left|x^{2}-4 x\\right|-a=0$ 有四个不相等的实根, 则实数 $a$ 的取值范围是\n\n<ImageHere>"
+      },
+      {
+        "role": "assistant",
+        "content": "由 $\\left|x^{2}-4 x\\right|-a=0$, 得 $a=\\left|x^{2}-4 x\\right|$, 作出函数 $y=\\left|x^{2}-4 x\\right|$ 的图象, 则由图象可知, 要使方程 $\\mid x^{2}$ $-4 x \\mid-a=0$ 有四个不相等的实根, 则 $0<a<4$.\n\n【答案】 $(0,4)$"
+      }
+    ],
+    "images": [
+      "images/77/7798f2de715d3a74b444970f2e6b5b959301ea31260a0f707f89bfbe7396bbba.jpg"
+    ],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"cmm-math-multimodal\", \"uid\": \"cmm-math-14584\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/math/multimodal/cot\", \"rank\": 78, \"supervised_tokens\": 101, \"token_budget\": 600000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [
+    "af32f9b2c1641630055c0490f09cd3e7327fdb033cc84e3ee6a.jpg"
+  ],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 81,
+    "subject": "math",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "含绝对值方程的根的个数问题",
+    "reason": "题目要求根据图像判断参数a的范围，使得方程|x^2-4x|-a=0有四个不相等的实根。这涉及函数图像的平移变换（y=|f(x)|）以及数形结合思想，是高中数学中关于函数与方程的典型考点，符合高考难度和知识范围。题干文字完整，配图清晰展示了关键函数图像及辅助线，信息完备。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-images-v1/review-81.json"
+  },
+  "content_review": {
+    "line": 81,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "考查含绝对值函数的图像与方程根的个数问题，属于高中函数与方程的典型综合应用，难度适中。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "diagnostic_adaptation": {
+    "id": "omni-math-006",
+    "student_attempt": "方程|x²-4x|-a=0有四个不相等的实根，等价于函数y=|x²-4x|的图象与水平直线y=a有四个交点。观察图象可知，抛物线翻折后中间拱形部分的最高点纵坐标为4，最低点（在x轴上）纵坐标为0。因此，要产生四个交点，直线y=a必须严格位于这两个极值之间，即0<a<4。",
+    "assessment": "incorrect",
+    "feedback_criteria": "学生作答中关于“四个交点”转化为“图象与水平线相交”的思路是正确的，但读取图象数据时出现错误。评测时应指出：根据题图，函数 y=|x²-4x| 在区间 [0,4] 上的最大值并非4，而是2（可通过配方 x²-4x=(x-2)²-4 验证）。因此，正确的取值范围应是 0<a<2。需引导学生重新核对顶点坐标的计算或读图。",
+    "is_choice": false,
+    "model": "qwen3.8-flash"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\n<image>\nProblem:\n若方程 $\\left|x^{2}-4 x\\right|-a=0$ 有四个不相等的实根, 则实数 $a$ 的取值范围是\n\n<ImageHere>\n我的尝试：方程|x²-4x|-a=0有四个不相等的实根，等价于函数y=|x²-4x|的图象与水平直线y=a有四个交点。观察图象可知，抛物线翻折后中间拱形部分的最高点纵坐标为4，最低点（在x轴上）纵坐标为0。因此，要产生四个交点，直线y=a必须严格位于这两个极值之间，即0<a<4。\n请检查我已有的理由或结果，只指出可核验的部分，并给一个自检提示。",
+      "images": [
+        "af32f9b2c1641630055c0490f09cd3e7327fdb033cc84e3ee6a.jpg"
+      ]
+    }
+  ]
+}

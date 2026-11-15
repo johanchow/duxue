@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 14570,
+  "uid": "race-high18387.txt-9092",
+  "dataset": "reading-race",
+  "record_sha256": "0541264da4de8a05ca966955679d0e03e45d20cd63fe583058298f10c7066dd5",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Answer the reading-comprehension question from the supplied passage and options. Base the answer only on the passage, reason carefully when needed, and follow the requested answer format."
+      },
+      {
+        "role": "user",
+        "content": "Passage:\nNowadays, pollution is becoming worse and worse. A starry night seems to be a luxury for people living in cities. Is there any ideal place for stargazers ? A small town in New Zealand is here to surprise you with its breathtaking starry night sky.\nLake Tekapo is located at the heart of New Zealand's South Island. It has been a popular tourist destination for stargazers. At night, innumerable stars dot the sky above the small town. The Milky Way and various constellations can be clearly seen. Visitors can also watch meteors shooting across the sky. For people living in big cities, these can only be seen in movies or fairytales.\nThough stargazing is common for people in Lake Tekapo, the local people have paid great attention to protecting their starry night sky. After midnight, all landscape lights must be turned off. In 2005, Lake Tekapo's starry night sky was even listed as a world heritage .\nBesides its starry sky, the town has many other things to offer. One of them is the flower, Russell Lupin. Every summer, Russell Lupins make Lake Tekapo more attractive. However, once the Russell Lupins die off, the banks of Lake Tekapo look bare.\nAfter reading the above introduction of Lake Tekapo, you must envy the local people a lot, because they can see the starry sky every night and appreciate the beauty of Russell Lupin every summer. If you are interested in Lake Tekapo, why not go and visit it this coming summer vacation?\n\nProblem:\nWhat do the local people do to protect their starry night sky?\n\nOptions:\nA. Plant the flower, Russell Lupin\nB. turn off all landscape lights\nC. Put it in the list of world heritages\nD. Offer many others things for tourists"
+      },
+      {
+        "role": "assistant",
+        "content": "The correct answer is supported by the sentence in the third paragraph which states, \"After midnight, all landscape lights must be turned off.\" This action is explicitly described as the measure taken by local people to protect their starry night sky.\n\nOption A is incorrect because planting Russell Lupins is mentioned as a way to make the town attractive in summer, not as a method for protecting the sky. Option C is incorrect because the text says the sky \"was even listed as a world heritage\" in 2005, which is a result or status, not an action performed by the people to protect it. Option D is incorrect because offering other things for tourists is a general feature of the town, not a specific protective measure for the night sky.\n\nB"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"reading-race\", \"uid\": \"race-high18387.txt-9092\", \"kind\": \"reading\", \"system_variant\": \"general\", \"kcenter\": {\"bucket\": \"subject/reading/reading-race\", \"rank\": 799, \"supervised_tokens\": 153, \"token_budget\": 396000}, \"system_prompt_id\": \"reading_comprehension\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 14570,
+    "subject": "english",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "Reading Comprehension - Specific Action/Detail",
+    "reason": "English travel/tourism text about Lake Tekapo with a direct detail question regarding local conservation efforts.",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-15559.json"
+  },
+  "content_review": {
+    "line": 14570,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "英文原文阅读理解，考查细节信息提取，符合高考英语阅读题型。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nPassage:\nNowadays, pollution is becoming worse and worse. A starry night seems to be a luxury for people living in cities. Is there any ideal place for stargazers ? A small town in New Zealand is here to surprise you with its breathtaking starry night sky.\nLake Tekapo is located at the heart of New Zealand's South Island. It has been a popular tourist destination for stargazers. At night, innumerable stars dot the sky above the small town. The Milky Way and various constellations can be clearly seen. Visitors can also watch meteors shooting across the sky. For people living in big cities, these can only be seen in movies or fairytales.\nThough stargazing is common for people in Lake Tekapo, the local people have paid great attention to protecting their starry night sky. After midnight, all landscape lights must be turned off. In 2005, Lake Tekapo's starry night sky was even listed as a world heritage .\nBesides its starry sky, the town has many other things to offer. One of them is the flower, Russell Lupin. Every summer, Russell Lupins make Lake Tekapo more attractive. However, once the Russell Lupins die off, the banks of Lake Tekapo look bare.\nAfter reading the above introduction of Lake Tekapo, you must envy the local people a lot, because they can see the starry sky every night and appreciate the beauty of Russell Lupin every summer. If you are interested in Lake Tekapo, why not go and visit it this coming summer vacation?\n\nProblem:\nWhat do the local people do to protect their starry night sky?\n\nOptions:\nA. Plant the flower, Russell Lupin\nB. turn off all landscape lights\nC. Put it in the list of world heritages\nD. Offer many others things for tourists\n这题我卡住了。请先帮我拆出一个能动手的小步骤，不要给完整答案。",
+      "images": []
+    }
+  ]
+}

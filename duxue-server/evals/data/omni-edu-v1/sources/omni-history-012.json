@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 21650,
+  "uid": "coig-exam_coig_exam_sampled_clean_v3.jsonl-1212-6eb7102b4833",
+  "dataset": "coig-cqia",
+  "record_sha256": "c19ccab8c7582649292d4557dfdf86ccd8477b587f0758a2f20aa61cd2e8d970",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n请根据题干要求回答问题\n“团结就是力量”，结合第二次世界大战的具体事例，说明这一观点的正确性。"
+      },
+      {
+        "role": "assistant",
+        "content": "成立世界反法西斯联盟，最终取得了二战的胜利。\n\n依据所学知识可知，第二次世界大战期间的具体事例是1942年1月1日，26个国家签署《联合国家宣言》，标志着世界反法西斯联盟的形成。正是因为世界反法西斯力量团结起来，才会打败德意日法西斯集团，二战取得胜利。"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-1212-6eb7102b4833\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 2668, \"supervised_tokens\": 68, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 21650,
+    "subject": "history",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "第二次世界大战-反法西斯同盟的建立与作用",
+    "reason": "要求结合二战具体事例说明“团结就是力量”，即考查世界反法西斯联盟建立的意义及合作案例（如诺曼底登陆、雅尔塔会议等）。这需要调动高中历史关于二战进程和国际关系的知识体系进行论证，符合高考历史主观题的特征。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-25502.json"
+  },
+  "content_review": {
+    "line": 21650,
+    "subject_correct": true,
+    "complete": true,
+    "level": "other_k12",
+    "reason": "考查二战反法西斯联盟史实，属于初中历史常识性知识，无需高中层级综合推理。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n请根据题干要求回答问题\n“团结就是力量”，结合第二次世界大战的具体事例，说明这一观点的正确性。\n我想先弄清这题需要用哪个概念，以及题目条件怎样联系，请引导我。",
+      "images": []
+    }
+  ]
+}

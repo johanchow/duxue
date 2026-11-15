@@ -1,0 +1,69 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 186,
+  "uid": "cmm-math-2969",
+  "dataset": "cmm-math-multimodal",
+  "record_sha256": "08760afe517f7e9f595dfa5ffa45e8fc40ba06a2399a890168b725e3e38c107d",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "<image>\nProblem:\n某市股票在七个月之内增长率的变化状况如图所示, 则下列结论正确的是 ( )\n\n<ImageHere>\n\n\nOptions:\nA. 2 月股票票值比 1 月股票值降低 $10.5 \\%$\n\nB. 这七个月中 1 月份的股票涨到最高\n\nC. 这七个月中，每月的股票不断上涨\n\nD. 这七个月中, 股票有涨有跌"
+      },
+      {
+        "role": "assistant",
+        "content": "2 月股票票值比 1 月股票值增长了 $10.5 \\%$, 在这七个月中, 股票的增长率始终是正数, 则每月的股票不断上涨，所以 $A 、 B 、 D$ 都错误，只有 $C$ 正确.\n\n故选: $C$.\n\n##"
+      }
+    ],
+    "images": [
+      "images/26/26d38ac671d83bbee04f713551547c70339163b3f96a93167e80cd1b5da82195.jpg"
+    ],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"cmm-math-multimodal\", \"uid\": \"cmm-math-2969\", \"kind\": \"qa\", \"system_variant\": \"general\", \"kcenter\": {\"bucket\": \"subject/math/multimodal/cot\", \"rank\": 183, \"supervised_tokens\": 72, \"token_budget\": 600000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [
+    "afd73b373125d6a3aaaae7641278e955d363a415d05eb071278.jpg"
+  ],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 186,
+    "subject": "math",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "统计图表分析（增长率与增长量的区别）",
+    "reason": "题目要求根据折线统计图判断股票值的变化情况。图中纵轴表示“增长率”，且数值均为正数，这意味着每月的股票值都在增加，只是增加的幅度不同。这是高中数学统计部分常见的易错题型，考察学生对概念的理解和读图能力，符合高考难度。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-images-v1/review-186.json"
+  },
+  "content_review": {
+    "line": 186,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "题目考查统计图表（增长率折线图）的分析，核心在于区分“增长率”与“增长量/总量”的关系（增长率为正即总量增加），这是高中统计章节及函数应用中的常见易错点，具备一定的高中数学思维要求。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "diagnostic_adaptation": {
+    "id": "omni-math-008",
+    "student_attempt": "图表显示的是股票的增长率。虽然增长率从1月到6月在下降，但所有的数值都是正数。只要增长率大于0，就意味着股票价格在上涨。因此，在这七个月里，股票价格一直在涨，只是涨的速度变慢了。选项C说“每月的股票不断上涨”是正确的。",
+    "assessment": "correct",
+    "feedback_criteria": "学生的推理逻辑清晰且正确。他准确区分了“增长率的变化”与“股价的变化”这两个概念，抓住了“增长率为正即为上涨”这一核心性质，从而得出了正确结论。评测应确认该生对统计图表含义的理解到位，无需额外修正。",
+    "is_choice": true,
+    "model": "qwen3.8-flash"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\n<image>\nProblem:\n某市股票在七个月之内增长率的变化状况如图所示, 则下列结论正确的是 ( )\n\n<ImageHere>\n\n\nOptions:\nA. 2 月股票票值比 1 月股票值降低 $10.5 \\%$\n\nB. 这七个月中 1 月份的股票涨到最高\n\nC. 这七个月中，每月的股票不断上涨\n\nD. 这七个月中, 股票有涨有跌\n我的尝试：图表显示的是股票的增长率。虽然增长率从1月到6月在下降，但所有的数值都是正数。只要增长率大于0，就意味着股票价格在上涨。因此，在这七个月里，股票价格一直在涨，只是涨的速度变慢了。选项C说“每月的股票不断上涨”是正确的。\n请检查我已有的理由或结果，只指出可核验的部分，并给一个自检提示。",
+      "images": [
+        "afd73b373125d6a3aaaae7641278e955d363a415d05eb071278.jpg"
+      ]
+    }
+  ]
+}

@@ -102,6 +102,7 @@ class Backends:
     intent_complete: Callable[..., str] | None = None
     image_target_selector: Callable | None = None
     semantic_grader: object | None = None
+    math_engine: object | None = None
 
 
 @dataclass
@@ -223,7 +224,7 @@ def _observe_tutor(
 
     tools = RecordingToolbox(
         None,
-        math_engine=math_engine(),
+        math_engine=backends.math_engine if backends.math_engine is not None else math_engine(),
         tutoring_session_id=None,
         problem=SimpleNamespace(**problem.model_dump()) if problem else None,
         task_title=context.task_title,

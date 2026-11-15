@@ -1,0 +1,82 @@
+{
+  "schema_version": "dialogue-eval.v2",
+  "id": "omni-biology-009",
+  "type": "single_turn",
+  "replay_mode": "fixed_history",
+  "source": {
+    "kind": "synthetic",
+    "coverage": "authored",
+    "provider": "coig-cqia",
+    "note": "{\"source_record\": \"sources/omni-biology-009.json\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-1737-5f346d090e99\", \"source_category\": \"subject_competence\"}"
+  },
+  "messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "Problem:\n请选择正确的选项或最佳答案\n哺乳动物成熟红细胞的细胞膜含有丰富的水通道蛋白，硝酸银（AgNO3）可使水通道蛋白失去活性。下列叙述错误的是（　　） A. 经AgNO3处理的红细胞在低渗蔗糖溶液中会膨胀 B. 经AgNO3处理的红细胞在高渗蔗糖溶液中不会变小 C. 未经AgNO3处理的红细胞在低渗蔗糖溶液中会迅速膨胀 D. 未经AgNO3处理的红细胞在高渗蔗糖溶液中会迅速变小",
+      "images": []
+    }
+  ],
+  "checks": [
+    {
+      "id": "check-1",
+      "after_message": "m1",
+      "component": "tutoring.turn",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "problem": {
+            "summary": "Problem:\n请选择正确的选项或最佳答案\n哺乳动物成熟红细胞的细胞膜含有丰富的水通道蛋白，硝酸银（AgNO3）可使水通道蛋白失去活性。下列叙述错误的是（　　） A. 经AgNO3处理的红细胞在低渗蔗糖溶液中会膨胀 B. 经AgNO3处理的红细胞在高渗蔗糖溶液中不会变小 C. 未经AgNO3处理的红细胞在低渗蔗糖溶液中会迅速膨胀 D. 未经AgNO3处理的红细胞在高渗蔗糖溶液中会迅速变小",
+            "active_subgoal": "细胞膜结构与物质运输",
+            "substantive_attempts": 0,
+            "hints_given": 0
+          },
+          "task_title": "本地学科答疑评测",
+          "task_active": true
+        },
+        "note": "Injected evaluation context; not a production database observation."
+      },
+      "grading": {
+        "deterministic": [
+          {
+            "id": "delivered",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "answer"
+            ]
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "correctness",
+            "type": "score",
+            "rubric": "内部完整解题：依据原题和实际图片独立核验最终结论、推导、定义域、单位、条件及各小问覆盖。允许数学等价表达与有依据的异解。1分错误/无解答，2分重要错误，3分方向正确但关键缺漏，4分结论与主要推导正确且完整，5分进一步严谨清晰。只评价实际solution，不要求启发提问。",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "本题知识目标：细胞膜结构与物质运输。参考答案是上游未认证材料，须独立核验；参考有争议时不得盲从，不因合理异解扣分。",
+            "expected": "pass"
+          }
+        ],
+        "reference_response": "水可以通过水通道蛋白以协助扩散的形式进出细胞，也可以直接通过自由扩散的方式进出细胞。 \nAB、经AgNO3处理的红细胞，水通道蛋白失去活性，但水可以通过自由扩散的形式进出细胞，故其在低渗蔗糖溶液中会吸水膨胀，在高渗蔗糖溶液中会失水变小，A正确，B错误； CD、未经AgNO3处理的红细胞，水可通过水通道蛋白快速进出细胞，也可通过自由扩散进出细胞，故其在低渗蔗糖溶液中会迅速吸水膨胀，在高渗蔗糖溶液中会迅速失水变小，CD正确。 故选B。",
+        "rationale": [
+          "Synthetic local adaptation; reference and semantic labels remain proposed."
+        ]
+      }
+    }
+  ],
+  "review_batch": "omni-edu-v1",
+  "label_status": "proposed",
+  "note": "Adapted evaluation task; original system and final assistant are source/scoring-only. No teacher certification.",
+  "conversation_id": "d6dc8bc4cbd85da91157",
+  "turn_index": 0,
+  "tags": [
+    "subject_competence",
+    "biology",
+    "gaokao_equivalent",
+    "solve"
+  ]
+}

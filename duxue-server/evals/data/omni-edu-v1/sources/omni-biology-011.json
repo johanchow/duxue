@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 21437,
+  "uid": "qasc-1955",
+  "dataset": "qasc",
+  "record_sha256": "a195d4eb0c50aa19e723eeaca0d4c13f6a12374143db6e02f2fe787a4f04689d",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\nIntrons are areas that\n\nOptions:\nA. it keeps an organism warm\nB. Plant reproduction\nC. the wearing away of rock\nD. do not code for protein\nE. Something coming from a gland\nF. Plant growth is reduced\nG. allow growth\nH. produce offspring"
+      },
+      {
+        "role": "assistant",
+        "content": "Introns are specific sections found within a gene's DNA sequence. According to the provided facts, introns are defined as regions that do not code for proteins. While other options describe unrelated biological or geological processes such as keeping an organism warm, plant reproduction, or rock erosion, the defining characteristic of an intron is its lack of protein-coding information. Therefore, the statement that introns are areas that do not code for protein is the correct description. The answer is D."
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"qasc\", \"uid\": \"qasc-1955\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 2455, \"supervised_tokens\": 97, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 21437,
+    "subject": "biology",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "基因表达-内含子功能",
+    "reason": "考察Introns（内含子）不编码蛋白质这一特性。这属于高中生物选修模块或必修中基因表达调控的核心知识点，需要区分外显子和内含子的功能，符合高考层级。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-science-v1/review-22021.json"
+  },
+  "content_review": {
+    "line": 21437,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "考查内含子（intron）不编码蛋白质这一概念，属于中国高中生物必修二基因表达章节的特有知识点。参考解析准确，未发现明确矛盾。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\nIntrons are areas that\n\nOptions:\nA. it keeps an organism warm\nB. Plant reproduction\nC. the wearing away of rock\nD. do not code for protein\nE. Something coming from a gland\nF. Plant growth is reduced\nG. allow growth\nH. produce offspring\n我不知道如何开始，请给我一个具体的起步提示，不要直接解完整题。",
+      "images": []
+    }
+  ]
+}

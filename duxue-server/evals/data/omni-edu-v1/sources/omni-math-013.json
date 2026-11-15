@@ -1,0 +1,61 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 1154,
+  "uid": "cmm-math-17109",
+  "dataset": "cmm-math-multimodal",
+  "record_sha256": "2728d5d1a2d7c935907539ca19235aaf9989787707036995ac0e7ed61781814c",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "<image>\nProblem:\n（2020$\\cdot$徐州模拟）执行如图所示的伪代码, 则输出的结果为 \\$ \\qquad \\$\n\n<ImageHere>"
+      },
+      {
+        "role": "assistant",
+        "content": "解：依题意, 第一次运行循环时, $I=1$, 满足 $I<9, S=2 \\times 1+1=3, I=3$;\n\n第二次运行循环时, $I=3$, 满足 $I<9, S=2 \\times 3+1=7, I=5$;\n\n第三次运行循环时, $I=5$, 满足 $I<9, S=2 \\times 5+1=11, I=7$;\n第四次运行循环时, $I=7$, 满足 $I<9, S=2 \\times 7+1=15, I=9$;\n\n循环结束,\n\n输出 $S=15$,\n\n故答案为: 15 ."
+      }
+    ],
+    "images": [
+      "images/85/853456ab1c3dd82ee38f9549b6911375b6d3129036a570a62b196c44b03b7d6b.jpg"
+    ],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"cmm-math-multimodal\", \"uid\": \"cmm-math-17109\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/math/multimodal/cot\", \"rank\": 1151, \"supervised_tokens\": 167, \"token_budget\": 600000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [
+    "a082f7731050dcd5a016a8791832f1870606fbbbded8136614e.jpg"
+  ],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 1154,
+    "subject": "math",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "算法与程序框图（伪代码）",
+    "reason": "题目要求执行给定的伪代码并输出结果，属于高中数学课程中“算法初步”章节的内容。图片清晰展示了伪代码的逻辑结构（While循环），题干完整，符合高考数学对算法流程图/伪代码的考查形式。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-images-v1/review-1154.json"
+  },
+  "content_review": {
+    "line": 1154,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "题目考查伪代码的阅读与循环结构的执行追踪（While循环），涉及变量迭代更新，是高中数学算法语句部分的典型考题，符合高考层级。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\n<image>\nProblem:\n（2020$\\cdot$徐州模拟）执行如图所示的伪代码, 则输出的结果为 \\$ \\qquad \\$\n\n<ImageHere>\n我想直接看答案。你能帮我解决吗？",
+      "images": [
+        "a082f7731050dcd5a016a8791832f1870606fbbbded8136614e.jpg"
+      ]
+    }
+  ]
+}

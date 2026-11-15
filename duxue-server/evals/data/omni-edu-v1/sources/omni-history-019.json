@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 26173,
+  "uid": "coig-exam_coig_exam_sampled_clean_v3.jsonl-1216-591948d77465",
+  "dataset": "coig-cqia",
+  "record_sha256": "45495d0b5945e14f0318c5a9009933a9a7ae6438fdd50bc41bebe8c988530bd1",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n单选\n英国资产阶级革命、美国独立战争、法国大革命的共同点是\n英国资产阶级革命、美国独立战争、法国大革命的共同点是A.处死了国王B.推翻了专制制度C.打败了外国的武装干涉D.促进了本国资本主义的发展"
+      },
+      {
+        "role": "assistant",
+        "content": "依据所学知识分析选项可知，美国独立战争没有处死国王，英国资产阶级革命中处死了国王查理一世，法国大革命中处死了国王路易十六，所以A项错误；B项美国推翻的是英国的殖民统治，英国和法国推翻的是君主专制，所以B项不正确；C项英国资产阶级革命中没有涉及外国武装干涉，所以C项错误；英国资产阶级革命、美国独立战争、法国大革命后都走上了资本主义发展的道路，都促进了资本主义的发展，所以D项表述正确，故选D。"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-1216-591948d77465\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 7191, \"supervised_tokens\": 107, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 26173,
+    "subject": "history",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "近代西方资产阶级革命比较",
+    "reason": "题目要求找出英、美、法三国早期资产阶级革命的共同点。这需要综合比较不同国家革命的过程、结果和影响，是高中历史世界近代史部分的经典考点，符合高考历史选择题的难度和深度。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-23382.json"
+  },
+  "content_review": {
+    "line": 26173,
+    "subject_correct": true,
+    "complete": true,
+    "level": "other_k12",
+    "reason": "考查英、美、法资产阶级革命共同点，属于初中历史世界近代史基础知识记忆与简单比较，非高中课程特有的综合推理或深度分析。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "Problem:\n单选\n英国资产阶级革命、美国独立战争、法国大革命的共同点是\n英国资产阶级革命、美国独立战争、法国大革命的共同点是A.处死了国王B.推翻了专制制度C.打败了外国的武装干涉D.促进了本国资本主义的发展",
+      "images": []
+    }
+  ]
+}

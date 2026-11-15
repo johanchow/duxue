@@ -1,0 +1,63 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 25189,
+  "uid": "sciinst-en-23127",
+  "dataset": "sciinstruct-en-original",
+  "record_sha256": "ce37339d325081a942bbbfe24f89bd7e42c9e11296a782273b6ac9d4609a761d",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\nThe standard molar enthalpy of combustion of graphite is equal to the standard molar enthalpy of formation of carbon dioxide gas. (True or False)"
+      },
+      {
+        "role": "assistant",
+        "content": "Analysis: To determine whether the statement is true or false, we need to understand the concepts of standard molar enthalpy of combustion and standard molar enthalpy of formation. The standard molar enthalpy of combustion is the amount of heat released when one mole of a substance undergoes complete combustion in excess oxygen at standard conditions. The standard molar enthalpy of formation is the change in enthalpy when one mole of a compound is formed from its elements in their standard states under standard conditions.\\n\\nStep 1: Write the balanced equation for the combustion of graphite (carbon in its standard state):\\n\\\\[ \\\\text{C(graphite)} + \\\\text{O}_2(\\\\text{g}) \\\\rightarrow \\\\text{CO}_2(\\\\text{g}) \\\\]\\n\\nStep 2: Determine the enthalpy change for the combustion of graphite:\\n\\\\[ \\\\Delta H_{\\\\text{combustion}} = \\\\text{Heat released during combustion} \\\\]\\n\\nStep 3: Write the balanced equation for the formation of carbon dioxide from its elements in their standard states:\\n\\\\[ \\\\text{C(graphite)} + \\\\text{O}_2(\\\\text{g}) \\\\rightarrow \\\\text{CO}_2(\\\\text{g}) \\\\]\\n\\nStep 4: Determine the enthalpy change for the formation of carbon dioxide:\\n\\\\[ \\\\Delta H_{\\\\text{formation}} = \\\\text{Enthalpy change for formation from elements} \\\\]\\n\\nStep 5: Compare the two enthalpy changes:\\nSince the formation of carbon dioxide from its elements (graphite and oxygen) is the same reaction as the combustion of graphite, the enthalpy change for both processes is the same.\\n\\nTo sum up, the answer to the question is True. The standard molar enthalpy of combustion of graphite is indeed equal to the standard molar enthalpy of formation of carbon dioxide gas."
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"sciinstruct-en-original\", \"uid\": \"sciinst-en-23127\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 6207, \"supervised_tokens\": 412, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 25189,
+    "subject": "chemistry",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "热化学方程式与燃烧热/生成热的关系",
+    "reason": "考察石墨燃烧生成二氧化碳的焓变即为CO2的标准生成焓，属于高中化学选修四（反应原理）核心概念，难度符合高考要求。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-25189.json"
+  },
+  "content_review": {
+    "line": 25189,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "考查石墨标准摩尔燃烧焓与二氧化碳标准摩尔生成焐的关系，需要理解燃烧热和生成热的严格定义及对应热化学方程式，属于中国高中化学反应原理（热化学）的核心考点。参考解析逻辑正确。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "diagnostic_adaptation": {
+    "id": "omni-chemistry-001",
+    "student_attempt": "The statement is False. Combustion involves burning a substance in oxygen, while formation creates a compound from elements. Even though graphite + O2 -> CO2 looks like both, combustion releases heat (exothermic) whereas formation enthalpy can be positive or negative depending on stability. They are different concepts defined by different processes, so their values shouldn't be assumed equal just because the reaction equation matches.",
+    "assessment": "incorrect",
+    "feedback_criteria": "Identify the error in assuming definitions differ implies values differ. Guide the student to recognize that for an element in its standard state (graphite) reacting with another element (O2) to form a compound (CO2), the combustion reaction IS the formation reaction. Therefore, ΔH_comb(graphite) = ΔH_f(CO2). Feedback should prompt checking the definition of standard enthalpy of formation vs combustion for elemental substances.",
+    "is_choice": false,
+    "model": "qwen3.8-flash"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\nThe standard molar enthalpy of combustion of graphite is equal to the standard molar enthalpy of formation of carbon dioxide gas. (True or False)\n我的尝试：The statement is False. Combustion involves burning a substance in oxygen, while formation creates a compound from elements. Even though graphite + O2 -> CO2 looks like both, combustion releases heat (exothermic) whereas formation enthalpy can be positive or negative depending on stability. They are different concepts defined by different processes, so their values shouldn't be assumed equal just because the reaction equation matches.\n请检查我已有的理由或结果，只指出可核验的部分，并给一个自检提示。",
+      "images": []
+    }
+  ]
+}

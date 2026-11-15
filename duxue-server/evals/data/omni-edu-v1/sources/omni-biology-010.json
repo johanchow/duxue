@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 19337,
+  "uid": "sciinst-en-21150",
+  "dataset": "sciinstruct-en-original",
+  "record_sha256": "fcaee6a26e31489e2aeba5bb74bdcba8776ab2add6cc9ff43e340064aa10ed89",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\nWhich of the following codons is not a stop codon?\\nA. \\(\\mathrm{UAA}\\)\\nB. \\(\\mathrm{UGA}\\)\\nC. \\(\\mathrm{UAG}\\)\\nD. \\(\\mathrm{AGU}\\)"
+      },
+      {
+        "role": "assistant",
+        "content": "Analysis: The problem is asking to identify the codon that is not a stop codon. Stop codons are specific sequences of three nucleotides that signal the end of protein synthesis during translation. The three universal stop codons in molecular biology are UAA, UGA, and UAG.\\n\\nStep 1: List the stop codons. The stop codons are UAA, UGA, and UAG.\\n\\nStep 2: Compare the given codons with the list of stop codons. \\n\\n- A. UAA: This is a stop codon.\\n- B. UGA: This is a stop codon.\\n- C. UAG: This is a stop codon.\\n- D. AGU: This codon is not in the list of stop codons.\\n\\nStep 3: Identify the codon that is not a stop codon. Based on the comparison, AGU is not a stop codon.\\n\\nTo sum up, the answer to the question is AGU (option D) is not a stop codon."
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"sciinstruct-en-original\", \"uid\": \"sciinst-en-21150\", \"kind\": \"qa\", \"system_variant\": \"general\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 355, \"supervised_tokens\": 227, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 19337,
+    "subject": "biology",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "遗传密码子 (终止密码子)",
+    "reason": "考查mRNA上的终止密码子识别，属于高中生物“基因的表达”核心知识点，完全符合高考大纲要求。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-20189.json"
+  },
+  "content_review": {
+    "line": 19337,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "英文出题的生物学知识问题，考查终止密码子（UAA、UGA、UAG），属于高中生物遗传与进化模块中基因表达的基础知识，按规则仍归biology学科，难度为高考层级。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "Problem:\nWhich of the following codons is not a stop codon?\\nA. \\(\\mathrm{UAA}\\)\\nB. \\(\\mathrm{UGA}\\)\\nC. \\(\\mathrm{UAG}\\)\\nD. \\(\\mathrm{AGU}\\)",
+      "images": []
+    }
+  ]
+}

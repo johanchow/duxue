@@ -1,0 +1,63 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 23088,
+  "uid": "coig-exam_coig_exam_sampled_clean_v3.jsonl-1412-8fe540b65da3",
+  "dataset": "coig-cqia",
+  "record_sha256": "64a5d73f5c4fb436b62dcb4caddf54f1bea248f0eca176e662fa6b021f147678",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n单项选择题\n西罗马帝国灭亡前后，日耳曼人在西欧建立了众多王国，被称为“蛮族王国”。其中法兰克王国最为强大，它的建立者是A．屋大维\tB．凯撒\tC．穆罕默德\tD．克洛维"
+      },
+      {
+        "role": "assistant",
+        "content": "西罗马帝国灭亡前后，克洛维建立法兰克王国，故D符合题意；屋大维、凯撒是古罗马领导人，故AB均不符合题意；穆罕默德是伊斯兰教创始人，故C不符合题意。故选D。"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-1412-8fe540b65da3\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 4106, \"supervised_tokens\": 53, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 23088,
+    "subject": "history",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "世界古代史-法兰克王国",
+    "reason": "考查日耳曼人建立的国家及法兰克王国的建立者克洛维，属于高中历史选择性必修《国家制度与社会治理》或统编教材世界史部分的基础知识，符合高考历史考查范围。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-19399.json"
+  },
+  "content_review": {
+    "line": 23088,
+    "subject_correct": true,
+    "complete": true,
+    "level": "other_k12",
+    "reason": "考查西罗马帝国灭亡与法兰克王国建立者克洛维，属于初中世界历史常识性记忆，高中虽涉及但非高考层级深度。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "diagnostic_adaptation": {
+    "id": "omni-history-015",
+    "student_attempt": "克洛维是法兰克王国的建立者，他皈依基督教并统一了日耳曼各部族。屋大维和凯撒属于罗马共和国/帝国时期，穆罕默德创立伊斯兰教，都与法兰克王国无关。所以选D。",
+    "assessment": "correct",
+    "feedback_criteria": "确认学生正确识别了克洛维作为法兰克王国建立者的历史事实，并能准确排除其他选项所属的历史人物（罗马统治者、宗教创始人）。若推理逻辑清晰且结论正确，判定为通过。",
+    "is_choice": true,
+    "model": "qwen3.8-flash"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n单项选择题\n西罗马帝国灭亡前后，日耳曼人在西欧建立了众多王国，被称为“蛮族王国”。其中法兰克王国最为强大，它的建立者是A．屋大维\tB．凯撒\tC．穆罕默德\tD．克洛维\n我的尝试：克洛维是法兰克王国的建立者，他皈依基督教并统一了日耳曼各部族。屋大维和凯撒属于罗马共和国/帝国时期，穆罕默德创立伊斯兰教，都与法兰克王国无关。所以选D。\n请检查我已有的理由或结果，只指出可核验的部分，并给一个自检提示。",
+      "images": []
+    }
+  ]
+}

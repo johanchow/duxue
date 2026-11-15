@@ -1,0 +1,82 @@
+{
+  "schema_version": "dialogue-eval.v2",
+  "id": "omni-english-017",
+  "type": "single_turn",
+  "replay_mode": "fixed_history",
+  "source": {
+    "kind": "synthetic",
+    "coverage": "authored",
+    "provider": "cjeval-original",
+    "note": "{\"source_record\": \"sources/omni-english-017.json\", \"uid\": \"cjeval-17766\", \"source_category\": \"subject_competence\"}"
+  },
+  "messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "Problem:\n题目内容: In the effort to protect the sharks, environmental conservation groups have __ numerous challenges. 选项: A. overcome B. discovered C. admired D. exchanged\n\nSentence Analysis: Environmental conservation groups have encountered many challenges in their efforts to protect sharks. Vocabulary Analysis: 'Overcome' means to '克服', while 'discover' means to '发现', 'admire' means to '钦佩', and 'exchange' means to '交换'. Challenges are meant to be overcome, not discovered, admired, or exchanged, so the correct choice is 'A. overcome'. Option Analysis: Option B 'discover challenges' does not fit the sentence meaning, Option C 'admire challenges' is not logical, and Option D 'exchange challenges' is also not reasonable. Therefore, the correct answer is 'A. overcome'.",
+      "images": []
+    }
+  ],
+  "checks": [
+    {
+      "id": "check-1",
+      "after_message": "m1",
+      "component": "tutoring.turn",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "problem": {
+            "summary": "Problem:\n题目内容: In the effort to protect the sharks, environmental conservation groups have __ numerous challenges. 选项: A. overcome B. discovered C. admired D. exchanged\n\nSentence Analysis: Environmental conservation groups have encountered many challenges in their efforts to protect sharks. Vocabulary Analysis: 'Overcome' means to '克服', while 'discover' means to '发现', 'admire' means to '钦佩', and 'exchange' means to '交换'. Challenges are meant to be overcome, not discovered, admired, or exchanged, so the correct choice is 'A. overcome'. Option Analysis: Option B 'discover challenges' does not fit the sentence meaning, Option C 'admire challenges' is not logical, and Option D 'exchange challenges' is also not reasonable. Therefore, the correct answer is 'A. overcome'.",
+            "active_subgoal": "英语词汇辨析/动词搭配",
+            "substantive_attempts": 0,
+            "hints_given": 0
+          },
+          "task_title": "本地学科答疑评测",
+          "task_active": true
+        },
+        "note": "Injected evaluation context; not a production database observation."
+      },
+      "grading": {
+        "deterministic": [
+          {
+            "id": "delivered",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "answer"
+            ]
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "correctness",
+            "type": "score",
+            "rubric": "内部完整解题：依据原题和实际图片独立核验最终结论、推导、定义域、单位、条件及各小问覆盖。允许数学等价表达与有依据的异解。1分错误/无解答，2分重要错误，3分方向正确但关键缺漏，4分结论与主要推导正确且完整，5分进一步严谨清晰。只评价实际solution，不要求启发提问。",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "本题知识目标：英语词汇辨析/动词搭配。参考答案是上游未认证材料，须独立核验；参考有争议时不得盲从，不因合理异解扣分。",
+            "expected": "pass"
+          }
+        ],
+        "reference_response": "句意解析：环保组织在保护鲨鱼的努力中遇到了很多挑战。词汇辨析：'overcome'意味着'克服'，而'discover'意为'发现'，'admire'意为'钦佩'，'exchange'意为'交换'。挑战是用来被克服的，而不是被发现、钦佩或交换，因此选择'A. overcome'。选项分析：B选项'发现挑战'与句意不符，C选项'钦佩挑战'语义不通，D选项'交换挑战'也不符合常理。综上所述，正确答案为'A. overcome'。",
+        "rationale": [
+          "Synthetic local adaptation; reference and semantic labels remain proposed."
+        ]
+      }
+    }
+  ],
+  "review_batch": "omni-edu-v1",
+  "label_status": "proposed",
+  "note": "Adapted evaluation task; original system and final assistant are source/scoring-only. No teacher certification.",
+  "conversation_id": "be085aa33296c0bf7a15",
+  "turn_index": 0,
+  "tags": [
+    "subject_competence",
+    "english",
+    "gaokao_equivalent",
+    "solve"
+  ]
+}

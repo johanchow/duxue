@@ -108,9 +108,9 @@ TutorCandidate += {
 
 | 操作 | MathArgs 必需字段 | 结果语义 |
 |---|---|---|
-| evaluate | expression | 精确值；近似计算需显式 precision |
+| evaluate | expression | 精确值（纯四则先行，支持复数 `I`、分数幂、初等/组合函数与二维/三维向量 `dot`/`norm`/`cross`）；近似计算需显式 precision |
 | equivalent | left, right | 在给定域与条件下是否等价；失败不能映射 not_equal |
-| solve | equations, variables | 首期仅单变量单方程，输入 lhs-rhs；解集及条件，未求出不等于无解 |
+| solve | equations, variables | 支持单变量/多变量方程组（1~4 变量，左式减右式或 `lhs==rhs`）、含已声明参数符号的方程及单变量实数不等式（组）；解集及条件，未求出不等于无解 |
 | differentiate | expression, variable, order | 导数表达式 |
 | integrate | expression, variable；定积分另给 bounds | 原函数或定积分；未求值返回 unknown |
 | limit | expression, variable, point, direction | 指定方向的极限或 unknown |
@@ -141,11 +141,11 @@ TutorCandidate += {
 
 | 边界 | 当前实现 |
 |---|---|
-| 计算 | 六种标量操作；四则核心从 image_review 抽出复用。SymPy 1.14.0 / mpmath 1.3.0 固定版本；暂不支持矩阵、方程组、任意 Python |
+| 计算 | 六类操作；纯四则由 `arithmetic_eval` 快路先行，符号与高阶计算使用受限 SymPy 1.14.0 / mpmath 1.3.0（按需导入）。支持复数 `I`、分数与受限符号指数、多元方程组（1~4 变量）、含参方程、单变量实数不等式（组）、任意底对数、反三角、阶乘/组合数及 2D/3D 向量点积/模长/叉积；不开放任意 Python |
 | 等价性 | 未证明定义域安全则 unknown；不以数值抽样证明恒等。对无法确证不等价的符号式保守返回 unknown |
-| 证据 | 每轮服务端账本，绑定题目/输入摘要/授权图片；重试复用相同请求，不跨轮复用。图片四则自动走同一工具；分数作答可核验 |
-| 语义审核 | 复用独立 leak-judge 的模型配置，新增独立 math_consistent 调用，检查正文、配图及结构化进展；遗漏claims也须审核，不能靠act或non_work跳过。原答案保护继续执行 |
-| 可用性 | socket缺失或引擎异常返回unknown；无主进程SymPy、无心算兜底。未授权math的旧行为保持，但发布包仍需显式迁移契约 |
+| 证据 | 每轮服务端账本，绑定题目/输入摘要/授权图片；仅缓存确定性结果（不缓存 `unavailable`/`timeout`/`resource_limit`），不跨轮复用。图片四则自动走同一工具；分数作答可核验 |
+| 语义审核 | 复用独立 leak-judge 的模型配置，新增独立 math_consistent 调用（发音/安全/重定向无数学记录轮次免调）；失败映射为独立的 `math_inconsistent` / `math_check_failed`，不混淆为答案泄露。原答案保护继续执行 |
+| 可用性 | 生产强制 `MATH_ENGINE_MODE=socket` 独立容器隔离，socket 缺失返回 unknown；非生产本地评测支持显式 `MATH_ENGINE_MODE=subprocess` 隔离子进程模式并在启动前执行算式 preflight。无主进程 SymPy、无心算兜底 |
 | 数据 | MathEvidence仅在本轮约束候选，ApplyTutorTurn复用既有已验证结果写入路径；不保存工具原文，不新增数据库表 |
 
 工具授权、主/备导师提示词（同一Agent定义）及Judge补充通过**一次性离线迁移**进入Admin草稿，不作为运行时默认配置。升级脚本保留模型及现有Prompt，检查原始摘要，不覆盖输入文件；启用时编译要求导师/Judge共同声明math.v1。

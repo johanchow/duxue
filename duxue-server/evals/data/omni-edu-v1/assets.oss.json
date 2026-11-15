@@ -1,0 +1,146 @@
+{
+  "a082f7731050dcd5a016a8791832f1870606fbbbded8136614e.jpg": {
+    "provider": "oss",
+    "bucket_alias": "eval",
+    "key": "evals/omni-edu-v1/images/082f7731050dcd5a016a8791832f1870606fbbbded8136614e936fe967c03f41.jpg",
+    "sha256": "082f7731050dcd5a016a8791832f1870606fbbbded8136614e936fe967c03f41",
+    "content_type": "image/jpeg",
+    "size_bytes": 10386
+  },
+  "a0df4955e850229dbf414ae9f3c5080bb3f84aa54d9f0c1f306.jpg": {
+    "provider": "oss",
+    "bucket_alias": "eval",
+    "key": "evals/omni-edu-v1/images/0df4955e850229dbf414ae9f3c5080bb3f84aa54d9f0c1f306def635cd0bba3e.jpg",
+    "sha256": "0df4955e850229dbf414ae9f3c5080bb3f84aa54d9f0c1f306def635cd0bba3e",
+    "content_type": "image/jpeg",
+    "size_bytes": 17413
+  },
+  "a4910794be401716c03f79ff5c0d477e35f3a54a4761e704b8f.jpg": {
+    "provider": "oss",
+    "bucket_alias": "eval",
+    "key": "evals/omni-edu-v1/images/4910794be401716c03f79ff5c0d477e35f3a54a4761e704b8fc802a97ccd8c51.jpg",
+    "sha256": "4910794be401716c03f79ff5c0d477e35f3a54a4761e704b8fc802a97ccd8c51",
+    "content_type": "image/jpeg",
+    "size_bytes": 7450
+  },
+  "a4c9d8a931353018c3dadcfece916451a0520b2457527282fec.jpg": {
+    "provider": "oss",
+    "bucket_alias": "eval",
+    "key": "evals/omni-edu-v1/images/4c9d8a931353018c3dadcfece916451a0520b2457527282fec81a737d3bad34c.jpg",
+    "sha256": "4c9d8a931353018c3dadcfece916451a0520b2457527282fec81a737d3bad34c",
+    "content_type": "image/jpeg",
+    "size_bytes": 5542
+  },
+  "a56161049f5dd1c74fa4a34e16f24760f100a53cb94ab45b566.jpg": {
+    "provider": "oss",
+    "bucket_alias": "eval",
+    "key": "evals/omni-edu-v1/images/56161049f5dd1c74fa4a34e16f24760f100a53cb94ab45b5664f5861fcb7fb2b.jpg",
+    "sha256": "56161049f5dd1c74fa4a34e16f24760f100a53cb94ab45b5664f5861fcb7fb2b",
+    "content_type": "image/jpeg",
+    "size_bytes": 14287
+  },
+  "a59a443230a5961f4ad69044f17e34051da46e8cffa9af781ad.png": {
+    "provider": "oss",
+    "bucket_alias": "eval",
+    "key": "evals/omni-edu-v1/images/59a443230a5961f4ad69044f17e34051da46e8cffa9af781ad7b8eff3d7c1ee9.png",
+    "sha256": "59a443230a5961f4ad69044f17e34051da46e8cffa9af781ad7b8eff3d7c1ee9",
+    "content_type": "image/png",
+    "size_bytes": 8090
+  },
+  "a933ae7b81492ba67baddaef676425d316138776e0255b91869.png": {
+    "provider": "oss",
+    "bucket_alias": "eval",
+    "key": "evals/omni-edu-v1/images/933ae7b81492ba67baddaef676425d316138776e0255b91869ff8bd223ac255d.png",
+    "sha256": "933ae7b81492ba67baddaef676425d316138776e0255b91869ff8bd223ac255d",
+    "content_type": "image/png",
+    "size_bytes": 36389
+  },
+  "ab3eb1be3657255c88d5a7a1be8865eeaf779947c6f5bdfb548.jpg": {
+    "provider": "oss",
+    "bucket_alias": "eval",
+    "key": "evals/omni-edu-v1/images/b3eb1be3657255c88d5a7a1be8865eeaf779947c6f5bdfb5486841974d6f43a6.jpg",
+    "sha256": "b3eb1be3657255c88d5a7a1be8865eeaf779947c6f5bdfb5486841974d6f43a6",
+    "content_type": "image/jpeg",
+    "size_bytes": 26494
+  },
+  "ab73eaafc3569d03e75dc381146cf072e7b9bee6b8a7db974f6.jpg": {
+    "provider": "oss",
+    "bucket_alias": "eval",
+    "key": "evals/omni-edu-v1/images/b73eaafc3569d03e75dc381146cf072e7b9bee6b8a7db974f6d625b3abff4545.jpg",
+    "sha256": "b73eaafc3569d03e75dc381146cf072e7b9bee6b8a7db974f6d625b3abff4545",
+    "content_type": "image/jpeg",
+    "size_bytes": 45745
+  },
+  "abbe4395fcd16a6233493a6cad1302e425180eedb76d8bd63d9.jpg": {
+    "provider": "oss",
+    "bucket_alias": "eval",
+    "key": "evals/omni-edu-v1/images/bbe4395fcd16a6233493a6cad1302e425180eedb76d8bd63d91708ad98f315d0.jpg",
+    "sha256": "bbe4395fcd16a6233493a6cad1302e425180eedb76d8bd63d91708ad98f315d0",
+    "content_type": "image/jpeg",
+    "size_bytes": 9250
+  },
+  "ac12cbbffc08453eaa3b43505d1ac962543efe5383325558bf3.jpg": {
+    "provider": "oss",
+    "bucket_alias": "eval",
+    "key": "evals/omni-edu-v1/images/c12cbbffc08453eaa3b43505d1ac962543efe5383325558bf3c7aeebc3438634.jpg",
+    "sha256": "c12cbbffc08453eaa3b43505d1ac962543efe5383325558bf3c7aeebc3438634",
+    "content_type": "image/jpeg",
+    "size_bytes": 12614
+  },
+  "ac4e4ee4dc2904214fe2fe555c10c322577db5d265f41967e47.jpg": {
+    "provider": "oss",
+    "bucket_alias": "eval",
+    "key": "evals/omni-edu-v1/images/c4e4ee4dc2904214fe2fe555c10c322577db5d265f41967e47febf1596855ee5.jpg",
+    "sha256": "c4e4ee4dc2904214fe2fe555c10c322577db5d265f41967e47febf1596855ee5",
+    "content_type": "image/jpeg",
+    "size_bytes": 18471
+  },
+  "acf0c7595f000d135575ea89ce02437e54dae949b75e8b8b6f3.jpg": {
+    "provider": "oss",
+    "bucket_alias": "eval",
+    "key": "evals/omni-edu-v1/images/cf0c7595f000d135575ea89ce02437e54dae949b75e8b8b6f362ef1af7a0f495.jpg",
+    "sha256": "cf0c7595f000d135575ea89ce02437e54dae949b75e8b8b6f362ef1af7a0f495",
+    "content_type": "image/jpeg",
+    "size_bytes": 23046
+  },
+  "ad233240ff1d190727526fe28b40ac371e20806224711b35401.jpg": {
+    "provider": "oss",
+    "bucket_alias": "eval",
+    "key": "evals/omni-edu-v1/images/d233240ff1d190727526fe28b40ac371e20806224711b3540188da7f70b8c8ff.jpg",
+    "sha256": "d233240ff1d190727526fe28b40ac371e20806224711b3540188da7f70b8c8ff",
+    "content_type": "image/jpeg",
+    "size_bytes": 32953
+  },
+  "ae4873f045a9b4151f67f840c91a3d1bf83a17798b26498e582.jpg": {
+    "provider": "oss",
+    "bucket_alias": "eval",
+    "key": "evals/omni-edu-v1/images/e4873f045a9b4151f67f840c91a3d1bf83a17798b26498e582db2bc52052c847.jpg",
+    "sha256": "e4873f045a9b4151f67f840c91a3d1bf83a17798b26498e582db2bc52052c847",
+    "content_type": "image/jpeg",
+    "size_bytes": 10204
+  },
+  "af32f9b2c1641630055c0490f09cd3e7327fdb033cc84e3ee6a.jpg": {
+    "provider": "oss",
+    "bucket_alias": "eval",
+    "key": "evals/omni-edu-v1/images/f32f9b2c1641630055c0490f09cd3e7327fdb033cc84e3ee6a640722ffe8fe8d.jpg",
+    "sha256": "f32f9b2c1641630055c0490f09cd3e7327fdb033cc84e3ee6a640722ffe8fe8d",
+    "content_type": "image/jpeg",
+    "size_bytes": 9750
+  },
+  "afd73b373125d6a3aaaae7641278e955d363a415d05eb071278.jpg": {
+    "provider": "oss",
+    "bucket_alias": "eval",
+    "key": "evals/omni-edu-v1/images/fd73b373125d6a3aaaae7641278e955d363a415d05eb071278b9b0b5cb7e923a.jpg",
+    "sha256": "fd73b373125d6a3aaaae7641278e955d363a415d05eb071278b9b0b5cb7e923a",
+    "content_type": "image/jpeg",
+    "size_bytes": 22561
+  },
+  "afd83be19b82257adabd22eedd357cce9ce2cab9471e7a23598.jpg": {
+    "provider": "oss",
+    "bucket_alias": "eval",
+    "key": "evals/omni-edu-v1/images/fd83be19b82257adabd22eedd357cce9ce2cab9471e7a23598ecfbf9aa91cae0.jpg",
+    "sha256": "fd83be19b82257adabd22eedd357cce9ce2cab9471e7a23598ecfbf9aa91cae0",
+    "content_type": "image/jpeg",
+    "size_bytes": 14676
+  }
+}

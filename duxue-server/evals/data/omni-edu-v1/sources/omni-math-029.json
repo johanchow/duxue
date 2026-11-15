@@ -1,0 +1,61 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 850,
+  "uid": "cmm-math-16701",
+  "dataset": "cmm-math-multimodal",
+  "record_sha256": "2901fb7284e42f906cc2993cf6ed3885a014f7c56a7c65eeb99fcf7e6a2d4813",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "<image>\nProblem:\n如图所示是用模拟方法估计圆周率 $\\mathrm{T}$ 值的程序框图, $\\mathrm{P}$ 表示估计结果, 则图中空白框内应填入 ( )\n\n<ImageHere>\n\nOptions:\nA. $P=\\frac{N}{1000}$\nB. $P=\\frac{4 N}{1000}$\nC. $P=\\frac{M}{1000}$\nD. $P=\\frac{4 M}{1000}$"
+      },
+      {
+        "role": "assistant",
+        "content": "利用几何概型, 构造一个边长为 1 的正方形及其内一个半径为 1 , 圆心角为 $90^{\\circ}$ 的扇形, 易知扇形的面积 $S \\approx \\frac{M}{1000}$, 由面积公式得 $S=\\frac{1}{4} \\pi \\times 1^{2} \\approx \\frac{M}{1000}$, 解得 $\\pi \\approx \\frac{4 M}{1000}$\n\n答案: D"
+      }
+    ],
+    "images": [
+      "images/3a/3a4d294c5085bb9f1c84243a2108227887d0aaeb2a0094ce966ebf747b42d49f.jpg"
+    ],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"cmm-math-multimodal\", \"uid\": \"cmm-math-16701\", \"kind\": \"qa\", \"system_variant\": \"none\", \"kcenter\": {\"bucket\": \"subject/math/multimodal/cot\", \"rank\": 847, \"supervised_tokens\": 118, \"token_budget\": 600000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [
+    "ab73eaafc3569d03e75dc381146cf072e7b9bee6b8a7db974f6.jpg"
+  ],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 850,
+    "subject": "math",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "程序框图与几何概型（随机模拟法）",
+    "reason": "题目考查利用程序框图进行随机模拟估计圆周率，涉及几何概型原理。这是中国高中数学课程及高考中常见的知识点，属于算法初步与概率统计的交叉应用。题面文字完整，图片清晰展示了流程图逻辑，信息完备。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-images-v1/review-850.json"
+  },
+  "content_review": {
+    "line": 850,
+    "subject_correct": true,
+    "complete": true,
+    "level": "other_k12",
+    "reason": "考查利用随机模拟（蒙特卡洛方法）估计圆周率，结合程序框图。虽然涉及几何概型（高中内容），但核心逻辑是简单的面积比估算，且算法框图阅读在新课标中已弱化，题目本身思维深度较浅，更接近信息技术或初中数学拓展内容。不过考虑到几何概型是高中特有概念，勉强可算gaokao，但鉴于算法章节删除及题目简单性，保守定为other_k12或gaokao边缘。此处因涉及几何概型公式推导，修正为gaokao_equivalent可能更妥？不，根据指令“平移中点、地理常识等一律other_k12”，此题逻辑过于直白（数点算比例），且依赖旧教材算法框图，判other_k12更稳妥。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\n<image>\nProblem:\n如图所示是用模拟方法估计圆周率 $\\mathrm{T}$ 值的程序框图, $\\mathrm{P}$ 表示估计结果, 则图中空白框内应填入 ( )\n\n<ImageHere>\n\nOptions:\nA. $P=\\frac{N}{1000}$\nB. $P=\\frac{4 N}{1000}$\nC. $P=\\frac{M}{1000}$\nD. $P=\\frac{4 M}{1000}$\n我不知道如何开始，请给我一个具体的起步提示，不要直接解完整题。",
+      "images": [
+        "ab73eaafc3569d03e75dc381146cf072e7b9bee6b8a7db974f6.jpg"
+      ]
+    }
+  ]
+}

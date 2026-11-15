@@ -1,0 +1,64 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 26285,
+  "uid": "coig-exam_coig_exam_sampled_clean_v3.jsonl-1792-0987781e32fa",
+  "dataset": "coig-cqia",
+  "record_sha256": "895b8caba90317bc23f1bddce6aa4d08fcb0dd7de5bc767ea28ff9ae70c74315",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n在每个小题给出的四个选项中，只有一项是符合题目要求的\n“一带一路”是互惠双赢之路，它对密切我国与沿线国家之间的经济贸易联系意义重大。与俄罗斯的合作有利于我国①引进大量民间资本②输入大量剩余劳动力③进口大量油气资源④拓宽产品的销售市场A.①②B.②③C.③④D.①④"
+      },
+      {
+        "role": "assistant",
+        "content": "“一路一带”投资资金以我国政府资金为主，有必要引进国外战略投资者，尤其是“一带一路”沿线国家的政府投资，对民间资本影响不大，①错；俄罗斯人口老龄化严重，劳动力短缺，不会向我国输入大量剩余劳动力，②错；俄罗斯油气资源丰富，利于我国引进大量油气资源，③对；“一带一路”将为欧亚间货物互通有无、往来物流提供更加牢固的保障，有利于我国拓宽产品的销售市场，④对。选C。\n\n因此答案为：C"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-1792-0987781e32fa\", \"kind\": \"qa\", \"system_variant\": \"task_specific\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 7303, \"supervised_tokens\": 107, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 26285,
+    "subject": "geography",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "区域合作与资源贸易（一带一路）",
+    "reason": "考查中国与俄罗斯经贸合作的地理意义，涉及资源分布和市场拓展，属于高中地理人文地理部分，需运用地理原理分析，符合高考层级。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-25914.json"
+  },
+  "content_review": {
+    "line": 26285,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "考查'一带一路'背景下中俄经济合作（油气资源进口、市场拓展、劳动力与资本特征），属于高中地理区域经济联系与产业合作的综合分析，符合高考层级。参考解析逻辑正确。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "diagnostic_adaptation": {
+    "id": "omni-geography-008",
+    "student_attempt": "我目前只知道这题涉及区域合作与资源贸易（一带一路），还没有写出具体推理或结论。请帮我确定第一步。",
+    "assessment": "insufficient",
+    "feedback_criteria": "学生只报告了知识主题，未给出可核验的具体结果或推理。不得将未作答判为答错，也不能虚构学生的错误步骤或已掌握。给一个切题且可执行的起步或自检提示。",
+    "is_choice": true,
+    "model": "qwen3.8-flash",
+    "authored_revision": "assistant-explicit-insufficient-evidence.v1"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n在每个小题给出的四个选项中，只有一项是符合题目要求的\n“一带一路”是互惠双赢之路，它对密切我国与沿线国家之间的经济贸易联系意义重大。与俄罗斯的合作有利于我国①引进大量民间资本②输入大量剩余劳动力③进口大量油气资源④拓宽产品的销售市场A.①②B.②③C.③④D.①④\n我的尝试：我目前只知道这题涉及区域合作与资源贸易（一带一路），还没有写出具体推理或结论。请帮我确定第一步。\n请检查我已有的理由或结果，只指出可核验的部分，并给一个自检提示。",
+      "images": []
+    }
+  ]
+}

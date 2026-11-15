@@ -96,7 +96,7 @@ Agent 文件的 `kind` 固定为 `agent`。每个 Agent 均声明 `id`、`implem
 | `llm` | 任务由模型生成候选，通用 Gateway 完成调用 | `models`、`prompt`、`context_builder_id`、`tools`（可为 `[]`） | `handler_id` |
 | `code` | 固定代码独立完成任务并返回 Agent 契约 | `handler_id` | `models`、`prompt`、`context_builder_id`、`tools` |
 
-`models` 是非空数组，**数组顺序就是模型尝试顺序**：首次从下标 0 开始，只有 Workflow 的已声明重试/切换条件成立时才推进到下一项，不跳过或重排。数组顺序不表示每次请求都要尝试全部模型；同一模型的结构修复次数也由 Workflow 的预算与条件边控制。每次尝试记录模型下标、结果和切换原因，候选都经过相同的 Python 契约与必经 Gate。每项模型声明 `name`、`temperature`、`max_output_tokens`、`timeout_ms`，均受代码安全上限约束；备用模型沿用同一 Agent 的 Prompt 与输出契约。`handler_id` 只是白名单键，不是模块路径。`code` Agent 可以通过受权 Command 完成业务操作，但不能绕过领域规则直接修改 Aggregate。
+`models` 是非空数组，**数组顺序就是模型尝试顺序**：首次从下标 0 开始，只有 Workflow 的已声明重试/切换条件成立时才推进到下一项，不跳过或重排。数组顺序不表示每次请求都要尝试全部模型；同一模型的结构修复次数也由 Workflow 的预算与条件边控制。每次尝试记录模型下标、结果和切换原因，候选都经过相同的 Python 契约与必经 Gate。每项模型声明 `name`、`temperature`、`max_output_tokens`、`timeout_ms`，以及可选的受控推理配置 `enable_thinking`（默认 `false`）与 `thinking_budget`（`1..32768`，仅 `enable_thinking=true` 时允许声明；启用时通过流式请求分离并丢弃 `reasoning_content` 思维链原文，仅记录 `tokens_reasoning` 与配置标记），均受代码安全上限约束；备用模型沿用同一 Agent 的 Prompt 与输出契约。`handler_id` 只是白名单键，不是模块路径。`code` Agent 可以通过受权 Command 完成业务操作，但不能绕过领域规则直接修改 Aggregate。
 
 `context_builder_id` 对 `llm` Agent **必填**。它是代码注册表中的稳定 ID，指定本次模型调用如何从已授权的输入构造上下文：选取近期对话、筛选 profile/memory、确定图片范围并执行预算与脱敏。运行时先按 ID 调用构造器，再将其类型化结果交给 Prompt 渲染。可复用同一个构造器 ID，但只有在输入范围和授权策略确实相同时才共享；公共的 Thread 窗口选择逻辑可由多个构造器复用，不代表每个模型收到同一包数据。省略或引用未知 ID 在启动时失败；配置不能凭 ID 扩大授权范围。
 

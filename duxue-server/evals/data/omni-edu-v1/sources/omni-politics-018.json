@@ -1,0 +1,55 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 24093,
+  "uid": "coig-exam_coig_exam_sampled_clean_v3.jsonl-787-e6d580bc3a10",
+  "dataset": "coig-cqia",
+  "record_sha256": "abfe7cf4f82d4f4ab479a4f150ef75f91b29d1de555ff58952c12a4c59228c30",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n请阅读以下材料回答\n材料：各级党委和政府要把“双减”工作作为重大民生工程，列入重要议事日程，纳入党委教育工作领导小组重点任务，结合本地实际细化完善措施，确保“双减”工作落地落实。该方案将给义务教育阶段学校、师生及家长带来较多新变化，具体呈现在作业布置、课后服务、课堂教学、评价制度、校外培训等领域。\n（2）国家出台“双减”政策，是教育改革的重要体现，结合所学知识，请谈谈时代对教师提出了哪些更高的要求？"
+      },
+      {
+        "role": "assistant",
+        "content": "今天的教师要努力成为有理想信念、有道德情操、有扎实学识、有仁爱之心的好教师。\n\n本题考查四有好教师。依据所学知识可知，回归课本，写出四有好教师即可。"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-787-e6d580bc3a10\", \"kind\": \"qa\", \"system_variant\": \"general\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 5111, \"supervised_tokens\": 41, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 24093,
+    "subject": "politics",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "文化生活/教育与社会发展",
+    "reason": "结合“双减”政策，探讨时代对教师提出的新要求，涉及教育与文化传承、社会责任等高中政治（特别是文化生活或哲学部分）的知识目标。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-19752.json"
+  },
+  "content_review": {
+    "line": 24093,
+    "subject_correct": true,
+    "complete": true,
+    "level": "other_k12",
+    "reason": "考查'四有好教师'标准，属于初中道德与法治（道法）中的师德常识记忆，非高中政治特有的哲学或经济学综合推理。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n请阅读以下材料回答\n材料：各级党委和政府要把“双减”工作作为重大民生工程，列入重要议事日程，纳入党委教育工作领导小组重点任务，结合本地实际细化完善措施，确保“双减”工作落地落实。该方案将给义务教育阶段学校、师生及家长带来较多新变化，具体呈现在作业布置、课后服务、课堂教学、评价制度、校外培训等领域。\n（2）国家出台“双减”政策，是教育改革的重要体现，结合所学知识，请谈谈时代对教师提出了哪些更高的要求？\n我想直接看答案。你能帮我解决吗？",
+      "images": []
+    }
+  ]
+}

@@ -1,19 +1,14 @@
 """Bounded exact arithmetic shared by image review and isolated math execution."""
 
+from __future__ import annotations
+
 import ast
 from decimal import Decimal, InvalidOperation
 from fractions import Fraction
 
 
-def arithmetic_equal(expression: str, submitted: str) -> bool:
+def _parse_number(raw: str) -> Fraction:
     try:
-        tree = ast.parse(expression, mode="eval")
-    except SyntaxError as error:
-        raise ValueError("invalid_calculation_syntax") from error
-    if len(list(ast.walk(tree))) > 80:
-        raise ValueError("calculation_too_complex")
-
-    def number(raw):
         parsed = Decimal(raw)
         if (
             not parsed.is_finite()
@@ -22,10 +17,24 @@ def arithmetic_equal(expression: str, submitted: str) -> bool:
         ):
             raise ValueError("calculation_out_of_bounds")
         return Fraction(parsed)
+    except (InvalidOperation, ArithmeticError) as error:
+        raise ValueError("invalid_calculation") from error
 
-    def value(node):
+
+def arithmetic_eval(expression: str) -> Fraction:
+    try:
+        tree = ast.parse(expression, mode="eval")
+    except SyntaxError as error:
+        raise ValueError("invalid_calculation_syntax") from error
+    if len(list(ast.walk(tree))) > 80:
+        raise ValueError("calculation_too_complex")
+
+    def value(node: ast.AST) -> Fraction:
         if isinstance(node, ast.Constant) and type(node.value) in (int, float):
-            result = number(ast.get_source_segment(expression, node))
+            segment = ast.get_source_segment(expression, node)
+            if segment is None:
+                raise ValueError("invalid_calculation_syntax")
+            result = _parse_number(segment)
         elif isinstance(node, ast.UnaryOp) and isinstance(
             node.op, (ast.UAdd, ast.USub)
         ):
@@ -49,7 +58,22 @@ def arithmetic_equal(expression: str, submitted: str) -> bool:
         return result
 
     try:
-        submitted = number(submitted)
-        return value(tree.body) == submitted
+        return value(tree.body)
     except (InvalidOperation, ArithmeticError) as error:
         raise ValueError("invalid_calculation") from error
+
+
+def format_fraction(value: Fraction) -> str:
+    return (
+        str(value.numerator)
+        if value.denominator == 1
+        else f"{value.numerator}/{value.denominator}"
+    )
+
+
+def arithmetic_equal(expression: str, submitted: str) -> bool:
+    try:
+        target = _parse_number(submitted.strip())
+    except (InvalidOperation, ValueError):
+        target = arithmetic_eval(submitted)
+    return arithmetic_eval(expression) == target

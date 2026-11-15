@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
 from app.agent_specs.contracts import validate_input, validate_output
 from app.agent_specs.definitions import active_definitions, load_definitions
@@ -53,6 +53,8 @@ class ComponentSpec:
     # Intake calls were never gated by the agent switch; keep that behaviour.
     requires_agent_switch: bool = True
     definition_digest: str | None = None
+    enable_thinking: bool = False
+    thinking_budget: int | None = None
 
     @property
     def overridable(self) -> bool:
@@ -80,6 +82,7 @@ class ComponentRegistry:
             unit.input_contract, unit.output_contract, model.max_output_tokens,
             model.temperature, unit.accepts_images, model.timeout_ms // 1000,
             unit.requires_agent_switch, definitions.definition_digest(component_id),
+            model.enable_thinking, model.thinking_budget,
         )
 
     def all(self) -> tuple[ComponentSpec, ...]:
@@ -118,6 +121,149 @@ def _without_images(user):
     ]
 
 
+@dataclass(frozen=True)
+class ChatCompletionResult:
+    raw: str
+    finish_reason: str | None = None
+    provider_request_id: str | None = None
+    tokens_in: int | None = None
+    tokens_out: int | None = None
+    tokens_reasoning: int | None = None
+
+
+def _reasoning_tokens(usage: Any) -> int | None:
+    if usage is None:
+        return None
+    details = getattr(usage, "completion_tokens_details", None)
+    if isinstance(details, dict):
+        value = details.get("reasoning_tokens")
+    else:
+        value = getattr(details, "reasoning_tokens", None)
+    return value if type(value) is int else None
+
+
+def _unwrap_json_fence(raw: str) -> str:
+    """Strip a single outer Markdown code fence when a thinking model wraps JSON."""
+    text = raw.strip()
+    if not (text.startswith("```") and text.endswith("```")):
+        return text
+    lines = text.splitlines()
+    if (
+        len(lines) >= 2
+        and lines[0].strip().lower() in {"```", "```json"}
+        and lines[-1].strip() == "```"
+    ):
+        return "\n".join(lines[1:-1]).strip()
+    return text
+
+
+def complete_json_chat(
+    *,
+    client: Any = None,
+    timeout: float | None = None,
+    model: str,
+    messages: list[dict[str, Any]],
+    temperature: float,
+    max_tokens: int,
+    enable_thinking: bool = False,
+    thinking_budget: int | None = None,
+) -> ChatCompletionResult:
+    """Execute one structured JSON chat completion.
+
+    DashScope hybrid/thinking models require streaming when ``enable_thinking=True``.
+    ``reasoning_content`` is intentionally discarded so chain-of-thought text never
+    enters Ward-visible output or production trace payloads.
+    """
+    if client is None:
+        from app.infrastructure.ai.client import dashscope_client
+
+        with dashscope_client(timeout=timeout) as owned_client:
+            return complete_json_chat(
+                client=owned_client,
+                model=model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                enable_thinking=enable_thinking,
+                thinking_budget=thinking_budget,
+            )
+
+    if not enable_thinking:
+        response = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            response_format={"type": "json_object"},
+            extra_body={"enable_thinking": False},
+        )
+        usage = getattr(response, "usage", None)
+        choice = response.choices[0]
+        raw = (choice.message.content or "").strip()
+        return ChatCompletionResult(
+            raw=raw,
+            finish_reason=getattr(choice, "finish_reason", None),
+            provider_request_id=getattr(response, "id", None),
+            tokens_in=getattr(usage, "prompt_tokens", None),
+            tokens_out=getattr(usage, "completion_tokens", None),
+            tokens_reasoning=_reasoning_tokens(usage),
+        )
+
+    extra_body: dict[str, Any] = {"enable_thinking": True}
+    if thinking_budget is not None:
+        extra_body["thinking_budget"] = thinking_budget
+    response = client.chat.completions.create(
+        model=model,
+        messages=messages,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        response_format={"type": "json_object"},
+        stream=True,
+        stream_options={"include_usage": True},
+        extra_body=extra_body,
+    )
+    if hasattr(response, "choices"):
+        usage = getattr(response, "usage", None)
+        choice = response.choices[0]
+        raw = _unwrap_json_fence(choice.message.content or "")
+        return ChatCompletionResult(
+            raw=raw,
+            finish_reason=getattr(choice, "finish_reason", None),
+            provider_request_id=getattr(response, "id", None),
+            tokens_in=getattr(usage, "prompt_tokens", None),
+            tokens_out=getattr(usage, "completion_tokens", None),
+            tokens_reasoning=_reasoning_tokens(usage),
+        )
+
+    parts: list[str] = []
+    request_id: str | None = None
+    finish_reason: str | None = None
+    usage: Any = None
+    for chunk in response:
+        request_id = getattr(chunk, "id", None) or request_id
+        chunk_usage = getattr(chunk, "usage", None)
+        if chunk_usage is not None:
+            usage = chunk_usage
+        choices = getattr(chunk, "choices", None) or []
+        if not choices:
+            continue
+        choice = choices[0]
+        finish_reason = getattr(choice, "finish_reason", None) or finish_reason
+        delta = getattr(choice, "delta", None) or getattr(choice, "message", None)
+        if delta is not None:
+            piece = getattr(delta, "content", None)
+            if piece:
+                parts.append(piece)
+    return ChatCompletionResult(
+        raw=_unwrap_json_fence("".join(parts)),
+        finish_reason=finish_reason,
+        provider_request_id=request_id,
+        tokens_in=getattr(usage, "prompt_tokens", None),
+        tokens_out=getattr(usage, "completion_tokens", None),
+        tokens_reasoning=_reasoning_tokens(usage),
+    )
+
+
 def invoke_json_component(*, spec: ComponentSpec, user, client=None, settings_obj=None) -> dict:
     """Call a registered JSON component and return only a JSON object.
 
@@ -148,21 +294,24 @@ def invoke_json_component(*, spec: ComponentSpec, user, client=None, settings_ob
             component_id=spec.component_id, component_version=spec.version,
             prompt_id=spec.prompt.id, model_source=model_source,
             definition_digest=spec.definition_digest,
+            enable_thinking=spec.enable_thinking,
+            thinking_budget=spec.thinking_budget,
             input_payload=None if spec.component_id.startswith("behavior.") else messages,
         ) as telemetry:
-            response = client.chat.completions.create(
+            completion = complete_json_chat(
+                client=client,
                 model=model,
                 messages=messages,
                 temperature=spec.temperature,
                 max_tokens=spec.max_tokens,
-                response_format={"type": "json_object"},
-                extra_body={"enable_thinking": False},
+                enable_thinking=spec.enable_thinking,
+                thinking_budget=spec.thinking_budget,
             )
-            usage = response.usage
-            telemetry["provider_request_id"] = getattr(response, "id", None)
-            telemetry["tokens_in"] = getattr(usage, "prompt_tokens", None)
-            telemetry["tokens_out"] = getattr(usage, "completion_tokens", None)
-            raw = (response.choices[0].message.content or "").strip()
+            telemetry["provider_request_id"] = completion.provider_request_id
+            telemetry["tokens_in"] = completion.tokens_in
+            telemetry["tokens_out"] = completion.tokens_out
+            telemetry["tokens_reasoning"] = completion.tokens_reasoning
+            raw = completion.raw
             record_model_response(
                 agent_type=spec.agent_label, model=model, content="[observation payload withheld]" if spec.component_id.startswith("behavior.") else raw, operation=spec.operation,
                 component_id=spec.component_id, component_version=spec.version,

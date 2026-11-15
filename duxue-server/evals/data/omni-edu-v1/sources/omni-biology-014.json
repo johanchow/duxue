@@ -1,0 +1,63 @@
+{
+  "repository": "lhpku20010120/Omni-Edu",
+  "revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
+  "line": 25442,
+  "uid": "coig-exam_coig_exam_sampled_clean_v3.jsonl-1548-de9c58e1bd14",
+  "dataset": "coig-cqia",
+  "record_sha256": "b5aa7b9aa210c7c353d0c1be5d7285325516b266b8e5ac4aaadfe0f2ffd3d1f0",
+  "source_license": null,
+  "record": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Solve the problem independently and accurately using all provided text and visual evidence. Give a clear, self-contained derivation and finish with one unambiguous final answer in the requested format."
+      },
+      {
+        "role": "user",
+        "content": "Problem:\n多项选择题\n加工橘子罐头，采用酸碱处理脱去中果皮（橘络），会产生严重污染．目前使用酶解法去除橘络，可减少污染．下列生长在特定环境中的4类微生物，可以大量产生所用酶的有（　　）\n加工橘子罐头，采用酸碱处理脱去中果皮（橘络），会产生严重污染．目前使用酶解法去除橘络，可减少污染．下列生长在特定环境中的4类微生物，可以大量产生所用酶的有（　　） A．生长在麦麸上的黑曲霉\tB．生长在酸奶中的乳酸菌\t C．生长在棉籽壳上的平菇\tD．生长在木屑上的木霉"
+      },
+      {
+        "role": "assistant",
+        "content": "本题是酶的作用的专一性和生长在不同环境中的微生物的碳源不同的综合性考查．橘络的主要成分是纤维素，纤维素能被纤维素酶水解；能以纤维素为碳源进行生长繁殖的微生物能产生纤维素酶． \n\nA、麦麸中含有大量纤维素，生长在麦麸上的黑曲霉，能以麦麸中的纤维素为碳源，因此可以产生纤维素酶，A正确； B、生长在酸奶中的乳酸菌以葡萄糖为碳源，因此能产生分解葡萄糖的酶，不能产生纤维素酶，B错误； C、棉籽壳中含有大量纤维素，生长在棉籽壳上的平菇，能以棉籽壳中的纤维素为碳源，因此可以产生纤维素酶，C正确； D、木屑中中含有大量纤维素，生长在木屑上的木霉，能以木屑的纤维素为碳源，因此可以产生纤维素酶，D正确。 故选：ACD。"
+      }
+    ],
+    "images": [],
+    "extra_info": "{\"category\": \"subject_competence\", \"dataset\": \"coig-cqia\", \"uid\": \"coig-exam_coig_exam_sampled_clean_v3.jsonl-1548-de9c58e1bd14\", \"kind\": \"qa\", \"system_variant\": \"general\", \"kcenter\": {\"bucket\": \"subject/science/generic/text/cot\", \"rank\": 6460, \"supervised_tokens\": 187, \"token_budget\": 1260000}, \"system_prompt_id\": \"solve_reasoned\", \"system_prompt_version\": \"v6_finegrained_20260831\"}"
+  },
+  "local_images": [],
+  "adaptation": "Original system/final assistant excluded from runtime. Diagnosis uses explicitly synthetic attempts; tutoring uses authored requests/scripts. Actual generated tutor history is used in episodes.",
+  "initial_level_review": {
+    "line": 25442,
+    "subject": "biology",
+    "level": "gaokao_equivalent",
+    "complete": true,
+    "topic": "酶的应用与微生物代谢",
+    "reason": "考察果胶酶的来源及不同微生物的代谢特性（黑曲霉、木霉等产酶情况）。涉及生物技术实践模块中酶制剂的生产与应用，需要结合微生物生理特性进行推理，符合高中生物选修内容及高考考查方向。",
+    "review_model": "qwen3.8-flash",
+    "review_file": "var/evals/omni-curation-v1/review-21758.json"
+  },
+  "content_review": {
+    "line": 25442,
+    "subject_correct": true,
+    "complete": true,
+    "level": "gaokao_equivalent",
+    "reason": "考查纤维素酶的专一性及微生物碳源利用，属于高中生物选修一（生物技术实践）中酶的应用与微生物培养内容，需综合推理判断各微生物能否产生纤维素酶，符合高考层级。",
+    "reference_issue": "未发现明确矛盾"
+  },
+  "diagnostic_adaptation": {
+    "id": "omni-biology-014",
+    "student_attempt": "橘络主要成分是纤维素，所以需要纤维素酶。黑曲霉在麦麸（含纤维素）上生长，能产生纤维素酶；平菇在棉籽壳、木霉在木屑上也能利用纤维素作为碳源，因此都能产生该酶。乳酸菌主要利用葡萄糖，不产纤维素酶。所以选ACD。",
+    "assessment": "correct",
+    "feedback_criteria": "检查学生是否准确识别出‘橘络’的主要成分为纤维素，并据此推断需要‘纤维素酶’。验证学生是否正确关联了微生物的生长基质（麦麸、棉籽壳、木屑富含纤维素）与其代谢产物（纤维素酶）之间的关系，同时排除以简单糖类为主要碳源的乳酸菌。若逻辑链条完整且结论正确，判定为正确。",
+    "is_choice": true,
+    "model": "qwen3.8-flash"
+  },
+  "projected_messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "这是我正在做的练习题。\nProblem:\n多项选择题\n加工橘子罐头，采用酸碱处理脱去中果皮（橘络），会产生严重污染．目前使用酶解法去除橘络，可减少污染．下列生长在特定环境中的4类微生物，可以大量产生所用酶的有（　　）\n加工橘子罐头，采用酸碱处理脱去中果皮（橘络），会产生严重污染．目前使用酶解法去除橘络，可减少污染．下列生长在特定环境中的4类微生物，可以大量产生所用酶的有（　　） A．生长在麦麸上的黑曲霉\tB．生长在酸奶中的乳酸菌\t C．生长在棉籽壳上的平菇\tD．生长在木屑上的木霉\n我的尝试：橘络主要成分是纤维素，所以需要纤维素酶。黑曲霉在麦麸（含纤维素）上生长，能产生纤维素酶；平菇在棉籽壳、木霉在木屑上也能利用纤维素作为碳源，因此都能产生该酶。乳酸菌主要利用葡萄糖，不产纤维素酶。所以选ACD。\n请检查我已有的理由或结果，只指出可核验的部分，并给一个自检提示。",
+      "images": []
+    }
+  ]
+}

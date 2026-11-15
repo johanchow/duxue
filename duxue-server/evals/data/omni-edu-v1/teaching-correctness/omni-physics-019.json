@@ -1,0 +1,82 @@
+{
+  "schema_version": "dialogue-eval.v2",
+  "id": "omni-physics-019",
+  "type": "single_turn",
+  "replay_mode": "fixed_history",
+  "source": {
+    "kind": "synthetic",
+    "coverage": "authored",
+    "provider": "cjeval-original",
+    "note": "{\"source_record\": \"sources/omni-physics-019.json\", \"uid\": \"cjeval-13192\", \"source_category\": \"subject_competence\"}"
+  },
+  "messages": [
+    {
+      "id": "m1",
+      "role": "user",
+      "content": "Problem:\n题目内容: 重力时刻存在，对我们的生活影响巨大，假如没有重力，请你设想出两种可能发生的情景。",
+      "images": []
+    }
+  ],
+  "checks": [
+    {
+      "id": "check-1",
+      "after_message": "m1",
+      "component": "tutoring.turn",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "problem": {
+            "summary": "Problem:\n题目内容: 重力时刻存在，对我们的生活影响巨大，假如没有重力，请你设想出两种可能发生的情景。",
+            "active_subgoal": "重力概念及生活应用",
+            "substantive_attempts": 0,
+            "hints_given": 0
+          },
+          "task_title": "本地学科答疑评测",
+          "task_active": true
+        },
+        "note": "Injected evaluation context; not a production database observation."
+      },
+      "grading": {
+        "deterministic": [
+          {
+            "id": "delivered",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "answer"
+            ]
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "correctness",
+            "type": "score",
+            "rubric": "内部完整解题：依据原题和实际图片独立核验最终结论、推导、定义域、单位、条件及各小问覆盖。允许数学等价表达与有依据的异解。1分错误/无解答，2分重要错误，3分方向正确但关键缺漏，4分结论与主要推导正确且完整，5分进一步严谨清晰。只评价实际solution，不要求启发提问。",
+            "min_score": 4
+          },
+          {
+            "id": "case_requirements",
+            "type": "binary",
+            "rubric": "本题知识目标：重力概念及生活应用。参考答案是上游未认证材料，须独立核验；参考有争议时不得盲从，不因合理异解扣分。",
+            "expected": "pass"
+          }
+        ],
+        "reference_response": "首先，要理解重力对物质状态的影响，重力是保持物体相对地面位置稳定的重要力量。没有重力，水分子将不再受到将它们推向地面的力的作用，因此看不到水会顺流而下的现象，水可能在空中悬浮或随意分布。其次，大气层存在是因为地球的引力将空气吸引在地球表面附近。没有重力，空气分子将不再被束缚，最终逃离地球，导致地表上不再有足够的氧气支持生物呼吸。理解这些情景对于认识重力的重要性有着极大的帮助。考点：对重力作用结果的理解与推论。",
+        "rationale": [
+          "Synthetic local adaptation; reference and semantic labels remain proposed."
+        ]
+      }
+    }
+  ],
+  "review_batch": "omni-edu-v1",
+  "label_status": "proposed",
+  "note": "Adapted evaluation task; original system and final assistant are source/scoring-only. No teacher certification.",
+  "conversation_id": "6d911e1811cb5191f5a3",
+  "turn_index": 0,
+  "tags": [
+    "subject_competence",
+    "physics",
+    "other_k12",
+    "solve"
+  ]
+}
