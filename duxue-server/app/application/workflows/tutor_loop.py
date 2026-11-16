@@ -469,7 +469,7 @@ def vet_candidate(
         if state["dropped"]:
             record_tutor_visual_dropped(reason=state["dropped"])
         if "turn_answer_protected" in state:
-            protected = state["turn_answer_protected"]
+            protected = state["turn_answer_protected"] or verdict.effective_work_product
             verdict = replace(verdict, answer_protected=protected,
                               effective_work_product=verdict.effective_work_product and protected)
         return Vetting(

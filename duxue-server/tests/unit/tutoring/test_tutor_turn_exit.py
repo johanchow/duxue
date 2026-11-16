@@ -286,3 +286,33 @@ def test_clarify_on_a_protected_problem_is_held_to_the_content_check():
 def test_clarify_without_a_protected_problem_is_not_checked():
     verdict = _verdict({"act": "clarify", "content": "是哪一句？", "clarify": {"candidates": ["最终答案是 3"]}})
     assert verdict.ok and not verdict.needs_leak_check
+
+
+def test_pronounce_ignores_undeclared_extra_fields():
+    raw = {
+        "act": "pronounce",
+        "content": "**photosynthesis** 是光合作用。",
+        "pronounce": {
+            "lesson": {
+                "source_text": "photosynthesis",
+                "locale": "en-US",
+                "introduction": "photosynthesis（光合作用）",
+                "reading_guide": "pho-to-syn-the-sis",
+                "extra_lesson_field": "ignored",
+                "notes": [
+                    {
+                        "kind": "stress",
+                        "segment": "syn",
+                        "explanation": "主重音在第三音节。",
+                        "segment_note": "extra note ignored",
+                    }
+                ],
+            }
+        },
+    }
+    candidate = TutorTurnCandidate.model_validate(raw)
+    assert candidate.pronounce is not None
+    note = candidate.pronounce.lesson.notes[0]
+    assert note.segment == "syn" and not hasattr(note, "segment_note")
+    assert not hasattr(candidate.pronounce.lesson, "extra_lesson_field")
+    assert _verdict(raw).ok

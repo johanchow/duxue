@@ -4,11 +4,37 @@ import base64
 import hashlib
 import tempfile
 import time
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
+from contextvars import ContextVar
 from dataclasses import asdict
 from pathlib import Path
 
 from evals.platform.protocol import hydrate
+
+_external_urls = ContextVar("hosted_eval_external_urls", default=None)
+
+
+@contextmanager
+def external_assets(refs):
+    from evals.local.assets import signed_urls
+
+    token = _external_urls.set(signed_urls(refs))
+    try:
+        yield
+    finally:
+        _external_urls.reset(token)
+
+
+def runtime_images(case, window, images):
+    urls = _external_urls.get()
+    if not urls:
+        return images
+    for message, original in zip(window, case.history[-len(window):] if window else []):
+        message["image_urls"] = [
+            urls.get(name, url)
+            for name, url in zip(original.images, message.get("image_urls", []))
+        ]
+    return [urls.get(name, url) for name, url in zip(case.images, images)]
 
 
 def materialize_assets(client, item, directory):
@@ -17,6 +43,11 @@ def materialize_assets(client, item, directory):
     for name, asset in item.input.get("assets", {}).items():
         if not ASSET_NAME.fullmatch(name):
             raise ValueError("invalid remote asset name")
+        if asset.get("provider") == "oss":
+            from evals.local.assets import materialize
+
+            materialize({name: asset}, directory)
+            continue
         uri = client.resolve_media_references(
             obj=asset["media"],
             resolve_with="base64_data_uri",
@@ -41,6 +72,7 @@ def turn(case, backend, assets, permit=None):
     if case.snapshot_origin == "missing":
         raise ValueError("missing_input_snapshot")
     window, images = build_input(case, assets)
+    images = runtime_images(case, window, images)
     start = time.perf_counter()
     obs = (
         _observe_intent(case, backend, window, images)
@@ -51,7 +83,7 @@ def turn(case, backend, assets, permit=None):
     evidence = _evidence(case, obs)
     if permit is not None:
         evidence["input_snapshot"]["permit"] = asdict(permit)
-    # SDK uploads these data URIs as Langfuse media. Native LLM evaluators see attachments.
+    # OSS images use external HTTPS URLs in model calls and evaluator evidence.
     evidence["images"] = [
         {"name": n, "image": url}
         for n, url in zip(
@@ -94,7 +126,36 @@ def fixed_judge(backend, context, reply, assets):
     )
 
 
+def solve_turn(case, backend, assets):
+    from app.infrastructure.ai.components import COMPONENTS
+    from evals.graders import observations
+    from evals.local.solve import complete, identity
+    from evals.outcome import Observation
+    from evals.runner import _evidence, build_input
+
+    if case.snapshot_origin == "missing":
+        raise ValueError("missing_input_snapshot")
+    window, images = build_input(case, assets)
+    images = runtime_images(case, window, images)
+    spec = COMPONENTS.get("tutoring.turn")
+    start = time.perf_counter()
+    content = complete(case, spec, images)
+    latency = round((time.perf_counter() - start) * 1000, 1)
+    obs = Observation("answer", content=content, delivered_content=content, tool_calls=[])
+    evidence = _evidence(case, obs)
+    evidence.update(execution_target="solve", solver=identity(spec))
+    evidence["images"] = [{"name": n, "image": u} for n, u in zip(case.images, images)]
+    return observations(obs, latency), evidence, latency, None
+
+
 def execute_item(client, item, scorer, backends):
+    refs = {name: ref for name, ref in item.input.get("assets", {}).items()
+            if ref.get("provider") == "oss"}
+    with external_assets(refs):
+        return _execute_item(client, item, scorer, backends)
+
+
+def _execute_item(client, item, scorer, backends):
     from app.contexts.tutoring.domain.tutor_permit import AttemptSummary, TutorPermit
     from evals.conversations import (
         ConversationEval,
@@ -154,7 +215,8 @@ def execute_item(client, item, scorer, backends):
                         else "tutoring.turn"
                     ]
                     if record["type"] == "single_turn":
-                        observed, evidence, latency, error = turn(
+                        execute_turn = solve_turn if item.input.get("execution_target") == "solve" else turn
+                        observed, evidence, latency, error = execute_turn(
                             TurnRecord.model_validate(record).to_case(), backend, assets
                         )
                     elif episode:

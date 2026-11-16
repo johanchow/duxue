@@ -77,9 +77,16 @@
         "type": "boolean"
       },
       "student_answer_correct": {
-        "type": [
-          "boolean",
-          "null"
+        "oneOf": [
+          {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          {
+            "const": "partial"
+          }
         ]
       },
       "affirms_student_answer": {

@@ -250,7 +250,33 @@ LLM 映射为 `input → input`、`output.response → output`、`output.evaluat
 .venv/bin/python -m evals.local.assets upload --data evals/data/omni-edu-v1
 ```
 
-这一步完成本批本地执行器的OSS引用，未导入Langfuse Dataset。将来托管模式需保留此对象映射并适配其图片解析、评分与Trace外链，不能直接沿用当前强制Langfuse原生媒体的迁移命令；网页预览及云端视觉裁判的临时授权另行适配。
+本地图片镜像继续用于来源审计；托管迁移及执行见下一节。
+
+### Omni-Edu 托管迁移（2026-11-16）
+
+以当前有效清单迁移 **209项/233检查点**：已在后续数据修订中删除缺少passage的`omni-geography-015`，本次不恢复旧210快照。新增到已有[teaching-correctness](https://us.cloud.langfuse.com/project/cmvfvorj601l6ad0jhvajth4c/datasets/cmwbz8j5y006jad0jzj4jffaq/items) **113项**（42完整解题、71诊断），[guidance-logic](https://us.cloud.langfuse.com/project/cmvfvorj601l6ad0jhvajth4c/datasets/cmwbz8jdl008sad0e3wv51oni/items) **96项**。这两个Dataset原有13项未变；当前总数分别为118/104，其中本批以`metadata.batch=omni-edu-v1`区分。
+
+托管输入沿用`duxue-dataset.v1`，`input.execution_target`明确`solve`或`tutoring`；期望、参考与逐例要求保留在expectedOutput，不注入模型输入。元数据保留学科、三类能力、层级审核、来源uid/commit/记录哈希、题目家族、split和本地manifest摘要。原始源记录仍留本地sources作审计。英语010原题面带答案解析的问题用`review_required=true`及`known_issues`显式标记，未静默改题或改历史分。
+
+42个`solve`任务复用evaluation-only完整解题适配器，评分只要求确定性、教学正确性和逐例要求三个原生维度；167个辅导任务复用生产答疑和适用原生维度，保持云端评分执行，不回退本地评分。托管转换器`evals.platform.omni`生成固定ID的待导入payload；完整input/expectedOutput/metadata摘要用于回读及重复迁移检查，远端人工修改或归档不能被旧包覆盖。导入后托管用例在Langfuse维护，本地包保留供审计和显式本地实验使用，不自动双向同步。
+
+本批17张图片仍为`input.assets`中的OSS稳定对象引用，未新增Langfuse原生媒体。托管执行器先从OSS下载验SHA256，模型请求及评分证据使用运行时生成的24小时HTTPS签名链接；签名链接和凭据不写入Dataset。过期Trace外链不会自动续签；Dataset对象引用需要执行器解析，不能当作网页长期图片缩略图。原有历史原生媒体入口继续兼容。外链形式与原生媒体的区别见[Langfuse官方说明](https://langfuse.com/docs/observability/features/multi-modality#external-media-urls)。
+
+只执行本批的本地命令（会调用模型并写Experiment，**迁移时未执行此命令**）：
+
+```bash
+MATH_ENGINE_MODE=subprocess .venv/bin/python -m evals run \
+  --batch omni-edu-v1 --config-snapshot <本地完整配置快照.json> \
+  --workers 2 --out var/evals/omni-hosted-run
+```
+
+可叠加`--dataset`或`--case`筛选，`--batch`同字段多值为并集，跨字段为交集。此处subprocess用于非生产本机评测；模型和数学工具授权仍由快照决定。
+
+迁移已完成209项云端逐条摘要/协议回读、原有13项不变、17图字节校验和临时HTTPS读取验证；迁移审计在`var/evals/omni-langfuse-migration-20261116/`的plan/receipt/verification及remote导出中。迁移本身没有运行模型、修改Evaluator/Rule或上传本地历史成绩。后续实际托管评测及评分版本调整见[运行记录](eval-omni-langfuse-2026-11-16.md)。
+
+**已发现的视觉评分限制**：导师模型收到了OSS图片，但核对云端原生裁判实际调用发现，当前证据中的签名URL仍是序列化文本，没有形成图像内容块。17个OSS图文任务须单列`needs_image_evidence`；保留原始分数，不能据此声称完成视觉质量验收，也不回退本地裁判或自动上传Langfuse原生媒体。当前教学政策的自动评分仍未经人工校准。
+
+如果DashScope因账户状态报`Arrearage`，应保留已经完成的有效结果，记录受影响和未完成集合；恢复后校验冻结代码、配置、Dataset及裁判版本，仅统一补跑该集合。Langfuse可能将LLM裁判自动暂停，充值后仍需在控制台重新激活；运行前的预检会拒绝暂停的裁判，不绕过该检查。
 
 ### 独立启动
 

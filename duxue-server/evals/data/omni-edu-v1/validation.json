@@ -1,11 +1,11 @@
 {
   "structural_status": "passed",
   "acceptance_status": "passed",
-  "tasks": 210,
-  "unique_problem_families": 210,
+  "tasks": 209,
+  "unique_problem_families": 209,
   "categories": {
     "pedagogical_action": 96,
-    "diagnostic_reasoning": 72,
+    "diagnostic_reasoning": 71,
     "subject_competence": 42
   },
   "subjects": {
@@ -17,7 +17,7 @@
     "biology": 20,
     "politics": 20,
     "history": 20,
-    "geography": 20
+    "geography": 19
   },
   "gaokao_level_proposed": 138,
   "gaokao_level_teacher_confirmed": 0,
@@ -37,16 +37,16 @@
     "history": 5,
     "geography": 14
   },
-  "image_tasks": 18,
+  "image_tasks": 17,
   "episodes": 12,
-  "checkpoints": 234,
+  "checkpoints": 233,
   "split_counts": {
     "holdout": 42,
-    "development": 168
+    "development": 167
   },
   "gaps": [],
-  "data_digest": "e0f155397e07ac33fea32f88e9c132c607987153743b659d91fc91df6c0717b4",
+  "data_digest": "a4cb4cd837fd9bb01713a430e90635338585c980c330020a368fc173e34eb441",
   "source_revision": "67b2607f7bd01185c2c47087aa7591e435b77ac6",
   "image_storage": "oss",
-  "oss_images": 18
+  "oss_images": 17
 }

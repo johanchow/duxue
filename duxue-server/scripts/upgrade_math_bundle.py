@@ -33,6 +33,21 @@ JUDGE = """
 """
 
 
+PHASE3_TUTOR = """
+[reasoned-choice.v1]
+选择题/判断题核验边界（优先于旧“始终不确认候选项对错”规则）：
+1. 裸猜试探（学生只报了选项字母/对错，或仅复述题面，没有写出针对本题的推理过程或排除依据）：严禁确认或否认其所猜选项，只追问其判断依据或引导回到核心概念。
+2. 有据作答（学生在当前或最近原话中明确写出了针对本题的推理过程、计算推导或排除依据，并选出选项）：在题面信息完整时，先依据原题独立核验其推理与结论——推理与所选选项都正确，简短明确肯定（多选题不直接替学生补出漏选的其余选项）；推理有误或选错，指出具体逻辑漏洞或错步并给一个自检提示，不直接报出正确选项。
+3. 多采分点主观题/实验题：若学生只答对部分要点，先明确肯定已成立的部分，再提示缺失的维度。
+"""
+PHASE3_JUDGE = """
+[reasoned-choice.v1]
+student_answer_correct 现支持 true | "partial" | false | null（仅在完全答对时填 true，多采分点答对部分要点且无原则性错误时填 "partial"，答错填 false，未作答或题面不足无法独立核验填 null）。
+choice_verdict 判定更新（区分裸猜与有据作答）：
+- 当学生未提供实质推理依据（裸猜或仅报选项字母）时，reply 若确认或否认任何候选项对错，choice_verdict 必须为 true；
+- 当学生在 current_request 或 student_evidence 中已明确写出针对本题的推理/排除/计算依据并选出选项，且题面完整可核验时：reply 核验其推理并确认其所选选项对错，属于合法教学反馈，choice_verdict 为 false（但多选题中若 reply 直接补出学生未提及的漏选正确选项，仍为 true）。
+- 学生已给出完整正确推理和结论时，reply 准确肯定其推理成立不算 premature_conclusion；仅在题面缺失无法核验却下结论、或未算完就宣布答案时才标 premature_conclusion=true。
+"""
 def _apply_thinking(
     doc: dict, *, enable_thinking: bool, thinking_budget: int | None, primary_only: bool = False
 ) -> None:
@@ -68,6 +83,7 @@ def upgrade(
     enable_thinking: bool | None = None,
     thinking_budget: int | None = None,
     judge_thinking_budget: int | None = None,
+    phase3: bool = False,
 ):
     result = copy.deepcopy(record)
     if digest(record["bundle"]) != record["digest"]:
@@ -78,9 +94,11 @@ def upgrade(
     tool["description"] = "受限数学核验；结果不改变答案保护"
     files["tools/tutoring.math.json"] = tool
     judge = files["gates/tutoring.leak-judge.json"]
-    judge["provider_output_schema"]["properties"]["math_consistent"] = {
-        "type": ["boolean", "null"]
-    }
+    judge["provider_output_schema"] = copy.deepcopy(
+        code_contract()["files"]["gates/tutoring.leak-judge.json"][
+            "provider_output_schema"
+        ]
+    )
     for model in judge.get("models", []):
         model["max_output_tokens"] = max(int(model.get("max_output_tokens") or 0), 512)
     tutor = files["agents/tutoring.turn.json"]
@@ -106,6 +124,14 @@ def upgrade(
             judge_tpl = judge_tpl.replace(old_json, new_json, 1)
         judge_tpl = judge_tpl.replace("字段沿用既有契约，不加字段。", "不额外发明契约外字段。")
         judge["prompt"]["template"] = judge_tpl
+    if phase3:
+        for doc, addition in ((tutor, PHASE3_TUTOR), (judge, PHASE3_JUDGE)):
+            if "[reasoned-choice.v1]" not in doc["prompt"]["template"]:
+                doc["prompt"]["template"] += addition
+        judge["prompt"]["template"] = judge["prompt"]["template"].replace(
+            '"student_answer_correct":true或false或null',
+            '"student_answer_correct":true或"partial"或false或null',
+        )
     if enable_thinking is not None:
         _apply_thinking(
             tutor,
@@ -142,6 +168,7 @@ if __name__ == "__main__":
     parser.add_argument("--disable-thinking", action="store_true", default=False)
     parser.add_argument("--thinking-budget", type=int, default=None)
     parser.add_argument("--judge-thinking-budget", type=int, default=None)
+    parser.add_argument("--phase3", action="store_true", default=False)
     args = parser.parse_args()
     thinking_flag: bool | None = (
         False if args.disable_thinking else True if args.enable_thinking else None
@@ -152,6 +179,7 @@ if __name__ == "__main__":
         enable_thinking=thinking_flag,
         thinking_budget=args.thinking_budget,
         judge_thinking_budget=args.judge_thinking_budget,
+        phase3=args.phase3,
     )
     with args.output.open("x") as stream:
         stream.write(json.dumps(record, ensure_ascii=False, indent=2) + "\n")

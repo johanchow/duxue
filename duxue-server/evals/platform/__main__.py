@@ -139,6 +139,15 @@ def aggregate(client, configs, result, trace_id, observation_id):
         )
 
 
+def select_items(items, *, batch=None, cases=None):
+    return [
+        item for item in items
+        if item.status == "ACTIVE"
+        and (not batch or (item.metadata or {}).get("batch") in batch)
+        and (not cases or item.input["record"]["id"] in cases)
+    ]
+
+
 def run(args, client, resources):
     from app.agent_specs.configuration import read_snapshot, select_offline_snapshot
     from app.agent_specs.definitions import use_definitions
@@ -173,13 +182,10 @@ def run(args, client, resources):
     for ds in resources["datasets"]:
         if args.dataset and ds["name"] not in args.dataset:
             continue
-        items = [
-            i
-            for i in dataset_items(client, ds["name"], version)
-            if i.status == "ACTIVE"
-        ]
-        if requested:
-            items = [i for i in items if i.input["record"]["id"] in requested]
+        items = select_items(
+            dataset_items(client, ds["name"], version),
+            batch=getattr(args, "batch", None), cases=requested,
+        )
         for item in items:
             hydrate(item)
             for check in item.expected_output["checks"].values():
@@ -369,6 +375,7 @@ def main(argv=None):
     p = sub.add_parser("run", help="Run current hosted datasets with native evaluators")
     p.add_argument("--dataset", action="append")
     p.add_argument("--case", action="append")
+    p.add_argument("--batch", action="append", help="Filter hosted items by metadata.batch")
     p.add_argument("--version")
     p.add_argument("--config-snapshot", required=True)
     p.add_argument("--workers", type=int, default=4)

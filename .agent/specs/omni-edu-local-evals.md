@@ -70,3 +70,16 @@ status: implementing
 - OSS增量验证：18图已上传，完整回读SHA256及逐对象private ACL验证通过；实际resolver下载18图，回执var/evals/omni-oss-migration-20261115/receipt.json。全210静态校验与确定性重建通过；评测单测238 passed（既有FastAPI warning），修改文件Ruff/diff检查通过。未调用付费模型或Langfuse，未提交。
 
 - 用户授权先commit；暂存树独立验证237项评测测试/210静态校验/Ruff通过，不依赖工作区另一任务未提交的Thinking网关或subprocess数学模式。相关工作区变更保留待其后续提交；本feature的Gate2继续待明确验收。
+
+## 2026-11-16 用户明确授权迁移到Langfuse的增量
+
+沿用本feature及已确认Dataset/OSS方案，用户直接要求执行迁移，覆盖此前不上传本批的范围限制；完成必要协议衔接后执行远端写入，不重复询问Gate 1。
+
+- [x] 转换当前209项至既有teaching-correctness113/guidance-logic96（遵循fbef5a7删除地理015的有效清单），固定ID、三类能力/学科/层级/家族/split/来源保留；不覆盖原有项目用例，支持完整回读及幂等检查。
+- [x] OSS稳定引用保留，托管执行器下载验SHA256；运行时临时HTTPS引用用于模型/评分证据，不走Langfuse原生图片上传。
+- [x] 42完整解题明确solve目标，不走Ward答案保护；只配置适用的原生评分维度；167诊断引导保持生产链路。
+- [x] 增加batch筛选，已知英语010问题标待复核，已删除地理015不恢复而不静默改题或改历史分。
+- [x] 单测/全包转换/来源和图片校验、真实远端209逐条回读、已有13项不变；不运行模型评测、不修改云端评分定义或历史成绩。
+- [ ] Gate 2：结果验收。
+
+- 迁移完成：209新增/233检查点，17图片OSS字节及临时HTTPS读取通过；云端209逐条input/expectedOutput/metadata摘要与协议回读匹配，既有13不变。相关246测试通过，迁移审计var/evals/omni-langfuse-migration-20261116/，未调用模型、未新增原生媒体、未改评分资源。云端视觉评分和策略校准待真实验收；Gate2待用户。

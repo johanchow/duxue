@@ -1,9 +1,9 @@
 {
   "id": "00000000-0000-4000-8000-000000000001",
-  "digest": "750e7a237a945783fd9355f8df7f328fed9d7c2d74954b308c731015f8ce327f",
+  "digest": "695a1afb685e1ebb2093af7acc364b5734ebf66f45a14eb11e6e891e8f79cb55",
   "bundle": {
     "format_version": 3,
-    "compatibility": "65500e87f2b644d5cd94473b58f96d314419a4dd30718910442c50b99af48fa3",
+    "compatibility": "647c39c12ff43cc4aefc4dcade45bcf00e497066ce9b8811c990ab78838ed593",
     "files": {
       "agents/companion.intent.json": {
         "id": "companion.intent",
@@ -2132,9 +2132,16 @@
               "type": "boolean"
             },
             "student_answer_correct": {
-              "type": [
-                "boolean",
-                "null"
+              "oneOf": [
+                {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                },
+                {
+                  "const": "partial"
+                }
               ]
             },
             "affirms_student_answer": {

@@ -146,6 +146,19 @@ def materialize(refs, directory, *, bucket=None):
     return directory
 
 
+def signed_urls(refs, *, lifetime=86400):
+    """Runtime-only external image access; stable Dataset records keep object refs."""
+    for name, ref in refs.items():
+        validate_reference(name, ref)
+    if not refs:
+        return {}
+    bucket = connect_bucket()
+    return {
+        name: bucket.sign_url("GET", ref["key"], lifetime, slash_safe=True)
+        for name, ref in refs.items()
+    }
+
+
 def resolve_selected(manifest, tasks, root, output):
     if "assets" not in manifest:
         return Path(root) / "assets"

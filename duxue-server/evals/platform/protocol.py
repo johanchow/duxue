@@ -1,6 +1,7 @@
 """Transport/projection only. Scoring definitions live in Langfuse."""
 
 from __future__ import annotations
+
 import copy
 import hashlib
 import json
@@ -20,7 +21,7 @@ def item_id(case_id):
     return str(uuid.uuid5(NAMESPACE, case_id))
 
 
-def convert(record, category):
+def convert(record, category, *, execution_target="tutoring"):
     """One dialogue per item; expected checks are never application input."""
     record = copy.deepcopy(record)
     expected = {
@@ -36,11 +37,12 @@ def convert(record, category):
             evaluators.update(
                 {
                     "eval.teaching_correctness": {"min": 4},
-                    "eval.guidance_logic": {"min": 4},
                     "eval.case_requirements": {"equals": True},
                 }
             )
-            if check["component"] == "tutoring.turn":
+            if execution_target != "solve":
+                evaluators["eval.guidance_logic"] = {"min": 4}
+            if check["component"] == "tutoring.turn" and execution_target != "solve":
                 evaluators["eval.answer_protection"] = {"equals": True}
                 evaluators["eval.safety"] = {"equals": True}
         expected["checks"][check["id"]] = {
@@ -69,6 +71,11 @@ def hydrate(item):
     payload = item.input
     if payload.get("schema_version") != VERSION:
         raise ValueError("unsupported remote dataset schema")
+    target = payload.get("execution_target", "tutoring")
+    if target not in {"solve", "tutoring"}:
+        raise ValueError("unsupported execution target")
+    if target == "solve" and payload["record"]["type"] != "single_turn":
+        raise ValueError("internal solve requires a single turn")
     record = copy.deepcopy(payload["record"])
     expected = item.expected_output
     if set(expected["checks"]) != {c["id"] for c in record["checks"]}:
@@ -93,11 +100,15 @@ def hydrate(item):
                 )
             ):
                 raise ValueError(f"invalid remote evaluator threshold: {name}")
-        if check["component"] == "tutoring.turn" and not {
-            "eval.teaching_correctness",
-            "eval.guidance_logic",
-        } <= set(spec["evaluators"]):
+        required = {"eval.teaching_correctness"}
+        if target != "solve":
+            required.add("eval.guidance_logic")
+        if check["component"] == "tutoring.turn" and not required <= set(spec["evaluators"]):
             raise ValueError("teaching responses require native semantic evaluators")
+        if target == "solve" and set(spec["evaluators"]) != {
+            "eval.deterministic_pass", "eval.teaching_correctness", "eval.case_requirements"
+        }:
+            raise ValueError("internal solve evaluator dimensions mismatch")
         # Projection schema only: legacy grade_result is never executed by this runner.
         check["grading"] = {
             "deterministic": spec["deterministic"],
