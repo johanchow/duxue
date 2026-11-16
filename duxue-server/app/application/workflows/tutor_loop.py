@@ -9,6 +9,8 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field, replace
 
+from pydantic import ValidationError
+
 from app.agent_specs.catalog import load_catalog
 from app.agent_specs.execution_trace import transition
 from app.agent_specs.static_tools import static_tool_result
@@ -39,7 +41,6 @@ from app.infrastructure.observability.telemetry import (
     record_tutor_visual_dropped,
     set_observation_payload,
 )
-from pydantic import ValidationError
 
 INVALID_CANDIDATE = "invalid_model_candidate"
 _VISUAL_REPAIR_DRAFT_MAX = 4000
@@ -608,28 +609,37 @@ def run_tutor_turn(
                 transition("tutoring", "tutoring.attempt", "tutoring.exit_gate", "candidate")
             candidate = proposal.candidate
             evidence = candidate.image_review if candidate is not None else None
-            if judge_images and evidence is not None and evidence.conclusion != "not_checking":
-                from app.application.workflows.image_review import review_problem
-                summary = json.loads(review_problem(problem_summary, candidate, list(judge_images or [])))
-                summary['image_review_phase'] = 'evidence_only'
-                ledger = getattr(tools, "math_verification", None)
-                if ledger is not None:
-                    summary["math_records"] = list(ledger.records.values())
-                try:
-                    evidence_result = _check_text_leak(leak_judge, '', task_title,
-                                                      json.dumps(summary, ensure_ascii=False), list(judge_images or []), phase='evidence')
-                    rejected, reason = _text_leak_result(evidence_result)
-                except Exception:  # noqa: BLE001 - unverified evidence never becomes a reply
-                    rejected, reason = None, None
-                if rejected is not False:
-                    review = Vetting(candidate, None, 'leak_check_failed' if rejected is None else 'leak_detected',
-                                     reason or 'premature_conclusion')
-                    set_observation_payload(span, output={"phase": "image_review_evidence", "failure": review.failure, "leak_reason": review.leak_reason})
-                    return proposal, review
-                remaining = load_catalog().spec('tutoring').limits['model_calls'] - proposal.used_calls
-                polished = call_tutor_model(current_model, envelope, instruction, window, images, tools,
-                                            review_evidence=evidence, call_budget=remaining)
-                proposal = ModelCall(polished.candidate, polished.failure, proposal.used_calls + polished.used_calls)
+            if judge_images and evidence is not None:
+                if evidence.conclusion != "not_checking":
+                    from app.application.workflows.image_review import review_problem
+                    summary = json.loads(review_problem(problem_summary, candidate, list(judge_images or [])))
+                    summary['image_review_phase'] = 'evidence_only'
+                    ledger = getattr(tools, "math_verification", None)
+                    if ledger is not None:
+                        summary["math_records"] = list(ledger.records.values())
+                    try:
+                        evidence_result = _check_text_leak(leak_judge, '', task_title,
+                                                          json.dumps(summary, ensure_ascii=False), list(judge_images or []), phase='evidence')
+                        rejected, reason = _text_leak_result(evidence_result)
+                    except Exception:  # noqa: BLE001 - unverified evidence never becomes a reply
+                        rejected, reason = None, None
+                    if rejected is not False:
+                        review = Vetting(candidate, None, 'leak_check_failed' if rejected is None else 'leak_detected',
+                                         reason or 'premature_conclusion')
+                        set_observation_payload(span, output={"phase": "image_review_evidence", "failure": review.failure, "leak_reason": review.leak_reason})
+                        return proposal, review
+                    remaining = load_catalog().spec('tutoring').limits['model_calls'] - proposal.used_calls
+                    polished = call_tutor_model(current_model, envelope, instruction, window, images, tools,
+                                                review_evidence=evidence, call_budget=remaining)
+                    proposal = ModelCall(polished.candidate, polished.failure, proposal.used_calls + polished.used_calls)
+                elif candidate.content.strip() == "待核验":
+                    remaining = load_catalog().spec('tutoring').limits['model_calls'] - proposal.used_calls
+                    if remaining > 0:
+                        polished = call_tutor_model(current_model, envelope, instruction, window, images, tools,
+                                                    review_evidence=evidence, call_budget=remaining)
+                        proposal = ModelCall(polished.candidate, polished.failure, proposal.used_calls + polished.used_calls)
+                    else:
+                        return proposal, Vetting(candidate, None, INVALID_CANDIDATE)
             review = vet(proposal.candidate) if proposal.candidate is not None else None
             set_observation_payload(span, output={
                 "candidate_available": proposal.candidate is not None,

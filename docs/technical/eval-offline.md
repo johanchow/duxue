@@ -203,6 +203,8 @@ LLM 映射为 `input → input`、`output.response → output`、`output.evaluat
 
 ## Omni-Edu 本地文件评测
 
+本批修复后的全量结果、执行中断恢复口径及未通过项复核见[2026-11-16评测记录](eval-omni-2026-11-16.md)。
+
 ### 数据与审核口径
 
 入口：[`evals/data/omni-edu-v1/README.md`](../../duxue-server/evals/data/omni-edu-v1/README.md)。固定上游 Hugging Face revision `67b2607f7bd01185c2c47087aa7591e435b77ac6`；完整 69,999 条原始快照仍在 ignored `var/evals/datasets/omni-edu-v1/`，本批只复制所选原始记录及图片。

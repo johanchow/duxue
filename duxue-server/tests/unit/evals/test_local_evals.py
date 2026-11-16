@@ -123,3 +123,91 @@ def test_math_preflight_blocks_when_enabled_executor_is_down(monkeypatch):
 
         monkeypatch.setenv("MATH_ENGINE_MODE", "subprocess")
         live.preflight()
+
+
+def test_summary_aggregates_llm_completion_outcomes_and_tokens():
+    from evals.local.report import summarize
+
+    rows = [
+        {
+            "case_id": "c1",
+            "sample_index": 0,
+            "status": "pass",
+            "subject": "history",
+            "level": "gaokao_equivalent",
+            "dataset": "guidance-logic",
+            "execution_target": "tutoring",
+            "checks": [
+                {
+                    "status": "pass",
+                    "latency_ms": 1200.0,
+                    "outcome": "hint_like",
+                    "llm_calls": [
+                        {
+                            "provider_request_id": "r1",
+                            "finish_reason": "stop",
+                            "stream_completed": True,
+                            "tokens_in": 100,
+                            "tokens_out": 80,
+                            "tokens_answer": 30,
+                            "tokens_reasoning": 50,
+                            "outcome": "ok",
+                            "abrupt_detail": None,
+                        },
+                        {
+                            "provider_request_id": "r2",
+                            "finish_reason": "stop",
+                            "stream_completed": True,
+                            "tokens_in": 90,
+                            "tokens_out": 40,
+                            "tokens_answer": 40,
+                            "tokens_reasoning": None,
+                            "outcome": "stop_wire_gap",
+                            "abrupt_detail": "structured_decode_gap",
+                        },
+                        {
+                            "provider_request_id": "r3",
+                            "finish_reason": "length",
+                            "stream_completed": True,
+                            "tokens_in": 50,
+                            "tokens_out": 200,
+                            "tokens_answer": 10,
+                            "tokens_reasoning": 190,
+                            "outcome": "length_truncated",
+                            "abrupt_detail": None,
+                        },
+                        {
+                            "provider_request_id": "r4",
+                            "finish_reason": None,
+                            "stream_completed": False,
+                            "tokens_in": None,
+                            "tokens_out": None,
+                            "tokens_answer": None,
+                            "tokens_reasoning": None,
+                            "outcome": "incomplete_stream",
+                            "abrupt_detail": None,
+                        },
+                    ],
+                }
+            ],
+        }
+    ]
+    comp = summarize(rows)["llm_completions"]
+    assert comp["total_calls"] == 4
+    assert comp["stream_completed"] == 3
+    assert comp["stream_incomplete"] == 1
+    assert comp["by_finish_reason"] == {"length": 1, "none": 1, "stop": 2}
+    assert comp["by_outcome"]["ok"] == 1
+    assert comp["by_outcome"]["stop_wire_gap"] == 1
+    assert comp["by_outcome"]["length_truncated"] == 1
+    assert comp["by_outcome"]["incomplete_stream"] == 1
+    assert comp["by_outcome"]["api_error"] == 0
+    assert comp["by_outcome"]["json_parse_error"] == 0
+    assert comp["by_outcome"]["contract_error"] == 0
+    assert comp["abrupt_details"] == {"structured_decode_gap": 1}
+    assert comp["tokens"] == {
+        "input": 240,
+        "output": 320,
+        "answer": 80,
+        "reasoning": 240,
+    }
