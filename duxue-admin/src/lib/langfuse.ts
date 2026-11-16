@@ -20,6 +20,8 @@ export type LangfuseSettings = {
 };
 export class LangfuseReader {
   private cache = new Map<string, { expires: number; value: Promise<any> }>();
+  private activeRequests = 0;
+  private requestQueue: (() => void)[] = [];
   constructor(
     readonly settings: LangfuseSettings,
     private fetcher: typeof fetch = fetch,
@@ -46,29 +48,75 @@ export class LangfuseReader {
     this.cache.set(key, { expires: Date.now() + 30000, value });
     return value;
   }
-  private async request(path: string) {
-    let response: Response;
-    try {
-      response = await this.fetcher(
-        `${this.settings.baseUrl.replace(/\/$/, '')}/api/public/${path}`,
-        {
-          headers: {
-            Authorization: `Basic ${Buffer.from(`${this.settings.publicKey}:${this.settings.secretKey}`).toString('base64')}`,
+  private async acquireRequest() {
+    if (this.activeRequests < 4) {
+      this.activeRequests++;
+      return;
+    }
+    await new Promise<void>((resolve) => this.requestQueue.push(resolve));
+  }
+  private releaseRequest() {
+    const next = this.requestQueue.shift();
+    if (next) next();
+    else this.activeRequests--;
+  }
+  private async request(path: string): Promise<any> {
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      await this.acquireRequest();
+      let phase: string = 'fetch';
+      let response: Response | undefined;
+      try {
+        response = await this.fetcher(
+          `${this.settings.baseUrl.replace(/\/$/, '')}/api/public/${path}`,
+          {
+            headers: {
+              Authorization: `Basic ${Buffer.from(`${this.settings.publicKey}:${this.settings.secretKey}`).toString('base64')}`,
+            },
+            redirect: 'error',
+            signal: AbortSignal.timeout(12000),
+            cache: 'no-store',
           },
-          redirect: 'error',
-          signal: AbortSignal.timeout(12000),
-          cache: 'no-store',
-        },
-      );
-    } catch {
-      throw new Error('Langfuse 连接失败或超时');
+        );
+        if (!response.ok) {
+          phase = 'http';
+          await response.body?.cancel();
+          throw new Error('upstream HTTP failure');
+        }
+        phase = 'body';
+        const body = await response.text();
+        phase = 'json';
+        return JSON.parse(body);
+      } catch (error) {
+        const name = error instanceof Error ? error.name : 'UnknownError';
+        console.warn('langfuse request failed', {
+          endpoint: path.split('?')[0],
+          phase,
+          status: response?.status,
+          attempt,
+          error: name,
+        });
+        const transient =
+          phase === 'http'
+            ? [502, 503, 504].includes(response!.status)
+            : phase !== 'json' &&
+              (name === 'TypeError' ||
+                name === 'AbortError' ||
+                name === 'TimeoutError');
+        if (!transient || attempt === 3) {
+          throw new Error(
+            phase === 'http'
+              ? `Langfuse API 返回 ${response!.status}`
+              : phase === 'json'
+                ? 'Langfuse 返回无效数据'
+                : 'Langfuse 连接失败或超时',
+          );
+        }
+      } finally {
+        this.releaseRequest();
+      }
+      await new Promise((resolve) => setTimeout(resolve, attempt * 100));
     }
-    if (!response.ok) throw new Error(`Langfuse API 返回 ${response.status}`);
-    try {
-      return await response.json();
-    } catch {
-      throw new Error('Langfuse 返回无效数据');
-    }
+    throw new Error('Langfuse 连接失败或超时');
   }
   private async verified() {
     await this.cached('project', async () => {
@@ -280,7 +328,9 @@ export class LangfuseReader {
         ...group.experiments.map(async (e: Doc) => ({
           id: e.id,
           name: e.name,
-          dataset: e.name.includes('/') ? e.name.split('/').slice(1).join('/') : e.name,
+          dataset: e.name.includes('/')
+            ? e.name.split('/').slice(1).join('/')
+            : e.name,
           datasetId: e.datasetId,
           itemCount: e.itemCount ?? null,
           summary: await this.summary('experiment', days, e.id),
