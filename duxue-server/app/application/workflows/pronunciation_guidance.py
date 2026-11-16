@@ -19,14 +19,14 @@ _FORBIDDEN = re.compile(r"https?://|<speak|<phoneme|speech_rate|voice_profile|ss
 
 
 class PronunciationNote(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
     segment: str | None = None
     kind: Literal["stress", "linking", "weak_form", "reduction", "intonation"]
     explanation: str = Field(min_length=1, max_length=240)
 
 
 class LessonBody(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
     source_text: str = Field(min_length=1, max_length=300)
     locale: Literal["en-US", "en-GB"]
     introduction: str = Field(min_length=1, max_length=240)

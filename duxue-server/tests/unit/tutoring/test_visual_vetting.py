@@ -328,3 +328,18 @@ def test_turn_scope_does_not_skip_visual_review_or_trust_main_model_labels():
     assert PROTECTED.answer_protected is True
     rejected = vet(raw, ScopedJudge(True, leaks=True))
     assert rejected.failure == 'leak_detected'
+
+
+def test_work_product_turn_keeps_answer_protected_even_if_judge_returns_false():
+    class DowngradingJudge:
+        def leaks(self, **kwargs):
+            return {'leaks': False, 'reason': 'none', 'answer_protected': False}
+
+        def visual_leaks(self, **kwargs):
+            return False
+
+    result = vet(homework(), DowngradingJudge(), permit=PROTECTED)
+    assert result.failure is None
+    assert result.verdict is not None
+    assert result.verdict.effective_work_product is True
+    assert result.verdict.answer_protected is True
