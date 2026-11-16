@@ -425,3 +425,47 @@ def test_ward_grade_stage_reaches_tutoring_context_envelope(db):
     outcome = _ask(db, workflow, session, "讨论单调性")
     assert model.calls[0]["envelope"]["actor"]["grade_stage"] == "high"
     assert "grade_stage" not in outcome.context_snapshot["actor"]
+
+
+def test_not_checking_placeholder_reply_triggers_response_phase():
+    from app.agent_specs.image_refs import image_ref
+    from tests.support.fakes import StaticTutorModel
+
+    pixels = "data:image/jpeg;base64,YQ=="
+    first = tutor_raw(
+        content="待核验",
+        image_review={
+            "conclusion": "not_checking",
+            "scope": "specified",
+            "coverage": "complete",
+            "questions": [],
+        },
+    )
+    second = tutor_raw(content="先把球心距、截面圆半径和球半径画成一个直角三角形。")
+    model = StaticTutorModel(first, second)
+    judge = Judge(True)
+    result = run_tutor_turn(
+        model,
+        {"turn_id": "t-placeholder"},
+        "我不知道如何开始，请给我一个起步提示",
+        [],
+        [pixels],
+        TutorToolbox(
+            None,
+            tutoring_session_id=None,
+            problem=None,
+            task_title=None,
+            task_active=False,
+            window=[],
+            math_engine=Engine(),
+        ),
+        permit=TutorPermitPolicy.permit(None),
+        leak_judge=judge,
+        task_title=None,
+        problem_summary='{"current_request":"球体截面问题"}',
+        judge_images=[pixels],
+    )
+    assert result.vetting.failure is None
+    assert result.call.candidate.content == "先把球心距、截面圆半径和球半径画成一个直角三角形。"
+    assert model.calls[1]["envelope"]["image_review_phase"] == "response"
+    assert image_ref(pixels) not in (result.call.candidate.content or "")
