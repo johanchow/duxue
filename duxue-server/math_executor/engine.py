@@ -597,10 +597,24 @@ def execute(request):
         op, args = request["op"], request["args"]
         if not isinstance(args, dict):
             raise TypeError("invalid_args")
-        if op == "equivalent":
+        if op in {"equivalent", "search_counterexample", "check_dimensions", "check_reaction"}:
             scope = "equivalence"
         elif op == "solve":
             scope = "solution_set"
+
+        # Fast-path domain-specific pure-Python operators that do not need SymPy.
+        if op == "probability_stats":
+            from math_executor.prob_stats import probability_stats_operation
+
+            return probability_stats_operation(args)
+        if op == "check_dimensions":
+            from math_executor.physics_dim import check_dimensions_operation
+
+            return check_dimensions_operation(args)
+        if op == "genetics_cross":
+            from math_executor.genetics import genetics_cross_operation
+
+            return genetics_cross_operation(args)
 
         fast = _fast_arithmetic(request)
         if fast is not None:
@@ -609,6 +623,11 @@ def execute(request):
         import sympy as s
 
         engine_ver = "sympy-" + s.__version__
+        if op == "check_reaction":
+            from math_executor.chem_balance import check_reaction_operation
+
+            return check_reaction_operation(s, args)
+
         required = {
             "evaluate": {"expression"},
             "equivalent": {"left", "right"},
@@ -616,8 +635,25 @@ def execute(request):
             "differentiate": {"expression", "variable", "order"},
             "integrate": {"expression", "variable"},
             "limit": {"expression", "variable", "point", "direction"},
+            "transform": {"expression", "mode"},
+            "summation": {"expression", "variable", "start", "end"},
+            "analyze_function": {"expression", "variable"},
+            "search_counterexample": {"relation", "bounds"},
+            "conic_line_system": {"conic", "line", "variables", "eliminate"},
+            "space_geometry_3d": {"mode", "plane_vectors"},
         }
-        optional = {"evaluate": {"precision"}, "integrate": {"bounds"}}
+        optional = {
+            "evaluate": {"precision"},
+            "integrate": {"bounds"},
+            "transform": {"variable"},
+            "analyze_function": {"domain_interval"},
+            "space_geometry_3d": {
+                "plane_point",
+                "query_vector",
+                "query_point",
+                "second_plane_vectors",
+            },
+        }
         if op not in required:
             raise Unsupported("operation")
         if not required[op] <= set(args) or set(args) - required[op] - optional.get(
@@ -625,6 +661,12 @@ def execute(request):
         ):
             raise ValueError("invalid_args")
         p = Parser(s, request.get("symbols", []), request.get("assumptions", []))
+        if op == "search_counterexample":
+            from math_executor.counterexample import search_counterexample_operation
+
+            resp = search_counterexample_operation(s, p, args)
+            resp["engine_version"] = engine_ver
+            return resp
         verdict = None
         out_conditions = set(p.conditions)
 
@@ -661,6 +703,26 @@ def execute(request):
             result = diff
         elif op == "solve":
             result, out_conditions = _solve_operation(s, p, args)
+        elif op == "transform":
+            from math_executor.calculus_algebra import transform_operation
+
+            result, out_conditions = transform_operation(s, p, args)
+        elif op == "summation":
+            from math_executor.calculus_algebra import summation_operation
+
+            result, out_conditions = summation_operation(s, p, args)
+        elif op == "analyze_function":
+            from math_executor.calculus_algebra import analyze_function_operation
+
+            result, out_conditions = analyze_function_operation(s, p, args)
+        elif op == "conic_line_system":
+            from math_executor.calculus_algebra import conic_line_operation
+
+            result, out_conditions = conic_line_operation(s, p, args)
+        elif op == "space_geometry_3d":
+            from math_executor.calculus_algebra import space_geometry_3d_operation
+
+            result, out_conditions = space_geometry_3d_operation(s, p, args)
         else:
             expr = p.parse(args["expression"], allow_tuple=(op == "evaluate"))
             out_conditions = set(p.conditions)

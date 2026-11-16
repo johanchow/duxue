@@ -34,8 +34,8 @@ from pydantic import (
 CONTRACT_ID = "tutor-turn.v4"
 
 Act = Literal["answer", "guide", "chat", "clarify", "redirect", "pronounce", "safety"]
-Relation = Literal["none", "same", "new"]
-WorkRelation = Literal["same", "new"]
+Relation = Literal["none", "same", "new", "subproblem"]
+WorkRelation = Literal["same", "new", "subproblem"]
 Topic = Literal["atomic_lookup", "spontaneous_curiosity"]
 # How much of the Ward's own reasoning the ask carries.  atomic: a one-off lookup (a word's meaning,
 # a character's reading, what is in the picture).  recall: something to remember (a spelling, a
@@ -103,6 +103,10 @@ class WorkTurn(BaseModel):
     progress: Progress | None = None
     evidence: str | None = None
     next_subgoal: str | None = None
+    completed_milestone_id: str | None = None
+    adopted_approach_id: str | None = None
+    subproblem_label: str | None = None
+    verified_prior_conclusion: str | None = None
 
     @field_validator("depth", mode="before")
     @classmethod
@@ -119,11 +123,17 @@ class WorkTurn(BaseModel):
     def _progress(cls, value):
         return value if value in Progress.__args__ else None
 
-    @field_validator("evidence", "next_subgoal", mode="before")
+    @field_validator("evidence", "next_subgoal", "verified_prior_conclusion", mode="before")
     @classmethod
     def _text(cls, value):
         value = _blank_is_absent(value)
         return value[:500] if isinstance(value, str) else None
+
+    @field_validator("completed_milestone_id", "adopted_approach_id", "subproblem_label", mode="before")
+    @classmethod
+    def _short_id(cls, value):
+        value = _blank_is_absent(value)
+        return value[:32] if isinstance(value, str) else None
 
     @model_validator(mode="after")
     def _attempt_owns_progress(self):
@@ -452,7 +462,7 @@ def check_authority(candidate: TutorTurnCandidate, permit: TutorPermit) -> Verdi
     # no protection yet (same/new) starts out protected.  The Ward is never handed the finished
     # homework; labels that merely look contradictory are not a reason to replace a safe reply.
     relation = candidate.relation
-    claims_work = relation in {"same", "new"}
+    claims_work = relation in {"same", "new", "subproblem"}
     answer_protected = permit.answer_protected or claims_work
     # An `answer` is a direct reply to a question, not the child's attempt at a problem, so it
     # never opens, abandons or advances a problem record (a mislabelled knowledge question must

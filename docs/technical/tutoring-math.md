@@ -114,6 +114,16 @@ TutorCandidate += {
 | differentiate | expression, variable, order | 导数表达式 |
 | integrate | expression, variable；定积分另给 bounds | 原函数或定积分；未求值返回 unknown |
 | limit | expression, variable, point, direction | 指定方向的极限或 unknown |
+| transform | expression, mode (`simplify`\|`factor`\|`expand`\|`trigsimp`\|`together`\|`apart`) | 代数或三角恒等变形结果 |
+| summation | expression, variable, start, end | 有限级数求和结果（纯数值跨度上限 10000） |
+| analyze_function | expression, variable, domain_interval(可选) | 一阶导数、因式分解、临界点、各子区间导数符号与局部极值表 |
+| search_counterexample | relation, bounds (`{var: [low, high]}`) | `mpmath` 高精度网格/特殊点含参反例证伪：找到反例返回 `ok`/`not_equal`；未找到返回 `unknown`（绝不当作恒成立证明） |
+| conic_line_system | conic, line, variables, eliminate | 直线代入二次曲线消元后的系数、判别式 $\Delta$ 及韦达定理 $x_1+x_2, x_1x_2$ |
+| space_geometry_3d | mode=`plane_metrics`, plane_vectors 等 | 三维空间平面法向量、线面角正弦、点面距与二面角余弦绝对值 |
+| probability_stats | mode (`discrete_distribution`\|`linear_regression`\|`chi2_2x2`) | 精确分数分布列合法性/$E(X)$/$D(X)$、线性回归 $\hat{b},\hat{a},R^2$、$2\times 2$ 独立性检验 $\chi^2$ |
+| check_dimensions | left, right, quantities | 物理 7 维国际基本单位（$\text{M, L, T, I, }\Theta\text{, N, J}$）有理数幂次向量一致性检验 |
+| check_reaction | equation | 化学/离子方程式确定性词法解析 + `SymPy.Matrix` 原子守恒、电荷守恒与最小整数配平系数 |
+| genetics_cross | parent1, parent2, lethal_genotypes(可选) | 常染色体/伴性遗传及致死基因条件下的配子笛卡尔积精确子代基因型/表现型分数比 |
 
 表达式与假设使用受限数学语法，由适配器的受限执行器解析为白名单对象，不执行任意 Python。不把模型字符串直接传给 eval、exec、parse_expr 或字符串 sympify；以受限语法树显式构造 SymPy 对象，假设也只接受已定义谓词。`request_id`、来源摘要及记录由服务端校验/绑定，模型不能伪造工具结果。超时/错误不得携带可用判定。公开回复不得直接透传 result。
 
@@ -141,8 +151,8 @@ TutorCandidate += {
 
 | 边界 | 当前实现 |
 |---|---|
-| 计算 | 六类操作；纯四则由 `arithmetic_eval` 快路先行，符号与高阶计算使用受限 SymPy 1.14.0 / mpmath 1.3.0（按需导入）。支持复数 `I`、分数与受限符号指数、多元方程组（1~4 变量）、含参方程、单变量实数不等式（组）、任意底对数、反三角、阶乘/组合数及 2D/3D 向量点积/模长/叉积；不开放任意 Python |
-| 等价性 | 未证明定义域安全则 unknown；不以数值抽样证明恒等。对无法确证不等价的符号式保守返回 unknown |
+| 计算 | 十六类多学科确定性操作（兼容 `tutoring.math` 与扩展 `tutoring.science`）；纯四则与概率统计/物理量纲/生物遗传走纯标准库精确分数快路，符号微积分、圆锥曲线韦达、三维法向量、化学守恒零空间与含参反例搜索使用受限 SymPy 1.14.0 / mpmath 1.3.0（按需导入）；不开放任意 Python |
+| 等价性 | 未证明定义域安全则 unknown；不以数值抽样证明恒等（`search_counterexample` 仅用于确定性证伪，未检出反例固定返回 `unknown`）。支持多行推导链相邻步批量差分定位首个不等价步骤（`verify_derivation_chain`） |
 | 证据 | 每轮服务端账本，绑定题目/输入摘要/授权图片；仅缓存确定性结果（不缓存 `unavailable`/`timeout`/`resource_limit`），不跨轮复用。图片四则自动走同一工具；分数作答可核验 |
 | 语义审核 | 复用独立 leak-judge 的模型配置，新增独立 math_consistent 调用（发音/安全/重定向无数学记录轮次免调）；失败映射为独立的 `math_inconsistent` / `math_check_failed`，不混淆为答案泄露。原答案保护继续执行 |
 | 可用性 | 生产强制 `MATH_ENGINE_MODE=socket` 独立容器隔离，socket 缺失返回 unknown；非生产本地评测支持显式 `MATH_ENGINE_MODE=subprocess` 隔离子进程模式并在启动前执行算式 preflight。无主进程 SymPy、无心算兜底 |

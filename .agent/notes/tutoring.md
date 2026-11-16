@@ -8,9 +8,9 @@
 
 ## 状态
 
-- 已落地：证据驱动许可、`tutor-turn` 契约与出口检查、发音 `act=pronounce`、五种配图与 App 渲染、结构化泄露裁判、多图先定目标、离线评测（单步、判官、合成多轮、对话回放）。
+- 已落地：证据驱动许可、`tutor-turn` 契约与出口检查、发音 `act=pronounce`、五种配图与 App 渲染、结构化泄露裁判、多图先定目标、`inspect_image` 局部裁剪放大、服务端私有解题蓝图 `SolutionBlueprint` 与多小题题组 `ProblemGroupContext`、多学科确定性符号与约束引擎（高阶数学+反例证伪/物理量纲/化学守恒/生物遗传）、离线评测（单步、判官、合成多轮、对话回放）。
 - 部分：发音指代仍会读错对象。图片作答核验与历史结论混淆、泄露回退不稳定。形状长度阈值未用真实输出校准。
-- 未做：`disclosure=released`、`inspect_image` / `retrieve_authorized_learning_material` / `check_draft`、人工把标注升为 `confirmed`、配图 K=5 对照、视觉段条件拼接、知识讲解视频。流式 `TEXT_DELTA` 不做。
+- 未做：`disclosure=released`、`retrieve_authorized_learning_material` / `check_draft`、人工把标注升为 `confirmed`、配图 K=5 对照、视觉段条件拼接、知识讲解视频。流式 `TEXT_DELTA` 不做。
 - 独立 `geometry` / `layers` / `relation` 求解器已取消，由受限 `svg` 承载。
 
 ## 决策
@@ -209,3 +209,5 @@
 - 2026-11-16 用户确认充值后授权继续：原721份冻结源码SHA256全部一致，但SDK预检发现5个LLM裁判被Langfuse在欠费时自动置paused（LLM_CONNECTION_AUTH_INVALID），确定性裁判active，6个versionId均与原批一致。公开SDK/MCP没有reactivate操作，官方evaluatorRouter仅暴露需用户会话的reactivate；保留提示词/模型/版本，不借修改定义绕过暂停。已读browser skill尝试控制台恢复，in-app浏览器工具因sandboxPolicy环境元数据故障不可用，Chrome工具又因其他会话占用同一profile不可用，未终止其他会话浏览器。已异步请用户在Langfuse重新激活5个裁判。持久恢复协调器83317运行root/resume-recovery.py（state=recovery-state.json，log=recovery.log，预备resume-20261116-215340），每30秒只读检查，全部active且版本未变后自动停止原暂停runner/旧supervisor，统一补跑12条，合并final/results.json并附248条来源SHA256、原236保留与16质量fail不变、完整REPORT/summary/对比/图片证据分层；不覆盖run原始现场。原teaching-correctness中断Experiment已通过SDK查询确认id=c326475d415c4459、107项含1error，最终报告须与恢复段分开链接。尚未启动12题模型调用，等待云端重新激活，不能声称已续跑完成。操作脚本启动须保留.venv/bin/python路径，不对该符号链接resolve到系统Python（会丢失venv）。
 
 - 2026-11-16 用户授权commit剩余相关改动：范围为Omni托管投影/幂等保护、OSS临时引用、solve分派、batch筛选、测试及同域文档/笔记；观察领域笔记与清单、.vscode及个人PDF保留不提交。当前验证310项单测通过（1项既有FastAPI弃用警告）、209项/233检查点静态校验通过、修改Python Ruff F/E9/I通过。云端视觉证据缺口和全量中断状态补入唯一运行说明；全量仍未完成，不以子集结果背书。恢复等待进程此前因SSL查询错误退出，已为只读状态检查增加网络错误重试并重启；模型补跑仍需5个裁判重新激活，脚本/凭据/原始模型审计保留ignored运行目录，不纳入提交。
+
+- 2026-11-16 高考级内部解题蓝图、多学科确定性引擎、局部看图裁剪与多小题题组落地并完成 Gate 2 验收（事实源见 [domain-tutoring](../../docs/technical/domain-tutoring.md) 与 [tutoring-math](../../docs/technical/tutoring-math.md)）：1）DDD 边界保持 `Tutoring` 唯一写聚合根 `TutoringSession` 不变，新增纯领域值对象 `SolutionBlueprint`（区分一题多解路线 `approaches` 与跨路线不变量 `invariants`）、`ProblemGroupContext`（支持 `relation="subproblem"` 归档前问并继承已核验前序结论，维持同会话至多一道 `open` 小题不变量）与无状态 `BlueprintProgressPolicy`；首轮复杂推理新题在 DB 事务外经 `blueprint_planner` 生成候选并由确定性引擎预验算锚点（未通过自动降级 `unverified`），通过迁移 `20261116_36` 私有存入 `tutoring_problems.internal_blueprint`/`group_context`，绝不下发客户端、不进 `leak-judge` 题面输入且绝不解锁 `Disclosure="protected"`；2）隔离容器 `math_executor` 零重型依赖扩展 10 类新算子：数学 `transform`/`summation`/`analyze_function`/`search_counterexample`（`mpmath` 仅用于确定性反例证伪，未搜到固定返回 `unknown`）/`conic_line_system`/`space_geometry_3d`/`probability_stats`、物理 7 维 SI 量纲 `check_dimensions`、化学分子式/离子电荷词法解析+`SymPy.Matrix` 零空间守恒 `check_reaction`、生物配子笛卡尔积精确分数 `genetics_cross`，以及 `MathVerification.verify_derivation_chain` 多行草稿首错行差分定位；3）引入 `pillow>=11.0.0` 落地 `inspect_image` 内存受权局部裁剪放大，`observations`/遥测 Span 仅留 `crop_ref` 元数据（零图像 Base64 字节入观测），切片以多模态 `image_url` 注入后续模型轮次；4）新增可选扩展契约 `gaokao_contracts.py` 与 `upgrade_math_bundle.py --gaokao`，既有已发布 Admin 快照 `compatibility` 指纹逐字节不变。验证：服务端全量 `1202 passed / 1 skipped`（含真实 PostgreSQL 14 迁移与外键擦除回归）、Admin `57 passed` 且生产构建通过、修改文件 Ruff 通过；spec 已归档，暂未 git commit、未调用付费模型或迁移线上库。

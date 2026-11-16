@@ -28,6 +28,9 @@ def validate_output(unit: ModelUnit, payload: dict) -> None:
         IDS[unit_id].model_validate(payload)
     elif unit_id == "evals.semantic-judge":
         pass  # The strict score/verdict/error schema above owns this contract.
+    elif unit_id == "tutoring.blueprint-planner":
+        if not isinstance(payload.get("approaches"), list):
+            raise ValueError("invalid blueprint approaches")
     elif unit_id == "companion.intent":
         if payload["intent"] not in {"planning", "tutoring", "reflection", "unclear"}:
             raise ValueError("invalid intent")
@@ -72,7 +75,8 @@ def validate_output(unit: ModelUnit, payload: dict) -> None:
 def has_python_contract(unit_id: str) -> bool:
     return unit_id in {
         "behavior.visible-activity", "behavior.support-opportunity",
-        "evals.semantic-judge", "companion.intent", "companion.scene-switch", "planning.intake",
+        "evals.semantic-judge", "tutoring.blueprint-planner",
+        "companion.intent", "companion.scene-switch", "planning.intake",
         "task.intake", "tutoring.turn", "evaluation.review-aspects", "study.sprint-intake",
         "tutoring.image-target", "tutoring.leak-judge", "tutoring.visual-leak-judge",
     }

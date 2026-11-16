@@ -134,9 +134,12 @@ def call_tutor_model(
 
     for _ in range(call_limit):
         used_calls += 1
+        call_envelope = dict(envelope)
+        if getattr(tools, "inspected_crops", None) and review_evidence is None:
+            call_envelope["inspected_crops"] = list(tools.inspected_crops)
         try:
             raw = model.complete(
-                envelope=envelope, instruction=instruction,
+                envelope=call_envelope, instruction=instruction,
                 recent_utterances=[] if review_evidence is not None else window,
                 current_images=[] if review_evidence is not None else images,
                 repair_error=repair, observations=observations,
@@ -401,6 +404,7 @@ def fact_gate(candidate: TutorTurnCandidate) -> str | None:
 def vet_candidate(
     candidate: TutorTurnCandidate, *, permit: TutorPermit, leak_judge: LeakJudgePort,
     task_title: str | None, problem_summary: str | None, judge_images: list[str] | None = None,
+    grade_stage: str | None = None,
 ) -> Vetting:
     """Run the configured authority, text and optional visual Gates."""
     from app.agent_specs.catalog import load_catalog
@@ -419,7 +423,7 @@ def vet_candidate(
             span.set_attribute("agent.check.result", "pass" if verdict.ok else "rejected")
             set_observation_payload(span, output={"ok": verdict.ok, "reason": verdict.reason})
         if verdict.ok:
-            flags = lint_shape(candidate.act, candidate.content)
+            flags = lint_shape(candidate.act, candidate.content, grade_stage=grade_stage)
             if candidate.act == "answer" and candidate.depth == "reasoning":
                 flags.append("answer_on_reasoning")
             if flags:
@@ -572,9 +576,11 @@ def run_tutor_turn(
                                    "math_inconsistent")
             checked_summary = (json.dumps({"problem": problem_summary, **ledger.context(candidate.math_claims)},
                                           ensure_ascii=False) if ledger is not None else problem_summary)
+            actor_stage = (envelope.get("actor") or {}).get("grade_stage") if isinstance(envelope, dict) else None
             result = vet_candidate(
                 candidate, permit=permit, leak_judge=leak_judge,
                 task_title=task_title, problem_summary=checked_summary, judge_images=judge_images,
+                grade_stage=actor_stage,
             )
             span.set_attribute("agent.check.result", "rejected" if result.failure else "pass")
             if result.failure:

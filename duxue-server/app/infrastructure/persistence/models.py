@@ -449,6 +449,8 @@ class TutoringProblem(Base):
     evidence_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_turn_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    internal_blueprint: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    group_context: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 

@@ -21,9 +21,11 @@ def scene_switch(*, content, current_agent_type, proposed_agent_type, recent_utt
 
 def tutor_turn(*, envelope, instruction, recent_utterances=None, current_images=None,
                repair_error=None, observations=None):
-    payload = {"contract": "tutor-turn.v4", "instruction": instruction, "context": envelope}
+    clean_envelope = dict(envelope)
+    inspected_crops = clean_envelope.pop("inspected_crops", None) or []
+    payload = {"contract": "tutor-turn.v4", "instruction": instruction, "context": clean_envelope}
     if current_images or any(row.get("image_urls") for row in recent_utterances or []):
-        if envelope.get("image_review_phase") != "response":
+        if clean_envelope.get("image_review_phase") != "response":
             from app.application.workflows.image_review import ImageReview
             report_schema = ImageReview.model_json_schema()
             definitions = report_schema.pop('$defs', {})
@@ -38,7 +40,13 @@ def tutor_turn(*, envelope, instruction, recent_utterances=None, current_images=
         payload["observations"] = observations
     if repair_error:
         payload["repair_error"] = repair_error
-    return user_content(payload, recent_utterances, list(current_images or []))
+    parts = user_content(payload, recent_utterances, list(current_images or []))
+    for crop in inspected_crops:
+        if isinstance(crop, dict) and crop.get("url") and crop.get("crop_ref"):
+            label = f"（{crop['label']}）" if crop.get("label") else ""
+            parts.append({"type": "text", "text": f"局部放大切片 {crop['crop_ref']}{label}："})
+            parts.append({"type": "image_url", "image_url": {"url": crop["url"]}})
+    return parts
 
 
 def _judge_problem(summary):
@@ -101,6 +109,7 @@ BUILDERS = {
     "behavior.visible_activity.context": eval_grade,
     "behavior.support_opportunity.context": eval_grade,
     "evals.semantic_judge.context": eval_grade,
+    "tutoring.blueprint_planner.context": eval_grade,
     "study.sprint_intake.context": sprint_intake,
     "companion.intent.context": intent,
     "companion.scene_switch.context": scene_switch,

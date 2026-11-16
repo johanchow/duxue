@@ -32,9 +32,13 @@ class TutorToolbox:
     def __init__(
         self, db: Session, *, tutoring_session_id: str | None, problem: TutoringProblem | None,
         task_title: str | None, task_active: bool, window: list[dict], math_engine=None,
+        image_inspector=None,
     ):
         self.math_engine = math_engine
         self.math_verification = None
+        self.image_inspector = image_inspector
+        self.authorized_images: dict[str, str] = {}
+        self.inspected_crops: list[dict] = []
         self.db = db
         self.tutoring_session_id = tutoring_session_id
         self.problem = problem
@@ -47,12 +51,14 @@ class TutorToolbox:
         with agent_step_span("tool", name if name in allowed else "unknown_tool",
                              **{"agent.tool.source": "model_request"}) as span:
             args = args if isinstance(args, dict) else {}
-            set_observation_payload(span, input={"op": args.get("op")} if name == "math" else args)
+            set_observation_payload(span, input={"op": args.get("op")} if name in {"math", "science"} else args)
             handlers = {
                 "get_task_context": self._task_context,
                 "get_attempt_summary": self._attempt_summary,
                 "lookup_history": self._lookup_history,
                 "math": self._math,
+                "science": self._math,
+                "inspect_image": self._inspect_image,
             }
             for tool_id in load_definitions().units["tutoring.turn"].tools:
                 if load_definitions().tools[tool_id].handler_id == "tool.static_result":
@@ -73,13 +79,25 @@ class TutorToolbox:
             except Exception:
                 result = {"tool": name, "status": "tool_error"}
             span.set_attribute("agent.tool.status", result.get("status", "tool_error"))
-            set_observation_payload(span, output={key: result[key] for key in ("status", "request_id", "input_digest", "error_code") if key in result} if name == "math" else result)
+            set_observation_payload(
+                span,
+                output={
+                    key: result[key]
+                    for key in ("status", "request_id", "input_digest", "error_code", "crop_ref", "image_ref")
+                    if key in result
+                }
+                if name in {"math", "science", "inspect_image"}
+                else result,
+            )
             return result
 
     def begin_math(self, envelope: dict, instruction: str, images: list[str]):
         from app.agent_specs.image_refs import image_ref
         from app.application.workflows.math_verification import MathVerification
-        enabled = "tutoring.math" in load_definitions().units["tutoring.turn"].tools
+        self.authorized_images = {image_ref(url): url for url in images if url}
+        self.inspected_crops = []
+        allowed_tools = set(load_definitions().units["tutoring.turn"].tools)
+        enabled = bool({"tutoring.math", "tutoring.science"} & allowed_tools)
         if not enabled:
             self.math_verification = None
             return
@@ -87,7 +105,27 @@ class TutorToolbox:
             "turn_id": envelope.get("turn_id"), "run_id": envelope.get("run_id"),
             "problem_ref": getattr(self.problem, "id", None),
             "instruction_digest": hashlib.sha256(instruction.encode()).hexdigest(),
-        }, {image_ref(url) for url in images if url})
+        }, set(self.authorized_images))
+
+    def _inspect_image(self, args: dict) -> dict:
+        from app.application.ports.image_inspection import InspectImageRequest
+        from app.infrastructure.media.pillow_crop import PillowImageInspector
+
+        if len(self.inspected_crops) >= 4:
+            return {"status": "tool_error", "detail": "crop_limit_exceeded"}
+        req = InspectImageRequest.model_validate(args)
+        inspector = self.image_inspector or PillowImageInspector()
+        res = inspector.inspect(req, authorized_images=self.authorized_images)
+        if res.status == "unique" and res.crop_data_url and res.crop_ref:
+            self.inspected_crops.append(
+                {
+                    "crop_ref": res.crop_ref,
+                    "image_ref": res.image_ref,
+                    "label": res.label,
+                    "url": res.crop_data_url,
+                }
+            )
+        return res.public_observation()
 
     def _math(self, args):
         if self.math_verification is None:

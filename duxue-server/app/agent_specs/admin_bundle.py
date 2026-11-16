@@ -10,6 +10,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.agent_specs.configuration import code_contract
+from app.agent_specs.gaokao_contracts import (
+    FILES as GAOKAO_FILES,
+    PLANNER_ID as GAOKAO_PLANNER_ID,
+    TOOL_AUTHORITY_ADDITIONS as GAOKAO_TOOLS,
+    WORKFLOWS as GAOKAO_WORKFLOWS,
+    frozen_contracts as gaokao_contracts,
+)
 from app.agent_specs.observation_contracts import FILES as OBSERVATION_FILES, contracts as observation_contracts, WORKFLOWS as OBSERVATION_WORKFLOWS
 from app.agent_specs.definitions import DefinitionCatalog
 from app.agent_specs.registrations import WORKFLOW_BINDINGS
@@ -70,10 +77,13 @@ def contract_compatibility(files: dict) -> str:
     # The envelope binds code contracts and the topology supplied by Admin.
     # Never reconstruct topology from a repository baseline. Keeping the same
     # fingerprint algorithm preserves already-published immutable artifacts.
+    has_obs = OBSERVATION_FILES <= set(files)
+    has_gaokao = GAOKAO_FILES <= set(files)
     return digest({
         "files": {**code_contract()["files"],
-                  **(observation_contracts() if OBSERVATION_FILES <= set(files) else {}),
-                  **{name: doc for name, doc in files.items() if name in WORKFLOW_FILES or (OBSERVATION_FILES <= set(files) and name in {f"workflows/{key}.json" for key in OBSERVATION_WORKFLOWS})}},
+                  **(observation_contracts() if has_obs else {}),
+                  **(gaokao_contracts() if has_gaokao else {}),
+                  **{name: doc for name, doc in files.items() if name in WORKFLOW_FILES or (has_obs and name in {f"workflows/{key}.json" for key in OBSERVATION_WORKFLOWS}) or (has_gaokao and name in {f"workflows/{key}.json" for key in GAOKAO_WORKFLOWS})}},
         "handlers": {key: {field: sorted(items) for field, items in value.items()}
                      for key, value in WORKFLOW_BINDINGS.items()},
         "protocol": 3,
@@ -91,10 +101,21 @@ def compile_bundle(bundle: dict) -> CompiledBundle:
     contracts = copy.deepcopy(code_contract())
     file_names = set(bundle.get("files", {})) if isinstance(bundle, dict) else set()
     has_observation = OBSERVATION_FILES <= file_names
+    has_gaokao = GAOKAO_FILES <= file_names
     if has_observation:
         contracts["files"].update(observation_contracts())
         contracts["tool_authority"].update({doc["id"]: [] for doc in observation_contracts().values()})
-    expected_files = set(BUNDLE_FILES) | (OBSERVATION_FILES if has_observation else set())
+    if has_gaokao:
+        contracts["files"].update(gaokao_contracts())
+        contracts["tool_authority"][GAOKAO_PLANNER_ID] = []
+        contracts["tool_authority"]["tutoring.turn"] = list(
+            dict.fromkeys([*contracts["tool_authority"]["tutoring.turn"], *GAOKAO_TOOLS])
+        )
+    expected_files = (
+        set(BUNDLE_FILES)
+        | (OBSERVATION_FILES if has_observation else set())
+        | (GAOKAO_FILES if has_gaokao else set())
+    )
     if (
         not isinstance(bundle, dict)
         or set(bundle) != {"format_version", "compatibility", "files"}
@@ -115,7 +136,7 @@ def compile_bundle(bundle: dict) -> CompiledBundle:
             "version" in model for model in doc.get("models", [])
         ):
             raise ValueError("manual configuration versions are not supported")
-        if name in WORKFLOW_FILES or (has_observation and name in {f"workflows/{key}.json" for key in OBSERVATION_WORKFLOWS}):
+        if name in WORKFLOW_FILES or (has_observation and name in {f"workflows/{key}.json" for key in OBSERVATION_WORKFLOWS}) or (has_gaokao and name in {f"workflows/{key}.json" for key in GAOKAO_WORKFLOWS}):
             continue  # Validated by AgentCatalog against code bindings below.
         original = contracts["files"][name]
         try:

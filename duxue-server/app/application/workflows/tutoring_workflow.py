@@ -90,8 +90,10 @@ class TutoringWorkflow:
         backup_model: TutorModelPort | None = None,
         image_target_selector: Callable[[list[dict], str], dict] | None = None,
         math_engine=None,
+        blueprint_planner=None,
     ):
         self.math_engine = math_engine
+        self.blueprint_planner = blueprint_planner
         self.db = db
         self.turn_model = turn_model
         self.backup_model = backup_model
@@ -101,6 +103,18 @@ class TutoringWorkflow:
         self.image_target_selector = image_target_selector
         self._media_cache: dict[str, tuple[list[dict], list[str | None]]] = {}
         self._selected_image_refs: dict[str, list[str]] = {}
+
+    def _planner(self):
+        if self.blueprint_planner is not None:
+            return self.blueprint_planner
+        if self._live_turn_model:
+            from app.application.workflows.blueprint_planner import (
+                QwenBlueprintPlannerGateway,
+            )
+
+            self.blueprint_planner = QwenBlueprintPlannerGateway()
+            return self.blueprint_planner
+        return None
 
     def _model(self) -> TutorModelPort:
         if self.turn_model is None:
@@ -414,14 +428,21 @@ class TutoringWorkflow:
             self.db, tutoring_session_id=tutor.id if tutor else None, problem=problem_row,
             task_title=task_title, task_active=task_active, window=window, math_engine=self.math_engine,
         )
+        model_envelope = envelope.model_dump()
+        if problem_row is not None:
+            if problem_row.internal_blueprint:
+                model_envelope["internal_blueprint"] = problem_row.internal_blueprint
+            if problem_row.group_context:
+                model_envelope["group_context"] = problem_row.group_context
         transition("tutoring", "tutoring.image_target" if has_images else "tutoring.turn",
                    "tutoring.model_loop", "resolved" if has_images else "ready")
+        all_authorized_images = self._judge_images(window, images)
         result = self._run_model(
-            envelope.model_dump(), instruction, window, images, tools, permit=permit, task_title=task_title,
+            model_envelope, instruction, window, images, tools, permit=permit, task_title=task_title,
             problem_summary=judge_problem_summary(
                 self._recent_problem_summaries(tutor), content, recent_utterances=window,
             ),
-            judge_images=self._judge_images(window, images),
+            judge_images=all_authorized_images,
         )
         candidate = verdict = visual = None
         failure = "no_candidate"
@@ -514,10 +535,60 @@ class TutoringWorkflow:
         attempted = False
         evidence_problem_id = None
         if work:
+            planned_blueprint = None
+            planned_group = None
+            if (
+                candidate.relation in {"new", "subproblem"}
+                and (candidate.depth or "reasoning") == "reasoning"
+                and (problem_row is None or candidate.relation != "same" or problem_row.last_turn_id != invocation.turn_id)
+            ):
+                from app.application.workflows.blueprint_planner import (
+                    build_verified_blueprint_and_group,
+                )
+                from app.contexts.tutoring.domain.blueprint import (
+                    ProblemGroupContext,
+                    VerifiedPriorConclusion,
+                )
+
+                prior_group_vo = (
+                    ProblemGroupContext.from_dict(problem_row.group_context)
+                    if problem_row is not None and problem_row.group_context
+                    else None
+                )
+                if candidate.relation == "subproblem":
+                    base_group = prior_group_vo or ProblemGroupContext(
+                        shared_stem_ref=f"group_{problem_row.id}" if problem_row is not None else f"group_{tutor.id}",
+                        shared_stem_summary=(problem_row.summary if problem_row is not None else content)[:500],
+                        subproblem_label="(1)",
+                    )
+                    prior_conc = (
+                        VerifiedPriorConclusion(
+                            subproblem_label=base_group.subproblem_label or "(prev)",
+                            conclusion=candidate.work.verified_prior_conclusion,
+                        )
+                        if candidate.work and candidate.work.verified_prior_conclusion
+                        else None
+                    )
+                    prior_group_vo = base_group.advance_to_subproblem(
+                        next_label=(candidate.work.subproblem_label if candidate.work else None) or "(next)",
+                        verified_conclusion=prior_conc,
+                    )
+                else:
+                    prior_group_vo = None
+
+                planned_blueprint, planned_group = build_verified_blueprint_and_group(
+                    self._planner(),
+                    self.math_engine,
+                    content=content,
+                    images=all_authorized_images,
+                    prior_group=prior_group_vo,
+                    grade_stage=grade_stage,
+                )
+
             transition("tutoring", "tutoring.output_safety", "tutoring.apply_problem", "accepted_work")
             problem_status, hint_index, attempted, evidence_problem_id = self._apply_problem(
                 tutor, problem_row, candidate, verdict, invocation, has_work_input=bool(content.strip() or images),
-                summary=content,
+                summary=content, planned_blueprint=planned_blueprint, planned_group=planned_group,
             )
         transition("tutoring", "tutoring.apply_problem" if work else "tutoring.output_safety",
                    "tutoring.result", None if work else "fallback_or_readonly")
@@ -575,20 +646,42 @@ class TutoringWorkflow:
         )
 
     @traced_agent_node("tutoring.apply_problem")
-    def _apply_problem(self, tutor, row, candidate, verdict, invocation, *, has_work_input, summary):
+    def _apply_problem(
+        self, tutor, row, candidate, verdict, invocation, *, has_work_input, summary,
+        planned_blueprint=None, planned_group=None,
+    ):
         """按 `TutorPermitPolicy.advance()` 推进题目记录。返回（题目状态，本轮提示序号，是否计了一次实质尝试）。
 
         同一个 Ward Turn 的重放不重复计数：记录已处理过本 turn 时原样返回。
         """
-        new_problem = candidate.relation == "new"
+        from app.contexts.tutoring.domain.blueprint import (
+            BlueprintProgressPolicy,
+            SolutionBlueprint,
+        )
+
+        new_problem = candidate.relation in {"new", "subproblem"}
         if row is not None and not new_problem and row.last_turn_id == invocation.turn_id:
             return row.status, None, False, row.id
         if row is None or new_problem:
             if row is not None:
                 row.status = "abandoned"
-            row = TutoringProblem(tutoring_session_id=tutor.id, summary=summary[:500])
+            row = TutoringProblem(
+                tutoring_session_id=tutor.id,
+                summary=summary[:500],
+                internal_blueprint=planned_blueprint.to_dict() if planned_blueprint is not None else None,
+                group_context=planned_group.to_dict() if planned_group is not None else None,
+            )
             self.db.add(row)
             self.db.flush()
+        elif row.internal_blueprint and candidate.work:
+            bp_vo = SolutionBlueprint.from_dict(row.internal_blueprint)
+            updated_bp = BlueprintProgressPolicy.advance(
+                bp_vo,
+                completed_milestone_id=candidate.work.completed_milestone_id,
+                adopted_approach_id=candidate.work.adopted_approach_id,
+            )
+            if updated_bp is not None:
+                row.internal_blueprint = updated_bp.to_dict()
         assessment = ProblemAssessment(
             effective_work_product=True, student_move=candidate.student_move,
             progress=candidate.progress, act=candidate.act,
