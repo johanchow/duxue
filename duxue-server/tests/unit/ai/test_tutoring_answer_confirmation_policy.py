@@ -19,7 +19,9 @@ def test_leak_judge_exposes_facts_instead_of_choosing_its_reason():
     assert schema["properties"]["math_consistent"]["type"] == ["boolean", "null"]
     assert not schema["additionalProperties"]
     assert "leaks" not in schema["properties"] and "reason" not in schema["properties"]
-    assert schema["properties"]["student_answer_correct"]["type"] == ["boolean", "null"]
+    assert schema["properties"]["student_answer_correct"] == {
+        "oneOf": [{"type": ["boolean", "null"]}, {"const": "partial"}]
+    }
 
 
 def test_global_guide_rule_requires_one_student_executable_step():

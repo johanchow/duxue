@@ -47,14 +47,6 @@
     "content_type": "image/png",
     "size_bytes": 8090
   },
-  "a933ae7b81492ba67baddaef676425d316138776e0255b91869.png": {
-    "provider": "oss",
-    "bucket_alias": "eval",
-    "key": "evals/omni-edu-v1/images/933ae7b81492ba67baddaef676425d316138776e0255b91869ff8bd223ac255d.png",
-    "sha256": "933ae7b81492ba67baddaef676425d316138776e0255b91869ff8bd223ac255d",
-    "content_type": "image/png",
-    "size_bytes": 36389
-  },
   "ab3eb1be3657255c88d5a7a1be8865eeaf779947c6f5bdfb548.jpg": {
     "provider": "oss",
     "bucket_alias": "eval",

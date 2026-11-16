@@ -9,6 +9,7 @@ from tests.support.fakes import leak_judge_facts as facts
     ({}, 'none'),
     ({'student_answer_correct': False}, 'none'),  # Questioning an incorrect answer is allowed.
     ({'student_answer_correct': True, 'affirms_student_answer': True}, 'none'),
+    ({'student_answer_correct': 'partial', 'affirms_student_answer': True}, 'none'),
     ({'affirms_student_answer': True}, 'incorrect_confirmation'),
     ({'student_answer_correct': False, 'affirms_student_answer': True}, 'incorrect_confirmation'),
     ({'new_final_answer': True}, 'final_answer'),
@@ -26,7 +27,12 @@ def test_judge_facts_derive_verdict_and_specific_reason(changes, expected):
 
 
 def test_incomplete_or_non_boolean_judgments_fail_closed():
-    for payload in ({'new_final_answer': False}, {**facts(), 'new_final_answer': 'false'}):
+    for payload in (
+        {'new_final_answer': False},
+        {**facts(), 'new_final_answer': 'false'},
+        {**facts(), 'student_answer_correct': 'maybe'},
+        {**facts(), 'student_answer_correct': 1},
+    ):
         assert normalize_judge('tutoring.leak-judge', payload).verdict == 'unknown'
 
 

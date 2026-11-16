@@ -3674,24 +3674,6 @@
       }
     },
     {
-      "id": "omni-geography-015",
-      "source_record": "sources/omni-geography-015.json",
-      "category": "diagnostic_reasoning",
-      "dataset": "teaching-correctness",
-      "execution_target": "tutoring",
-      "subject": "geography",
-      "level": "other_k12",
-      "family_id": "2fe10675636f48667071",
-      "scenario": "incorrect",
-      "split": "development",
-      "level_review": {
-        "status": "proposed",
-        "topic": "天气与气候的区别",
-        "reason": "题目结合图片（虽图片仅为沙漠景观，解题依赖参考解析中提到的文本内容）考查天气与气候的区别，属于基础概念辨析，难度为小学或初中水平。注：题干文字缺失了参考解析中提到的具体文本段落，但根据参考解析可推断题意完整，且核心考点过于简单。",
-        "method": "AI-assisted semantic review with explicit assistant corrections; not teacher-certified"
-      }
-    },
-    {
       "id": "omni-geography-016",
       "source_record": "sources/omni-geography-016.json",
       "category": "pedagogical_action",
@@ -4109,5 +4091,12 @@
       "reason": "助手内容复核：现代汉语反译文言不属于本批高中语文目标，替换为正向翻译/阅读/语言题。"
     }
   ],
-  "review_status": "proposed"
+  "review_status": "proposed",
+  "excluded_in_review": [
+    {
+      "id": "omni-geography-015",
+      "uid": "scienceqa-378",
+      "reason": "题面缺少参考解析依赖的短文原文（仅含沙漠风景图），无法独立核验。"
+    }
+  ]
 }

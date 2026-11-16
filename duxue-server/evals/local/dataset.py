@@ -12,16 +12,15 @@ from evals.dialogue import EpisodeRecord, TurnRecord
 CATEGORIES = {"subject_competence", "diagnostic_reasoning", "pedagogical_action"}
 TARGETS = {
     "subject_competence": 42,
-    "diagnostic_reasoning": 72,
+    "diagnostic_reasoning": 71,
     "pedagogical_action": 96,
 }
 SUBJECTS = {
     "chinese": 30,
     "math": 30,
     "english": 30,
-    **dict.fromkeys(
-        ("physics", "chemistry", "biology", "politics", "history", "geography"), 20
-    ),
+    **dict.fromkeys(("physics", "chemistry", "biology", "politics", "history"), 20),
+    "geography": 19,
 }
 
 
@@ -169,7 +168,9 @@ def validate(root):
         expected = dict(
             zip(
                 ("subject_competence", "diagnostic_reasoning", "pedagogical_action"),
-                (6, 10, 14) if target == 30 else (4, 7, 9),
+                (6, 10, 14)
+                if target == 30
+                else ((4, 6, 9) if target == 19 else (4, 7, 9)),
             )
         )
         if dict(dims) != expected:

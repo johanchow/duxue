@@ -469,3 +469,13 @@ def test_not_checking_placeholder_reply_triggers_response_phase():
     assert result.call.candidate.content == "先把球心距、截面圆半径和球半径画成一个直角三角形。"
     assert model.calls[1]["envelope"]["image_review_phase"] == "response"
     assert image_ref(pixels) not in (result.call.candidate.content or "")
+
+
+def test_phase3_upgrade_enables_reasoned_choice_and_partial_schema():
+    upgraded = upgrade(read_snapshot(), enable=True, phase3=True)
+    compiled = compile_bundle(upgraded["bundle"])
+    turn_tpl = compiled.catalog.units["tutoring.turn"].prompt.template
+    judge_tpl = compiled.catalog.units["tutoring.leak-judge"].prompt.template
+    assert "[reasoned-choice.v1]" in turn_tpl
+    assert "[reasoned-choice.v1]" in judge_tpl
+    assert '"partial"' in judge_tpl
