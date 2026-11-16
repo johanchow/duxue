@@ -29,10 +29,15 @@ def execute(
                 case, backend, window, images, sample_index=sample_index
             )
         else:
+            from app.infrastructure.ai.components import capture_llm_calls
+
             started = time.perf_counter()
             latency_ms = None
+            llm_calls: list[dict] = []
             try:
-                content = (solve_call or solve.complete)(case, solver_spec, images)
+                with capture_llm_calls() as captured:
+                    content = (solve_call or solve.complete)(case, solver_spec, images)
+                llm_calls = list(captured)
                 if not isinstance(content, str) or not content.strip():
                     raise ValueError("empty_solution")
                 obs = Observation(
@@ -61,6 +66,8 @@ def execute(
                     (time.perf_counter() - grading_started) * 1000, 1
                 )
             except Exception as exc:  # noqa: BLE001 - isolate one failed evaluation sample
+                if not llm_calls and "captured" in locals():
+                    llm_calls = list(captured)
                 obs = Observation("fallback", error=f"{type(exc).__name__}: {exc}")
                 evidence = {}
                 grading = unavailable(case.grading, obs.error)
@@ -75,6 +82,7 @@ def execute(
                 case.check_id,
                 sample_index,
                 evidence,
+                llm_calls,
             )
         checks = [sample_json(sample)]
     statuses = [c.get("status", "error") for c in checks]

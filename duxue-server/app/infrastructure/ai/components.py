@@ -7,8 +7,15 @@ Secrets and provider endpoints remain deployment settings.
 from __future__ import annotations
 
 import json
+import logging
+import re
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any, Literal
+
+from jsonschema.exceptions import ValidationError as JSONSchemaValidationError
 
 from app.agent_specs.contracts import validate_input, validate_output
 from app.agent_specs.definitions import active_definitions, load_definitions
@@ -17,9 +24,9 @@ from app.infrastructure.ai.errors import ModelGatewayError
 from app.infrastructure.ai.prompts import PROMPTS, DynamicPrompt, PromptTemplate
 from app.infrastructure.observability.telemetry import (
     model_call_span,
+    record_model_rejection,
     record_model_response,
 )
-from jsonschema.exceptions import ValidationError as JSONSchemaValidationError
 
 RiskTier = Literal["protected", "standard"]
 AgentLabel = Literal["planning", "tutoring", "reflection"]
@@ -121,14 +128,67 @@ def _without_images(user):
     ]
 
 
+CompletionOutcome = Literal[
+    "ok",
+    "stop_wire_gap",
+    "length_truncated",
+    "incomplete_stream",
+    "non_stop_finish",
+    "api_error",
+    "json_parse_error",
+    "contract_error",
+]
+COMPLETION_OUTCOMES: tuple[CompletionOutcome, ...] = (
+    "ok",
+    "stop_wire_gap",
+    "length_truncated",
+    "incomplete_stream",
+    "non_stop_finish",
+    "api_error",
+    "json_parse_error",
+    "contract_error",
+)
+
+_llm_call_log: ContextVar[list[dict[str, Any]] | None] = ContextVar(
+    "duxue_llm_call_log", default=None
+)
+# Deterministic JSON wire-format check only (never prose punctuation heuristics):
+# In compact single-line JSON, constrained-decoding premature string closure emits
+# multi-character whitespace/newline padding right between closing `"` and `,` or `}`.
+_DECODE_WHITESPACE_GAP = re.compile(
+    r'"(?:\\.|[^"\\])*"(?:[ \t]*[\r\n]+[ \t\r\n]*,|[ \t]{2,}[,}])'
+)
+_PRETTY_JSON_PREFIX = re.compile(r"^\{\s*\r?\n\s+\"")
+
+
+@contextmanager
+def capture_llm_calls() -> Iterator[list[dict[str, Any]]]:
+    """Collect per-call completion and failure-stage records within a scope."""
+    records: list[dict[str, Any]] = []
+    token = _llm_call_log.set(records)
+    try:
+        yield records
+    finally:
+        _llm_call_log.reset(token)
+
+
+def _record_call_evidence(entry: dict[str, Any]) -> None:
+    sink = _llm_call_log.get()
+    if sink is not None:
+        sink.append(entry)
+
+
 @dataclass(frozen=True)
 class ChatCompletionResult:
     raw: str
+    raw_wire: str = ""
     finish_reason: str | None = None
+    stream_completed: bool = False
     provider_request_id: str | None = None
     tokens_in: int | None = None
     tokens_out: int | None = None
     tokens_reasoning: int | None = None
+    tokens_answer: int | None = None
 
 
 def _reasoning_tokens(usage: Any) -> int | None:
@@ -140,6 +200,12 @@ def _reasoning_tokens(usage: Any) -> int | None:
     else:
         value = getattr(details, "reasoning_tokens", None)
     return value if type(value) is int else None
+
+
+def _answer_tokens(tokens_out: int | None, tokens_reasoning: int | None) -> int | None:
+    if tokens_out is None:
+        return None
+    return max(0, tokens_out - (tokens_reasoning or 0))
 
 
 def _unwrap_json_fence(raw: str) -> str:
@@ -157,6 +223,19 @@ def _unwrap_json_fence(raw: str) -> str:
     return text
 
 
+def has_json_wire_whitespace_gap(raw_wire: str) -> bool:
+    """Detect constrained-decoding whitespace padding between a closed string and `,`/`}`.
+
+    Pure JSON wire-format syntax check; never inspects natural-language prose or punctuation.
+    """
+    stripped_wire = _unwrap_json_fence(raw_wire)
+    return bool(
+        stripped_wire.startswith("{")
+        and not _PRETTY_JSON_PREFIX.match(stripped_wire)
+        and _DECODE_WHITESPACE_GAP.search(stripped_wire)
+    )
+
+
 def complete_json_chat(
     *,
     client: Any = None,
@@ -167,10 +246,14 @@ def complete_json_chat(
     max_tokens: int,
     enable_thinking: bool = False,
     thinking_budget: int | None = None,
+    telemetry: dict[str, Any] | None = None,
 ) -> ChatCompletionResult:
     """Execute one structured JSON chat completion.
 
-    DashScope hybrid/thinking models require streaming when ``enable_thinking=True``.
+    DashScope hybrid/thinking models require streaming when ``enable_thinking=True``,
+    and must NOT enable ``response_format={"type": "json_object"}`` together with
+    ``enable_thinking=True`` (which triggers constrained-decoding quote truncation
+    and HTTP 400 ``InternalError.Algo.InvalidParameter`` aborts).
     ``reasoning_content`` is intentionally discarded so chain-of-thought text never
     enters Ward-visible output or production trace payloads.
     """
@@ -186,6 +269,7 @@ def complete_json_chat(
                 max_tokens=max_tokens,
                 enable_thinking=enable_thinking,
                 thinking_budget=thinking_budget,
+                telemetry=telemetry,
             )
 
     if not enable_thinking:
@@ -199,15 +283,34 @@ def complete_json_chat(
         )
         usage = getattr(response, "usage", None)
         choice = response.choices[0]
-        raw = (choice.message.content or "").strip()
-        return ChatCompletionResult(
-            raw=raw,
-            finish_reason=getattr(choice, "finish_reason", None),
+        raw_wire = choice.message.content or ""
+        finish_reason = getattr(choice, "finish_reason", None)
+        tokens_in = getattr(usage, "prompt_tokens", None)
+        tokens_out = getattr(usage, "completion_tokens", None)
+        tokens_reasoning = _reasoning_tokens(usage)
+        tokens_answer = _answer_tokens(tokens_out, tokens_reasoning)
+        result = ChatCompletionResult(
+            raw=raw_wire.strip(),
+            raw_wire=raw_wire,
+            finish_reason=finish_reason,
+            stream_completed=finish_reason is not None,
             provider_request_id=getattr(response, "id", None),
-            tokens_in=getattr(usage, "prompt_tokens", None),
-            tokens_out=getattr(usage, "completion_tokens", None),
-            tokens_reasoning=_reasoning_tokens(usage),
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            tokens_reasoning=tokens_reasoning,
+            tokens_answer=tokens_answer,
         )
+        if telemetry is not None:
+            telemetry.update(
+                provider_request_id=result.provider_request_id,
+                finish_reason=result.finish_reason,
+                stream_completed=result.stream_completed,
+                tokens_in=result.tokens_in,
+                tokens_out=result.tokens_out,
+                tokens_reasoning=result.tokens_reasoning,
+                tokens_answer=result.tokens_answer,
+            )
+        return result
 
     extra_body: dict[str, Any] = {"enable_thinking": True}
     if thinking_budget is not None:
@@ -217,7 +320,6 @@ def complete_json_chat(
         messages=messages,
         temperature=temperature,
         max_tokens=max_tokens,
-        response_format={"type": "json_object"},
         stream=True,
         stream_options={"include_usage": True},
         extra_body=extra_body,
@@ -225,43 +327,135 @@ def complete_json_chat(
     if hasattr(response, "choices"):
         usage = getattr(response, "usage", None)
         choice = response.choices[0]
-        raw = _unwrap_json_fence(choice.message.content or "")
-        return ChatCompletionResult(
-            raw=raw,
-            finish_reason=getattr(choice, "finish_reason", None),
+        raw_wire = choice.message.content or ""
+        finish_reason = getattr(choice, "finish_reason", None)
+        tokens_in = getattr(usage, "prompt_tokens", None)
+        tokens_out = getattr(usage, "completion_tokens", None)
+        tokens_reasoning = _reasoning_tokens(usage)
+        tokens_answer = _answer_tokens(tokens_out, tokens_reasoning)
+        result = ChatCompletionResult(
+            raw=_unwrap_json_fence(raw_wire),
+            raw_wire=raw_wire,
+            finish_reason=finish_reason,
+            stream_completed=finish_reason is not None,
             provider_request_id=getattr(response, "id", None),
-            tokens_in=getattr(usage, "prompt_tokens", None),
-            tokens_out=getattr(usage, "completion_tokens", None),
-            tokens_reasoning=_reasoning_tokens(usage),
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            tokens_reasoning=tokens_reasoning,
+            tokens_answer=tokens_answer,
         )
+        if telemetry is not None:
+            telemetry.update(
+                provider_request_id=result.provider_request_id,
+                finish_reason=result.finish_reason,
+                stream_completed=result.stream_completed,
+                tokens_in=result.tokens_in,
+                tokens_out=result.tokens_out,
+                tokens_reasoning=result.tokens_reasoning,
+                tokens_answer=result.tokens_answer,
+            )
+        return result
 
     parts: list[str] = []
     request_id: str | None = None
     finish_reason: str | None = None
     usage: Any = None
-    for chunk in response:
-        request_id = getattr(chunk, "id", None) or request_id
-        chunk_usage = getattr(chunk, "usage", None)
-        if chunk_usage is not None:
-            usage = chunk_usage
-        choices = getattr(chunk, "choices", None) or []
-        if not choices:
-            continue
-        choice = choices[0]
-        finish_reason = getattr(choice, "finish_reason", None) or finish_reason
-        delta = getattr(choice, "delta", None) or getattr(choice, "message", None)
-        if delta is not None:
-            piece = getattr(delta, "content", None)
-            if piece:
-                parts.append(piece)
+    try:
+        for chunk in response:
+            request_id = getattr(chunk, "id", None) or request_id
+            chunk_usage = getattr(chunk, "usage", None)
+            if chunk_usage is not None:
+                usage = chunk_usage
+            choices = getattr(chunk, "choices", None) or []
+            if not choices:
+                continue
+            choice = choices[0]
+            finish_reason = getattr(choice, "finish_reason", None) or finish_reason
+            delta = getattr(choice, "delta", None) or getattr(choice, "message", None)
+            if delta is not None:
+                piece = getattr(delta, "content", None)
+                if piece:
+                    parts.append(piece)
+    finally:
+        tokens_in = getattr(usage, "prompt_tokens", None)
+        tokens_out = getattr(usage, "completion_tokens", None)
+        tokens_reasoning = _reasoning_tokens(usage)
+        tokens_answer = _answer_tokens(tokens_out, tokens_reasoning)
+        if telemetry is not None:
+            telemetry.update(
+                provider_request_id=request_id,
+                finish_reason=finish_reason,
+                stream_completed=finish_reason is not None,
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
+                tokens_reasoning=tokens_reasoning,
+                tokens_answer=tokens_answer,
+            )
+
+    raw_wire = "".join(parts)
     return ChatCompletionResult(
-        raw=_unwrap_json_fence("".join(parts)),
+        raw=_unwrap_json_fence(raw_wire),
+        raw_wire=raw_wire,
         finish_reason=finish_reason,
+        stream_completed=finish_reason is not None,
         provider_request_id=request_id,
-        tokens_in=getattr(usage, "prompt_tokens", None),
-        tokens_out=getattr(usage, "completion_tokens", None),
-        tokens_reasoning=_reasoning_tokens(usage),
+        tokens_in=tokens_in,
+        tokens_out=tokens_out,
+        tokens_reasoning=tokens_reasoning,
+        tokens_answer=tokens_answer,
     )
+
+
+def validate_json_completion(
+    completion: ChatCompletionResult,
+    *,
+    unit_id: str | None = None,
+    validate_payload: Callable[[dict[str, Any]], None] | None = None,
+) -> tuple[dict[str, Any], CompletionOutcome, str | None]:
+    """Enforce termination gates and classify JSON/contract/wire outcomes."""
+    del unit_id
+    if not completion.stream_completed or completion.finish_reason is None:
+        raise _CompletionClassifiedError("incomplete_stream", "model_transport_error")
+    if completion.finish_reason == "length":
+        raise _CompletionClassifiedError("length_truncated", "invalid_model_candidate")
+    if completion.finish_reason != "stop":
+        raise _CompletionClassifiedError("non_stop_finish", "invalid_model_candidate")
+
+    try:
+        payload = json.loads(completion.raw)
+    except ValueError as error:
+        raise _CompletionClassifiedError(
+            "json_parse_error", "invalid_model_candidate"
+        ) from error
+
+    try:
+        if not isinstance(payload, dict):
+            raise TypeError("model returned a non-object")
+        if validate_payload is not None:
+            validate_payload(payload)
+    except (
+        ValueError,
+        KeyError,
+        TypeError,
+        IndexError,
+        AttributeError,
+        JSONSchemaValidationError,
+    ) as error:
+        raise _CompletionClassifiedError(
+            "contract_error", "invalid_model_candidate"
+        ) from error
+
+    wire_gap = has_json_wire_whitespace_gap(completion.raw_wire)
+    outcome: CompletionOutcome = "stop_wire_gap" if wire_gap else "ok"
+    detail = "structured_decode_gap" if wire_gap else None
+    return payload, outcome, detail
+
+
+class _CompletionClassifiedError(Exception):
+    def __init__(self, outcome: CompletionOutcome, gateway_code: str):
+        super().__init__(outcome)
+        self.outcome = outcome
+        self.gateway_code = gateway_code
 
 
 def invoke_json_component(*, spec: ComponentSpec, user, client=None, settings_obj=None) -> dict:
@@ -288,6 +482,8 @@ def invoke_json_component(*, spec: ComponentSpec, user, client=None, settings_ob
     messages = [{"role": "user", "content": user if spec.accepts_images else _without_images(user)}]
     if isinstance(spec.prompt, PromptTemplate):
         messages.insert(0, {"role": "system", "content": spec.prompt.text})
+    telemetry_ref: dict[str, Any] = {}
+    raw_seen = ""
     try:
         with model_call_span(
             operation=spec.operation, model=model, agent_type=spec.agent_label,
@@ -298,6 +494,7 @@ def invoke_json_component(*, spec: ComponentSpec, user, client=None, settings_ob
             thinking_budget=spec.thinking_budget,
             input_payload=None if spec.component_id.startswith("behavior.") else messages,
         ) as telemetry:
+            telemetry_ref = telemetry
             completion = complete_json_chat(
                 client=client,
                 model=model,
@@ -306,29 +503,126 @@ def invoke_json_component(*, spec: ComponentSpec, user, client=None, settings_ob
                 max_tokens=spec.max_tokens,
                 enable_thinking=spec.enable_thinking,
                 thinking_budget=spec.thinking_budget,
+                telemetry=telemetry,
             )
-            telemetry["provider_request_id"] = completion.provider_request_id
-            telemetry["tokens_in"] = completion.tokens_in
-            telemetry["tokens_out"] = completion.tokens_out
-            telemetry["tokens_reasoning"] = completion.tokens_reasoning
+            raw_seen = completion.raw_wire or completion.raw
+            payload, outcome, abrupt_detail = validate_json_completion(
+                completion,
+                unit_id=unit.id,
+                validate_payload=lambda data: validate_output(unit, data),
+            )
+            telemetry["outcome"] = outcome
+            telemetry["abrupt_detail"] = abrupt_detail
             raw = completion.raw
             record_model_response(
-                agent_type=spec.agent_label, model=model, content="[observation payload withheld]" if spec.component_id.startswith("behavior.") else raw, operation=spec.operation,
-                component_id=spec.component_id, component_version=spec.version,
+                agent_type=spec.agent_label,
+                model=model,
+                content="[observation payload withheld]"
+                if spec.component_id.startswith("behavior.")
+                else raw,
+                operation=spec.operation,
+                component_id=spec.component_id,
+                component_version=spec.version,
+                provider_request_id=completion.provider_request_id,
+                finish_reason=completion.finish_reason,
+                stream_completed=completion.stream_completed,
+                tokens_in=completion.tokens_in,
+                tokens_out=completion.tokens_out,
+                tokens_answer=completion.tokens_answer,
+                tokens_reasoning=completion.tokens_reasoning,
+                outcome=outcome,
+                abrupt_detail=abrupt_detail,
             )
-            payload = json.loads(raw)
-            if not isinstance(payload, dict):
-                raise TypeError("model returned a non-object")
-            validate_output(unit, payload)
-    except (ValueError, KeyError, TypeError, IndexError, AttributeError, JSONSchemaValidationError) as error:
-        raise ModelGatewayError("invalid_model_candidate") from error
+            _record_call_evidence(
+                {
+                    "component_id": spec.component_id,
+                    "operation": spec.operation,
+                    "model": model,
+                    "provider_request_id": completion.provider_request_id,
+                    "finish_reason": completion.finish_reason,
+                    "stream_completed": completion.stream_completed,
+                    "tokens_in": completion.tokens_in,
+                    "tokens_out": completion.tokens_out,
+                    "tokens_answer": completion.tokens_answer,
+                    "tokens_reasoning": completion.tokens_reasoning,
+                    "outcome": outcome,
+                    "abrupt_detail": abrupt_detail,
+                }
+            )
+    except _CompletionClassifiedError as error:
+        telemetry_ref["outcome"] = error.outcome
+        record_model_rejection(
+            agent_type=spec.agent_label,
+            model=model,
+            raw_content="[observation payload withheld]"
+            if spec.component_id.startswith("behavior.")
+            else raw_seen,
+            operation=spec.operation,
+            component_id=spec.component_id,
+            component_version=spec.version,
+            provider_request_id=telemetry_ref.get("provider_request_id"),
+            finish_reason=telemetry_ref.get("finish_reason"),
+            stream_completed=bool(telemetry_ref.get("stream_completed")),
+            tokens_in=telemetry_ref.get("tokens_in"),
+            tokens_out=telemetry_ref.get("tokens_out"),
+            tokens_answer=telemetry_ref.get("tokens_answer"),
+            tokens_reasoning=telemetry_ref.get("tokens_reasoning"),
+            outcome=error.outcome,
+        )
+        _record_call_evidence(
+            {
+                "component_id": spec.component_id,
+                "operation": spec.operation,
+                "model": model,
+                "provider_request_id": telemetry_ref.get("provider_request_id"),
+                "finish_reason": telemetry_ref.get("finish_reason"),
+                "stream_completed": bool(telemetry_ref.get("stream_completed")),
+                "tokens_in": telemetry_ref.get("tokens_in"),
+                "tokens_out": telemetry_ref.get("tokens_out"),
+                "tokens_answer": telemetry_ref.get("tokens_answer"),
+                "tokens_reasoning": telemetry_ref.get("tokens_reasoning"),
+                "outcome": error.outcome,
+                "abrupt_detail": None,
+            }
+        )
+        logging.getLogger(__name__).warning(
+            "model completion rejected: outcome=%s finish_reason=%s stream_completed=%s request_id=%s component=%s",
+            error.outcome,
+            telemetry_ref.get("finish_reason"),
+            telemetry_ref.get("stream_completed"),
+            telemetry_ref.get("provider_request_id"),
+            spec.component_id,
+        )
+        raise ModelGatewayError(error.gateway_code) from error
     except ModelGatewayError:
         raise
     except Exception as error:
-        import logging
+        telemetry_ref["outcome"] = "api_error"
+        if telemetry_ref.get("stream_completed") is None:
+            telemetry_ref["stream_completed"] = False
+        _record_call_evidence(
+            {
+                "component_id": spec.component_id,
+                "operation": spec.operation,
+                "model": model,
+                "provider_request_id": telemetry_ref.get("provider_request_id"),
+                "finish_reason": telemetry_ref.get("finish_reason"),
+                "stream_completed": bool(telemetry_ref.get("stream_completed")),
+                "tokens_in": telemetry_ref.get("tokens_in"),
+                "tokens_out": telemetry_ref.get("tokens_out"),
+                "tokens_answer": telemetry_ref.get("tokens_answer"),
+                "tokens_reasoning": telemetry_ref.get("tokens_reasoning"),
+                "outcome": "api_error",
+                "abrupt_detail": None,
+                "error_type": type(error).__name__,
+            }
+        )
         logging.getLogger(__name__).warning(
-            "model transport failed: %s status=%s component=%s",
-            type(error).__name__, getattr(error, "status_code", None), spec.component_id,
+            "model transport failed: %s status=%s request_id=%s component=%s",
+            type(error).__name__,
+            getattr(error, "status_code", None),
+            telemetry_ref.get("provider_request_id"),
+            spec.component_id,
         )
         raise ModelGatewayError("model_transport_error") from error
     return payload

@@ -272,6 +272,7 @@ _agent_turns = _meter().create_counter("duxue.agent.turns", unit="1")
 _agent_routes = _meter().create_counter("duxue.agent.routes", unit="1")
 _agent_duration = _meter().create_histogram("duxue.agent.run.duration", unit="ms")
 _llm_requests = _meter().create_counter("duxue.llm.requests", unit="1")
+_llm_outcomes = _meter().create_counter("duxue.llm.outcomes", unit="1")
 _llm_duration = _meter().create_histogram("duxue.llm.duration", unit="ms")
 _llm_tokens = _meter().create_counter("duxue.llm.tokens", unit="1")
 _llm_fallbacks = _meter().create_counter("duxue.llm.fallbacks", unit="1")
@@ -826,8 +827,13 @@ def model_call_span(*, operation: str, model: str, agent_type: str | None = None
             set_observation_payload(span, input=input_payload)
         result: dict[str, Any] = {
             "result": "success",
+            "outcome": "ok",
+            "finish_reason": None,
+            "stream_completed": None,
+            "abrupt_detail": None,
             "tokens_in": None,
             "tokens_out": None,
+            "tokens_answer": None,
             "tokens_reasoning": None,
             "provider_request_id": None,
         }
@@ -835,16 +841,25 @@ def model_call_span(*, operation: str, model: str, agent_type: str | None = None
             yield result
         except Exception as error:
             result["result"] = "error"
+            if result["outcome"] == "ok":
+                result["outcome"] = "api_error"
             # Exception payloads can include a prompt or provider response.
             span.set_attribute("error.type", type(error).__name__)
             span.set_status(trace.Status(trace.StatusCode.ERROR, type(error).__name__))
             raise
         finally:
             duration_ms = round((perf_counter() - started) * 1000)
+            finish_label = result["finish_reason"] if result["finish_reason"] is not None else "none"
             if model_event is not None:
                 model_event.update(
+                    provider_request_id=result["provider_request_id"],
+                    finish_reason=result["finish_reason"],
+                    stream_completed=result["stream_completed"],
+                    outcome=result["outcome"],
+                    abrupt_detail=result["abrupt_detail"],
                     tokens_in=result["tokens_in"],
                     tokens_out=result["tokens_out"],
+                    tokens_answer=result["tokens_answer"],
                     tokens_reasoning=result["tokens_reasoning"],
                     enable_thinking=enable_thinking,
                     thinking_budget=thinking_budget,
@@ -853,21 +868,50 @@ def model_call_span(*, operation: str, model: str, agent_type: str | None = None
                 )
             attrs_with_result = {**attrs, "llm.result": result["result"]}
             _llm_requests.add(1, attributes=attrs_with_result)
+            _llm_outcomes.add(
+                1,
+                attributes={
+                    **attrs,
+                    "llm.outcome": result["outcome"],
+                    "llm.finish_reason": finish_label,
+                    "llm.stream_completed": bool(result["stream_completed"]),
+                },
+            )
             _llm_duration.record(duration_ms, attributes=attrs_with_result)
             if result["tokens_in"] is not None:
                 _llm_tokens.add(result["tokens_in"], attributes={**attrs, "llm.direction": "input"})
             if result["tokens_out"] is not None:
                 _llm_tokens.add(result["tokens_out"], attributes={**attrs, "llm.direction": "output"})
+            if result["tokens_answer"] is not None:
+                _llm_tokens.add(result["tokens_answer"], attributes={**attrs, "llm.direction": "answer"})
             if result["tokens_reasoning"] is not None:
                 _llm_tokens.add(result["tokens_reasoning"], attributes={**attrs, "llm.direction": "reasoning"})
-            for key in ("provider_request_id", "tokens_in", "tokens_out", "tokens_reasoning"):
+            for key in (
+                "provider_request_id",
+                "finish_reason",
+                "stream_completed",
+                "outcome",
+                "abrupt_detail",
+                "tokens_in",
+                "tokens_out",
+                "tokens_answer",
+                "tokens_reasoning",
+            ):
                 if result[key] is not None:
                     span.set_attribute(f"llm.{key}", result[key])
-            if result["tokens_in"] is not None or result["tokens_out"] is not None or result["tokens_reasoning"] is not None:
+            if result["finish_reason"] is None and result["stream_completed"] is not None:
+                span.set_attribute("llm.finish_reason", "none")
+            if (
+                result["tokens_in"] is not None
+                or result["tokens_out"] is not None
+                or result["tokens_reasoning"] is not None
+            ):
                 usage_details: dict[str, int] = {
                     "input": result["tokens_in"] or 0,
                     "output": result["tokens_out"] or 0,
                 }
+                if result["tokens_answer"] is not None:
+                    usage_details["answer"] = result["tokens_answer"]
                 if result["tokens_reasoning"] is not None:
                     usage_details["reasoning"] = result["tokens_reasoning"]
                 span.set_attribute(
@@ -905,14 +949,41 @@ def record_planning_loop_outcome(*, status: str, has_image: bool) -> None:
     _audit_logger.info("planning.loop", extra={"telemetry": attrs})
 
 
-def record_model_response(*, agent_type: str, model: str, content: str, operation: str | None = None,
-                          component_id: str | None = None, component_version: str | None = None) -> None:
+def record_model_response(
+    *,
+    agent_type: str,
+    model: str,
+    content: str,
+    operation: str | None = None,
+    component_id: str | None = None,
+    component_version: str | None = None,
+    provider_request_id: str | None = None,
+    finish_reason: str | None = None,
+    stream_completed: bool | None = None,
+    tokens_in: int | None = None,
+    tokens_out: int | None = None,
+    tokens_answer: int | None = None,
+    tokens_reasoning: int | None = None,
+    outcome: str | None = None,
+    abrupt_detail: str | None = None,
+) -> None:
     """Record one model completion on the active generation and audit sink."""
     summary = _summary(content)
     span = trace.get_current_span()
     from app.agent_specs.execution_trace import recorder
     if span.is_recording() and getattr(span, "name", None) == "llm.request" or recorder() is not None:
         set_observation_payload(span, output=content)
+    completion_meta = _attrs(**{
+        "llm.provider_request_id": provider_request_id,
+        "llm.finish_reason": finish_reason,
+        "llm.stream_completed": stream_completed,
+        "llm.tokens_in": tokens_in,
+        "llm.tokens_out": tokens_out,
+        "llm.tokens_answer": tokens_answer,
+        "llm.tokens_reasoning": tokens_reasoning,
+        "llm.outcome": outcome,
+        "llm.abrupt_detail": abrupt_detail,
+    })
     attrs = _attrs(**{
         "agent.type": agent_type,
         "llm.model": model,
@@ -921,10 +992,58 @@ def record_model_response(*, agent_type: str, model: str, content: str, operatio
         "ai.component_version": component_version,
         "output.length": summary["length"],
         "output.sha256": summary["sha256"],
+        **completion_meta,
     })
     _span_event("llm.response.validated", attrs)
     _audit_logger.info("llm.response.validated", extra={"telemetry": attrs})
-    _write_debug_audit("output", {"agent.type": agent_type, "llm.model": model, "llm.operation": operation, "output": summary}, content)
+    audit_meta = {
+        "agent.type": agent_type,
+        "llm.model": model,
+        "llm.operation": operation,
+        "output": summary,
+        **completion_meta,
+    }
+    _write_debug_audit("output", audit_meta, content)
+
+
+def record_model_rejection(
+    *,
+    agent_type: str,
+    model: str,
+    raw_content: str,
+    operation: str | None = None,
+    component_id: str | None = None,
+    component_version: str | None = None,
+    provider_request_id: str | None = None,
+    finish_reason: str | None = None,
+    stream_completed: bool | None = None,
+    tokens_in: int | None = None,
+    tokens_out: int | None = None,
+    tokens_answer: int | None = None,
+    tokens_reasoning: int | None = None,
+    outcome: str | None = None,
+) -> None:
+    """Record a rejected model completion to the audit log and local debug sink."""
+    summary = _summary(raw_content)
+    meta = _attrs(**{
+        "agent.type": agent_type,
+        "llm.model": model,
+        "llm.operation": operation,
+        "ai.component_id": component_id,
+        "ai.component_version": component_version,
+        "output.length": summary["length"],
+        "output.sha256": summary["sha256"],
+        "llm.provider_request_id": provider_request_id,
+        "llm.finish_reason": finish_reason,
+        "llm.stream_completed": stream_completed,
+        "llm.tokens_in": tokens_in,
+        "llm.tokens_out": tokens_out,
+        "llm.tokens_answer": tokens_answer,
+        "llm.tokens_reasoning": tokens_reasoning,
+        "llm.outcome": outcome,
+    })
+    _audit_logger.warning("llm.completion.rejected", extra={"telemetry": meta})
+    _write_debug_audit("output_rejected", {**meta, "output": summary}, raw_content)
 
 
 def record_llm_fallback(*, operation: str, reason: str) -> None:

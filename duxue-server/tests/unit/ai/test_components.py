@@ -4,6 +4,7 @@ import json
 from types import SimpleNamespace
 
 import pytest
+
 from app.infrastructure.ai import components
 from app.infrastructure.ai.components import (
     COMPONENTS,
@@ -17,8 +18,9 @@ from tests.support.fakes import leak_judge_facts
 
 
 class _Client:
-    def __init__(self, content: str):
+    def __init__(self, content: str, finish_reason: str | None = "stop"):
         self.content = content
+        self.finish_reason = finish_reason
         self.calls: list[dict] = []
         self.chat = SimpleNamespace(completions=SimpleNamespace(create=self.create))
 
@@ -27,7 +29,12 @@ class _Client:
         return SimpleNamespace(
             id="provider-request-1",
             usage=SimpleNamespace(prompt_tokens=7, completion_tokens=3),
-            choices=[SimpleNamespace(message=SimpleNamespace(content=self.content))],
+            choices=[
+                SimpleNamespace(
+                    finish_reason=self.finish_reason,
+                    message=SimpleNamespace(content=self.content),
+                )
+            ],
         )
 
 
@@ -109,13 +116,14 @@ def test_invoke_sends_static_prompt_as_system_and_uses_spec(spans):
 
 
 def test_real_generation_export_keeps_sent_messages_prompt_id_and_raw_reply(monkeypatch):
-    from app.infrastructure.observability import telemetry
     from langfuse._client.span_exporter import LangfuseTransformingSpanExporter
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import SimpleSpanProcessor
     from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
         InMemorySpanExporter,
     )
+
+    from app.infrastructure.observability import telemetry
 
     monkeypatch.setenv("OTEL_SDK_DISABLED", "false")
     source = InMemorySpanExporter()
@@ -308,12 +316,13 @@ def test_intake_components_get_a_longer_timeout_than_the_default():
 def test_thinking_mode_streams_chunks_hides_cot_and_records_reasoning_tokens(monkeypatch):
     from dataclasses import replace
 
-    from app.infrastructure.observability import telemetry
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import SimpleSpanProcessor
     from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
         InMemorySpanExporter,
     )
+
+    from app.infrastructure.observability import telemetry
 
     class StreamingClient:
         def __init__(self):
@@ -388,18 +397,174 @@ def test_thinking_mode_streams_chunks_hides_cot_and_records_reasoning_tokens(mon
     assert payload == {"intent": "tutoring"}
     call = client.calls[0]
     assert call["stream"] is True
+    assert "response_format" not in call
     assert call["stream_options"] == {"include_usage": True}
     assert call["extra_body"] == {"enable_thinking": True, "thinking_budget": 2048}
 
     generation = next(
         s for s in exporter.get_finished_spans() if s.name == "llm.request"
     )
+    assert generation.attributes["llm.provider_request_id"] == "req-think-1"
+    assert generation.attributes["llm.finish_reason"] == "stop"
+    assert generation.attributes["llm.stream_completed"] is True
+    assert generation.attributes["llm.outcome"] == "ok"
     assert generation.attributes["llm.enable_thinking"] is True
     assert generation.attributes["llm.thinking_budget"] == 2048
+    assert generation.attributes["llm.tokens_answer"] == 13
     assert generation.attributes["llm.tokens_reasoning"] == 42
     assert json.loads(generation.attributes["langfuse.observation.usage_details"]) == {
         "input": 20,
         "output": 55,
+        "answer": 13,
         "reasoning": 42,
     }
     assert "SECRET_COT_STEP_1" not in json.dumps(dict(generation.attributes))
+
+
+def test_completion_evidence_enforces_termination_and_separates_failure_kinds():
+    from dataclasses import replace
+
+    from app.infrastructure.ai.components import capture_llm_calls
+
+    thinking_intent = replace(COMPONENTS.get("companion.intent"), enable_thinking=True)
+    tutor_spec = replace(COMPONENTS.get("tutoring.turn"), enable_thinking=True)
+
+    # 1. length: budget exhausted -> never delivered, classified as length_truncated
+    class LengthStream:
+        chat = SimpleNamespace(
+            completions=SimpleNamespace(
+                create=lambda **_kw: iter(
+                    [
+                        SimpleNamespace(
+                            id="req-len-1",
+                            choices=[
+                                SimpleNamespace(
+                                    finish_reason="length",
+                                    delta=SimpleNamespace(content='{"intent":"tutoring"}'),
+                                )
+                            ],
+                            usage=SimpleNamespace(
+                                prompt_tokens=10,
+                                completion_tokens=100,
+                                completion_tokens_details={"reasoning_tokens": 90},
+                            ),
+                        )
+                    ]
+                )
+            )
+        )
+
+    with capture_llm_calls() as calls:
+        with pytest.raises(ModelGatewayError, match="invalid_model_candidate"):
+            invoke_json_component(
+                spec=thinking_intent,
+                user="u",
+                client=LengthStream(),
+                settings_obj=_settings(),
+            )
+    assert len(calls) == 1
+    assert calls[0]["provider_request_id"] == "req-len-1"
+    assert calls[0]["finish_reason"] == "length"
+    assert calls[0]["stream_completed"] is True
+    assert calls[0]["tokens_answer"] == 10
+    assert calls[0]["tokens_reasoning"] == 90
+    assert calls[0]["outcome"] == "length_truncated"
+
+    # 2. No finish_reason: incomplete stream -> never parsed/delivered, transport error
+    class IncompleteStream:
+        chat = SimpleNamespace(
+            completions=SimpleNamespace(
+                create=lambda **_kw: iter(
+                    [
+                        SimpleNamespace(
+                            id="req-inc-1",
+                            choices=[
+                                SimpleNamespace(
+                                    finish_reason=None,
+                                    delta=SimpleNamespace(content='{"intent":"tutoring"}'),
+                                )
+                            ],
+                            usage=None,
+                        )
+                    ]
+                )
+            )
+        )
+
+    with capture_llm_calls() as calls:
+        with pytest.raises(ModelGatewayError, match="model_transport_error"):
+            invoke_json_component(
+                spec=thinking_intent,
+                user="u",
+                client=IncompleteStream(),
+                settings_obj=_settings(),
+            )
+    assert calls[0]["provider_request_id"] == "req-inc-1"
+    assert calls[0]["finish_reason"] is None
+    assert calls[0]["stream_completed"] is False
+    assert calls[0]["outcome"] == "incomplete_stream"
+
+    # 3. Mid-stream API exception -> preserves request_id, classified as api_error
+    def broken_iter():
+        yield SimpleNamespace(
+            id="req-err-1",
+            choices=[SimpleNamespace(finish_reason=None, delta=SimpleNamespace(content="{"))],
+            usage=None,
+        )
+        raise RuntimeError("DashScope stream aborted")
+
+    class ErrorStream:
+        chat = SimpleNamespace(completions=SimpleNamespace(create=lambda **_kw: broken_iter()))
+
+    with capture_llm_calls() as calls:
+        with pytest.raises(ModelGatewayError, match="model_transport_error"):
+            invoke_json_component(
+                spec=thinking_intent,
+                user="u",
+                client=ErrorStream(),
+                settings_obj=_settings(),
+            )
+    assert calls[0]["provider_request_id"] == "req-err-1"
+    assert calls[0]["stream_completed"] is False
+    assert calls[0]["outcome"] == "api_error"
+    assert calls[0]["error_type"] == "RuntimeError"
+
+    # 4. stop + invalid JSON vs stop + contract error
+    with capture_llm_calls() as calls:
+        with pytest.raises(ModelGatewayError, match="invalid_model_candidate"):
+            invoke_json_component(
+                spec=COMPONENTS.get("companion.intent"),
+                user="u",
+                client=_Client("{bad json", finish_reason="stop"),
+                settings_obj=_settings(),
+            )
+        with pytest.raises(ModelGatewayError, match="invalid_model_candidate"):
+            invoke_json_component(
+                spec=COMPONENTS.get("companion.intent"),
+                user="u",
+                client=_Client('{"intent":"not_in_enum"}', finish_reason="stop"),
+                settings_obj=_settings(),
+            )
+    assert [c["outcome"] for c in calls] == ["json_parse_error", "contract_error"]
+
+    # 5. stop + valid JSON + structured-decoding whitespace gap (pure wire syntax, no punctuation guessing)
+    gap_raw = '{"act":"guide","content":"不过题目问的是"   \n   ,"turn":{"type":"work","relation":"new"}}'
+    normal_raw = '{"act":"guide","content":"先看第一句","turn":{"type":"work","relation":"new"}}'
+    with capture_llm_calls() as calls:
+        invoke_json_component(
+            spec=tutor_spec,
+            user="孩子的原话",
+            client=_Client(gap_raw, finish_reason="stop"),
+            settings_obj=_settings(),
+        )
+        invoke_json_component(
+            spec=tutor_spec,
+            user="孩子的原话",
+            client=_Client(normal_raw, finish_reason="stop"),
+            settings_obj=_settings(),
+        )
+    assert [c["outcome"] for c in calls] == ["stop_wire_gap", "ok"]
+    assert [c["abrupt_detail"] for c in calls] == [
+        "structured_decode_gap",
+        None,
+    ]

@@ -43,6 +43,19 @@ def _apply_thinking(
             model["thinking_budget"] = thinking_budget
         else:
             model.pop("thinking_budget", None)
+    if enable_thinking and "prompt" in doc:
+        quote_rule = (
+            '\n[json-quote-safety.v1] 输出严格合法的 JSON 对象：字符串值内部如需使用引号，'
+            '一律使用中文引号「」或『』（或转义为 \\"），严禁在字符串值内直接写未转义的英文双引号 "。'
+        )
+        if "[json-quote-safety.v1]" not in doc["prompt"]["template"]:
+            doc["prompt"]["template"] += quote_rule
+        invalid_frag = doc["prompt"].get("fragments", {}).get("invalid_json")
+        if isinstance(invalid_frag, dict) and "未转义" not in invalid_frag.get("template", ""):
+            invalid_frag["template"] = (
+                '返回的内容不是有效 JSON 对象（请检查字符串值内是否误写了未转义的英文双引号 "，'
+                '引用词语请改用「」或转义 \\"）；只返回一个符合 tutor-turn.v4 的合法 JSON 对象。'
+            )
 
 
 def upgrade(

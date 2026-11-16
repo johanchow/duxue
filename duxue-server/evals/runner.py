@@ -115,6 +115,7 @@ class Sample:
     check_id: str | None = None
     sample_index: int = 0
     evidence: dict = field(default_factory=dict)
+    llm_calls: list[dict] = field(default_factory=list)
 
     @property
     def passed(self) -> bool:
@@ -334,19 +335,24 @@ def run_sample(
 ) -> Sample:
     if case.snapshot_origin == "missing":
         return unrun_sample(case, "missing_input_snapshot", sample_index=sample_index)
+    from app.infrastructure.ai.components import capture_llm_calls
+
     start = time.perf_counter()
-    try:
-        observation = (
-            _observe_intent(case, backends, window, images)
-            if case.component == "companion.intent"
-            else _observe_tutor(
-                case, backends, window, images, permit_override=permit_override
+    with capture_llm_calls() as llm_calls:
+        try:
+            observation = (
+                _observe_intent(case, backends, window, images)
+                if case.component == "companion.intent"
+                else _observe_tutor(
+                    case, backends, window, images, permit_override=permit_override
+                )
             )
-        )
-    except Exception as exc:
-        return unrun_sample(
-            case, f"execution_error:{type(exc).__name__}", sample_index=sample_index
-        )
+        except Exception as exc:
+            failed = unrun_sample(
+                case, f"execution_error:{type(exc).__name__}", sample_index=sample_index
+            )
+            failed.llm_calls = list(llm_calls)
+            return failed
     latency = round((time.perf_counter() - start) * 1000, 1)
     evidence = _evidence(case, observation)
     if permit_override is not None:
@@ -388,6 +394,7 @@ def run_sample(
         case.check_id,
         sample_index,
         evidence,
+        list(llm_calls),
     )
 
 
@@ -464,6 +471,7 @@ def sample_json(sample):
         failures=sample.failures,
         latency_ms=sample.latency_ms,
         evidence=sample.evidence,
+        llm_calls=list(getattr(sample, "llm_calls", []) or []),
         response={
             "message": sample.observation.delivered_content
             if sample.observation.delivered_content is not None
