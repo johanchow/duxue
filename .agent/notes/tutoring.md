@@ -8,7 +8,7 @@
 
 ## 状态
 
-- 已落地：证据驱动许可、`tutor-turn` 契约与出口检查、发音 `act=pronounce`、五种配图与 App 渲染、结构化泄露裁判、多图先定目标、`inspect_image` 局部裁剪放大、服务端私有解题蓝图 `SolutionBlueprint` 与多小题题组 `ProblemGroupContext`、多学科确定性符号与约束引擎（高阶数学+反例证伪/物理量纲/化学守恒/生物遗传）、离线评测（单步、判官、合成多轮、对话回放）。
+- 已落地：证据驱动许可、`tutor-turn` 契约与出口检查、发音 `act=pronounce`、五种配图与 App 渲染、结构化泄露裁判、多图先定目标、`inspect_image` 局部裁剪放大、`ProblemSolving` 解题与辅导分链路（`ProblemDossier`、T1→T2 异构双路共识、独立 `solving` 队列、代码级置信度门禁与多小题题组）、多学科确定性符号与约束引擎（高阶数学+反例证伪/物理量纲/化学守恒/生物遗传）、离线评测（单步、判官、合成多轮、对话回放）。
 - 部分：发音指代仍会读错对象。图片作答核验与历史结论混淆、泄露回退不稳定。形状长度阈值未用真实输出校准。
 - 未做：`disclosure=released`、`retrieve_authorized_learning_material` / `check_draft`、人工把标注升为 `confirmed`、配图 K=5 对照、视觉段条件拼接、知识讲解视频。流式 `TEXT_DELTA` 不做。
 - 独立 `geometry` / `layers` / `relation` 求解器已取消，由受限 `svg` 承载。
@@ -224,3 +224,5 @@
 - 2026-11-17 合并 main 到高考解题分支：保留双方验收记录，Admin bundle 同时保留高考扩展导入与视觉契约兼容处理，清除重复导入。服务端全量1224 passed / 1 skipped、3 subtests passed；Admin57测试及类型检查通过，修改文件Ruff F/E9/I与diff检查通过。组合配置实测应先运行数学升级（含gaokao），再运行视觉升级；反向执行时数学升级会重置Judge schema并移除视觉字段，不能认为任意升级顺序等价。本次仅解决合并冲突，未修改升级脚本行为、未发布配置或部署。
 
 - 2026-11-17 恢复被关闭会话的视觉用例上传任务：两项/四检查点已新增至Langfuse guidance-logic，分类、稳定ID及执行边界见[视觉交付云端用例](../../docs/technical/eval-offline.md#视觉交付云端用例)。远端逐字段回读与原104项不变验证通过；51项协议/格式/本地CLI测试通过。仅上传用例，未运行云端模型评测、未更改裁判或恢复248例暂停任务；本地记录和文档已同步，用户后续授权将本批变更提交。
+
+- 2026-11-17 ProblemSolving 解题与辅导分链路落地并完成 Gate 2 验收（事实源见 [domain-problem-solving](../../docs/technical/domain-problem-solving.md) 与 [ddd-overview](../../docs/technical/ddd-overview.md)）：1）修复 `blueprint_planner.verify_milestone_anchor` 非 `equivalence` 模式下“结果非空即 `verified`”漏洞，强制将计算结果与 `canonical_target` 执行确定性等价或值比对；2）落地第 10 个 Core Domain `ProblemSolving`（唯一聚合根 `ProblemDossier`、确定性骨架归一化指纹 `compute_stem_fingerprint`、`DossierConfidencePolicy` 与 `lease_until` 防死锁租约状态机），新增迁移 `20261117_37_problem_dossiers.py`（`problem_dossiers` 表 + `tutoring_problems.dossier_id`/`milestone_progress`）；学生提问链路调用 `RequestSolve` 硬编码锁死 `scope="ward"` 并绑定 `owner_ward_id`（严禁从学生上传流自动晋升跨学生共享，防脏提取泄露），`DELETE /wards/{id}/data` 物理删除该 Ward 私有档案且保留公共 `bank` 档案；不做晚间交付物复用；3）新增独立 Celery 队列 `solving`（`solving_tasks.py` + `docker-compose` 独立 `solving-worker` 共享数学容器 socket，图片字节不进 Redis），支持 T1 单路验证未过自动升 T2 异构双路共识（`T2_algebraic` + `T2_alternative`）及带图高风险题后台独立复读；4）`TutoringWorkflow` 改为新题前置 `RequestSolve` + 短预算非阻塞等待（默认 `2.5s`），未就绪零阻塞走苏格拉底审题引导、次轮无缝接管；出口 `tutor_loop.py` 强制执行代码级置信度门禁（未就绪或 `low` 置信度且本轮无引擎直接核验时拦截心算 `affirms_student_answer`），且严守防误杀红线——绝不把中间里程碑喂给 `leak-judge`，仅在 `ready + high` 置信度下补充 `verified_final_answers`。验证：服务端全量 `1232 passed / 1 skipped / 3 subtests passed`（含真实 PostgreSQL 14 迁移 37 升降级与擦除回归）、Admin `57 passed` 且生产构建通过、修改文件 Ruff 全绿。

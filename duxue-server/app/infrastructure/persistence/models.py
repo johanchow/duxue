@@ -437,11 +437,46 @@ class TutoringSession(Base):
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class ProblemDossierRecord(Base):
+    """Aggregate persistence for ProblemSolving (`problem_dossiers`)."""
+
+    __tablename__ = "problem_dossiers"
+    __table_args__ = (
+        CheckConstraint("scope IN ('ward', 'institution', 'bank')", name="ck_dossier_scope"),
+        CheckConstraint("status IN ('pending', 'ready', 'low_confidence', 'failed')", name="ck_dossier_status"),
+        CheckConstraint("confidence IN ('high', 'medium', 'low')", name="ck_dossier_confidence"),
+        Index("ix_dossier_fingerprint_scope_owner", "fingerprint", "scope", "owner_ward_id"),
+    )
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
+    fingerprint: Mapped[str] = mapped_column(String(80), index=True)
+    scope: Mapped[str] = mapped_column(String(20), default="ward", index=True)
+    owner_ward_id: Mapped[str | None] = mapped_column(ForeignKey("user_wards.id"), nullable=True, index=True)
+    subject: Mapped[str] = mapped_column(String(32), default="general")
+    tier: Mapped[str] = mapped_column(String(16), default="T1")
+    stem: Mapped[dict] = mapped_column(JSON, default=dict)
+    approaches: Mapped[list] = mapped_column(JSON, default=list)
+    invariants: Mapped[list] = mapped_column(JSON, default=list)
+    scoring_points: Mapped[list] = mapped_column(JSON, default=list)
+    final_answers: Mapped[dict] = mapped_column(JSON, default=dict)
+    confidence: Mapped[str] = mapped_column(String(16), default="low")
+    status: Mapped[str] = mapped_column(String(24), default="pending", index=True)
+    evidence: Mapped[dict] = mapped_column(JSON, default=dict)
+    solver_version: Mapped[str] = mapped_column(String(64), default="dossier.v1")
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+
 class TutoringProblem(Base):
     """One work-product problem; `submitted` never asserts correctness."""
     __tablename__ = "tutoring_problems"
     id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
     tutoring_session_id: Mapped[str] = mapped_column(ForeignKey("tutoring_sessions.id"), index=True)
+    dossier_id: Mapped[str | None] = mapped_column(
+        ForeignKey("problem_dossiers.id", name="fk_tutoring_problem_dossier"),
+        nullable=True,
+        index=True,
+    )
     status: Mapped[str] = mapped_column(String(20), default="open", index=True)
     active_subgoal: Mapped[str | None] = mapped_column(Text, nullable=True)
     substantive_attempts: Mapped[int] = mapped_column(Integer, default=0)
@@ -450,6 +485,7 @@ class TutoringProblem(Base):
     last_turn_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     internal_blueprint: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    milestone_progress: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     group_context: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 

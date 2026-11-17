@@ -246,3 +246,14 @@ celery_app.task(name='duxue.reconcile_evening_sources')(_observed_task(reconcile
 celery_app.conf.beat_schedule['evening-source-reconciliation'] = {
     'task': 'duxue.reconcile_evening_sources', 'schedule': 300.0,
 }
+
+from app.workers.solving_tasks import (
+    SOLVE_TASK_NAME,
+    SOLVING_QUEUE,
+    solve_problem_dossier,
+)
+celery_app.task(name=SOLVE_TASK_NAME, queue=SOLVING_QUEUE)(_observed_task(solve_problem_dossier))
+celery_app.conf.task_routes = {
+    **(celery_app.conf.task_routes or {}),
+    SOLVE_TASK_NAME: {"queue": SOLVING_QUEUE},
+}

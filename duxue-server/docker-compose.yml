@@ -25,10 +25,20 @@ services:
   worker:
     image: ${DUXUE_SERVER_IMAGE:-duxue-server:local}
     build: .
-    command: celery -A app.workers.celery_tasks worker -l info
+    command: celery -A app.workers.celery_tasks worker -Q celery -l info
     env_file: ${ENV_FILE:-.env}
     environment:
       OTEL_SERVICE_COMPONENT: worker
+    volumes: ["./var/admin:/app/var/admin"]
+    restart: unless-stopped
+
+  solving-worker:
+    image: ${DUXUE_SERVER_IMAGE:-duxue-server:local}
+    build: .
+    command: celery -A app.workers.celery_tasks worker -Q solving -c 2 -l info
+    env_file: ${ENV_FILE:-.env}
+    environment:
+      OTEL_SERVICE_COMPONENT: solving-worker
     volumes: ["./var/admin:/app/var/admin"]
     restart: unless-stopped
 

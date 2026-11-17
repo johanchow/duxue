@@ -68,11 +68,17 @@ class QwenBlueprintPlannerGateway(BlueprintPlannerPort):
             return None
 
 
-def _verify_milestone_anchor(engine: MathEnginePort | None, raw_ms: dict) -> str:
+def verify_milestone_anchor(engine: MathEnginePort | None, raw_ms: dict) -> str:
+    """Verify a milestone's `canonical_target` deterministically against `verify_request`.
+
+    Fixing §4.3 / §8 gap: for non-equivalence ops (`differentiate`, `solve`, `evaluate`, etc.),
+    a non-empty engine result is NOT enough—it must deterministically match `canonical_target`!
+    """
     check_kind = raw_ms.get("check_kind") or "conceptual_rubric"
     if check_kind == "conceptual_rubric":
         return "not_applicable"
     verify_req = raw_ms.get("verify_request")
+    canonical = raw_ms.get("canonical_target")
     if engine is None or not isinstance(verify_req, dict):
         return "unverified"
     try:
@@ -80,11 +86,33 @@ def _verify_milestone_anchor(engine: MathEnginePort | None, raw_ms: dict) -> str
         res = engine.execute(req)
     except Exception:  # noqa: BLE001
         return "unverified"
-    if res.status != "ok":
+    if res.status != "ok" or res.conditions:
         return "unverified"
     if res.checked_scope == "equivalence":
         return "verified" if res.verdict == "equal" else "unverified"
-    return "verified" if res.result is not None else "unverified"
+    if res.result is None or not isinstance(canonical, str) or not canonical.strip():
+        return "unverified"
+    target_str = canonical.strip()
+    if res.result.strip() == target_str:
+        return "verified"
+    # For algebraic/value results, check symbolic equivalence between engine result and canonical_target
+    if res.checked_scope == "value":
+        try:
+            eq_req = MathInput(
+                op="equivalent",
+                args={"left": res.result, "right": target_str},
+                symbols=req.symbols,
+                assumptions=req.assumptions,
+            )
+            eq_res = engine.execute(eq_req)
+            if eq_res.status == "ok" and eq_res.verdict == "equal" and not eq_res.conditions:
+                return "verified"
+        except Exception:  # noqa: BLE001
+            return "unverified"
+    return "unverified"
+
+
+_verify_milestone_anchor = verify_milestone_anchor
 
 
 def build_verified_blueprint_and_group(

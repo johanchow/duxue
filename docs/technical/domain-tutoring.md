@@ -112,7 +112,7 @@ Companion 只把本轮场景定成 `tutoring`（见 [意图路由](domain-compan
 4. 删除 `TutoringIntent`、`QuestionShape`、`HistoryMatch` 三类调用及其端口。
 5. 加只读工具循环与泄露检查。
 
-实现进度（2026-11-16）：五步及高考深度扩展均已落地。工具循环已有 `get_task_context`、`get_attempt_summary`、`lookup_history`、`math`/`science`（见 [数学与多学科核验设计](tutoring-math.md)）与 `inspect_image`（基于 Pillow 的内存受权局部裁剪放大，遥测与 `observations` 仅留 `crop_ref` 元数据，图片字节不进观测）；`retrieve_authorized_learning_material`、`check_draft` 尚未实现，模型点名时由 `ToolGateway` 返回 `tool_error`。此外，`ProblemRecord` 已扩展服务端私有的内部解题蓝图值对象 `SolutionBlueprint`（区分解法路线 `approaches` 与客观不变量 `invariants`，首轮事务外生成并经确定性引擎预验算锚点，绝不下发客户端且不放宽 `Disclosure="protected"`）以及多小题题组上下文 `ProblemGroupContext`（支持 `relation="subproblem"` 归档前问、继承前序已核验结论，同时维持同一时刻至多一道 `open` 当前小题的不变量）。
+实现进度（2026-11-16）：五步及高考深度扩展均已落地。工具循环已有 `get_task_context`、`get_attempt_summary`、`lookup_history`、`math`/`science`（见 [数学与多学科核验设计](tutoring-math.md)）与 `inspect_image`（基于 Pillow 的内存受权局部裁剪放大，遥测与 `observations` 仅留 `crop_ref` 元数据，图片字节不进观测）；`retrieve_authorized_learning_material`、`check_draft` 尚未实现，模型点名时由 `ToolGateway` 返回 `tool_error`。此外，`ProblemRecord` 已扩展服务端私有的内部解题蓝图值对象 `SolutionBlueprint`（区分解法路线 `approaches` 与客观不变量 `invariants`，首轮事务外生成并经确定性引擎预验算锚点，绝不下发客户端且不放宽 `Disclosure="protected"`）以及多小题题组上下文 `ProblemGroupContext`（支持 `relation="subproblem"` 归档前问、继承前序已核验结论，同时维持同一时刻至多一道 `open` 当前小题的不变量）。目标演进已落地：解题与辅导分链路归属 ProblemSolving 的异步题目档案 `ProblemDossier`，见 [解题与辅导分链路](domain-problem-solving.md)。
 
 兼容边界：
 

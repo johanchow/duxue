@@ -2,6 +2,7 @@
 
 > 状态：代码已实现，待环境验收与真实模型评测；未发布。实现边界与启用步骤见 §6。
 > 方法：[DDD 规范](../../.cursor/skills/domain-driven-design/SKILL.md)。领域事实源：[Tutoring](domain-tutoring.md)；全系统领域清单、Domain Map 与分层图复用 [DDD Overview](ddd-overview.md)，不新增数学 Domain。
+> 演进：高考级私有解题（题目档案、多路异构共识、置信度门禁）已归属 [ProblemSolving](domain-problem-solving.md)；本文的算子协议与执行器隔离由两条链路共用。
 
 ## 1. 归属与分层
 

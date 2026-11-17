@@ -22,6 +22,7 @@ def scene_switch(*, content, current_agent_type, proposed_agent_type, recent_utt
 def tutor_turn(*, envelope, instruction, recent_utterances=None, current_images=None,
                repair_error=None, observations=None):
     clean_envelope = dict(envelope)
+    clean_envelope.pop("_dossier_gate", None)
     inspected_crops = clean_envelope.pop("inspected_crops", None) or []
     payload = {"contract": "tutor-turn.v4", "instruction": instruction, "context": clean_envelope}
     if current_images or any(row.get("image_urls") for row in recent_utterances or []):

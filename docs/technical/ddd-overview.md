@@ -17,7 +17,7 @@
 
 ## 二、Domain Inventory
 
-全系统共 **9 个 Domain**。
+全系统共 **10 个 Domain**（含已落地的 ProblemSolving 分链路域）。
 
 | # | Domain | 类型 | 拥有的语言、模型与规则 / 非目标 | 上游 / 下游与集成 |
 |---|---|---|---|---|
@@ -30,6 +30,7 @@
 | 7 | Evaluation & Reflection | Core | SelfReview、ReviewAspect、ReflectionReport/ReportVersion；自述和客观证据隔离，零自述晚间交付；不反写画像或计划 | Behavior/Study/Tutoring/Planning → 本域；授权报告 Query → Ward/Guardian；当前自述 Query → Companion/Planning/Tutoring |
 | 8 | Memory & Understanding | Core | LearningEvidence、EpisodicMemory、Signal、长期理解；不拥有今日自述或 Runtime Working Memory | 已确认学习事实 → 本域；MemoryBundle Query ACL → 学习各域 |
 | 9 | Companion Orchestration | Supporting | Thread/Run 连续性、交互协议、回复权与送达；不替各学习域作业务决定 | Identity/各学习域 Query 和交互请求 → 本域；typed intent → 对应领域 Command |
+| 10 | ProblemSolving | Core | ProblemDossier：结构化题面、解题路线、已验证锚点、采分点、置信度与难度分档；不拥有学生作答、对话或答案披露 | Tutoring RequestSolve → 本域；GetProblemDossier 受权 Query → Tutoring；见 [domain-problem-solving](domain-problem-solving.md) |
 
 CompanionCoordinator 是 Application 的 Process Manager，不是额外 Domain 或拥有全部学习状态的 Aggregate Root。Working Memory 属于 Companion Runtime。LearningFactRecorded.v1 是 Published Language，不是通用 Domain Event；自述不投递 Memory。
 
@@ -48,6 +49,7 @@ flowchart LR
     ER[Evaluation & Reflection / Core]
     MU[Memory & Understanding / Core]
     CO[Companion Orchestration / Supporting]
+    PS[ProblemSolving / Core · 目标]
     IR -->|authorization ACL| DI & PL & ST & TU & BA & ER & MU & CO
     DI -->|目标 Evidence Query ACL| BA
     DI -->|既有采集 LearningFactRecorded.v1| MU
@@ -63,6 +65,8 @@ flowchart LR
     CO -->|typed intent / Command| PL & ST & TU & ER
     ST -->|目标 HelpOfferReady.v1| CO
     CO -->|目标 HelpOfferPresented.v1| ST
+    TU -->|目标 RequestSolve| PS
+    PS -->|目标 GetProblemDossier ACL| TU
 ```
 
 历史文档中的 FrameRecorded.v1 未形成采集分析调度事实源，本方案不新增该事件，改由接收游标扫描；BehaviorSegmentGenerated.v1 的 session_id 幂等设计不适合零计划观察，新设计使用独立的 ObservationRevisionPublished.v1，不伪装为原事件兼容升级。现有调用保持迁移窗口，按领域文档的 feature flag 切换。
@@ -91,6 +95,7 @@ flowchart LR
 | GetStudySession | Study → Tutoring | status、ward_id、task_id；不订阅 Root 内部事件 |
 | 教学证据与凭证 Query | Tutoring → Evaluation | 原题、启发、微验证与明确状态；缺失不是通过 |
 | GetRecentSelfReviews | Evaluation → Companion/Planning/Tutoring | 按用途只读当前确认版本；Planning 仅 Ward 明确请求；不向 Guardian 开放原话 |
+| GetProblemDossier（目标） | ProblemSolving → Tutoring | 私有解投影与置信度；不解除答案保护，不向 Ward/Guardian 展示 |
 | MemoryBundle | Memory → 调用域 | actor、Ward、用途、可见范围、预算；不是 Integration Event |
 
 ## 五、Layered Architecture Map
@@ -123,6 +128,7 @@ API 不操作 ORM；Domain 不调用模型、数据库、队列。Query 是只�
 | Behavior Analysis | [domain-behavior](domain-behavior.md) | 新目标设计；窗口、观察日、缺口、增量分析和跨域发布未实现 |
 | Planning | [domain-planning](domain-planning.md) | 轻量计划与任务、按需展示、安排确认与执行事实边界（本轮实现待验收） |
 | Study | [domain-study](domain-study.md) | 已有会话/StartCue；Sprint 本轮实现待验收，HelpOffer 为目标扩展 |
+| ProblemSolving | [domain-problem-solving](domain-problem-solving.md) | 代码已实现（迁移 37），待线上 `solving` worker 部署与真实模型分层评测校准 |
 | Tutoring | [domain-tutoring](domain-tutoring.md) | 启发、答案保护、教学事实；[视频专题](tutoring-video-answer.md)另行演进 |
 | Evaluation & Reflection | [domain-evaluation](domain-evaluation.md) | 已有自述；零输入版本化客观报告为目标扩展 |
 | Memory & Understanding | [domain-memory](domain-memory.md) | 客观证据账本、Episode/Signal/Profile |

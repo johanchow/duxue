@@ -91,9 +91,19 @@ class TutoringWorkflow:
         image_target_selector: Callable[[list[dict], str], dict] | None = None,
         math_engine=None,
         blueprint_planner=None,
+        dossier_enqueue_fn: Callable[..., None] | None = None,
+        first_turn_solve_budget_seconds: float | None = None,
     ):
+        import os
+
         self.math_engine = math_engine
         self.blueprint_planner = blueprint_planner
+        self.dossier_enqueue_fn = dossier_enqueue_fn
+        self.first_turn_solve_budget_seconds = (
+            first_turn_solve_budget_seconds
+            if first_turn_solve_budget_seconds is not None
+            else float(os.getenv("SOLVE_FIRST_TURN_BUDGET_SECONDS", "2.5"))
+        )
         self.db = db
         self.turn_model = turn_model
         self.backup_model = backup_model
@@ -103,6 +113,69 @@ class TutoringWorkflow:
         self.image_target_selector = image_target_selector
         self._media_cache: dict[str, tuple[list[dict], list[str | None]]] = {}
         self._selected_image_refs: dict[str, list[str]] = {}
+
+    def _resolve_active_dossier(
+        self,
+        *,
+        ward_id: str,
+        problem_row: TutoringProblem | None,
+        content: str,
+        images: list[str],
+        attachment_keys: list[str],
+        tutoring_intent: str | None,
+    ):
+        """Read or asynchronously schedule `ProblemDossier` with bounded first-turn wait."""
+        import time
+
+        from app.application.commands.problem_solving import RequestSolveCommand
+        from app.application.queries.problem_dossier import GetProblemDossierQuery
+
+        query = GetProblemDossierQuery(self.db)
+        if problem_row is not None and problem_row.dossier_id:
+            return query.tutoring_view(
+                ward_id=ward_id,
+                dossier_id=problem_row.dossier_id,
+                student_progress=problem_row.milestone_progress or {},
+            )
+
+        # Only pre-lookup or pre-schedule on open-problem miss when async dossier mode is explicitly configured
+        # OR live model mode with gaokao blueprint component available; keep pronunciation/empty fast.
+        if tutoring_intent == "pronunciation" or (not content.strip() and not images):
+            return None, None
+        should_request_dossier = self.dossier_enqueue_fn is not None
+        if not should_request_dossier and self._live_turn_model:
+            from app.agent_specs.definitions import load_definitions
+            from app.agent_specs.gaokao_contracts import PLANNER_ID
+
+            should_request_dossier = PLANNER_ID in load_definitions().units
+        if not should_request_dossier or problem_row is not None:
+            return None, None
+
+        enqueue_cb = self.dossier_enqueue_fn
+        if enqueue_cb is None:
+            from app.workers.solving_tasks import enqueue_solve_dossier
+
+            enqueue_cb = lambda did, _imgs=None: enqueue_solve_dossier(
+                did, attachment_keys=attachment_keys
+            )
+
+        dossier = RequestSolveCommand(self.db, enqueue_fn=enqueue_cb).execute(
+            ward_id=ward_id,
+            text=content,
+            images=images,
+        )
+        # Bounded short poll if worker might resolve T1 fast within budget
+        budget = max(0.0, self.first_turn_solve_budget_seconds)
+        if dossier.status == "pending" and budget > 0:
+            deadline = time.monotonic() + budget
+            while time.monotonic() < deadline:
+                time.sleep(min(0.15, max(0.01, deadline - time.monotonic())))
+                self.db.expire_all()
+                refreshed = query.get_for_ward(ward_id=ward_id, dossier_id=dossier.dossier_id)
+                if refreshed is not None and refreshed.status != "pending":
+                    dossier = refreshed
+                    break
+        return dossier, dossier.tutoring_projection(student_progress={})
 
     def _planner(self):
         if self.blueprint_planner is not None:
@@ -428,19 +501,45 @@ class TutoringWorkflow:
             self.db, tutoring_session_id=tutor.id if tutor else None, problem=problem_row,
             task_title=task_title, task_active=task_active, window=window, math_engine=self.math_engine,
         )
+        all_authorized_images = self._judge_images(window, images)
+        active_dossier, dossier_projection = self._resolve_active_dossier(
+            ward_id=invocation.ward_id,
+            problem_row=problem_row,
+            content=content,
+            images=all_authorized_images,
+            attachment_keys=list(turn.get("attachment_keys") or []),
+            tutoring_intent=turn.get("tutoring_intent"),
+        )
         model_envelope = envelope.model_dump()
+        if active_dossier is not None:
+            model_envelope["_dossier_gate"] = {
+                "dossier_id": active_dossier.dossier_id,
+                "status": active_dossier.status,
+                "confidence": active_dossier.confidence,
+                "allows_verdict_assertion": active_dossier.allows_verdict_assertion(),
+            }
+            if active_dossier.status in {"ready", "low_confidence"} and dossier_projection is not None:
+                model_envelope["problem_dossier"] = dossier_projection
         if problem_row is not None:
-            if problem_row.internal_blueprint:
+            if problem_row.internal_blueprint and "problem_dossier" not in model_envelope:
                 model_envelope["internal_blueprint"] = problem_row.internal_blueprint
             if problem_row.group_context:
                 model_envelope["group_context"] = problem_row.group_context
+        high_conf_finals = (
+            active_dossier.final_answers
+            if active_dossier is not None
+            and active_dossier.status == "ready"
+            and active_dossier.confidence == "high"
+            and active_dossier.final_answers
+            else None
+        )
         transition("tutoring", "tutoring.image_target" if has_images else "tutoring.turn",
                    "tutoring.model_loop", "resolved" if has_images else "ready")
-        all_authorized_images = self._judge_images(window, images)
         result = self._run_model(
             model_envelope, instruction, window, images, tools, permit=permit, task_title=task_title,
             problem_summary=judge_problem_summary(
                 self._recent_problem_summaries(tutor), content, recent_utterances=window,
+                verified_final_answers=high_conf_finals,
             ),
             judge_images=all_authorized_images,
         )
@@ -537,14 +636,12 @@ class TutoringWorkflow:
         if work:
             planned_blueprint = None
             planned_group = None
+            target_dossier_id = active_dossier.dossier_id if active_dossier is not None else None
             if (
                 candidate.relation in {"new", "subproblem"}
                 and (candidate.depth or "reasoning") == "reasoning"
                 and (problem_row is None or candidate.relation != "same" or problem_row.last_turn_id != invocation.turn_id)
             ):
-                from app.application.workflows.blueprint_planner import (
-                    build_verified_blueprint_and_group,
-                )
                 from app.contexts.tutoring.domain.blueprint import (
                     ProblemGroupContext,
                     VerifiedPriorConclusion,
@@ -573,22 +670,53 @@ class TutoringWorkflow:
                         next_label=(candidate.work.subproblem_label if candidate.work else None) or "(next)",
                         verified_conclusion=prior_conc,
                     )
+                    # Subproblems on a dossier-backed stem share the parent dossier!
+                    if target_dossier_id is None and problem_row is not None and problem_row.dossier_id:
+                        target_dossier_id = problem_row.dossier_id
                 else:
                     prior_group_vo = None
 
-                planned_blueprint, planned_group = build_verified_blueprint_and_group(
-                    self._planner(),
-                    self.math_engine,
-                    content=content,
-                    images=all_authorized_images,
-                    prior_group=prior_group_vo,
-                    grade_stage=grade_stage,
-                )
+                # If explicit legacy `blueprint_planner` was injected in unit tests (and no async dossier requested),
+                # preserve transitional synchronous fallback; otherwise async `ProblemDossier` owns solving!
+                if target_dossier_id is None and self.blueprint_planner is not None:
+                    from app.application.workflows.blueprint_planner import (
+                        build_verified_blueprint_and_group,
+                    )
+
+                    planned_blueprint, planned_group = build_verified_blueprint_and_group(
+                        self.blueprint_planner,
+                        self.math_engine,
+                        content=content,
+                        images=all_authorized_images,
+                        prior_group=prior_group_vo,
+                        grade_stage=grade_stage,
+                    )
+                else:
+                    planned_group = prior_group_vo
+                    if target_dossier_id is None and (self.dossier_enqueue_fn is not None or self._live_turn_model):
+                        from app.application.commands.problem_solving import (
+                            RequestSolveCommand,
+                        )
+
+                        enqueue_cb = self.dossier_enqueue_fn
+                        if enqueue_cb is None:
+                            from app.workers.solving_tasks import enqueue_solve_dossier
+
+                            enqueue_cb = lambda did, _imgs=None: enqueue_solve_dossier(
+                                did, attachment_keys=list(turn.get("attachment_keys") or [])
+                            )
+                        created_dos = RequestSolveCommand(self.db, enqueue_fn=enqueue_cb).execute(
+                            ward_id=invocation.ward_id,
+                            text=content,
+                            images=all_authorized_images,
+                        )
+                        target_dossier_id = created_dos.dossier_id
 
             transition("tutoring", "tutoring.output_safety", "tutoring.apply_problem", "accepted_work")
             problem_status, hint_index, attempted, evidence_problem_id = self._apply_problem(
                 tutor, problem_row, candidate, verdict, invocation, has_work_input=bool(content.strip() or images),
                 summary=content, planned_blueprint=planned_blueprint, planned_group=planned_group,
+                dossier_id=target_dossier_id,
             )
         transition("tutoring", "tutoring.apply_problem" if work else "tutoring.output_safety",
                    "tutoring.result", None if work else "fallback_or_readonly")
@@ -648,7 +776,7 @@ class TutoringWorkflow:
     @traced_agent_node("tutoring.apply_problem")
     def _apply_problem(
         self, tutor, row, candidate, verdict, invocation, *, has_work_input, summary,
-        planned_blueprint=None, planned_group=None,
+        planned_blueprint=None, planned_group=None, dossier_id: str | None = None,
     ):
         """按 `TutorPermitPolicy.advance()` 推进题目记录。返回（题目状态，本轮提示序号，是否计了一次实质尝试）。
 
@@ -665,23 +793,35 @@ class TutoringWorkflow:
         if row is None or new_problem:
             if row is not None:
                 row.status = "abandoned"
+            initial_progress = {}
+            if candidate.work and candidate.work.completed_milestone_id:
+                initial_progress[candidate.work.completed_milestone_id] = "completed"
             row = TutoringProblem(
                 tutoring_session_id=tutor.id,
+                dossier_id=dossier_id,
                 summary=summary[:500],
                 internal_blueprint=planned_blueprint.to_dict() if planned_blueprint is not None else None,
+                milestone_progress=initial_progress or None,
                 group_context=planned_group.to_dict() if planned_group is not None else None,
             )
             self.db.add(row)
             self.db.flush()
-        elif row.internal_blueprint and candidate.work:
-            bp_vo = SolutionBlueprint.from_dict(row.internal_blueprint)
-            updated_bp = BlueprintProgressPolicy.advance(
-                bp_vo,
-                completed_milestone_id=candidate.work.completed_milestone_id,
-                adopted_approach_id=candidate.work.adopted_approach_id,
-            )
-            if updated_bp is not None:
-                row.internal_blueprint = updated_bp.to_dict()
+        else:
+            if dossier_id and not row.dossier_id:
+                row.dossier_id = dossier_id
+            if row.dossier_id and candidate.work and candidate.work.completed_milestone_id:
+                prog = dict(row.milestone_progress or {})
+                prog[candidate.work.completed_milestone_id] = "completed"
+                row.milestone_progress = prog
+            elif row.internal_blueprint and candidate.work:
+                bp_vo = SolutionBlueprint.from_dict(row.internal_blueprint)
+                updated_bp = BlueprintProgressPolicy.advance(
+                    bp_vo,
+                    completed_milestone_id=candidate.work.completed_milestone_id,
+                    adopted_approach_id=candidate.work.adopted_approach_id,
+                )
+                if updated_bp is not None:
+                    row.internal_blueprint = updated_bp.to_dict()
         assessment = ProblemAssessment(
             effective_work_product=True, student_move=candidate.student_move,
             progress=candidate.progress, act=candidate.act,
