@@ -6,6 +6,8 @@
 # 在 duxue-server 目录，先使用与启动进程相同的环境配置更新数据库
 # 默认读取同目录 `.env`；使用其它 ENV_FILE 时，迁移与启动都需指定它
 .venv/bin/alembic upgrade head
+# 只读验收：未应用全部迁移时返回非零退出码
+.venv/bin/alembic current --check-heads
 
 # 推荐启动方式
 python main.py
@@ -26,6 +28,28 @@ Agent功能还需准备Admin发布/导出快照，已取消仓库业务默认配
 alembic upgrade head
 ```
 
+## 数据库与联调验收
+
+服务端本地业务联调使用 `.env` 对应的 PostgreSQL `duxue-test`；正式服务使用 `.env.prod` 对应的 `duxue-prod`。现有进程环境变量优先于文件，执行迁移前必须确认实际数据库目标。Admin 自己的数据库连接由 `duxue-admin/.env` 管理，不能用它代替业务库检查。
+
+每次涉及持久化结构的开发验收，须区分以下证据：
+
+| 验证方式 | 数据库 | 能证明什么 |
+|---|---|---|
+| 快速自动测试 | 多数使用内存 SQLite，以当前 ORM 建表 | 用例与协议行为；不证明 PostgreSQL 迁移或联调库已升级 |
+| PostgreSQL 集成测试 | 一次性本机实例或专用临时库 | PostgreSQL 约束、事务及迁移测试通过；不修改 `.env` 联调库 |
+| 本地业务联调 | `.env` 对应的 `duxue-test` | 实际连接的库已迁移，并能运行当前业务链路 |
+
+数据库变更收工前，先备份目标库，再执行迁移和只读版本检查：
+
+```bash
+# 在 duxue-server 目录，确认没有继承其它环境的 DATABASE_URL
+ENV_FILE=.env .venv/bin/alembic upgrade head
+ENV_FILE=.env .venv/bin/alembic current --check-heads
+```
+
+验收记录必须注明实际库名、迁移前后版本，并检查本轮关键表/字段及相关 PostgreSQL 用例。自动测试通过不能替代上述联调检查，也不能表述为“测试业务库已升级”。版本检查只核对 Alembic head，不检测任意手工结构漂移。Agent 配置另按[配置入口](agent_specs/README.md)检查当前实际快照；Admin 发布不会自动替换本地离线快照。
+
 对于历史上由 `Base.metadata.create_all()` 创建、但从未使用 Alembic 的数据库，先备份数据库并核对当前表结构，再执行 `alembic stamp 20260804_01`，最后执行 `alembic upgrade head`。该过程会把 `owner` 转为 `admin`、`teacher/parent` 转为 `guardian`，并删除已废弃的 `birth_year` 与 `relation_type` 列。
 
 ## Docker
@@ -35,7 +59,7 @@ alembic upgrade head
 ```bash
 # Grafana 与可选 Langfuse 均由 `.env.prod` 中的环境变量直接配置。
 ENV_FILE=.env.prod docker compose --profile tools run --rm migrate
-ENV_FILE=.env.prod docker compose up -d api worker beat
+ENV_FILE=.env.prod docker compose -f docker-compose.yml -f docker-compose.math.yml up -d --wait math-engine api worker solving-worker beat
 ```
 
 如需启用 Langfuse Cloud，在 `.env.prod` 配置 `LANGFUSE_ENABLED=true`、项目 API key

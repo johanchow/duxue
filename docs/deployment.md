@@ -217,7 +217,7 @@ docker compose --env-file .env.prod --env-file images.env -f docker-compose.yml 
 
 ## 数学执行器与配置升级
 
-实现说明见 [数学核验设计](technical/tutoring-math.md)。本轮仅准备代码和CI，不操作正式发布或线上容器。
+实现说明见 [数学核验设计](technical/tutoring-math.md)。正式升级验收记录见本节末尾；以下为配置和部署顺序。
 
 1. **先导出再升级控制执行器。** 从旧Admin导出当前工作草稿（若有）或当前发布快照；保留其id、digest、revision及environment。新代码契约不加载旧格式快照，避免升级后无法导出旧包。勿使用历史测试夹具替代当前配置。
 2. 在Server目录生成升级候选（不覆盖源文件、不发布）：
@@ -238,10 +238,22 @@ docker compose --env-file .env.prod --env-file images.env -f docker-compose.yml 
 
    ```bash
    docker compose -f docker-compose.yml -f docker-compose.math.yml build math-engine
-   docker compose -f docker-compose.yml -f docker-compose.math.yml up -d --wait math-engine api worker beat
+   docker compose -f docker-compose.yml -f docker-compose.math.yml up -d --wait math-engine api worker solving-worker beat
    ```
 
    配置见Compose：无网络、非root、只读根目录、无业务凭据、资源配额；专用volume仅共享socket。不要把Docker socket挂进业务容器。Admin控制执行器若独立容器运行，也需挂载同环境的socket volume并设置路径；本机调试可另启动本机执行器，但它不等价于生产容器隔离。
 5. 在相同配置摘要下完成导师、备用模型、Judge真实调试及答疑回放后，由管理员正常发布；Server预检通过才更新服务。发布旧代码无法理解的新契约前，要安排Admin/Server兼容升级窗口，旧服务继续使用已固定的旧包，不把新包加载失败当作已切换成功。
 
 Server CI安装数学测试依赖、构建独立镜像，并运行`python scripts/smoke_math_container.py duxue-math:ci`验证计算、UID、网络/文件系统与资源配置。Server Deploy构建同SHA数学镜像、上传Compose overlay并等待健康；没有合并/推送不会执行部署。回滚应同时恢复兼容的代码镜像与Admin完整发布包。
+
+独立解题任务由 `solving-worker` 消费 `solving` 队列，普通 `worker` 只消费 `celery`，不能替代它。发布时须将 `solving-worker` 纳入镜像拉取和服务启动列表，确认其数学 socket、Admin 发布回执及真实队列消费。数据库迁移成功与健康接口正常不代表解题 Worker 已上线。
+
+### 2026-11-17 正式升级验收
+
+正式 Admin 配置从 R2 升级至 R3（`30f227e1ef890f442ac059943f580f2c6ad702cd43af5c928a503695f63466e3`，54文件），以正式原发布为基线，保留已有主备模型与Judge模型，补齐数学/蓝图/局部图片工具及主动视觉交付协议。新增规划器使用 `qwen3.7-plus-2026-05-26`，独立复读使用 `qwen3.8-flash`；不是将测试R12整包复制到正式库。
+
+Admin/Executor及API、普通Worker、独立解题Worker、Beat、数学执行器均运行 `d1483f236c57d0e2c802164650f77bbaddffc17d` 对应镜像。业务库迁移37，API及两个Worker的5个进程回执均加载R3；首轮ReadTimeout后已恢复。公网API/Admin健康检查200、Celery两类Worker pong、数学socket运算及真实 `solving` 队列消费通过。
+
+正式草稿中两槽模型与完整Tutoring隔离调试成功，Admin保留记录。后台解题使用无关联学生的临时合成题，产出两条路线并结算T2低置信度，结束后清理档案与任务结果。该结果证明任务分派、模型、数学执行器和落库链路连通，不证明简单题高置信度解题质量，亦未覆盖真实图片复读或全量教学评测。
+
+升级前已完整备份正式Admin数据库并保存旧配置。备份、发布与部署/验证证据仅在本机ignored `duxue-server/var/environment-audit-20261117/`，含私有内容，不提交Git。本次通过ECS受控命令部署已构建镜像；GitHub历史失败run不会因此改为成功。流水线缺失解题Worker的修复须随仓库变更提交，后续自动部署才会采用。
