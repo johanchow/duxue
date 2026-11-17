@@ -30,7 +30,7 @@ def __getattr__(name):
 
 class TutorToolbox:
     def __init__(
-        self, db: Session, *, tutoring_session_id: str | None, problem: TutoringProblem | None,
+        self, db: Session | None, *, tutoring_session_id: str | None, problem: TutoringProblem | None,
         task_title: str | None, task_active: bool, window: list[dict], math_engine=None,
         image_inspector=None,
     ):
@@ -155,7 +155,7 @@ class TutorToolbox:
             {"ref": item["ref"], "author": item["author"], "text": item["text"]}
             for item in history_candidates(self.window) if query in item["text"]
         ]
-        if self.tutoring_session_id:
+        if self.tutoring_session_id and self.db is not None:
             rows = (
                 self.db.query(TutoringMessage)
                 .filter(TutoringMessage.tutoring_session_id == self.tutoring_session_id,

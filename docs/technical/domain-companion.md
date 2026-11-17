@@ -793,3 +793,18 @@ And 不呈现空选择题或 pronunciation_lesson
 产品入口见[用户PRD §6.3](../product/prd-user.md#63-按需查看与统一对话)。对话内图标使用Study独立preview，不写Thread/Run。自然语言挑战仍走Planning的受控动作：从Tutoring切入Planning时服务端记录原Run引用，只有已返回`sprint_control`的结果才能授权回到该Run；随后进入Tutoring时验证同Ward/Thread且原Run仍paused，恢复原Run/checkpoint。普通Planning切换不据此恢复旧题，历史清空与迟到结果围栏继续生效，客户端不能提供恢复引用。
 
 场景核查须允许明确挑战/提醒动作作为答疑中的短暂插曲，不要求结束原题；单纯估时与提交解题步骤仍留在答疑。自然语言挑战确认按钮紧跟最新对话，不能放在全部历史之前。真实模型边界冒烟可运行 `cd duxue-server && .venv/bin/python -m scripts.check_reminder_sprint_models`，仅使用固定样例，不写数据库。
+
+
+## Guardian 问答体验（2026-11-17，已验收）
+
+成人体验不进入 Ward 的 Companion Coordinator、Thread/Run 账本和 Tutoring/Study 持久化，不读取任何孩子上下文或 Memory，也不发布学习事实。复用无数据库依赖的 `run_tutor_turn`、答案保护策略、独立 Judge、只读工具、图片目标选择与发音结构校验；不创建虚拟 Ward。产品范围唯一归属 [用户 PRD §7.2](../product/prd-user.md#72-家长问答体验)。
+
+| 接口 | 契约 |
+|---|---|
+| `POST /guardian/experience/turn` | Guardian 鉴权；`content` 最多2400字、图片最多4张、可选 `state_token`；不接受 Ward ID、客户端历史或许可状态。返回审核后的 content/act，可选 visual/lessons 及新 state_token。 |
+| `POST /guardian/experience/attachments/upload-url` | 仅接受匹配的 JPEG/PNG/WebP MIME；路径严格限定 `guardian/{当前成人}/experience/{文件名}`，不读取孩子或他人图片。沿用对象存储上传机制。 |
+| `POST /guardian/experience/speech` | 仅凭服务端签发的 speech_ref 朗读已校验原文，速率限0.5/0.75/1.0；不接受客户端替换朗读文字。 |
+
+状态使用独立用途域的 HMAC-SHA256 签名，绑定 Guardian、用途与4小时期限；不是登录 token，不得用于学生接口。对话状态只携带最近8条/2400字原话窗口、最多3道题摘要和答案保护状态，图片只保留成人专属对象键，不携带像素。主模型不能解除已有答案保护；出口失败不推进题目，不将拒绝草稿投影给用户。发音状态与对话状态用途不互通，越权、篡改、过期返回409，要求重新开始。签名状态不提供加密，按用户会话数据处理，不进入日志或遥测标签。
+
+本轮没有数据库迁移或永久体验历史。客户端退出/重启即不恢复，签名状态过期后不再使用；已上传对象沿用对象存储生命周期，清空界面不声称物理删除照片。旧 `/task-intake/{respond,confirm,upload-url,cleanup}` 鉴权后统一返回410，不再提供作业/通知/留言传递；历史任务与 Ward 自主 Planning 能力保留。

@@ -64,7 +64,7 @@
 | 角色 / 端 | 说明 |
 | :--- | :--- |
 | **ward（学生）** | 被陪伴与赋能的主体。在线下纸质作业场景中按需使用 AI 答疑、自由表达计划意图与今日总结，拥有计划的最终确认权（通过 `duxue-app` 学生角色交互）。 |
-| **guardian（家长/监护人）** | 创建与绑定家庭关系、可选传递外部作业信息、当晚接收《伴学闭环实况单》与《独立解题凭证》（通过 `duxue-app` 家长角色交互）。 |
+| **guardian（家长/监护人）** | 创建与绑定家庭关系、亲自体验启发答疑、当晚接收《伴学闭环实况单》与《独立解题凭证》（通过 `duxue-app` 家长角色交互）。 |
 | **coach（伴学师/晚托教师 · 演进角色）** | 在晚托班、自习室或督学工作室场景下，同时关联与管理多名 `ward`（1对多工作台），实时掌握全场卡点动态，批量审阅并向对应 `guardian` 交付定制化伴学日报。 |
 | **读学Eye** | 标准网络摄像头与共享本地采集网关。摄像头架设在书桌侧后方约 45°；网关稀疏采图、持久缓存并直传 OSS。Go网关已实现，真实摄像头/OSS现场验收待完成，详见采集技术设计。 |
 
@@ -112,7 +112,7 @@
 - **客户端层**：
   1. **读学Eye**：采用固定机位标准摄像头与共享采集网关，和学生交互设备物理分离；Go网关已实现，待家庭现场验收。
   2. **`duxue-app` · Ward 端**：默认安静首页，主动求助才展开对话；底部复用唯一 `VoiceComposer`。普通任务与时间按需查看，不常驻当前/下一项；仅主动开启的限时 Sprint 展示挑战卡。首页规则见 [用户 PRD](prd-user.md#六ward-首页与导航架构默认安静首页--按需对话--可选专注挑战)。
-  3. **`duxue-app` · Guardian 端**：聚焦设备绑定与在线状态、外部作业信息传递、以及每晚查收结构化伴学实况单与难题独立解题凭证。
+  3. **`duxue-app` · Guardian 端**：聚焦设备绑定与在线状态、独立问答体验、以及每晚查收结构化伴学实况单与难题独立解题凭证。
 - **服务端核心领域（Domain）**：
   - **`Companion`（陪伴编排域）**：Ward 可见对话的唯一 append-only 账本，负责意图路由、跨场景切换核查（`scene-switch`）、确认卡与交互按钮生命周期管理。
   - **`Planning`（轻量计划与任务域）**：保留任务、草稿、当日顺序与可选估时/起点；安排确认与实际执行分离，面向用户按需显露，见 [Planning 设计](../technical/domain-planning.md)。
@@ -132,7 +132,7 @@
 | **轻量计划与任务** | Ward 专属 | **L2 可选增强** | 普通任务按需提示，可选主动 Sprint；无常驻当前/下一项，不要求维护任务管理系统 | [`prd-schedule.md`](prd-schedule.md) / [`domain-planning.md`](../technical/domain-planning.md) |
 | **学习会话与到点邀请（StartCue）** | Ward 专属 | **L2 可选增强** | 任务计时状态机、到点未开始时温和卡片邀请（不自动开课） | [`domain-study.md`](../technical/domain-study.md) |
 | **今日自由总结与主客观对照** | Ward 专属 | **L2 可选增强** | 语音/文字自由回顾经历，保留原话可修订，与客观记录对照 | [`prd-evaluate.md`](prd-evaluate.md) / [`domain-evaluation.md`](../technical/domain-evaluation.md) |
-| **传递外部任务 / 查看计划** | Guardian / Coach | **L2 可选增强** | 转发学校作业信息入池；只读查看 Ward 计划，无权直接修改 | [`prd-schedule.md`](prd-schedule.md) |
+| **家长问答体验** | Guardian / Coach | **使用前体验** | 成人独立体验启发答疑，不写入孩子学习事实 | [`prd-user.md`](prd-user.md#72-家长问答体验) |
 | **多学员督学工作台与家校日报** | Coach（演进） | **B2C 机构赋能** | 1对多查看学员专注曲线与卡点切片，一键生成定制化家校交付日报 | [`prd-user.md`](prd-user.md)（多 Ward 切换与共管） |
 | **身份认证、家庭与设备绑定** | 共同能力 | 基础设施 | Guardian 邮箱验证码登录、Ward 绑定码与可轮换凭证、Cam 扫码绑定 | [`prd-user.md`](prd-user.md) / [`design-app.md`](../technical/design-app.md) |
 | **孩子理解与三层记忆引擎** | 系统纯后端 | 基础设施 | 仅消费客观事实事件（答疑/行为/执行），按需向各域注入上下文 | [`prd-memory.md`](prd-memory.md) / [`domain-memory.md`](../technical/domain-memory.md) |
@@ -178,7 +178,7 @@ graph TB
     MEM -->|按需上下文注入| TUT & PLAN & EVAL
 
     EVAL -->|P0-1 实况单 / P0-3 独立解题凭证| APPG
-    PLAN -.->|可选：传递外部作业 / 只读查看| APPG
+    APPG -.->|独立体验，不写孩子事实| TUT
 ```
 
 ---
