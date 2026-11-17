@@ -31,7 +31,7 @@ def test_migrated_repair_window_and_svg_text_is_unchanged():
     actual = {}
     for name in ("_visual_repair", "_leak_repair", "_visual_leak_repair", "_missing_visual_repair"):
         for reason in (("choice_verdict", "final_answer") if name == "_leak_repair" else ("schema",)):
-            review = SimpleNamespace(candidate=candidate, leak_reason=reason, failure="leak_detected")
+            review = SimpleNamespace(candidate=candidate, leak_reason=reason, failure="leak_detected", visual_feedback=None)
             args = (candidate, raw) if name == "_visual_repair" else (review,)
             actual[name + ":" + reason] = digest(getattr(tutor_loop, name)(*args))
     for kind, rows, omitted in [

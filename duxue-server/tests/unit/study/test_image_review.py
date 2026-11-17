@@ -1,6 +1,7 @@
 import json
 
 import pytest
+
 from app.application.workflows.tutor_loop import Vetting, _leak_repair
 from app.application.workflows.tutor_turn import TutorTurnCandidate
 from tests.support.fakes import tutor_raw
@@ -60,13 +61,16 @@ def test_pure_picture_question_cannot_make_a_work_claim_without_a_report():
 @pytest.mark.parametrize(('expression', 'submitted', 'correct'), [
     ('90-37', '53', True), ('34-(28-13)', '17', False), ('63/(21-12)', '7', True),
     ('40+6*6', '76', True), ('-3+5', '2', True),
+    ('(9-1)×4', '32', True), ('(9-1)×4', '36', False),
+    ('63÷(21-12)', '7', True), ('0.1×3', '0.3', True),
+    ('8', '16÷2', True),
 ])
 def test_transcribed_arithmetic_is_checked_as_syntax_not_text_semantics(expression, submitted, correct):
     from app.application.workflows.image_review import Calculation
     assert Calculation(expression=expression, submitted=submitted).correct() is correct
 
 
-@pytest.mark.parametrize('expression', ['__import__("os").system("echo bad")', '2**999999', '1/0', 'value+1', '1+'])
+@pytest.mark.parametrize('expression', ['__import__("os").system("echo bad")', '2**999999', '1/0', 'value+1', '1+', '2××3', '8÷÷2', '4x9', '9×value'])
 def test_calculation_never_executes_code_or_open_semantic_expressions(expression):
     from app.application.workflows.image_review import Calculation
     with pytest.raises(ValueError):
@@ -82,7 +86,8 @@ def test_correct_submitted_arithmetic_cannot_be_labelled_incorrect_in_a_review()
                        calculation={'expression': '90-37', 'submitted': '53'}).validate_calculation()
 
 
-def test_verified_report_is_fixed_before_visible_reply_is_generated():
+@pytest.mark.parametrize(('expression', 'submitted'), [('90-37', '53'), ('(9-1)×4', '32')])
+def test_verified_report_is_fixed_before_visible_reply_is_generated(expression, submitted):
     from app.agent_specs.image_refs import image_ref
     from app.application.workflows.tutor_loop import run_tutor_turn
     from app.application.workflows.tutor_tools import TutorToolbox
@@ -90,15 +95,15 @@ def test_verified_report_is_fixed_before_visible_reply_is_generated():
     from tests.support.fakes import StaticLeakJudge, StaticTutorModel
     pixels = 'data:image/jpeg;base64,YQ=='
     report = {'conclusion': 'all_correct', 'coverage': 'complete', 'questions': [
-        {'image_ref': image_ref(pixels), 'kind': 'arithmetic', 'location': '一22', 'task': '90-37', 'student_answer': '53',
-         'verdict': 'correct', 'basis': '核验一致', 'calculation': {'expression': '90-37', 'submitted': '53'}}]}
+        {'image_ref': image_ref(pixels), 'kind': 'arithmetic', 'location': '一22', 'task': expression, 'student_answer': submitted,
+         'verdict': 'correct', 'basis': '核验一致', 'calculation': {'expression': expression, 'submitted': submitted}}]}
     model = StaticTutorModel(tutor_raw(content='不应直接展示的首版草稿', image_review=report),
                              tutor_raw(content='你提交的这道题算对了。'))
     judge = StaticLeakJudge(False)
     result = run_tutor_turn(model, {}, '{}', [], [pixels],
                             TutorToolbox(None, tutoring_session_id=None, problem=None, task_title=None, task_active=False, window=[]),
                             permit=TutorPermitPolicy.permit(None), leak_judge=judge,
-                            task_title=None, problem_summary='{"current_request":"检查90-37=53"}', judge_images=[pixels])
+                            task_title=None, problem_summary=json.dumps({'current_request': f'检查{expression}={submitted}'}), judge_images=[pixels])
     assert result.vetting.failure is None
     assert result.call.candidate.content == '你提交的这道题算对了。'
     assert result.call.used_calls == 2
@@ -196,6 +201,7 @@ def test_concurrent_turns_do_not_share_the_selected_image_refs():
     from concurrent.futures import ThreadPoolExecutor
     from threading import Barrier
     from types import SimpleNamespace
+
     from app.application.workflows.tutoring_workflow import TutoringWorkflow
     barrier = Barrier(2)
     workflow = TutoringWorkflow(None)
@@ -212,7 +218,10 @@ def test_concurrent_turns_do_not_share_the_selected_image_refs():
 
 def test_correct_final_verdict_does_not_promote_an_unverified_step_diagnosis():
     from app.agent_specs.image_refs import image_ref
-    from app.application.workflows.image_review import ImageReview, reconcile_calculations
+    from app.application.workflows.image_review import (
+        ImageReview,
+        reconcile_calculations,
+    )
     report = ImageReview.model_validate({'conclusion': 'some_incorrect', 'coverage': 'complete', 'questions': [
         {'image_ref': image_ref('image'), 'kind': 'arithmetic', 'location': '二1', 'task': '34-(28-13)',
          'student_answer': '17', 'verdict': 'incorrect', 'basis': '括号内算错',
@@ -238,7 +247,10 @@ def test_image_candidate_cannot_bypass_independent_review_by_claiming_non_work()
 
 def test_arithmetic_reconciliation_precedes_conclusion_consistency_checks():
     from app.agent_specs.image_refs import image_ref
-    from app.application.workflows.image_review import ImageReview, reconcile_calculations
+    from app.application.workflows.image_review import (
+        ImageReview,
+        reconcile_calculations,
+    )
     raw = {'conclusion': 'all_correct', 'coverage': 'partial', 'questions': [
         {'image_ref': image_ref('image'), 'kind': 'arithmetic', 'location': '二1', 'task': '34-(28-13)',
          'student_answer': '17', 'verdict': 'correct', 'basis': '模型误算',

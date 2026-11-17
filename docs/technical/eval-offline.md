@@ -420,3 +420,20 @@ Experiment：一次运行在一个 Dataset 上的结果
 Runner 验证组件执行及证据传递，不是数据库状态机全链路测试。含图用例需实际验证原生裁判收到附件。外部教学素材共8例保留 `pedagogical-action-v1` 与 `subject-competence-v1` 批次、原始来源与 proposed 标签；此前本地8例通过仅是历史结果，不预设迁移后评分仍全通过。
 
 当前已确认的兼容限制：Langfuse Cloud 对现有 DashScope 自定义模型连接拒绝 JPEG 原生评测；图片已保留，相关语义分数缺失记 error，不能把纯确定性通过当作整例通过。修复需确认支持视觉的云端连接；不会删除图片或回退本地裁判。
+
+### 独立本地对话回归
+
+少量明确授权的本地开发任务可用 `scripts.run_local_dialogues` 直接消费标准 `dialogue-eval.v2` 文件，不要求 Omni manifest，不经过云端 Dataset/Evaluator，也不作为云端缺分的自动降级。任务只允许 `single_turn` / `episode`，拒绝云端专用评分器；复用既有 `run_sample` / `run_episode`、生产 `run_tutor_turn` 和本地 `SemanticGrader`，不另造业务链路。执行器要求质量评分模型与导师主、备模型均不同。
+
+从 `duxue-server/` 运行（配置必须是明确导出的完整快照，输出目录必须尚不存在）：
+
+```sh
+MATH_ENGINE_MODE=subprocess .venv/bin/python -m scripts.run_local_dialogues \
+  --data evals/data/visual-delivery-v1 \
+  --config-snapshot var/visual-delivery-20261117/config-v8.json \
+  --out var/evals/visual-delivery-new-run
+```
+
+“本地离线评测”指本地任务、回放与评分产物；真实模型仍调用 DashScope，需要网络和密钥。脚本禁用 Langfuse/OTEL，保存输入、配置、源码与输入 SHA256、逐任务结果及总结果，绝不覆盖已有批次。每项采样一次，任何检查点 fail/error/not_run 均不算整项通过。
+
+[视觉交付任务](../../duxue-server/evals/data/visual-delivery-v1/README.md)来自两次生产故障题意和真机调试脚本的合成重构，标记 `proposed/uncalibrated`。标准输入中的作业标题保持中性，不能把“主动配图”等评分目标塞入被测上下文。后续轮使用实际生成的前轮回答；不含原作业图片，因此不覆盖 OCR、原图作答审核、麦克风/ASR，也不能将 SVG 结构语义评分称为像素级视觉验收。真机渲染截图单独留证。少量开发回归通过不代表发布门槛或全量稳定性。

@@ -53,6 +53,10 @@ def _judge_problem(summary):
 def text_judge(*, text, task_title, problem_summary, images=None):
     from app.agent_specs.image_refs import image_manifest
     payload = {"task_title": task_title, "problem": _judge_problem(problem_summary), "reply": text}
+    from app.agent_specs.visual_delivery import enabled
+    if enabled():
+        from app.agent_specs.definitions import load_definitions
+        payload["response_schema"] = load_definitions().units["tutoring.leak-judge"].provider_output_schema
     if images:
         payload["image_manifest"] = image_manifest(images)
     body = json.dumps(payload, ensure_ascii=False)
