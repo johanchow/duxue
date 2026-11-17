@@ -6,7 +6,9 @@ import {
   AgentDetail,
   WorkflowInventory,
   WorkflowExplorer,
+  WorkflowActionDetail,
 } from './inventory';
+import { workflowNodeTitle } from '../lib/workflow-graph';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { studioRoute, studioPaths } from '../lib/studio-route';
 import { LoadStatus, VersionDetail } from './versions';
@@ -67,7 +69,7 @@ export default function Studio() {
   const router = useRouter(),
     pathname = usePathname(),
     search = useSearchParams();
-  const { tab, id: entityId } = studioRoute(pathname);
+  const { tab, id: entityId, nodeId } = studioRoute(pathname);
   const agent =
     tab === 'agent-detail'
       ? (state?.catalog?.components || state?.catalog?.agents)?.find(
@@ -77,7 +79,7 @@ export default function Studio() {
   const draftId =
     tab === 'config'
       ? entityId
-      : ['agent-detail', 'flow-detail'].includes(tab)
+      : ['agent-detail', 'flow-detail', 'flow-node-detail'].includes(tab)
         ? search.get('draft')
         : null;
   function navigate(url: string) {
@@ -108,6 +110,37 @@ export default function Studio() {
   const [publishedDebug, setPublishedDebug] = useState<Doc | null>(null);
   const [debugOpen, setDebugOpen] = useState(false);
   const graphSnapshot = draftId ? draft : publishedDebug;
+  const workflowSnapshot =
+    tab === 'flow-detail'
+      ? graphSnapshot
+      : tab === 'flow-node-detail' && draftId && draft?.id === draftId
+        ? draft
+        : null;
+  const workflowFiles = workflowSnapshot
+    ? Object.values(workflowSnapshot.bundle.files as Record<string, Doc>)
+    : null;
+  const workflowCatalog = workflowFiles
+    ? {
+        ...state?.catalog,
+        workflows: Object.fromEntries(
+          workflowFiles
+            .filter((item) => item.kind === 'workflow')
+            .map((item) => [item.id, item]),
+        ),
+        definitions: Object.fromEntries(
+          workflowFiles
+            .filter((item) => ['agent', 'gate', 'tool'].includes(item.kind))
+            .map((item) => [item.id, item]),
+        ),
+      }
+    : state?.catalog;
+  const actionFlow =
+    tab === 'flow-node-detail' && entityId && (!draftId || workflowSnapshot)
+      ? workflowCatalog?.workflows[entityId]
+      : undefined;
+  const actionNode = actionFlow?.nodes.find(
+    (node: Doc) => node.id === nodeId && node.kind === 'action',
+  );
   const canEdit = state?.user.role === 'admin';
   useEffect(() => {
     setPublishedDebug(null);
@@ -329,13 +362,17 @@ export default function Studio() {
       ? agent?.name || 'Agent 详情'
       : tab === 'flow-detail'
         ? entityId
-        : tab === 'release-detail'
-          ? `版本 R${specificVersion?.sequence || '…'}`
-          : tab === 'config'
-            ? '待发布配置'
-            : tab === 'missing'
-              ? '页面不存在'
-              : nav.find((n) => n.id === tab)?.label;
+        : tab === 'flow-node-detail'
+          ? actionNode
+            ? workflowNodeTitle(entityId!, actionNode)
+            : '步骤详情'
+          : tab === 'release-detail'
+            ? `版本 R${specificVersion?.sequence || '…'}`
+            : tab === 'config'
+              ? '待发布配置'
+              : tab === 'missing'
+                ? '页面不存在'
+                : nav.find((n) => n.id === tab)?.label;
   const docs = Object.keys(
       draft?.bundle.files || state?.catalog?.bundle.files || {},
     ).filter((path) =>
@@ -401,7 +438,8 @@ export default function Studio() {
               className={
                 tab === item.id ||
                 (tab === 'agent-detail' && item.id === 'agents') ||
-                (tab === 'flow-detail' && item.id === 'flows') ||
+                (['flow-detail', 'flow-node-detail'].includes(tab) &&
+                  item.id === 'flows') ||
                 ((tab === 'config' || tab === 'release-detail') &&
                   item.id === 'releases')
                   ? 'active'
@@ -505,6 +543,19 @@ export default function Studio() {
                 </button>
               )}
             </div>
+          )}
+          {tab === 'flow-node-detail' && (
+            <button
+              className="secondary"
+              onClick={() =>
+                navigate(
+                  `/workflows/${encodeURIComponent(entityId!)}${draftId ? `?draft=${encodeURIComponent(draftId)}` : ''}`,
+                )
+              }
+            >
+              <IconArrowLeft />
+              返回 Workflow 流程图
+            </button>
           )}
           {tab === 'flow-detail' && state?.catalog?.workflows[entityId!] && (
             <div className="page-actions">
@@ -1421,30 +1472,35 @@ export default function Studio() {
         {tab === 'flows' && state?.catalog && (
           <WorkflowInventory catalog={state.catalog} navigate={navigate} />
         )}
+        {tab === 'flow-node-detail' &&
+          (actionNode ? (
+            <WorkflowActionDetail
+              flow={actionFlow}
+              node={actionNode}
+              definitions={workflowCatalog?.definitions || {}}
+              names={Object.fromEntries(
+                (state?.catalog?.components || []).map((component: Doc) => [
+                  component.id,
+                  component.name,
+                ]),
+              )}
+            />
+          ) : (
+            <section>
+              <p>
+                {draftId && draft?.id !== draftId
+                  ? message || '正在加载配置草稿…'
+                  : '未找到此 Action，请返回流程图。'}
+              </p>
+            </section>
+          ))}
         {tab === 'flow-detail' && state?.catalog?.workflows[entityId!] && (
           <WorkflowExplorer
             key={`${entityId}-${draftId || 'release'}`}
-            catalog={
-              graphSnapshot
-                ? {
-                    ...state.catalog,
-                    workflows: Object.fromEntries(
-                      Object.values(graphSnapshot.bundle.files)
-                        .filter((item: any) => item.kind === 'workflow')
-                        .map((item: any) => [item.id, item]),
-                    ),
-                    definitions: Object.fromEntries(
-                      Object.values(graphSnapshot.bundle.files)
-                        .filter((item: any) =>
-                          ['agent', 'gate', 'tool'].includes(item.kind),
-                        )
-                        .map((item: any) => [item.id, item]),
-                    ),
-                  }
-                : state.catalog
-            }
+            catalog={workflowCatalog}
             initialWorkflow={entityId!}
             navigate={navigate}
+            draftId={draftId || undefined}
             execution={workflowRun?.events || []}
           />
         )}

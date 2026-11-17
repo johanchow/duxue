@@ -815,37 +815,110 @@ select {
   border-radius: 6px;
   color: var(--ink);
 }
+.workflow-toolbar,
+.workflow-legend,
+.workflow-directions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.workflow-toolbar {
+  justify-content: space-between;
+  margin: 10px 0;
+}
+.workflow-legend {
+  color: #52635a;
+  font-size: 12px;
+}
+.workflow-legend span::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--workflow-accent, #71877d);
+}
+.workflow-legend .legend-parent::before {
+  width: 14px;
+  height: 0;
+  border-top: 2px dashed #899b91;
+  background: none;
+  border-radius: 0;
+  vertical-align: middle;
+}
+.workflow-directions { gap: 4px; }
+.workflow-directions button { padding: 5px 12px; font-size: 12px; }
+.workflow-directions button[aria-pressed='true'] {
+  background: #e3eee8;
+  color: #18583f;
+  border-color: #afc9bb;
+}
 .workflow-canvas {
   height: 610px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 12px;
   overflow: hidden;
-  background: #f8faf8;
+  background: #f5f8f6;
 }
 .workflow-canvas .react-flow__node {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  font-size: 12px;
-  line-height: 1.5;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 8px;
-  border: 1px solid #bdcfc2;
+  border-radius: 10px;
+  border: 1px solid #cbd8d0;
+  border-left: 4px solid var(--workflow-accent, #71877d);
   background: white;
+  box-shadow: 0 2px 6px #223a2e12;
+  box-sizing: border-box;
 }
-.workflow-canvas .kind-agent {
-  border-top: 4px solid #258264;
+.workflow-canvas .react-flow__handle {
+  width: 6px;
+  height: 6px;
+  background: var(--workflow-accent, #71877d);
+  border-color: white;
+  pointer-events: none;
 }
-.workflow-canvas .kind-gate {
-  border-top: 4px solid #bb9245;
+.workflow-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 9px 12px;
+  color: inherit;
+  text-decoration: none;
+  border-radius: 6px;
 }
-.workflow-canvas .kind-action {
-  border-top: 4px solid #637dae;
+a.workflow-card { padding-right: 34px; }
+a.workflow-card:hover, a.workflow-card:focus-visible {
+  background: #eaf5ef;
+  outline: 2px solid #258264;
+  outline-offset: -2px;
 }
+.workflow-card-title,
+.workflow-card-ref {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workflow-card-title { font-size: 16px; line-height: 1.35; color: #152d24; }
+.workflow-card-meta { color: var(--workflow-accent, #52635a); font-size: 11px; font-weight: 700; }
+.workflow-card-ref { color: #53685d; font-size: 11px; background: transparent; padding: 0; }
+.workflow-card-arrow { position: absolute; right: 10px; top: 13px; color: #23644c; }
+.workflow-canvas .kind-agent, .workflow-legend .legend-agent { --workflow-accent: #237454; }
+.workflow-canvas .kind-gate, .workflow-legend .legend-gate { --workflow-accent: #8e640f; }
+.workflow-canvas .kind-action, .workflow-legend .legend-action { --workflow-accent: #47669a; }
 .workflow-canvas .boundary-node {
-  background: #eaf1ed;
+  background: #e7f0eb;
+  border: 1px solid #bccfc3;
+  border-radius: 22px;
+  text-align: center;
+  box-shadow: none;
 }
+.workflow-canvas .boundary-node strong { font-size: 13px; }
 .workflow-canvas .react-flow__edge.selected .react-flow__edge-path {
   stroke: #e19935;
   stroke-width: 3;

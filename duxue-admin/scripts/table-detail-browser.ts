@@ -68,6 +68,56 @@ try {
       { timeout: 15000 },
     );
   }
+  await page.goto(origin + '/workflows/tutoring');
+  const tutorCard = page.locator(
+    '.react-flow__node[data-id="tutoring.attempt"]',
+  );
+  const tutorLink = tutorCard.getByRole('link');
+  assert.equal(await tutorLink.getAttribute('href'), '/agents/tutoring.turn');
+  assert.equal(
+    await tutorCard.locator('.workflow-card-title').innerText(),
+    state.catalog.components.find((item: any) => item.id === 'tutoring.turn')
+      .name,
+  );
+  assert.match(
+    await tutorCard.locator('.workflow-card-meta').innerText(),
+    /^Agent · 模型(?: · 必经)?$/,
+  );
+  await page.getByRole('button', { name: '纵向', exact: true }).click();
+  assert.equal(
+    await page
+      .getByRole('button', { name: '纵向', exact: true })
+      .getAttribute('aria-pressed'),
+    'true',
+  );
+  await tutorLink.click();
+  await page.waitForURL('**/agents/tutoring.turn');
+  await page.goto(origin + '/workflows/tutoring');
+  await page
+    .locator('.react-flow__node[data-id="tutoring.model_loop"]')
+    .getByRole('link')
+    .click();
+  await page.waitForURL('**/workflows/tutoring/nodes/tutoring.model_loop');
+  await page
+    .getByRole('heading', { name: '编排答疑生成与重试', level: 1 })
+    .waitFor();
+  assert.match(
+    await page.getByRole('region', { name: '执行逻辑' }).innerText(),
+    /候选结果和预算/,
+  );
+  await page.getByRole('button', { name: '返回 Workflow 流程图' }).click();
+  await page.waitForURL('**/workflows/tutoring');
+  await page.goto(origin + '/workflows/tutoring-vet');
+  await page.getByRole('button', { name: '适应全图' }).click();
+  await page
+    .locator('.react-flow__node[data-id="tutoring-vet.authority"]')
+    .getByRole('link')
+    .click();
+  await page.waitForURL('**/agents/tutoring.authority');
+  assert.match(
+    await page.getByRole('region', { name: '执行逻辑' }).innerText(),
+    /越权时拒绝候选/,
+  );
   await page.goto(origin + '/workflows/tutoring-vet');
   await page
     .locator('.react-flow__node[data-id="tutoring-vet.text_leak"]')

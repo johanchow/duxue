@@ -4,13 +4,21 @@ import {
   Background,
   BaseEdge,
   Controls,
+  Handle,
   Panel,
   useReactFlow,
   ReactFlow,
   type EdgeProps,
+  type NodeProps,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { workflowGraph, type Json } from '../lib/workflow-graph';
+import {
+  workflowDetailHref,
+  workflowGraph,
+  workflowNodeTitle,
+  type Json,
+} from '../lib/workflow-graph';
+import { actionLogic, gateLogic } from '../lib/workflow-code';
 import { componentTypes } from '../lib/component-types';
 import { filterAgents } from '../lib/agent-filter';
 import { nodeExecutions, edgeExecutions } from '../lib/execution-inspector';
@@ -32,11 +40,71 @@ function CatalogEdge({ id, data, label, markerEnd, style }: EdgeProps) {
       style={style}
       interactionWidth={24}
       labelStyle={{ fontSize: 11 }}
-      labelBgStyle={{ fill: '#f8faf8' }}
+      labelBgStyle={{ fill: '#ffffff', stroke: '#d9e3dd', strokeWidth: 1 }}
+      labelBgBorderRadius={5}
       labelBgPadding={[6, 4]}
     />
   );
 }
+function WorkflowCard({ data, sourcePosition, targetPosition }: NodeProps) {
+  const title = String(data.title);
+  const typeLabel = data.typeLabel as string | undefined;
+  const reference = data.reference as string | undefined;
+  const href = data.href as string | undefined;
+  const content = (
+    <>
+      <strong className="workflow-card-title" title={title}>
+        {title}
+      </strong>
+      {typeLabel && (
+        <span className="workflow-card-meta">
+          {typeLabel}
+          {data.required ? ' · 必经' : ''}
+        </span>
+      )}
+      {reference && (
+        <code className="workflow-card-ref" title={reference}>
+          {reference}
+        </code>
+      )}
+      {href && (
+        <span className="workflow-card-arrow">
+          <IconArrowRight size={17} />
+        </span>
+      )}
+    </>
+  );
+  return (
+    <>
+      <Handle id="in" type="target" position={targetPosition!} />
+      {href ? (
+        <a
+          className="workflow-card nodrag nopan"
+          href={href}
+          onClick={(event) => {
+            event.stopPropagation();
+            if (
+              event.metaKey ||
+              event.ctrlKey ||
+              event.shiftKey ||
+              event.altKey
+            )
+              return;
+            event.preventDefault();
+            (data.navigate as (url: string) => void)(href);
+          }}
+        >
+          {content}
+        </a>
+      ) : (
+        <div className="workflow-card">{content}</div>
+      )}
+      <Handle id="out" type="source" position={sourcePosition!} />
+    </>
+  );
+}
+const nodeTypes = { workflowCard: WorkflowCard };
+
 const edgeTypes = { catalog: CatalogEdge };
 function ReadableView() {
   const { zoomTo, fitView } = useReactFlow();
@@ -358,6 +426,17 @@ export function AgentDetail({
         <p>{agent.description}</p>
         {editing && <p className="muted">当前环境唯一的待发布配置。</p>}
       </section>
+      {agent.type === 'code-gate' && (
+        <section aria-label="执行逻辑">
+          <h2>执行逻辑</h2>
+          <p>
+            {gateLogic(definition) || agent.description || '暂无逻辑摘要。'}
+          </p>
+          <p className="compact-meta">
+            代码处理器 <code>{definition.handler_id}</code>
+          </p>
+        </section>
+      )}
       {!editing && (
         <>
           <section aria-label="当前配置">
@@ -469,17 +548,87 @@ export function AgentDetail({
   );
 }
 
+export function WorkflowActionDetail({
+  flow,
+  node,
+  definitions,
+  names,
+}: {
+  flow: Json;
+  node: Json;
+  definitions: Record<string, Json>;
+  names: Record<string, string>;
+}) {
+  const summary = actionLogic(flow.id, node);
+  const outgoing = flow.edges.filter((edge: Json) => edge.from === node.id);
+  return (
+    <>
+      <section aria-label="执行逻辑">
+        <h2>
+          执行逻辑{' '}
+          <span className="badge badge-neutral">Action · 固定代码</span>
+        </h2>
+        <p>{summary?.summary || '暂无逻辑摘要，可查看下方分支和节点配置。'}</p>
+        <p className="compact-meta">
+          代码处理器 <code>{node.handler_id}</code>
+        </p>
+        {outgoing.length > 0 && (
+          <>
+            <h3>后续路径</h3>
+            <ul>
+              {outgoing.map((edge: Json, index: number) => {
+                const target = flow.nodes.find(
+                  (item: Json) => item.id === edge.to,
+                );
+                const title = target
+                  ? workflowNodeTitle(
+                      flow.id,
+                      target,
+                      definitions[target.ref],
+                      names[target.ref],
+                    )
+                  : edge.to === 'END'
+                    ? '结束'
+                    : edge.to;
+                return (
+                  <li key={index}>
+                    {title}
+                    {edge.condition_id ? (
+                      <>
+                        {' '}
+                        · <code>{edge.condition_id}</code>
+                      </>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        )}
+      </section>
+      <section>
+        <details>
+          <summary>节点配置</summary>
+          <pre>{pretty(node)}</pre>
+        </details>
+      </section>
+    </>
+  );
+}
+
 export function WorkflowExplorer({
   catalog,
   initialWorkflow,
   navigate,
   execution = [],
   activeEvent = null,
+  draftId,
 }: {
   catalog: Json;
   initialWorkflow: string;
   execution?: Json[];
   activeEvent?: Json | null;
+  draftId?: string;
   navigate: (url: string) => void;
 }) {
   const workflowId = initialWorkflow;
@@ -488,14 +637,32 @@ export function WorkflowExplorer({
     config: Json;
     reference?: string;
   } | null>(null);
+  const [direction, setDirection] = useState<'LR' | 'TB'>('LR');
   const [showWhole, setShowWhole] = useState(false);
   const flow = catalog.workflows?.[workflowId];
+  const detailHref = (node?: Json) =>
+    workflowDetailHref(
+      workflowId,
+      node,
+      catalog.definitions?.[node?.ref],
+      draftId,
+    );
   const graph = useMemo(
     () =>
       flow
-        ? workflowGraph(flow, catalog.definitions)
+        ? workflowGraph(
+            flow,
+            catalog.definitions,
+            Object.fromEntries(
+              (catalog.components || []).map((component: Json) => [
+                component.id,
+                component.name,
+              ]),
+            ),
+            direction,
+          )
         : { nodes: [], edges: [] },
-    [flow, catalog.definitions],
+    [flow, catalog.definitions, catalog.components, direction],
   );
   useEffect(() => {
     if (!activeEvent || !flow || activeEvent.workflow_id !== workflowId) return;
@@ -534,6 +701,11 @@ export function WorkflowExplorer({
       nodeExecutions([activeEvent], workflowId, config).length > 0;
     return {
       ...node,
+      data: {
+        ...node.data,
+        href: execution.length ? undefined : detailHref(config),
+        navigate,
+      },
       className:
         node.className +
         (events.length
@@ -601,14 +773,45 @@ export function WorkflowExplorer({
           </div>
         </div>
         <p className="muted">
-          点击节点或连线查看配置。实线表示控制流，虚线表示归属关系；重试回路按实际配置保留。
+          {execution.length
+            ? '点击节点查看本次执行记录。'
+            : '点击带箭头的节点打开详情，点击连线查看分支配置。'}
         </p>
+        <div className="workflow-toolbar">
+          <div className="workflow-legend" aria-label="流程图图例">
+            <span className="legend-agent">Agent</span>
+            <span className="legend-gate">Gate</span>
+            <span className="legend-action">Action</span>
+            <span className="legend-parent">虚线 · 归属</span>
+          </div>
+          <div
+            className="workflow-directions"
+            role="group"
+            aria-label="布局方向"
+          >
+            <button
+              className="secondary"
+              aria-pressed={direction === 'LR'}
+              onClick={() => setDirection('LR')}
+            >
+              横向
+            </button>
+            <button
+              className="secondary"
+              aria-pressed={direction === 'TB'}
+              onClick={() => setDirection('TB')}
+            >
+              纵向
+            </button>
+          </div>
+        </div>
         <div className="workflow-canvas" aria-label={`${workflowId} 流程图`}>
           <ReactFlow
-            key={workflowId}
+            key={`${workflowId}:${direction}`}
             nodes={nodes}
             edges={edges}
             edgeTypes={edgeTypes}
+            nodeTypes={nodeTypes}
             fitView
             fitViewOptions={
               execution.length
@@ -622,7 +825,7 @@ export function WorkflowExplorer({
                     minZoom: 0.5,
                     maxZoom: 1,
                   }
-                : undefined
+                : { padding: 0.1, minZoom: 0.65, maxZoom: 1 }
             }
             minZoom={0.1}
             maxZoom={2}
@@ -634,6 +837,11 @@ export function WorkflowExplorer({
               const config = flow.nodes.find(
                 (item: Json) => item.id === node.id,
               );
+              const href = detailHref(config);
+              if (!execution.length && href) {
+                navigate(href);
+                return;
+              }
               setSelection({
                 kind: 'Node',
                 config: config || { id: node.id, kind: 'boundary' },
@@ -659,6 +867,20 @@ export function WorkflowExplorer({
               <pre data-testid="selection-config">
                 {pretty(selection.config)}
               </pre>
+              {selection.kind === 'Node' &&
+                selection.config.kind === 'action' && (
+                  <div className="page-actions">
+                    <button
+                      className="secondary btn-sm"
+                      onClick={() => navigate(detailHref(selection.config)!)}
+                    >
+                      {catalog.source === 'execution-snapshot'
+                        ? '打开当前步骤详情'
+                        : '打开步骤详情'}
+                      <IconArrowRight size={14} />
+                    </button>
+                  </div>
+                )}
               {execution.length > 0 && (
                 <div aria-label="选中对象执行数据">
                   <h3>本次执行数据</h3>
@@ -693,7 +915,8 @@ export function WorkflowExplorer({
                           className="secondary btn-sm"
                           onClick={() =>
                             navigate(
-                              `/agents/${encodeURIComponent(reference.id)}`,
+                              detailHref(selection.config) ||
+                                `/agents/${encodeURIComponent(reference.id)}`,
                             )
                           }
                         >
