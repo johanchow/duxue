@@ -21,11 +21,15 @@ Guardian 用邮箱验证码注册和登录，不保存读学密码。Ward 使用
 - refresh 绑定 `WardCredential.session_version`。再次绑定撤销旧 refresh。只在 refresh 请求本身失败时清会话。刷新成功但原请求仍 401 时保留新凭证。
 - 首页无右上角 AI 入口，无「AI 伙伴」Tab。对话层低于底部 composer。完整计划 sheet 临时隐藏 dock。不改 `VoiceComposer` 的既有交互。
 - 首页精简说明：移除问候区「你先说，我来帮你记录和检查安排」与任务池底部的重复排期/删除说明，并删除随文案占用的间距；任务池标题保留数量与左滑删除提示。
-- Guardian 当前首页为「报告 / 孩子 / 我的」：默认直接读所选孩子的报告，历史按日期查询；没有报告、整理中与加载失败分别呈现。作业传递仅在孩子页操作菜单，不再有常驻输入/录音或决策页。产品规则归 [首页 PRD §7.1](../../docs/product/prd-user.md#71-核心首页报告直接呈现)。
+- Guardian 当前导航为「孩子 / 问答 / 我的」：单孩子直接报告，多孩子点选即报告，历史按日期查询；传递作业/通知/留言与计划展示已退役。成人独立问答的规则归 [首页 PRD §七](../../docs/product/prd-user.md#七guardian--coach-首页导航)；本轮已于2026-11-18验收归档。
 - 任务卡是读模型：安排状态来自 Task，进行中/暂停来自未结束 StudySession。见 [study.md](study.md)。
 - APK：`duxue-app/**` 变更或手动触发。签名 Secret 在 `production` environment，与 Cam 钥匙分开。包内 API 为 `https://duxuelai.xyz/api`。
 
 ## 注意
+
+- 2026-11-17 用户确认 Guardian 精简方案并授权真机迭代；2026-11-18用户验收并授权commit。旧 `docs/mockups/guardian-*.html` 已加过期提示，不能作为当前导航事实源。成人会话不借用 Ward 身份/Thread；短期签名状态协议归 [Companion](../../docs/technical/domain-companion.md#guardian-问答体验2026-11-17已验收)。
+- 真机发现 Android 在问答页返回会退出 App；已先红后绿补回归，改为非孩子页先返回孩子页、多孩子详情返回列表，草稿/在途问答保留。清空推进 generation，防止上传、拍照或模型迟到回复污染新一轮。发送期间输入框不重复保留已发送文字，失败恢复草稿。
+- 同轮红绿修复共享VoiceComposer销毁后ASR迟到回调触发已释放ValueNotifier；销毁先中止，反馈/错误回调检查挂载状态。Guardian离开问答卸载录音组件并停止播放，保留页面拥有的会话/草稿。
 
 - 共享语音和文字输入组件的拍照入口只显示相机图标，通过 Tooltip 保留「拍照」操作提示。
 - 邮件接受不等于送达。不能按昵称或邮箱把微信账号自动合并。
@@ -47,7 +51,7 @@ Guardian 用邮箱验证码注册和登录，不保存读学密码。Ward 使用
 
 - 2026-11-03 本轮客户端已按新版首页完成改造，待 Gate 2：默认对话、作业详情按需打开、仅主动 Sprint 显示限时卡；取消旧横轨与虚构时间回退。任务与挑战命令确认后才更新状态，失败不伪称已暂停/开始。验证记录见[实现 spec](../specs/lightweight-planning-focus-sprint.md)。
 
-- Guardian 报告页已实现，用户于2026-11-04确认本轮交付；事实源见 [首页 PRD](../../docs/product/prd-user.md#71-核心首页报告直接呈现)。`GuardianReportView` 共用于首页与旧报告/story路由；日报/凭证/展开原文独立读取，键含Ward/上海日期/题目。前台每分钟、恢复前台与下拉刷新更新；未知为空、失败可重试，不以自评为门禁。
+- Guardian 报告页已实现，用户于2026-11-04确认本轮交付；事实源见 [首页 PRD](../../docs/product/prd-user.md#71-孩子首页报告直接呈现)。`GuardianReportView` 共用于首页与旧报告/story路由；日报/凭证/展开原文独立读取，键含Ward/上海日期/题目。前台每分钟、恢复前台与下拉刷新更新；未知为空、失败可重试，不以自评为门禁。
 
 - 2026-11-04 Guardian本轮验证：服务端770通过（1项既有网关测试跳过），Flutter124通过、静态分析无问题。用户确认后已归档spec；测试库已升至33，生产未迁移。历史日期、迟到响应、凭证独立重试及无数据不占位均有回归；真实设备长时间后台尚未人工验收。
 
@@ -96,3 +100,7 @@ Guardian 用邮箱验证码注册和登录，不保存读学密码。Ward 使用
 - 用户确认后要求切换分支并提PR，本轮使用 `fix/website-concise-hero-copy`；底部标题以当前确认稿“像有位好导师在身边。”为准，提交首屏精简、下载状态展示及配套回归。合入main后走既有自动发布，不直接部署。
 
 - 2026-11-13 发布准备发现浮动stable已到Flutter3.50，Material导入弃用导致CI失败。将CI和APK构建统一读取duxue-app/.flutter-version，固定本轮完整验证的3.47.7；不关闭弃用检查。后续SDK升级单独验证。
+
+- 2026-11-17 Guardian真机联调：独立debug包，真实ASR追问、文本/SVG、发音与图片上传答疑通过；题图fixture仅在ASR/选图边界进入，未伪造AI回复。测试孩子没有新增Companion/Study记录。默认8000的旧Agent快照不兼容，独立8021使用兼容离线草稿，未改默认.env/线上配置；真实ASR由系统语音经手机麦克风输入，题图由无个人信息fixture进入客户端后真实上传，不称作实拍识题。首个“月亮圆缺”触发现有visual_unavailable兜底，未放宽Judge；测试截图位于ignored `output/guardian-home-qa/`。2026-11-18用户验收后归档spec，提交不包含发布授权。
+
+- 本轮最终验证：Flutter168通过、analyze无问题；Server1249通过/1既有跳过、3subtests通过，新增Python文件Ruff与diff检查通过。最新debug APK重新构建安装后启动验证，使用duxue-test/revision37，无新迁移。产品与协议事实源见上文PRD和Companion链接。

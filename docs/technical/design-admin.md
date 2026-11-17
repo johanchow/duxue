@@ -89,7 +89,7 @@ Companion协调入口、Planning/Reflection工作流、Tutoring轮次、任务/�
 调试记录以表格显示调试对象名称/稳定ID、流程或组件类型、发布基线/配置快照摘要、输入摘要、结果和时间，详情显示实际输入、模型、Prompt、候选与Judge步骤。不能只凭提问文本辨认调试对象；未记录历史基线时明确标注未知。
 
 
-Workflow菜单位于Agent上方：列表含Workflow、简介、配置。详情用React Flow+Dagre画真实Node/Edge，支持点击查看、平移/缩放及完整JSON。Agent/代码Agent、Judge/代码Gate、固定代码Action按登记类型显示；重试回路保留，不强行转为无环DAG；parent虚线仅表示归属。
+Workflow菜单位于Agent上方，列表含Workflow、简介、配置。详情用React Flow与Dagre呈现实际节点和连线，支持横向／纵向布局、平移缩放及查看完整JSON。长流程默认保留可读比例，可用「适应全图」查看全貌。组件节点使用`display_name`或目录名称，Action使用代码处理器的展示名称，缺少名称时回退到节点ID。配置图中的Agent和代码Gate直达组件详情，Action打开`/workflows/<id>/nodes/<node-id>`的只读步骤详情，草稿图的链接沿用当前草稿。代码步骤详情展示逻辑摘要和处理器，Action另外列出实际配置的后续分支。摘要是Admin展示元数据，不参与执行或进入发布包。执行图中点击节点查看该次执行证据，检查器另提供当前步骤详情入口。图上标记条件分支，保留重试回路，parent虚线仅表示归属。
 
 Agent菜单统一展示25项组件，并按模型Agent、代码Agent、模型Judge、代码Gate、Tool筛选，搜索与类型同一行；表格显示修改状态，不显示组件v号或当前发布R号。`/agents/<id>`查看当前Admin发布配置，`?draft=<uuid>`编辑明确草稿。所有组件有编辑入口，字段按上表保护。没有独立“配置工作台”或“配置草稿”菜单；唯一待发布草稿与不可变版本统一放在“发布管理”。`/drafts/<uuid>`编辑同一完整包的依赖、对照、调试和发布，不复制另一份配置源。
 

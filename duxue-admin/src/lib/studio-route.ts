@@ -14,6 +14,8 @@ export function studioRoute(pathname: string) {
   )
     return { tab: 'evaluation', id: parts[1] || 'overview' };
   if (!parts.length) return { tab: 'flows', id: undefined };
+  if (parts.length === 4 && parts[0] === 'workflows' && parts[2] === 'nodes')
+    return { tab: 'flow-node-detail', id: parts[1], nodeId: parts[3] };
   if (parts.length === 1) {
     return {
       tab:

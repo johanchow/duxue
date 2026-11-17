@@ -24,8 +24,14 @@ final _evidenceDetailProvider = FutureProvider.autoDispose.family<
 
 /// Report and teaching evidence are independent reads. No generation or mastery inference.
 class GuardianReportView extends ConsumerStatefulWidget {
-  const GuardianReportView({required this.wardId, super.key});
+  const GuardianReportView(
+      {required this.wardId,
+      this.onTryQuestion,
+      this.onInviteChild,
+      super.key});
   final String wardId;
+  final VoidCallback? onTryQuestion;
+  final VoidCallback? onInviteChild;
   @override
   ConsumerState<GuardianReportView> createState() => _GuardianReportViewState();
 }
@@ -175,6 +181,27 @@ class _GuardianReportViewState extends ConsumerState<GuardianReportView>
                     ],
                   ),
           ),
+          if (selected == today &&
+              !hasEvening &&
+              report.valueOrNull?.status == 'empty' &&
+              evidence.valueOrNull?.isEmpty == true &&
+              (widget.onTryQuestion != null ||
+                  widget.onInviteChild != null)) ...[
+            const SizedBox(height: 24),
+            const Text('先体验一次启发答疑，或让孩子开始提问。',
+                style: TextStyle(color: Colors.blueGrey, height: 1.6)),
+            const SizedBox(height: 12),
+            Wrap(spacing: 12, runSpacing: 8, children: [
+              if (widget.onTryQuestion != null)
+                FilledButton.tonal(
+                    onPressed: widget.onTryQuestion,
+                    child: const Text('先试一道题')),
+              if (widget.onInviteChild != null)
+                OutlinedButton(
+                    onPressed: widget.onInviteChild,
+                    child: const Text('让孩子开始使用')),
+            ]),
+          ],
         ],
       ),
     );
