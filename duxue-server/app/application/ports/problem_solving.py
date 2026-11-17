@@ -32,16 +32,21 @@ class QwenProblemSolverGateway(ProblemSolverModelPort):
     def __init__(self, settings_obj=None):
         self._settings = settings_obj
 
-    def _invoke(self, payload: dict, images: list[str]) -> dict | None:
+    def _invoke(
+        self, payload: dict, images: list[str], *, use_reread_model: bool = False
+    ) -> dict | None:
         from app.agent_specs.contexts import build_context
         from app.agent_specs.definitions import load_definitions
-        from app.agent_specs.gaokao_contracts import PLANNER_ID
+        from app.agent_specs.gaokao_contracts import PLANNER_ID, REREAD_ID
         from app.infrastructure.ai import components
 
         defs = load_definitions()
         if PLANNER_ID not in defs.units:
             return None
-        spec = components.COMPONENTS.get(PLANNER_ID)
+        target_component = (
+            REREAD_ID if use_reread_model and REREAD_ID in defs.components else PLANNER_ID
+        )
+        spec = components.COMPONENTS.get(target_component)
         if spec is None:
             return None
         try:
@@ -61,6 +66,7 @@ class QwenProblemSolverGateway(ProblemSolverModelPort):
                 "problem_text": text,
             },
             images,
+            use_reread_model=independent_reread,
         )
         if not isinstance(raw, dict):
             return None

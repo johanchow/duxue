@@ -12,6 +12,7 @@ from app.application.ports.image_inspection import InspectImageRequest
 from app.application.ports.math_engine import MathInput
 
 PLANNER_ID = "tutoring.blueprint-planner"
+REREAD_ID = "tutoring.stem-reread"
 SCIENCE_TOOL_ID = "tutoring.science"
 INSPECT_IMAGE_TOOL_ID = "tutoring.inspect_image"
 WORKFLOW_ID = "tutoring-blueprint"
@@ -109,7 +110,10 @@ def frozen_contracts() -> dict[str, dict]:
             "output_schema": _planner_output_schema(),
             "context_builder_id": "tutoring.blueprint_planner.context",
             "prompt": {"id": PLANNER_ID + ".prompt"},
-            "models": [{"component_id": PLANNER_ID}],
+            "models": [
+                {"component_id": PLANNER_ID},
+                {"component_id": REREAD_ID},
+            ],
             "accepts_images": True,
             "requires_agent_switch": True,
             "error_codes": [
@@ -171,7 +175,14 @@ def workflow_documents() -> dict[str, dict]:
     }
 
 
-def provision_planner(*, model: str, prompt: str, enable_thinking: bool = True, thinking_budget: int = 4096) -> dict:
+def provision_planner(
+    *,
+    model: str,
+    prompt: str,
+    reread_model: str | None = None,
+    enable_thinking: bool = True,
+    thinking_budget: int = 4096,
+) -> dict:
     doc = copy.deepcopy(frozen_contracts()[f"agents/{PLANNER_ID}.json"])
     doc["display_name"] = "内部解题蓝图规划"
     doc["description"] = "首轮复杂新题生成服务端私有路线、里程碑与预验算锚点；绝不下发学生端。"
@@ -187,5 +198,13 @@ def provision_planner(*, model: str, prompt: str, enable_thinking: bool = True, 
     }
     if enable_thinking:
         model_cfg["thinking_budget"] = thinking_budget
-    doc["models"] = [model_cfg]
+    reread_cfg: dict = {
+        "component_id": REREAD_ID,
+        "name": reread_model or model,
+        "temperature": 0,
+        "max_output_tokens": 1024,
+        "timeout_ms": 30000,
+        "enable_thinking": False,
+    }
+    doc["models"] = [model_cfg, reread_cfg]
     return doc

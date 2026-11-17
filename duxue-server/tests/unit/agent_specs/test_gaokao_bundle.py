@@ -26,3 +26,4 @@ def test_upgrade_gaokao_bundle_compiles_with_blueprint_science_and_inspect_image
     compiled = compile_bundle(bundle)
     assert compiled.digest == upgraded["digest"]
     assert "tutoring.blueprint-planner" in compiled.catalog.units
+    assert "tutoring.stem-reread" in compiled.catalog.components
