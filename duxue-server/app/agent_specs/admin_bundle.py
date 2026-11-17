@@ -10,8 +10,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.agent_specs.configuration import code_contract
-from app.agent_specs.observation_contracts import FILES as OBSERVATION_FILES, contracts as observation_contracts, WORKFLOWS as OBSERVATION_WORKFLOWS
 from app.agent_specs.definitions import DefinitionCatalog
+from app.agent_specs.observation_contracts import FILES as OBSERVATION_FILES
+from app.agent_specs.observation_contracts import WORKFLOWS as OBSERVATION_WORKFLOWS
+from app.agent_specs.observation_contracts import contracts as observation_contracts
 from app.agent_specs.registrations import WORKFLOW_BINDINGS
 
 # Every JSON is carried by the published artifact. Code owns the file whitelist
@@ -43,6 +45,8 @@ def _artifact_document(raw):
 
 def _frozen(doc):
     result = copy.deepcopy(doc)
+    from app.agent_specs.visual_delivery import strip_extension
+    strip_extension(result)
     if doc.get("kind") in {"agent", "gate", "tool"}:
         result.pop("display_name", None)
         result.pop("description", None)

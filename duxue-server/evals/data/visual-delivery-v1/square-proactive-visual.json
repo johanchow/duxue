@@ -1,0 +1,129 @@
+{
+  "schema_version": "dialogue-eval.v2",
+  "id": "square-proactive-visual",
+  "type": "episode",
+  "replay_mode": "generated_history",
+  "title": "方阵：主动配图与共用角点",
+  "inspired_by": "self",
+  "source": {
+    "kind": "synthetic",
+    "coverage": "authored",
+    "provider": "grafana",
+    "trace_ids": [
+      "5153c17bcbb93284addd8560f8a6fb58"
+    ],
+    "note": "根据生产故障题意与2026-11-17 Android调试文本构造；不是原始trace逐字重放，不含原作业图片，不检验OCR/原图作答转写。"
+  },
+  "label_status": "proposed",
+  "note": "本地开发回归，未人工校准，不上传Langfuse；单次通过不代表发布质量。",
+  "messages": [
+    {
+      "id": "u1",
+      "role": "user",
+      "content": "有一道方阵题：每行和每列都是9人，问最外圈一共有多少人。我把四条边看成四行，每行九个人，四个九相加就是36，为什么这样不对？"
+    },
+    {
+      "id": "u2",
+      "role": "user",
+      "content": "我还是不太明白为什么角上会多算。图里能用颜色表示一条横边和一条竖边，并让我看清它们共用了哪个人吗？"
+    }
+  ],
+  "checks": [
+    {
+      "id": "turn-1",
+      "after_message": "u1",
+      "component": "tutoring.turn",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "problem": {
+            "summary": "每行和每列都是9人的方阵，求最外圈人数。学生用9×4=36，困惑角点为什么重复。",
+            "active_subgoal": "理解横边与竖边共用角点",
+            "substantive_attempts": 1,
+            "hints_given": 0
+          },
+          "task_title": "方阵最外圈人数",
+          "task_active": false
+        },
+        "note": "人工构造的回归上下文；后续轮承接本次实际生成回复，不注入预设导师答案。"
+      },
+      "grading": {
+        "deterministic": [
+          {
+            "id": "guidance-delivered",
+            "field": "outcome",
+            "op": "eq",
+            "expected": "hint_like"
+          },
+          {
+            "id": "diagram-delivered",
+            "field": "visual_present",
+            "op": "eq",
+            "expected": true
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "visual-teaching-and-protection",
+            "type": "binary",
+            "expected": "pass",
+            "rubric": "依据实际response.message和response.visual审核，不把标题/alt的宣称当作图形证据。必须真的提供可读的空间图，不能仅给文字步骤或让学生自己画。检查SVG实际点、线、坐标、变换后边界及标注，不能有改变题意的数量/端点错误、关键标注裁切或遮挡。允许明确标注的局部小例子及抽象关系图，不要求画全题所有人/灯。正文需引导学生观察图中一个当前关系；不能代算当前原题最终答案、列出可直接抄写的完整解法或虚构学生已完成的推导。只有全部满足才pass，说明具体图形证据。本轮没有画图请求，也必须主动配图帮助理解四边直接相加会重复计数角点。图须让角点同时属于相邻横竖边；可用明确的小例子，不得错误声称行列数。不能给出原题的32人或等价完整结论。"
+          }
+        ]
+      },
+      "tags": [
+        "visual-delivery",
+        "answer-protection",
+        "proactive"
+      ]
+    },
+    {
+      "id": "turn-2",
+      "after_message": "u2",
+      "component": "tutoring.turn",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "problem": {
+            "summary": "每行和每列都是9人的方阵，求最外圈人数。学生用9×4=36，困惑角点为什么重复。",
+            "active_subgoal": "用局部两条边辨认同一个角点",
+            "substantive_attempts": 1,
+            "hints_given": 1
+          },
+          "task_title": "方阵最外圈人数",
+          "task_active": false
+        },
+        "note": "人工构造的回归上下文；后续轮承接本次实际生成回复，不注入预设导师答案。"
+      },
+      "grading": {
+        "deterministic": [
+          {
+            "id": "guidance-delivered",
+            "field": "outcome",
+            "op": "eq",
+            "expected": "hint_like"
+          },
+          {
+            "id": "diagram-delivered",
+            "field": "visual_present",
+            "op": "eq",
+            "expected": true
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "visual-teaching-and-protection",
+            "type": "binary",
+            "expected": "pass",
+            "rubric": "依据实际response.message和response.visual审核，不把标题/alt的宣称当作图形证据。必须真的提供可读的空间图，不能仅给文字步骤或让学生自己画。检查SVG实际点、线、坐标、变换后边界及标注，不能有改变题意的数量/端点错误、关键标注裁切或遮挡。允许明确标注的局部小例子及抽象关系图，不要求画全题所有人/灯。正文需引导学生观察图中一个当前关系；不能代算当前原题最终答案、列出可直接抄写的完整解法或虚构学生已完成的推导。只有全部满足才pass，说明具体图形证据。本轮明确要求用颜色区分一条横边和一条竖边。必须用实际两条相交边与共享角点展示同一个人被数两次，图文颜色指代一致；只复述上一轮或仅说四角重复不够。原题最终人数仍受保护。"
+          }
+        ]
+      },
+      "tags": [
+        "visual-delivery",
+        "answer-protection",
+        "explicit-visual"
+      ]
+    }
+  ]
+}

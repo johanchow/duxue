@@ -10,6 +10,15 @@ import json
 from dataclasses import dataclass
 from typing import Annotated, Literal, Protocol
 
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
+
 from app.application.workflows.pronunciation_guidance import (
     LessonBody,
     forbidden_text,
@@ -22,14 +31,6 @@ from app.application.workflows.tutor_visual import (
     drop_reason,
 )
 from app.contexts.tutoring.domain.tutor_permit import TutorPermit
-from pydantic import (
-    BaseModel,
-    ConfigDict,
-    Field,
-    ValidationError,
-    field_validator,
-    model_validator,
-)
 
 CONTRACT_ID = "tutor-turn.v4"
 
@@ -64,6 +65,8 @@ def fallback_text(failure: str | None, leak_reason: str | None = None) -> str:
     A judge outage must use the technical fallback even if an earlier attempt
     carried a teaching-boundary reason.
     """
+    if failure == "visual_unavailable":
+        return "这次没能生成可用的示意图，暂时无法用图帮你说明。请稍后再试。"
     if failure == "leak_detected":
         return {
             "choice_verdict": "这次没能直接给出检查结果，是因为回答中涉及选择题或判断题的选项对错。这部分我可以陪你检查判断依据，你可以选一道题，说说你为什么这样选。",

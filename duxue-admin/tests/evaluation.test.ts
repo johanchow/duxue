@@ -203,3 +203,102 @@ test('batchQueries aggregates multiple experiment IDs into a single query set', 
     ),
   );
 });
+
+test('a timed out response body is retried instead of reported as invalid JSON', async (t) => {
+  t.mock.method(console, 'warn', () => {});
+  let attempts = 0;
+  const reader = new LangfuseReader(settings, async (input) => {
+    if (String(input).endsWith('/projects'))
+      return Response.json({ data: [{ id: settings.projectId }] });
+    if (++attempts === 1)
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.error(new DOMException('body deadline', 'TimeoutError'));
+          },
+        }),
+      );
+    return Response.json({ data: [], meta: {} });
+  });
+  assert.deepEqual(await reader.batches(7), []);
+  assert.equal(attempts, 2);
+});
+
+test('persistent body transport failures are bounded and logged without credentials', async (t) => {
+  const log = t.mock.method(console, 'warn', () => {});
+  let attempts = 0;
+  const reader = new LangfuseReader(settings, async () => {
+    attempts++;
+    return new Response(
+      new ReadableStream({
+        start(controller) {
+          controller.error(new TypeError('terminated: upstream-private-body'));
+        },
+      }),
+    );
+  });
+  await assert.rejects(reader.batches(7), /连接失败或超时/);
+  assert.equal(attempts, 3);
+  const logged = JSON.stringify(log.mock.calls.map((c) => c.arguments));
+  assert.match(logged, /projects/);
+  assert.match(logged, /body/);
+  assert.ok(!logged.includes(settings.secretKey));
+  assert.ok(!logged.includes(settings.publicKey));
+  assert.ok(!logged.includes('upstream-private-body'));
+});
+
+test('malformed JSON is not retried or silently replaced with empty results', async (t) => {
+  t.mock.method(console, 'warn', () => {});
+  let calls = 0;
+  const reader = new LangfuseReader(settings, async () => {
+    calls++;
+    return new Response('<html>not JSON</html>', { status: 200 });
+  });
+  await assert.rejects(reader.batches(7), /返回无效数据/);
+  assert.equal(calls, 1);
+});
+
+test('temporary gateway failures retry but authentication and rate limits fail immediately', async (t) => {
+  t.mock.method(console, 'warn', () => {});
+  for (const [status, expectedCalls] of [
+    [401, 1],
+    [429, 1],
+    [503, 3],
+  ]) {
+    let calls = 0;
+    const reader = new LangfuseReader(settings, async () => {
+      calls++;
+      return new Response('private upstream error', { status });
+    });
+    await assert.rejects(reader.batches(7), new RegExp(`API 返回 ${status}`));
+    assert.equal(calls, expectedCalls);
+  }
+});
+
+test('parallel reads limit upstream concurrency until each body has finished', async () => {
+  let active = 0,
+    peak = 0;
+  const reader = new LangfuseReader(settings, async (input) => {
+    active++;
+    peak = Math.max(peak, active);
+    const payload = String(input).endsWith('/projects')
+      ? { data: [{ id: settings.projectId }] }
+      : { data: [], meta: {} };
+    return new Response(
+      new ReadableStream({
+        async start(controller) {
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          controller.enqueue(new TextEncoder().encode(JSON.stringify(payload)));
+          active--;
+          controller.close();
+        },
+      }),
+    );
+  });
+  const results = await Promise.all(
+    Array.from({ length: 16 }, (_, i) => reader.experiments({ days: i + 1 })),
+  );
+  assert.equal(results.length, 16);
+  assert.ok(peak <= 4, `upstream concurrency was ${peak}`);
+  assert.equal(active, 0);
+});

@@ -21,7 +21,7 @@
 - 计算题、问答题在题面足够时可以独立核验后确认或纠错，纠错不能补出孩子还没算出的最终结果。选择题、判断题不能逐项确认对错。题面不足只请补充。
 - 文字裁判输出结构化事实，代码不扫描回复里的词或数字。`final_answer` / `complete_solution` 重试不回灌含答案的草稿。裁判超时、非法、异常一律 fail-closed，不能展示失败草稿。
 - 判官看最近 3 道题摘要和窗口内学生原话，不把导师原话当学生证据。只有已经需要作业泄露审核且本轮或窗口有授权图时，才把同一批原图交给视觉裁判。图片字节不进观测。
-- 图的任何失败只丢图、文字照常。文字泄露整轮回退。图泄露先重画一次且不得改正文。二维竖式写成 `\enclose{longdiv}` 或 TeX array 且没有 `visual` 时，先带规范重画。
+- 旧配置图失败只丢图；启用主动视觉交付后，独立Judge判定requested/helpful却最终无图时整轮返回明确不可用提示。见[视觉交付闭环](../../docs/technical/domain-tutoring-presentation.md#主动视觉交付闭环)。文字泄露整轮回退。图泄露先重画一次且不得改正文。二维竖式写成 `\enclose{longdiv}` 或 TeX array 且没有 `visual` 时，先带规范重画。
 - `unknown=true` 只禁止结构化数值字段。能用前四种结构化图就不用 SVG。一维公式写在正文 TeX，不为单个算式配图。通过检查的 `visual` 写入 `interaction_ref`；下一轮模型上下文不读它。形状 lint 只记 trace，不触发 fallback。
 - 模型不返回交互 `kind`、按钮或媒体。发音不写题目状态或学习事实，TTS 只读已确认原文。一次最多 8 条 lesson。顶层 `act` 互斥。
 - 本轮有新图就用新图；没有新图且窗口有多张旧图才选图。比较上一张必须显式 `tutoring_intent=compare_previous_image`。只把选定图交给答疑和泄露检查。
@@ -30,8 +30,14 @@
 
 ## 注意
 
+- 2026-11-17 07:37:37–07:37:59（上海）画图请求诊断 trace `810cea0707c5190ef71890658fcf9616`：用户明确“帮我画图理解”，两次导师原始JSON均未含visual，visual_schema=absent、visual_dropped=null，最终服务端仅返回文字，非App丢图。首版直接给出82被final_answer拦截，修复轮去掉答案但仍只教用户自己画；未触发missing_visual_redraw。当前补图条件只覆盖正文出现特定二维TeX标记且无visual，未将显式画图意图纳入交付验收。后续应由模型/独立Judge判定视觉交付需求并受控补图，不能用关键词语义门禁；仅诊断记录，未改代码/配置或部署。
+
+- 2026-11-17 07:28:36–07:28:59（上海）复查 trace `5153c17bcbb93284addd8560f8a6fb58`：同生产实例 `70ec610a-81ad-47de-9697-eabc7452bfbf`，两次正常模型输出分别含 `(9-1)×4`、`9×4-4`，均在 candidate_schema 因 invalid_calculation_syntax 拒绝，审核 skipped。上一轮符号兼容修复仍在本地未提交/部署；本地两式均得32。重试还把 student_answer 从32改为34，属于待独立图片审核核实的转写漂移，不能将语法修复等同教学/视觉审核已通过。本轮只诊断，未部署。
+
+- 2026-11-17 修复生产 `invalid_calculation_syntax` 兜底（trace `7de1bcae639cccbe2f27e61a84532249`）：模型连续两次输出 `(9-1)×4`，共享算术 AST 解析拒绝。入口兼容规则见[数学工具实现](../../docs/technical/tutoring-math.md#6-实现与启用)，不改答案保护或独立审核。先红6例再绿，图片审核流程及错误答案、精确小数、非法表达式回归42项通过；服务端全量1194 passed / 1 skipped、3 subtests passed（1项既有FastAPI弃用警告），修改Python Ruff与diff检查通过。未提交/部署。
+
 - 语义判断禁止关键词、数字扫描和正则。正则只用于协议、XML、公式分隔。
-- 图判官看的是抽出的文字加 `problem_summary`，看不到线段几何。校验过的 SVG 仍可能画错。
+- 图泄露判官看抽出文字；启用主动视觉交付时，文字Judge额外读取完整候选SVG核对几何，仍非像素级视觉验收。校验过的SVG仍可能画错，必须结合真机截图与评测。
 - 主模型会把历史助手结论套到当前图上。fallback 记录里的 content 是被拒候选，不是孩子看到的固定话术。
 - 给模型加「要不要追问」的规则会整体改变追问倾向。
 - 同一 `command_id` 至多计一次。出口失败不写 Fact、不推进题目。发音和澄清不得为了展示去打开答疑会话。
@@ -209,3 +215,7 @@
 - 2026-11-16 用户确认充值后授权继续：原721份冻结源码SHA256全部一致，但SDK预检发现5个LLM裁判被Langfuse在欠费时自动置paused（LLM_CONNECTION_AUTH_INVALID），确定性裁判active，6个versionId均与原批一致。公开SDK/MCP没有reactivate操作，官方evaluatorRouter仅暴露需用户会话的reactivate；保留提示词/模型/版本，不借修改定义绕过暂停。已读browser skill尝试控制台恢复，in-app浏览器工具因sandboxPolicy环境元数据故障不可用，Chrome工具又因其他会话占用同一profile不可用，未终止其他会话浏览器。已异步请用户在Langfuse重新激活5个裁判。持久恢复协调器83317运行root/resume-recovery.py（state=recovery-state.json，log=recovery.log，预备resume-20261116-215340），每30秒只读检查，全部active且版本未变后自动停止原暂停runner/旧supervisor，统一补跑12条，合并final/results.json并附248条来源SHA256、原236保留与16质量fail不变、完整REPORT/summary/对比/图片证据分层；不覆盖run原始现场。原teaching-correctness中断Experiment已通过SDK查询确认id=c326475d415c4459、107项含1error，最终报告须与恢复段分开链接。尚未启动12题模型调用，等待云端重新激活，不能声称已续跑完成。操作脚本启动须保留.venv/bin/python路径，不对该符号链接resolve到系统Python（会丢失venv）。
 
 - 2026-11-16 用户授权commit剩余相关改动：范围为Omni托管投影/幂等保护、OSS临时引用、solve分派、batch筛选、测试及同域文档/笔记；观察领域笔记与清单、.vscode及个人PDF保留不提交。当前验证310项单测通过（1项既有FastAPI弃用警告）、209项/233检查点静态校验通过、修改Python Ruff F/E9/I通过。云端视觉证据缺口和全量中断状态补入唯一运行说明；全量仍未完成，不以子集结果背书。恢复等待进程此前因SSL查询错误退出，已为只读状态检查增加网络错误重试并重启；模型补跑仍需5个裁判重新激活，脚本/凭据/原始模型审计保留ignored运行目录，不纳入提交。
+
+- 2026-11-17 主动视觉辅导本地验收完成，用户确认结果后授权commit。规则与启用见[视觉交付闭环](../../docs/technical/domain-tutoring-presentation.md#主动视觉交付闭环)，任务与运行见[本地回归](../../docs/technical/eval-offline.md#独立本地对话回归)。缺图/不合适的图沿用有界补图，最终失败必须同时清除出口许可（只设置failure而保留verdict.ok会被生产展示层放行，已红→绿回归）；Judge三字段完整扩展保持旧快照兼容。真机迭代发现错误行列、嵌套transform裁切、换题后沿用旧题以及SVG重复转义，失败现场保留，不能以visual存在代替视觉验收。
+- 同次Android调试版在本地8017后端完成方阵主动图/角点追问、路灯明确图/双侧追问四轮，使用语音识别完成回调注入，不包含麦克风/ASR和生产原图OCR。最终候选config-v8摘要263792ae4b8024caa30753497e73c2805f0bca5d1d64bb620de1409621a95660，导师qwen3.8-max、备用qwen3.8-flash、本地质量裁判qwen3.7-plus-2026-05-26；升级脚本保留输入快照模型，不能把旧模型自动当成此次验收配置。配置、截图、审计在duxue-server/var/visual-delivery-20261117/，不入git、不发布生产。
+- 本地eval-r2两项合成任务、四检查点全部pass，每项采样1次，proposed/uncalibrated；源码和输入SHA256复核无漂移。r1因作业标题含评测目标而在首项完成前终止，改中性标题后另建r2，旧现场保留。单轮业务耗时约21–49秒，不构成全量质量或延迟承诺。服务端1206 passed/1 skipped、3 subtests passed；App图形组件33 passed；最终相关13项回归、Ruff F/E9/I与diff检查通过。配置启用仍需后续Admin发布，commit本身不等于生产已生效。

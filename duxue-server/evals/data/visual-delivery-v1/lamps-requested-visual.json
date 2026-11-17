@@ -1,0 +1,129 @@
+{
+  "schema_version": "dialogue-eval.v2",
+  "id": "lamps-requested-visual",
+  "type": "episode",
+  "replay_mode": "generated_history",
+  "title": "路灯：按请求画图与双侧端点",
+  "inspired_by": "self",
+  "source": {
+    "kind": "synthetic",
+    "coverage": "authored",
+    "provider": "grafana",
+    "trace_ids": [
+      "810cea0707c5190ef71890658fcf9616"
+    ],
+    "note": "根据生产故障题意与2026-11-17 Android调试文本构造；不是原始trace逐字重放，不含原作业图片，不检验OCR/原图作答转写。"
+  },
+  "label_status": "proposed",
+  "note": "本地开发回归，未人工校准，不上传Langfuse；单次通过不代表发布质量。",
+  "messages": [
+    {
+      "id": "u1",
+      "role": "user",
+      "content": "现在看另一道题：一条1800米的直路两侧都装路灯，每隔45米装一盏，两端都要装。问共需多少盏路灯？我不懂单侧的灯和间隔有什么关系。你帮我画下图，我看看，帮我画图理解，不要直接告诉我最终答案。"
+    },
+    {
+      "id": "u2",
+      "role": "user",
+      "content": "那另一侧也是这样吗？你能把两侧都画出来，让我看清两端都有灯是什么意思吗？不要替我算最后结果。"
+    }
+  ],
+  "checks": [
+    {
+      "id": "turn-1",
+      "after_message": "u1",
+      "component": "tutoring.turn",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "problem": {
+            "summary": "1800米直路两侧每隔45米装灯，两端都装，求总灯数。学生尚未理解单侧灯与间隔关系。",
+            "active_subgoal": "看清单侧灯与相邻间隔的关系",
+            "substantive_attempts": 0,
+            "hints_given": 0
+          },
+          "task_title": "道路两侧安装路灯",
+          "task_active": false
+        },
+        "note": "人工构造的回归上下文；后续轮承接本次实际生成回复，不注入预设导师答案。"
+      },
+      "grading": {
+        "deterministic": [
+          {
+            "id": "guidance-delivered",
+            "field": "outcome",
+            "op": "eq",
+            "expected": "hint_like"
+          },
+          {
+            "id": "diagram-delivered",
+            "field": "visual_present",
+            "op": "eq",
+            "expected": true
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "visual-teaching-and-protection",
+            "type": "binary",
+            "expected": "pass",
+            "rubric": "依据实际response.message和response.visual审核，不把标题/alt的宣称当作图形证据。必须真的提供可读的空间图，不能仅给文字步骤或让学生自己画。检查SVG实际点、线、坐标、变换后边界及标注，不能有改变题意的数量/端点错误、关键标注裁切或遮挡。允许明确标注的局部小例子及抽象关系图，不要求画全题所有人/灯。正文需引导学生观察图中一个当前关系；不能代算当前原题最终答案、列出可直接抄写的完整解法或虚构学生已完成的推导。只有全部满足才pass，说明具体图形证据。明确要求画图理解，须提供真实点与线段/间隔对应图，单侧两端均有灯，灯数比间隔数多一的关系正确；允许小例子。不能输出原题总数82或原题完整列式求解。"
+          }
+        ]
+      },
+      "tags": [
+        "visual-delivery",
+        "answer-protection",
+        "explicit-visual"
+      ]
+    },
+    {
+      "id": "turn-2",
+      "after_message": "u2",
+      "component": "tutoring.turn",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "problem": {
+            "summary": "1800米直路两侧每隔45米装灯，两端都装，求总灯数。学生尚未理解单侧灯与间隔关系。",
+            "active_subgoal": "区分道路两侧与每侧的两端",
+            "substantive_attempts": 0,
+            "hints_given": 1
+          },
+          "task_title": "道路两侧安装路灯",
+          "task_active": false
+        },
+        "note": "人工构造的回归上下文；后续轮承接本次实际生成回复，不注入预设导师答案。"
+      },
+      "grading": {
+        "deterministic": [
+          {
+            "id": "guidance-delivered",
+            "field": "outcome",
+            "op": "eq",
+            "expected": "hint_like"
+          },
+          {
+            "id": "diagram-delivered",
+            "field": "visual_present",
+            "op": "eq",
+            "expected": true
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "visual-teaching-and-protection",
+            "type": "binary",
+            "expected": "pass",
+            "rubric": "依据实际response.message和response.visual审核，不把标题/alt的宣称当作图形证据。必须真的提供可读的空间图，不能仅给文字步骤或让学生自己画。检查SVG实际点、线、坐标、变换后边界及标注，不能有改变题意的数量/端点错误、关键标注裁切或遮挡。允许明确标注的局部小例子及抽象关系图，不要求画全题所有人/灯。正文需引导学生观察图中一个当前关系；不能代算当前原题最终答案、列出可直接抄写的完整解法或虚构学生已完成的推导。只有全部满足才pass，说明具体图形证据。必须真正画出两侧，两侧各自的首末端均有灯，不能用只画单侧配一句乘二代替。图可为等距的小例子，各排灯与间隔数和标注一致，路段不能伸出首末灯之外。不要代算原题最终结果。"
+          }
+        ]
+      },
+      "tags": [
+        "visual-delivery",
+        "answer-protection",
+        "explicit-visual"
+      ]
+    }
+  ]
+}

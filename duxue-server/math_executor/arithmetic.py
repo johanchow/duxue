@@ -22,6 +22,9 @@ def _parse_number(raw: str) -> Fraction:
 
 
 def arithmetic_eval(expression: str) -> Fraction:
+    # Accept unambiguous printed operators at the protocol boundary. Keep the
+    # AST allow-list below; letters (e.g. x), prose and LaTeX are not arithmetic.
+    expression = expression.replace("×", "*").replace("÷", "/")
     try:
         tree = ast.parse(expression, mode="eval")
     except SyntaxError as error:
