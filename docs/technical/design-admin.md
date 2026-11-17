@@ -157,7 +157,7 @@ Admin 不另建评测结果库。Langfuse 维护用例、rubric、原生 Evaluat
 | Production | Admin 原生页面，按明确环境比较当前/前一等长时间段 |
 | Datasets / Evaluators / Human Review | 新标签页打开 Langfuse；Test Case 即 Dataset Item，在 Dataset 详情内维护，不设独立一级菜单。不使用 iframe，沿用 Langfuse 自身登录和权限 |
 
-只读端点为 `GET /api/evaluation/{overview,experiments,production}`；沿用 Admin 会话鉴权，visitor 可读。指标时间范围支持 7/30 天（默认7天），实验列表另支持90天；实验每页 50 条并使用游标，Overview 比较当前窗口第一页内的实验。凭证仅在服务端，校验所属项目，禁止携凭证重定向；请求超时 12 秒、缓存 30 秒，异常明确报错，不伪装成空数据。基线读取失败单独提示，保留当前结果；历史可访问范围受 Langfuse 项目套餐限制，不能据缺失历史生成差值。连接参数见 [README](../../duxue-admin/README.md#evaluation)。
+只读端点为 `GET /api/evaluation/{overview,experiments,production}`；沿用 Admin 会话鉴权，visitor 可读。指标时间范围支持 7/30 天（默认7天），实验列表另支持90天；实验每页 50 条并使用游标，Overview 比较当前窗口第一页内的实验。凭证仅在服务端，校验所属项目，禁止携凭证重定向；单次尝试（含响应体读取）超时 12 秒、缓存 30 秒；同一读取器最多4个并发请求，排队不占用尝试超时。只读请求遇临时网络/响应体传输故障或HTTP502/503/504时最多尝试3次，鉴权失败、限流、真实JSON格式错误不重试。传输故障与JSON解析失败分别报错；日志只记接口路径、阶段、HTTP状态、尝试次数和错误类型，不记凭据、查询参数或响应正文。异常不伪装成空数据。基线读取失败单独提示，保留当前结果；历史可访问范围受 Langfuse 项目套餐限制，不能据缺失历史生成差值。连接参数见 [README](../../duxue-admin/README.md#evaluation)。
 
 ### 批次失败工作台与历史执行图（2026-11-14）
 

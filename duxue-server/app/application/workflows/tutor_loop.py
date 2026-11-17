@@ -94,6 +94,8 @@ class Vetting:
     visual: Visual | None = None
     visual_dropped: str | None = None
     shape_flags: list[str] = field(default_factory=list)
+    visual_need: str | None = None
+    visual_feedback: str | None = None
 
 
 def call_tutor_model(
@@ -120,7 +122,8 @@ def call_tutor_model(
         except (ValueError, TypeError):
             pass
 
-    if preload_svg_guidelines:
+    from app.agent_specs.visual_delivery import enabled as visual_delivery_enabled
+    if preload_svg_guidelines or visual_delivery_enabled():
         _ensure_widget_guidelines(observations)
     tool_calls = 0
     best_candidate: TutorTurnCandidate | None = None
@@ -383,7 +386,10 @@ def _visual_leak_repair(vetting: Vetting) -> str:
 
 
 def _missing_visual_repair(vetting: Vetting) -> str:
-    draft = json.dumps(vetting.candidate.model_dump(mode="json"), ensure_ascii=False)
+    payload = vetting.candidate.model_dump(mode="json")
+    if vetting.visual_feedback:
+        payload = {"visual_review_feedback": vetting.visual_feedback, **payload}
+    draft = json.dumps(payload, ensure_ascii=False)
     if len(draft) > _VISUAL_REPAIR_DRAFT_MAX:
         draft = draft[:_VISUAL_REPAIR_DRAFT_MAX] + "…"
     return render_fragment("tutoring.turn", "missing_visual", draft=draft)
@@ -411,10 +417,22 @@ def vet_candidate(
     from app.agent_specs.runtime import GateDecision, execute_workflow
     from app.application.workflows.image_review import review_problem
     problem_summary = review_problem(problem_summary, candidate, list(judge_images or []))
+    from app.agent_specs.visual_delivery import enabled as visual_delivery_enabled
+    if visual_delivery_enabled():
+        try:
+            summary = json.loads(problem_summary) if problem_summary else {}
+        except (ValueError, TypeError):
+            summary = {"problem": problem_summary}
+        if not isinstance(summary, dict):
+            summary = {"problem": summary}
+        summary["candidate_visual"] = candidate.visual.model_dump(mode="json") if candidate.visual else None
+        problem_summary = json.dumps(summary, ensure_ascii=False)
 
     def authority(state: dict) -> GateDecision:
         with agent_step_span("check", "tutoring.authority") as span:
             verdict = check_authority(candidate, permit)
+            if verdict.ok and candidate.act in {"answer", "guide"} and visual_delivery_enabled():
+                verdict = replace(verdict, needs_leak_check=True)
             if verdict.ok and judge_images and candidate.act in {'answer', 'guide', 'chat'}:
                 # The generator's non_work label cannot exempt image grading
                 # from independent review, including in a fresh conversation.
@@ -442,6 +460,14 @@ def vet_candidate(
             except Exception:  # noqa: BLE001 - a judge failure must reject the candidate
                 result = None
             state["text_leaks"], state["leak_reason"] = _text_leak_result(result)
+            if isinstance(result, dict) and result.get("visual_need") in {"requested", "helpful", "not_needed", "uncertain"}:
+                state["visual_need"] = result["visual_need"]
+                if isinstance(result.get("visual_evidence"), str):
+                    state["visual_feedback"] = result["visual_evidence"][:500]
+                if result.get("visual_adequate") is False and state["visual_need"] in {"requested", "helpful"}:
+                    state["visual"] = None
+                    state["visual_text"] = None
+                    state["dropped"] = "visual_not_helpful"
             if state["text_leaks"] is not None:
                 break
         # Only a successful independent review can scope this turn. The persisted
@@ -478,7 +504,8 @@ def vet_candidate(
                               effective_work_product=verdict.effective_work_product and protected)
         return Vetting(
             candidate, verdict, visual=state["visual"], visual_dropped=state["dropped"],
-            shape_flags=state["flags"],
+            shape_flags=state["flags"], visual_need=state.get("visual_need"),
+            visual_feedback=state.get("visual_feedback"),
         )
 
     conditions = {
@@ -591,6 +618,8 @@ def run_tutor_turn(
                 "failure": result.failure, "leak_reason": result.leak_reason,
                 "visual_dropped": result.visual_dropped,
                 "shape_flags": result.shape_flags,
+                "visual_need": result.visual_need,
+                "visual_feedback": result.visual_feedback,
                 "answer_protected": result.verdict.answer_protected if result.verdict else None,
             })
             if result.visual is not None:
@@ -691,7 +720,8 @@ def run_tutor_turn(
         )
         state["missing_fixed"] = bool(
             checked is not None and checked.failure is None and checked.visual is not None
-            and checked.visual.kind == "svg" and _TEXT_DIAGRAM_TEX not in checked.candidate.content
+            and (state["vetting"].visual_need in {"requested", "helpful"} or checked.visual.kind == "svg")
+            and _TEXT_DIAGRAM_TEX not in checked.candidate.content
         )
         if state["missing_fixed"]:
             state["call"], state["vetting"] = proposal, checked
@@ -702,6 +732,8 @@ def run_tutor_turn(
 
     def finish(state):
         call, review = state["call"], state["vetting"]
+        if review is not None and review.failure is None and review.visual is None and review.visual_need in {"requested", "helpful"}:
+            review = replace(review, verdict=None, failure="visual_unavailable")
         failure = review.failure if review is not None else call.failure or INVALID_CANDIDATE
         if failure:
             record_llm_fallback(operation="tutor_turn", reason=failure)
@@ -718,7 +750,9 @@ def run_tutor_turn(
 
     def needs_missing(state):
         review = state["vetting"]
-        return review.failure is None and review.visual is None and _TEXT_DIAGRAM_TEX in review.candidate.content
+        return review.failure is None and review.visual is None and (
+            review.visual_need in {"requested", "helpful"} or _TEXT_DIAGRAM_TEX in review.candidate.content
+        )
 
     state = execute_workflow(
         load_catalog().spec("tutoring-retry"), initial_state={"retried": False},
