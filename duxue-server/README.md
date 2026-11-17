@@ -20,7 +20,7 @@ python -m unittest tests.test_e2e -v
 
 启动时会自动加载 `duxue-server/.env`（已存在的环境变量优先，不会被覆盖）。启动前会校验数据库、JWT 密钥、Redis 与 VLM API Key；使用 `STORAGE_BACKEND=oss` 时还会校验 OSS endpoint、bucket 与访问密钥，缺失任一项会在进程启动前报错。`STORAGE_BACKEND=local` 可用于测试，不要求 OSS 配置。`/frames/upload-url` 仍遵守“先取预签名 URL、再 PUT、最后提交元数据”的生产契约。
 
-Agent功能还需准备Admin发布/导出快照，已取消仓库业务默认配置。首次运行和离线评测请先阅读[Agent配置入口](agent_specs/README.md)；环境参数、评测数据与Agent配置快照分别维护。
+本地 Agent 功能使用测试 Admin 的已发布配置。首次启动和离线评测的配置方法见[Agent配置入口](agent_specs/README.md)。
 
 开发、测试和生产环境更新代码后，都必须在启动 API/Worker 前运行同一环境的数据库迁移。`create_all()` 不会为已有表补列，不能替代 Alembic；生产环境必须禁用 `AUTO_CREATE_SCHEMA`。迁移命令：
 
@@ -48,7 +48,7 @@ ENV_FILE=.env .venv/bin/alembic upgrade head
 ENV_FILE=.env .venv/bin/alembic current --check-heads
 ```
 
-验收记录必须注明实际库名、迁移前后版本，并检查本轮关键表/字段及相关 PostgreSQL 用例。自动测试通过不能替代上述联调检查，也不能表述为“测试业务库已升级”。版本检查只核对 Alembic head，不检测任意手工结构漂移。Agent 配置另按[配置入口](agent_specs/README.md)检查当前实际快照；Admin 发布不会自动替换本地离线快照。
+验收记录必须注明实际库名、迁移前后版本，并检查本轮关键表/字段及相关 PostgreSQL 用例。自动测试通过不能替代上述联调检查，也不能表述为“测试业务库已升级”。版本检查只核对 Alembic head，不检测任意手工结构漂移。Agent 配置另按[配置入口](agent_specs/README.md)检查实例的加载回执。
 
 对于历史上由 `Base.metadata.create_all()` 创建、但从未使用 Alembic 的数据库，先备份数据库并核对当前表结构，再执行 `alembic stamp 20260804_01`，最后执行 `alembic upgrade head`。该过程会把 `owner` 转为 `admin`、`teacher/parent` 转为 `guardian`，并删除已废弃的 `birth_year` 与 `relation_type` 列。
 
