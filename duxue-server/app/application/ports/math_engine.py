@@ -13,11 +13,29 @@ class MathSymbol(BaseModel):
     domain: Literal["real", "complex", "integer"]
 
 
+ScienceOp = Literal[
+    "evaluate",
+    "equivalent",
+    "solve",
+    "differentiate",
+    "integrate",
+    "limit",
+    "transform",
+    "summation",
+    "analyze_function",
+    "search_counterexample",
+    "conic_line_system",
+    "space_geometry_3d",
+    "probability_stats",
+    "check_dimensions",
+    "check_reaction",
+    "genetics_cross",
+]
+
+
 class MathInput(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
-    op: Literal[
-        "evaluate", "equivalent", "solve", "differentiate", "integrate", "limit"
-    ]
+    op: ScienceOp
     args: dict
     symbols: list[MathSymbol] = Field(default_factory=list, max_length=8)
     assumptions: list[str] = Field(default_factory=list, max_length=16)

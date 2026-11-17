@@ -111,6 +111,50 @@ class MathVerification:
             "math_claims": [c.model_dump() for c in claims],
         }
 
+    def verify_derivation_chain(
+        self,
+        *,
+        steps: list[str],
+        symbols: list[dict] | None = None,
+        assumptions: list[str] | None = None,
+        image_ref: str | None = None,
+    ) -> dict:
+        """Verify adjacent steps (L_i -> L_{i+1}) to pinpoint the FIRST broken transition."""
+        if not isinstance(steps, list) or not 2 <= len(steps) <= 8:
+            raise ValueError("derivation_chain_requires_2_to_8_steps")
+        transitions = []
+        first_error = None
+        for idx in range(len(steps) - 1):
+            step_ref = f"step_{idx + 1}_to_{idx + 2}"
+            record = self.run(
+                {
+                    "op": "equivalent",
+                    "args": {"left": steps[idx], "right": steps[idx + 1]},
+                    "symbols": list(symbols or []),
+                    "assumptions": list(assumptions or []),
+                    "image_ref": image_ref,
+                    "step_ref": step_ref,
+                }
+            )
+            verdict = record.get("verdict") or "unknown"
+            transitions.append(
+                {
+                    "from_step": idx + 1,
+                    "to_step": idx + 2,
+                    "request_id": record.get("request_id"),
+                    "verdict": verdict,
+                    "conditions": record.get("conditions", []),
+                }
+            )
+            if first_error is None and verdict == "not_equal":
+                first_error = {"from_step": idx + 1, "to_step": idx + 2}
+        return {
+            "status": "ok",
+            "step_count": len(steps),
+            "first_error_transition": first_error,
+            "transitions": transitions,
+        }
+
     def reconcile_image(self, candidate):
         """Arithmetic transcriptions use the same isolated engine and evidence ledger."""
         report = candidate.image_review

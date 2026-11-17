@@ -32,8 +32,9 @@ openai>=1.57.0
 langgraph>=1.0.0
 langgraph-checkpoint-postgres>=3.0.0
 
-# ── 数值计算
+# ── 数值计算与图像局部裁剪
 numpy>=1.24.0
+pillow>=11.0.0
 
 # ── 认证
 python-jose[cryptography]>=3.3.0

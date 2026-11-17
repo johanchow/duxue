@@ -97,6 +97,9 @@ COMPONENT_PURPOSES = {
         "读取已授权作答尝试的摘要，为启发式答疑提供依据。",
     ),
     "tutoring.math": ("数学核验工具", "受限四则与SymPy核验，结果不改变答案保护。"),
+    "tutoring.science": ("多学科符号与约束引擎", "覆盖高阶数学、含参反例证伪、物理量纲、化学守恒与生物遗传核算。"),
+    "tutoring.inspect_image": ("局部看图放大工具", "在当前已授权图片上按归一化坐标裁剪放大细节，图片字节不进遥测。"),
+    "tutoring.blueprint-planner": ("内部解题蓝图规划", "首轮复杂新题生成服务端私有路线、里程碑与预验算锚点，绝不下发客户端。"),
     "tutoring.lookup_history": ("答疑历史工具", "查询授权范围内的历史答疑上下文。"),
     "tutoring.widget_guidelines": (
         "配图规范工具",
@@ -114,6 +117,7 @@ WORKFLOW_DESCRIPTIONS = {
     "tutoring-retry": "组织主模型尝试、泄露修复、备用模型及配图的有界重试。",
     "tutoring-vet": "依次进行教学权限、文字答案保护与必要的配图答案保护审核。",
     "tutoring": "执行单轮启发答疑，串联题面定位、模型生成、审核、安全交付与教学事实写入。",
+    "tutoring-blueprint": "首轮复杂新题生成服务端私有路线、里程碑与确定性预验算锚点。",
 }
 
 

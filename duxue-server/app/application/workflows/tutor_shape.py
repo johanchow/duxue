@@ -13,6 +13,9 @@ import re
 MAX_CHARS: dict[str, int] = {
     "answer": 400, "guide": 250, "chat": 120, "clarify": 200, "redirect": 120, "pronounce": 400,
 }
+HIGH_SCHOOL_MAX_CHARS: dict[str, int] = {
+    "answer": 650, "guide": 420, "chat": 150, "clarify": 240, "redirect": 150, "pronounce": 450,
+}
 
 _QUESTION = re.compile(r"[？?]")
 _LIST_LINE = re.compile(r"^\s*(?:[-*•]|\d+[.、)）])\s+\S")
@@ -53,10 +56,11 @@ def _has_unpaired_math(content: str) -> bool:
     return outside_display.count("$") % 2 == 1
 
 
-def lint_shape(act: str, content: str) -> list[str]:
+def lint_shape(act: str, content: str, *, grade_stage: str | None = None) -> list[str]:
     """返回触发的规则名；空列表表示形状没有问题。规则名是稳定的低基数标签。"""
     flags: list[str] = []
-    limit = MAX_CHARS.get(act)
+    limits = HIGH_SCHOOL_MAX_CHARS if grade_stage == "high_school" else MAX_CHARS
+    limit = limits.get(act)
     if limit is not None and len(content) > limit:
         flags.append("too_long")
     if act == "guide" and len(_QUESTION.findall(content)) > 1:

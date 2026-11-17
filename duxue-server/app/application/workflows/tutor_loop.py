@@ -137,9 +137,12 @@ def call_tutor_model(
 
     for _ in range(call_limit):
         used_calls += 1
+        call_envelope = dict(envelope)
+        if getattr(tools, "inspected_crops", None) and review_evidence is None:
+            call_envelope["inspected_crops"] = list(tools.inspected_crops)
         try:
             raw = model.complete(
-                envelope=envelope, instruction=instruction,
+                envelope=call_envelope, instruction=instruction,
                 recent_utterances=[] if review_evidence is not None else window,
                 current_images=[] if review_evidence is not None else images,
                 repair_error=repair, observations=observations,
@@ -331,18 +334,25 @@ _TEXT_DIAGRAM_TEX = r"\enclose{longdiv}"
 
 def judge_problem_summary(
     recent_problems: list[str], student_said: str, *, recent_utterances: list[dict] | None = None,
+    verified_final_answers: dict[str, str] | None = None,
 ) -> str | None:
-    """审核题目及有界学生证据；导师原话不当作学生已经提交的答案。"""
+    """审核题目及有界学生证据；导师原话不当作学生已经提交的答案。
+
+    防误杀红线：绝不向裁判注入中间里程碑列表；仅当档案 ready 且 confidence=="high" 时可选提供 verified_final_answers。
+    """
     problems = [item.strip() for item in recent_problems if item and item.strip()][:JUDGE_RECENT_PROBLEMS]
     ward_texts = [str(item.get("text", "")).strip() for item in (recent_utterances or [])
                   if item.get("author") == "ward" and str(item.get("text", "")).strip()]
     if not problems and not ward_texts and not student_said.strip():
         return None
-    return json.dumps({
+    payload: dict = {
         "current_request": student_said.strip(),
         "recent_problems": problems,
         "student_evidence": [text[:300] for text in ward_texts[-JUDGE_RECENT_STUDENT_UTTERANCES:]],
-    }, ensure_ascii=False)
+    }
+    if verified_final_answers:
+        payload["verified_final_answers"] = dict(verified_final_answers)
+    return json.dumps(payload, ensure_ascii=False)
 
 
 LEAK_REASONS = frozenset({
@@ -407,6 +417,8 @@ def fact_gate(candidate: TutorTurnCandidate) -> str | None:
 def vet_candidate(
     candidate: TutorTurnCandidate, *, permit: TutorPermit, leak_judge: LeakJudgePort,
     task_title: str | None, problem_summary: str | None, judge_images: list[str] | None = None,
+    grade_stage: str | None = None,
+    verdict_assertion_allowed: bool = True,
 ) -> Vetting:
     """Run the configured authority, text and optional visual Gates."""
     from app.agent_specs.catalog import load_catalog
@@ -437,7 +449,7 @@ def vet_candidate(
             span.set_attribute("agent.check.result", "pass" if verdict.ok else "rejected")
             set_observation_payload(span, output={"ok": verdict.ok, "reason": verdict.reason})
         if verdict.ok:
-            flags = lint_shape(candidate.act, candidate.content)
+            flags = lint_shape(candidate.act, candidate.content, grade_stage=grade_stage)
             if candidate.act == "answer" and candidate.depth == "reasoning":
                 flags.append("answer_on_reasoning")
             if flags:
@@ -466,6 +478,19 @@ def vet_candidate(
                     state["dropped"] = "visual_not_helpful"
             if state["text_leaks"] is not None:
                 break
+        # Code-enforced confidence gate (§4.4): when neither a ready verified dossier nor
+        # direct deterministic engine verification exists on this turn, affirming the student's
+        # reasoning answer by pure LLM mental math is strictly denied!
+        if (
+            state["text_leaks"] is False
+            and not verdict_assertion_allowed
+            and isinstance(result, dict)
+            and result.get("affirms_student_answer") is True
+            and (result.get("answer_protected") is not False)
+        ):
+            state["text_leaks"] = True
+            state["leak_reason"] = "incorrect_confirmation"
+
         # Only a successful independent review can scope this turn. The persisted
         # permit stays unchanged, and visual review still uses the original trigger.
         if (state["text_leaks"] is False and isinstance(result, dict)
@@ -599,9 +624,26 @@ def run_tutor_turn(
                                    "math_inconsistent")
             checked_summary = (json.dumps({"problem": problem_summary, **ledger.context(candidate.math_claims)},
                                           ensure_ascii=False) if ledger is not None else problem_summary)
+            actor_stage = (envelope.get("actor") or {}).get("grade_stage") if isinstance(envelope, dict) else None
+            has_direct_engine_verdict = bool(
+                ledger is not None
+                and (
+                    candidate.math_claims
+                    or any(rec.get("status") == "ok" for rec in ledger.records.values())
+                )
+            )
+            dossier_gate_meta = envelope.get("_dossier_gate") if isinstance(envelope, dict) else None
+            if isinstance(dossier_gate_meta, dict):
+                dossier_allows = bool(dossier_gate_meta.get("allows_verdict_assertion", False))
+                verdict_allowed = dossier_allows or has_direct_engine_verdict
+            else:
+                verdict_allowed = True
+
             result = vet_candidate(
                 candidate, permit=permit, leak_judge=leak_judge,
                 task_title=task_title, problem_summary=checked_summary, judge_images=judge_images,
+                grade_stage=actor_stage,
+                verdict_assertion_allowed=verdict_allowed,
             )
             span.set_attribute("agent.check.result", "rejected" if result.failure else "pass")
             if result.failure:

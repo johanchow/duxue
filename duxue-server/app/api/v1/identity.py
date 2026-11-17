@@ -294,6 +294,11 @@ def delete_ward_data(ward_id: str, principal: Principal = Depends(current_guardi
         from app.infrastructure.persistence.models import TutoringProblem
         db.query(TutoringMessage).filter(TutoringMessage.tutoring_session_id.in_(tutor_ids)).delete(synchronize_session=False)
         db.query(TutoringProblem).filter(TutoringProblem.tutoring_session_id.in_(tutor_ids)).delete(synchronize_session=False)
+    from app.infrastructure.persistence.models import ProblemDossierRecord
+    db.query(ProblemDossierRecord).filter(
+        ProblemDossierRecord.scope == "ward",
+        ProblemDossierRecord.owner_ward_id == ward_id,
+    ).delete(synchronize_session=False)
     db.query(TutoringSession).filter(TutoringSession.ward_id == ward_id).delete(synchronize_session=False)
     db.query(PronunciationLesson).filter(PronunciationLesson.ward_id == ward_id).delete(synchronize_session=False)
     db.query(Frame).filter(Frame.ward_id == ward_id).delete(synchronize_session=False)

@@ -32,5 +32,12 @@ services:
     environment:
       MATH_ENGINE_SOCKET: /run/math/engine.sock
     volumes: ["math-socket:/run/math:ro"]
+  solving-worker:
+    environment:
+      MATH_ENGINE_SOCKET: /run/math/engine.sock
+    volumes: ["math-socket:/run/math:ro"]
+    depends_on:
+      math-engine:
+        condition: service_healthy
 volumes:
   math-socket:

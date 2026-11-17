@@ -89,7 +89,19 @@ class QwenLeakJudge:
             return None
         value = verdict.verdict == "deny"
         if with_reason:
-            return {"leaks": value, "reason": verdict.reason_code,
-                    "answer_protected": payload["answer_protected"],
-                    **({key: payload[key] for key in ("visual_need", "visual_adequate", "visual_evidence") if key in payload})}
+            out = {
+                "leaks": value,
+                "reason": verdict.reason_code,
+                "answer_protected": payload["answer_protected"],
+                **(
+                    {
+                        key: payload[key]
+                        for key in ("visual_need", "visual_adequate", "visual_evidence")
+                        if key in payload
+                    }
+                ),
+            }
+            if payload.get("affirms_student_answer") is True:
+                out["affirms_student_answer"] = True
+            return out
         return value

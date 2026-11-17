@@ -12,6 +12,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.agent_specs.definitions import load_definitions
+from app.agent_specs.gaokao_contracts import WORKFLOWS as GAOKAO_WORKFLOWS
 from app.agent_specs.registrations import WORKFLOW_BINDINGS
 from app.agent_specs.observation_contracts import WORKFLOWS as OBSERVATION_WORKFLOWS
 from app.infrastructure.ai.components import COMPONENTS, ComponentSpec
@@ -219,7 +220,13 @@ class AgentCatalog:
                     raise ValueError('observation required protocol nodes or business branches changed')
                 if spec.id == 'behavior-report' and [n.ref for n in spec.nodes] != ['behavior.report']:
                     raise ValueError('report required protocol node changed')
-            registration = ({'conditions': {'eligible','ineligible'} if spec.id == 'behavior-observation' else set(), 'handlers':set()} if spec.id in OBSERVATION_WORKFLOWS else WORKFLOW_BINDINGS[spec.id])
+            if spec.id in GAOKAO_WORKFLOWS and [n.ref for n in spec.nodes] != GAOKAO_WORKFLOWS[spec.id]:
+                raise ValueError("gaokao blueprint required protocol node changed")
+            registration = (
+                {'conditions': {'eligible','ineligible'} if spec.id == 'behavior-observation' else set(), 'handlers':set()}
+                if spec.id in OBSERVATION_WORKFLOWS or spec.id in GAOKAO_WORKFLOWS
+                else WORKFLOW_BINDINGS[spec.id]
+            )
             expected_handler = "coordinator" if spec.id == "companion" else spec.id
             if spec.handler != expected_handler:
                 raise ValueError(f"{spec.id}: workflow handler must match its domain")
@@ -301,7 +308,8 @@ class AgentCatalog:
             raise ValueError("companion: route targets differ from business contexts")
         if not set(load_definitions().units["tutoring.turn"].tools).issubset({
             "tutoring.get_task_context", "tutoring.get_attempt_summary",
-            "tutoring.lookup_history", "tutoring.math", "tutoring.widget_guidelines",
+            "tutoring.lookup_history", "tutoring.math", "tutoring.science",
+            "tutoring.inspect_image", "tutoring.widget_guidelines",
         }):
             raise ValueError("tutoring: tool permissions differ from code-owned handlers")
 
@@ -317,6 +325,8 @@ class AgentCatalog:
         expected = set(WORKFLOW_BINDINGS)
         if "behavior.visible-activity" in load_definitions().units:
             expected |= set(OBSERVATION_WORKFLOWS)
+        if "tutoring.blueprint-planner" in load_definitions().units:
+            expected |= set(GAOKAO_WORKFLOWS)
         if set(specs) != expected:
             raise ValueError(f"agent definitions missing or unexpected: {sorted(specs)}")
         return cls(specs, directory)

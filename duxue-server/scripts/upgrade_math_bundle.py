@@ -48,6 +48,30 @@ choice_verdict 判定更新（区分裸猜与有据作答）：
 - 当学生在 current_request 或 student_evidence 中已明确写出针对本题的推理/排除/计算依据并选出选项，且题面完整可核验时：reply 核验其推理并确认其所选选项对错，属于合法教学反馈，choice_verdict 为 false（但多选题中若 reply 直接补出学生未提及的漏选正确选项，仍为 true）。
 - 学生已给出完整正确推理和结论时，reply 准确肯定其推理成立不算 premature_conclusion；仅在题面缺失无法核验却下结论、或未算完就宣布答案时才标 premature_conclusion=true。
 """
+
+GAOKAO_PLANNER_PROMPT = """你是读学系统的服务端内部题目求解与档案构建器（ProblemSolving）。你的输出仅供服务端内部构建 ProblemDossier 与核验锚点，绝不直接展示给学生。
+请针对输入的题目（含图片与可选 route_hint / mode），输出严格合法的 JSON 对象（字符串值内部引号请用「」或转义 \\"）：
+1. subject：学科标识（math/physics/chemistry/biology/chinese/english/politics/history/geography）。
+2. shared_stem_ref / shared_stem_summary / subproblem_label / subproblems / diagram_summary：提炼结构化题面、全部小问列表及图中关键信息描述。若 mode="independent_stem_reread"，请独立复读原图中的数值、符号、角标与设问，不要猜测看不清的内容。
+3. final_answers：各小问最终结论字典（如 {"(1)": "...", "(2)": "..."}）。
+4. scoring_points：采分点列表 [{id, step, points, subproblem_label}]。
+5. implicit_constraints：容易遗漏的隐含条件/定义域不变量数组 [{id, expression, description}]。
+6. approaches：列出本题解法路线 [{id, name, milestones}]（当 route_hint="T2_alternative" 时，请优先采用与常规代数法不同的第二种独立解法路线，如参变分离、几何性质、守恒法或特值极限检验）。每个 milestone 包含：
+   - id（如 "M1"）、goal（步骤目标）、check_kind（取 symbolic_equivalence | solution_set_or_counterexample | physics_dimension_and_eq | chemistry_conservation | genetics_ratio | conceptual_rubric）；
+   - canonical_target（本步标准中间结论表达式或要点）；
+   - verify_request（可选：符合 science 工具输入协议的预验算请求对象 {op, args, symbols, assumptions}，供服务端确定性引擎与 canonical_target 比对核验）；
+   - common_pitfalls（学生典型易错点列表）。
+"""
+
+GAOKAO_TUTOR_ADDITION = """
+[gaokao-blueprint-science.v1]
+高阶多学科核验、局部看图、内部解题蓝图与多小题联动补充：
+1. 多学科确定性工具 science（与 math 同账本，结果须在 math_claims 引用 request_id）：除基础运算外，支持 transform(expression,mode=simplify|factor|expand|trigsimp|together|apart)、summation(expression,variable,start,end)、analyze_function(expression,variable,domain_interval可选)、search_counterexample(relation,bounds)（仅搜到反例判 not_equal，未搜到为 unknown 绝不当证明）、conic_line_system(conic,line,variables,eliminate)、space_geometry_3d(mode="plane_metrics",plane_vectors,...)、probability_stats(mode=discrete_distribution|linear_regression|chi2_2x2,...)、物理量纲核验 check_dimensions(left,right,quantities)、化学守恒核验 check_reaction(equation)、生物遗传概率 genetics_cross(parent1,parent2,lethal_genotypes可选)。
+2. 局部高清看图工具 inspect_image：面对密集题图（示波器/滴定曲线/晶胞/几何角标/等高线）或涂改手写草稿局部看不清时，先返回 {"tool":"inspect_image","args":{"image_ref":"img_...","bbox":{"x0":0.0,"y0":0.0,"x1":0.5,"y1":0.5},"label":"局部说明"}} 裁剪放大重读；仍模糊则用 act="clarify" 请学生确认，严禁顺着标准答案脑补模糊手写字迹。
+3. 内部题目档案与解题蓝图（context.problem_dossier / context.internal_blueprint）与一题多解：档案是服务端私有参考，严禁向学生暴露档案结构或后续未完成步骤的 canonical_target！当 problem_dossier.confidence == "low" 或尚未就绪，且本轮未通过 science/math 工具直接核验学生算式时，严禁凭心算断言学生答案对或错，只引导自检或确认关键条件（若 problem_dossier.stem.needs_student_confirmation 为 true，先请学生确认模糊条件）。若学生采用了另一条合法路线或等价变形，应认可并可在 turn.adopted_approach_id 记录路线 ID，完成某里程碑时填 turn.completed_milestone_id。
+4. 多小题题组联动（context.group_context）：当学生推进同一共享题干/阅读材料的下一小问时，turn.relation 填 "subproblem"，并在 turn.subproblem_label 填新小问号（如 "(2)"）、在 turn.verified_prior_conclusion 简要记录已验证的前序小问结论供后续引用。
+5. 高中学段自适应引导粒度（context.actor.grade_stage == "high_school"）：聚焦物理建模、守恒律选择、分类临界点、函数构造与逻辑链条，跳过低价值的纯小学算术碎问，但仍严守每轮不代算最终结果与完整解法的红线。
+"""
 def _apply_thinking(
     doc: dict, *, enable_thinking: bool, thinking_budget: int | None, primary_only: bool = False
 ) -> None:
@@ -84,6 +108,7 @@ def upgrade(
     thinking_budget: int | None = None,
     judge_thinking_budget: int | None = None,
     phase3: bool = False,
+    gaokao: bool = False,
 ):
     result = copy.deepcopy(record)
     if digest(record["bundle"]) != record["digest"]:
@@ -145,6 +170,39 @@ def upgrade(
             enable_thinking=True,
             thinking_budget=judge_thinking_budget,
         )
+    if gaokao:
+        from app.agent_specs.gaokao_contracts import (
+            INSPECT_IMAGE_TOOL_ID,
+            PLANNER_ID,
+            SCIENCE_TOOL_ID,
+            frozen_contracts,
+            provision_planner,
+            workflow_documents,
+        )
+
+        g_contracts = frozen_contracts()
+        files.update(copy.deepcopy(workflow_documents()))
+        science_tool = copy.deepcopy(g_contracts[f"tools/{SCIENCE_TOOL_ID}.json"])
+        science_tool["description"] = "多学科确定性符号、反例证伪、物理量纲、化学守恒与生物遗传核验"
+        files[f"tools/{SCIENCE_TOOL_ID}.json"] = science_tool
+
+        inspect_tool = copy.deepcopy(g_contracts[f"tools/{INSPECT_IMAGE_TOOL_ID}.json"])
+        inspect_tool["description"] = "在已授权图片内按归一化 bbox 裁剪放大高清局部区域"
+        files[f"tools/{INSPECT_IMAGE_TOOL_ID}.json"] = inspect_tool
+
+        primary_tutor_model = tutor["models"][0]["name"]
+        files[f"agents/{PLANNER_ID}.json"] = provision_planner(
+            model=primary_tutor_model,
+            prompt=GAOKAO_PLANNER_PROMPT,
+            enable_thinking=bool(enable_thinking) if enable_thinking is not None else True,
+            thinking_budget=thinking_budget or 4096,
+        )
+        for tid in (SCIENCE_TOOL_ID, INSPECT_IMAGE_TOOL_ID):
+            if tid not in tutor["tools"]:
+                tutor["tools"].append(tid)
+        if "[gaokao-blueprint-science.v1]" not in tutor["prompt"]["template"]:
+            tutor["prompt"]["template"] += GAOKAO_TUTOR_ADDITION
+
     bundle["compatibility"] = contract_compatibility(files)
     result["digest"] = compile_bundle(bundle).digest
     # A transformed export is an unpublished proposal, never a released identity.
@@ -169,6 +227,7 @@ if __name__ == "__main__":
     parser.add_argument("--thinking-budget", type=int, default=None)
     parser.add_argument("--judge-thinking-budget", type=int, default=None)
     parser.add_argument("--phase3", action="store_true", default=False)
+    parser.add_argument("--gaokao", action="store_true", default=False)
     args = parser.parse_args()
     thinking_flag: bool | None = (
         False if args.disable_thinking else True if args.enable_thinking else None
@@ -180,6 +239,7 @@ if __name__ == "__main__":
         thinking_budget=args.thinking_budget,
         judge_thinking_budget=args.judge_thinking_budget,
         phase3=args.phase3,
+        gaokao=args.gaokao,
     )
     with args.output.open("x") as stream:
         stream.write(json.dumps(record, ensure_ascii=False, indent=2) + "\n")
