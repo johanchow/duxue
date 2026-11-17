@@ -87,9 +87,9 @@ jobs:
              export ENV_FILE=.env.prod DUXUE_SERVER_IMAGE='${IMAGE_NAME}:${GITHUB_SHA}' DUXUE_MATH_IMAGE='${MATH_IMAGE_NAME}:${GITHUB_SHA}' COMPOSE_FILE=docker-compose.yml:docker-compose.math.yml && \
              docker compose --profile tools pull migrate && \
              docker compose --profile tools run --rm migrate && \
-             docker compose pull api worker beat math-engine && \
+             docker compose pull api worker solving-worker beat math-engine && \
              (attempt=0; until docker compose run --rm --no-deps api python -m app.agent_specs preflight; do attempt=\$((attempt+1)); test \"\$attempt\" -lt 12 || exit 1; sleep 10; done) && \
-             docker compose up -d --no-build --wait math-engine api worker beat && \
+             docker compose up -d --no-build --wait math-engine api worker solving-worker beat && \
              docker image prune -f"
       - name: Verify API health
         env:

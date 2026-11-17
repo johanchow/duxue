@@ -66,6 +66,7 @@ class _VoiceComposerState extends State<VoiceComposer> {
 
   @override
   void dispose() {
+    _aborted = true;
     _limit?.cancel();
     _removeOverlay();
     _feedback.dispose();
@@ -128,6 +129,7 @@ class _VoiceComposerState extends State<VoiceComposer> {
   }
 
   void _updateFeedback({String? transcript, bool? cancelArmed}) {
+    if (!mounted || _aborted) return;
     final current = _feedback.value;
     if (current == null) return;
     _feedback.value = _RecordingFeedback(
@@ -185,6 +187,7 @@ class _VoiceComposerState extends State<VoiceComposer> {
   }
 
   void _showError(String message) {
+    if (!mounted) return;
     _limit?.cancel();
     _removeOverlay();
     _feedback.value = null;

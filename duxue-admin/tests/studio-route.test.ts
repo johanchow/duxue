@@ -14,6 +14,14 @@ test('list and detail URLs stay distinct and support deep links', () => {
     tab: 'flow-detail',
     id: 'tutoring-vet',
   });
+  assert.deepEqual(
+    studioRoute('/workflows/tutoring/nodes/tutoring.model_loop'),
+    {
+      tab: 'flow-node-detail',
+      id: 'tutoring',
+      nodeId: 'tutoring.model_loop',
+    },
+  );
   assert.deepEqual(studioRoute('/agents'), { tab: 'agents', id: undefined });
   assert.deepEqual(studioRoute('/agents/tutoring.turn'), {
     tab: 'agent-detail',

@@ -18,21 +18,23 @@ Agent可编辑配置的唯一维护源是Admin。生产目录不再保留`agents
 | `AGENT_CONFIG_SOURCE_URL` | 私有发布接口前缀，例如`http://duxue-admin:3000/api/internal` |
 | `AGENT_ADMIN_INTERNAL_TOKEN` | 与Admin一致、至少32字符的内部密钥 |
 | `AGENT_CONFIG_CACHE` | 最后成功发布的持久缓存路径，正式Docker挂载`/app/var/admin` |
-| `AGENT_CONFIG_SOURCE=snapshot` | 本地运行/评测只使用显式离线快照，不轮询Admin |
+| `AGENT_CONFIG_SOURCE=snapshot` | 离线诊断或评测固定使用显式导出的配置，不轮询Admin |
 | `AGENT_CONFIG_SNAPSHOT` | 完整导出文件路径，默认Server下`var/admin/release.json`，Git忽略 |
 
 离线快照必须含`id/digest/bundle`，并验证完整性、代码契约和摘要；缺失/错误时明确拒绝，不从仓库补值。生产验证环境为prod，缓存与在线来源都不能混入测试环境或草稿。Admin暂时不可用时继续使用已验证缓存；无缓存时AI调用返回配置未就绪。每轮应用调用固定一次快照，发布/回滚只影响后续调用。API与Celery子进程分别维护加载状态。
 
 `AI_MODEL_OVERRIDES`已停用；模型变化在Admin维护。评测的`--model/--variant`只修改评测进程内的实验对象，不回写快照或Admin。
 
-## 本地与离线评测
+## 本地联调
 
-先按[Admin快照导入导出说明](../../duxue-admin/README.md#配置快照导入导出)下载/导出发布快照。Server `.env`配置snapshot模式及文件路径，重新启动本地服务。
+在 Server 的 `.env` 设置 `AGENT_CONFIG_SOURCE=admin`、`AGENT_CONFIG_SOURCE_URL=http://127.0.0.1:3021/api/internal`，并填入与测试 Admin 一致的 `AGENT_ADMIN_INTERNAL_TOKEN`。测试 Admin 需已有生效发布。启动或重启本地 API 后，在 Admin 发布管理确认该实例的加载回执。实例定期拉取已发布配置，工作草稿在发布之前只用于显式调试。`AGENT_CONFIG_CACHE` 由服务自动维护，Admin 暂时不可用时可使用最后一次通过校验的发布。
+
+## 离线评测
+
+离线评测按[Admin快照导入导出说明](../../duxue-admin/README.md#配置快照导入导出)固定一份导出，用命令参数传递给评测进程。
 
 ```bash
 cd duxue-server
-.venv/bin/python -m app.agent_specs validate
-.venv/bin/python -m app.agent_specs show tutoring
 .venv/bin/python -m evals validate
 .venv/bin/python -m evals run --component companion.intent --samples 1 \
   --config-snapshot var/admin/release.json

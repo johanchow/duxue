@@ -1,5 +1,33 @@
 # 平台
 
+- 2026-11-18 用户授权正式 Admin 发布数学裁判修复，已以 R3 为基线发布 R4 并核验 5 个加载回执。范围、对照和实际限制见[正式发布记录](../../docs/deployment.md#2026-11-18-正式数学裁判配置发布)。
+
+- 2026-11-18 测试 Admin R13 `00127e13-4573-44bc-8e9f-a98eb21a0dde` 基于 R12，仅恢复 `tutoring.leak-judge` 的 `[math.v1]` 提示词。原样追加旧段落未通过真实用例，前置数学阶段及 `problem` 的对象／JSON 字符串解释后，概念结论为 true、错误计算为 false，诗句和分数均返回正文。权威校验及86项相关测试通过，受控事务发布与两个本地实例回执确认。真机分数 `f4e85ed0ea140b4f00b8111ede5a3fde` 7.583秒，诗句 `a4672c71254f46439400f43664698b92` 5.684秒。发布前分数有单次裁判65.381秒长尾。旧体验快照对比 R12 共50个同名文件（44相同、6不同）及4个新增；保留主模型和蓝图。后续需评估裁判长尾、导师数学工具/证据协议、带推理的选择题与按需配图，避免整包回滚。隔离证据在 ignored `duxue-server/var/guardian-judge-repair/`。
+
+- 2026-11-18 本地业务联调改为轮询测试 Admin。`8021` 和 `8000` 均回执已加载 R12，`8021` 的真实问答 trace 确认主生成使用 `deepseek-v4.1-flash-1017`。缓存由运行时生成。诗句候选通过结构校验，但 R12 裁判未返回 `math_consistent`，命中 `math_check_failed`；英语发音问答正常。未编辑或发布配置。配置入口见[本地联调](../../duxue-server/agent_specs/README.md#本地联调)。
+
+- 2026-11-18 Admin Workflow节点导览及布局调整沿用现有图组件，以同一组件支持配置查看和执行回放。新增代码步骤时同步核对Admin处理器的展示摘要。交互和名称规则见[管理台设计](../../docs/technical/design-admin.md#五界面与真实调试)。
+
+- 2026-11-17 用户授权切分支并commit：本轮提交范围为独立解题Worker部署修复/回归、数据库联调验收约定及正式升级记录；并行Guardian首页讨论和spec、编辑器配置与外部PDF不纳入。不包含私有配置快照、数据库备份或ECS凭据；本地提交不触发main自动部署。
+
+- 2026-11-17 用户授权完成正式配置升级与部署，现已执行；唯一正式验收状态及模型/版本/质量限制见[部署记录](../../docs/deployment.md#2026-11-17-正式升级验收)。全量Server1233通过/1跳过/3 subtests，新增部署服务集合回归先红后绿（复现pull漏solving-worker）；Ruff F/E9/I与diff检查通过。正式Admin旧登录备份已失效，操作改用ECS受控CLI及有有效admin身份审计的事务，未重置密码或伪造会话。升级首次因CropBox Schema的0.0/1.0被Node序列化为0/1导致摘要不符而拒绝；确认逐字段仅数字表示差异后，按管理端序列化重算并通过权威编译，未更改全局摘要算法或历史产物。曾提前报告草稿写入，实际成功导入以后续校验回执为准。部署流程修复与文档留工作区，未提交/推送；不把手动恢复宣称成失败GitHub流水线已成功。
+
+- 2026-11-17 约22:33正式复查：Admin/Executor d1483f2 healthy、Deploy Admin成功；Admin配置仍R2/50文件/无草稿，缺蓝图Agent，3活跃业务实例继续加载R2。业务库已37，但API/Worker/Beat/math仍fd9ba802，solving-worker未运行；Deploy Server 44098384610于22:25明确因Admin发布及缓存不兼容预检失败，旧容器保留。当前是“新数据库+新Admin代码+旧配置+旧业务容器”，不能报新功能上线完成。下一步须以正式R2生成兼容升级草稿、审阅模型/Prompt/协议后发布，补部署solving-worker再重跑Server部署并验收回执/解题任务；此次只读核查，未发布或重启。
+
+- 2026-11-17 用户授权补齐测试库与开发验收：显式使用`.env`/duxue-test，先运行`alembic current --check-heads`复现非零退出，再完整pg_dump备份并验证归档目录，执行Alembic 34→35→36→37，最终同命令通过。新增19表、tutoring_problems四列齐全，升级前后全部原有业务表行数一致；备份与结构验证结果在ignored `duxue-server/var/environment-audit-20261117/`。观察/档案真实一次性PG与配置回归5通过；diff检查通过。README新增统一“数据库与联调验收”，AGENTS铁律链接该规则，索引移除过期“测试34/生产未迁移”描述。SQLite来自tests/conftest的内存fixture与Admin隔离调试设计，架构仍明确业务PostgreSQL；问题是把隔离测试通过混同联调库已升级。此次未修改正式库或本地Agent离线快照，未提交。
+
+- 2026-11-17 用户质疑测试库迁移落后，按指定文件再次直连确认：`.env`确为duxue-test/34，缺observation_jobs、problem_dossiers及蓝图4列；`.env.prod`为duxue-prod，审计间自动流水线已从35推进至37，相关表/列存在。当前shell未继承DATABASE_URL/ENV_FILE，无此次环境覆盖证据。原因机制已核查：普通pytest用内存SQLite/create_all，真实PG集成测试用一次性本机cluster或duxue_gateway_test_*并覆盖DATABASE_URL、ENV_FILE=/dev/null，测试通过不迁移.env业务库；本机AUTO_CREATE_SCHEMA=false，服务启动不自动执行Alembic；正式流水线显式使用.env.prod执行upgrade head。因此历史“真实PG迁移通过”不能作为duxue-test已升级证明。此前只报迁移版本未解释测试隔离，后续验收应明确区分临时测试库与.env联调库。此次仅查读，未升级测试库。
+
+- 2026-11-17 正式/测试只读审计（约22:03，期间main自动部署进行中）：Admin两库001–009迁移、列/索引/约束一致；正式R2（9bcf14d1…）50文件/无草稿，3个活跃回执loaded，测试R12（4e487c82…）54文件/无草稿/无活跃回执。测试独有蓝图Agent、science/inspect_image工具、tutoring-blueprint流程；其余10文件有模型/Prompt/静态正文等差异，不能按R号或直接复制库同步。业务RDS测试迁移34/56表，正式35/70表（正式多18观察表，测试独有4张LangGraph checkpoint表；共同表另有25列默认值差异）。代码head37，正式缺36/37、测试缺35/36/37；本机默认snapshot仍R9，非R12。正式API/Worker/Beat/math镜像fd9ba802，Admin/Executor在审计期间自动从9e6cef7更新至d1483f2，非本次手动部署。正式R2用当前本地编译器校验报compatibility mismatch；上次Deploy Server 43997343730明确因发布/缓存不兼容而预检失败保留旧容器，最新44098384610仍CI中。新solving-worker虽已在Compose声明，但server-deploy显式pull/up列表漏该服务，需补齐才可交付独立解题任务。凭据未输出，未读写业务行或修改远端；元数据与完整配置证据仅存ignored `duxue-server/var/environment-audit-20261117/`。建议按测试迁移+固定快照→正式基线配置升级review→兼容预检→部署/迁移及实例回执顺序推进，不同步业务数据、账号会话或整个Admin数据库。
+
+- 2026-11-17 用户明确授权发布R11基线草稿：本地test草稿revision6经重新校验、固定digest、只读Workflow基线、并发及当前发布检查后，经本地受控数据库事务发布为R12（e9d8d70c-e7f8-4137-8c30-3cb59556075c），完整保留同包既有修改，记录release.publish审计。内部发布HTTP接口回读ID/digest一致，草稿published；完整快照导出至ignored `duxue-server/var/admin/blueprint-R12-20261117.json`。两槽模型同上条，发布证据在ignored `.local/blueprint-manage-20261117/publication.json`。测试库仅有历史实例回执，无当前运行实例加载R12的证据；未重启业务实例、改其snapshot配置或操作生产。
+
+- 2026-11-17 用户授权管理蓝图两槽：实际本地test Admin当前为R11，工作草稿`a8ed1bf1-4747-4f15-be22-92eb03e8eaf4` revision6已含规划器及独立复读，无需重复升级；规划器deepseek-v4.1-flash-1017、复读qwen3.7-plus-2026-05-26。已导出私有备份`duxue-server/var/admin/blueprint-before-20261117.json`，经Python控制API校验valid/runtime_ready并按revision保存校验结果（digest 4e487c8233fc4b8a8f8a90c613bbfa24f098ad6cad17b58d78a530c26e6a5ba4）；两槽各一次真实文本模型调试成功，配置回归2通过。调试证据在ignored `duxue-admin/.local/blueprint-manage-20261117/`，由控制API执行，未写Admin调试记录，未覆盖真实图片复读质量。草稿另含既有task/planning/tutor修改，已异步询问整包测试发布或保留草稿，未收到选择前保留R11。现存本地bootstrap登录凭据失效，未重置账号或创建绕过会话。
+
+- 2026-11-17 蓝图配置核查：`gaokao_contracts.py`将`blueprint-planner`与`stem-reread`定义为同一个Agent文件内的两个model component，后者不是独立Agent文件。`upgrade_math_bundle.py --gaokao`首次创建时两槽均取主答疑模型名；独立复读模型须导入后显式配置。当前studio按数组下标将第二槽标成“备用模型”，但ProblemSolving按component ID专门调用它进行独立复读，不能据该标签理解为故障备用。升级脚本会重建规划器配置，已有手调值的包不应盲目重复升级。现有代码未强制两槽模型名称不同，本次未核查R11或修改Admin数据。
+
+- 2026-11-17 产品与Agent设计熟悉：系统架构概览仍有Admin“待建设”旧描述，管理台设计中的35文件/组件数量及部分调试门禁文字也有历史残留；判断当前机制应对照本文最新记录、[管理台发布规则](../../docs/technical/design-admin.md#三数据表与并发)、[观察配置清单](../../docs/technical/domain-behavior.md#104-admin-workflow-与-agent2026-11-13)及实际代码。已核对快照加载与发布实现；本次未查询线上发布或实例状态，不据文档推断当前线上版本。
+
 事实源：[design-server](../../docs/technical/design-server.md)、[ddd-overview](../../docs/technical/ddd-overview.md)、[design-agent](../../docs/technical/design-agent.md)、[agent_specs/README](../../duxue-server/agent_specs/README.md)、[管理台设计](../../docs/technical/design-admin.md)。
 
 ## 目标

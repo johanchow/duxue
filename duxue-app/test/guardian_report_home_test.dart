@@ -84,7 +84,7 @@ class _DelayedReportApi extends _ReportApi {
 }
 
 Future<void> _home(WidgetTester tester, _ReportApi api,
-    {bool settle = true}) async {
+    {bool settle = true, bool openChild = true}) async {
   await tester.pumpWidget(ProviderScope(overrides: [
     apiProvider.overrideWithValue(api),
     wardsProvider.overrideWith((ref) async => const [
@@ -94,9 +94,17 @@ Future<void> _home(WidgetTester tester, _ReportApi api,
   ], child: const MaterialApp(home: WardListPage())));
   if (settle) {
     await tester.pumpAndSettle();
+    if (openChild) {
+      await tester.tap(find.text("小宇"));
+      await tester.pumpAndSettle();
+    }
   } else {
     await tester.pump();
     await tester.pump();
+    if (openChild) {
+      await tester.tap(find.text("小宇"));
+      await tester.pump();
+    }
   }
 }
 
@@ -151,9 +159,9 @@ void main() {
       (tester) async {
     final api = _ReportApi();
     await _home(tester, api);
-    await tester.tap(find.text('小宇'));
+    await tester.tap(find.byTooltip('全部孩子'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('小雨').last);
+    await tester.tap(find.text('小雨'));
     await tester.pumpAndSettle();
     expect(api.loadedWards.last, 'ward-2');
     expect(find.text('ward-1 分数应用题'), findsNothing);
@@ -207,9 +215,9 @@ void main() {
       (tester) async {
     final api = _DelayedReportApi();
     await _home(tester, api, settle: false);
-    await tester.tap(find.text('小宇'));
+    await tester.tap(find.byTooltip('全部孩子'));
     await tester.pump(const Duration(milliseconds: 300));
-    await tester.tap(find.text('小雨').last);
+    await tester.tap(find.text('小雨'));
     await tester.pumpAndSettle();
     api.pending.complete(DailyReport(
         status: 'ready',

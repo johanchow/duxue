@@ -1447,7 +1447,7 @@ void main() {
     expect(api.turns, isEmpty);
   });
 
-  testWidgets('guardian task transfer is a secondary child operation',
+  testWidgets('guardian report belongs to the child and transfer is removed',
       (tester) async {
     await tester.pumpWidget(ProviderScope(overrides: [
       apiProvider.overrideWithValue(_WardHomeApi()),
@@ -1459,16 +1459,18 @@ void main() {
     expect(find.text('报告尚未生成'), findsOneWidget);
     expect(find.byType(VoiceComposer), findsNothing);
     expect(find.text('传递作业'), findsNothing);
-    await tester.tap(find.text('孩子'));
+    expect(find.byTooltip('孩子操作'), findsNothing);
+    expect(find.text('今日计划'), findsNothing);
+    final nav = tester.widget<NavigationBar>(find.byType(NavigationBar));
+    expect(
+        nav.destinations
+            .whereType<NavigationDestination>()
+            .map((item) => item.label),
+        ['孩子', '问答', '我的']);
+    await tester.tap(find.text('问答'));
     await tester.pumpAndSettle();
-    expect(find.text('全部孩子'), findsOneWidget);
-    expect(find.byType(VoiceComposer), findsNothing);
-    await tester.tap(find.byTooltip('孩子操作'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('传递作业'));
-    await tester.pumpAndSettle();
-    expect(find.text('传递任务'), findsOneWidget);
-    expect(find.text('确认传递'), findsOneWidget);
+    expect(find.byType(VoiceComposer), findsOneWidget);
+    expect(find.text('体验 AI 伴学'), findsOneWidget);
   });
 
   testWidgets('ordinary tasks and active sessions never pin progress to home',
@@ -1994,6 +1996,37 @@ void main() {
     expect(tapped, isTrue);
   });
 
+  testWidgets('disposing voice capture ignores late ASR callbacks',
+      (tester) async {
+    final voice = _FakeVoice()..commitProducesFinal = false;
+    String? submitted;
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: VoiceComposer(
+      baseUrl: 'http://localhost',
+      tokens: const TokenStorage(),
+      telemetry: AppTelemetry(
+          config: const TelemetryConfig(
+              enabled: false, relayUrl: '', sampleRate: 0),
+          accessToken: () async => null),
+      voiceFactory: ({required baseUrl, required tokens, required telemetry}) =>
+          voice,
+      onVoiceFinal: (text) async => submitted = text,
+      onPickImage: () async {},
+    ))));
+    final gesture =
+        await tester.startGesture(tester.getCenter(find.text('按住说话')));
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pumpWidget(const SizedBox.shrink());
+    await gesture.up();
+    voice.onPartial('迟到的识别');
+    voice.onFinal('迟到的终稿');
+    voice.onError('迟到的错误');
+    await tester.pump();
+    expect(submitted, isNull);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('sliding up while holding talk cancels without sending',
       (tester) async {
     final voice = _FakeVoice();
@@ -2259,7 +2292,9 @@ void main() {
     expect(find.text('报告尚未生成'), findsOneWidget);
     await tester.tap(find.text('孩子'));
     await tester.pumpAndSettle();
-    expect(find.text('获取绑定码'), findsOneWidget);
+    await tester.tap(find.byTooltip('孩子设置'));
+    await tester.pumpAndSettle();
+    expect(find.text('绑定/更换学生 App 设备'), findsOneWidget);
   });
 
   for (final failFirst in [false, true]) {

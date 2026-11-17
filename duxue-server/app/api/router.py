@@ -15,6 +15,7 @@ from app.api.v1 import (
     device_ingestion,
     evaluation,
     gateway_ingestion,
+    guardian_experience,
     identity,
     memory,
     planning,
@@ -37,6 +38,7 @@ for context_router in (
     tutoring_evidence.router,
     memory.router,
     companion.router,
+    guardian_experience.router,
     behavior.router,
 ):
     router.include_router(context_router)

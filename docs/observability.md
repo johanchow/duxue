@@ -261,6 +261,8 @@ Server 端 OTEL SDK 完整支持通过环境变量配置，无需改动代码：
 
 服务端不再需要用 `opentelemetry-instrument` 包裹启动命令：应用 bootstrap 会在检测到 `OTEL_EXPORTER_OTLP_ENDPOINT` 后初始化 exporter。测试或离线环境设置 `OTEL_SDK_DISABLED=true`；未配置 endpoint 时不会创建 exporter。`api`、`worker`、`beat` 通过 `OTEL_SERVICE_COMPONENT` 作为资源属性区分。
 
+Guardian 真机本地排查时，用 `duxue-server/.env` 的 OTLP 配置启动测试服务，设置 `OTEL_SDK_DISABLED=false`、`OTEL_SERVICE_COMPONENT=guardian-local` 及 `OTEL_TRACES_SAMPLER=always_on`。只需要 Grafana 时设置 `LANGFUSE_ENABLED=false`。配置来源与加载确认见 [Agent 本地联调](../duxue-server/agent_specs/README.md#本地联调)。Grafana Tempo 可筛选 `resource.service.component = "guardian-local"`，从 `POST /guardian/experience/turn` 展开 `llm.request` 和审核 span。客户端遥测通过 [App 本地调试配置](../duxue-app/README.md#本地调试与遥测) 启用，HTTP 与 ASR 分别记录，不能把服务端 HTTP 时长当成语音端到端时长。
+
 ### 7.1.1 可选 Langfuse（无额外进程）
 
 Langfuse 默认关闭。需要 AI trace 时，在同一份服务端环境文件配置 `LANGFUSE_ENABLED=true`、`LANGFUSE_PUBLIC_KEY`、`LANGFUSE_SECRET_KEY` 与区域对应的 `LANGFUSE_BASE_URL`。它作为同一 Python 进程中的第二个 OpenTelemetry span processor 工作；Grafana 仍使用已有的 OTLP exporter，因此不需要 Alloy、Compose override 或额外容器。

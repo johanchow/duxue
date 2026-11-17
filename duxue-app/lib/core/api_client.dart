@@ -242,10 +242,15 @@ class ApiClient {
               '/wards/$wardId/tutoring-evidence/$problemId',
               queryParameters: {'date': _day(day)}))
           .data as Map);
-  Future<Map<String, dynamic>> eveningReport(String wardId, DateTime day, {int? version}) async {
-    final date = '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
-    final response = await dio.get('/evaluation/evening-reports', queryParameters: {
-      'ward_id': wardId, 'date': date, if (version != null) 'version': version,
+  Future<Map<String, dynamic>> eveningReport(String wardId, DateTime day,
+      {int? version}) async {
+    final date =
+        '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
+    final response =
+        await dio.get('/evaluation/evening-reports', queryParameters: {
+      'ward_id': wardId,
+      'date': date,
+      if (version != null) 'version': version,
     });
     return Map<String, dynamic>.from(response.data as Map);
   }
@@ -358,45 +363,6 @@ class ApiClient {
       Map<String, dynamic>.from(
           (await dio.post('/wards/$wardId/assignments', data: {'title': title}))
               .data);
-  Future<Map<String, dynamic>> respondToTaskIntake({
-    required String content,
-    required List<Map<String, dynamic>> history,
-    required List<Map<String, dynamic>> tasks,
-    required List<String> attachmentKeys,
-  }) async =>
-      Map<String, dynamic>.from((await dio.post('/task-intake/respond', data: {
-        'content': content,
-        'history': history,
-        'tasks': tasks,
-        'attachment_keys': attachmentKeys,
-      }))
-          .data);
-
-  Future<String> uploadTaskIntakeImage(
-      Uint8List bytes, String extension) async {
-    final contentType =
-        extension.toLowerCase() == 'png' ? 'image/png' : 'image/jpeg';
-    final signed = Map<String, dynamic>.from((await dio.post(
-      '/task-intake/upload-url',
-      data: {'extension': extension, 'content_type': contentType},
-    ))
-        .data);
-    await Dio().put(
-      signed['upload_url'] as String,
-      data: bytes,
-      options:
-          Options(headers: Map<String, dynamic>.from(signed['headers'] as Map)),
-    );
-    return signed['oss_key'] as String;
-  }
-
-  Future<void> confirmTaskIntake(
-          List<Map<String, dynamic>> tasks, List<String> attachmentKeys) =>
-      dio.post('/task-intake/confirm',
-          data: {'tasks': tasks, 'attachment_keys': attachmentKeys});
-
-  Future<void> cleanupTaskIntake(List<String> attachmentKeys) => dio
-      .post('/task-intake/cleanup', data: {'attachment_keys': attachmentKeys});
   Future<Map<String, dynamic>> wardInvite(String wardId) async =>
       Map<String, dynamic>.from(
           (await dio.post('/wards/$wardId/login-invite')).data);
@@ -446,6 +412,46 @@ class ApiClient {
               // exceeds the 20s default before the HTTP response is written.
               options: Options(receiveTimeout: const Duration(seconds: 90))))
           .data);
+
+  Future<Map<String, dynamic>> guardianExperienceTurn({
+    required String content,
+    String? stateToken,
+    List<String> attachmentKeys = const [],
+  }) async =>
+      Map<String, dynamic>.from((await dio.post('/guardian/experience/turn',
+              data: {
+                'content': content,
+                'state_token': stateToken,
+                'attachment_keys': attachmentKeys
+              },
+              options: Options(receiveTimeout: const Duration(seconds: 120))))
+          .data as Map);
+
+  Future<String> uploadGuardianExperienceImage(
+      Uint8List bytes, String extension) async {
+    final contentType = extension == 'png'
+        ? 'image/png'
+        : extension == 'webp'
+            ? 'image/webp'
+            : 'image/jpeg';
+    final signed = Map<String, dynamic>.from((await dio.post(
+            '/guardian/experience/attachments/upload-url',
+            data: {'extension': extension, 'content_type': contentType}))
+        .data as Map);
+    await Dio().put(signed['upload_url'] as String,
+        data: bytes,
+        options: Options(
+            headers: Map<String, dynamic>.from(signed['headers'] as Map)));
+    return signed['oss_key'] as String;
+  }
+
+  Future<Uint8List> guardianExperienceSpeech(
+      String speechRef, double rate) async {
+    final response = await dio.post<List<int>>('/guardian/experience/speech',
+        data: {'speech_ref': speechRef, 'rate': rate},
+        options: Options(responseType: ResponseType.bytes));
+    return Uint8List.fromList(response.data ?? const []);
+  }
 
   Future<Map<String, dynamic>> pronunciationLesson(String lessonRef) async =>
       Map<String, dynamic>.from(

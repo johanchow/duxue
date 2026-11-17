@@ -105,6 +105,7 @@ duxue/                          # 项目根目录
 
 1. **先读后写**：动手前先读 [`.agent/notes/00-index.md`](.agent/notes/00-index.md) 里对应的领域笔记；进行中的验收清单在 `.agent/specs/`。设计全文以 `docs/` 为准，笔记不复述。
 2. **测试是退出条件**：改行为必带测试；测试全绿才算完，不许自评「我觉得做完了」。
+   服务端持久化变更还须按 [数据库与联调验收](duxue-server/README.md#数据库与联调验收) 检查 `.env` 对应的 PostgreSQL 业务库；SQLite 或一次性 PostgreSQL 测试通过不能作为该库已迁移的证据。
 3. **单一事实源**：一类知识只在唯一归属处写一份，别处只**链接**、不 copy。
 4. **收工必沉淀**：loop 结束前把决策 / 坑记进 `.agent/notes/`，否则不算收工。
 5. **commit 前必 review**：`git diff` 确认设计合理、无调试残留、无遗漏文件；文档与代码同一 commit，**不许 commit 后补文档**。

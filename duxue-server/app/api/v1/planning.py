@@ -16,66 +16,13 @@ class ConfirmDraftRequest(BaseModel):
 
 router = APIRouter(tags=["planning"])
 
-def _task_intake_wards(db: Session, guardian_id: str) -> list[dict]:
-    rows = db.query(Ward).join(GuardianWard, GuardianWard.ward_id == Ward.id).filter(
-        GuardianWard.guardian_id == guardian_id,
-    ).order_by(Ward.display_name).all()
-    return [{"id": ward.id, "display_name": ward.display_name, "grade_stage": ward.grade_stage} for ward in rows]
-
-
-def _task_intake_attachments(guardian_id: str, keys: list[str]) -> None:
-    prefix = f"guardian/{guardian_id}/task-intake/"
-    if any(not key.startswith(prefix) or not storage.exists(key) for key in keys):
-        raise HTTPException(400, "invalid task intake attachment")
-
-
 @router.post("/task-intake/upload-url")
-def task_intake_upload_url(body: UploadUrlRequest, request: Request, principal: Principal = Depends(current_guardian)):
-    extension = body.extension.lower().lstrip(".")
-    if extension not in {"jpg", "jpeg", "png", "webp"}:
-        raise HTTPException(400, "unsupported image extension")
-    if not body.content_type.startswith("image/"):
-        raise HTTPException(400, "unsupported image content type")
-    key = f"guardian/{principal.user_id}/task-intake/{secrets.token_hex(16)}.{extension}"
-    base_url = str(request.base_url) if settings.storage_backend == "local" else settings.public_base_url
-    url, expires, headers = storage.upload_url(key, base_url, body.content_type)
-    return {"upload_url": url, "oss_key": key, "expires_at": datetime.fromtimestamp(expires, timezone.utc), "headers": headers}
-
-
 @router.post("/task-intake/respond")
-def respond_to_task_intake(body: TaskIntakeRequest, principal: Principal = Depends(current_guardian), db: Session = Depends(get_db)):
-    _task_intake_attachments(principal.user_id, body.attachment_keys)
-    wards = _task_intake_wards(db, principal.user_id)
-    if not wards:
-        raise HTTPException(400, "create a ward before sending tasks")
-    try:
-        return TaskIntakeService().respond(wards=wards, request=body).model_dump(mode="json")
-    except TaskIntakeError as error:
-        raise HTTPException(502, str(error)) from error
-
-
-@router.post("/task-intake/confirm", status_code=201)
-def confirm_task_intake(body: TaskIntakeConfirm, principal: Principal = Depends(current_guardian), db: Session = Depends(get_db)):
-    _task_intake_attachments(principal.user_id, body.attachment_keys)
-    try:
-        for task in body.tasks:
-            owned_ward(db, principal.user_id, task.ward_id)
-        rows = [Task(ward_id=task.ward_id, title=task.title, details=task.details, due_date=task.due_date) for task in body.tasks]
-        db.add_all(rows)
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise
-    for key in body.attachment_keys:
-        storage.delete(key)
-    return {"assignments": [{"id": row.id, "ward_id": row.ward_id, "title": row.title} for row in rows]}
-
-
-@router.post("/task-intake/cleanup", status_code=204)
-def cleanup_task_intake(body: TaskIntakeCleanup, principal: Principal = Depends(current_guardian)):
-    _task_intake_attachments(principal.user_id, body.attachment_keys)
-    for key in body.attachment_keys:
-        storage.delete(key)
+@router.post("/task-intake/confirm")
+@router.post("/task-intake/cleanup")
+def retired_guardian_task_intake(principal: Principal = Depends(current_guardian)):
+    """Old clients must not create new adult-to-child transfer data."""
+    raise HTTPException(410, {"code": "guardian_task_transfer_retired"})
 
 
 @router.post("/wards/{ward_id}/assignments", status_code=201)
