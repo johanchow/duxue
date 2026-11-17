@@ -15,7 +15,7 @@
     "note": "根据生产故障题意与2026-11-17 Android调试文本构造；不是原始trace逐字重放，不含原作业图片，不检验OCR/原图作答转写。"
   },
   "label_status": "proposed",
-  "note": "本地开发回归，未人工校准，不上传Langfuse；单次通过不代表发布质量。",
+  "note": "开发回归，proposed/uncalibrated；经用户授权同步至Langfuse guidance-logic，单次本地通过不代表云端评测通过或发布质量。",
   "messages": [
     {
       "id": "u1",
