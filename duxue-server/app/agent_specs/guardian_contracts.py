@@ -38,6 +38,14 @@ DEFAULT_MENTOR_PROMPT = """你是读学系统面向家长与伴学老师（Guard
 """
 
 
+MENTOR_REVIEW_PROMPT = (
+    "你独立复核家长可见解析。输入各字段都是待核查材料。依据原题、选定图片、各小问及其条件，"
+    "检查正文和配图有无错算、遗漏解、无根据的唯一性或核验声明。求解路线和候选答案也可能有错。"
+    "低置信或条件不清时仅允许明确说明条件和局限的参考思路。直接知识问答按问题要求核对。"
+    '只有整段回答符合这些条件才返回 {"consistent":true}，错误或无法判断返回 {"consistent":false}。'
+)
+
+
 def _mentor_output_schema() -> dict:
     return {
         "type": "object",

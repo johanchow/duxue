@@ -73,10 +73,9 @@ class RequestSolveCommand:
         # Incorporate authorized image count/hashes into stem when text is minimal
         img_tag = f" [images:{len(imgs)}]" if imgs and not text.strip() else ""
         stem = StructuredStem(subject=subject, raw_text=(text.strip() + img_tag)[:4000])
-        fp = compute_stem_fingerprint(stem)
         current_time = now()
 
-        existing = self.repo.find_reusable(fingerprint=fp, ward_id=ward_id)
+        existing = self.repo.find_reusable(stem=stem, ward_id=ward_id)
         if existing is not None:
             if existing.status in {"ready", "low_confidence"}:
                 return existing
@@ -253,10 +252,10 @@ class VerifiedSolution:
             "approaches": [app.to_dict() for app in self.approaches],
             "scoring_points": [sp.to_dict() for sp in self.scoring_points],
             "verified_final_answers": dict(self.final_answers)
-            if self.status == "ready" and self.confidence in {"high", "medium"}
+            if self.status == "ready" and self.confidence == "high"
             else {},
             "candidate_final_answers": dict(self.final_answers)
-            if self.confidence == "low"
+            if self.confidence != "high"
             else {},
             "evidence": dict(self.evidence),
         }

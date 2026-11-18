@@ -40,6 +40,9 @@ class _Api extends ApiClient {
       'mode': 'student_guide',
       'content': '可以先观察共同点，再试着解释。',
       'state_token': 'state-${turns.length}',
+      'turn_id': 'turn-${turns.length}',
+      'mentor_origin_turn_id': 'turn-1',
+      'mentor_start_token': 'topic-${turns.length}',
       'visual': {
         'kind': 'compare',
         'title': '观察关系',
@@ -277,12 +280,12 @@ void main() {
     expect(api.turns.single.state, isNull);
     expect(find.text('查看本题导师解析'), findsOneWidget);
 
-    // 2. One-tap reveal switches to guardian_explain with null mentor stateToken and preserves student stateToken
+    // 2. One-tap reveal switches to guardian_explain with the signed topic start token and preserves student stateToken
     await tester.tap(find.text('查看本题导师解析'));
     await tester.pumpAndSettle();
     expect(api.turns.last.mode, 'guardian_explain');
     expect(api.turns.last.content, '比较 3/4 和 2/3');
-    expect(api.turns.last.state, isNull);
+    expect(api.turns.last.state, 'topic-1');
     expect(find.textContaining('【完整破题思路】'), findsOneWidget);
 
     // 3. Follow-up in guardian_explain uses mentor-state-2, then switching back to student视角 restores student session & state-1
@@ -302,6 +305,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.turns.last.mode, 'student_guide');
     expect(api.turns.last.state, 'state-1');
+    await tester.tap(find.text('查看本题导师解析'));
+    await tester.pumpAndSettle();
+    expect(api.turns.last.content, '比较 3/4 和 2/3');
+    expect(api.turns.last.state, 'topic-4');
   });
 
   testWidgets(

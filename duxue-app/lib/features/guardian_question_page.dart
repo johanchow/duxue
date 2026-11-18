@@ -24,6 +24,7 @@ class _PerspectiveSession {
   String? stateToken, error, pendingQuestion;
   List<Uint8List> pendingPictures = const [];
   List<String>? retryKeys;
+  String? retryStartToken;
   bool busy = false, expired = false;
   int generation = 0;
 
@@ -37,6 +38,7 @@ class _PerspectiveSession {
     pendingQuestion = null;
     pendingPictures = const [];
     retryKeys = null;
+    retryStartToken = null;
     busy = false;
     expired = false;
   }
@@ -161,6 +163,14 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
 
   Map<String, dynamic>? _lastStudentUserQuestion() {
     final list = _sessions[_studentMode]!.messages;
+    final originId = list.lastOrNull?['mentor_origin_turn_id'];
+    if (originId != null) {
+      for (var i = list.length - 2; i >= 0; i--) {
+        if (list[i]['role'] == 'user' && list[i]['turn_id'] == originId) {
+          return list[i];
+        }
+      }
+    }
     for (var i = list.length - 1; i >= 0; i--) {
       if (list[i]['role'] == 'user') return list[i];
     }
@@ -184,6 +194,7 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
     await _dispatchTurn(
       targetMode: _mentorMode,
       content: questionText,
+      startToken: _sessions[_studentMode]!.messages.last['mentor_start_token'] as String?,
       preUploadedPictures: sourcePictures,
       preUploadedKeys: sourceKeys,
       useComposerDraft: false,
@@ -201,6 +212,7 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
       await _dispatchTurn(
         targetMode: mode,
         content: session.pendingQuestion!,
+        startToken: session.retryStartToken,
         preUploadedPictures: session.pendingPictures,
         preUploadedKeys: session.retryKeys,
         useComposerDraft: false,
@@ -222,12 +234,13 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
   Future<void> _dispatchTurn({
     required String targetMode,
     required String content,
+    String? startToken,
     List<Uint8List>? preUploadedPictures,
     List<String>? preUploadedKeys,
     required bool useComposerDraft,
   }) async {
     final session = _sessions[targetMode]!;
-    if (session.busy || session.expired) return;
+    if (session.busy || (session.expired && useComposerDraft)) return;
     final epoch = session.generation;
     final displayPictures = preUploadedPictures ??
         [for (final picture in session.pictures) picture.bytes];
@@ -237,6 +250,7 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
       session.pendingQuestion = content;
       session.pendingPictures = displayPictures;
       session.retryKeys = preUploadedKeys;
+      session.retryStartToken = startToken;
     });
     _bottom();
     try {
@@ -258,7 +272,7 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
       }
       final response = await api.guardianExperienceTurn(
         content: content,
-        stateToken: session.stateToken,
+        stateToken: useComposerDraft ? session.stateToken : startToken,
         attachmentKeys: attachmentKeys,
         mode: targetMode,
       );
@@ -266,6 +280,7 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
       setState(() {
         session.messages.add({
           'role': 'user',
+          'turn_id': response['turn_id'],
           'content': content,
           'pictures': displayPictures,
           'attachment_keys': attachmentKeys,
@@ -277,6 +292,8 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
           if (mode == targetMode) input.clear();
         }
         session.retryKeys = null;
+        session.retryStartToken = null;
+        session.expired = false;
         session.pendingPictures = const [];
       });
       _bottom();
@@ -623,7 +640,7 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
     final status = verification['status'] as String?;
     final confidence = verification['confidence'] as String?;
     final needsConfirm = verification['needs_condition_confirmation'] == true;
-    final verified = !needsConfirm &&
+    final verified = verification['draft_reviewed'] == true && !needsConfirm &&
         status == 'ready' &&
         (confidence == 'high' || confidence == 'medium');
     return Padding(
@@ -643,7 +660,7 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
           const SizedBox(width: 6),
           Flexible(
             child: Text(
-              verified ? '导师视角 · 已通过多步核验' : '导师视角 · 思路参考（建议核对原题条件）',
+              verified ? '解析已复核' : '导师视角 · 思路参考（建议核对原题条件）',
               style: TextStyle(
                 fontSize: 12,
                 color: verified

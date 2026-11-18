@@ -185,13 +185,11 @@ def test_stateless_solve_and_verify_problem_and_bank_only_query_never_leak_ward_
     from app.application.ports.problem_solving import SqlProblemDossierRepository
     from app.contexts.problem_solving.domain.dossier import (
         ProblemDossier,
-        compute_stem_fingerprint,
     )
     from app.infrastructure.persistence.models import now, uid
 
     w1, _ = _seed_wards(db)
     stem = StructuredStem(subject="math", raw_text="求函数 f(x) = x**2 - 4*x 的对称轴")
-    fp = compute_stem_fingerprint(stem)
 
     # 1. Stateless solve_and_verify_problem works with zero DB dependency
     verified_t1 = {
@@ -249,7 +247,7 @@ def test_stateless_solve_and_verify_problem_and_bank_only_query_never_leak_ward_
     )
     repo.save(ward_dossier)
     query = GetProblemDossierQuery(db)
-    assert query.find_bank_ready(fingerprint=fp) is None
+    assert query.find_bank_ready(stem=stem) is None
 
     bank_dossier = ProblemDossier.create_pending(
         dossier_id=uid(), scope="bank", owner_ward_id=None, stem=stem, tier="T2", solver_version="dossier.v1", now_at=now()
@@ -263,8 +261,32 @@ def test_stateless_solve_and_verify_problem_and_bank_only_query_never_leak_ward_
         evidence={"bank_matched": True},
     )
     repo.save(bank_dossier)
-    found = query.find_bank_ready(fingerprint=fp)
+    found = query.find_bank_ready(stem=stem)
     assert found is not None
     assert found.scope == "bank"
     assert found.owner_ward_id is None
     assert found.final_answers == {"main": "2"}
+
+
+def test_legacy_bank_collision_requires_matching_stored_stem(db):
+    from dataclasses import replace
+
+    from app.application.ports.problem_solving import SqlProblemDossierRepository
+    from app.contexts.problem_solving.domain.dossier import (
+        ProblemDossier,
+        compute_stem_fingerprint,
+    )
+    from app.infrastructure.persistence.models import now, uid
+
+    decimal = StructuredStem("math", "1.2+3")
+    integer = StructuredStem("math", "12+3")
+    old_fp = compute_stem_fingerprint(decimal, legacy=True)
+    assert old_fp == compute_stem_fingerprint(integer, legacy=True)
+    repo = SqlProblemDossierRepository(db)
+    dossier = ProblemDossier.create_pending(
+        dossier_id=uid(), scope="bank", owner_ward_id=None, stem=decimal,
+        tier="T1", solver_version="v1", now_at=now(),
+    )
+    repo.save(replace(dossier, status="ready", fingerprint=old_fp))
+    assert repo.find_bank_ready(stem=integer) is None
+    assert repo.find_bank_ready(stem=decimal).dossier_id == dossier.dossier_id

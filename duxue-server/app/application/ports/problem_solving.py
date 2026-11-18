@@ -11,8 +11,10 @@ from app.contexts.problem_solving.domain.dossier import (
     ProblemDossier,
     ScoringPoint,
     StructuredStem,
+    compute_stem_fingerprint,
 )
 from app.contexts.tutoring.domain.blueprint import Approach, ProblemInvariant
+from app.infrastructure.ai.errors import ModelTimeBudgetExceeded
 from app.infrastructure.persistence.models import ProblemDossierRecord, now
 
 
@@ -54,6 +56,8 @@ class QwenProblemSolverGateway(ProblemSolverModelPort):
             return components.invoke_agent_component(
                 spec=spec, user=user, settings_obj=self._settings
             ).unwrap()
+        except ModelTimeBudgetExceeded:
+            raise
         except Exception:  # noqa: BLE001
             return None
 
@@ -64,6 +68,7 @@ class QwenProblemSolverGateway(ProblemSolverModelPort):
             {
                 "mode": "independent_stem_reread" if independent_reread else "stem_extract",
                 "problem_text": text,
+                "classification": "题面提取时，纯概念、发音或事实查询返回 tier=T0；需要推导的题返回 tier=T1。",
             },
             images,
             use_reread_model=independent_reread,
@@ -71,6 +76,8 @@ class QwenProblemSolverGateway(ProblemSolverModelPort):
         if not isinstance(raw, dict):
             return None
         return {
+            "tier": raw.get("tier"),
+            "needs_student_confirmation": raw.get("needs_student_confirmation") is True,
             "subject": str(raw.get("subject") or "general"),
             "raw_text": str(raw.get("shared_stem_summary") or raw.get("raw_text") or text),
             "subproblems": list(raw.get("subproblems") or []),
@@ -141,27 +148,27 @@ class SqlProblemDossierRepository:
         row = self.db.get(ProblemDossierRecord, dossier_id)
         return self.to_domain(row) if row is not None else None
 
-    def find_bank_ready(self, *, fingerprint: str) -> ProblemDossier | None:
-        bank_row = (
-            self.db.query(ProblemDossierRecord)
-            .filter_by(fingerprint=fingerprint, scope="bank", status="ready")
-            .order_by(ProblemDossierRecord.updated_at.desc())
-            .first()
+    def _matching(self, query, stem: StructuredStem) -> ProblemDossier | None:
+        fingerprint = compute_stem_fingerprint(stem)
+        keys = (fingerprint, compute_stem_fingerprint(stem, legacy=True))
+        candidates = query.filter(ProblemDossierRecord.fingerprint.in_(keys)).order_by(
+            ProblemDossierRecord.updated_at.desc()
         )
-        return self.to_domain(bank_row) if bank_row is not None else None
+        for row in candidates:
+            if compute_stem_fingerprint(StructuredStem.from_dict(row.stem or {})) == fingerprint:
+                return self.to_domain(row)
+        return None
 
-    def find_reusable(self, *, fingerprint: str, ward_id: str) -> ProblemDossier | None:
-        # Check authoritative bank first, then ward-private cache. Never cross-read other wards!
-        bank_dossier = self.find_bank_ready(fingerprint=fingerprint)
-        if bank_dossier is not None:
-            return bank_dossier
-        ward_row = (
-            self.db.query(ProblemDossierRecord)
-            .filter_by(fingerprint=fingerprint, scope="ward", owner_ward_id=ward_id)
-            .order_by(ProblemDossierRecord.updated_at.desc())
-            .first()
-        )
-        return self.to_domain(ward_row) if ward_row is not None else None
+    def find_bank_ready(self, *, stem: StructuredStem) -> ProblemDossier | None:
+        query = self.db.query(ProblemDossierRecord).filter_by(scope="bank", status="ready")
+        return self._matching(query, stem)
+
+    def find_reusable(self, *, stem: StructuredStem, ward_id: str) -> ProblemDossier | None:
+        bank = self.find_bank_ready(stem=stem)
+        if bank is not None:
+            return bank
+        query = self.db.query(ProblemDossierRecord).filter_by(scope="ward", owner_ward_id=ward_id)
+        return self._matching(query, stem)
 
     def save(self, dossier: ProblemDossier) -> ProblemDossier:
         row = self.db.get(ProblemDossierRecord, dossier.dossier_id)

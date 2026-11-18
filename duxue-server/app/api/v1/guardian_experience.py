@@ -26,6 +26,7 @@ from app.infrastructure.ai.aliyun_tts import (
     AliyunSpeechSynthesizer,
     SpeechSynthesisError,
 )
+from app.infrastructure.ai.errors import ModelTimeBudgetExceeded
 from app.infrastructure.security.experience_tokens import unseal
 from app.infrastructure.storage.object_storage import storage
 
@@ -69,6 +70,15 @@ def turn(
         if body.mode == "guardian_explain"
         else "请看这张图片，带我一步步理解。"
     )
+    # The authenticated principal is a value object. Release its read transaction
+    # before model I/O, including when the optional bank lookup is never used.
+    bind = db.get_bind()
+    db.close()
+
+    def lookup(*, stem):
+        with Session(bind) as reader:
+            return GetProblemDossierQuery(reader).find_bank_ready(stem=stem)
+
     try:
         return experience_turn(
             guardian_id=principal.user_id,
@@ -76,8 +86,10 @@ def turn(
             attachment_keys=body.attachment_keys,
             state=state,
             mode=body.mode,
-            bank_lookup=GetProblemDossierQuery(db).find_bank_ready,
+            bank_lookup=lookup,
         )
+    except ModelTimeBudgetExceeded as error:
+        raise HTTPException(503, {"code": "mentor_timeout"}) from error
     except MentorRateLimitExceeded as error:
         raise HTTPException(429, {"code": "mentor_rate_limited"}) from error
 

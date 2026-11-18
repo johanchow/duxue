@@ -19,9 +19,14 @@ from pathlib import Path
 from typing import Any, Literal, Protocol
 from uuid import uuid4
 
+from openai import APIError
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
-from app.agent_specs.guardian_contracts import DEFAULT_MENTOR_PROMPT, MENTOR_EXPLAIN_ID
+from app.agent_specs.guardian_contracts import (
+    DEFAULT_MENTOR_PROMPT,
+    MENTOR_EXPLAIN_ID,
+    MENTOR_REVIEW_PROMPT,
+)
 from app.application.commands.problem_solving import (
     VerifiedSolution,
     solve_and_verify_problem,
@@ -52,9 +57,9 @@ from app.application.workflows.tutor_visual import (
 from app.contexts.problem_solving.domain.dossier import (
     ProblemDossier,
     StructuredStem,
-    compute_stem_fingerprint,
 )
-from app.infrastructure.ai.errors import ModelGatewayError
+from app.infrastructure.ai.client import remaining_model_time
+from app.infrastructure.ai.errors import ModelGatewayError, ModelTimeBudgetExceeded
 from app.infrastructure.ai.tutoring_safety import LocalSafetyScreening
 from app.infrastructure.math_engine.adapter import SubprocessMathEngineAdapter
 from app.infrastructure.security.experience_tokens import seal
@@ -114,6 +119,7 @@ class MentorExplainCandidate(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
     act: MentorAct
+    topic_relation: Literal["same", "new"] | None = None
     content: str = Field(min_length=1, max_length=3600)
     pronounce: PronouncePayload | None = None
     visual: Visual | None = None
@@ -185,6 +191,7 @@ class QwenMentorExplainGateway(MentorExplainModelPort):
         payload: dict[str, Any] = {
             "contract": "guardian-mentor.v1",
             "guardian_question": content,
+            "topic_relation_instruction": "有历史时请用 topic_relation 标明本轮延续当前题（same）或提出新题（new）。",
             "verified_solution": verified_solution.mentor_projection()
             if verified_solution is not None
             else None,
@@ -260,6 +267,11 @@ class QwenMentorExplainGateway(MentorExplainModelPort):
                 }
             )
             return parsed
+        except ModelTimeBudgetExceeded:
+            raise
+        except (APIError, TimeoutError) as error:
+            remaining_model_time()
+            raise ModelGatewayError("model_transport_error") from error
         except components._CompletionClassifiedError as error:
             components._record_call_evidence(
                 {
@@ -278,6 +290,78 @@ class QwenMentorExplainGateway(MentorExplainModelPort):
                 }
             )
             raise ModelGatewayError(error.gateway_code) from error
+
+    def review(
+        self, *, question: str, solution: VerifiedSolution | None,
+        candidate: MentorExplainCandidate, images: list[str],
+    ) -> bool:
+        """Independent read of the actual user-visible draft against the original evidence."""
+        from app.agent_specs.contexts import guardian_mentor_explain
+        from app.bootstrap.settings import settings
+        from app.infrastructure.ai import components
+
+        config = self._settings or settings
+        if not config.agent_model_enabled or not config.dashscope_api_key:
+            return False
+        spec = components.COMPONENTS.get("tutoring.leak-judge")
+        model, _ = components.resolve_model(spec)
+        payload = {
+            "question": question,
+            "solution": solution.mentor_projection() if solution else None,
+            "draft": candidate.content,
+            "visual": candidate.visual.model_dump(mode="json") if candidate.visual else None,
+        }
+        operation = "guardian.mentor-review"
+        started = time.monotonic()
+        with components.model_call_span(operation=operation, model=model, agent_type="tutoring",
+                                        enable_thinking=False) as telemetry:
+            outcome = "api_error"
+            try:
+                completion = components.complete_json_chat(
+                    model=model, timeout=spec.timeout_seconds or 30, temperature=0, max_tokens=400,
+                    messages=[
+                        {"role": "system", "content": MENTOR_REVIEW_PROMPT},
+                        {"role": "user", "content": guardian_mentor_explain(payload=payload, current_images=images)},
+                    ],
+                    telemetry=telemetry,
+                )
+                for key in ("provider_request_id", "finish_reason", "stream_completed", "tokens_in",
+                            "tokens_out", "tokens_answer", "tokens_reasoning"):
+                    telemetry[key] = getattr(completion, key)
+                remaining_model_time()
+                parsed, _, _ = components.validate_json_completion(completion)
+                if type(parsed.get("consistent")) is not bool:
+                    outcome = "contract_error"
+                    return False
+                accepted = parsed["consistent"]
+                outcome = "review_accepted" if accepted else "review_rejected"
+                return accepted
+            except components._CompletionClassifiedError as error:
+                outcome = error.outcome
+                return False
+            except ModelTimeBudgetExceeded:
+                outcome = "budget_exhausted"
+                raise
+            except (ModelGatewayError, APIError, TimeoutError):
+                try:
+                    remaining_model_time()
+                except ModelTimeBudgetExceeded:
+                    outcome = "budget_exhausted"
+                    raise
+                return False
+            finally:
+                telemetry["outcome"] = outcome
+                if outcome not in {"review_accepted", "review_rejected"}:
+                    telemetry["result"] = "error"
+                meta = {key: telemetry.get(key) for key in (
+                    "provider_request_id", "finish_reason", "stream_completed",
+                    "tokens_in", "tokens_out", "tokens_answer", "tokens_reasoning",
+                )}
+                meta.update(operation=operation, model=model, outcome=outcome,
+                            duration_ms=round((time.monotonic() - started) * 1000))
+                components._record_call_evidence({"component_id": operation, **meta})
+                components.record_model_response(agent_type="tutoring", content=outcome, **meta)
+
 
 
 def _resolve_math_engine():
@@ -308,13 +392,13 @@ def _check_pronounce(lessons: list[LessonBody]) -> str | None:
 
 def _apply_confidence_honesty_gate(content: str, solution: VerifiedSolution | None) -> str:
     """Code gate: never disguise low-confidence, failed, or disputed-stem results as verified certainty."""
-    if solution is None or solution.tier == "T0":
+    if solution is None:
+        return _LOW_CONFIDENCE_PREFIX + content
+    if solution.tier == "T0":
         return content
     if solution.stem.needs_student_confirmation:
-        if "题面核对提示" not in content:
-            return _CONDITION_CONFIRM_PREFIX + content
-        return content
-    if solution.confidence == "low" and "核验状态说明" not in content:
+        return _CONDITION_CONFIRM_PREFIX + content
+    if solution.confidence == "low":
         return _LOW_CONFIDENCE_PREFIX + content
     return content
 
@@ -333,15 +417,15 @@ def _solve_for_mentor(
         if PLANNER_ID not in load_definitions().units:
             img_tag = f" [images:{len(images)}]" if images and not content.strip() else ""
             fallback_stem = StructuredStem(subject="general", raw_text=(content.strip() + img_tag)[:4000])
-            if bank_lookup is not None:
-                bank_hit = bank_lookup(fingerprint=compute_stem_fingerprint(fallback_stem))
+            if bank_lookup is not None and not images:
+                bank_hit = bank_lookup(stem=fallback_stem)
                 if bank_hit is not None and bank_hit.scope == "bank" and bank_hit.status == "ready":
                     return VerifiedSolution.from_dossier(bank_hit)
             return None
 
     extracted = solver.extract_stem(text=content, images=images, independent_reread=False)
     if isinstance(extracted, dict):
-        if extracted.get("tier") == "T0":
+        if extracted.get("tier") == "T0" and not extracted.get("needs_student_confirmation"):
             return VerifiedSolution(
                 stem=StructuredStem.from_dict(extracted),
                 tier="T0",
@@ -353,9 +437,8 @@ def _solve_for_mentor(
         img_tag = f" [images:{len(images)}]" if images and not content.strip() else ""
         stem = StructuredStem(subject="general", raw_text=(content.strip() + img_tag)[:4000])
 
-    fp = compute_stem_fingerprint(stem)
-    if bank_lookup is not None:
-        bank_hit = bank_lookup(fingerprint=fp)
+    if bank_lookup is not None and (not images or isinstance(extracted, dict)):
+        bank_hit = bank_lookup(stem=stem)
         if bank_hit is not None and bank_hit.scope == "bank" and bank_hit.status == "ready":
             return VerifiedSolution.from_dossier(bank_hit)
 
@@ -377,9 +460,12 @@ def explain_for_guardian(
     window: list[dict],
     images: list[str | None],
     rows: list[dict],
+    origin: dict | None = None,
+    handoff: bool = False,
     bank_lookup: Callable[..., ProblemDossier | None] | None = None,
 ) -> dict:
     """Process Manager executing one stateless Guardian mentor-explanation turn."""
+    relation = None
     safety = LocalSafetyScreening()
     if safety.blocks_input(text=content):
         answer: dict[str, Any] = {
@@ -398,10 +484,18 @@ def explain_for_guardian(
             }
         else:
             clean_window, target_images = prepared.window, prepared.images
-            valid_images = [img for img in target_images if isinstance(img, str) and img]
+            valid_images = [img for row in clean_window for img in row.get("image_urls", []) if img]
+            valid_images.extend(img for img in target_images if img)
+            question = content
+            if clean_window:
+                question = json.dumps({
+                    "current_request": content,
+                    "history": [{"role": row["author"], "text": row["text"]} for row in clean_window],
+                    "instruction": "结合相关上下文还原当前所问题面和补充条件。以本轮指定的题为准，历史作答不是已知条件。",
+                }, ensure_ascii=False)
             solver = QwenProblemSolverGateway()
             verified_solution = _solve_for_mentor(
-                content=content,
+                content=question,
                 images=valid_images,
                 solver=solver,
                 bank_lookup=bank_lookup,
@@ -427,6 +521,13 @@ def explain_for_guardian(
                 except ModelGatewayError:
                     break
 
+            review_required = candidate is not None and candidate.act in {"explain", "answer"} and (
+                verified_solution is None or verified_solution.tier != "T0" or candidate.act == "explain"
+            )
+            if review_required and gateway.review(
+                question=question, solution=verified_solution, candidate=candidate, images=valid_images,
+            ) is not True:
+                candidate = None
             if candidate is None:
                 answer = {
                     "content": FALLBACK_TEXT,
@@ -464,7 +565,7 @@ def explain_for_guardian(
             else:
                 final_text = (
                     _apply_confidence_honesty_gate(candidate.content, verified_solution)
-                    if candidate.act == "explain"
+                    if review_required and (verified_solution is not None or candidate.act == "explain")
                     else candidate.content
                 )
                 review_txt = final_text + (describe(candidate.visual) if candidate.visual else "")
@@ -478,20 +579,33 @@ def explain_for_guardian(
                     }
                     if candidate.visual is not None:
                         answer["visual"] = candidate.visual.model_dump(mode="json")
-                    if candidate.act == "explain" and verified_solution is not None:
+                    if review_required and verified_solution is not None:
                         answer["verification"] = {
+                            "draft_reviewed": True,
                             "status": verified_solution.status,
                             "confidence": verified_solution.confidence,
                             "tier": verified_solution.tier,
                             "needs_condition_confirmation": verified_solution.stem.needs_student_confirmation,
                         }
 
+            if candidate is not None and answer["act"] not in {"safety", "unavailable"}:
+                relation = candidate.topic_relation
+
     turn_id = str(uuid4())
+    utterance = {"turn_id": turn_id, "author": "ward", "text": content, "attachment_refs": attachment_keys}
+    if not handoff and relation == "new":
+        rows, origin = [], utterance
+    elif attachment_keys:
+        origin = utterance
+    elif not handoff and relation != "same":
+        # Without a confirmed continuation, rely on the bounded conversation window.
+        origin = None
     next_rows = [
-        *rows,
-        {"turn_id": turn_id, "author": "ward", "text": content, "attachment_refs": attachment_keys},
+        *rows, utterance,
         {"turn_id": turn_id, "author": "companion", "text": answer["content"]},
     ]
     next_rows, _ = select_recent_utterances(next_rows, exclude_turn_id=None)
-    answer["state_token"] = seal(guardian_id, MENTOR_PURPOSE, {"window": next_rows})
+    answer["state_token"] = seal(guardian_id, MENTOR_PURPOSE, {
+        "window": next_rows, "origin": origin, "pinned_topic": origin is not None,
+    })
     return answer
