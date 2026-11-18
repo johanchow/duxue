@@ -27,3 +27,20 @@ def test_upgrade_gaokao_bundle_compiles_with_blueprint_science_and_inspect_image
     assert compiled.digest == upgraded["digest"]
     assert "tutoring.blueprint-planner" in compiled.catalog.units
     assert "tutoring.stem-reread" in compiled.catalog.components
+
+
+def test_upgrade_guardian_mentor_bundle_compiles_standalone_and_with_gaokao():
+    raw = json.loads(Path("tests/fixtures/admin-release.json").read_text(encoding="utf-8"))
+    standalone = upgrade(raw, guardian_mentor=True)
+    assert "agents/tutoring.mentor-explain.json" in standalone["bundle"]["files"]
+    assert "workflows/guardian-mentor.json" in standalone["bundle"]["files"]
+    compiled_standalone = compile_bundle(standalone["bundle"])
+    assert compiled_standalone.digest == standalone["digest"]
+    assert "tutoring.mentor-explain" in compiled_standalone.catalog.units
+    assert "tutoring.mentor-explain" in compiled_standalone.catalog.components
+
+    combined = upgrade(raw, enable=True, phase3=True, gaokao=True, guardian_mentor=True, enable_thinking=True, thinking_budget=4096)
+    compiled_combined = compile_bundle(combined["bundle"])
+    assert compiled_combined.digest == combined["digest"]
+    assert "tutoring.blueprint-planner" in compiled_combined.catalog.units
+    assert "tutoring.mentor-explain" in compiled_combined.catalog.units

@@ -141,16 +141,20 @@ class SqlProblemDossierRepository:
         row = self.db.get(ProblemDossierRecord, dossier_id)
         return self.to_domain(row) if row is not None else None
 
-    def find_reusable(self, *, fingerprint: str, ward_id: str) -> ProblemDossier | None:
-        # Check authoritative bank first, then ward-private cache. Never cross-read other wards!
+    def find_bank_ready(self, *, fingerprint: str) -> ProblemDossier | None:
         bank_row = (
             self.db.query(ProblemDossierRecord)
             .filter_by(fingerprint=fingerprint, scope="bank", status="ready")
             .order_by(ProblemDossierRecord.updated_at.desc())
             .first()
         )
-        if bank_row is not None:
-            return self.to_domain(bank_row)
+        return self.to_domain(bank_row) if bank_row is not None else None
+
+    def find_reusable(self, *, fingerprint: str, ward_id: str) -> ProblemDossier | None:
+        # Check authoritative bank first, then ward-private cache. Never cross-read other wards!
+        bank_dossier = self.find_bank_ready(fingerprint=fingerprint)
+        if bank_dossier is not None:
+            return bank_dossier
         ward_row = (
             self.db.query(ProblemDossierRecord)
             .filter_by(fingerprint=fingerprint, scope="ward", owner_ward_id=ward_id)

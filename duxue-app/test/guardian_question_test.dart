@@ -14,7 +14,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 class _Api extends ApiClient {
   _Api() : super(baseUrl: 'http://localhost', tokens: const TokenStorage());
-  final turns = <({String content, String? state})>[];
+  final turns = <({String content, String? state, String mode, List<String> keys})>[];
   bool fail = false;
   Completer<Map<String, dynamic>>? pending;
   int planReads = 0;
@@ -22,11 +22,22 @@ class _Api extends ApiClient {
   Future<Map<String, dynamic>> guardianExperienceTurn(
       {required String content,
       String? stateToken,
-      List<String> attachmentKeys = const []}) async {
-    turns.add((content: content, state: stateToken));
+      List<String> attachmentKeys = const [],
+      String mode = 'student_guide'}) async {
+    turns.add((content: content, state: stateToken, mode: mode, keys: attachmentKeys));
     if (fail) throw StateError('offline');
     if (pending != null) return pending!.future;
+    if (mode == 'guardian_explain') {
+      return {
+        'mode': 'guardian_explain',
+        'act': 'explain',
+        'content': '【考点与题眼】通分找最小公倍数 12。\n【完整破题思路】9/12 > 8/12，故 3/4 > 2/3。',
+        'state_token': 'mentor-state-${turns.length}',
+        'verification': {'status': 'ready', 'confidence': 'high'},
+      };
+    }
     return {
+      'mode': 'student_guide',
       'content': '可以先观察共同点，再试着解释。',
       'state_token': 'state-${turns.length}',
       'visual': {
@@ -248,5 +259,89 @@ void main() {
     tester.widget<VoiceComposer>(find.byType(VoiceComposer)).onTap!();
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'dual perspective keeps isolated state tokens and supports one-tap mentor reveal',
+      (tester) async {
+    final api = _Api();
+    await _home(tester, api);
+    await _tab(tester, '问答');
+
+    // 1. Default is student_guide
+    await tester
+        .widget<VoiceComposer>(find.byType(VoiceComposer))
+        .onVoiceFinal('比较 3/4 和 2/3');
+    await tester.pumpAndSettle();
+    expect(api.turns.single.mode, 'student_guide');
+    expect(api.turns.single.state, isNull);
+    expect(find.text('查看本题导师解析'), findsOneWidget);
+
+    // 2. One-tap reveal switches to guardian_explain with null mentor stateToken and preserves student stateToken
+    await tester.tap(find.text('查看本题导师解析'));
+    await tester.pumpAndSettle();
+    expect(api.turns.last.mode, 'guardian_explain');
+    expect(api.turns.last.content, '比较 3/4 和 2/3');
+    expect(api.turns.last.state, isNull);
+    expect(find.textContaining('【完整破题思路】'), findsOneWidget);
+
+    // 3. Follow-up in guardian_explain uses mentor-state-2, then switching back to student视角 restores student session & state-1
+    await tester
+        .widget<VoiceComposer>(find.byType(VoiceComposer))
+        .onVoiceFinal('孩子通分容易错哪？');
+    await tester.pumpAndSettle();
+    expect(api.turns.last.mode, 'guardian_explain');
+    expect(api.turns.last.state, 'mentor-state-2');
+
+    await tester.tap(find.byKey(const ValueKey('mode-student_guide')));
+    await tester.pumpAndSettle();
+    expect(find.text('可以先观察共同点，再试着解释。'), findsOneWidget);
+    await tester
+        .widget<VoiceComposer>(find.byType(VoiceComposer))
+        .onVoiceFinal('公分母是12');
+    await tester.pumpAndSettle();
+    expect(api.turns.last.mode, 'student_guide');
+    expect(api.turns.last.state, 'state-1');
+  });
+
+  testWidgets(
+      'switching perspectives preserves each draft and clearing mentor does not wipe student thread',
+      (tester) async {
+    final api = _Api();
+    await _home(tester, api);
+    await _tab(tester, '问答');
+
+    // Send one message in student视角 and type an unsent draft
+    await tester
+        .widget<VoiceComposer>(find.byType(VoiceComposer))
+        .onVoiceFinal('第一题');
+    await tester.pumpAndSettle();
+    tester.widget<VoiceComposer>(find.byType(VoiceComposer)).onTap!();
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '学生草稿');
+
+    // Switch to 导师视角: input starts empty, type mentor draft, send a pending mentor turn, then clear mentor
+    await tester.tap(find.byKey(const ValueKey('mode-guardian_explain')));
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(find.byType(TextField)).controller!.text, '');
+    api.pending = Completer();
+    await tester.enterText(find.byType(TextField), '导师问题');
+    await tester.tap(find.byTooltip('发送问题'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.byTooltip('重新开始问答'));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.widgetWithText(TextButton, '重新开始'));
+    await tester.pumpAndSettle();
+    api.pending!.complete({'content': '迟到的导师回复', 'state_token': 'stale-mentor'});
+    await tester.pumpAndSettle();
+    expect(find.text('迟到的导师回复'), findsNothing);
+
+    // Switch back to 学生视角: student history and unsent draft are completely intact!
+    await tester.tap(find.byKey(const ValueKey('mode-student_guide')));
+    await tester.pumpAndSettle();
+    expect(find.text('可以先观察共同点，再试着解释。'), findsOneWidget);
+    expect(tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        '学生草稿');
   });
 }

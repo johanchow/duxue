@@ -110,11 +110,16 @@ def eval_grade(*, payload, images=None):
     return [{"type": "text", "text": body}, *image_parts([], images)] if images else body
 
 
+def guardian_mentor_explain(*, payload, recent_utterances=None, current_images=None):
+    return user_content(payload, recent_utterances, list(current_images or []))
+
+
 BUILDERS = {
     "behavior.visible_activity.context": eval_grade,
     "behavior.support_opportunity.context": eval_grade,
     "evals.semantic_judge.context": eval_grade,
     "tutoring.blueprint_planner.context": eval_grade,
+    "tutoring.mentor_explain.context": guardian_mentor_explain,
     "study.sprint_intake.context": sprint_intake,
     "companion.intent.context": intent,
     "companion.scene_switch.context": scene_switch,

@@ -417,12 +417,14 @@ class ApiClient {
     required String content,
     String? stateToken,
     List<String> attachmentKeys = const [],
+    String mode = 'student_guide',
   }) async =>
       Map<String, dynamic>.from((await dio.post('/guardian/experience/turn',
               data: {
                 'content': content,
                 'state_token': stateToken,
-                'attachment_keys': attachmentKeys
+                'attachment_keys': attachmentKeys,
+                'mode': mode,
               },
               options: Options(receiveTimeout: const Duration(seconds: 120))))
           .data as Map);

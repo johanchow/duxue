@@ -109,6 +109,7 @@ def upgrade(
     judge_thinking_budget: int | None = None,
     phase3: bool = False,
     gaokao: bool = False,
+    guardian_mentor: bool = False,
 ):
     result = copy.deepcopy(record)
     if digest(record["bundle"]) != record["digest"]:
@@ -202,6 +203,22 @@ def upgrade(
                 tutor["tools"].append(tid)
         if "[gaokao-blueprint-science.v1]" not in tutor["prompt"]["template"]:
             tutor["prompt"]["template"] += GAOKAO_TUTOR_ADDITION
+    if guardian_mentor:
+        from app.agent_specs.guardian_contracts import (
+            MENTOR_EXPLAIN_ID,
+            provision_mentor_explain,
+        )
+        from app.agent_specs.guardian_contracts import (
+            workflow_documents as mentor_workflows,
+        )
+
+        files.update(copy.deepcopy(mentor_workflows()))
+        primary_tutor_model = tutor["models"][0]["name"]
+        files[f"agents/{MENTOR_EXPLAIN_ID}.json"] = provision_mentor_explain(
+            model=primary_tutor_model,
+            enable_thinking=bool(enable_thinking) if enable_thinking is not None else True,
+            thinking_budget=thinking_budget or 4096,
+        )
 
     bundle["compatibility"] = contract_compatibility(files)
     result["digest"] = compile_bundle(bundle).digest
@@ -228,6 +245,7 @@ if __name__ == "__main__":
     parser.add_argument("--judge-thinking-budget", type=int, default=None)
     parser.add_argument("--phase3", action="store_true", default=False)
     parser.add_argument("--gaokao", action="store_true", default=False)
+    parser.add_argument("--guardian-mentor", action="store_true", default=False)
     args = parser.parse_args()
     thinking_flag: bool | None = (
         False if args.disable_thinking else True if args.enable_thinking else None
@@ -240,6 +258,7 @@ if __name__ == "__main__":
         judge_thinking_budget=args.judge_thinking_budget,
         phase3=args.phase3,
         gaokao=args.gaokao,
+        guardian_mentor=args.guardian_mentor,
     )
     with args.output.open("x") as stream:
         stream.write(json.dumps(record, ensure_ascii=False, indent=2) + "\n")

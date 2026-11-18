@@ -16,6 +16,12 @@ from app.agent_specs.gaokao_contracts import PLANNER_ID as GAOKAO_PLANNER_ID
 from app.agent_specs.gaokao_contracts import TOOL_AUTHORITY_ADDITIONS as GAOKAO_TOOLS
 from app.agent_specs.gaokao_contracts import WORKFLOWS as GAOKAO_WORKFLOWS
 from app.agent_specs.gaokao_contracts import frozen_contracts as gaokao_contracts
+from app.agent_specs.guardian_contracts import FILES as GUARDIAN_MENTOR_FILES
+from app.agent_specs.guardian_contracts import MENTOR_EXPLAIN_ID
+from app.agent_specs.guardian_contracts import WORKFLOWS as GUARDIAN_MENTOR_WORKFLOWS
+from app.agent_specs.guardian_contracts import (
+    frozen_contracts as guardian_mentor_contracts,
+)
 from app.agent_specs.observation_contracts import FILES as OBSERVATION_FILES
 from app.agent_specs.observation_contracts import WORKFLOWS as OBSERVATION_WORKFLOWS
 from app.agent_specs.observation_contracts import contracts as observation_contracts
@@ -81,11 +87,13 @@ def contract_compatibility(files: dict) -> str:
     # fingerprint algorithm preserves already-published immutable artifacts.
     has_obs = OBSERVATION_FILES <= set(files)
     has_gaokao = GAOKAO_FILES <= set(files)
+    has_mentor = GUARDIAN_MENTOR_FILES <= set(files)
     return digest({
         "files": {**code_contract()["files"],
                   **(observation_contracts() if has_obs else {}),
                   **(gaokao_contracts() if has_gaokao else {}),
-                  **{name: doc for name, doc in files.items() if name in WORKFLOW_FILES or (has_obs and name in {f"workflows/{key}.json" for key in OBSERVATION_WORKFLOWS}) or (has_gaokao and name in {f"workflows/{key}.json" for key in GAOKAO_WORKFLOWS})}},
+                  **(guardian_mentor_contracts() if has_mentor else {}),
+                  **{name: doc for name, doc in files.items() if name in WORKFLOW_FILES or (has_obs and name in {f"workflows/{key}.json" for key in OBSERVATION_WORKFLOWS}) or (has_gaokao and name in {f"workflows/{key}.json" for key in GAOKAO_WORKFLOWS}) or (has_mentor and name in {f"workflows/{key}.json" for key in GUARDIAN_MENTOR_WORKFLOWS})}},
         "handlers": {key: {field: sorted(items) for field, items in value.items()}
                      for key, value in WORKFLOW_BINDINGS.items()},
         "protocol": 3,
@@ -104,6 +112,7 @@ def compile_bundle(bundle: dict) -> CompiledBundle:
     file_names = set(bundle.get("files", {})) if isinstance(bundle, dict) else set()
     has_observation = OBSERVATION_FILES <= file_names
     has_gaokao = GAOKAO_FILES <= file_names
+    has_mentor = GUARDIAN_MENTOR_FILES <= file_names
     if has_observation:
         contracts["files"].update(observation_contracts())
         contracts["tool_authority"].update({doc["id"]: [] for doc in observation_contracts().values()})
@@ -113,10 +122,14 @@ def compile_bundle(bundle: dict) -> CompiledBundle:
         contracts["tool_authority"]["tutoring.turn"] = list(
             dict.fromkeys([*contracts["tool_authority"]["tutoring.turn"], *GAOKAO_TOOLS])
         )
+    if has_mentor:
+        contracts["files"].update(guardian_mentor_contracts())
+        contracts["tool_authority"][MENTOR_EXPLAIN_ID] = []
     expected_files = (
         set(BUNDLE_FILES)
         | (OBSERVATION_FILES if has_observation else set())
         | (GAOKAO_FILES if has_gaokao else set())
+        | (GUARDIAN_MENTOR_FILES if has_mentor else set())
     )
     if (
         not isinstance(bundle, dict)
@@ -138,7 +151,7 @@ def compile_bundle(bundle: dict) -> CompiledBundle:
             "version" in model for model in doc.get("models", [])
         ):
             raise ValueError("manual configuration versions are not supported")
-        if name in WORKFLOW_FILES or (has_observation and name in {f"workflows/{key}.json" for key in OBSERVATION_WORKFLOWS}) or (has_gaokao and name in {f"workflows/{key}.json" for key in GAOKAO_WORKFLOWS}):
+        if name in WORKFLOW_FILES or (has_observation and name in {f"workflows/{key}.json" for key in OBSERVATION_WORKFLOWS}) or (has_gaokao and name in {f"workflows/{key}.json" for key in GAOKAO_WORKFLOWS}) or (has_mentor and name in {f"workflows/{key}.json" for key in GUARDIAN_MENTOR_WORKFLOWS}):
             continue  # Validated by AgentCatalog against code bindings below.
         original = contracts["files"][name]
         try:

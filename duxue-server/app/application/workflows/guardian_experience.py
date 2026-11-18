@@ -5,10 +5,12 @@ import base64
 import json
 from dataclasses import asdict
 from pathlib import Path
+from typing import Literal
 from uuid import uuid4
 
 from app.agent_specs.release_runtime import pin_release
 from app.application.queries.run_transcript import select_recent_utterances
+from app.application.workflows.guardian_mentor import explain_for_guardian
 from app.application.workflows.image_target import prepare_images
 from app.application.workflows.teaching_skills import history_candidates
 from app.application.workflows.tutor_loop import judge_problem_summary, run_tutor_turn
@@ -54,25 +56,66 @@ def _image(guardian_id: str, key: str) -> str | None:
         return None
 
 
-def experience_turn(*, guardian_id: str, content: str, attachment_keys: list[str], state: dict) -> dict:
+ExperienceMode = Literal["student_guide", "guardian_explain"]
+
+
+def experience_turn(
+    *,
+    guardian_id: str,
+    content: str,
+    attachment_keys: list[str],
+    state: dict,
+    mode: ExperienceMode = "student_guide",
+    bank_lookup=None,
+) -> dict:
     with pin_release():
-        return _turn(guardian_id=guardian_id, content=content, attachment_keys=attachment_keys, state=state)
+        return _turn(
+            guardian_id=guardian_id,
+            content=content,
+            attachment_keys=attachment_keys,
+            state=state,
+            mode=mode,
+            bank_lookup=bank_lookup,
+        )
 
 
-def _turn(*, guardian_id: str, content: str, attachment_keys: list[str], state: dict) -> dict:
-    rows = state.get("window", [])
-    window = []
+def _prepare_adult_window(guardian_id: str, rows: list[dict], attachment_keys: list[str]) -> tuple[list[dict], list[str | None]]:
+    window: list[dict] = []
     image_budget = 0 if attachment_keys else 8
     for row in reversed(rows):
         keys = row.get("attachment_refs", [])[-image_budget:] if image_budget else []
         image_budget -= len(keys)
-        view = {"author": row["author"], "text": row["text"]}
+        view: dict = {"author": row["author"], "text": row["text"]}
         if keys:
             view["image_urls"] = [_image(guardian_id, key) for key in keys]
         elif row.get("attachment_refs"):
             view["had_images"] = True
         window.insert(0, view)
     images = [_image(guardian_id, key) for key in attachment_keys]
+    return window, images
+
+
+def _turn(
+    *,
+    guardian_id: str,
+    content: str,
+    attachment_keys: list[str],
+    state: dict,
+    mode: ExperienceMode = "student_guide",
+    bank_lookup=None,
+) -> dict:
+    rows = state.get("window", [])
+    window, images = _prepare_adult_window(guardian_id, rows, attachment_keys)
+    if mode == "guardian_explain":
+        return explain_for_guardian(
+            guardian_id=guardian_id,
+            content=content,
+            attachment_keys=attachment_keys,
+            window=window,
+            images=images,
+            rows=rows,
+            bank_lookup=bank_lookup,
+        )
     prepared = prepare_images(window, images, content=content)
     answer = {"content": "这次图片没有读取成功或指向不明确，请重新拍照或说明要看哪一张。", "act": "clarify"}
     problem = ProblemState(**state["problem"]) if state.get("problem") else None
@@ -131,6 +174,7 @@ def _turn(*, guardian_id: str, content: str, attachment_keys: list[str], state: 
     rows = [*rows, {"turn_id": turn_id, "author": "ward", "text": content, "attachment_refs": attachment_keys},
             {"turn_id": turn_id, "author": "companion", "text": answer["content"]}]
     rows, _ = select_recent_utterances(rows, exclude_turn_id=None)
+    answer["mode"] = "student_guide"
     answer["state_token"] = seal(guardian_id, "conversation", {
         "window": rows, "problem": asdict(problem) if problem else None, "summaries": summaries,
     })

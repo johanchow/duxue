@@ -4,6 +4,8 @@ from app.application.commands.problem_solving import (
     ConfirmStemCommand,
     ExecuteDossierSolveCommand,
     RequestSolveCommand,
+    VerifiedSolution,
+    solve_and_verify_problem,
 )
 from app.application.queries.problem_dossier import GetProblemDossierQuery
 from app.contexts.problem_solving.domain.dossier import StructuredStem
@@ -177,3 +179,92 @@ def test_t2_disagreement_or_image_reread_mismatch_falls_back_to_low_confidence_u
     assert updated.stem.stem_version == 2
     assert updated.status == "pending"
     assert reenqueued == [r.dossier_id]
+
+
+def test_stateless_solve_and_verify_problem_and_bank_only_query_never_leak_ward_dossiers(db):
+    from app.application.ports.problem_solving import SqlProblemDossierRepository
+    from app.contexts.problem_solving.domain.dossier import (
+        ProblemDossier,
+        compute_stem_fingerprint,
+    )
+    from app.infrastructure.persistence.models import now, uid
+
+    w1, _ = _seed_wards(db)
+    stem = StructuredStem(subject="math", raw_text="求函数 f(x) = x**2 - 4*x 的对称轴")
+    fp = compute_stem_fingerprint(stem)
+
+    # 1. Stateless solve_and_verify_problem works with zero DB dependency
+    verified_t1 = {
+        "subject": "math",
+        "final_answers": {"main": "2"},
+        "scoring_points": [{"id": "SP1", "step": "配方得 (x-2)^2 - 4", "points": 2}],
+        "implicit_constraints": [],
+        "approaches": [
+            {
+                "id": "A1",
+                "name": "配方法",
+                "milestones": [
+                    {
+                        "id": "M1",
+                        "goal": "求导找驻点",
+                        "check_kind": "symbolic_equivalence",
+                        "canonical_target": "2*x - 4",
+                        "verify_request": {
+                            "op": "differentiate",
+                            "args": {"expression": "x**2 - 4*x", "variable": "x", "order": 1},
+                            "symbols": [{"name": "x", "domain": "real"}],
+                            "assumptions": [],
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+    solver = FakeSolverPort(t1_payload=verified_t1)
+    solution = solve_and_verify_problem(
+        stem=stem,
+        images=[],
+        solver=solver,
+        math_engine=SubprocessMathEngineAdapter(),
+        initial_tier="T1",
+    )
+    assert isinstance(solution, VerifiedSolution)
+    assert solution.status == "ready"
+    assert solution.confidence == "medium"
+    assert solution.final_answers == {"main": "2"}
+    assert solver.solve_calls == ["T1"]
+
+    # 2. Bank-only query ignores ward-scoped dossiers and returns only scope="bank" ready dossiers
+    repo = SqlProblemDossierRepository(db)
+    ward_dossier = ProblemDossier.create_pending(
+        dossier_id=uid(), scope="ward", owner_ward_id=w1.id, stem=stem, tier="T1", solver_version="dossier.v1", now_at=now()
+    ).complete_solve(
+        approaches=solution.approaches,
+        invariants=solution.invariants,
+        scoring_points=solution.scoring_points,
+        final_answers={"main": "ward-secret"},
+        confidence="high",
+        tier="T2",
+        evidence={"route_count": 2},
+    )
+    repo.save(ward_dossier)
+    query = GetProblemDossierQuery(db)
+    assert query.find_bank_ready(fingerprint=fp) is None
+
+    bank_dossier = ProblemDossier.create_pending(
+        dossier_id=uid(), scope="bank", owner_ward_id=None, stem=stem, tier="T2", solver_version="dossier.v1", now_at=now()
+    ).complete_solve(
+        approaches=solution.approaches,
+        invariants=solution.invariants,
+        scoring_points=solution.scoring_points,
+        final_answers={"main": "2"},
+        confidence="high",
+        tier="T2",
+        evidence={"bank_matched": True},
+    )
+    repo.save(bank_dossier)
+    found = query.find_bank_ready(fingerprint=fp)
+    assert found is not None
+    assert found.scope == "bank"
+    assert found.owner_ward_id is None
+    assert found.final_answers == {"main": "2"}

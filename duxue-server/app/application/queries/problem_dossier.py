@@ -12,6 +12,10 @@ class GetProblemDossierQuery:
     def __init__(self, db: Session):
         self.repo = SqlProblemDossierRepository(db)
 
+    def find_bank_ready(self, *, fingerprint: str) -> ProblemDossier | None:
+        """Read-only lookup strictly restricted to `scope='bank'` and `status='ready'`."""
+        return self.repo.find_bank_ready(fingerprint=fingerprint)
+
     def get_for_ward(self, *, ward_id: str, dossier_id: str) -> ProblemDossier | None:
         dossier = self.repo.get(dossier_id)
         if dossier is None:
