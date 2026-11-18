@@ -547,7 +547,8 @@ def test_mentor_photo_followup_reaches_solver_with_original_and_current_request(
         first = client.post(f"{BASE}/turn", headers=adult[1], json={
             "content": "比较图中两个分数", "attachment_keys": [key],
         }).json()
-        model[0].complete.return_value["turn"]["relation"] = "same"
+        # The student model may label a new attempt on the selected old photo as new.
+        model[0].complete.return_value["turn"]["relation"] = "new"
         second = client.post(f"{BASE}/turn", headers=adult[1], json={
             "content": "我觉得是6", "state_token": first["state_token"],
         }).json()
@@ -605,7 +606,10 @@ def test_final_review_uses_actual_draft_and_strict_verdict(wire, accepted):
             images=[],
         )
     assert result is accepted
-    payload = json.loads(chat.call_args.kwargs["messages"][1]["content"][0]["text"])
+    messages = chat.call_args.kwargs["messages"]
+    # DashScope requires an explicit JSON instruction for json_object mode.
+    assert "json" in messages[0]["content"].lower()
+    payload = json.loads(messages[1]["content"][0]["text"])
     assert payload["draft"] == "答案是21" and payload["question"] == "3×4"
 
 
@@ -790,3 +794,16 @@ def test_mentor_text_topic_switch_and_long_followups(client, adult):
         assert all(row["text"] != "第二道题" for row in state["window"])
         assert "第一道题" not in gateway.review.call_args.kwargs["question"]
         assert "第二道题" in gateway.review.call_args.kwargs["question"]
+
+
+def test_standard_mentor_problem_does_not_repeat_solver_after_unverified_anchors():
+    from app.application.workflows.guardian_mentor import _solve_for_mentor
+
+    with patch("app.application.workflows.guardian_mentor.solve_and_verify_problem") as solve:
+        from unittest.mock import Mock
+
+        solver = Mock()
+        solver.extract_stem.return_value = {"tier": "T1", "raw_text": "比较3/4和2/3"}
+        _solve_for_mentor(content="比较3/4和2/3", images=[], solver=solver, bank_lookup=None)
+    assert solve.call_args.kwargs["initial_tier"] == "T1"
+    assert solve.call_args.kwargs["allow_t2_escalation"] is False

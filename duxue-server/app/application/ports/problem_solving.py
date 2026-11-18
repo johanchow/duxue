@@ -68,7 +68,11 @@ class QwenProblemSolverGateway(ProblemSolverModelPort):
             {
                 "mode": "independent_stem_reread" if independent_reread else "stem_extract",
                 "problem_text": text,
-                "classification": "题面提取时，纯概念、发音或事实查询返回 tier=T0；需要推导的题返回 tier=T1。",
+                "extraction_instructions": (
+                    "本轮只转写与分类，无需求解。输出 subject、shared_stem_summary（完整转写题面、数值及设问）、"
+                    "subproblems、diagram_summary、needs_student_confirmation，approaches 固定为空数组。"
+                    "纯概念、发音或事实查询标为 tier=T0，普通题标为 T1，确需多条独立推导核验的复杂题标为 T2。"
+                ),
             },
             images,
             use_reread_model=independent_reread,
@@ -91,6 +95,7 @@ class QwenProblemSolverGateway(ProblemSolverModelPort):
             {
                 "mode": "independent_solve",
                 "route_hint": route_hint,
+                "route_instructions": "只输出当前路线，保留必要的核验锚点。不要重复转写题面或生成其他路线。",
                 "stem": stem.to_dict(),
                 "problem_text": stem.raw_text,
             },

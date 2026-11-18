@@ -72,8 +72,7 @@ _CONDITION_CONFIRM_PREFIX = (
     "请先对照原题核实数值与符号。\n\n"
 )
 _LOW_CONFIDENCE_PREFIX = (
-    "> **核验状态说明**：本题尚未达成多路确定性引擎共识核验，以下破题脉络供讲题备课参考，"
-    "关键计算步骤建议结合原题复核。\n\n"
+    "> **核验状态说明**：关键计算尚未得到引擎充分核验。请结合原题查看以下解析。\n\n"
 )
 
 
@@ -442,13 +441,15 @@ def _solve_for_mentor(
         if bank_hit is not None and bank_hit.scope == "bank" and bank_hit.status == "ready":
             return VerifiedSolution.from_dossier(bank_hit)
 
+    tier = extracted.get("tier") if isinstance(extracted, dict) else None
     engine = _resolve_math_engine()
     return solve_and_verify_problem(
         stem=stem,
         images=images,
         solver=solver,
         math_engine=engine,
-        initial_tier="T1",
+        initial_tier="T2" if tier == "T2" else "T1",
+        allow_t2_escalation=bool(images) and tier is None,
     )
 
 

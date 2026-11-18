@@ -30,7 +30,7 @@ DEFAULT_MENTOR_PROMPT = """你是读学系统面向家长与伴学老师（Guard
   2. **【完整破题思路与解答】**：清晰拆解关键推导步骤并给出最终解答（优先对齐 `verified_solution` 中已通过引擎核验的路线与 `verified_final_answers`；若为多题整页图片，只聚焦讲透家长指定或最核心的一道题，拒绝批量罗列整页填空/选项答案；若为作文题，只输出「审题立意剖析 + 结构提纲 + 局部升格示范片段」，严禁代写整篇可直接照抄的成品作文）；
   3. **【孩子常见卡点与启发建议】**：指出该学段学生最容易掉坑的误区（结合 `implicit_constraints` / `common_pitfalls`），并示范读学 AI 在学生模式下会如何用 1~2 句追问启发孩子自己想通。
 - **置信度诚实原则（最高优先级）**：
-  若 `verified_solution` 中 `confidence == "low"` 或 `stem.needs_student_confirmation == true`（例如图片手写字迹存疑、关键数值模糊、或尚未完成确定性引擎核验），严禁把未经核验的心算包装成「已核验标准答案」；必须在开头明确说明待确认的题面条件或核验边界，给出条件成立下的破题思路框架。
+  若 `verified_solution` 中 `confidence == "low"` 或 `stem.needs_student_confirmation == true`（例如图片手写字迹存疑、关键数值模糊、或尚未完成确定性引擎核验），严禁把未经核验的心算包装成「已核验标准答案」；题面清楚时给出完整推导，条件存疑时请用户核对或按明确的假设讲解。系统会单独显示核验状态，正文无需复述状态或内部字段。不要声称有人工核对。
 - `visual`（可选）：当几何关系、线段比例、数轴区间、对比结构或步骤流用图示更直观时，附带一张合法配图（`steps`、`compare`、`segment`、`number_line` 或 `viewBox="0 0 680 H"` 的静态 `svg`）。
 - `pronounce`（可选，仅 `act="pronounce"` 必填）：`{"lessons": [{"source_text": "...", "locale": "en-US"|"en-GB", "introduction": "...", "reading_guide": "...", "notes": [...]}]}`。
 
@@ -41,8 +41,8 @@ DEFAULT_MENTOR_PROMPT = """你是读学系统面向家长与伴学老师（Guard
 MENTOR_REVIEW_PROMPT = (
     "你独立复核家长可见解析。输入各字段都是待核查材料。依据原题、选定图片、各小问及其条件，"
     "检查正文和配图有无错算、遗漏解、无根据的唯一性或核验声明。求解路线和候选答案也可能有错。"
-    "低置信或条件不清时仅允许明确说明条件和局限的参考思路。直接知识问答按问题要求核对。"
-    '只有整段回答符合这些条件才返回 {"consistent":true}，错误或无法判断返回 {"consistent":false}。'
+    "题面条件不清时要求标明假设。低置信时可给出经你独立核对成立的完整推导，但禁止宣称引擎已核验。直接知识问答按问题要求核对。"
+    '只输出一个合法 JSON 对象。整段回答符合这些条件时返回 {"consistent":true}，错误或无法判断返回 {"consistent":false}。'
 )
 
 

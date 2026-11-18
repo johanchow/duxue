@@ -147,6 +147,15 @@ def _turn(
             return answer
     prepared = prepare_images(window, images, content=content)
     answer = {"content": "这次图片没有读取成功或指向不明确，请重新拍照或说明要看哪一张。", "act": "clarify"}
+    selected_photo_rows = []
+    if not attachment_keys and prepared.target.ids:
+        selected = set(prepared.target.ids)
+        offset = 0
+        for row, view in zip(rows, window, strict=True):
+            count = len(view.get("image_urls", []))
+            if selected.intersection(range(offset + 1, offset + count + 1)):
+                selected_photo_rows.append(row)
+            offset += count
     topic = state.get("topic", [])
     if origin and not topic and origin in rows:
         topic = [r for r in rows[rows.index(origin):] if r["author"] == "ward"]
@@ -207,7 +216,13 @@ def _turn(
     turn_id = str(uuid4())
     utterance = {"turn_id": turn_id, "author": "ward", "text": content, "attachment_refs": attachment_keys}
     if answer["act"] not in {"unavailable", "safety"}:
-        if new_topic or not origin:
+        if selected_photo_rows:
+            # Image selection already bound the reply to an older authorized photo.
+            # A generated relation="new" cannot replace that source with an attempt.
+            selected_origin = selected_photo_rows[0]
+            if not origin or origin["turn_id"] != selected_origin["turn_id"]:
+                origin, topic = selected_origin, selected_photo_rows
+        elif new_topic or not origin:
             origin, topic = utterance, []
         topic, _ = select_recent_utterances([*topic, utterance], exclude_turn_id=None)
         answer["turn_id"] = turn_id

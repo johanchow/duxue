@@ -25,18 +25,23 @@ def tutor_turn(*, envelope, instruction, recent_utterances=None, current_images=
     clean_envelope.pop("_dossier_gate", None)
     inspected_crops = clean_envelope.pop("inspected_crops", None) or []
     payload = {"contract": "tutor-turn.v4", "instruction": instruction, "context": clean_envelope}
-    if current_images or any(row.get("image_urls") for row in recent_utterances or []):
-        if clean_envelope.get("image_review_phase") != "response":
-            from app.application.workflows.image_review import ImageReview
-            report_schema = ImageReview.model_json_schema()
-            definitions = report_schema.pop('$defs', {})
-            payload["response_schema"] = {
-                "type": "object", "$defs": definitions,
-                "required": ["image_review", "act", "content"],
-                "properties": {"image_review": report_schema, "act": {"type": "string"},
-                               "turn": {"type": "object"}, "content": {"type": "string", "minLength": 1, "maxLength": 1200}},
-                "additionalProperties": True,
-            }
+    has_images = current_images or any(row.get("image_urls") for row in recent_utterances or [])
+    if has_images and clean_envelope.get("image_review_phase") != "response":
+        from app.application.workflows.image_review import ImageReview
+        payload["image_review_rule"] = (
+            "仅识题、讲解或给提示且未判断学生作答时，"
+            "必须返回 image_review.conclusion=not_checking、questions=[]，"
+            "不要把识别出的题干或未作答题目填进 questions。content 写本轮实际回复。"
+        )
+        report_schema = ImageReview.model_json_schema()
+        definitions = report_schema.pop('$defs', {})
+        payload["response_schema"] = {
+            "type": "object", "$defs": definitions,
+            "required": ["image_review", "act", "content"],
+            "properties": {"image_review": report_schema, "act": {"type": "string"},
+                           "turn": {"type": "object"}, "content": {"type": "string", "minLength": 1, "maxLength": 1200}},
+            "additionalProperties": True,
+        }
     if observations:
         payload["observations"] = observations
     if repair_error:
