@@ -795,16 +795,23 @@ And 不呈现空选择题或 pronunciation_lesson
 场景核查须允许明确挑战/提醒动作作为答疑中的短暂插曲，不要求结束原题；单纯估时与提交解题步骤仍留在答疑。自然语言挑战确认按钮紧跟最新对话，不能放在全部历史之前。真实模型边界冒烟可运行 `cd duxue-server && .venv/bin/python -m scripts.check_reminder_sprint_models`，仅使用固定样例，不写数据库。
 
 
-## Guardian 问答体验（2026-11-17，已验收）
+## Guardian 问答体验（2026-11-17 验收，2026-11-18 扩展双视角）
 
-成人体验不进入 Ward 的 Companion Coordinator、Thread/Run 账本和 Tutoring/Study 持久化，不读取任何孩子上下文或 Memory，也不发布学习事实。复用无数据库依赖的 `run_tutor_turn`、答案保护策略、独立 Judge、只读工具、图片目标选择与发音结构校验；不创建虚拟 Ward。产品范围唯一归属 [用户 PRD §7.2](../product/prd-user.md#72-家长问答体验)。
+成人体验不进入 Ward 的 Companion Coordinator、Thread/Run 账本和 Tutoring/Study/ProblemSolving 持久化，不读取任何孩子上下文、私有 `ProblemDossier(scope="ward")` 或 Memory，也不发布学习事实。产品范围唯一归属 [用户 PRD §7.2](../product/prd-user.md#72-家长问答体验)。
+
+- **`mode="student_guide"`（默认，学生启发视角）**：复用无数据库依赖的 `run_tutor_turn`、答案保护策略 `TutorPermitPolicy`、独立 Judge、只读工具、图片目标选择与发音结构校验；不向 `TutorPermitPolicy` 或 `run_tutor_turn` 增加任何放宽保护的开关。
+- **`mode="guardian_explain"`（家长/导师说题视角）**：走独立平行的 `explain_for_guardian`（`app/application/workflows/guardian_mentor.py`），在事务外调用 [ProblemSolving 无状态求解核验内核](domain-problem-solving.md#五接口与数据边界)（`solve_and_verify_problem` + 可选只读命中 `scope="bank"` 纯净档案）后再由 `MentorExplainModelPort`（可选 Admin 组件 `tutoring.mentor-explain`）合成结构化名师说题解析与可选 `visual`/`lessons`，独立复核拟展示的正文、配图、题目条件和各小问答案，复核失败或不可用时收起草稿。界面的“解析已复核”对应成稿复核通过且求解状态就绪。各次模型调用共享 105 秒时间预算。经置信度诚实门禁、配图结构白名单与双向内容安全审核后交付，实施成人账号级滑动窗口频控（超限返回 `429 {"code": "mentor_rate_limited"}`）。
 
 | 接口 | 契约 |
 |---|---|
-| `POST /guardian/experience/turn` | Guardian 鉴权；`content` 最多2400字、图片最多4张、可选 `state_token`；不接受 Ward ID、客户端历史或许可状态。返回审核后的 content/act，可选 visual/lessons 及新 state_token。 |
+| `POST /guardian/experience/turn` | Guardian 鉴权；`content` 最多2400字、图片最多4张、`mode: "student_guide" \| "guardian_explain"`（默认 `"student_guide"`）、可选 `state_token`；不接受 Ward ID、客户端历史或许可状态。返回审核后的 content/act/mode，可选 visual/lessons/verification 及新 state_token。 |
 | `POST /guardian/experience/attachments/upload-url` | 仅接受匹配的 JPEG/PNG/WebP MIME；路径严格限定 `guardian/{当前成人}/experience/{文件名}`，不读取孩子或他人图片。沿用对象存储上传机制。 |
 | `POST /guardian/experience/speech` | 仅凭服务端签发的 speech_ref 朗读已校验原文，速率限0.5/0.75/1.0；不接受客户端替换朗读文字。 |
 
-状态使用独立用途域的 HMAC-SHA256 签名，绑定 Guardian、用途与4小时期限；不是登录 token，不得用于学生接口。对话状态只携带最近8条/2400字原话窗口、最多3道题摘要和答案保护状态，图片只保留成人专属对象键，不携带像素。主模型不能解除已有答案保护；出口失败不推进题目，不将拒绝草稿投影给用户。发音状态与对话状态用途不互通，越权、篡改、过期返回409，要求重新开始。签名状态不提供加密，按用户会话数据处理，不进入日志或遥测标签。
+状态使用独立用途域的 HMAC-SHA256 签名，绑定 Guardian、用途与4小时期限；不是登录 token，不得用于学生接口。`student_guide` 使用 `"conversation"` 用途域（携带最近8条/2400字原话窗口、当前原题及近期补充、最多3道题摘要和答案保护状态），`guardian_explain` 使用 `"conversation_mentor"` 用途域（携带原题及最近8条原话窗口），发音状态使用 `"speech"` 用途域；三者互不互通，跨视角混传、越权、篡改、过期统一返回409，要求重新开始。学生体验可返回用于打开当前题目的成人签名 mentor_start_token，点击解析时以此为起点；客户端按原题回合 ID 展示相应文本与照片。图片只保留成人专属对象键，不携带像素。签名状态不提供加密，按用户会话数据处理，不进入日志或遥测标签。
+
+导师直接上传新题图时，以本轮作为新题起点。纯文字换题可由导师模型声明 `topic_relation=new`，同题追问声明 `same`；缺少关系时使用近期窗口，旧版本令牌中的首题不再无限补回。学生视角转入的原题由签名交接状态确定。文本追问绑定到已选历史题图时，以该题图的回合作为交接原题。
+
+普通题完成一轮求解后即进入讲解和独立复核，复杂题可进入多路线核验。缺少求解档案时，概念直答仍经事实复核，完整解题显示核验状态提示。`guardian.mentor-review` 记录复核结果、耗时、Token 与终止原因，本地审计仅写复核状态。整轮模型预算耗尽返回 `503 mentor_timeout`，预算内单次模型请求超时走该阶段的降级流程。
 
 本轮没有数据库迁移或永久体验历史。客户端退出/重启即不恢复，签名状态过期后不再使用；已上传对象沿用对象存储生命周期，清空界面不声称物理删除照片。旧 `/task-intake/{respond,confirm,upload-url,cleanup}` 鉴权后统一返回410，不再提供作业/通知/留言传递；历史任务与 Ward 自主 Planning 能力保留。

@@ -5,20 +5,28 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from sqlalchemy.orm import Session
 
-from app.api.deps import Principal, current_guardian
+from app.api.deps import Principal, current_guardian, get_db
 from app.api.schemas import UploadUrlRequest
+from app.application.queries.problem_dossier import GetProblemDossierQuery
 from app.application.queries.pronunciation_speech import canonical_rate
 from app.application.workflows.guardian_experience import (
+    ExperienceMode,
     experience_turn,
     media_prefix,
     owns_image,
+)
+from app.application.workflows.guardian_mentor import (
+    MENTOR_PURPOSE,
+    MentorRateLimitExceeded,
 )
 from app.bootstrap.settings import settings
 from app.infrastructure.ai.aliyun_tts import (
     AliyunSpeechSynthesizer,
     SpeechSynthesisError,
 )
+from app.infrastructure.ai.errors import ModelTimeBudgetExceeded
 from app.infrastructure.security.experience_tokens import unseal
 from app.infrastructure.storage.object_storage import storage
 
@@ -30,6 +38,7 @@ class ExperienceTurnRequest(BaseModel):
     content: str = Field(default="", max_length=2400)
     state_token: str | None = Field(default=None, max_length=64000)
     attachment_keys: list[str] = Field(default_factory=list, max_length=4)
+    mode: ExperienceMode = "student_guide"
 
     @model_validator(mode="after")
     def nonempty(self):
@@ -47,12 +56,42 @@ def _state(token: str, principal: Principal, purpose: str) -> dict:
 
 
 @router.post("/turn")
-def turn(body: ExperienceTurnRequest, principal: Annotated[Principal, Depends(current_guardian)]):
-    state = _state(body.state_token, principal, "conversation") if body.state_token else {}
+def turn(
+    body: ExperienceTurnRequest,
+    principal: Annotated[Principal, Depends(current_guardian)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    purpose = MENTOR_PURPOSE if body.mode == "guardian_explain" else "conversation"
+    state = _state(body.state_token, principal, purpose) if body.state_token else {}
     if any(not owns_image(principal.user_id, key) or not storage.exists(key) for key in body.attachment_keys):
         raise HTTPException(400, "invalid experience attachment")
-    return experience_turn(guardian_id=principal.user_id, content=body.content or "请看这张图片，带我一步步理解。",
-                           attachment_keys=body.attachment_keys, state=state)
+    default_prompt = (
+        "请看这张图片，给出完整破题思路、核验结论与常见易错点解析。"
+        if body.mode == "guardian_explain"
+        else "请看这张图片，带我一步步理解。"
+    )
+    # The authenticated principal is a value object. Release its read transaction
+    # before model I/O, including when the optional bank lookup is never used.
+    bind = db.get_bind()
+    db.close()
+
+    def lookup(*, stem):
+        with Session(bind) as reader:
+            return GetProblemDossierQuery(reader).find_bank_ready(stem=stem)
+
+    try:
+        return experience_turn(
+            guardian_id=principal.user_id,
+            content=body.content or default_prompt,
+            attachment_keys=body.attachment_keys,
+            state=state,
+            mode=body.mode,
+            bank_lookup=lookup,
+        )
+    except ModelTimeBudgetExceeded as error:
+        raise HTTPException(503, {"code": "mentor_timeout"}) from error
+    except MentorRateLimitExceeded as error:
+        raise HTTPException(429, {"code": "mentor_rate_limited"}) from error
 
 
 @router.post("/attachments/upload-url")

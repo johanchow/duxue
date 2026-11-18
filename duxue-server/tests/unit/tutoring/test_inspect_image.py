@@ -112,3 +112,14 @@ def test_tutor_turn_context_attaches_crop_parts_without_leaking_bytes_in_json_ob
     image_urls = [p["image_url"]["url"] for p in parts if p.get("type") == "image_url"]
     assert data_url in image_urls
     assert res.crop_data_url in image_urls
+
+
+def test_image_prompt_exposes_not_checking_questions_contract():
+    import json
+
+    from app.agent_specs.contexts import tutor_turn
+
+    parts = tutor_turn(envelope={}, instruction="带我理解这张题图", current_images=["data:image/png;base64,aW1hZ2U="])
+    data = json.loads(parts[0]["text"])
+    assert "not_checking" in data["image_review_rule"]
+    assert "questions=[]" in data["image_review_rule"]

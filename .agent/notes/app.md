@@ -104,3 +104,5 @@ Guardian 用邮箱验证码注册和登录，不保存读学密码。Ward 使用
 - 2026-11-17 Guardian真机联调：独立debug包，真实ASR追问、文本/SVG、发音与图片上传答疑通过；题图fixture仅在ASR/选图边界进入，未伪造AI回复。测试孩子没有新增Companion/Study记录。默认8000的旧Agent快照不兼容，独立8021使用兼容离线草稿，未改默认.env/线上配置；真实ASR由系统语音经手机麦克风输入，题图由无个人信息fixture进入客户端后真实上传，不称作实拍识题。首个“月亮圆缺”触发现有visual_unavailable兜底，未放宽Judge；测试截图位于ignored `output/guardian-home-qa/`。2026-11-18用户验收后归档spec，提交不包含发布授权。
 
 - 本轮最终验证：Flutter168通过、analyze无问题；Server1249通过/1既有跳过、3subtests通过，新增Python文件Ruff与diff检查通过。最新debug APK重新构建安装后启动验证，使用duxue-test/revision37，无新迁移。产品与协议事实源见上文PRD和Companion链接。
+
+- 2026-11-18 Guardian 问答双视角扩展已验收归档：`GuardianQuestionPage` 默认 `student_guide`（苏格拉底分步启发），支持切换 `guardian_explain`（导师完整解析）及从学生视角有效回复一键「查看本题导师解析」透传原题图文；两套视角使用独立 `_PerspectiveSession` 隔离消息、待发照片、未发草稿、签名 `stateToken` 与异步 `generation`，清空与迟到结果互不串台，320px 窄屏 1.4x 字号无溢出。产品与契约事实源见 [用户 PRD §7.2](../../docs/product/prd-user.md#72-家长问答体验) 与 [Companion 成人体验](../../docs/technical/domain-companion.md#guardian-问答体验2026-11-17-验收2026-11-18-扩展双视角)。验证：Flutter 全量 170 通过、`flutter analyze` 无问题；本地分支提交，不包含推送或发布授权。

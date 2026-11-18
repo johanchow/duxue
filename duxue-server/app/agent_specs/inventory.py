@@ -100,6 +100,7 @@ COMPONENT_PURPOSES = {
     "tutoring.science": ("多学科符号与约束引擎", "覆盖高阶数学、含参反例证伪、物理量纲、化学守恒与生物遗传核算。"),
     "tutoring.inspect_image": ("局部看图放大工具", "在当前已授权图片上按归一化坐标裁剪放大细节，图片字节不进遥测。"),
     "tutoring.blueprint-planner": ("内部解题蓝图规划", "首轮复杂新题生成服务端私有路线、里程碑与预验算锚点，绝不下发客户端。"),
+    "tutoring.mentor-explain": ("家长视角导师说题解析", "仅限成人体验沙盒：基于已核验解题骨架生成考点本质、完整破题链路与常见卡点解析，零学生域写入。"),
     "tutoring.lookup_history": ("答疑历史工具", "查询授权范围内的历史答疑上下文。"),
     "tutoring.widget_guidelines": (
         "配图规范工具",
@@ -118,10 +119,12 @@ WORKFLOW_DESCRIPTIONS = {
     "tutoring-vet": "依次进行教学权限、文字答案保护与必要的配图答案保护审核。",
     "tutoring": "执行单轮启发答疑，串联题面定位、模型生成、审核、安全交付与教学事实写入。",
     "tutoring-blueprint": "首轮复杂新题生成服务端私有路线、里程碑与确定性预验算锚点。",
+    "guardian-mentor": "家长体验视角：结合服务端已核验解题骨架生成考点本质、完整破题链路与常见卡点解析。",
 }
 
 
 from app.agent_specs.observation_contracts import CODE_AGENTS as OBSERVATION_CODE_AGENTS
+
 COMPONENT_PURPOSES.update({key: (label, '确定性代码 Agent；处理器与协议受代码注册约束。') for key,label in OBSERVATION_CODE_AGENTS.items()})
 WORKFLOW_DESCRIPTIONS.update({
     "behavior-observation": "图片准备 → 活动解释 → 状态累计 → 达到阈值时评估帮助 → 规则门禁 → 提示呈现；各阶段按持久任务恢复。",

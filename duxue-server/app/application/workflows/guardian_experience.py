@@ -5,10 +5,15 @@ import base64
 import json
 from dataclasses import asdict
 from pathlib import Path
+from typing import Literal
 from uuid import uuid4
 
 from app.agent_specs.release_runtime import pin_release
 from app.application.queries.run_transcript import select_recent_utterances
+from app.application.workflows.guardian_mentor import (
+    MENTOR_PURPOSE,
+    explain_for_guardian,
+)
 from app.application.workflows.image_target import prepare_images
 from app.application.workflows.teaching_skills import history_candidates
 from app.application.workflows.tutor_loop import judge_problem_summary, run_tutor_turn
@@ -24,6 +29,7 @@ from app.contexts.tutoring.domain.tutor_permit import (
     ProblemState,
     TutorPermitPolicy,
 )
+from app.infrastructure.ai.client import model_time_budget, remaining_model_time
 from app.infrastructure.ai.tutor_turn_model import QwenLeakJudge, QwenTutorTurnGateway
 from app.infrastructure.ai.tutoring_safety import LocalSafetyScreening
 from app.infrastructure.security.experience_tokens import seal
@@ -54,27 +60,106 @@ def _image(guardian_id: str, key: str) -> str | None:
         return None
 
 
-def experience_turn(*, guardian_id: str, content: str, attachment_keys: list[str], state: dict) -> dict:
+ExperienceMode = Literal["student_guide", "guardian_explain"]
+
+
+def experience_turn(
+    *,
+    guardian_id: str,
+    content: str,
+    attachment_keys: list[str],
+    state: dict,
+    mode: ExperienceMode = "student_guide",
+    bank_lookup=None,
+) -> dict:
     with pin_release():
-        return _turn(guardian_id=guardian_id, content=content, attachment_keys=attachment_keys, state=state)
+        return _turn(
+            guardian_id=guardian_id,
+            content=content,
+            attachment_keys=attachment_keys,
+            state=state,
+            mode=mode,
+            bank_lookup=bank_lookup,
+        )
 
 
-def _turn(*, guardian_id: str, content: str, attachment_keys: list[str], state: dict) -> dict:
-    rows = state.get("window", [])
-    window = []
+def _prepare_adult_window(guardian_id: str, rows: list[dict], attachment_keys: list[str]) -> tuple[list[dict], list[str | None]]:
+    window: list[dict] = []
     image_budget = 0 if attachment_keys else 8
     for row in reversed(rows):
         keys = row.get("attachment_refs", [])[-image_budget:] if image_budget else []
         image_budget -= len(keys)
-        view = {"author": row["author"], "text": row["text"]}
+        view: dict = {"author": row["author"], "text": row["text"]}
         if keys:
             view["image_urls"] = [_image(guardian_id, key) for key in keys]
         elif row.get("attachment_refs"):
             view["had_images"] = True
         window.insert(0, view)
     images = [_image(guardian_id, key) for key in attachment_keys]
+    return window, images
+
+
+def _turn(
+    *,
+    guardian_id: str,
+    content: str,
+    attachment_keys: list[str],
+    state: dict,
+    mode: ExperienceMode = "student_guide",
+    bank_lookup=None,
+) -> dict:
+    rows = state.get("window", [])
+    origin = state.get("origin")
+    if mode == "student_guide" and not origin and state.get("summaries"):
+        latest = state["summaries"][0]
+        origin = next((r for r in reversed(rows) if r["author"] == "ward" and r["text"][:500] == latest), None)
+    if mode == "guardian_explain":
+        if attachment_keys and not state.get("handoff"):
+            # A newly submitted photo starts its own mentor question.
+            rows, origin = [], None
+        elif not (state.get("handoff") or state.get("pinned_topic")):
+            # Older mentor tokens pinned the first turn indefinitely.
+            origin = None
+        elif origin and origin not in rows:
+            rows = [origin, *rows]
+    image_keys = attachment_keys
+    if state.get("handoff") and mode == "guardian_explain":
+        # The signed topic owns the original and subsequent picture corrections.
+        content = "请给出当前题目的完整解析，结合对话中补充的条件。"
+        image_keys = list(dict.fromkeys(
+            key for row in rows for key in row.get("attachment_refs", [])
+        ))[-8:]
+    window, images = _prepare_adult_window(guardian_id, rows, image_keys)
+    if mode == "guardian_explain":
+        with model_time_budget(105):
+            answer = explain_for_guardian(
+                guardian_id=guardian_id,
+                content=content,
+                attachment_keys=[] if state.get("handoff") else attachment_keys,
+                window=window,
+                images=images,
+                rows=rows,
+                origin=origin,
+                handoff=bool(state.get("handoff")),
+                bank_lookup=bank_lookup,
+            )
+            remaining_model_time()
+            return answer
     prepared = prepare_images(window, images, content=content)
     answer = {"content": "这次图片没有读取成功或指向不明确，请重新拍照或说明要看哪一张。", "act": "clarify"}
+    selected_photo_rows = []
+    if not attachment_keys and prepared.target.ids:
+        selected = set(prepared.target.ids)
+        offset = 0
+        for row, view in zip(rows, window, strict=True):
+            count = len(view.get("image_urls", []))
+            if selected.intersection(range(offset + 1, offset + count + 1)):
+                selected_photo_rows.append(row)
+            offset += count
+    topic = state.get("topic", [])
+    if origin and not topic and origin in rows:
+        topic = [r for r in rows[rows.index(origin):] if r["author"] == "ward"]
+    new_topic = False
     problem = ProblemState(**state["problem"]) if state.get("problem") else None
     summaries = state.get("summaries", [])
     safety = LocalSafetyScreening()
@@ -115,6 +200,7 @@ def _turn(*, guardian_id: str, content: str, attachment_keys: list[str], state: 
                          "speech_ref": seal(guardian_id, "speech", lesson.model_dump())}
                         for lesson in candidate.lessons
                     ]
+                new_topic = (not candidate.work or candidate.relation == "new") and candidate.act != "clarify"
                 if candidate.work:
                     if candidate.relation in {"new", "subproblem"}:
                         problem = None
@@ -128,10 +214,27 @@ def _turn(*, guardian_id: str, content: str, attachment_keys: list[str], state: 
                         next_subgoal=candidate.next_subgoal,
                     ))
     turn_id = str(uuid4())
-    rows = [*rows, {"turn_id": turn_id, "author": "ward", "text": content, "attachment_refs": attachment_keys},
+    utterance = {"turn_id": turn_id, "author": "ward", "text": content, "attachment_refs": attachment_keys}
+    if answer["act"] not in {"unavailable", "safety"}:
+        if selected_photo_rows:
+            # Image selection already bound the reply to an older authorized photo.
+            # A generated relation="new" cannot replace that source with an attempt.
+            selected_origin = selected_photo_rows[0]
+            if not origin or origin["turn_id"] != selected_origin["turn_id"]:
+                origin, topic = selected_origin, selected_photo_rows
+        elif new_topic or not origin:
+            origin, topic = utterance, []
+        topic, _ = select_recent_utterances([*topic, utterance], exclude_turn_id=None)
+        answer["turn_id"] = turn_id
+        answer["mentor_origin_turn_id"] = origin["turn_id"]
+        answer["mentor_start_token"] = seal(guardian_id, MENTOR_PURPOSE, {
+            "origin": origin, "window": topic, "handoff": True,
+        })
+    rows = [*rows, utterance,
             {"turn_id": turn_id, "author": "companion", "text": answer["content"]}]
     rows, _ = select_recent_utterances(rows, exclude_turn_id=None)
+    answer["mode"] = "student_guide"
     answer["state_token"] = seal(guardian_id, "conversation", {
-        "window": rows, "problem": asdict(problem) if problem else None, "summaries": summaries,
+        "window": rows, "problem": asdict(problem) if problem else None, "summaries": summaries, "origin": origin, "topic": topic,
     })
     return answer

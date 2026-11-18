@@ -20,7 +20,8 @@ from jsonschema.exceptions import ValidationError as JSONSchemaValidationError
 from app.agent_specs.contracts import validate_input, validate_output
 from app.agent_specs.definitions import active_definitions, load_definitions
 from app.bootstrap.settings import settings
-from app.infrastructure.ai.errors import ModelGatewayError
+from app.infrastructure.ai.client import remaining_model_time
+from app.infrastructure.ai.errors import ModelGatewayError, ModelTimeBudgetExceeded
 from app.infrastructure.ai.prompts import PROMPTS, DynamicPrompt, PromptTemplate
 from app.infrastructure.observability.telemetry import (
     model_call_span,
@@ -362,6 +363,7 @@ def complete_json_chat(
     usage: Any = None
     try:
         for chunk in response:
+            remaining_model_time()
             request_id = getattr(chunk, "id", None) or request_id
             chunk_usage = getattr(chunk, "usage", None)
             if chunk_usage is not None:
@@ -594,7 +596,7 @@ def invoke_json_component(*, spec: ComponentSpec, user, client=None, settings_ob
             spec.component_id,
         )
         raise ModelGatewayError(error.gateway_code) from error
-    except ModelGatewayError:
+    except (ModelGatewayError, ModelTimeBudgetExceeded):
         raise
     except Exception as error:
         telemetry_ref["outcome"] = "api_error"

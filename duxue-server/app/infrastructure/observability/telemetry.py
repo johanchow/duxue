@@ -966,6 +966,7 @@ def record_model_response(
     tokens_reasoning: int | None = None,
     outcome: str | None = None,
     abrupt_detail: str | None = None,
+    duration_ms: int | None = None,
 ) -> None:
     """Record one model completion on the active generation and audit sink."""
     summary = _summary(content)
@@ -983,6 +984,7 @@ def record_model_response(
         "llm.tokens_reasoning": tokens_reasoning,
         "llm.outcome": outcome,
         "llm.abrupt_detail": abrupt_detail,
+        "llm.duration_ms": duration_ms,
     })
     attrs = _attrs(**{
         "agent.type": agent_type,

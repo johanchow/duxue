@@ -260,8 +260,10 @@ erDiagram
 | 异步求解任务到达 | Celery `solving-worker` | 读取授权图片，事务外调用求解模型与 `MathEnginePort`，调用 `ExecuteDossierSolve` | `DossierConfidencePolicy` 裁决分档升级与 `high`/`medium`/`low` 置信度，更新 `ProblemDossier` 状态 | 持久化 `ready` / `low_confidence` 档案，后续辅导回合通过 `GetProblemDossier` 立即可读 |
 | 学生确认/更正题面条件 | Tutoring Workflow | 校验归属后调用 `ConfirmStem` | `ProblemDossier.confirm_stem()` 递增 `stem_version` 并重置 `pending` | 重新触发异步求解 |
 
-受权 Query：
+受权 Query 与无持久化求解复用：
 - `GetProblemDossier(ward_id, dossier_id)`：校验 `scope == "bank"` 或 `owner_ward_id == ward_id` 后返回辅导只读投影（路线、里程碑、锚点、采分点、置信度，合并传入的该学生个人 `milestone_progress`），不含原始求解草稿；`TutoringProblem` 仅存 `dossier_id` 与该学生自己的 `milestone_progress`。
+- `GetProblemDossier.find_bank_ready(stem)`：按新旧指纹定位候选，用存储的题面重新计算新版指纹比对，只读查询 `scope == "bank"` 且 `status == "ready"` 的全局公共题库档案，绝不读取任何 `scope == "ward"` 的学生私有档案。
+- `solve_and_verify_problem(...) -> VerifiedSolution`：抽离在数据库事务外运行的纯求解与核验内核（T1 单路锚点核验 $\rightarrow$ 按 `DossierConfidencePolicy` 升 T2 双路异构共识与图片复读），由持久化 `ExecuteDossierSolveCommand` 与无数据库写入的 [Guardian 导师视角解析](domain-companion.md#guardian-问答体验2026-11-17-验收2026-11-18-扩展双视角) 同源复用。
 
 ### 5.2 题组
 

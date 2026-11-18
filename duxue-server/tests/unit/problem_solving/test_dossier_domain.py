@@ -166,3 +166,8 @@ def test_confidence_policy_escalation_and_dossier_lease_recovery():
     )
     assert settled.status == "ready"
     assert settled.confidence == "high"
+
+
+def test_math_punctuation_and_case_are_part_of_problem_identity():
+    for a, b in [("1.2 + 3", "12 + 3"), ("(1,23)", "(12,3)"), ("A+a", "a+a"), ("3!", "3")]:
+        assert compute_stem_fingerprint(StructuredStem("math", a)) != compute_stem_fingerprint(StructuredStem("math", b))

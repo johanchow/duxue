@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import replace
+from dataclasses import dataclass, replace
 
 from sqlalchemy.orm import Session
 
@@ -15,7 +15,10 @@ from app.application.ports.problem_solving import (
 )
 from app.application.workflows.blueprint_planner import verify_milestone_anchor
 from app.contexts.problem_solving.domain.dossier import (
+    DifficultyTier,
+    DossierConfidence,
     DossierConfidencePolicy,
+    DossierStatus,
     ProblemDossier,
     ScoringPoint,
     StructuredStem,
@@ -70,10 +73,9 @@ class RequestSolveCommand:
         # Incorporate authorized image count/hashes into stem when text is minimal
         img_tag = f" [images:{len(imgs)}]" if imgs and not text.strip() else ""
         stem = StructuredStem(subject=subject, raw_text=(text.strip() + img_tag)[:4000])
-        fp = compute_stem_fingerprint(stem)
         current_time = now()
 
-        existing = self.repo.find_reusable(fingerprint=fp, ward_id=ward_id)
+        existing = self.repo.find_reusable(stem=stem, ward_id=ward_id)
         if existing is not None:
             if existing.status in {"ready", "low_confidence"}:
                 return existing
@@ -201,6 +203,212 @@ def _answers_agree(
     return True
 
 
+@dataclass(frozen=True)
+class VerifiedSolution:
+    """Stateless, persistence-free verified problem solution produced outside DB transactions.
+
+    Shared by `ExecuteDossierSolveCommand` (which persists it onto a `ProblemDossier`
+    aggregate root) and adult `Guardian` mentor explanations (zero student-domain writes).
+    """
+
+    stem: StructuredStem
+    tier: DifficultyTier
+    status: DossierStatus
+    confidence: DossierConfidence
+    approaches: tuple[Approach, ...] = ()
+    invariants: tuple[ProblemInvariant, ...] = ()
+    scoring_points: tuple[ScoringPoint, ...] = ()
+    final_answers: dict[str, str] = None  # type: ignore[assignment]
+    evidence: dict = None  # type: ignore[assignment]
+    failure_reason: str | None = None
+
+    def __post_init__(self):
+        if self.final_answers is None:
+            object.__setattr__(self, "final_answers", {})
+        if self.evidence is None:
+            object.__setattr__(self, "evidence", {})
+
+    @classmethod
+    def from_dossier(cls, dossier: ProblemDossier) -> VerifiedSolution:
+        return cls(
+            stem=dossier.stem,
+            tier=dossier.tier,
+            status=dossier.status,
+            confidence=dossier.confidence,
+            approaches=dossier.approaches,
+            invariants=dossier.invariants,
+            scoring_points=dossier.scoring_points,
+            final_answers=dict(dossier.final_answers),
+            evidence=dict(dossier.evidence),
+        )
+
+    def mentor_projection(self) -> dict:
+        return {
+            "status": self.status,
+            "confidence": self.confidence,
+            "tier": self.tier,
+            "stem": self.stem.to_dict(),
+            "implicit_constraints": [inv.to_dict() for inv in self.invariants],
+            "approaches": [app.to_dict() for app in self.approaches],
+            "scoring_points": [sp.to_dict() for sp in self.scoring_points],
+            "verified_final_answers": dict(self.final_answers)
+            if self.status == "ready" and self.confidence == "high"
+            else {},
+            "candidate_final_answers": dict(self.final_answers)
+            if self.confidence != "high"
+            else {},
+            "evidence": dict(self.evidence),
+        }
+
+
+def solve_and_verify_problem(
+    *,
+    stem: StructuredStem,
+    images: list[str] | None = None,
+    solver: ProblemSolverModelPort,
+    math_engine: MathEnginePort | None = None,
+    initial_tier: DifficultyTier = "T1",
+    allow_t2_escalation: bool = True,
+) -> VerifiedSolution:
+    """Pure out-of-transaction T1 -> optional T2 consensus & deterministic verification pipeline."""
+    imgs = [img for img in (images or []) if isinstance(img, str) and img]
+    tier: DifficultyTier = "T2" if initial_tier == "T2" else "T1"
+
+    t1_apps: tuple[Approach, ...] = ()
+    t1_invs: tuple[ProblemInvariant, ...] = ()
+    t1_sps: tuple[ScoringPoint, ...] = ()
+    t1_finals: dict[str, str] = {}
+    escalated_reason: str | None = None
+
+    if tier == "T1":
+        raw_t1 = solver.solve_route(stem=stem, images=imgs, route_hint="T1")
+        if isinstance(raw_t1, dict) and raw_t1.get("subject"):
+            stem = replace(stem, subject=str(raw_t1["subject"])[:32])
+        t1_apps, t1_invs, t1_sps, t1_finals, t1_uncertain = _parse_and_verify_route(
+            math_engine, raw_t1
+        )
+        if DossierConfidencePolicy.should_escalate_t1_to_t2(
+            t1_apps, model_uncertain=t1_uncertain
+        ):
+            if not allow_t2_escalation:
+                if not t1_apps:
+                    return VerifiedSolution(
+                        stem=stem,
+                        tier="T1",
+                        status="failed",
+                        confidence="low",
+                        failure_reason="no_valid_approaches_produced",
+                    )
+                return VerifiedSolution(
+                    stem=stem,
+                    tier="T1",
+                    status="low_confidence",
+                    confidence="low",
+                    approaches=t1_apps,
+                    invariants=t1_invs,
+                    scoring_points=t1_sps,
+                    final_answers=t1_finals,
+                    evidence={
+                        "route_count": 1,
+                        "routes_consistent": True,
+                        "all_anchors_verified": False,
+                        "t2_escalation_skipped": True,
+                    },
+                )
+            tier = "T2"
+            escalated_reason = "t1_anchor_unverified_or_uncertain"
+        else:
+            has_only_verified_math = bool(t1_apps) and all(
+                ms.verification_status == "verified"
+                for app in t1_apps
+                for ms in app.milestones
+            )
+            conf: DossierConfidence = "medium" if has_only_verified_math else "low"
+            status: DossierStatus = "ready" if conf in {"high", "medium"} and t1_apps else "low_confidence"
+            return VerifiedSolution(
+                stem=stem,
+                tier="T1",
+                status=status,
+                confidence=conf,
+                approaches=t1_apps,
+                invariants=t1_invs,
+                scoring_points=t1_sps,
+                final_answers=t1_finals,
+                evidence={
+                    "route_count": 1,
+                    "routes_consistent": True,
+                    "all_anchors_verified": has_only_verified_math,
+                },
+            )
+
+    stem_disputed = False
+    if imgs and not stem.reread_verified:
+        reread_raw = solver.extract_stem(text=stem.raw_text, images=imgs, independent_reread=True)
+        if isinstance(reread_raw, dict):
+            reread_stem = StructuredStem.from_dict(reread_raw)
+            if compute_stem_fingerprint(reread_stem) == compute_stem_fingerprint(stem):
+                stem = replace(stem, reread_verified=True, needs_student_confirmation=False)
+            else:
+                stem_disputed = True
+                stem = replace(
+                    stem,
+                    reread_verified=False,
+                    needs_student_confirmation=True,
+                    disputed_conditions=(reread_stem.raw_text[:200],),
+                )
+
+    raw_r1 = solver.solve_route(stem=stem, images=imgs, route_hint="T2_algebraic")
+    raw_r2 = solver.solve_route(stem=stem, images=imgs, route_hint="T2_alternative")
+    apps_1, invs_1, sps_1, finals_1, _ = _parse_and_verify_route(math_engine, raw_r1)
+    apps_2, _invs_2, _sps_2, finals_2, _ = _parse_and_verify_route(math_engine, raw_r2)
+
+    consistent = _answers_agree(math_engine, finals_1, finals_2)
+    merged_apps = list(apps_1)
+    if consistent and apps_2:
+        existing_ids = {a.id for a in merged_apps}
+        for alt_app in apps_2:
+            alt_id = alt_app.id if alt_app.id not in existing_ids else f"alt_{alt_app.id}"[:32]
+            merged_apps.append(replace(alt_app, id=alt_id))
+    chosen_apps = tuple(merged_apps[:3]) or t1_apps
+    chosen_invs = invs_1 or t1_invs
+    chosen_sps = sps_1 or t1_sps
+    chosen_finals = finals_1 or t1_finals
+
+    if not chosen_apps:
+        return VerifiedSolution(
+            stem=stem,
+            tier="T2",
+            status="failed",
+            confidence="low",
+            failure_reason="no_valid_approaches_produced",
+        )
+
+    confidence = DossierConfidencePolicy.evaluate_confidence(
+        bank_matched=False,
+        route_count=2,
+        routes_consistent=consistent,
+        approaches=chosen_apps,
+        stem_disputed=stem_disputed,
+    )
+    status = "ready" if confidence in {"high", "medium"} and chosen_apps else "low_confidence"
+    return VerifiedSolution(
+        stem=stem,
+        tier="T2",
+        status=status,
+        confidence=confidence,
+        approaches=chosen_apps,
+        invariants=chosen_invs,
+        scoring_points=chosen_sps,
+        final_answers=chosen_finals,
+        evidence={
+            "route_count": 2,
+            "routes_consistent": consistent,
+            "escalated_reason": escalated_reason,
+            "stem_disputed": stem_disputed,
+        },
+    )
+
+
 class ExecuteDossierSolveCommand:
     """Worker-invoked command executing T1 -> optional T2 heterogeneous consensus outside DB locks."""
 
@@ -226,115 +434,25 @@ class ExecuteDossierSolveCommand:
         if dossier.status == "ready":
             return dossier
 
-        imgs = [img for img in (images or []) if isinstance(img, str) and img]
-        solver = self._solver()
-        stem = dossier.stem
-        tier = dossier.tier
-
-        # Step 1: T1 initial single-route solve (unless already marked T2)
-        t1_apps: tuple[Approach, ...] = ()
-        t1_invs: tuple[ProblemInvariant, ...] = ()
-        t1_sps: tuple[ScoringPoint, ...] = ()
-        t1_finals: dict[str, str] = {}
-        escalated_reason: str | None = None
-
-        if tier == "T1":
-            raw_t1 = solver.solve_route(stem=stem, images=imgs, route_hint="T1")
-            if isinstance(raw_t1, dict) and raw_t1.get("subject"):
-                stem = replace(stem, subject=str(raw_t1["subject"])[:32])
-            t1_apps, t1_invs, t1_sps, t1_finals, t1_uncertain = _parse_and_verify_route(
-                self.math_engine, raw_t1
-            )
-            if DossierConfidencePolicy.should_escalate_t1_to_t2(
-                t1_apps, model_uncertain=t1_uncertain
-            ):
-                tier = "T2"
-                escalated_reason = "t1_anchor_unverified_or_uncertain"
-            else:
-                # T1 all computable anchors verified! Note: single-route without bank match:
-                # If all milestones are deterministically verified (`not _has_conceptual`), run 1 fast independent confirmation
-                # only when T2 is needed; for T1 standard computation where every step is SymPy-verified, mark `medium` (ready)!
-                has_only_verified_math = bool(t1_apps) and all(
-                    ms.verification_status == "verified"
-                    for app in t1_apps
-                    for ms in app.milestones
-                )
-                conf = "medium" if has_only_verified_math else "low"
-                settled = dossier.complete_solve(
-                    approaches=t1_apps,
-                    invariants=t1_invs,
-                    scoring_points=t1_sps,
-                    final_answers=t1_finals,
-                    confidence=conf,
-                    tier="T1",
-                    evidence={
-                        "route_count": 1,
-                        "routes_consistent": True,
-                        "all_anchors_verified": has_only_verified_math,
-                    },
-                    stem=stem,
-                )
-                return self.repo.save(settled)
-
-        # Step 2: T2 high-difficulty / escalated path -> independent image reread (only when images exist!) + 2 diverse routes
-        stem_disputed = False
-        if imgs and not stem.reread_verified:
-            reread_raw = solver.extract_stem(text=stem.raw_text, images=imgs, independent_reread=True)
-            if isinstance(reread_raw, dict):
-                reread_stem = StructuredStem.from_dict(reread_raw)
-                if compute_stem_fingerprint(reread_stem) == compute_stem_fingerprint(stem):
-                    stem = replace(stem, reread_verified=True, needs_student_confirmation=False)
-                else:
-                    stem_disputed = True
-                    stem = replace(
-                        stem,
-                        reread_verified=False,
-                        needs_student_confirmation=True,
-                        disputed_conditions=(reread_stem.raw_text[:200],),
-                    )
-
-        raw_r1 = solver.solve_route(stem=stem, images=imgs, route_hint="T2_algebraic")
-        raw_r2 = solver.solve_route(stem=stem, images=imgs, route_hint="T2_alternative")
-        apps_1, invs_1, sps_1, finals_1, _ = _parse_and_verify_route(self.math_engine, raw_r1)
-        apps_2, _invs_2, _sps_2, finals_2, _ = _parse_and_verify_route(self.math_engine, raw_r2)
-
-        consistent = _answers_agree(self.math_engine, finals_1, finals_2)
-        # Merge distinct method-diverse approaches when consistent so student's alternative method is recognized
-        merged_apps = list(apps_1)
-        if consistent and apps_2:
-            existing_ids = {a.id for a in merged_apps}
-            for alt_app in apps_2:
-                alt_id = alt_app.id if alt_app.id not in existing_ids else f"alt_{alt_app.id}"[:32]
-                merged_apps.append(replace(alt_app, id=alt_id))
-        chosen_apps = tuple(merged_apps[:3]) or t1_apps
-        chosen_invs = invs_1 or t1_invs
-        chosen_sps = sps_1 or t1_sps
-        chosen_finals = finals_1 or t1_finals
-
-        if not chosen_apps:
-            failed = dossier.mark_failed(reason="no_valid_approaches_produced")
+        solution = solve_and_verify_problem(
+            stem=dossier.stem,
+            images=images,
+            solver=self._solver(),
+            math_engine=self.math_engine,
+            initial_tier=dossier.tier,
+        )
+        if solution.status == "failed":
+            failed = dossier.mark_failed(reason=solution.failure_reason or "solve_failed")
             return self.repo.save(failed)
 
-        confidence = DossierConfidencePolicy.evaluate_confidence(
-            bank_matched=False,
-            route_count=2,
-            routes_consistent=consistent,
-            approaches=chosen_apps,
-            stem_disputed=stem_disputed,
-        )
         settled = dossier.complete_solve(
-            approaches=chosen_apps,
-            invariants=chosen_invs,
-            scoring_points=chosen_sps,
-            final_answers=chosen_finals,
-            confidence=confidence,
-            tier="T2",
-            evidence={
-                "route_count": 2,
-                "routes_consistent": consistent,
-                "escalated_reason": escalated_reason,
-                "stem_disputed": stem_disputed,
-            },
-            stem=stem,
+            approaches=solution.approaches,
+            invariants=solution.invariants,
+            scoring_points=solution.scoring_points,
+            final_answers=solution.final_answers,
+            confidence=solution.confidence,
+            tier=solution.tier,
+            evidence=solution.evidence,
+            stem=solution.stem,
         )
         return self.repo.save(settled)

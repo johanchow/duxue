@@ -13,8 +13,9 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.agent_specs.definitions import load_definitions
 from app.agent_specs.gaokao_contracts import WORKFLOWS as GAOKAO_WORKFLOWS
-from app.agent_specs.registrations import WORKFLOW_BINDINGS
+from app.agent_specs.guardian_contracts import WORKFLOWS as GUARDIAN_MENTOR_WORKFLOWS
 from app.agent_specs.observation_contracts import WORKFLOWS as OBSERVATION_WORKFLOWS
+from app.agent_specs.registrations import WORKFLOW_BINDINGS
 from app.infrastructure.ai.components import COMPONENTS, ComponentSpec
 
 _REQUIRED_CHECKS = {
@@ -222,9 +223,11 @@ class AgentCatalog:
                     raise ValueError('report required protocol node changed')
             if spec.id in GAOKAO_WORKFLOWS and [n.ref for n in spec.nodes] != GAOKAO_WORKFLOWS[spec.id]:
                 raise ValueError("gaokao blueprint required protocol node changed")
+            if spec.id in GUARDIAN_MENTOR_WORKFLOWS and [n.ref for n in spec.nodes] != GUARDIAN_MENTOR_WORKFLOWS[spec.id]:
+                raise ValueError("guardian mentor required protocol node changed")
             registration = (
                 {'conditions': {'eligible','ineligible'} if spec.id == 'behavior-observation' else set(), 'handlers':set()}
-                if spec.id in OBSERVATION_WORKFLOWS or spec.id in GAOKAO_WORKFLOWS
+                if spec.id in OBSERVATION_WORKFLOWS or spec.id in GAOKAO_WORKFLOWS or spec.id in GUARDIAN_MENTOR_WORKFLOWS
                 else WORKFLOW_BINDINGS[spec.id]
             )
             expected_handler = "coordinator" if spec.id == "companion" else spec.id
@@ -327,6 +330,8 @@ class AgentCatalog:
             expected |= set(OBSERVATION_WORKFLOWS)
         if "tutoring.blueprint-planner" in load_definitions().units:
             expected |= set(GAOKAO_WORKFLOWS)
+        if "tutoring.mentor-explain" in load_definitions().units:
+            expected |= set(GUARDIAN_MENTOR_WORKFLOWS)
         if set(specs) != expected:
             raise ValueError(f"agent definitions missing or unexpected: {sorted(specs)}")
         return cls(specs, directory)

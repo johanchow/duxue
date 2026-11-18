@@ -12,6 +12,7 @@ Invariants:
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
@@ -29,7 +30,7 @@ _LATEX_CMD_RE = re.compile(r"\\(ln|sin|cos|tan|cot|sqrt|pi)\b")
 _STRIP_PUNCT_RE = re.compile(r"[\s，。；：！？,.;:!?、\"'“”‘’「」『』$$]+")
 
 
-def _normalize_skeleton(text: str) -> str:
+def _normalize_skeleton(text: str, *, legacy: bool = False) -> str:
     s = text.strip()
     # Iteratively flatten simple \frac{a}{b} -> (a)/(b) so TeX vs ASCII match deterministically
     for _ in range(3):
@@ -39,8 +40,11 @@ def _normalize_skeleton(text: str) -> str:
         s = next_s
     s = _LATEX_CMD_RE.sub(r"\1", s)
     s = s.replace("（", "(").replace("）", ")").replace("−", "-")
-    s = _STRIP_PUNCT_RE.sub("", s)
-    return s.lower()
+    if legacy:
+        return _STRIP_PUNCT_RE.sub("", s).lower()
+    s = s.translate(str.maketrans("，；：！？", ",;:!?"))
+    s = re.sub(r"(?<=[㐀-鿿])[。!?]$", "", s)
+    return re.sub(r"\s+", "", s)
 
 
 @dataclass(frozen=True)
@@ -91,16 +95,16 @@ class StructuredStem:
         )
 
 
-def compute_stem_fingerprint(stem: StructuredStem) -> str:
+def compute_stem_fingerprint(stem: StructuredStem, *, legacy: bool = False) -> str:
     """Deterministic structural skeleton hash immune to spacing/punctuation/simple TeX variance."""
     parts = [
         stem.subject.strip().lower(),
-        _normalize_skeleton(stem.raw_text),
-        *(_normalize_skeleton(sp) for sp in stem.subproblems),
-        _normalize_skeleton(stem.diagram_summary),
+        _normalize_skeleton(stem.raw_text, legacy=legacy),
+        *(_normalize_skeleton(sp, legacy=legacy) for sp in stem.subproblems),
+        _normalize_skeleton(stem.diagram_summary, legacy=legacy),
     ]
-    joined = "|".join(parts)
-    return "fp_" + hashlib.sha256(joined.encode("utf-8")).hexdigest()[:40]
+    joined = "|".join(parts) if legacy else json.dumps(parts, ensure_ascii=False)
+    return ("fp_" if legacy else "fp2_") + hashlib.sha256(joined.encode("utf-8")).hexdigest()[:40]
 
 
 @dataclass(frozen=True)

@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from app.infrastructure.ai.errors import ModelTimeBudgetExceeded
+
 
 @dataclass(frozen=True)
 class ImageTarget:
@@ -41,6 +43,8 @@ def choose_image_target(
         return ImageTarget((), ambiguous=True)
     try:
         result = select(window)
+    except ModelTimeBudgetExceeded:
+        raise
     except Exception:  # noqa: BLE001 - provider failure must not select a picture
         return ImageTarget((), ambiguous=True)
     if (not isinstance(result, dict) or type(result.get("ambiguous")) is not bool
