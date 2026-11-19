@@ -32,6 +32,7 @@ def execute_workflow(
     initial_state: dict | None = None,
     entry_node: str | None = None,
     pause_before: set[str] | None = None,
+    parallel_runner: Callable | None = None,
 ) -> dict:
     """Run reviewed nodes and conditions; no expression or import comes from JSON.
 
@@ -145,13 +146,16 @@ def execute_workflow(
             if len(join_targets) != 1:
                 raise ValueError(f"{spec.id}: parallel branches from {current} do not converge to one join node")
             join_node = next(iter(join_targets))
-            with ThreadPoolExecutor(max_workers=len(targets)) as pool:
-                futures = [pool.submit(copy_context().run, _run_node, target) for target in targets]
-                for target, future in zip(targets, futures, strict=True):
-                    branch_node, branch_result = future.result()
-                    state["results"][target] = branch_result
-                    if branch_node.kind == "gate":
-                        state["visited_gates"].append(branch_node.ref)
+            if parallel_runner:
+                branch_results = parallel_runner(targets, _run_node)
+            else:
+                with ThreadPoolExecutor(max_workers=len(targets)) as pool:
+                    futures = {target: pool.submit(copy_context().run, _run_node, target) for target in targets}
+                    branch_results = {target: future.result() for target, future in futures.items()}
+            for target, (branch_node, branch_result) in branch_results.items():
+                state["results"][target] = branch_result
+                if branch_node.kind == "gate":
+                    state["visited_gates"].append(branch_node.ref)
             from app.agent_specs.execution_trace import record_edge
             for target in targets:
                 join_edge = next(edge for edge in spec.edges if edge.source == target and edge.target == join_node)

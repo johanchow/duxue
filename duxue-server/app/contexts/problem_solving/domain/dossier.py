@@ -28,7 +28,6 @@ RouteComparisonStatus = Literal["consistent", "contradicted", "incomparable"]
 AnchorVerifyState = Literal["verified", "contradicted", "unknown", "not_applicable"]
 
 _NECESSARY_ONLY_CHECK_KINDS = frozenset({"physics_dimension_and_eq", "chemistry_conservation"})
-_CRITICAL_TOKEN_RE = re.compile(r"[0-9]+(?:\.[0-9]+)?|[=<>≤≥≠±+\-*/^]|[a-zA-Z]+(?:_[0-9a-zA-Z]+)?")
 
 _FRAC_RE = re.compile(r"\\frac\s*\{\s*([^{}]+?)\s*\}\s*\{\s*([^{}]+?)\s*\}")
 _LATEX_CMD_RE = re.compile(r"\\(ln|sin|cos|tan|cot|sqrt|pi)\b")
@@ -138,35 +137,31 @@ class ScoringPoint:
         )
 
 
-def _critical_tokens(text: str) -> tuple[str, ...]:
-    """Extract deterministic numeric/symbolic tokens without comparing free-form prose."""
-    return tuple(_CRITICAL_TOKEN_RE.findall(_normalize_skeleton(text)))
-
-
 def compare_critical_conditions(
     primary: StructuredStem, reread: StructuredStem
 ) -> tuple[bool, tuple[str, ...]]:
-    """Compare critical conditions (numeric/symbolic tokens & subproblem structure) across reads.
-
-    Intentionally ignores free-form `diagram_summary` prose variations so heterogeneous vision
-    models are not falsely marked disputed when describing the same diagram differently.
-    """
-    disputed: list[str] = []
+    """Confirm matching transcriptions only. A different reading needs clarification."""
+    reasons = []
     if reread.needs_student_confirmation:
-        disputed.append("reread_flagged_unclear")
-    if primary.raw_text.strip() and reread.raw_text.strip():
-        primary_tokens = _critical_tokens(primary.raw_text)
-        reread_tokens = _critical_tokens(reread.raw_text)
-        if primary_tokens or reread_tokens:
-            if primary_tokens != reread_tokens:
-                disputed.append(
-                    f"critical_tokens_differ:{' '.join(reread_tokens)[:160]}"
-                )
-        elif _normalize_skeleton(primary.raw_text) != _normalize_skeleton(reread.raw_text):
-            disputed.append(reread.raw_text[:200])
-    if primary.subproblems and reread.subproblems and len(primary.subproblems) != len(reread.subproblems):
-        disputed.append(f"subproblem_count_differ:{len(primary.subproblems)}!={len(reread.subproblems)}")
-    return (len(disputed) == 0), tuple(disputed[:8])
+        reasons.append("reread_flagged_unclear")
+    if not reread.raw_text.strip() or primary.raw_text.strip() != reread.raw_text.strip():
+        reasons.append("stem_transcription_unconfirmed")
+    if primary.subproblems != reread.subproblems:
+        reasons.append("subproblems_unconfirmed")
+    return not reasons, tuple(reasons)
+
+
+# Deterministic question labels only. Question text and answer prose are opaque.
+_ORDINALS = dict(zip("一二三四五六七八九十", range(1, 11)))
+_LABEL = re.compile(r"^(?:[（(]([0-9]+)[）)]|第([一二三四五六七八九十]|[0-9]+)问|([0-9]+)(?:[.、](?![0-9])|$))")
+
+
+def _question_number(label: str, *, standalone: bool = False) -> int | None:
+    match = _LABEL.fullmatch(label) if standalone else _LABEL.match(label)
+    if not match:
+        return None
+    number = next(value for value in match.groups() if value is not None)
+    return _ORDINALS[number] if number in _ORDINALS else int(number)
 
 
 class DossierConfidencePolicy:
@@ -257,16 +252,23 @@ class DossierConfidencePolicy:
                 "missing_subproblems": [],
                 "complete": bool(non_empty),
             }
-        # Match by count when labels differ in formatting (e.g. "(1)" vs "第一问"),
-        # and also report explicit missing indices if fewer answers than expected.
-        missing: list[str] = []
-        if len(non_empty) < len(expected):
-            missing = expected[len(non_empty) :]
+        matched: set[int] = set()
+        numbers = [_question_number(label) for label in expected]
+        for key in non_empty:
+            indices = [i for i, label in enumerate(expected) if label == key]
+            if not indices:
+                number = _question_number(key, standalone=True)
+                if number is not None:
+                    indices = [i for i, explicit in enumerate(numbers)
+                               if (explicit if explicit is not None else i + 1) == number]
+            if len(indices) == 1:
+                matched.add(indices[0])
+        missing = [label for i, label in enumerate(expected) if i not in matched]
         return {
             "expected_count": len(expected),
-            "answered_count": len(non_empty),
+            "answered_count": len(matched),
             "missing_subproblems": missing,
-            "complete": len(non_empty) >= len(expected),
+            "complete": not missing,
         }
 
     @classmethod

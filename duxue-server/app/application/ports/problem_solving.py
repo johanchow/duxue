@@ -99,7 +99,7 @@ class QwenProblemSolverGateway(ProblemSolverModelPort):
                 "mode": "independent_stem_reread" if independent_reread else "stem_extract",
                 "problem_text": text,
                 "extraction_instructions": (
-                    "本轮只独立复读关键数值、符号、角标与全部设问，无需求解。"
+                    "独立按原文转写完整题面、关键条件和全部设问；保留限定词、数值、符号与角标，无需求解。"
                     "输出 subject、shared_stem_summary、subproblems、needs_student_confirmation。"
                     if independent_reread
                     else "本轮只转写与分类，无需求解。输出 subject、shared_stem_summary（完整转写题面、数值及设问）、"
@@ -116,7 +116,7 @@ class QwenProblemSolverGateway(ProblemSolverModelPort):
             "tier": raw.get("tier"),
             "needs_student_confirmation": raw.get("needs_student_confirmation") is True,
             "subject": str(raw.get("subject") or "general"),
-            "raw_text": str(raw.get("shared_stem_summary") or raw.get("raw_text") or text),
+            "raw_text": str(raw.get("shared_stem_summary") or raw.get("raw_text") or ("" if independent_reread else text)),
             "subproblems": list(raw.get("subproblems") or []),
             "diagram_summary": str(raw.get("diagram_summary") or ""),
         }
@@ -132,7 +132,7 @@ class QwenProblemSolverGateway(ProblemSolverModelPort):
         payload: dict = {
             "mode": "independent_solve",
             "route_hint": route_hint,
-            "route_instructions": "只输出当前路线，保留必要的核验锚点。不要重复转写题面或生成其他路线。",
+            "route_instructions": "只输出当前路线，保留必要的核验锚点。不要重复转写题面或生成其他路线。final_answers 按题面小问的编号或原标签逐一作答，单问无标签时用 main。",
             "stem": stem.to_dict(),
             "problem_text": stem.raw_text,
         }

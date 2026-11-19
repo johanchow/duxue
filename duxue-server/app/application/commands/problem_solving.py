@@ -31,6 +31,9 @@ from app.contexts.tutoring.domain.blueprint import (
     Milestone,
     ProblemInvariant,
 )
+from app.infrastructure.ai.client import remaining_model_time
+from app.infrastructure.ai.errors import ModelTimeBudgetExceeded
+from app.infrastructure.ai.parallel_routes import collect_solve_routes
 from app.infrastructure.persistence.models import now, uid
 
 
@@ -170,6 +173,8 @@ def _call_solve_route(
                 except TypeError:
                     return solver.solve_route(stem=stem, images=images, route_hint=route_hint)
             return solver.solve_route(stem=stem, images=images, route_hint=route_hint)
+        except ModelTimeBudgetExceeded:
+            raise
         except TimeoutError:
             if attempt == 0:
                 continue
@@ -230,10 +235,6 @@ def _parse_and_verify_route(
         for k, v in list(raw_finals.items())[:10]:
             if isinstance(v, (str, int, float)) and str(v).strip():
                 finals[str(k)[:32]] = str(v).strip()[:500]
-    elif approaches and approaches[0].milestones:
-        last_target = approaches[0].milestones[-1].canonical_target
-        if last_target:
-            finals["main"] = last_target
     uncertain = bool(raw.get("uncertain", False))
     apps_tuple = tuple(approaches)
     anchor_state = DossierConfidencePolicy.classify_anchor_verification(apps_tuple)
@@ -339,10 +340,16 @@ class VerifiedSolution:
         }
 
 
-def _apply_reread(stem: StructuredStem, reread_raw: dict | None) -> tuple[StructuredStem, bool]:
-    """Compare critical numeric/symbolic conditions across independent vision reads."""
-    if not isinstance(reread_raw, dict):
-        return stem, False
+def _reread_stem(solver, stem: StructuredStem, images) -> tuple[StructuredStem, bool]:
+    """Attempt one independent read and stop if usable evidence is unavailable."""
+    try:
+        reread_raw = solver.extract_stem(text=stem.raw_text, images=images, independent_reread=True)
+    except TimeoutError:
+        remaining_model_time()  # Preserve the enclosing turn deadline if it expired.
+        reread_raw = None
+    if not isinstance(reread_raw, dict) or not str(reread_raw.get("raw_text") or "").strip():
+        return replace(stem, needs_student_confirmation=True, reread_verified=False,
+                       disputed_conditions=("reread_unavailable",)), True
     reread_stem = StructuredStem.from_dict(reread_raw)
     agreed, disputed_reasons = compare_critical_conditions(stem, reread_stem)
     if agreed:
@@ -603,10 +610,7 @@ def solve_and_verify_problem(
 
     # On-demand reread only when image stem was explicitly flagged unclear
     if imgs and stem.needs_student_confirmation and not stem.reread_verified:
-        reread_raw = solver.extract_stem(
-            text=stem.raw_text, images=imgs, independent_reread=True
-        )
-        stem, disputed = _apply_reread(stem, reread_raw)
+        stem, disputed = _reread_stem(solver, stem, imgs)
         if disputed:
             return VerifiedSolution(
                 stem=stem,
@@ -625,10 +629,7 @@ def solve_and_verify_problem(
             return _finalize_single_route(stem=stem, parsed=parsed_t1, used_backup=False)
         # Contradicted on image problem -> on-demand reread first to check misread digits
         if imgs and not stem.reread_verified:
-            reread_raw = solver.extract_stem(
-                text=stem.raw_text, images=imgs, independent_reread=True
-            )
-            stem, disputed = _apply_reread(stem, reread_raw)
+            stem, disputed = _reread_stem(solver, stem, imgs)
             if disputed:
                 return VerifiedSolution(
                     stem=stem,
@@ -656,25 +657,21 @@ def solve_and_verify_problem(
             prior_contradictions=parsed_t1.contradictions,
         )
 
-    from concurrent.futures import ThreadPoolExecutor
-
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        f1 = pool.submit(
-            _call_solve_route, solver, stem=stem, images=imgs, route_hint="T2_algebraic"
-        )
-        f2 = pool.submit(
-            _call_solve_route, solver, stem=stem, images=imgs, route_hint="T2_alternative"
-        )
-        raw_r1, raw_r2 = f1.result(), f2.result()
+    routes = collect_solve_routes(("T2_algebraic", "T2_alternative"), lambda hint: _call_solve_route(
+        solver, stem=stem, images=imgs, route_hint=hint))
+    raw_r1, raw_r2 = routes.get("T2_algebraic"), routes.get("T2_alternative")
     parsed_1 = _parse_and_verify_route(math_engine, raw_r1)
     parsed_2 = _parse_and_verify_route(math_engine, raw_r2)
-    return _finalize_t2_routes(
+    result = _finalize_t2_routes(
         stem=stem,
         parsed_1=parsed_1,
         parsed_2=parsed_2,
         math_engine=math_engine,
         stem_disputed=False,
     )
+    timeouts = [hint for hint in ("T2_algebraic", "T2_alternative") if hint not in routes]
+    return replace(result, evidence={**result.evidence, "timed_out_routes": timeouts})
+
 
 
 def execute_blueprint(
@@ -716,7 +713,7 @@ def execute_blueprint(
                 )
         else:
             tier = "T1"
-        if solution is None and bank_lookup and (not images or isinstance(raw, dict)):
+        if solution is None and bank_lookup and not stem.needs_student_confirmation and (not images or isinstance(raw, dict)):
             hit = bank_lookup(stem=stem)
             if hit and hit.scope == "bank" and hit.status == "ready":
                 solution = VerifiedSolution.from_dossier(hit)
@@ -738,10 +735,7 @@ def execute_blueprint(
 
     def reread(state):
         nonlocal stem, disputed
-        raw = solver.extract_stem(
-            text=stem.raw_text, images=images, independent_reread=True
-        )
-        stem, disputed = _apply_reread(stem, raw)
+        stem, disputed = _reread_stem(solver, stem, images)
         return {"verified": stem.reread_verified, "disputed": disputed}
 
     def reread_check(state):
@@ -773,6 +767,8 @@ def execute_blueprint(
             steps.node_id("primary"): "T2_algebraic",
         }[node]
         raw = _call_solve_route(solver, stem=stem, images=images, route_hint=hint)
+        if hint.startswith("T2_"):
+            return {"route_hint": hint, "route": raw}
         route_outputs[hint] = raw
         return {"route_hint": hint, "candidate": isinstance(raw, dict)}
 
@@ -790,6 +786,8 @@ def execute_blueprint(
         raw = _call_solve_route(
             solver, stem=stem, images=images, route_hint=hint, feedback=feedback
         )
+        if hint.startswith("T2_"):
+            return {"route_hint": hint, "route": raw}
         route_outputs[hint] = raw
         return {"route_hint": hint, "candidate": isinstance(raw, dict)}
 
@@ -819,8 +817,11 @@ def execute_blueprint(
 
     def verify_t2(state):
         nonlocal parsed_t2
-        p1 = _parse_and_verify_route(math_engine, route_outputs.get("T2_algebraic"))
-        p2 = _parse_and_verify_route(math_engine, route_outputs.get("T2_alternative"))
+        def read_branch(key):
+            result = state["results"].get(steps.node_id(key))
+            return _parse_and_verify_route(math_engine, result.data.get("route") if result else None)
+
+        p1, p2 = read_branch("primary"), read_branch("alternative")
         parsed_t2 = (p1, p2)
         comp = _compare_answers(math_engine, p1.final_answers, p2.final_answers)
         return GateDecision("allow", comp)
@@ -836,6 +837,9 @@ def execute_blueprint(
                     math_engine=math_engine,
                     stem_disputed=disputed,
                 )
+                timeouts = [hint for key, hint in (("primary", "T2_algebraic"), ("alternative", "T2_alternative"))
+                            if steps.node_id(key) not in state["results"]]
+                solution = replace(solution, evidence={**solution.evidence, "timed_out_routes": timeouts})
             elif parsed_backup is not None:
                 solution = _finalize_single_route(
                     stem=stem,
@@ -882,6 +886,7 @@ def execute_blueprint(
             for branch in steps.CONDITIONS
         },
         entry_node=steps.node_id("select") if question is None else None,
+        parallel_runner=collect_solve_routes,
     )
     return solution
 

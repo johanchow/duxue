@@ -327,7 +327,7 @@ erDiagram
 
 ### Admin 内部解题工作流
 
-十二节点版本从测试或正式环境当前完整配置导出升级（旧发布包向后兼容，不改变既有兼容指纹）。配置文件中的节点 ID 对应执行回放，节点的 `ref` 对应可独立配置的 Agent 或 Gate。T1 与 T2 彻底分轨（取消 T1→T2 自动升级）：T1 锚点被确定性引擎 `contradicted` 证伪时切异构备用 Agent（`tutoring.blueprint-backup`），超时仅原地重试最多 1 次；T2 采用 `primary`（`tutoring.blueprint-planner`）与 `alternative`（`tutoring.blueprint-backup`）**并发异构**求解，并做确定性证伪淘汰与三态比对（`consistent` / `contradicted` / `incomparable`）。有图题改为**按需复读**（仅初读模糊/涂改或 T1 证伪怀疑读错数字时触发），只比对关键数值、符号与设问，确认分歧直接短路。求解 Agent 统一开放 `tutoring.science` 与 `tutoring.inspect_image` 工具权限。
+十二节点版本从测试或正式环境当前完整配置导出升级（旧发布包向后兼容，不改变既有兼容指纹）。配置文件中的节点 ID 对应执行回放，节点的 `ref` 对应可独立配置的 Agent 或 Gate。T1 与 T2 彻底分轨（取消 T1→T2 自动升级）：T1 锚点被确定性引擎 `contradicted` 证伪时切异构备用 Agent（`tutoring.blueprint-backup`），超时仅原地重试最多 1 次；T2 采用 `primary`（`tutoring.blueprint-planner`）与 `alternative`（`tutoring.blueprint-backup`）**并发异构**求解，并做确定性证伪淘汰与三态比对（`consistent` / `contradicted` / `incomparable`）。有图题改为**按需复读**（仅初读模糊/涂改或 T1 证伪怀疑读错数字时触发），核对完整题面转写和小问标签。复读无有效题面或转写不一致时，保留待确认状态并直接结束求解。求解 Agent 统一开放 `tutoring.science` 与 `tutoring.inspect_image` 工具权限。
 
 | 节点后缀（前缀为 `tutoring-blueprint.`） | 类型 | 执行结果 |
 |---|---|---|
@@ -342,5 +342,7 @@ erDiagram
 | `primary`、`alternative` | 并发双模型 Agent | T2 并发执行主路线（`tutoring.blueprint-planner`）与异构替代路线（`tutoring.blueprint-backup`） |
 | `verify_t2` | 代码 Gate | T2 逐路确定性四态核验、证伪淘汰（单路被证伪即剔除）与三态双路比对（`consistent` / `contradicted` / `incomparable`） |
 | `finish` | 固定代码 Action | 按小问检查最终答案完整性、区分充分核验与必要条件（如量纲/守恒），定级置信度并返回 `VerifiedSolution` |
+
+并发求解在整轮剩余预算的三分之二内汇合，最长 60 秒；独立 worker 同样以 60 秒为上限。已完成的候选按实际路线数核验，超时路线记录在 `timed_out_routes`。已发出的请求可能在后台结束，迟到的候选不会进入当前结果。多小问按声明的完整标签或编号逐项匹配显式 `final_answers`；备注、重复编号和中间验算目标不能补齐缺答。
 
 从 Admin 的当前草稿（无草稿时取当前发布）导出快照后，使用 `scripts/upgrade_blueprint_steps.py` 生成升级文件（幂等支持从旧 1 节点、8 节点或现有草稿升级），再通过 Admin 的 `config:import-upgrade` 导入。生成文件时沿用主求解模型和异构备用/复读模型名称，首次转写和复读默认关闭 thinking。配置发布、实例加载及历史快照回滚沿用 [Admin 发布流程](design-admin.md)。整卷耗时及得分需单独复测。

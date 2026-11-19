@@ -193,3 +193,128 @@ def test_prepared_worker_stem_resumes_at_selection(staged):
     assert result.final_answers == {"(1)": "2*x"}
     assert result.status == "ready"
     assert trace.events[0]["node_id"] == "tutoring-blueprint.select"
+
+
+def test_reread_checks_words_and_subquestions():
+    from app.contexts.problem_solving.domain.dossier import (
+        StructuredStem,
+        compare_critical_conditions,
+    )
+
+    stem = StructuredStem("math", "从5个球中有放回抽取2次", ("求概率",))
+    for other in (
+        StructuredStem("math", "从5个球中无放回抽取2次", ("求概率",)),
+        StructuredStem("math", stem.raw_text, ("求期望",)),
+    ):
+        assert not compare_critical_conditions(stem, other)[0]
+
+
+def test_completeness_matches_questions_and_requires_explicit_finals():
+    from app.application.commands.problem_solving import _parse_and_verify_route
+    from app.contexts.problem_solving.domain.dossier import (
+        DossierConfidencePolicy,
+        StructuredStem,
+    )
+
+    stem = StructuredStem("math", "两问", ("第一问", "第二问"))
+    check = DossierConfidencePolicy.evaluate_subproblem_completeness
+    assert check(stem, {"第二问": "3", "备注": "代入"})["missing_subproblems"] == [
+        "第一问"
+    ]
+    assert check(stem, {"(2)": "3", "(1)": "4"})["complete"]
+    route = _good_math_route()
+    del route["final_answers"]
+    assert _parse_and_verify_route(None, route).final_answers == {}
+
+
+@pytest.mark.parametrize("response", [None, {}, TimeoutError("read timed out")])
+def test_missing_reread_terminates_once(staged, response):
+    class Solver:
+        reads = 0
+
+        def extract_stem(self, *, independent_reread, **kwargs):
+            if independent_reread:
+                self.reads += 1
+                if isinstance(response, Exception):
+                    raise response
+                return response
+            return {
+                "raw_text": "图片题",
+                "needs_student_confirmation": True,
+                "tier": "T1",
+            }
+
+    solver = Solver()
+    with use_definitions(staged):
+        result = _solve_for_mentor(
+            content="图片题", images=["img"], solver=solver, bank_lookup=None
+        )
+    assert solver.reads == 1
+    assert result.stem.needs_student_confirmation and result.status == "low_confidence"
+    assert "reread_unavailable" in result.stem.disputed_conditions
+
+
+@pytest.mark.parametrize("use_staged", [True, False])
+def test_parallel_solver_keeps_fast_answer_before_deadline(staged, use_staged):
+    import time
+    from contextlib import nullcontext
+    from threading import Event
+
+    from app.application.commands.problem_solving import solve_and_verify_problem
+    from app.contexts.problem_solving.domain.dossier import StructuredStem
+    from app.infrastructure.ai.client import model_time_budget, remaining_model_time
+
+    release = Event()
+
+    class Solver:
+        def solve_route(self, *, route_hint, **kwargs):
+            if route_hint == "T2_algebraic":
+                release.wait(1.5)
+            return _good_math_route()
+
+    try:
+        with (
+            use_definitions(staged) if use_staged else nullcontext(),
+            model_time_budget(0.6),
+        ):
+            start = time.monotonic()
+            result = solve_and_verify_problem(
+                stem=StructuredStem("math", "求导"),
+                solver=Solver(),
+                math_engine=None,
+                initial_tier="T2",
+            )
+            assert time.monotonic() - start < 0.6
+            assert remaining_model_time() > 0
+            assert result.evidence["route_count"] == 1
+            assert result.evidence["timed_out_routes"] == ["T2_algebraic"]
+            assert result.final_answers == {"(1)": "2*x"}
+    finally:
+        release.set()
+
+
+@pytest.mark.parametrize(
+    "timed_out", [{"T2_alternative"}, {"T2_algebraic", "T2_alternative"}]
+)
+def test_explicit_branch_deadline_returns_only_valid_candidates(staged, timed_out):
+    from app.infrastructure.ai.errors import ModelTimeBudgetExceeded
+
+    class Solver:
+        def extract_stem(self, **kwargs):
+            return {"tier": "T2", "raw_text": "求导", "subproblems": ["(1)"]}
+
+        def solve_route(self, *, route_hint, **kwargs):
+            if route_hint in timed_out:
+                raise ModelTimeBudgetExceeded("branch deadline")
+            return _good_math_route()
+
+    with use_definitions(staged):
+        result = _solve_for_mentor(
+            content="求导", images=[], solver=Solver(), bank_lookup=None
+        )
+    assert set(result.evidence["timed_out_routes"]) == timed_out
+    assert result.evidence["route_count"] == 2 - len(timed_out)
+    if len(timed_out) == 2:
+        assert result.status == "failed" and not result.final_answers
+    else:
+        assert result.confidence == "medium" and result.final_answers == {"(1)": "2*x"}

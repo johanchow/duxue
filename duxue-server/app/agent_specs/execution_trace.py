@@ -49,6 +49,17 @@ class Recorder:
         self.stack = []
         self.spans = {}
 
+    def merge_child(self, child):
+        """Attach a completed parallel branch without sharing live event stacks."""
+        offset = len(self.events)
+        parent_id = self.stack[-1]["id"] if self.stack else None
+        for event in child.events:
+            self.events.append({
+                **event,
+                "id": str(offset + int(event["id"])),
+                "parent_id": str(offset + int(event["parent_id"])) if event["parent_id"] else parent_id,
+            })
+
     def document(self):
         """Freeze executed topology from the active immutable configuration."""
         from app.agent_specs.catalog import load_catalog

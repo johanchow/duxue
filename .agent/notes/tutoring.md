@@ -242,3 +242,5 @@
 
 - 2026-11-19 按用户确认将八步配置导入 duxue-admin-test 工作草稿 da210b2f-d24e-40cf-9e4f-db60ef3c99e5（revision 2，基于测试 R13）。数据库回读完整包摘要与导入包一致，刷新本机 8011 控制执行器后 Admin catalog 验证 8 个节点、14 条连线。
 - 2026-11-19 按用户确认重构 `tutoring-blueprint` 为十二节点并发异构工作流（事实源见 [domain-problem-solving](../../docs/technical/domain-problem-solving.md#admin-内部解题工作流)）：1）取消 T1→T2 自动升级，T1 引擎证伪（`contradicted`）时转异构备用 `tutoring.blueprint-backup`（携带反例约束），超时原地重试最多 1 次；2）优化有图效率，仅在初读自报模糊/涂改或 T1 证伪怀疑读错数字时按需复读，只比对关键数值/符号/设问（忽略 `diagram_summary` 措辞），分歧立即短路；3）`execute_workflow` 支持线程安全的并发 fan-out/fan-in，T2 并发执行主路线与异构替代路线；4）确定性引擎核验升级为四态（`verified` / `contradicted` / `not_applicable` / `unknown`，含自由变量反例证伪）、T2 证伪淘汰与三态比对（`consistent` / `contradicted` / `incomparable`）、`finish` 按小问检查完整性并区分充分核验与必要条件（量纲/守恒）；求解 Agent 开放 `tutoring.science` 与 `tutoring.inspect_image` 工具权限；旧发布包兼容指纹不变。
+
+- 内部求解发布回归：有放回/无放回在数值与符号相同的情况下也属于不同转写；题面和小问逐项核对，缺失的复读结果不能回到原选路。小问完整性按声明标签/编号匹配显式最终答案。T2 在剩余预算内提前汇合，已结束的分支单独核验，迟到的候选和回放事件不参与当前结果。两种入口的双路超时、单路超时及旧快照路径见 [回归用例](../../duxue-server/tests/unit/problem_solving/test_blueprint_steps.py)，预算口径见 [ProblemSolving 设计](../../docs/technical/domain-problem-solving.md#admin-内部解题工作流)。
