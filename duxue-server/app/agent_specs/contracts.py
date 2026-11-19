@@ -26,9 +26,9 @@ def validate_output(unit: ModelUnit, payload: dict) -> None:
     if unit_id in {"behavior.visible-activity", "behavior.support-opportunity"}:
         from app.agent_specs.observation_contracts import IDS
         IDS[unit_id].model_validate(payload)
-    elif unit_id == "evals.semantic-judge":
+    elif unit_id in {"evals.semantic-judge", "tutoring.stem-extract", "tutoring.stem-review"}:
         pass  # The strict score/verdict/error schema above owns this contract.
-    elif unit_id == "tutoring.blueprint-planner":
+    elif unit_id in {"tutoring.blueprint-planner", "tutoring.blueprint-backup"}:
         if not isinstance(payload.get("approaches"), list):
             raise ValueError("invalid blueprint approaches")
     elif unit_id == "tutoring.mentor-explain":
@@ -80,7 +80,8 @@ def validate_output(unit: ModelUnit, payload: dict) -> None:
 def has_python_contract(unit_id: str) -> bool:
     return unit_id in {
         "behavior.visible-activity", "behavior.support-opportunity",
-        "evals.semantic-judge", "tutoring.blueprint-planner", "tutoring.mentor-explain",
+        "tutoring.stem-extract", "tutoring.stem-review",
+        "evals.semantic-judge", "tutoring.blueprint-planner", "tutoring.blueprint-backup", "tutoring.mentor-explain",
         "companion.intent", "companion.scene-switch", "planning.intake",
         "task.intake", "tutoring.turn", "evaluation.review-aspects", "study.sprint-intake",
         "tutoring.image-target", "tutoring.leak-judge", "tutoring.visual-leak-judge",

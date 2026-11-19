@@ -290,7 +290,7 @@ def test_guardian_explain_enforces_confidence_honesty_gate_and_never_reads_ward_
         patch(f"{MENTOR_FLOW}.QwenMentorExplainGateway") as mentor_cls,
     ):
         solver_cls.return_value.extract_stem.side_effect = [
-            {"subject": "math", "raw_text": "模糊图题 f(x)=ax^2", "subproblems": []},
+            {"subject": "math", "raw_text": "模糊图题 f(x)=ax^2", "subproblems": [], "needs_student_confirmation": True},
             {"subject": "math", "raw_text": "模糊图题 f(x)=ax^3", "subproblems": []},  # reread mismatch!
         ]
         solver_cls.return_value.solve_route.side_effect = [

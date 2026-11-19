@@ -48,9 +48,9 @@ WORKFLOWS.update(OBSERVATION_WORKFLOWS)
 CODE_AGENTS.update({identifier:identifier.replace('.', '-') for identifier in OBSERVATION_CODE_AGENTS})
 
 
-def debug_capabilities():
+def debug_capabilities(catalog=None):
     return {
-        "workflows": sorted(WORKFLOWS),
+        "workflows": sorted(WORKFLOWS | ({"tutoring-blueprint"} if catalog and "tutoring.stem-extract" in catalog.units else set())),
         "code_agents": CODE_AGENTS,
         "context_schema": DebugContext.model_json_schema(),
         "limitations": {
@@ -72,7 +72,8 @@ def resolve_target(data: DebugInput, catalog):
         else:
             kind, target = "agent", catalog.component(component)[0].id
     if kind == "workflow":
-        if target not in WORKFLOWS or (target in OBSERVATION_WORKFLOWS and target not in catalog.workflow_catalog.specs) or component not in {None, "tutoring-pipeline"}:
+        supported = target in WORKFLOWS or (target == "tutoring-blueprint" and "tutoring.stem-extract" in catalog.units)
+        if not supported or (target in OBSERVATION_WORKFLOWS and target not in catalog.workflow_catalog.specs) or component not in {None, "tutoring-pipeline"}:
             raise ValueError(
                 "workflow has no standalone debug adapter or unexpected model override"
             )

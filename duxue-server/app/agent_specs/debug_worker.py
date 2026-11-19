@@ -75,9 +75,12 @@ def execute(request):
         active.append(event)
         started = time.monotonic()
         try:
+            from app.agent_specs.catalog import executing_node
+            node_context = executing_node.get()
             with trace.step(
                 kind="model",
-                node_id=None,
+                node_id=node_context[1] if node_context else None,
+                workflow_id=node_context[0] if node_context else None,
                 unit_id=identity.id,
                 input=messages,
                 component_id=spec.component_id,
@@ -132,6 +135,17 @@ def execute(request):
                     from app.agent_specs.observation_debug import run_observation_debug
                     output = run_observation_debug(target['id'], data, runtime)
                     result.update(output=payload(output), content=json.dumps(payload(output), ensure_ascii=False, indent=2))
+                elif workflow_id == "tutoring-blueprint":
+                    from app.application.ports.problem_solving import QwenProblemSolverGateway
+                    from app.application.workflows.guardian_mentor import _solve_for_mentor
+                    from app.infrastructure.ai.client import model_time_budget
+                    with model_time_budget(105):
+                        solution = _solve_for_mentor(content=data.content, images=[], bank_lookup=None,
+                                                     solver=QwenProblemSolverGateway(runtime))
+                    output = solution.mentor_projection()
+                    result.update(output=output, content=json.dumps(output, ensure_ascii=False, indent=2))
+                    if solution.status == "failed":
+                        result.update(status="failed", failure=solution.failure_reason)
                 elif workflow_id in {"tutoring", "reflection"}:
                     result.update(run_domain(workflow_id, data, runtime))
                 else:
@@ -151,7 +165,7 @@ def execute(request):
                     ),
                     {},
                 )
-                result["failure"] = outcome.get("reason") or "workflow_fallback"
+                result["failure"] = result.get("failure") or outcome.get("reason") or "workflow_fallback"
                 if result["failure"] in {"leak_detected", "safety"}:
                     result["status"] = "blocked"
             # Handlers may catch transport/contract failures and return a safe fallback.

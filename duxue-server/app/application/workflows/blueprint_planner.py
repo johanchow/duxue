@@ -68,33 +68,83 @@ class QwenBlueprintPlannerGateway(BlueprintPlannerPort):
             return None
 
 
-def verify_milestone_anchor(engine: MathEnginePort | None, raw_ms: dict) -> str:
+_NECESSARY_ONLY_CHECK_KINDS = frozenset(
+    {"physics_dimension_and_eq", "chemistry_conservation"}
+)
+
+
+def verify_milestone_anchor_detail(engine: MathEnginePort | None, raw_ms: dict) -> dict:
     """Verify a milestone's `canonical_target` deterministically against `verify_request`.
 
-    Fixing §4.3 / §8 gap: for non-equivalence ops (`differentiate`, `solve`, `evaluate`, etc.),
-    a non-empty engine result is NOT enough—it must deterministically match `canonical_target`!
+    Returns four-state status:
+    - `verified`: verified within engine scope (strength: `sufficient` or `necessary_only`)
+    - `contradicted`: deterministic mismatch or counterexample found
+    - `not_applicable`: conceptual rubric with no deterministic operator
+    - `unknown`: missing engine/request, parse/runtime error, conditions, or inconclusive verdict
     """
     check_kind = raw_ms.get("check_kind") or "conceptual_rubric"
     if check_kind == "conceptual_rubric":
-        return "not_applicable"
+        return {"status": "not_applicable", "strength": "none", "reason": None, "engine_result": None}
+    strength = "necessary_only" if check_kind in _NECESSARY_ONLY_CHECK_KINDS else "sufficient"
     verify_req = raw_ms.get("verify_request")
     canonical = raw_ms.get("canonical_target")
     if engine is None or not isinstance(verify_req, dict):
-        return "unverified"
+        return {
+            "status": "unknown",
+            "strength": strength,
+            "reason": "engine_or_verify_request_missing",
+            "engine_result": None,
+        }
     try:
         req = MathInput.model_validate(verify_req)
         res = engine.execute(req)
-    except Exception:  # noqa: BLE001
-        return "unverified"
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "status": "unknown",
+            "strength": strength,
+            "reason": f"engine_error:{type(exc).__name__}",
+            "engine_result": None,
+        }
     if res.status != "ok" or res.conditions:
-        return "unverified"
+        return {
+            "status": "unknown",
+            "strength": strength,
+            "reason": res.error or ("conditional_result" if res.conditions else res.status),
+            "engine_result": res.result,
+        }
     if res.checked_scope == "equivalence":
-        return "verified" if res.verdict == "equal" else "unverified"
+        if res.verdict == "equal":
+            return {"status": "verified", "strength": strength, "reason": None, "engine_result": res.result}
+        if res.verdict == "not_equal":
+            return {
+                "status": "contradicted",
+                "strength": strength,
+                "reason": "equivalence_not_equal",
+                "engine_result": res.result,
+            }
+        return {
+            "status": "unknown",
+            "strength": strength,
+            "reason": f"equivalence_{res.verdict}",
+            "engine_result": res.result,
+        }
+    if res.verdict == "not_equal":
+        return {
+            "status": "contradicted",
+            "strength": strength,
+            "reason": "counterexample_or_mismatch",
+            "engine_result": res.result,
+        }
     if res.result is None or not isinstance(canonical, str) or not canonical.strip():
-        return "unverified"
+        return {
+            "status": "unknown",
+            "strength": strength,
+            "reason": "missing_result_or_canonical_target",
+            "engine_result": res.result,
+        }
     target_str = canonical.strip()
     if res.result.strip() == target_str:
-        return "verified"
+        return {"status": "verified", "strength": strength, "reason": None, "engine_result": res.result}
     # For algebraic/value results, check symbolic equivalence between engine result and canonical_target
     if res.checked_scope == "value":
         try:
@@ -105,11 +155,64 @@ def verify_milestone_anchor(engine: MathEnginePort | None, raw_ms: dict) -> str:
                 assumptions=req.assumptions,
             )
             eq_res = engine.execute(eq_req)
-            if eq_res.status == "ok" and eq_res.verdict == "equal" and not eq_res.conditions:
-                return "verified"
-        except Exception:  # noqa: BLE001
-            return "unverified"
-    return "unverified"
+            if eq_res.status == "ok" and not eq_res.conditions:
+                if eq_res.verdict == "equal":
+                    return {"status": "verified", "strength": strength, "reason": None, "engine_result": res.result}
+                if eq_res.verdict == "not_equal":
+                    return {
+                        "status": "contradicted",
+                        "strength": strength,
+                        "reason": f"expected_{res.result}_got_{target_str}",
+                        "engine_result": res.result,
+                    }
+            # For symbolic expressions with free variables, `equivalent` returns `unknown` when difference
+            # depends on the variable; use deterministic counterexample search to falsify mismatches.
+            if req.symbols:
+                bounds = {}
+                for sym in req.symbols[:3]:
+                    name = sym.name if hasattr(sym, "name") else sym.get("name")
+                    if name:
+                        bounds[name] = [-5, 5]
+                if bounds:
+                    ce_req = MathInput(
+                        op="search_counterexample",
+                        args={"relation": f"({res.result}) == ({target_str})", "bounds": bounds},
+                        symbols=req.symbols,
+                        assumptions=req.assumptions,
+                    )
+                    ce_res = engine.execute(ce_req)
+                    if ce_res.status == "ok" and ce_res.verdict == "not_equal":
+                        return {
+                            "status": "contradicted",
+                            "strength": strength,
+                            "reason": f"counterexample:{ce_res.result or f'expected_{res.result}_got_{target_str}'}",
+                            "engine_result": res.result,
+                        }
+        except Exception as exc:  # noqa: BLE001
+            return {
+                "status": "unknown",
+                "strength": strength,
+                "reason": f"equivalence_check_error:{type(exc).__name__}",
+                "engine_result": res.result,
+            }
+        return {
+            "status": "unknown",
+            "strength": strength,
+            "reason": "equivalence_inconclusive",
+            "engine_result": res.result,
+        }
+    # Deterministic structured result (e.g. solution set) differs from canonical_target
+    return {
+        "status": "contradicted",
+        "strength": strength,
+        "reason": f"expected_{res.result}_got_{target_str}",
+        "engine_result": res.result,
+    }
+
+
+def verify_milestone_anchor(engine: MathEnginePort | None, raw_ms: dict) -> str:
+    """Return four-state verification status: verified | contradicted | unknown | not_applicable."""
+    return verify_milestone_anchor_detail(engine, raw_ms)["status"]
 
 
 _verify_milestone_anchor = verify_milestone_anchor

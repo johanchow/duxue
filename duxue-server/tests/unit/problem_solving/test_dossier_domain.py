@@ -15,7 +15,7 @@ from app.infrastructure.math_engine.adapter import SubprocessMathEngineAdapter
 def test_anchor_verification_rejects_mismatched_non_equivalence_canonical_target():
     engine = SubprocessMathEngineAdapter()
     # Non-equivalence op (`differentiate`) returns "2*x", NOT "3*x"!
-    # Old bug marked any non-None result as "verified". Must now be "unverified"!
+    # Must return deterministic `contradicted` (four-state verification).
     bad_ms = {
         "id": "M1",
         "goal": "求导",
@@ -28,13 +28,17 @@ def test_anchor_verification_rejects_mismatched_non_equivalence_canonical_target
             "assumptions": [],
         },
     }
-    assert verify_milestone_anchor(engine, bad_ms) == "unverified"
+    assert verify_milestone_anchor(engine, bad_ms) == "contradicted"
 
     good_ms = {
         **bad_ms,
         "canonical_target": "2*x",
     }
     assert verify_milestone_anchor(engine, good_ms) == "verified"
+
+    # Missing engine or verify_request -> `unknown` (never falsely `contradicted`)
+    assert verify_milestone_anchor(None, good_ms) == "unknown"
+    assert verify_milestone_anchor(engine, {"id": "M0", "goal": "概念", "check_kind": "conceptual_rubric"}) == "not_applicable"
 
     # Solution set equality check: solve x**2 - 1 == 0 -> {-1, 1}
     good_solve = {
@@ -52,7 +56,7 @@ def test_anchor_verification_rejects_mismatched_non_equivalence_canonical_target
     assert verify_milestone_anchor(engine, good_solve) == "verified"
 
     wrong_solve = {**good_solve, "canonical_target": "{1, 2}"}
-    assert verify_milestone_anchor(engine, wrong_solve) == "unverified"
+    assert verify_milestone_anchor(engine, wrong_solve) == "contradicted"
 
 
 def test_stem_fingerprint_normalizes_punctuation_whitespace_and_tex_fractions():
@@ -171,3 +175,64 @@ def test_confidence_policy_escalation_and_dossier_lease_recovery():
 def test_math_punctuation_and_case_are_part_of_problem_identity():
     for a, b in [("1.2 + 3", "12 + 3"), ("(1,23)", "(12,3)"), ("A+a", "a+a"), ("3!", "3")]:
         assert compute_stem_fingerprint(StructuredStem("math", a)) != compute_stem_fingerprint(StructuredStem("math", b))
+
+
+def test_critical_condition_comparison_ignores_freeform_diagram_prose_and_checks_subproblem_completeness():
+    from app.contexts.problem_solving.domain.dossier import compare_critical_conditions
+
+    s1 = StructuredStem(
+        subject="physics",
+        raw_text="质量 m=2kg 的物块以 v=4m/s 滑行，求加速度 a",
+        subproblems=("(1) 求加速度", "(2) 求位移"),
+        diagram_summary="水平面上一个木块向右滑动",
+    )
+    s2 = StructuredStem(
+        subject="physics",
+        raw_text="质量 m=2kg 的物块以 v=4m/s 滑行，求加速度 a",
+        subproblems=("(1) 求加速度", "(2) 求位移"),
+        diagram_summary="粗糙水平轨道上的小滑块沿正方向运动",
+    )
+    agreed, reasons = compare_critical_conditions(s1, s2)
+    assert agreed is True and reasons == ()
+
+    s3 = StructuredStem(
+        subject="physics",
+        raw_text="质量 m=3kg 的物块以 v=4m/s 滑行，求加速度 a",
+        subproblems=("(1) 求加速度", "(2) 求位移"),
+    )
+    agreed_diff, reasons_diff = compare_critical_conditions(s1, s3)
+    assert agreed_diff is False and reasons_diff
+
+    # Missing subproblem final answer blocks high/medium confidence
+    comp = DossierConfidencePolicy.evaluate_subproblem_completeness(s1, {"(1)": "2 m/s^2"})
+    assert comp["complete"] is False
+    assert comp["missing_subproblems"] == ["(2) 求位移"]
+
+    # Necessary-only check (e.g. physics dimension check) caps confidence at medium even on dual consistent routes
+    m_dim = Milestone(
+        id="M1",
+        goal="检查量纲",
+        check_kind="physics_dimension_and_eq",
+        canonical_target="m/s^2",
+        verification_status="verified",
+    )
+    assert (
+        DossierConfidencePolicy.evaluate_confidence(
+            bank_matched=False,
+            route_count=2,
+            comparison="consistent",
+            approaches=(Approach(id="A1", name="牛顿第二定律", milestones=(m_dim,)),),
+            subproblems_complete=True,
+        )
+        == "medium"
+    )
+    assert (
+        DossierConfidencePolicy.evaluate_confidence(
+            bank_matched=False,
+            route_count=2,
+            comparison="consistent",
+            approaches=(Approach(id="A1", name="牛顿第二定律", milestones=(m_dim,)),),
+            subproblems_complete=False,
+        )
+        == "low"
+    )

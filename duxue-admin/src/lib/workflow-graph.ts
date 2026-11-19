@@ -11,6 +11,7 @@ export function workflowNodeTitle(
   catalogName?: string,
 ) {
   return (
+    node.display_name?.trim() ||
     definition?.display_name?.trim() ||
     catalogName ||
     actionLogic(workflowId, node)?.title ||
@@ -96,7 +97,22 @@ export function workflowGraph(
               ineligible: '未达条件，结束本次观察',
             } as Record<string, string>
           )[edge.condition_id] || edge.condition_id
-        : edge.condition_id || undefined,
+        : flow.id === 'tutoring-blueprint' && edge.condition_id
+          ? (
+              {
+                complete: '题库命中 / T0 直答',
+                ordinary: 'T1 普通题',
+                complex: 'T2 并发双路',
+                reread: '按需复读',
+                disputed: '分歧短路',
+                resume_select: '复读一致继续',
+                backup: '证伪切异构备用',
+                verified: '锚点核验通过',
+                not_applicable: '无可算锚点',
+                unknown: '核验未知',
+              } as Record<string, string>
+            )[edge.condition_id] || edge.condition_id
+          : edge.condition_id || undefined,
     type: 'catalog',
     markerEnd: {
       type: MarkerType.ArrowClosed,

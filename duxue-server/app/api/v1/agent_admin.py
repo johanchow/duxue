@@ -51,7 +51,7 @@ def _catalog(bundle):
     with use_definitions(compiled.catalog):
         data = {"bundle": bundle, **management_inventory(bundle)}
     current = release_runtime.runtime.current if release_runtime.runtime else None
-    data["debug_capabilities"] = debug_capabilities()
+    data["debug_capabilities"] = debug_capabilities(compiled.catalog)
     data["runtime"] = {
         "release_id": current[0]["id"] if current else None,
         "digest": current[1].digest if current else None,

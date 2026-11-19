@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import nullcontext
+from contextvars import copy_context
 from dataclasses import dataclass
 
 from langgraph.graph import END, START
 
-from app.agent_specs.catalog import AgentSpec
+from app.agent_specs.catalog import AgentSpec, executing_node
 from app.agent_specs.execution_trace import record_workflow_execution
 
 
@@ -57,6 +59,45 @@ def execute_workflow(
     referenced_conditions.update(gate["when"] for gate in spec.required_gates)
     if referenced_conditions - predicates.keys():
         raise ValueError(f"{spec.id}: unknown conditions {sorted(referenced_conditions - predicates.keys())}")
+    def _run_node(node_id: str):
+        node = spec.node(node_id)
+        handler_id = node.ref if node.kind in {"agent", "gate"} else node.handler
+        if not handler_id or handler_id not in handlers:
+            raise ValueError(f"{spec.id}: missing handler for {node_id}")
+        from app.agent_specs.execution_trace import payload, recorder
+
+        current_trace = recorder()
+        context = (
+            current_trace.step(kind=node.kind, node_id=node_id, workflow_id=spec.id, input=state)
+            if current_trace
+            else nullcontext(None)
+        )
+        with context as event:
+            token = executing_node.set((spec.id, node_id))
+            try:
+                result = handlers[handler_id](state)
+            finally:
+                executing_node.reset(token)
+            if node.kind == "agent":
+                from app.agent_specs.results import (
+                    AgentResult,
+                    completed,
+                    validate_result,
+                )
+
+                if not isinstance(result, AgentResult):
+                    data = result.model_dump(mode="json") if hasattr(result, "model_dump") else result
+                    result = completed(data if data is not None else {})
+                result = validate_result(result)
+            if node.kind == "gate":
+                if not isinstance(result, GateDecision) or result.verdict not in {"allow", "deny", "unknown"}:
+                    raise ValueError(f"{spec.id}: invalid Gate verdict {node_id}")
+                if result.verdict == "unknown":
+                    raise ValueError(f"{spec.id}: Gate {node_id} returned unknown")
+            if event is not None:
+                event["output"] = payload(result)
+        return node, result
+
     current = entry_node or "START"
     for _ in range(32):
         if current in (pause_before or set()):
@@ -75,34 +116,10 @@ def execute_workflow(
                     raise ValueError(f"{spec.id}: required Gate {gate['ref']} was skipped")
             return state
         if current != "START":
-            node = spec.node(current)
-            handler_id = node.ref if node.kind in {"agent", "gate"} else node.handler
-            if not handler_id or handler_id not in handlers:
-                raise ValueError(f"{spec.id}: missing handler for {current}")
-            from app.agent_specs.execution_trace import payload, recorder
-            current_trace = recorder()
-            context = current_trace.step(kind=node.kind, node_id=current, workflow_id=spec.id, input=state) if current_trace else nullcontext(None)
-            with context as event:
-                result = handlers[handler_id](state)
-                if node.kind == "agent":
-                    from app.agent_specs.results import (
-                        AgentResult,
-                        completed,
-                        validate_result,
-                    )
-                    if not isinstance(result, AgentResult):
-                        data = result.model_dump(mode="json") if hasattr(result, "model_dump") else result
-                        result = completed(data if data is not None else {})
-                    result = validate_result(result)
-                state["results"][current] = result
-                if node.kind == "gate":
-                    if not isinstance(result, GateDecision) or result.verdict not in {"allow", "deny", "unknown"}:
-                        raise ValueError(f"{spec.id}: invalid Gate verdict {current}")
-                    if result.verdict == "unknown":
-                        raise ValueError(f"{spec.id}: Gate {current} returned unknown")
-                    state["visited_gates"].append(node.ref)
-                if event is not None:
-                    event["output"] = payload(result)
+            node, result = _run_node(current)
+            state["results"][current] = result
+            if node.kind == "gate":
+                state["visited_gates"].append(node.ref)
         matching = []
         for edge in spec.edges:
             if edge.source != current:
@@ -114,9 +131,34 @@ def execute_workflow(
             record_edge(spec, edge, selected=selected, value=selected if edge.condition else None, input=state)
             if selected:
                 matching.append(edge)
-        if len(matching) != 1:
-            raise ValueError(f"{spec.id}: expected one edge from {current}, got {len(matching)}")
-        current = matching[0].target
+        if len(matching) == 1:
+            current = matching[0].target
+            continue
+        if len(matching) > 1:
+            targets = [edge.target for edge in matching]
+            join_targets = set()
+            for target in targets:
+                out_edges = [edge for edge in spec.edges if edge.source == target]
+                if len(out_edges) != 1 or out_edges[0].condition is not None:
+                    raise ValueError(f"{spec.id}: parallel branch {target} must converge unconditionally")
+                join_targets.add(out_edges[0].target)
+            if len(join_targets) != 1:
+                raise ValueError(f"{spec.id}: parallel branches from {current} do not converge to one join node")
+            join_node = next(iter(join_targets))
+            with ThreadPoolExecutor(max_workers=len(targets)) as pool:
+                futures = [pool.submit(copy_context().run, _run_node, target) for target in targets]
+                for target, future in zip(targets, futures, strict=True):
+                    branch_node, branch_result = future.result()
+                    state["results"][target] = branch_result
+                    if branch_node.kind == "gate":
+                        state["visited_gates"].append(branch_node.ref)
+            from app.agent_specs.execution_trace import record_edge
+            for target in targets:
+                join_edge = next(edge for edge in spec.edges if edge.source == target and edge.target == join_node)
+                record_edge(spec, join_edge, selected=True, value=None, input=state)
+            current = join_node
+            continue
+        raise ValueError(f"{spec.id}: expected one edge from {current}, got {len(matching)}")
     raise ValueError(f"{spec.id}: step budget exhausted")
 
 

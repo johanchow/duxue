@@ -21,7 +21,13 @@ CheckKind = Literal[
     "genetics_ratio",
     "conceptual_rubric",
 ]
-VerificationStatus = Literal["verified", "unverified", "not_applicable"]
+VerificationStatus = Literal[
+    "verified",
+    "contradicted",
+    "unknown",
+    "unverified",
+    "not_applicable",
+]
 MilestoneStudentStatus = Literal["pending", "in_progress", "completed"]
 
 

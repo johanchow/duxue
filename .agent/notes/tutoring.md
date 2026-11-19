@@ -233,3 +233,12 @@
 - Guardian 双视角回归覆盖无规划器快照、换图与文字换题、两种快照的总预算超时。复核的事实判断、核验提示展示条件和观测字段分别验证，协议见 [Companion](../../docs/technical/domain-companion.md#guardian-问答体验2026-11-17-验收2026-11-18-扩展双视角)。
 
 - Android 真机双视角联调发现 DashScope JSON 模式需要消息中明确请求 JSON。题图只引导时，模型上下文需显式声明 `not_checking` 对应 `questions=[]`。文本追问选中历史题图后，题图来源优先于导师生成的换题标签。文字分数题与合成铅笔题已通过真实模型往返，铅笔题独立复核通过。临时测试包仅替换选图入口，随后已重装普通调试包并确认系统相机可打开。证据在 ignored `output/guardian-dual-device/`，调试实例 8027 使用本地配置草稿。
+
+- 答疑产品定位与验收范围已更新，见[产品架构的 K–12 能力目标](../../docs/product/ARCHITECTURE.md#k12-答疑覆盖与难度目标)。此前 3—8 年级的记录为当时的定位。
+
+- 2026-11-19 北京九科本地整卷评测已完成真实作答与估分，待 Gate 2。执行与判分契约见[整卷本地评测](../../docs/technical/eval-offline.md#北京九科整卷本地评测)，报告在本地 `duxue-server/var/exams/beijing-2025/REPORT.md`。本轮核对了地理题面/解析反标、政治主观题配分与独立裁判将讲解体答案误判为空答的问题。保留首答、单次补答和复核前后的判分。
+
+- 2026-11-19 内部求解八步拓扑、求解 Agent 复用和 T0/T1/T2 升级路径见[ProblemSolving 设计](../../docs/technical/domain-problem-solving.md#admin-内部解题工作流)。排查耗时时按执行中的节点 ID 关联模型；仅用 Agent ID 会把三条路线合并。测试业务库 duxue-test 与 Admin 测试配置库 duxue-admin-test 已实连核对。
+
+- 2026-11-19 按用户确认将八步配置导入 duxue-admin-test 工作草稿 da210b2f-d24e-40cf-9e4f-db60ef3c99e5（revision 2，基于测试 R13）。数据库回读完整包摘要与导入包一致，刷新本机 8011 控制执行器后 Admin catalog 验证 8 个节点、14 条连线。
+- 2026-11-19 按用户确认重构 `tutoring-blueprint` 为十二节点并发异构工作流（事实源见 [domain-problem-solving](../../docs/technical/domain-problem-solving.md#admin-内部解题工作流)）：1）取消 T1→T2 自动升级，T1 引擎证伪（`contradicted`）时转异构备用 `tutoring.blueprint-backup`（携带反例约束），超时原地重试最多 1 次；2）优化有图效率，仅在初读自报模糊/涂改或 T1 证伪怀疑读错数字时按需复读，只比对关键数值/符号/设问（忽略 `diagram_summary` 措辞），分歧立即短路；3）`execute_workflow` 支持线程安全的并发 fan-out/fan-in，T2 并发执行主路线与异构替代路线；4）确定性引擎核验升级为四态（`verified` / `contradicted` / `not_applicable` / `unknown`，含自由变量反例证伪）、T2 证伪淘汰与三态比对（`consistent` / `contradicted` / `incomparable`）、`finish` 按小问检查完整性并区分充分核验与必要条件（量纲/守恒）；求解 Agent 开放 `tutoring.science` 与 `tutoring.inspect_image` 工具权限；旧发布包兼容指纹不变。

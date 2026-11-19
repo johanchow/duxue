@@ -6,6 +6,7 @@ handlers, evaluates expressions, grants permissions or implements guardrails.
 
 from __future__ import annotations
 
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Literal
 
@@ -41,11 +42,15 @@ _MAX_LIMITS = {"model_calls": 4, "tool_calls": 3}
 _BUSINESS = {"planning", "tutoring", "reflection"}
 
 
+executing_node: ContextVar[tuple[str, str] | None] = ContextVar("executing_workflow_node", default=None)
+
+
 class NodeSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: str
     kind: Literal["agent", "gate", "action"]
+    display_name: str | None = None
     trace_kind: Literal["route", "node", "stage", "check"] | None = None
     ref: str | None = None
     trace: str | None = None
@@ -221,7 +226,14 @@ class AgentCatalog:
                     raise ValueError('observation required protocol nodes or business branches changed')
                 if spec.id == 'behavior-report' and [n.ref for n in spec.nodes] != ['behavior.report']:
                     raise ValueError('report required protocol node changed')
-            if spec.id in GAOKAO_WORKFLOWS and [n.ref for n in spec.nodes] != GAOKAO_WORKFLOWS[spec.id]:
+            from app.agent_specs import blueprint_steps
+            staged = spec.id in GAOKAO_WORKFLOWS and blueprint_steps.EXTRACT in load_definitions().units
+            if staged:
+                expected = blueprint_steps.workflow()
+                actual = spec.model_dump(by_alias=True, exclude_defaults=True)
+                if any(actual[key] != expected[key] for key in ("entry", "nodes", "edges")):
+                    raise ValueError("blueprint required protocol nodes or branches changed")
+            if not staged and spec.id in GAOKAO_WORKFLOWS and [n.ref for n in spec.nodes] != GAOKAO_WORKFLOWS[spec.id]:
                 raise ValueError("gaokao blueprint required protocol node changed")
             if spec.id in GUARDIAN_MENTOR_WORKFLOWS and [n.ref for n in spec.nodes] != GUARDIAN_MENTOR_WORKFLOWS[spec.id]:
                 raise ValueError("guardian mentor required protocol node changed")
@@ -230,6 +242,8 @@ class AgentCatalog:
                 if spec.id in OBSERVATION_WORKFLOWS or spec.id in GAOKAO_WORKFLOWS or spec.id in GUARDIAN_MENTOR_WORKFLOWS
                 else WORKFLOW_BINDINGS[spec.id]
             )
+            if staged:
+                registration = {"handlers": {blueprint_steps.FINISH}, "conditions": set(blueprint_steps.CONDITIONS)}
             expected_handler = "coordinator" if spec.id == "companion" else spec.id
             if spec.handler != expected_handler:
                 raise ValueError(f"{spec.id}: workflow handler must match its domain")
@@ -256,6 +270,11 @@ class AgentCatalog:
                 for component_id in _node_components(node):
                     COMPONENTS.get(component_id)
                     referenced.add(component_id)
+                    if staged and (
+                        (node.ref == "tutoring.blueprint-planner" and node.id == blueprint_steps.node_id("primary"))
+                        or (node.ref == blueprint_steps.BACKUP and node.id == blueprint_steps.node_id("alternative"))
+                    ):
+                        continue  # Shared solver agent reused across T1/T2 routes.
                     if component_id in self._components:
                         raise ValueError(f"component assigned to multiple nodes: {component_id}")
                     unit_kind, unit_id, unit_version = _node_unit(spec, node)
@@ -364,6 +383,9 @@ class AgentCatalog:
 
     def component_identity(self, component_id: str) -> StepIdentity:
         identity = self._components[component_id]
+        active = executing_node.get()
+        if active and active[0] == identity.owner and component_id in _node_components(self.spec(active[0]).node(active[1])):
+            identity = identity.model_copy(update={"node_id": active[1]})
         digest = load_definitions().artifact_digest
         if digest:
             return identity.model_copy(update={"unit_version": digest, "version": digest})

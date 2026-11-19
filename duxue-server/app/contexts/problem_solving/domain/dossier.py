@@ -24,6 +24,11 @@ DossierScope = Literal["ward", "institution", "bank"]
 DifficultyTier = Literal["T0", "T1", "T2", "T3"]
 DossierConfidence = Literal["high", "medium", "low"]
 DossierStatus = Literal["pending", "ready", "low_confidence", "failed"]
+RouteComparisonStatus = Literal["consistent", "contradicted", "incomparable"]
+AnchorVerifyState = Literal["verified", "contradicted", "unknown", "not_applicable"]
+
+_NECESSARY_ONLY_CHECK_KINDS = frozenset({"physics_dimension_and_eq", "chemistry_conservation"})
+_CRITICAL_TOKEN_RE = re.compile(r"[0-9]+(?:\.[0-9]+)?|[=<>≤≥≠±+\-*/^]|[a-zA-Z]+(?:_[0-9a-zA-Z]+)?")
 
 _FRAC_RE = re.compile(r"\\frac\s*\{\s*([^{}]+?)\s*\}\s*\{\s*([^{}]+?)\s*\}")
 _LATEX_CMD_RE = re.compile(r"\\(ln|sin|cos|tan|cot|sqrt|pi)\b")
@@ -133,8 +138,47 @@ class ScoringPoint:
         )
 
 
+def _critical_tokens(text: str) -> tuple[str, ...]:
+    """Extract deterministic numeric/symbolic tokens without comparing free-form prose."""
+    return tuple(_CRITICAL_TOKEN_RE.findall(_normalize_skeleton(text)))
+
+
+def compare_critical_conditions(
+    primary: StructuredStem, reread: StructuredStem
+) -> tuple[bool, tuple[str, ...]]:
+    """Compare critical conditions (numeric/symbolic tokens & subproblem structure) across reads.
+
+    Intentionally ignores free-form `diagram_summary` prose variations so heterogeneous vision
+    models are not falsely marked disputed when describing the same diagram differently.
+    """
+    disputed: list[str] = []
+    if reread.needs_student_confirmation:
+        disputed.append("reread_flagged_unclear")
+    if primary.raw_text.strip() and reread.raw_text.strip():
+        primary_tokens = _critical_tokens(primary.raw_text)
+        reread_tokens = _critical_tokens(reread.raw_text)
+        if primary_tokens or reread_tokens:
+            if primary_tokens != reread_tokens:
+                disputed.append(
+                    f"critical_tokens_differ:{' '.join(reread_tokens)[:160]}"
+                )
+        elif _normalize_skeleton(primary.raw_text) != _normalize_skeleton(reread.raw_text):
+            disputed.append(reread.raw_text[:200])
+    if primary.subproblems and reread.subproblems and len(primary.subproblems) != len(reread.subproblems):
+        disputed.append(f"subproblem_count_differ:{len(primary.subproblems)}!={len(reread.subproblems)}")
+    return (len(disputed) == 0), tuple(disputed[:8])
+
+
 class DossierConfidencePolicy:
-    """Stateless domain rules for T1->T2 escalation and confidence grading."""
+    """Stateless domain rules for anchor verification classification, completeness, and confidence grading."""
+
+    @staticmethod
+    def has_contradicted_anchor(approaches: tuple[Approach, ...]) -> bool:
+        return any(
+            ms.check_kind != "conceptual_rubric" and ms.verification_status == "contradicted"
+            for app in approaches
+            for ms in app.milestones
+        )
 
     @staticmethod
     def _has_failed_computable_anchor(approaches: tuple[Approach, ...]) -> bool:
@@ -156,6 +200,75 @@ class DossierConfidencePolicy:
             for ms in app.milestones
         )
 
+    @staticmethod
+    def _has_sufficient_verified_anchor(approaches: tuple[Approach, ...]) -> bool:
+        return any(
+            ms.check_kind not in _NECESSARY_ONLY_CHECK_KINDS
+            and ms.check_kind != "conceptual_rubric"
+            and ms.verification_status == "verified"
+            for app in approaches
+            for ms in app.milestones
+        )
+
+    @staticmethod
+    def _has_necessary_only_anchor(approaches: tuple[Approach, ...]) -> bool:
+        return any(
+            ms.check_kind in _NECESSARY_ONLY_CHECK_KINDS
+            for app in approaches
+            for ms in app.milestones
+        )
+
+    @classmethod
+    def classify_anchor_verification(cls, approaches: tuple[Approach, ...]) -> AnchorVerifyState:
+        """Aggregate milestone verification into four-state outcome:
+        contradicted > unknown > verified > not_applicable.
+        """
+        if not approaches or not any(app.milestones for app in approaches):
+            return "unknown"
+        computable = [
+            ms
+            for app in approaches
+            for ms in app.milestones
+            if ms.check_kind != "conceptual_rubric"
+        ]
+        if not computable:
+            return "not_applicable"
+        if any(ms.verification_status == "contradicted" for ms in computable):
+            return "contradicted"
+        if any(ms.verification_status in {"unknown", "unverified"} for ms in computable):
+            return "unknown"
+        return "verified"
+
+    @staticmethod
+    def evaluate_subproblem_completeness(
+        stem: StructuredStem, final_answers: dict[str, str]
+    ) -> dict:
+        """Check whether every declared subproblem has a non-empty final answer."""
+        non_empty = {
+            str(k).strip(): str(v).strip()
+            for k, v in (final_answers or {}).items()
+            if str(k).strip() and str(v).strip()
+        }
+        expected = [sp.strip() for sp in stem.subproblems if sp.strip()]
+        if not expected:
+            return {
+                "expected_count": 0,
+                "answered_count": len(non_empty),
+                "missing_subproblems": [],
+                "complete": bool(non_empty),
+            }
+        # Match by count when labels differ in formatting (e.g. "(1)" vs "第一问"),
+        # and also report explicit missing indices if fewer answers than expected.
+        missing: list[str] = []
+        if len(non_empty) < len(expected):
+            missing = expected[len(non_empty) :]
+        return {
+            "expected_count": len(expected),
+            "answered_count": len(non_empty),
+            "missing_subproblems": missing,
+            "complete": len(non_empty) >= len(expected),
+        }
+
     @classmethod
     def should_escalate_t1_to_t2(
         cls,
@@ -173,25 +286,43 @@ class DossierConfidencePolicy:
         *,
         bank_matched: bool,
         route_count: int,
-        routes_consistent: bool,
+        routes_consistent: bool = True,
+        comparison: RouteComparisonStatus | None = None,
         approaches: tuple[Approach, ...],
         stem_disputed: bool = False,
+        subproblems_complete: bool = True,
     ) -> DossierConfidence:
         if stem_disputed:
             return "low"
         if bank_matched:
             return "high"
-        if not approaches or cls._has_failed_computable_anchor(approaches):
+        if not approaches or not subproblems_complete:
             return "low"
-        # Single-route generation without authoritative bank hit cannot exceed `low` per §2 invariant,
-        # UNLESS every milestone is deterministically engine-verified with zero conceptual gaps (medium).
-        # Wait: §2 invariant states "单路模型输出最多是 low 置信度" when unverified, and §4.3 table:
-        # high: bank_matched OR (route_count >= 2 and routes_consistent and all computable anchors verified & no conceptual)
-        # medium: route_count >= 2 and routes_consistent and has conceptual_rubric
-        # low: single route, routes inconsistent, or anchor verification failed.
-        if route_count < 2 or not routes_consistent:
+        anchor_state = cls.classify_anchor_verification(approaches)
+        if anchor_state in {"contradicted", "unknown"}:
+            return "low"
+        effective_comparison: RouteComparisonStatus = (
+            comparison
+            if comparison is not None
+            else ("consistent" if routes_consistent else "contradicted")
+        )
+        if route_count < 2:
+            # Single-route output without authoritative bank hit can NEVER exceed `medium`,
+            # and requires at least one sufficient deterministic verification with zero conceptual gaps.
+            if (
+                anchor_state == "verified"
+                and not cls._has_conceptual_milestone(approaches)
+                and cls._has_sufficient_verified_anchor(approaches)
+            ):
+                return "medium"
+            return "low"
+        if effective_comparison != "consistent":
             return "low"
         if cls._has_conceptual_milestone(approaches):
+            return "medium"
+        if anchor_state == "not_applicable":
+            return "medium"
+        if cls._has_necessary_only_anchor(approaches) and not cls._has_sufficient_verified_anchor(approaches):
             return "medium"
         return "high"
 

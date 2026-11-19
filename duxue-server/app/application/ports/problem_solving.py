@@ -24,23 +24,36 @@ class ProblemSolverModelPort(Protocol):
     ) -> dict | None: ...
 
     def solve_route(
-        self, *, stem: StructuredStem, images: list[str], route_hint: str
+        self,
+        *,
+        stem: StructuredStem,
+        images: list[str],
+        route_hint: str,
+        feedback: dict | None = None,
     ) -> dict | None: ...
 
 
 class QwenProblemSolverGateway(ProblemSolverModelPort):
-    """Uses the registered `tutoring.blueprint-planner` component without student history."""
+    """Uses registered ProblemSolving components without student history."""
 
     def __init__(self, settings_obj=None):
         self._settings = settings_obj
 
     def _invoke(
-        self, payload: dict, images: list[str], *, use_reread_model: bool = False
+        self,
+        payload: dict,
+        images: list[str],
+        *,
+        use_reread_model: bool = False,
+        use_backup_model: bool = False,
+        retry_on_timeout: bool = True,
     ) -> dict | None:
+        from app.agent_specs.blueprint_steps import BACKUP, EXTRACT, REREAD
         from app.agent_specs.contexts import build_context
         from app.agent_specs.definitions import load_definitions
         from app.agent_specs.gaokao_contracts import PLANNER_ID, REREAD_ID
         from app.infrastructure.ai import components
+        from app.infrastructure.ai.errors import ModelGatewayError
 
         defs = load_definitions()
         if PLANNER_ID not in defs.units:
@@ -48,18 +61,35 @@ class QwenProblemSolverGateway(ProblemSolverModelPort):
         target_component = (
             REREAD_ID if use_reread_model and REREAD_ID in defs.components else PLANNER_ID
         )
+        unit = PLANNER_ID
+        if EXTRACT in defs.units and payload["mode"] in {"stem_extract", "independent_stem_reread"}:
+            unit = REREAD if use_reread_model else EXTRACT
+            target_component = unit
+        elif use_backup_model and BACKUP in defs.units:
+            unit = BACKUP
+            target_component = BACKUP
         spec = components.COMPONENTS.get(target_component)
         if spec is None:
             return None
-        try:
-            user = build_context(PLANNER_ID, payload=payload, images=images)
-            return components.invoke_agent_component(
-                spec=spec, user=user, settings_obj=self._settings
-            ).unwrap()
-        except ModelTimeBudgetExceeded:
-            raise
-        except Exception:  # noqa: BLE001
-            return None
+        user = build_context(unit, payload=payload, images=images)
+        max_attempts = 2 if retry_on_timeout else 1
+        for attempt in range(max_attempts):
+            try:
+                return components.invoke_agent_component(
+                    spec=spec, user=user, settings_obj=self._settings
+                ).unwrap()
+            except ModelTimeBudgetExceeded:
+                raise
+            except (TimeoutError, ModelGatewayError) as exc:
+                is_retryable = isinstance(exc, TimeoutError) or (
+                    isinstance(exc, ModelGatewayError) and str(exc) == "model_transport_error"
+                )
+                if is_retryable and attempt + 1 < max_attempts:
+                    continue
+                return None
+            except Exception:  # noqa: BLE001
+                return None
+        return None
 
     def extract_stem(
         self, *, text: str, images: list[str], independent_reread: bool = False
@@ -69,7 +99,10 @@ class QwenProblemSolverGateway(ProblemSolverModelPort):
                 "mode": "independent_stem_reread" if independent_reread else "stem_extract",
                 "problem_text": text,
                 "extraction_instructions": (
-                    "本轮只转写与分类，无需求解。输出 subject、shared_stem_summary（完整转写题面、数值及设问）、"
+                    "本轮只独立复读关键数值、符号、角标与全部设问，无需求解。"
+                    "输出 subject、shared_stem_summary、subproblems、needs_student_confirmation。"
+                    if independent_reread
+                    else "本轮只转写与分类，无需求解。输出 subject、shared_stem_summary（完整转写题面、数值及设问）、"
                     "subproblems、diagram_summary、needs_student_confirmation，approaches 固定为空数组。"
                     "纯概念、发音或事实查询标为 tier=T0，普通题标为 T1，确需多条独立推导核验的复杂题标为 T2。"
                 ),
@@ -89,17 +122,26 @@ class QwenProblemSolverGateway(ProblemSolverModelPort):
         }
 
     def solve_route(
-        self, *, stem: StructuredStem, images: list[str], route_hint: str
+        self,
+        *,
+        stem: StructuredStem,
+        images: list[str],
+        route_hint: str,
+        feedback: dict | None = None,
     ) -> dict | None:
+        payload: dict = {
+            "mode": "independent_solve",
+            "route_hint": route_hint,
+            "route_instructions": "只输出当前路线，保留必要的核验锚点。不要重复转写题面或生成其他路线。",
+            "stem": stem.to_dict(),
+            "problem_text": stem.raw_text,
+        }
+        if feedback:
+            payload["contradiction_feedback"] = feedback
         return self._invoke(
-            {
-                "mode": "independent_solve",
-                "route_hint": route_hint,
-                "route_instructions": "只输出当前路线，保留必要的核验锚点。不要重复转写题面或生成其他路线。",
-                "stem": stem.to_dict(),
-                "problem_text": stem.raw_text,
-            },
+            payload,
             images,
+            use_backup_model=route_hint in {"T1_backup", "T2_alternative"},
         )
 
 

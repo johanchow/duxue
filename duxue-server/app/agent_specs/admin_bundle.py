@@ -9,6 +9,7 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from app.agent_specs import blueprint_steps
 from app.agent_specs.configuration import code_contract
 from app.agent_specs.definitions import DefinitionCatalog
 from app.agent_specs.gaokao_contracts import FILES as GAOKAO_FILES
@@ -90,6 +91,7 @@ def contract_compatibility(files: dict) -> str:
     has_mentor = GUARDIAN_MENTOR_FILES <= set(files)
     return digest({
         "files": {**code_contract()["files"],
+                  **(blueprint_steps.contracts() if f"agents/{blueprint_steps.EXTRACT}.json" in files else {}),
                   **(observation_contracts() if has_obs else {}),
                   **(gaokao_contracts() if has_gaokao else {}),
                   **(guardian_mentor_contracts() if has_mentor else {}),
@@ -113,12 +115,21 @@ def compile_bundle(bundle: dict) -> CompiledBundle:
     has_observation = OBSERVATION_FILES <= file_names
     has_gaokao = GAOKAO_FILES <= file_names
     has_mentor = GUARDIAN_MENTOR_FILES <= file_names
+    split_files = {}
+    if has_gaokao and f"agents/{blueprint_steps.EXTRACT}.json" in file_names:
+        split_files = blueprint_steps.contracts()
+        contracts["files"].update(split_files)
+        for uid in (blueprint_steps.EXTRACT, blueprint_steps.REREAD):
+            contracts["tool_authority"][uid] = list(blueprint_steps.VISION_TOOLS)
+        contracts["tool_authority"][blueprint_steps.BACKUP] = list(blueprint_steps.SOLVER_TOOLS)
     if has_observation:
         contracts["files"].update(observation_contracts())
         contracts["tool_authority"].update({doc["id"]: [] for doc in observation_contracts().values()})
     if has_gaokao:
         contracts["files"].update(gaokao_contracts())
-        contracts["tool_authority"][GAOKAO_PLANNER_ID] = []
+        contracts["tool_authority"][GAOKAO_PLANNER_ID] = (
+            list(blueprint_steps.SOLVER_TOOLS) if split_files else []
+        )
         contracts["tool_authority"]["tutoring.turn"] = list(
             dict.fromkeys([*contracts["tool_authority"]["tutoring.turn"], *GAOKAO_TOOLS])
         )
@@ -126,7 +137,7 @@ def compile_bundle(bundle: dict) -> CompiledBundle:
         contracts["files"].update(guardian_mentor_contracts())
         contracts["tool_authority"][MENTOR_EXPLAIN_ID] = []
     expected_files = (
-        set(BUNDLE_FILES)
+        set(BUNDLE_FILES) | set(split_files)
         | (OBSERVATION_FILES if has_observation else set())
         | (GAOKAO_FILES if has_gaokao else set())
         | (GUARDIAN_MENTOR_FILES if has_mentor else set())

@@ -422,6 +422,17 @@ def _solve_for_mentor(
                     return VerifiedSolution.from_dossier(bank_hit)
             return None
 
+    from app.agent_specs.blueprint_steps import EXTRACT
+    from app.agent_specs.definitions import load_definitions
+    if EXTRACT in load_definitions().units:
+        from app.application.commands.problem_solving import execute_blueprint
+        img_tag = f" [images:{len(images)}]" if images and not content.strip() else ""
+        return execute_blueprint(
+            stem=StructuredStem(subject="general", raw_text=(content.strip() + img_tag)[:4000]),
+            question=content, images=images, solver=solver, math_engine=_resolve_math_engine(),
+            bank_lookup=bank_lookup,
+        )
+
     extracted = solver.extract_stem(text=content, images=images, independent_reread=False)
     if isinstance(extracted, dict):
         if extracted.get("tier") == "T0" and not extracted.get("needs_student_confirmation"):
