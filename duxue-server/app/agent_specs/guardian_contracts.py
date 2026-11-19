@@ -412,6 +412,27 @@ def normalize_review_shape(payload):
     return payload
 
 
+def direct_mentor_workflow(files):
+    """Restore direct single-node `guardian-mentor` workflow without blocking LLM draft review."""
+    files.pop(f"gates/{MENTOR_REVIEW_ID}.json", None)
+    files.pop(f"agents/{MENTOR_REPAIR_ID}.json", None)
+    files[f"workflows/{MENTOR_WORKFLOW_ID}.json"] = workflow_documents()[
+        f"workflows/{MENTOR_WORKFLOW_ID}.json"
+    ]
+    explain_path = f"agents/{MENTOR_EXPLAIN_ID}.json"
+    if explain_path in files:
+        sections_suffix = (
+            "\n当 act 为 explain 或 answer 时额外返回 sections。每一小问用独立条目，"
+            "id 为题号或小问编号（单问用 main），content 为该问可独立阅读的解答。"
+            "所有条目正文总计不超过 3200 字。全题背景和共享推导请放在相应小问内。"
+        )
+        template = files[explain_path]["prompt"]["template"]
+        if sections_suffix in template:
+            files[explain_path]["prompt"]["template"] = template.replace(
+                sections_suffix, ""
+            )
+
+
 def review_json_object(pairs):
     result = {}
     for key, value in pairs:

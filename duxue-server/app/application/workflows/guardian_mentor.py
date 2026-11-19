@@ -119,7 +119,7 @@ class MentorExplainCandidate(BaseModel):
     model_config = ConfigDict(extra="ignore")
     act: MentorAct
     topic_relation: Literal["same", "new"] | None = None
-    content: str = Field(min_length=1, max_length=3600)
+    content: str = Field(min_length=1, max_length=8000)
     pronounce: PronouncePayload | None = None
     visual: Visual | None = None
     visual_dropped: str | None = Field(default=None, exclude=True)
@@ -535,31 +535,16 @@ def explain_for_guardian(
                         break
                 return None, {}
 
-            def needs_review(candidate):
+            def needs_honesty_gate(candidate):
                 return candidate is not None and candidate.act in {"explain", "answer"} and (
                     verified_solution is None or verified_solution.tier != "T0" or candidate.act == "explain"
                 )
 
-            from app.agent_specs.definitions import load_definitions
-            from app.agent_specs.guardian_contracts import MENTOR_REVIEW_ID
-
-            partial = False
-            if MENTOR_REVIEW_ID in load_definitions().units:
-                from app.application.workflows.guardian_mentor_review import run_mentor_review
-
-                candidate, partial = run_mentor_review(
-                    explain=generate, needs_review=needs_review, question=question,
-                    images=valid_images, solution=verified_solution.mentor_projection() if verified_solution else None,
-                    settings_obj=model_settings,
-                )
-                review_required = needs_review(candidate)
-            else:
-                candidate, _ = generate()
-                review_required = needs_review(candidate)
-                if review_required and gateway.review(
-                    question=question, solution=verified_solution, candidate=candidate, images=valid_images,
-                ) is not True:
-                    candidate = None
+            # Plan A: no blocking LLM draft review on adult Guardian showcase path;
+            # rely on upstream tutoring-blueprint harness, local safety screening,
+            # visual/pronounce structural checks, and non-blocking confidence honesty hints.
+            candidate, _ = generate()
+            review_required = needs_honesty_gate(candidate)
             if candidate is None:
                 answer = {
                     "content": FALLBACK_TEXT,
@@ -613,7 +598,7 @@ def explain_for_guardian(
                         answer["visual"] = candidate.visual.model_dump(mode="json")
                     if review_required and verified_solution is not None:
                         answer["verification"] = {
-                            "draft_reviewed": not partial,
+                            "draft_reviewed": False,
                             "status": verified_solution.status,
                             "confidence": verified_solution.confidence,
                             "tier": verified_solution.tier,

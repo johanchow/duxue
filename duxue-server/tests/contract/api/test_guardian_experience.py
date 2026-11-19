@@ -212,10 +212,8 @@ def test_guardian_explain_mode_reuses_problem_solving_with_zero_db_writes_and_is
     assert body["act"] == "explain"
     assert "x=2" in body["content"]
     assert body["visual"]["bars"][0]["segments"][0]["value"] == 2
-    review = mentor_cls.return_value.review.call_args.kwargs
-    assert review["candidate"].content == mentor_reply["content"]
-    assert review["solution"].mentor_projection()["verified_final_answers"] == {}
-    assert body["verification"]["draft_reviewed"] is True
+    mentor_cls.return_value.review.assert_not_called()
+    assert body["verification"]["draft_reviewed"] is False
     assert body["verification"]["status"] == "ready"
     assert body["verification"]["confidence"] in {"medium", "high"}
 
@@ -515,16 +513,17 @@ def test_solver_runs_after_auth_and_lookup_checkout_released(client, db, adult):
     assert transactions and not any(transactions)
 
 
-def test_failed_final_review_hides_contradictory_mentor_answer(client, adult):
+def test_mentor_delivers_directly_without_blocking_llm_review(client, adult):
     flow = "app.application.workflows.guardian_mentor"
     with patch(f"{flow}.QwenProblemSolverGateway") as solver, patch(f"{flow}.QwenMentorExplainGateway") as mentor:
         solver.return_value.extract_stem.return_value = {"subject": "math", "raw_text": "3×4"}
         solver.return_value.solve_route.return_value = None
-        mentor.return_value.explain.return_value = {"act": "answer", "content": "3×4=21"}
-        mentor.return_value.review.return_value = False
+        mentor.return_value.explain.return_value = {"act": "answer", "content": "3×4=12"}
         result = client.post(f"{BASE}/turn", headers=adult[1], json={"content": "求3×4", "mode": "guardian_explain"}).json()
-    assert result["act"] == "unavailable"
-    assert "21" not in result["content"]
+    mentor.return_value.review.assert_not_called()
+    assert result["act"] == "answer"
+    assert "3×4=12" in result["content"]
+    assert result["verification"]["draft_reviewed"] is False
 
 
 def test_mentor_photo_followup_reaches_solver_with_original_and_current_request(client, adult, model):
@@ -633,7 +632,7 @@ def test_legacy_mentor_review_and_notice_are_independent(client, adult, act):
                 "mode": "guardian_explain",
             },
         ).json()
-    mentor.return_value.review.assert_called_once()
+    mentor.return_value.review.assert_not_called()
     assert ("核验状态说明" in result["content"]) == (act == "explain")
 
 
@@ -792,8 +791,8 @@ def test_mentor_text_topic_switch_and_long_followups(client, adult):
         state = unseal(token, adult[0], "conversation_mentor")
         assert state["origin"]["text"] == "第二道题"
         assert all(row["text"] != "第二道题" for row in state["window"])
-        assert "第一道题" not in gateway.review.call_args.kwargs["question"]
-        assert "第二道题" in gateway.review.call_args.kwargs["question"]
+        assert "第一道题" not in json.dumps(gateway.explain.call_args.kwargs["recent_utterances"], ensure_ascii=False)
+        assert "第二道题" in json.dumps(state["origin"], ensure_ascii=False)
 
 
 def test_standard_mentor_problem_does_not_repeat_solver_after_unverified_anchors():

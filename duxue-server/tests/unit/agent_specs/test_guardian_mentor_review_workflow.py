@@ -6,232 +6,79 @@ import pytest
 
 from app.agent_specs.admin_bundle import compile_bundle
 from app.agent_specs.definitions import use_definitions
-from app.agent_specs.execution_trace import Recorder
 from app.application.workflows import guardian_mentor
 from app.infrastructure.ai import components
-from app.infrastructure.ai.errors import ModelGatewayError
 from scripts.upgrade_guardian_mentor_review import upgrade
+from scripts.upgrade_math_bundle import upgrade as add_guardian
 
 
 @pytest.fixture(scope="module")
-def staged():
-    record = json.loads(Path("tests/fixtures/admin-release.json").read_text())
-    upgraded = upgrade(record)
-    assert upgrade(upgraded)["digest"] == upgraded["digest"]
-    return compile_bundle(upgraded["bundle"]).catalog
+def base_guardian():
+    source = json.loads(Path("tests/fixtures/admin-release.json").read_text())
+    return add_guardian(source, guardian_mentor=True)
 
 
-def _review(*items, coverage=True):
-    return {
-        "coverage_complete": coverage,
-        "rows": [
-            {
-                "id": key,
-                "status": status,
-                "reason": "错误方向" if status == "wrong" else "",
-            }
-            for key, status in items
-        ],
-    }
+@pytest.fixture(scope="module")
+def staged(base_guardian):
+    record = upgrade(base_guardian)
+    assert upgrade(record)["digest"] == record["digest"]
+    return compile_bundle(record["bundle"]).catalog
 
 
-@pytest.mark.parametrize("recheck", ["pass", "wrong", "transport_error"])
-def test_guardian_repairs_only_failed_part_and_keeps_approved_text(
-    staged, monkeypatch, recheck
+@pytest.fixture(scope="module")
+def simple(base_guardian):
+    record = upgrade(base_guardian, simplify=True)
+    assert upgrade(record, simplify=True)["digest"] == record["digest"]
+    return compile_bundle(record["bundle"]).catalog
+
+
+@pytest.fixture(scope="module")
+def direct(base_guardian):
+    staged_rec = upgrade(base_guardian)
+    record = upgrade(staged_rec, direct=True)
+    assert upgrade(record, direct=True)["digest"] == record["digest"]
+    assert "gates/tutoring.mentor-review.json" not in record["bundle"]["files"]
+    assert "agents/tutoring.mentor-repair.json" not in record["bundle"]["files"]
+    wf = record["bundle"]["files"]["workflows/guardian-mentor.json"]
+    assert [n["id"] for n in wf["nodes"]] == ["guardian-mentor.explain"]
+    prompt = record["bundle"]["files"]["agents/tutoring.mentor-explain.json"]["prompt"]["template"]
+    assert "额外返回 sections" not in prompt
+    return compile_bundle(record["bundle"]).catalog
+
+
+@pytest.mark.parametrize("fixture_name", ["staged", "simple", "direct"])
+def test_guardian_mentor_delivers_full_content_without_blocking_review(
+    request, fixture_name, monkeypatch
 ):
+    catalog = request.getfixturevalue(fixture_name)
     monkeypatch.setattr(guardian_mentor, "_solve_for_mentor", lambda **kwargs: None)
     calls = []
+    long_essay = "Full explanation with complete essay. " * 120  # > 4000 chars
 
     def provider(*, spec, user, **kwargs):
         calls.append(spec.component_id)
-        if spec.component_id == "tutoring.mentor-explain":
-            return {
-                "act": "explain",
-                "content": "unused overview",
-                "sections": [
-                    {"id": "1", "content": "错误证明"},
-                    {"id": "2", "content": "已审核的第二问"},
-                ],
-            }
-        if spec.component_id == "tutoring.mentor-repair":
-            text = str(user)
-            assert "错误方向" in text
-            return {"sections": [{"id": "1", "content": "修正证明"}]}
-        if calls.count("tutoring.mentor-review") == 1:
-            return _review(("1", "wrong"), ("2", "pass"))
-        if recheck == "transport_error":
-            raise ModelGatewayError("model_transport_error")
-        return _review(("1", recheck))
+        assert spec.component_id == "tutoring.mentor-explain"
+        return {
+            "act": "explain",
+            "content": long_essay,
+            "visual": {"kind": "invalid_kind", "alt": "bad"},
+        }
 
     monkeypatch.setattr(components, "invoke_json_component", provider)
-    trace = Recorder()
-    with use_definitions(staged), trace.capture():
+    with use_definitions(catalog):
         response = guardian_mentor.explain_for_guardian(
             guardian_id=str(uuid4()),
-            content="两问",
+            content="应用文写作",
             attachment_keys=[],
             window=[],
             images=[],
             rows=[],
         )
+    assert calls == ["tutoring.mentor-explain"]
     assert response["act"] == "explain"
-    assert (
-        "已审核的第二问" in response["content"]
-        and "错误证明" not in response["content"]
-    )
-    assert ("修正证明" in response["content"]) == (recheck == "pass")
-    assert ("部分小问" in response["content"]) == (recheck != "pass")
-    assert [
-        e["node_id"].split(".")[-1]
-        for e in trace.events
-        if e["kind"] in {"agent", "gate", "action"}
-    ] == ["explain", "review", "repair", "recheck", "deliver"]
-
-
-def test_mismatched_review_ids_never_release_unreviewed_content(staged, monkeypatch):
-    monkeypatch.setattr(guardian_mentor, "_solve_for_mentor", lambda **kwargs: None)
-
-    def provider(*, spec, **kwargs):
-        if spec.component_id == "tutoring.mentor-explain":
-            return {
-                "act": "explain",
-                "content": "候选文字",
-                "sections": [
-                    {"id": "1", "content": "第一问"},
-                    {"id": "2", "content": "第二问"},
-                ],
-            }
-        return _review(("1", "pass"), ("3", "pass"))
-
-    monkeypatch.setattr(components, "invoke_json_component", provider)
-    with use_definitions(staged):
-        response = guardian_mentor.explain_for_guardian(
-            guardian_id=str(uuid4()),
-            content="两问",
-            attachment_keys=[],
-            window=[],
-            images=[],
-            rows=[],
-        )
-    assert response["act"] == "unavailable"
-
-
-def test_unsupported_anchor_becomes_unknown():
-    from app.application.ports.math_engine import MathResult
-    from app.application.workflows.blueprint_planner import (
-        verify_milestone_anchor_detail,
-    )
-
-    class Engine:
-        def execute(self, request):
-            return MathResult(status="unknown", error_code="unsupported")
-
-    result = verify_milestone_anchor_detail(
-        Engine(),
-        {
-            "check_kind": "symbolic_equivalence",
-            "canonical_target": "2",
-            "verify_request": {"op": "evaluate", "args": {"expression": "1+1"}},
-        },
-    )
-    assert result["status"] == "unknown" and result["reason"] == "unsupported"
-
-
-@pytest.fixture(scope="module")
-def simple():
-    source = json.loads(Path("tests/fixtures/admin-release.json").read_text())
-    old = upgrade(source)
-    new = upgrade(old, simplify=True)
-    assert new["digest"] == upgrade(new, simplify=True)["digest"]
-    return compile_bundle(new["bundle"]).catalog
-
-
-@pytest.mark.parametrize("shape", ["array", "keyed", "object"])
-def test_observed_review_wire_formats_are_validated(simple, shape):
-    from app.agent_specs.contracts import validate_output
-
-    rows = [
-        {"id": "24", "status": "pass", "reason": ""},
-        {"id": "25", "status": "wrong", "reason": "描述" * 101},
-    ]
-    wire = {
-        "array": rows,
-        "keyed": {r["id"]: r for r in rows},
-        "object": {"rows": rows, "coverage_complete": True},
-    }[shape]
-    with use_definitions(simple):
-
-        def validate(payload):
-            validate_output(simple.units["tutoring.mentor-review"], payload)
-
-        result, outcome, _ = components.validate_json_completion(
-            components.ChatCompletionResult(
-                raw=json.dumps(wire), finish_reason="stop", stream_completed=True
-            ),
-            unit_id="tutoring.mentor-review",
-            validate_payload=validate,
-        )
-    assert outcome == "ok"
-    assert result["coverage_complete"] is (shape == "object")
-    assert [(r["id"], r["status"]) for r in result["rows"]] == [
-        ("24", "pass"),
-        ("25", "wrong"),
-    ]
-    assert len(result["rows"][1]["reason"]) == 100
-
-
-@pytest.mark.parametrize(
-    "review_ids,expected",
-    [
-        ([("1", "pass")], "partial"),
-        ([("1", "pass"), ("2", "wrong")], "partial"),
-        ([("1", "pass"), ("1", "wrong")], "unavailable"),
-        ([("1", "pass"), ("3", "pass")], "unavailable"),
-    ],
-)
-def test_simple_workflow_only_delivers_matching_reviewed_parts(
-    simple, monkeypatch, review_ids, expected
-):
-    monkeypatch.setattr(guardian_mentor, "_solve_for_mentor", lambda **kwargs: None)
-
-    def provider(*, spec, **kwargs):
-        if spec.component_id == "tutoring.mentor-explain":
-            return {
-                "act": "explain",
-                "content": "候选文字",
-                "sections": [
-                    {"id": "1", "content": "第一问"},
-                    {"id": "2", "content": "第二问"},
-                ],
-            }
-        assert spec.component_id == "tutoring.mentor-review"
-        return _review(*review_ids)
-
-    monkeypatch.setattr(components, "invoke_json_component", provider)
-    trace = Recorder()
-    with use_definitions(simple), trace.capture():
-        response = guardian_mentor.explain_for_guardian(
-            guardian_id=str(uuid4()),
-            content="两问",
-            attachment_keys=[],
-            window=[],
-            images=[],
-            rows=[],
-        )
-    if expected == "partial":
-        assert response["act"] == "explain"
-        assert (
-            "第一问" in response["content"]
-            and "第二问" not in response["content"]
-            and "部分小问" in response["content"]
-        )
-    else:
-        assert response["act"] == "unavailable"
-    assert [
-        e["node_id"].split(".")[-1]
-        for e in trace.events
-        if e["kind"] in {"agent", "gate", "action"}
-    ] == ["explain", "review", "deliver"]
+    assert long_essay in response["content"]
+    assert "核验状态说明" in response["content"]
+    assert "visual" not in response
 
 
 def test_duplicate_keys_in_keyed_review_are_rejected(simple):

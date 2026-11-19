@@ -244,7 +244,22 @@
 - 2026-11-19 按用户确认重构 `tutoring-blueprint` 为十二节点并发异构工作流（事实源见 [domain-problem-solving](../../docs/technical/domain-problem-solving.md#admin-内部解题工作流)）：1）取消 T1→T2 自动升级，T1 引擎证伪（`contradicted`）时转异构备用 `tutoring.blueprint-backup`（携带反例约束），超时原地重试最多 1 次；2）优化有图效率，仅在初读自报模糊/涂改或 T1 证伪怀疑读错数字时按需复读，只比对关键数值/符号/设问（忽略 `diagram_summary` 措辞），分歧立即短路；3）`execute_workflow` 支持线程安全的并发 fan-out/fan-in，T2 并发执行主路线与异构替代路线；4）确定性引擎核验升级为四态（`verified` / `contradicted` / `not_applicable` / `unknown`，含自由变量反例证伪）、T2 证伪淘汰与三态比对（`consistent` / `contradicted` / `incomparable`）、`finish` 按小问检查完整性并区分充分核验与必要条件（量纲/守恒）；求解 Agent 开放 `tutoring.science` 与 `tutoring.inspect_image` 工具权限；旧发布包兼容指纹不变。
 
 - 内部求解发布回归：有放回/无放回在数值与符号相同的情况下也属于不同转写；题面和小问逐项核对，缺失的复读结果不能回到原选路。小问完整性按声明标签/编号匹配显式最终答案。T2 在剩余预算内提前汇合，已结束的分支单独核验，迟到的候选和回放事件不参与当前结果。两种入口的双路超时、单路超时及旧快照路径见 [回归用例](../../duxue-server/tests/unit/problem_solving/test_blueprint_steps.py)，预算口径见 [ProblemSolving 设计](../../docs/technical/domain-problem-solving.md#admin-内部解题工作流)。
+- 2026-11-19 按用户确认实施 `guardian-mentor` 方案 A（事实源见 [domain-companion](../../docs/technical/domain-companion.md#admin-导师解析直出链路方案-a)）：移除成人体验沙盒出口的同步阻塞 LLM 审核与 `sections` 拼装摩擦，放宽 `MentorExplainCandidate.content` 至 8000 字，仅保留前置 `tutoring-blueprint` Harness、双向 `LocalSafetyScreening`、配图/发音结构校验与非阻塞置信度诚实提示（`draft_reviewed=False`）；新增 `direct_mentor_workflow` 与 `upgrade_guardian_mentor_review.py --direct`，历史含审核节点的已发布快照保持编译兼容。
+
+- 2026-11-19 用十二节点测试草稿 revision 3 和本地 commit 0ecf471 复跑 2025 北京数学卷。首答并发 8，失败补答并发最高 5，21 题均已判分。首答 83/150，一次补答后 113.5/150，首答 HTTP 错误 0、暂不可用 6，补答后仍暂不可用第 14、17、21 题。首答中位耗时 35.82 秒，P95 76.06 秒。上轮九科批次负载与本次单科不同。逐题证据及快照见 `duxue-server/var/exams/beijing-2025-math-rerun.hRxKYv/REPORT.md`。
+
+- 数学复跑空答第 14、17、21 题用原补答图和提示词做同配置隔离复现，三题均完成读题，蓝图主模型各用满 4096 推理 token、正文 0。第 14 题讲解也截断，第 17 题讲解生成后审核截断，第 21 题讲解生成后审核返回不通过；证据为该批次目录 `diagnosis-14.json`、`diagnosis-17.json`、`diagnosis-21.json`。复现与当次阅卷记录分开。
+
+- 数学第 14、17、21 题预算对照见 `duxue-server/var/exams/beijing-2025-math-rerun.hRxKYv/BUDGET-DIAGNOSIS.md`。只提高主求解 max_output_tokens 到 8192 未恢复交付；关闭主求解 thinking 后三题均产出 JSON 候选，分别停在讲解候选校验、审核截断、审核拒绝。第 17 题另试审核上限 1000，但本次讲解两次候选校验失败，未到审核步骤。使用本地隔离快照。
+
+- 数学空答 14/17/21 的隔离诊断记录见原复跑目录 `rejection-detail-17.json`、`rejection-detail-21.json`、`rejection-unblock-14.json`。14 的一次重放在核验中因 `MathResult.error` 字段不存在中断，确定性复现表明应读 `error_code`；另一轮可生成但给出错误体积且审核截断。17 的第 (1) 问错误断言平行，审核在解释错误时被截断。21 的第 (2)、(3) 问错误假设单个坐标的奇偶性每步都翻转，只有坐标和保证翻转。仅在隔离诊断进程中加观测和临时兼容，未变更产品代码。
 
 - Guardian 逐问审核拓扑已导入 duxue-admin-test 工作草稿 da210b2f-d24e-40cf-9e4f-db60ef3c99e5 revision 4。API 回读 5 节点、9 条边，测试发布指针仍为 R13。本地真实模型通过两小问的讲解、审核与交付；回归覆盖定向修复、复核拒绝/不可用及小问 ID 不匹配。修复蓝图非成功结果错误读取 MathResult.error 的崩溃。全量 1306 通过、1 跳过。流程与兼容入口见 [Guardian 设计](../../docs/technical/domain-companion.md#admin-导师解析逐问审核)。
 
+- 2026-11-19 复跑 2025 北京高考英语笔试。逐问审核升级快照上的真实审核模型会返回不符合 JSON 契约的裸数组或按题号键控的对象，成批阻断可见交付。英语整卷复核需对齐组内判分理由和数字分，材料中带相邻题时按目标请求计分。两份固定快照的成绩、逐题证据与限制见 [本地复跑报告](../../duxue-server/var/exams/beijing-2025-english-rerun.Xe9ns7/REPORT.md)。
+  - 追查分支确认，审核格式错误走 `review_unavailable` 并跳过定向修复，交付节点因没有已审核通过的小问返回暂不可用。数学快照对照使用旧整段审核，三次 `consistent=false` 的日志只保留判定状态，无法恢复具体拒绝理由。
+
 - Guardian 审核简化已写入 duxue-admin-test 草稿 da210b2f-d24e-40cf-9e4f-db60ef3c99e5 revision 5。回读 3 节点、5 条边，发布指针 R13。对照英语首答 47.5/100、6/9 组有实质答案、1/9 审核协议失败，旧五节点首答 0/100、0/9 组有实质答案、8/8 审核协议失败。剩余格式失败是第 1–10 题审核输出 20 条。第44题仅写作指导，人工计零。试卷证据见 `duxue-server/var/exams/beijing-2025-english-simple.PRtykP/REPORT.md`。全量 1314 通过、1 跳过。协议规则见 [Guardian 设计](../../docs/technical/domain-companion.md#admin-导师解析逐问审核)。
+  - 复核原答和参考 PDF 后补回第 28、29 题各 2 分，原批次修订为 51.5/100。七选五虽通过输出形状校验，分组 ID 与审核的逐题 ID 失配，仍被整体拒绝。证据与逐项失分见 [原批次复核](../../duxue-server/var/exams/beijing-2025-english-simple.PRtykP/REPORT.md#追查失分与阅卷复核)。
+
+- 2026-11-19 用当前工作区和仓库 `--direct` 生成的隔离快照复跑 2025 北京英语笔试。已对齐同卷首答协议，96.5/100，9/9 组交付，未触发出口审核或修复。通用阅卷先将范文误判为非答卷，原文摘取复核与独立作文估分最终一致。前置主求解仍有 8/9 次长度截断。逐题收据、失分及模型证据见 [直出复跑报告](../../duxue-server/var/exams/beijing-2025-english-direct.6HUpp5/REPORT.md)。

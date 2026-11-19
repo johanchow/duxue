@@ -9,17 +9,20 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.agent_specs.admin_bundle import compile_bundle, contract_compatibility
 from app.agent_specs.guardian_contracts import (
+    MENTOR_REVIEW_ID,
+    direct_mentor_workflow,
     simplify_mentor_review,
     stage_mentor_review,
-    MENTOR_REVIEW_ID,
 )
 
 
-def upgrade(record, *, simplify=False):
+def upgrade(record, *, simplify=False, direct=False):
     bundle = deepcopy(record["bundle"])
     if compile_bundle(bundle).digest != record["digest"]:
         raise ValueError("source digest mismatch")
-    if simplify:
+    if direct:
+        direct_mentor_workflow(bundle["files"])
+    elif simplify:
         simplify_mentor_review(bundle["files"])
     elif f"gates/{MENTOR_REVIEW_ID}.json" not in bundle["files"]:
         stage_mentor_review(bundle["files"])
@@ -42,10 +45,15 @@ if __name__ == "__main__":
     parser.add_argument("source", type=Path)
     parser.add_argument("output", type=Path)
     parser.add_argument("--simplify", action="store_true")
+    parser.add_argument("--direct", action="store_true")
     args = parser.parse_args()
     args.output.write_text(
         json.dumps(
-            upgrade(json.loads(args.source.read_text()), simplify=args.simplify),
+            upgrade(
+                json.loads(args.source.read_text()),
+                simplify=args.simplify,
+                direct=args.direct,
+            ),
             ensure_ascii=False,
         )
     )
