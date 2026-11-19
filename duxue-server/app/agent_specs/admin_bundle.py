@@ -18,7 +18,7 @@ from app.agent_specs.gaokao_contracts import TOOL_AUTHORITY_ADDITIONS as GAOKAO_
 from app.agent_specs.gaokao_contracts import WORKFLOWS as GAOKAO_WORKFLOWS
 from app.agent_specs.gaokao_contracts import frozen_contracts as gaokao_contracts
 from app.agent_specs.guardian_contracts import FILES as GUARDIAN_MENTOR_FILES
-from app.agent_specs.guardian_contracts import MENTOR_EXPLAIN_ID
+from app.agent_specs.guardian_contracts import MENTOR_EXPLAIN_ID, MENTOR_REPAIR_ID, MENTOR_REVIEW_ID, staged_contracts
 from app.agent_specs.guardian_contracts import WORKFLOWS as GUARDIAN_MENTOR_WORKFLOWS
 from app.agent_specs.guardian_contracts import (
     frozen_contracts as guardian_mentor_contracts,
@@ -95,6 +95,7 @@ def contract_compatibility(files: dict) -> str:
                   **(observation_contracts() if has_obs else {}),
                   **(gaokao_contracts() if has_gaokao else {}),
                   **(guardian_mentor_contracts() if has_mentor else {}),
+                  **(staged_contracts() if f"gates/{MENTOR_REVIEW_ID}.json" in files else {}),
                   **{name: doc for name, doc in files.items() if name in WORKFLOW_FILES or (has_obs and name in {f"workflows/{key}.json" for key in OBSERVATION_WORKFLOWS}) or (has_gaokao and name in {f"workflows/{key}.json" for key in GAOKAO_WORKFLOWS}) or (has_mentor and name in {f"workflows/{key}.json" for key in GUARDIAN_MENTOR_WORKFLOWS})}},
         "handlers": {key: {field: sorted(items) for field, items in value.items()}
                      for key, value in WORKFLOW_BINDINGS.items()},
@@ -136,11 +137,16 @@ def compile_bundle(bundle: dict) -> CompiledBundle:
     if has_mentor:
         contracts["files"].update(guardian_mentor_contracts())
         contracts["tool_authority"][MENTOR_EXPLAIN_ID] = []
+    mentor_stage = staged_contracts() if has_mentor and f"gates/{MENTOR_REVIEW_ID}.json" in file_names else {}
+    if mentor_stage:
+        contracts["files"].update(mentor_stage)
+        contracts["tool_authority"].update({MENTOR_REVIEW_ID: [], MENTOR_REPAIR_ID: []})
     expected_files = (
         set(BUNDLE_FILES) | set(split_files)
         | (OBSERVATION_FILES if has_observation else set())
         | (GAOKAO_FILES if has_gaokao else set())
         | (GUARDIAN_MENTOR_FILES if has_mentor else set())
+        | set(mentor_stage)
     )
     if (
         not isinstance(bundle, dict)
@@ -199,6 +205,9 @@ def compile_bundle(bundle: dict) -> CompiledBundle:
         from app.agent_specs.definitions import use_definitions
         with use_definitions(catalog):
             catalog.workflow_catalog = AgentCatalog.from_directory(root)
+    if mentor_stage and ({m.name for m in catalog.units[MENTOR_REVIEW_ID].models} &
+                        {m.name for uid in (MENTOR_EXPLAIN_ID, MENTOR_REPAIR_ID) for m in catalog.units[uid].models}):
+        raise ValueError("Guardian Judge must be independent from generation models")
     main = catalog.units["tutoring.turn"].models[0].name
     if any(
         catalog.units[name].models[0].name == main

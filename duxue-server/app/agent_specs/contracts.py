@@ -31,6 +31,8 @@ def validate_output(unit: ModelUnit, payload: dict) -> None:
     elif unit_id in {"tutoring.blueprint-planner", "tutoring.blueprint-backup"}:
         if not isinstance(payload.get("approaches"), list):
             raise ValueError("invalid blueprint approaches")
+    elif unit_id in {"tutoring.mentor-review", "tutoring.mentor-repair"}:
+        pass  # Validated by the typed provider schema above.
     elif unit_id == "tutoring.mentor-explain":
         if payload.get("act") not in {"explain", "answer", "clarify", "pronounce", "safety"}:
             raise ValueError("invalid mentor explain act")
@@ -82,6 +84,7 @@ def has_python_contract(unit_id: str) -> bool:
         "behavior.visible-activity", "behavior.support-opportunity",
         "tutoring.stem-extract", "tutoring.stem-review",
         "evals.semantic-judge", "tutoring.blueprint-planner", "tutoring.blueprint-backup", "tutoring.mentor-explain",
+        "tutoring.mentor-review", "tutoring.mentor-repair",
         "companion.intent", "companion.scene-switch", "planning.intake",
         "task.intake", "tutoring.turn", "evaluation.review-aspects", "study.sprint-intake",
         "tutoring.image-target", "tutoring.leak-judge", "tutoring.visual-leak-judge",

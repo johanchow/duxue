@@ -235,7 +235,14 @@ class AgentCatalog:
                     raise ValueError("blueprint required protocol nodes or branches changed")
             if not staged and spec.id in GAOKAO_WORKFLOWS and [n.ref for n in spec.nodes] != GAOKAO_WORKFLOWS[spec.id]:
                 raise ValueError("gaokao blueprint required protocol node changed")
-            if spec.id in GUARDIAN_MENTOR_WORKFLOWS and [n.ref for n in spec.nodes] != GUARDIAN_MENTOR_WORKFLOWS[spec.id]:
+            from app.agent_specs import guardian_contracts as mentor
+            mentor_staged = spec.id == mentor.MENTOR_WORKFLOW_ID and mentor.MENTOR_REVIEW_ID in load_definitions().units
+            if mentor_staged:
+                expected = mentor.staged_workflow()
+                actual = spec.model_dump(by_alias=True, exclude_defaults=True)
+                if any(actual[key] != expected[key] for key in ("entry", "nodes", "edges")) or spec.required_gates:
+                    raise ValueError("guardian mentor required review topology changed")
+            if not mentor_staged and spec.id in GUARDIAN_MENTOR_WORKFLOWS and [n.ref for n in spec.nodes] != GUARDIAN_MENTOR_WORKFLOWS[spec.id]:
                 raise ValueError("guardian mentor required protocol node changed")
             registration = (
                 {'conditions': {'eligible','ineligible'} if spec.id == 'behavior-observation' else set(), 'handlers':set()}
@@ -244,6 +251,8 @@ class AgentCatalog:
             )
             if staged:
                 registration = {"handlers": {blueprint_steps.FINISH}, "conditions": set(blueprint_steps.CONDITIONS)}
+            if mentor_staged:
+                registration = {"handlers": {mentor.MENTOR_DELIVER_ID}, "conditions": mentor.MENTOR_BRANCHES}
             expected_handler = "coordinator" if spec.id == "companion" else spec.id
             if spec.handler != expected_handler:
                 raise ValueError(f"{spec.id}: workflow handler must match its domain")
@@ -275,6 +284,8 @@ class AgentCatalog:
                         or (node.ref == blueprint_steps.BACKUP and node.id == blueprint_steps.node_id("alternative"))
                     ):
                         continue  # Shared solver agent reused across T1/T2 routes.
+                    if mentor_staged and node.id == "guardian-mentor.recheck":
+                        continue
                     if component_id in self._components:
                         raise ValueError(f"component assigned to multiple nodes: {component_id}")
                     unit_kind, unit_id, unit_version = _node_unit(spec, node)

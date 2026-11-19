@@ -135,6 +135,21 @@ def execute(request):
                     from app.agent_specs.observation_debug import run_observation_debug
                     output = run_observation_debug(target['id'], data, runtime)
                     result.update(output=payload(output), content=json.dumps(payload(output), ensure_ascii=False, indent=2))
+                elif workflow_id == "guardian-mentor":
+                    from uuid import uuid4
+
+                    from app.application.workflows.guardian_mentor import explain_for_guardian
+                    from app.infrastructure.ai.client import model_time_budget
+
+                    with model_time_budget(105):
+                        output = explain_for_guardian(
+                            guardian_id=str(uuid4()), content=data.content, attachment_keys=[],
+                            window=[], images=[], rows=[], model_settings=runtime,
+                        )
+                    output.pop("state_token", None)
+                    result.update(output=output, content=output["content"])
+                    if output["act"] == "unavailable":
+                        result.update(status="failed", failure="mentor_review_unavailable")
                 elif workflow_id == "tutoring-blueprint":
                     from app.application.ports.problem_solving import QwenProblemSolverGateway
                     from app.application.workflows.guardian_mentor import _solve_for_mentor

@@ -127,6 +127,8 @@ BUILDERS = {
     "tutoring.stem_review.context": eval_grade,
     "tutoring.blueprint_planner.context": eval_grade,
     "tutoring.blueprint_backup.context": eval_grade,
+    "tutoring.mentor_review.context": guardian_mentor_explain,
+    "tutoring.mentor_repair.context": guardian_mentor_explain,
     "tutoring.mentor_explain.context": guardian_mentor_explain,
     "study.sprint_intake.context": sprint_intake,
     "companion.intent.context": intent,

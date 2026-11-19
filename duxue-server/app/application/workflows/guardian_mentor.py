@@ -475,6 +475,7 @@ def explain_for_guardian(
     origin: dict | None = None,
     handoff: bool = False,
     bank_lookup: Callable[..., ProblemDossier | None] | None = None,
+    model_settings=None,
 ) -> dict:
     """Process Manager executing one stateless Guardian mentor-explanation turn."""
     relation = None
@@ -505,41 +506,60 @@ def explain_for_guardian(
                     "history": [{"role": row["author"], "text": row["text"]} for row in clean_window],
                     "instruction": "结合相关上下文还原当前所问题面和补充条件。以本轮指定的题为准，历史作答不是已知条件。",
                 }, ensure_ascii=False)
-            solver = QwenProblemSolverGateway()
+            solver = QwenProblemSolverGateway(model_settings)
             verified_solution = _solve_for_mentor(
                 content=question,
                 images=valid_images,
                 solver=solver,
                 bank_lookup=bank_lookup,
             )
-            gateway = QwenMentorExplainGateway()
-            candidate: MentorExplainCandidate | None = None
-            repair_err: str | None = None
-            for _ in range(2):
-                try:
-                    raw = gateway.explain(
-                        content=content,
-                        verified_solution=verified_solution,
-                        recent_utterances=clean_window,
-                        current_images=target_images,
-                        repair_error=repair_err,
-                    )
-                    candidate = MentorExplainCandidate.model_validate(raw)
-                    break
-                except ValidationError as err:
-                    if repair_err is not None:
-                        break
-                    repair_err = f"JSON schema validation failed: {err.errors()[:3]}"
-                except ModelGatewayError:
-                    break
+            gateway = QwenMentorExplainGateway(model_settings)
 
-            review_required = candidate is not None and candidate.act in {"explain", "answer"} and (
-                verified_solution is None or verified_solution.tier != "T0" or candidate.act == "explain"
-            )
-            if review_required and gateway.review(
-                question=question, solution=verified_solution, candidate=candidate, images=valid_images,
-            ) is not True:
-                candidate = None
+            def generate():
+                repair_err = None
+                for _ in range(2):
+                    try:
+                        raw = gateway.explain(
+                            content=content,
+                            verified_solution=verified_solution,
+                            recent_utterances=clean_window,
+                            current_images=target_images,
+                            repair_error=repair_err,
+                        )
+                        return MentorExplainCandidate.model_validate(raw), raw
+                    except ValidationError as err:
+                        if repair_err is not None:
+                            break
+                        repair_err = f"JSON schema validation failed: {err.errors(include_input=False)[:3]}"
+                    except ModelGatewayError:
+                        break
+                return None, {}
+
+            def needs_review(candidate):
+                return candidate is not None and candidate.act in {"explain", "answer"} and (
+                    verified_solution is None or verified_solution.tier != "T0" or candidate.act == "explain"
+                )
+
+            from app.agent_specs.definitions import load_definitions
+            from app.agent_specs.guardian_contracts import MENTOR_REVIEW_ID
+
+            partial = False
+            if MENTOR_REVIEW_ID in load_definitions().units:
+                from app.application.workflows.guardian_mentor_review import run_mentor_review
+
+                candidate, partial = run_mentor_review(
+                    explain=generate, needs_review=needs_review, question=question,
+                    images=valid_images, solution=verified_solution.mentor_projection() if verified_solution else None,
+                    settings_obj=model_settings,
+                )
+                review_required = needs_review(candidate)
+            else:
+                candidate, _ = generate()
+                review_required = needs_review(candidate)
+                if review_required and gateway.review(
+                    question=question, solution=verified_solution, candidate=candidate, images=valid_images,
+                ) is not True:
+                    candidate = None
             if candidate is None:
                 answer = {
                     "content": FALLBACK_TEXT,
@@ -593,7 +613,7 @@ def explain_for_guardian(
                         answer["visual"] = candidate.visual.model_dump(mode="json")
                     if review_required and verified_solution is not None:
                         answer["verification"] = {
-                            "draft_reviewed": True,
+                            "draft_reviewed": not partial,
                             "status": verified_solution.status,
                             "confidence": verified_solution.confidence,
                             "tier": verified_solution.tier,

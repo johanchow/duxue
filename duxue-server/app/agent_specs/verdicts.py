@@ -48,6 +48,9 @@ def normalize_judge(unit_id: str, payload: dict | None) -> GateVerdict:
         else:
             reason = "none"
         return GateVerdict(verdict="allow" if reason == "none" else "deny", reason_code=reason)
+    if unit_id == "tutoring.mentor-review":
+        passed = payload["coverage_complete"] and all(row["status"] == "pass" for row in payload["rows"])
+        return GateVerdict(verdict="allow" if passed else "deny", reason_code="passed" if passed else "parts_unresolved")
     if unit_id == "tutoring.visual-leak-judge":
         value = payload.get("leaks")
         reason = payload.get("reason")

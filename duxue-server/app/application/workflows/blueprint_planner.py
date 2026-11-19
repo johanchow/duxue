@@ -109,7 +109,7 @@ def verify_milestone_anchor_detail(engine: MathEnginePort | None, raw_ms: dict) 
         return {
             "status": "unknown",
             "strength": strength,
-            "reason": res.error or ("conditional_result" if res.conditions else res.status),
+            "reason": res.error_code or ("conditional_result" if res.conditions else res.status),
             "engine_result": res.result,
         }
     if res.checked_scope == "equivalence":

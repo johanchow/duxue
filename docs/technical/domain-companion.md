@@ -797,6 +797,13 @@ And 不呈现空选择题或 pronunciation_lesson
 
 ## Guardian 问答体验（2026-11-17 验收，2026-11-18 扩展双视角）
 
+### Admin 导师解析逐问审核
+
+配置含 `tutoring.mentor-review` 时，Guardian 解析运行 `guardian-mentor` 的讲解、逐问审核、定向修复、复核和汇总交付节点。讲解用稳定小问 ID 提交各问正文。独立 Judge 核对原题与每一问，用同一 ID 返回通过、有错或无法判定，并检查作答覆盖。已通过正文原样保留。存在带明确错误位置的小问时，剩余时限允许则重写一次，并只复核变更。部分通过时标注尚未核对通过的范围。按小问拼装的答复保留经审核的正文，旧草稿的图随原稿失效。
+
+草稿从当前 Admin 配置导出，用 `scripts/upgrade_guardian_mentor_review.py` 生成升级快照，再经 `config:import-upgrade` 导入。只有加载了新快照的实例执行此路径。旧快照的兼容调用保持原有整题审核协议。
+
+
 成人体验不进入 Ward 的 Companion Coordinator、Thread/Run 账本和 Tutoring/Study/ProblemSolving 持久化，不读取任何孩子上下文、私有 `ProblemDossier(scope="ward")` 或 Memory，也不发布学习事实。产品范围唯一归属 [用户 PRD §7.2](../product/prd-user.md#72-家长问答体验)。
 
 - **`mode="student_guide"`（默认，学生启发视角）**：复用无数据库依赖的 `run_tutor_turn`、答案保护策略 `TutorPermitPolicy`、独立 Judge、只读工具、图片目标选择与发音结构校验；不向 `TutorPermitPolicy` 或 `run_tutor_turn` 增加任何放宽保护的开关。
