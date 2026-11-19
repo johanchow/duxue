@@ -238,7 +238,8 @@ class AgentCatalog:
             from app.agent_specs import guardian_contracts as mentor
             mentor_staged = spec.id == mentor.MENTOR_WORKFLOW_ID and mentor.MENTOR_REVIEW_ID in load_definitions().units
             if mentor_staged:
-                expected = mentor.staged_workflow()
+                expected = (mentor.staged_workflow() if mentor.MENTOR_REPAIR_ID in load_definitions().units
+                            else mentor.simple_workflow())
                 actual = spec.model_dump(by_alias=True, exclude_defaults=True)
                 if any(actual[key] != expected[key] for key in ("entry", "nodes", "edges")) or spec.required_gates:
                     raise ValueError("guardian mentor required review topology changed")

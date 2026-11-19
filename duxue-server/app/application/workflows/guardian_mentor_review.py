@@ -35,6 +35,8 @@ def _sections(raw):
 def run_mentor_review(
     *, explain, needs_review, question, images, solution, settings_obj=None
 ):
+    spec = load_catalog().spec(MENTOR_WORKFLOW_ID)
+    repair_enabled = any(node.ref == MENTOR_REPAIR_ID for node in spec.nodes)
     candidate = None
     sections = {}
     approved = {}
@@ -102,14 +104,21 @@ def run_mentor_review(
         if raw is None:
             return GateDecision("deny", "review_unavailable")
         rows = {row["id"]: row for row in raw["rows"]}
-        if len(rows) != len(raw["rows"]) or set(rows) != set(current):
+        missing = sorted(set(current) - rows.keys())
+        unexpected = sorted(rows.keys() - set(current))
+        state["review_id_check"] = {
+            "missing": missing,
+            "unexpected": unexpected,
+            "duplicate": len(rows) != len(raw["rows"]),
+        }
+        if len(rows) != len(raw["rows"]) or unexpected or (repair_enabled and missing):
             return GateDecision("deny", "review_part_ids_mismatch")
         state["part_review"] = {
             "coverage_complete": raw["coverage_complete"],
             "rows": raw["rows"],
         }
         if not recheck:
-            coverage_complete = raw["coverage_complete"]
+            coverage_complete = raw["coverage_complete"] and not missing
         if not recheck or raw["coverage_complete"]:
             approved.update(
                 {
@@ -118,7 +127,7 @@ def run_mentor_review(
                     if row["status"] == "pass"
                 }
             )
-        if not recheck:
+        if repair_enabled and not recheck:
             targets.update(
                 {
                     key: {"content": current[key], "reason": row["reason"]}
@@ -131,6 +140,7 @@ def run_mentor_review(
         return GateDecision(
             "allow"
             if raw["coverage_complete"]
+            and not missing
             and all(row["status"] == "pass" for row in rows.values())
             else "deny",
             "review_completed",
@@ -157,13 +167,13 @@ def run_mentor_review(
         nonlocal candidate, partial
         if not needs_review(candidate):
             return {"status": "direct" if candidate else "unavailable"}
-        if not approved or (standalone and not coverage_complete):
+        if not approved or (repair_enabled and standalone and not coverage_complete):
             candidate = None
             return {"status": "unavailable"}
         partial = not coverage_complete or set(approved) != set(sections)
         content = "\n\n".join(approved[key] for key in sections if key in approved)
         if partial:
-            content += "\n\n部分小问尚未核对通过，以上为本次可交付的部分。"
+            content += "\n\n以上为已审核通过的内容，部分小问可能遗漏或尚未通过审核。"
         # All delivered text comes from exact reviewed sections. An assembled or
         # repaired answer cannot reuse a diagram from an earlier draft.
         if len(content) > 3600:
@@ -181,7 +191,7 @@ def run_mentor_review(
         }
 
     execute_workflow(
-        load_catalog().spec(MENTOR_WORKFLOW_ID),
+        spec,
         handlers={
             MENTOR_EXPLAIN_ID: generate,
             MENTOR_REVIEW_ID: review,

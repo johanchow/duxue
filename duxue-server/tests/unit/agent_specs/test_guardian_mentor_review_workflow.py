@@ -135,3 +135,114 @@ def test_unsupported_anchor_becomes_unknown():
         },
     )
     assert result["status"] == "unknown" and result["reason"] == "unsupported"
+
+
+@pytest.fixture(scope="module")
+def simple():
+    source = json.loads(Path("tests/fixtures/admin-release.json").read_text())
+    old = upgrade(source)
+    new = upgrade(old, simplify=True)
+    assert new["digest"] == upgrade(new, simplify=True)["digest"]
+    return compile_bundle(new["bundle"]).catalog
+
+
+@pytest.mark.parametrize("shape", ["array", "keyed", "object"])
+def test_observed_review_wire_formats_are_validated(simple, shape):
+    from app.agent_specs.contracts import validate_output
+
+    rows = [
+        {"id": "24", "status": "pass", "reason": ""},
+        {"id": "25", "status": "wrong", "reason": "描述" * 101},
+    ]
+    wire = {
+        "array": rows,
+        "keyed": {r["id"]: r for r in rows},
+        "object": {"rows": rows, "coverage_complete": True},
+    }[shape]
+    with use_definitions(simple):
+
+        def validate(payload):
+            validate_output(simple.units["tutoring.mentor-review"], payload)
+
+        result, outcome, _ = components.validate_json_completion(
+            components.ChatCompletionResult(
+                raw=json.dumps(wire), finish_reason="stop", stream_completed=True
+            ),
+            unit_id="tutoring.mentor-review",
+            validate_payload=validate,
+        )
+    assert outcome == "ok"
+    assert result["coverage_complete"] is (shape == "object")
+    assert [(r["id"], r["status"]) for r in result["rows"]] == [
+        ("24", "pass"),
+        ("25", "wrong"),
+    ]
+    assert len(result["rows"][1]["reason"]) == 100
+
+
+@pytest.mark.parametrize(
+    "review_ids,expected",
+    [
+        ([("1", "pass")], "partial"),
+        ([("1", "pass"), ("2", "wrong")], "partial"),
+        ([("1", "pass"), ("1", "wrong")], "unavailable"),
+        ([("1", "pass"), ("3", "pass")], "unavailable"),
+    ],
+)
+def test_simple_workflow_only_delivers_matching_reviewed_parts(
+    simple, monkeypatch, review_ids, expected
+):
+    monkeypatch.setattr(guardian_mentor, "_solve_for_mentor", lambda **kwargs: None)
+
+    def provider(*, spec, **kwargs):
+        if spec.component_id == "tutoring.mentor-explain":
+            return {
+                "act": "explain",
+                "content": "候选文字",
+                "sections": [
+                    {"id": "1", "content": "第一问"},
+                    {"id": "2", "content": "第二问"},
+                ],
+            }
+        assert spec.component_id == "tutoring.mentor-review"
+        return _review(*review_ids)
+
+    monkeypatch.setattr(components, "invoke_json_component", provider)
+    trace = Recorder()
+    with use_definitions(simple), trace.capture():
+        response = guardian_mentor.explain_for_guardian(
+            guardian_id=str(uuid4()),
+            content="两问",
+            attachment_keys=[],
+            window=[],
+            images=[],
+            rows=[],
+        )
+    if expected == "partial":
+        assert response["act"] == "explain"
+        assert (
+            "第一问" in response["content"]
+            and "第二问" not in response["content"]
+            and "部分小问" in response["content"]
+        )
+    else:
+        assert response["act"] == "unavailable"
+    assert [
+        e["node_id"].split(".")[-1]
+        for e in trace.events
+        if e["kind"] in {"agent", "gate", "action"}
+    ] == ["explain", "review", "deliver"]
+
+
+def test_duplicate_keys_in_keyed_review_are_rejected(simple):
+    wire = '{"1":{"id":"1","status":"wrong","reason":""},"1":{"id":"1","status":"pass","reason":""}}'
+    completion = components.ChatCompletionResult(
+        raw=wire, finish_reason="stop", stream_completed=True
+    )
+    with (
+        use_definitions(simple),
+        pytest.raises(components._CompletionClassifiedError, match="json_parse_error"),
+    ):
+        components.validate_json_completion(
+            completion, unit_id="tutoring.mentor-review"
+        )

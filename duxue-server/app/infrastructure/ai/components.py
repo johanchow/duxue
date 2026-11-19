@@ -415,7 +415,6 @@ def validate_json_completion(
     validate_payload: Callable[[dict[str, Any]], None] | None = None,
 ) -> tuple[dict[str, Any], CompletionOutcome, str | None]:
     """Enforce termination gates and classify JSON/contract/wire outcomes."""
-    del unit_id
     if not completion.stream_completed or completion.finish_reason is None:
         raise _CompletionClassifiedError("incomplete_stream", "model_transport_error")
     if completion.finish_reason == "length":
@@ -423,12 +422,23 @@ def validate_json_completion(
     if completion.finish_reason != "stop":
         raise _CompletionClassifiedError("non_stop_finish", "invalid_model_candidate")
 
+    simple_review = False
+    if unit_id == "tutoring.mentor-review":
+        from app.agent_specs.guardian_contracts import (
+            MENTOR_REPAIR_ID,
+            normalize_review_shape,
+            review_json_object,
+        )
+
+        simple_review = MENTOR_REPAIR_ID not in load_definitions().units
     try:
-        payload = json.loads(completion.raw)
+        payload = json.loads(completion.raw, object_pairs_hook=review_json_object if simple_review else None)
     except ValueError as error:
         raise _CompletionClassifiedError(
             "json_parse_error", "invalid_model_candidate"
         ) from error
+    if simple_review:
+        payload = normalize_review_shape(payload)
 
     try:
         if not isinstance(payload, dict):

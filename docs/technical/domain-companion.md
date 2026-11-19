@@ -799,9 +799,9 @@ And 不呈现空选择题或 pronunciation_lesson
 
 ### Admin 导师解析逐问审核
 
-配置含 `tutoring.mentor-review` 时，Guardian 解析运行 `guardian-mentor` 的讲解、逐问审核、定向修复、复核和汇总交付节点。讲解用稳定小问 ID 提交各问正文。独立 Judge 核对原题与每一问，用同一 ID 返回通过、有错或无法判定，并检查作答覆盖。已通过正文原样保留。存在带明确错误位置的小问时，剩余时限允许则重写一次，并只复核变更。部分通过时标注尚未核对通过的范围。按小问拼装的答复保留经审核的正文，旧草稿的图随原稿失效。
+新草稿使用讲解、逐问审核和交付三个节点。独立 Judge 按输入小问 ID 判定通过、有错或无法判定。服务端兼容审核返回的对象、裸数组和按 ID 索引的对象，随后校验字段、题号和重复项。漏审只影响未审核的小问。题号冲突会阻止交付，题目范围不明时保留部分交付标记。已通过的正文原样交付。
 
-草稿从当前 Admin 配置导出，用 `scripts/upgrade_guardian_mentor_review.py` 生成升级快照，再经 `config:import-upgrade` 导入。只有加载了新快照的实例执行此路径。旧快照的兼容调用保持原有整题审核协议。
+从当前 Admin 草稿导出快照，通过 `scripts/upgrade_guardian_mentor_review.py --simplify` 生成升级包，再运行 `config:import-upgrade`。旧的整题审核及五节点逐问修复配置仍可加载。
 
 
 成人体验不进入 Ward 的 Companion Coordinator、Thread/Run 账本和 Tutoring/Study/ProblemSolving 持久化，不读取任何孩子上下文、私有 `ProblemDossier(scope="ward")` 或 Memory，也不发布学习事实。产品范围唯一归属 [用户 PRD §7.2](../product/prd-user.md#72-家长问答体验)。

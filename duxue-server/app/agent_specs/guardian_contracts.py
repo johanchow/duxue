@@ -181,7 +181,7 @@ def _sections_schema():
     }
 
 
-def staged_contracts():
+def staged_contracts(*, include_repair=True):
     result = {}
     for uid, kind in ((MENTOR_REVIEW_ID, "gate"), (MENTOR_REPAIR_ID, "agent")):
         doc = copy.deepcopy(frozen_contracts()[f"agents/{MENTOR_EXPLAIN_ID}.json"])
@@ -233,6 +233,8 @@ def staged_contracts():
                 },
             )
         result[f"{'agents' if kind == 'agent' else 'gates'}/{uid}.json"] = doc
+    if not include_repair:
+        result.pop(f"agents/{MENTOR_REPAIR_ID}.json")
     return result
 
 
@@ -346,3 +348,74 @@ def stage_mentor_review(files):
         ]
     files.update(docs)
     files["workflows/guardian-mentor.json"] = staged_workflow()
+
+
+def simple_workflow():
+    workflow = staged_workflow()
+    removed = {"guardian-mentor.repair", "guardian-mentor.recheck"}
+    workflow["nodes"] = [
+        node for node in workflow["nodes"] if node["id"] not in removed
+    ]
+    workflow["edges"] = [
+        edge for edge in workflow["edges"] if not ({edge["from"], edge["to"]} & removed)
+    ]
+    for edge in workflow["edges"]:
+        if edge["from"] == "guardian-mentor.review":
+            edge.pop("condition_id")
+    return workflow
+
+
+def simplify_mentor_review(files):
+    gate_path = f"gates/{MENTOR_REVIEW_ID}.json"
+    if gate_path not in files:
+        stage_mentor_review(files)
+    files.pop(f"agents/{MENTOR_REPAIR_ID}.json", None)
+    files[f"workflows/{MENTOR_WORKFLOW_ID}.json"] = simple_workflow()
+    files[gate_path]["prompt"]["template"] = (
+        "你是独立审核员。依据原题和图片审核 sections 中给定的每一项。"
+        "只输出一个 JSON 对象，示例："
+        '{"rows":[{"id":"24","status":"pass","reason":""},{"id":"25","status":"wrong","reason":"选项与原文矛盾"}],'
+        '"coverage_complete":true}。'
+        "严格使用输入 sections 中的原 ID，每个 ID 只出现一次。不要添加图片中的相邻题；"
+        "目标范围内无法判断的条目返回 unknown。每条 reason 最多100字，通过时用空字符串。"
+        "仅在目标题目及全部小问确实齐全时返回 coverage_complete=true；不明确时返回 false。"
+    )
+
+
+def normalize_review_shape(payload):
+    """Adapt observed wire shapes. Missing whole-question coverage stays unknown."""
+    if isinstance(payload, list):
+        payload = {"rows": payload}
+    if not isinstance(payload, dict):
+        return payload
+    if (
+        "rows" not in payload
+        and payload
+        and all(
+            isinstance(row, dict) and row.get("id") == key
+            for key, row in payload.items()
+        )
+    ):
+        payload = {"rows": list(payload.values())}
+
+    if isinstance(payload.get("rows"), list):
+        payload = {**payload}
+        payload.setdefault("coverage_complete", False)
+        # Reason is display metadata in the simplified graph. Keep the judgment
+        # and the ID unchanged, and bound the logged explanation.
+        payload["rows"] = [
+            {**row, "reason": row["reason"][:100]}
+            if isinstance(row, dict) and isinstance(row.get("reason"), str)
+            else row
+            for row in payload["rows"]
+        ]
+    return payload
+
+
+def review_json_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate review JSON key")
+        result[key] = value
+    return result

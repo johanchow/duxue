@@ -246,3 +246,5 @@
 - 内部求解发布回归：有放回/无放回在数值与符号相同的情况下也属于不同转写；题面和小问逐项核对，缺失的复读结果不能回到原选路。小问完整性按声明标签/编号匹配显式最终答案。T2 在剩余预算内提前汇合，已结束的分支单独核验，迟到的候选和回放事件不参与当前结果。两种入口的双路超时、单路超时及旧快照路径见 [回归用例](../../duxue-server/tests/unit/problem_solving/test_blueprint_steps.py)，预算口径见 [ProblemSolving 设计](../../docs/technical/domain-problem-solving.md#admin-内部解题工作流)。
 
 - Guardian 逐问审核拓扑已导入 duxue-admin-test 工作草稿 da210b2f-d24e-40cf-9e4f-db60ef3c99e5 revision 4。API 回读 5 节点、9 条边，测试发布指针仍为 R13。本地真实模型通过两小问的讲解、审核与交付；回归覆盖定向修复、复核拒绝/不可用及小问 ID 不匹配。修复蓝图非成功结果错误读取 MathResult.error 的崩溃。全量 1306 通过、1 跳过。流程与兼容入口见 [Guardian 设计](../../docs/technical/domain-companion.md#admin-导师解析逐问审核)。
+
+- Guardian 审核简化已写入 duxue-admin-test 草稿 da210b2f-d24e-40cf-9e4f-db60ef3c99e5 revision 5。回读 3 节点、5 条边，发布指针 R13。对照英语首答 47.5/100、6/9 组有实质答案、1/9 审核协议失败，旧五节点首答 0/100、0/9 组有实质答案、8/8 审核协议失败。剩余格式失败是第 1–10 题审核输出 20 条。第44题仅写作指导，人工计零。试卷证据见 `duxue-server/var/exams/beijing-2025-english-simple.PRtykP/REPORT.md`。全量 1314 通过、1 跳过。协议规则见 [Guardian 设计](../../docs/technical/domain-companion.md#admin-导师解析逐问审核)。
