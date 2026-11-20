@@ -236,3 +236,33 @@ def test_critical_condition_comparison_ignores_freeform_diagram_prose_and_checks
         )
         == "low"
     )
+
+
+def test_image_request_binding_survives_extraction_and_long_text():
+    from unittest.mock import Mock
+
+    from app.application.commands.problem_solving import RequestSolveCommand
+    from app.application.ports.problem_solving import SqlProblemDossierRepository
+
+    command = RequestSolveCommand(None, enqueue_fn=Mock())
+    command.repo = Mock(spec=SqlProblemDossierRepository)
+    command.repo.find_image_request.return_value = None
+    command.repo.save.side_effect = lambda dossier: dossier
+    question = "问" * 4000
+    first = command.execute(ward_id="ward-a", text=question, images=["data:image/png;base64,YQ=="])
+    other = command.execute(ward_id="ward-a", text=question, images=["data:image/png;base64,Yg=="])
+    assert first.fingerprint != other.fingerprint
+    assert first.stem.raw_text == other.stem.raw_text == question
+
+    solved = first.complete_solve(
+        approaches=(), invariants=(), scoring_points=(), final_answers={},
+        confidence="medium", tier="T0", evidence={}, stem=StructuredStem("physics", "图中概念"),
+    )
+    assert (solved.status, solved.subject, solved.tier) == ("ready", "physics", "T0")
+    assert solved.fingerprint == first.fingerprint
+    assert solved.evidence["request_image_refs"] == first.evidence["request_image_refs"]
+    command.repo.find_image_request.return_value = solved
+    repeat = command.execute(ward_id="ward-a", text=question, images=["data:image/png;base64,YQ=="])
+    command.repo.find_image_request.assert_called_with(ward_id="ward-a", fingerprint=solved.fingerprint)
+    assert repeat.dossier_id == first.dossier_id
+    assert command.enqueue_fn.call_count == 2

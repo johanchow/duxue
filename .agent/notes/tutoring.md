@@ -271,3 +271,4 @@
   - 修复读题、复读及主备求解对中间工具请求的校验，测试经真实组件解析验证裁图回传。物理第 15、16 题复测确认真实模型会请求并收到切片，但可能裁掉主尺或标注端点。判断工具效果须同时检查实际框选内容、后续模型输入和最终答卷。分版本核分及切片见[两道实验题复测](../../duxue-server/var/exams/physics-tools.XMpFeY/REPORT.md)。
   - 同卷启用裁图扩边与 v2 提示再跑，20 题输入与上次整卷一致。首答 92/100（上轮 84），第 4 题超时；第 15 题局部图保留主尺仍读错，第 16 题在两张切片回传后四问全对。阅卷模型仍会沿用参考书错误的纸带加速度，须核对原图累计距离。见[整卷得分与切片](../../duxue-server/var/exams/beijing-2025-physics-current.9dlgqq/REPORT.md)。
   - Ward 侧 `tutoring` 链路同步补齐 5 项：`RequestSolveCommand` 建档一律绑定已授权 `image_ref` 防止换图串题，前台入队改传实际选中的历史/本轮 `attachment_keys`；`ExecuteDossierSolveCommand` 对尚未转写的新图题走 `extract` 首次读题与分级；`tutor_turn` 注入 `image_manifest` 并在 `tutoring.turn` 中加入整页邻题隔离、围绕图上可核对事实启发（不因裁图成功单凭视觉估读硬判错）及 `max_output_tokens=8192`。
+  - Ward 图题的请求指纹由原始题面与有序图片身份生成，读题完成后仍用原请求查找；实际转写及学科另行保存。T0 不要求生成解题路线。换图时先隐藏旧档案，模型判定新题后重新绑定；历史附件键随同一次授权读图取得。学生输出预算在升级时保留现值，显式传入 `--ward-max-output-tokens` 可选择 4096 或 8192。

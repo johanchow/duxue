@@ -367,6 +367,12 @@ class SqlProblemDossierRepository:
         query = self.db.query(ProblemDossierRecord).filter_by(scope="bank", status="ready")
         return self._matching(query, stem)
 
+    def find_image_request(self, *, ward_id: str, fingerprint: str) -> ProblemDossier | None:
+        row = self.db.query(ProblemDossierRecord).filter_by(
+            scope="ward", owner_ward_id=ward_id, fingerprint=fingerprint,
+        ).order_by(ProblemDossierRecord.updated_at.desc()).first()
+        return self.to_domain(row) if row else None
+
     def find_reusable(self, *, stem: StructuredStem, ward_id: str) -> ProblemDossier | None:
         bank = self.find_bank_ready(stem=stem)
         if bank is not None:

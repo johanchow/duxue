@@ -55,12 +55,17 @@ VISION_INSPECT_GUIDANCE = (
 )
 
 TUTOR_TURN_ID = "tutoring.turn"
-TUTOR_TURN_MAX_OUTPUT_TOKENS = 8192
 
 TUTOR_VISUAL_DISCIPLINE = (
     "\n[tutor-visual-discipline.v1] 看图引导与题界纪律：\n"
     "1. 整页邻题隔离：若学生拍整页作业并指定了某道题号，只聚焦引导该目标题，严禁顺带提及、解答或泄露同页其他邻题。\n"
     "2. 围绕可核对的图上事实启发：遇到螺旋测微器/游标卡尺/电表刻度、纸带点迹标注或电路接线时，优先使用 image_manifest 中的 image_ref 调用 inspect_image 局部放大（若切片裁掉主尺零刻度或标注端点，扩大 bbox 再裁一次）。引导时把问题锚定在图上具体视觉特征（如「看看图上 x₂ 的箭头，它从哪个点量到哪个点？」），让孩子自己发现问题；即使裁图成功，也不要仅凭单次视觉估读强行判孩子读数或计算一定错，存在疑义时引导孩子对照原图一起核对刻度或端点。"
+)
+
+TUTOR_VISUAL_FOLLOWUP = (
+    "\n[tutor-visual-discipline.v2] "
+    '取图回合只输出 {"tool":"inspect_image","args":{...}}，收到切片后再输出本轮答复。'
+    "3. 确认为单选但多个选项看似成立时，先核对题干要求选对还是选错、图中方向、参照系和适用条件；再提示学生自行检查一个关键条件。"
 )
 
 NODES = [
@@ -244,7 +249,7 @@ def contracts():
     return result
 
 
-def upgrade_files(files):
+def upgrade_files(files, *, ward_max_output_tokens=None):
     docs = contracts()
     planner = files[f"agents/{PLANNER_ID}.json"]
 
@@ -333,11 +338,12 @@ def upgrade_files(files):
     turn_path = f"agents/{TUTOR_TURN_ID}.json"
     if turn_path in files:
         turn_doc = files[turn_path]
-        for m in turn_doc.get("models") or []:
-            m["max_output_tokens"] = max(
-                int(m.get("max_output_tokens") or 0), TUTOR_TURN_MAX_OUTPUT_TOKENS
-            )
-        turn_tpl = turn_doc["prompt"]["template"]
-        if "[tutor-visual-discipline.v1]" in turn_tpl:
-            turn_tpl = turn_tpl.split("[tutor-visual-discipline.v1]", 1)[0]
-        turn_doc["prompt"]["template"] = turn_tpl.rstrip() + TUTOR_VISUAL_DISCIPLINE
+        if ward_max_output_tokens is not None:
+            for model in turn_doc["models"]:
+                model["max_output_tokens"] = ward_max_output_tokens
+        template = turn_doc["prompt"]["template"]
+        for marker, rules in (("[tutor-visual-discipline.v1]", TUTOR_VISUAL_DISCIPLINE),
+                              ("[tutor-visual-discipline.v2]", TUTOR_VISUAL_FOLLOWUP)):
+            if marker not in template:
+                template = template.rstrip() + rules
+        turn_doc["prompt"]["template"] = template

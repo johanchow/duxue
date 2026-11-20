@@ -357,7 +357,12 @@ def test_upgraded_solver_and_mentor_budgets_and_discipline_prompts():
     assert "[mentor-discipline.v2]" in mentor_doc["prompt"]["template"]
 
     turn_doc = files["agents/tutoring.turn.json"]
-    assert all(m["max_output_tokens"] >= 8192 for m in turn_doc["models"])
+    def caps(doc):
+        return [m["max_output_tokens"] for m in doc["models"]]
+    assert caps(turn_doc) == caps(source["bundle"]["files"]["agents/tutoring.turn.json"])
+    variant = upgrade(add_blueprint(source, gaokao=True), ward_max_output_tokens=8192)
+    assert set(caps(variant["bundle"]["files"]["agents/tutoring.turn.json"])) == {8192}
+    assert "[tutor-visual-discipline.v2]" in turn_doc["prompt"]["template"]
     assert "[tutor-visual-discipline.v1]" in turn_doc["prompt"]["template"]
 
 

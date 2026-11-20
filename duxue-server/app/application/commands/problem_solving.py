@@ -25,6 +25,7 @@ from app.contexts.problem_solving.domain.dossier import (
     ScoringPoint,
     StructuredStem,
     compare_critical_conditions,
+    image_request_fingerprint,
 )
 from app.contexts.tutoring.domain.blueprint import (
     Approach,
@@ -77,21 +78,14 @@ class RequestSolveCommand:
         from app.agent_specs.image_refs import image_ref
 
         imgs = [img for img in (images or []) if isinstance(img, str) and img]
-        # Bind authorized image identities into stem whenever images are present so different
-        # pictures with the same generic text ("帮我看看") never collide on an older dossier.
-        img_tag = (
-            " [images:" + ",".join(image_ref(img) for img in imgs) + "]"
-            if imgs
-            else ""
-        )
-        raw_prefix = text.strip()
-        stem_text = (
-            (raw_prefix + img_tag) if raw_prefix else img_tag.strip()
-        )[:4000]
-        stem = StructuredStem(subject=subject, raw_text=stem_text)
+        refs = [image_ref(img) for img in imgs]
+        stem = StructuredStem(subject=subject, raw_text=text.strip()[:4000])
         current_time = now()
-
-        existing = self.repo.find_reusable(stem=stem, ward_id=ward_id)
+        if refs:
+            fingerprint = image_request_fingerprint(stem, refs)
+            existing = self.repo.find_image_request(ward_id=ward_id, fingerprint=fingerprint)
+        else:
+            existing = self.repo.find_reusable(stem=stem, ward_id=ward_id)
         if existing is not None:
             if existing.status in {"ready", "low_confidence"}:
                 return existing
@@ -114,6 +108,8 @@ class RequestSolveCommand:
             solver_version=self.solver_version,
             now_at=current_time,
         )
+        if refs:
+            created = replace(created, fingerprint=fingerprint, evidence={"request_image_refs": refs})
         saved = self.repo.save(created)
         self._dispatch(saved.dossier_id, imgs)
         return saved

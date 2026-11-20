@@ -111,6 +111,11 @@ def compute_stem_fingerprint(stem: StructuredStem, *, legacy: bool = False) -> s
     return ("fp_" if legacy else "fp2_") + hashlib.sha256(joined.encode("utf-8")).hexdigest()[:40]
 
 
+def image_request_fingerprint(stem: StructuredStem, image_refs: list[str]) -> str:
+    payload = json.dumps([compute_stem_fingerprint(stem), image_refs])
+    return "imgreq_" + hashlib.sha256(payload.encode()).hexdigest()
+
+
 @dataclass(frozen=True)
 class ScoringPoint:
     id: str
@@ -417,9 +422,11 @@ class ProblemDossier:
             needs_student_confirmation=False,
             disputed_conditions=(),
         )
+        refs = self.evidence.get("request_image_refs")
+        fingerprint = image_request_fingerprint(new_stem, refs) if refs else compute_stem_fingerprint(new_stem)
         return replace(
             self,
-            fingerprint=compute_stem_fingerprint(new_stem),
+            fingerprint=fingerprint,
             stem=new_stem,
             status="pending",
             confidence="low",
@@ -439,11 +446,16 @@ class ProblemDossier:
         stem: StructuredStem | None = None,
     ) -> ProblemDossier:
         next_status: DossierStatus = (
-            "ready" if confidence in {"high", "medium"} and approaches else "low_confidence"
+            "ready" if confidence in {"high", "medium"} and (approaches or tier == "T0") else "low_confidence"
         )
+        settled_stem = stem or self.stem
+        settled_evidence = dict(evidence)
+        if "request_image_refs" in self.evidence:
+            settled_evidence["request_image_refs"] = self.evidence["request_image_refs"]
         return replace(
             self,
-            stem=stem or self.stem,
+            stem=settled_stem,
+            subject=settled_stem.subject,
             approaches=approaches,
             invariants=invariants,
             scoring_points=scoring_points,
@@ -451,7 +463,7 @@ class ProblemDossier:
             confidence=confidence,
             tier=tier,
             status=next_status,
-            evidence=dict(evidence),
+            evidence=settled_evidence,
             lease_until=None,
         )
 
