@@ -179,10 +179,27 @@ def compile_bundle(bundle: dict) -> CompiledBundle:
             raise ValueError(f"{name}: read-only contract or workflow changed")
         if "models" in doc and not set(doc["tools"]).issubset(contracts["tool_authority"][doc["id"]]):
             raise ValueError(f"{name}: tool authority cannot expand")
+    judge_doc = bundle["files"]["gates/tutoring.leak-judge.json"]
+    judge_schema = judge_doc.get("provider_output_schema") or {}
+    judge_props = set((judge_schema.get("properties") or {}).keys())
+    required_text_fields = {
+        "answer_protected",
+        "student_answer_correct",
+        "affirms_student_answer",
+        "new_final_answer",
+        "complete_solution",
+        "choice_verdict",
+        "premature_conclusion",
+    }
+    if not required_text_fields.issubset(judge_props):
+        missing = sorted(required_text_fields - judge_props)
+        raise ValueError(f"leak-judge schema missing required text review fields: {missing}")
     if "tutoring.math" in bundle["files"]["agents/tutoring.turn.json"]["tools"]:
         for name in ("agents/tutoring.turn.json", "gates/tutoring.leak-judge.json"):
             if "[math.v1]" not in bundle["files"][name]["prompt"]["template"]:
                 raise ValueError("math tool requires matching tutor and judge protocol")
+        if "math_consistent" not in judge_doc["prompt"]["template"] or "math_consistent" not in judge_props:
+            raise ValueError("math tool requires leak-judge prompt and schema to declare math_consistent")
     bundle_id = digest(bundle)
     with tempfile.TemporaryDirectory(prefix="duxue-config-") as directory:
         root = Path(directory)

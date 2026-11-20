@@ -120,3 +120,5 @@
 - 2026-11-20 本地同题延迟排查。Grafana MCP 数据源查询返回 503，用独立审计的 trace ID 到 Langfuse 回查。家长讲题 `84fdc23d2fe730280ec18ca0be20b1a0` 同一 `tutoring-blueprint.plan` 的首次读题 `stem_extract` 7.038 秒、T1 独立求解 `independent_solve` 14.902 秒，两次模型调用均开启 thinking；未采到讲解生成与 HTTP 耗时。学生首问 `6ece9561a3cddc6f5259385b11d5799c` 和追问 `45cad9bc9fcbf8be56c24fc2acf8d922` 的答疑 workflow 分别为 6.395 和 6.038 秒，其中出口审核 5.073 和 4.700 秒。两次 `tutoring-vet.text_leak` span 要按 phase 拆解为数学一致性与正文泄露检查，不能按重复节点名认作重试。
   按 span digest 回查 Admin `agent_releases`，两轮学生答疑对应 R13 的 `tutoring`、`tutoring-retry`、`tutoring-vet`。首轮编排 `tutoring-retry.primary` 的生成与审核计时包在 `tutoring.attempt` span 内，无独立的 retry workflow 总计时，不能和 `tutoring.exit_gate` 重复相加。
   Admin 测试环境当时绑定 R13。`tutoring.attempt` 的定义归 `tutoring`，父节点为 `tutoring.model_loop`，引用组件 `tutoring.turn`。Admin 卡片显示引用组件的名称及 ref，节点 ID 在点选后的配置里。[卡片标题与引用规则](../../duxue-admin/src/lib/workflow-graph.ts)。
+
+- 2026-11-20 22:04 分数首问复查。Tempo 与 Langfuse 同一 trace `c73548ffc3ed952b73f87ab40cb2f6cf`，R13 家长体验学生引导入口 HTTP 64.893 秒，答疑 64.803 秒。数学与正文审核同时启动，分别耗时 2.354 和 62.849 秒；慢正文审核的单条出站 POST 62.806 秒并返回 200。三次模型调用各对应一条出站 POST。历史同题已有约 62 秒的单次审核样本；遥测未拆分提供方排队、推理与传输，不能从这次样本判断并发对长尾的影响。

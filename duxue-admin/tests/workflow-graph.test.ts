@@ -1,3 +1,4 @@
+import { tutoringHierarchy, tutoringOverview, isTutoringAttempt } from "../src/lib/tutoring-hierarchy";
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -5,9 +6,19 @@ import test from 'node:test';
 import { workflowGraph, workflowDetailHref } from '../src/lib/workflow-graph';
 import { actionLogic, gateLogic } from '../src/lib/workflow-code';
 
-const directory = path.resolve(
-  '../duxue-server/tests/fixtures/agent_specs/workflows',
+const releaseSnapshot = JSON.parse(
+  fs.readFileSync(
+    path.resolve('../duxue-server/tests/fixtures/admin-release.json'),
+    'utf8',
+  ),
 );
+const snapshotWorkflows: Array<[string, any]> = Object.entries(
+  releaseSnapshot.bundle.files,
+)
+  .filter(
+    ([name]) => name.startsWith('workflows/') && name.endsWith('.json'),
+  )
+  .map(([name, doc]) => [path.basename(name), doc]);
 test('code gates and workflow actions have shareable details with the same draft', () => {
   const gate = { kind: 'gate', ref: 'tutoring.authority' };
   assert.equal(
@@ -28,13 +39,8 @@ test('code gates and workflow actions have shareable details with the same draft
     '/workflows/tutoring/nodes/tutoring.model_loop?draft=draft%2Fid',
   );
 });
-for (const file of fs
-  .readdirSync(directory)
-  .filter((file) => file.endsWith('.json'))) {
+for (const [file, flow] of snapshotWorkflows) {
   test(`${file}: graph preserves all control edges, branches, loops and unconnected child nodes`, () => {
-    const flow = JSON.parse(
-      fs.readFileSync(path.join(directory, file), 'utf8'),
-    );
     const result = workflowGraph(flow);
     for (const node of flow.nodes.filter(
       (item: any) => item.kind === 'action',
@@ -74,9 +80,7 @@ for (const file of fs
 }
 
 test('parallel conditions have separate visible routes, including retry cycles', () => {
-  const flow = JSON.parse(
-    fs.readFileSync(path.join(directory, 'tutoring-vet.json'), 'utf8'),
-  );
+  const flow = releaseSnapshot.bundle.files['workflows/tutoring-vet.json'];
   const { edges } = workflowGraph(flow);
   const parallel = edges.filter(
     (edge) =>
@@ -86,6 +90,40 @@ test('parallel conditions have separate visible routes, including retry cycles',
   assert.equal(parallel.length, 2);
   assert.notDeepEqual(parallel[0].data?.route, parallel[1].data?.route);
   edges.forEach((edge) => assert((edge.data?.route as any[]).length >= 2));
+});
+
+test('parallel tutoring-vet topology renders Chinese labels for math/text/visual fan-out', () => {
+  const flow = {
+    kind: 'workflow',
+    id: 'tutoring-vet',
+    handler: 'tutoring',
+    nodes: [
+      { id: 'tutoring-vet.authority', kind: 'gate', ref: 'tutoring.authority' },
+      { id: 'tutoring-vet.math_consistency', kind: 'gate', ref: 'tutoring.leak-judge' },
+      { id: 'tutoring-vet.text_leak', kind: 'gate', ref: 'tutoring.leak-judge' },
+      { id: 'tutoring-vet.visual_leak', kind: 'gate', ref: 'tutoring.visual-leak-judge' },
+      { id: 'tutoring-vet.complete', kind: 'action', handler_id: 'tutoring.vet_complete' },
+    ],
+    edges: [
+      { from: 'START', to: 'tutoring-vet.authority' },
+      { from: 'tutoring-vet.authority', to: 'tutoring-vet.complete', condition_id: 'authority_denied' },
+      { from: 'tutoring-vet.authority', to: 'tutoring-vet.complete', condition_id: 'authority_allowed_no_review' },
+      { from: 'tutoring-vet.authority', to: 'tutoring-vet.math_consistency', condition_id: 'needs_math_review' },
+      { from: 'tutoring-vet.authority', to: 'tutoring-vet.text_leak', condition_id: 'needs_text_review' },
+      { from: 'tutoring-vet.authority', to: 'tutoring-vet.visual_leak', condition_id: 'needs_visual_review' },
+      { from: 'tutoring-vet.math_consistency', to: 'tutoring-vet.complete' },
+      { from: 'tutoring-vet.text_leak', to: 'tutoring-vet.complete' },
+      { from: 'tutoring-vet.visual_leak', to: 'tutoring-vet.complete' },
+      { from: 'tutoring-vet.complete', to: 'END' },
+    ],
+  };
+  const { edges } = workflowGraph(flow);
+  const labels = new Set(edges.map((edge) => edge.label).filter(Boolean));
+  assert.ok(labels.has('并行：数学一致性'));
+  assert.ok(labels.has('并行：正文答案保护'));
+  assert.ok(labels.has('并行：配图答案保护'));
+  assert.ok(labels.has('无需模型审核'));
+  assert.ok(labels.has('权限拒绝'));
 });
 
 test('code gate explanations describe the registered handler only', () => {
@@ -191,5 +229,52 @@ test('子流程卡片打开同一草稿或发布版本', () => {
   assert.equal(
     workflowDetailHref('tutoring', node, undefined, undefined, 'r1'),
     '/workflows/tutoring-retry?release=r1',
+  );
+});
+
+test('tutoring shows exit_gate in its declaring workflow and resolves the referenced retry attempts', () => {
+  const workflows = Object.fromEntries(
+    snapshotWorkflows.map(([, doc]) => [doc.id, structuredClone(doc)]),
+  );
+  assert.equal(tutoringHierarchy(workflows), null);
+  const flow = workflows.tutoring;
+  const loop = flow.nodes.find((n: any) => n.id === 'tutoring.model_loop');
+  Object.assign(loop, { kind: 'workflow', ref: 'tutoring-retry' });
+  flow.nodes.push({
+    id: 'tutoring.review_candidate',
+    parent: 'tutoring.exit_gate',
+    kind: 'workflow',
+    ref: 'tutoring-vet',
+  });
+  const hierarchy = tutoringHierarchy(workflows);
+  assert.ok(hierarchy);
+  const graph = workflowGraph(flow);
+  assert.ok(graph.nodes.some(n => n.id === 'tutoring.exit_gate'));
+  assert.ok(graph.edges.some(e => e.source === 'tutoring.exit_gate' && e.target === 'tutoring.output_safety'));
+  assert.equal(graph.edges.filter(e => !e.data?.relationship).length, flow.edges.length);
+  assert.equal(hierarchy.review.ref, 'tutoring-vet');
+  assert.equal(hierarchy.exit.kind, 'action');
+  const overview = workflowGraph(tutoringOverview(flow, hierarchy));
+  assert.ok(!overview.nodes.some(n => n.id === hierarchy.exit.id));
+  assert.equal(overview.nodes.find(n => n.id === loop.id)?.data.title, '生成辅导回复');
+  const boundary = overview.edges.find(e => e.source === loop.id && e.target === 'tutoring.output_safety');
+  assert.equal((boundary?.data?.configuration as any).from, hierarchy.exit.id);
+  const retry = workflows[loop.ref];
+  assert.deepEqual(
+    retry.nodes
+      .filter((n: any) => isTutoringAttempt(retry, n, hierarchy))
+      .map((n: any) => n.handler_id),
+    [
+      'primary',
+      'repair',
+      'backup',
+      'visual_redraw',
+      'missing_primary',
+      'missing_backup',
+    ],
+  );
+  assert.equal(
+    workflowDetailHref(retry.id, retry.nodes[0], undefined, undefined, 'r13'),
+    '/workflows/tutoring-retry/nodes/tutoring-retry.primary?release=r13',
   );
 });

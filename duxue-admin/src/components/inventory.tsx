@@ -18,6 +18,11 @@ import {
   workflowNodeTitle,
   type Json,
 } from '../lib/workflow-graph';
+import {
+  tutoringHierarchy,
+  tutoringOverview,
+  isTutoringAttempt,
+} from '../lib/tutoring-hierarchy';
 import { actionLogic, gateLogic } from '../lib/workflow-code';
 import { componentTypes } from '../lib/component-types';
 import { filterAgents } from '../lib/agent-filter';
@@ -554,16 +559,19 @@ export function AgentDetail({
 
 export function WorkflowActionDetail({
   flow,
+  catalog,
   node,
   definitions,
   names,
 }: {
   flow: Json;
+  catalog: Json;
   node: Json;
   definitions: Record<string, Json>;
   names: Record<string, string>;
 }) {
   const summary = actionLogic(flow.id, node);
+  const hierarchy = tutoringHierarchy(catalog.workflows);
   const outgoing = flow.edges.filter((edge: Json) => edge.from === node.id);
   return (
     <>
@@ -576,6 +584,30 @@ export function WorkflowActionDetail({
         <p className="compact-meta">
           代码处理器 <code>{node.handler_id}</code>
         </p>
+        {hierarchy && isTutoringAttempt(flow, node, hierarchy) && (
+          <>
+            <h3>本次尝试</h3>
+            <ol>
+              <li>
+                启发式答疑生成 · <code>{hierarchy.attempt.ref}</code>
+              </li>
+              <li>
+                取得可审核的候选后进入出口审核 ·{' '}
+                <a
+                  href={workflowDetailHref(
+                    'tutoring',
+                    hierarchy.review,
+                    undefined,
+                    catalog.source_draft?.id,
+                    catalog.source_release?.id,
+                  )}
+                >
+                  查看审核流程
+                </a>
+              </li>
+            </ol>
+          </>
+        )}
         {outgoing.length > 0 && (
           <>
             <h3>后续路径</h3>
@@ -653,6 +685,19 @@ export function WorkflowExplorer({
   const [direction, setDirection] = useState<'LR' | 'TB'>('LR');
   const [showWhole, setShowWhole] = useState(false);
   const flow = catalog.workflows?.[workflowId];
+  const hierarchy = useMemo(
+    () => tutoringHierarchy(catalog.workflows),
+    [catalog.workflows],
+  );
+  const [expanded, setExpanded] = useState(false);
+  const canCollapse = workflowId === 'tutoring' && !!hierarchy && !replay;
+  const visibleFlow = useMemo(
+    () =>
+      canCollapse && !expanded && flow && hierarchy
+        ? tutoringOverview(flow, hierarchy)
+        : flow,
+    [canCollapse, expanded, flow, hierarchy],
+  );
   const detailHref = (node?: Json) =>
     workflowDetailHref(
       workflowId,
@@ -665,7 +710,7 @@ export function WorkflowExplorer({
     () =>
       flow
         ? workflowGraph(
-            flow,
+            visibleFlow,
             catalog.definitions,
             Object.fromEntries(
               (catalog.components || []).map((component: Json) => [
@@ -676,7 +721,7 @@ export function WorkflowExplorer({
             direction,
           )
         : { nodes: [], edges: [] },
-    [flow, catalog.definitions, catalog.components, direction],
+    [flow, visibleFlow, catalog.definitions, catalog.components, direction],
   );
   useEffect(() => {
     if (!activeEvent || !flow || activeEvent.workflow_id !== workflowId) return;
@@ -783,8 +828,8 @@ export function WorkflowExplorer({
               Workflow 流程图 <span className="badge">只读</span>
             </h2>
             <p className="compact-meta">
-              {flow.id} · {flow.nodes.length} 个 Node · {flow.edges.length} 条
-              Edge · 入口 {flow.entry}
+              {flow.id} · {visibleFlow.nodes.length} 个 Node ·{' '}
+              {visibleFlow.edges.length} 条 Edge · 入口 {flow.entry}
             </p>
           </div>
           <div className="page-actions">
@@ -802,6 +847,18 @@ export function WorkflowExplorer({
             ? '点击节点查看本次执行记录。'
             : '点击带箭头的节点打开详情，点击连线查看分支配置。'}
         </p>
+        {canCollapse && (
+          <button
+            className="secondary"
+            aria-pressed={expanded}
+            onClick={() => {
+              setExpanded(!expanded);
+              setSelection(null);
+            }}
+          >
+            {expanded ? '收起子流程内部步骤' : '展开子流程内部步骤'}
+          </button>
+        )}
         <div className="workflow-toolbar">
           <div className="workflow-legend" aria-label="流程图图例">
             <span className="legend-agent">Agent</span>
@@ -835,7 +892,7 @@ export function WorkflowExplorer({
         </div>
         <div className="workflow-canvas" aria-label={`${workflowId} 流程图`}>
           <ReactFlow
-            key={`${workflowId}:${direction}`}
+            key={`${workflowId}:${direction}:${expanded}`}
             nodes={nodes}
             edges={edges}
             edgeTypes={edgeTypes}
@@ -943,6 +1000,46 @@ export function WorkflowExplorer({
                               查看此次子流程执行
                             </button>
                           )}
+                        {hierarchy &&
+                          isTutoringAttempt(
+                            flow,
+                            selection.config,
+                            hierarchy,
+                          ) &&
+                          childExecution(execution, event.id)
+                            .filter(
+                              (child) =>
+                                child.workflow_id === 'tutoring' &&
+                                ((child.node_id === hierarchy.attempt.id &&
+                                  child.kind === 'model') ||
+                                  (child.node_id === hierarchy.exit.id &&
+                                    child.kind !== 'edge') ||
+                                  (child.node_id === hierarchy.review.id &&
+                                    child.kind === 'workflow')),
+                            )
+                            .map((child) =>
+                              child.node_id === hierarchy.review.id ? (
+                                <button
+                                  className="secondary"
+                                  key={child.id}
+                                  onClick={() =>
+                                    openCall(hierarchy.review.ref, child)
+                                  }
+                                >
+                                  查看此次审核流程
+                                </button>
+                              ) : (
+                                <p key={child.id}>
+                                  {child.kind === 'model'
+                                    ? '答疑模型调用'
+                                    : '出口审核（含子步骤）'}{' '}
+                                  ·{' '}
+                                  {child.duration_ms == null
+                                    ? '耗时未记录'
+                                    : `${child.duration_ms} ms`}
+                                </p>
+                              ),
+                            )}
                         <pre>{pretty(event)}</pre>
                       </details>
                     ))

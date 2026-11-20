@@ -211,11 +211,20 @@ def test_full_release_has_all_configuration_files_and_edits_all_model_agents():
     from app.agent_specs.configuration import snapshot_bundle
     from app.agent_specs.definitions import ROOT
 
+    from app.agent_specs.registrations import WORKFLOW_BINDINGS
+
     bundle = snapshot_bundle()
     assert bundle["format_version"] == 3
-    assert set(bundle["files"]) == {
+    non_workflow_files = {
+        name for name in bundle["files"] if not name.startswith("workflows/")
+    }
+    workflow_files = {
+        name for name in bundle["files"] if name.startswith("workflows/")
+    }
+    assert non_workflow_files == {
         str(path.relative_to(ROOT)) for path in ROOT.rglob("*.json")
     }
+    assert workflow_files == {f"workflows/{name}.json" for name in WORKFLOW_BINDINGS}
     bundle["files"]["agents/companion.intent.json"]["prompt"]["template"] += (
         "\n发布版本指令。"
     )

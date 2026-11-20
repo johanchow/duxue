@@ -75,7 +75,7 @@ def execute_workflow(
     for node in spec.nodes:
         if node.id not in active_nodes: continue
         handler_id = node.ref if node.kind in {"agent", "gate"} else node.handler
-        if not handler_id or handler_id not in handlers:
+        if node.id not in handlers and (not handler_id or handler_id not in handlers):
             raise ValueError(f"{spec.id}: missing handler for {node.id}")
     referenced_conditions = {edge.condition for edge in spec.edges if edge.condition}
     referenced_conditions.update(gate["when"] for gate in spec.required_gates)
@@ -84,7 +84,8 @@ def execute_workflow(
     def _run_node(node_id: str):
         node = spec.node(node_id)
         handler_id = node.ref if node.kind in {"agent", "gate"} else node.handler
-        if not handler_id or handler_id not in handlers:
+        handler = handlers.get(node.id) if node.id in handlers else (handlers.get(handler_id) if handler_id else None)
+        if handler is None:
             raise ValueError(f"{spec.id}: missing handler for {node_id}")
         from app.agent_specs.execution_trace import payload, recorder
 
@@ -97,7 +98,7 @@ def execute_workflow(
         with context as event:
             token = executing_node.set((spec.id, node_id))
             try:
-                result = handlers[handler_id](state)
+                result = handler(state)
             finally:
                 executing_node.reset(token)
             if node.kind == "agent":
@@ -170,9 +171,26 @@ def execute_workflow(
             if parallel_runner:
                 branch_results = parallel_runner(targets, _run_node)
             else:
+                from app.agent_specs.execution_trace import Recorder, recorder
+
+                parent = recorder()
+                children = {target: Recorder() for target in targets} if parent is not None else {}
+
+                def _run_branch(target_id: str):
+                    capture = children[target_id].capture() if parent is not None else nullcontext()
+                    with capture:
+                        return _run_node(target_id)
+
                 with ThreadPoolExecutor(max_workers=len(targets)) as pool:
-                    futures = {target: pool.submit(copy_context().run, _run_node, target) for target in targets}
-                    branch_results = {target: future.result() for target, future in futures.items()}
+                    futures = {
+                        target: pool.submit(copy_context().run, _run_branch, target)
+                        for target in targets
+                    }
+                    branch_results = {}
+                    for target in targets:
+                        branch_results[target] = futures[target].result()
+                        if parent is not None:
+                            parent.merge_child(children[target])
             for target, (branch_node, branch_result) in branch_results.items():
                 state["results"][target] = branch_result
                 if branch_node.kind == "gate":

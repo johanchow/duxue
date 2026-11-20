@@ -35,6 +35,7 @@ _REQUIRED_GATES = {
 }
 _CONDITIONS = {
     "authority_denied", "authority_allowed_needs_leak_check", "authority_allowed_no_leak_check",
+    "authority_allowed_no_review", "needs_math_review", "needs_text_review", "needs_visual_review",
     "text_denied", "text_allowed_with_visual", "text_allowed_no_visual",
     "always", "requires_text_leak", "requires_visual_leak",
 }
@@ -220,7 +221,9 @@ class AgentCatalog:
         from app.agent_specs.subworkflows import (
             CALL_TARGETS,
             MATH_NODE,
+            PARALLEL_VET_CONDITIONS,
             RETRY_NODE,
+            VET_MATH_NODE,
             VET_NODE,
         )
 
@@ -280,16 +283,35 @@ class AgentCatalog:
                 bindings = {node.id: node.ref for node in spec.nodes if node.kind == "workflow"}
                 if spec.id != "tutoring" or bindings != CALL_TARGETS:
                     raise ValueError("unknown subworkflow binding")
+                vet_spec = specs["tutoring-vet"]
+                vet_is_parallel = any(n.id == VET_MATH_NODE for n in vet_spec.nodes)
                 math = next((n for n in spec.nodes if n.id == MATH_NODE), None)
-                if (math is None or math.kind != "gate" or math.ref != "tutoring.leak-judge" or math.trace != MATH_NODE
-                        or spec.node(VET_NODE).trace != VET_NODE or spec.node(RETRY_NODE).trace != RETRY_NODE
-                        or not any(edge.source == "tutoring.exit_gate" and edge.target == MATH_NODE and not edge.condition
-                                   for edge in spec.edges)
-                        or not any(edge.source == MATH_NODE and edge.target == VET_NODE
-                                   and edge.condition == "math_allowed" for edge in spec.edges)):
-                    raise ValueError("invalid tutoring review topology")
-                registration = {"handlers": registration["handlers"],
-                                "conditions": registration["conditions"] | {"math_allowed"}}
+                if vet_is_parallel:
+                    if (
+                        math is not None
+                        or spec.node(VET_NODE).trace != VET_NODE
+                        or spec.node(RETRY_NODE).trace != RETRY_NODE
+                        or not any(
+                            edge.source == "tutoring.exit_gate" and edge.target == VET_NODE and not edge.condition
+                            for edge in spec.edges
+                        )
+                    ):
+                        raise ValueError("invalid tutoring review topology")
+                else:
+                    if (math is None or math.kind != "gate" or math.ref != "tutoring.leak-judge" or math.trace != MATH_NODE
+                            or spec.node(VET_NODE).trace != VET_NODE or spec.node(RETRY_NODE).trace != RETRY_NODE
+                            or not any(edge.source == "tutoring.exit_gate" and edge.target == MATH_NODE and not edge.condition
+                                       for edge in spec.edges)
+                            or not any(edge.source == MATH_NODE and edge.target == VET_NODE
+                                       and edge.condition == "math_allowed" for edge in spec.edges)):
+                        raise ValueError("invalid tutoring review topology")
+                    registration = {"handlers": registration["handlers"],
+                                    "conditions": registration["conditions"] | {"math_allowed"}}
+            if spec.id == "tutoring-vet" and any(n.id == VET_MATH_NODE for n in spec.nodes):
+                registration = {
+                    "handlers": registration["handlers"],
+                    "conditions": registration["conditions"] | set(PARALLEL_VET_CONDITIONS),
+                }
             if handlers - registration["handlers"]:
                 raise ValueError(f"{spec.id}: unknown action handler")
             if conditions - registration["conditions"]:
@@ -310,7 +332,7 @@ class AgentCatalog:
                 for component_id in _node_components(node):
                     COMPONENTS.get(component_id)
                     referenced.add(component_id)
-                    if node.id == MATH_NODE and calls[spec.id]:
+                    if (node.id == MATH_NODE and calls[spec.id]) or node.id == VET_MATH_NODE:
                         continue  # Shared Judge; default identity belongs to the text review.
                     if staged and (
                         (node.ref == "tutoring.blueprint-planner" and node.id == blueprint_steps.node_id("primary"))

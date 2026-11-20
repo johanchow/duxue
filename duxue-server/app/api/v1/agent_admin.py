@@ -39,6 +39,10 @@ class BundleInput(BaseModel):
     bundle: dict
 
 
+class ValidateInput(BundleInput):
+    probe_judges: bool = False
+
+
 class DebugRequest(BundleInput):
     input: DebugInput
 
@@ -77,7 +81,7 @@ def catalog():
 
 
 @router.post("/validate")
-def validate(body: BundleInput):
+def validate(body: ValidateInput):
     try:
         snapshot = compile_bundle(body.bundle)
         from app.application.workflows.image_review import require_configuration
@@ -86,6 +90,10 @@ def validate(body: BundleInput):
             runtime_errors = []
         except ValueError as error:
             runtime_errors = [str(error)]
+        if body.probe_judges:
+            from app.agent_specs.judge_preflight import probe_judge_contracts
+
+            runtime_errors.extend(probe_judge_contracts(snapshot))
         return {
             "valid": True,
             "runtime_ready": not runtime_errors,

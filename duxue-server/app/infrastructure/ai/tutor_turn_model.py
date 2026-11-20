@@ -59,9 +59,9 @@ class QwenLeakJudge:
         from contextlib import nullcontext
 
         from app.agent_specs.catalog import executing_node
-        from app.agent_specs.subworkflows import MATH_NODE
+        from app.agent_specs.subworkflows import MATH_NODE, VET_MATH_NODE
         from app.infrastructure.observability.telemetry import agent_step_span
-        review = (nullcontext() if executing_node.get() == ("tutoring", MATH_NODE) else
+        review = (nullcontext() if executing_node.get() in {("tutoring", MATH_NODE), ("tutoring-vet", VET_MATH_NODE)} else
                   agent_step_span("check", "tutoring.text_leak", **{"math.review.phase": "consistency"}))
         try:
             with review:

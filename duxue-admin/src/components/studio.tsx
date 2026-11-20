@@ -110,7 +110,9 @@ export default function Studio() {
   const [publishedDebug, setPublishedDebug] = useState<Doc | null>(null);
   const [debugOpen, setDebugOpen] = useState(false);
   const pinnedReleaseId =
-    tab === 'flow-detail' && !draftId ? search.get('release') : null;
+    (tab === 'flow-detail' || tab === 'flow-node-detail') && !draftId
+      ? search.get('release')
+      : null;
   const pinnedRelease =
     pinnedReleaseId && specificVersion?.id === pinnedReleaseId
       ? specificVersion
@@ -125,8 +127,8 @@ export default function Studio() {
   const workflowSnapshot =
     tab === 'flow-detail'
       ? graphSnapshot
-      : tab === 'flow-node-detail' && draftId && draft?.id === draftId
-        ? draft
+      : tab === 'flow-node-detail' && (draftId || pinnedReleaseId)
+        ? graphSnapshot
         : null;
   const workflowFiles = workflowSnapshot
     ? Object.values(workflowSnapshot.bundle.files as Record<string, Doc>)
@@ -150,7 +152,9 @@ export default function Studio() {
       }
     : state?.catalog;
   const actionFlow =
-    tab === 'flow-node-detail' && entityId && (!draftId || workflowSnapshot)
+    tab === 'flow-node-detail' &&
+    entityId &&
+    (!(draftId || pinnedReleaseId) || workflowSnapshot)
       ? workflowCatalog?.workflows[entityId]
       : undefined;
   const actionNode = actionFlow?.nodes.find(
@@ -571,7 +575,7 @@ export default function Studio() {
               className="secondary"
               onClick={() =>
                 navigate(
-                  `/workflows/${encodeURIComponent(entityId!)}${draftId ? `?draft=${encodeURIComponent(draftId)}` : ''}`,
+                  `/workflows/${encodeURIComponent(entityId!)}${draftId ? `?draft=${encodeURIComponent(draftId)}` : pinnedReleaseId ? `?release=${encodeURIComponent(pinnedReleaseId)}` : ''}`,
                 )
               }
             >
@@ -1499,6 +1503,7 @@ export default function Studio() {
           (actionNode ? (
             <WorkflowActionDetail
               flow={actionFlow}
+              catalog={workflowCatalog!}
               node={actionNode}
               definitions={workflowCatalog?.definitions || {}}
               names={Object.fromEntries(
@@ -1511,8 +1516,8 @@ export default function Studio() {
           ) : (
             <section>
               <p>
-                {draftId && draft?.id !== draftId
-                  ? message || '正在加载配置草稿…'
+                {(draftId || pinnedReleaseId) && !workflowSnapshot
+                  ? message || '正在加载指定版本…'
                   : '未找到此 Action，请返回流程图。'}
               </p>
             </section>

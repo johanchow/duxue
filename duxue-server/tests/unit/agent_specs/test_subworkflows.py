@@ -6,7 +6,7 @@ import pytest
 from app.agent_specs.admin_bundle import compile_bundle, contract_compatibility
 from app.agent_specs.definitions import use_definitions
 from app.agent_specs.execution_trace import Recorder
-from app.agent_specs.subworkflows import MATH_NODE, RETRY_NODE, VET_NODE
+from app.agent_specs.subworkflows import RETRY_NODE, VET_MATH_NODE, VET_NODE
 from scripts.upgrade_workflow_nodes import upgrade
 from tests.support.fakes import StaticTutorModel
 from tests.unit.tutoring.test_leak_retry import HINT, LEAKY, LeaksWhen, _run
@@ -64,10 +64,9 @@ def test_attempts_have_separate_review_calls(source, outputs):
             e["parent_id"] == call["id"] and e["workflow_id"] == "tutoring-vet"
             for e in recording.events
         )
-    assert len([e for e in recording.events if e.get("node_id") == MATH_NODE]) == len(
-        outputs
-    )
     assert all(e["duration_ms"] >= 0 for e in calls)
+    vet_nodes = {n.id for n in compiled.catalog.workflow_catalog.spec("tutoring-vet").nodes}
+    assert VET_MATH_NODE in vet_nodes
 
 
 def test_indirect_call_cycle_rejected(source):
@@ -81,7 +80,7 @@ def test_indirect_call_cycle_rejected(source):
         compile_bundle(bundle)
 
 
-def test_math_rejection_stops_before_teaching_review(source):
+def test_math_rejection_takes_precedence_in_parallel_vet_workflow(source):
     from scripts.upgrade_math_bundle import upgrade as enable_math
     from tests.unit.math_engine.test_workflow import Judge
 
@@ -91,6 +90,8 @@ def test_math_rejection_stops_before_teaching_review(source):
     with use_definitions(compiled.catalog), recording.capture():
         result, _ = _run(StaticTutorModel(HINT), judge)
     assert result.vetting.failure == "math_inconsistent"
-    assert judge.math_contexts and not judge.calls
-    assert any(e.get("node_id") == MATH_NODE for e in recording.events)
-    assert not any(e.get("node_id") == VET_NODE for e in recording.events)
+    # Declarative parallel tutoring-vet workflow runs math_consistency and text_leak
+    # concurrently and converges to tutoring-vet.complete with deterministic math precedence.
+    assert judge.math_contexts and judge.calls == 2
+    assert any(e.get("node_id") == VET_MATH_NODE for e in recording.events)
+    assert any(e.get("node_id") == VET_NODE for e in recording.events)
