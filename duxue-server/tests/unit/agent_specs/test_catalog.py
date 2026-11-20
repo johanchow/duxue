@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from app.agent_specs.catalog import AgentCatalog, load_catalog, render_mermaid
+from app.agent_specs.configuration import read_snapshot
 from app.agent_specs.definitions import load_definitions
 
 
@@ -39,13 +40,22 @@ def test_catalog_covers_route_business_nodes_gates_tools_and_components():
     assert catalog.component("review-aspects", "run").component_id == "evaluation.review-aspects"
 
 
+def _snapshot_workflows() -> dict[str, dict]:
+    snapshot = read_snapshot()
+    version = snapshot["digest"]
+    files = snapshot["bundle"]["files"]
+    return {
+        Path(name).name: {"version": version, **json.loads(json.dumps(doc))}
+        for name, doc in files.items()
+        if name.startswith("workflows/") and name.endswith(".json")
+    }
+
+
 def test_missing_required_guardrail_fails_catalog_load(tmp_path: Path):
-    source = load_catalog().directory
-    for source_file in (source / "workflows").glob("*.json"):
-        payload = json.loads(source_file.read_text())
-        if source_file.stem == "tutoring":
+    for filename, payload in _snapshot_workflows().items():
+        if Path(filename).stem == "tutoring":
             payload["nodes"] = [node for node in payload["nodes"] if node["id"] != "tutoring.exit_gate"]
-        (tmp_path / source_file.name).write_text(json.dumps(payload))
+        (tmp_path / filename).write_text(json.dumps(payload))
     with pytest.raises(ValueError, match="tutoring.exit_gate"):
         AgentCatalog.from_directory(tmp_path)
 
@@ -63,9 +73,8 @@ def test_missing_required_guardrail_fails_catalog_load(tmp_path: Path):
     ],
 )
 def test_invalid_definition_fails_load(tmp_path: Path, agent: str, change: str, error: str):
-    for source_file in (load_catalog().directory / "workflows").glob("*.json"):
-        payload = json.loads(source_file.read_text())
-        if source_file.stem == agent:
+    for filename, payload in _snapshot_workflows().items():
+        if Path(filename).stem == agent:
             if change == "unknown_component":
                 payload["nodes"][0]["ref"] = "missing.component"
             elif change == "broken_edge":
@@ -80,7 +89,7 @@ def test_invalid_definition_fails_load(tmp_path: Path, agent: str, change: str, 
                 payload["edges"][1]["condition_id"] = "unregistered_condition"
             else:
                 payload["required_checks"].remove("tutoring.exit_gate")
-        (tmp_path / source_file.name).write_text(json.dumps(payload))
+        (tmp_path / filename).write_text(json.dumps(payload))
     with pytest.raises((ValueError, KeyError), match=error):
         AgentCatalog.from_directory(tmp_path)
 

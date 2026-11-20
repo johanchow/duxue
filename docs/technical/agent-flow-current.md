@@ -44,7 +44,7 @@ flowchart TD
 
 工具：无。
 
-## planning · v2
+## planning · v1
 
 ```mermaid
 flowchart TD

@@ -109,12 +109,26 @@ export default function Studio() {
   const [specificVersion, setSpecificVersion] = useState<Doc | null>(null);
   const [publishedDebug, setPublishedDebug] = useState<Doc | null>(null);
   const [debugOpen, setDebugOpen] = useState(false);
-  const graphSnapshot = draftId ? draft : publishedDebug;
+  const pinnedReleaseId =
+    (tab === 'flow-detail' || tab === 'flow-node-detail') && !draftId
+      ? search.get('release')
+      : null;
+  const pinnedRelease =
+    pinnedReleaseId && specificVersion?.id === pinnedReleaseId
+      ? specificVersion
+      : null;
+  const graphSnapshot = draftId
+    ? draft?.id === draftId
+      ? draft
+      : null
+    : pinnedReleaseId
+      ? pinnedRelease
+      : publishedDebug;
   const workflowSnapshot =
     tab === 'flow-detail'
       ? graphSnapshot
-      : tab === 'flow-node-detail' && draftId && draft?.id === draftId
-        ? draft
+      : tab === 'flow-node-detail' && (draftId || pinnedReleaseId)
+        ? graphSnapshot
         : null;
   const workflowFiles = workflowSnapshot
     ? Object.values(workflowSnapshot.bundle.files as Record<string, Doc>)
@@ -122,6 +136,9 @@ export default function Studio() {
   const workflowCatalog = workflowFiles
     ? {
         ...state?.catalog,
+        source: draftId ? 'admin-draft' : 'admin-release',
+        source_release: draftId ? null : { id: graphSnapshot!.id },
+        source_draft: draftId ? { id: draftId } : null,
         workflows: Object.fromEntries(
           workflowFiles
             .filter((item) => item.kind === 'workflow')
@@ -135,7 +152,9 @@ export default function Studio() {
       }
     : state?.catalog;
   const actionFlow =
-    tab === 'flow-node-detail' && entityId && (!draftId || workflowSnapshot)
+    tab === 'flow-node-detail' &&
+    entityId &&
+    (!(draftId || pinnedReleaseId) || workflowSnapshot)
       ? workflowCatalog?.workflows[entityId]
       : undefined;
   const actionNode = actionFlow?.nodes.find(
@@ -147,7 +166,7 @@ export default function Studio() {
     setRun(null);
     setWorkflowRun(null);
     setDebugOpen(false);
-  }, [entityId, tab, draftId]);
+  }, [entityId, tab, draftId, pinnedReleaseId]);
   async function refresh() {
     const data = await api('state');
     setState(data);
@@ -222,10 +241,11 @@ export default function Studio() {
     };
   }, [logged, draftId, agent?.file]);
   useEffect(() => {
-    if (!logged || tab !== 'release-detail' || !entityId) return;
+    const releaseId = tab === 'release-detail' ? entityId : pinnedReleaseId;
+    if (!logged || !releaseId) return;
     let cancelled = false;
     setSpecificVersion(null);
-    api('releases/' + entityId + '/detail')
+    api('releases/' + releaseId + '/detail')
       .then((value) => {
         if (!cancelled) setSpecificVersion(value);
       })
@@ -235,7 +255,7 @@ export default function Studio() {
     return () => {
       cancelled = true;
     };
-  }, [logged, tab, entityId]);
+  }, [logged, tab, entityId, pinnedReleaseId]);
   useEffect(() => {
     if (draft && location.hash === '#debug') setDebugOpen(true);
     if (draft && location.hash === '#changes')
@@ -261,7 +281,9 @@ export default function Studio() {
     setDirty(true);
   }
   async function openPublishedDebug() {
-    if (publishedDebug?.id === state?.environment.release_id) {
+    if (
+      publishedDebug?.id === (pinnedReleaseId || state?.environment.release_id)
+    ) {
       setDebugOpen(true);
       return;
     }
@@ -270,7 +292,11 @@ export default function Studio() {
     setDebugOpen(true);
     await action(async () => {
       setPublishedDebug(
-        await api('releases/' + state!.environment.release_id + '/detail'),
+        await api(
+          'releases/' +
+            (pinnedReleaseId || state!.environment.release_id) +
+            '/detail',
+        ),
       );
     });
   }
@@ -549,7 +575,7 @@ export default function Studio() {
               className="secondary"
               onClick={() =>
                 navigate(
-                  `/workflows/${encodeURIComponent(entityId!)}${draftId ? `?draft=${encodeURIComponent(draftId)}` : ''}`,
+                  `/workflows/${encodeURIComponent(entityId!)}${draftId ? `?draft=${encodeURIComponent(draftId)}` : pinnedReleaseId ? `?release=${encodeURIComponent(pinnedReleaseId)}` : ''}`,
                 )
               }
             >
@@ -568,7 +594,8 @@ export default function Studio() {
               </button>
               {!draftId &&
                 state.environment.release_id &&
-                state.catalog?.source !== 'admin-draft' && (
+                (pinnedReleaseId ||
+                  state.catalog?.source !== 'admin-draft') && (
                   <button
                     className="secondary"
                     disabled={busy}
@@ -1476,6 +1503,7 @@ export default function Studio() {
           (actionNode ? (
             <WorkflowActionDetail
               flow={actionFlow}
+              catalog={workflowCatalog!}
               node={actionNode}
               definitions={workflowCatalog?.definitions || {}}
               names={Object.fromEntries(
@@ -1488,27 +1516,33 @@ export default function Studio() {
           ) : (
             <section>
               <p>
-                {draftId && draft?.id !== draftId
-                  ? message || '正在加载配置草稿…'
+                {(draftId || pinnedReleaseId) && !workflowSnapshot
+                  ? message || '正在加载指定版本…'
                   : '未找到此 Action，请返回流程图。'}
               </p>
             </section>
           ))}
-        {tab === 'flow-detail' && state?.catalog?.workflows[entityId!] && (
-          <WorkflowExplorer
-            key={`${entityId}-${draftId || 'release'}`}
-            catalog={workflowCatalog}
-            initialWorkflow={entityId!}
-            navigate={navigate}
-            draftId={draftId || undefined}
-            execution={workflowRun?.events || []}
-          />
-        )}
+        {tab === 'flow-detail' &&
+          (pinnedReleaseId || draftId) &&
+          !graphSnapshot && <p>{message || '正在读取指定的流程配置…'}</p>}
+        {tab === 'flow-detail' &&
+          (!(pinnedReleaseId || draftId) || graphSnapshot) &&
+          workflowCatalog?.workflows[entityId!] && (
+            <WorkflowExplorer
+              key={`${entityId}-${draftId || pinnedReleaseId || 'release'}-${workflowRun?.id || ''}`}
+              catalog={workflowCatalog}
+              initialWorkflow={entityId!}
+              navigate={navigate}
+              draftId={draftId || undefined}
+              execution={workflowRun?.events || []}
+            />
+          )}
         {(tab === 'missing' ||
           (tab === 'agent-detail' && state?.catalog && !agent) ||
           (tab === 'flow-detail' &&
             state?.catalog &&
-            !state.catalog.workflows[entityId!])) && (
+            (!(pinnedReleaseId || draftId) || graphSnapshot) &&
+            !workflowCatalog?.workflows[entityId!])) && (
           <section>
             <h2>未找到此配置</h2>
             <p>请从 Agent 或 Workflow 列表选择已登记的配置。</p>

@@ -910,6 +910,7 @@ a.workflow-card:hover, a.workflow-card:focus-visible {
 .workflow-card-arrow { position: absolute; right: 10px; top: 13px; color: #23644c; }
 .workflow-canvas .kind-agent, .workflow-legend .legend-agent { --workflow-accent: #237454; }
 .workflow-canvas .kind-gate, .workflow-legend .legend-gate { --workflow-accent: #8e640f; }
+.workflow-canvas .kind-workflow, .workflow-legend .legend-workflow { --workflow-accent: #735497; }
 .workflow-canvas .kind-action, .workflow-legend .legend-action { --workflow-accent: #47669a; }
 .workflow-canvas .boundary-node {
   background: #e7f0eb;

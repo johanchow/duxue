@@ -17,3 +17,13 @@ export function edgeExecutions(events: Doc[], workflowId: string, edge: Doc) {
       (event.condition_id || null) === (edge.condition_id || null),
   );
 }
+
+/** Recorder events are ordered parent-first, including calls repeated within one turn. */
+export function childExecution(events: Doc[], callId: string) {
+  const parents = new Set([callId]);
+  return events.filter((event) => {
+    if (!parents.has(event.parent_id)) return false;
+    parents.add(event.id);
+    return true;
+  });
+}

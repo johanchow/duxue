@@ -103,7 +103,7 @@ class TutoringWorkflow:
         self.first_turn_solve_budget_seconds = (
             first_turn_solve_budget_seconds
             if first_turn_solve_budget_seconds is not None
-            else float(os.getenv("SOLVE_FIRST_TURN_BUDGET_SECONDS", "2.5"))
+            else float(os.getenv("SOLVE_FIRST_TURN_BUDGET_SECONDS", "0"))
         )
         self.db = db
         self.turn_model = turn_model

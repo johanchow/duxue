@@ -14,6 +14,14 @@ from pydantic import ValidationError
 from app.agent_specs.catalog import load_catalog
 from app.agent_specs.execution_trace import transition
 from app.agent_specs.static_tools import static_tool_result
+from app.agent_specs.subworkflows import (
+    MATH_NODE,
+    RETRY_NODE,
+    VET_MATH_NODE,
+    VET_NODE,
+    has_parallel_vet,
+    math_review_step,
+)
 from app.application.workflows.tutor_shape import lint_shape
 from app.application.workflows.tutor_tools import (
     TutorToolbox,
@@ -122,8 +130,7 @@ def call_tutor_model(
         except (ValueError, TypeError):
             pass
 
-    from app.agent_specs.visual_delivery import enabled as visual_delivery_enabled
-    if preload_svg_guidelines or visual_delivery_enabled():
+    if preload_svg_guidelines:
         _ensure_widget_guidelines(observations)
     tool_calls = 0
     best_candidate: TutorTurnCandidate | None = None
@@ -414,139 +421,316 @@ def fact_gate(candidate: TutorTurnCandidate) -> str | None:
     return None
 
 
+def _evaluate_authority(
+    candidate: TutorTurnCandidate,
+    *,
+    permit: TutorPermit,
+    judge_images: list[str] | None,
+    grade_stage: str | None,
+) -> tuple[Verdict, list[str]]:
+    from app.agent_specs.visual_delivery import enabled as visual_delivery_enabled
+
+    verdict = check_authority(candidate, permit)
+    if verdict.ok and candidate.act in {"answer", "guide"} and visual_delivery_enabled():
+        verdict = replace(verdict, needs_leak_check=True)
+    if verdict.ok and judge_images and candidate.act in {"answer", "guide", "chat"}:
+        # The generator's non_work label cannot exempt image grading
+        # from independent review, including in a fresh conversation.
+        verdict = replace(verdict, needs_leak_check=True)
+    flags: list[str] = []
+    if verdict.ok:
+        flags = lint_shape(candidate.act, candidate.content, grade_stage=grade_stage)
+        if candidate.act == "answer" and candidate.depth == "reasoning":
+            flags.append("answer_on_reasoning")
+    return verdict, flags
+
+
+def _prepare_vet_problem_summary(
+    candidate: TutorTurnCandidate,
+    problem_summary: str | None,
+    judge_images: list[str] | None,
+) -> str | None:
+    from app.agent_specs.visual_delivery import enabled as visual_delivery_enabled
+    from app.application.workflows.image_review import review_problem
+
+    prepared = review_problem(problem_summary, candidate, list(judge_images or []))
+    if visual_delivery_enabled():
+        try:
+            summary = json.loads(prepared) if prepared else {}
+        except (ValueError, TypeError):
+            summary = {"problem": prepared}
+        if not isinstance(summary, dict):
+            summary = {"problem": summary}
+        summary["candidate_visual"] = candidate.visual.model_dump(mode="json") if candidate.visual else None
+        prepared = json.dumps(summary, ensure_ascii=False)
+    return prepared
+
+
+def _invoke_text_leak_with_retry(
+    leak_judge: LeakJudgePort,
+    candidate: TutorTurnCandidate,
+    task_title: str | None,
+    problem_summary: str | None,
+    judge_images: list[str],
+):
+    """Run text_leak judge with one in-place retry on transient unknown/error."""
+    result = None
+    for _ in range(2):
+        try:
+            result = _check_text_leak(
+                leak_judge, candidate.shown_text, task_title, problem_summary, judge_images,
+            )
+        except Exception:  # noqa: BLE001 - a judge failure must reject the candidate
+            result = None
+        text_leaks, _ = _text_leak_result(result)
+        if text_leaks is not None:
+            break
+    return result
+
+
 def vet_candidate(
     candidate: TutorTurnCandidate, *, permit: TutorPermit, leak_judge: LeakJudgePort,
     task_title: str | None, problem_summary: str | None, judge_images: list[str] | None = None,
     grade_stage: str | None = None,
     verdict_assertion_allowed: bool = True,
+    ledger=None,
+    raw_problem_summary: str | None = None,
+    reused_text_vetting: Vetting | None = None,
 ) -> Vetting:
-    """Run the configured authority, text and optional visual Gates."""
-    from app.agent_specs.catalog import load_catalog
-    from app.agent_specs.runtime import GateDecision, execute_workflow
-    from app.application.workflows.image_review import review_problem
-    problem_summary = review_problem(problem_summary, candidate, list(judge_images or []))
-    from app.agent_specs.visual_delivery import enabled as visual_delivery_enabled
-    if visual_delivery_enabled():
-        try:
-            summary = json.loads(problem_summary) if problem_summary else {}
-        except (ValueError, TypeError):
-            summary = {"problem": problem_summary}
-        if not isinstance(summary, dict):
-            summary = {"problem": summary}
-        summary["candidate_visual"] = candidate.visual.model_dump(mode="json") if candidate.visual else None
-        problem_summary = json.dumps(summary, ensure_ascii=False)
+    """Run the configured authority, math, text and optional visual Gates via tutoring-vet."""
+    from app.agent_specs.runtime import GateDecision, execute_tutoring_child
+
+    images_list = list(judge_images or [])
+    effective_summary = _prepare_vet_problem_summary(candidate, problem_summary, images_list)
+    visual_text_init = describe(candidate.visual) if candidate.visual is not None else None
+    parallel_topology = has_parallel_vet(load_catalog())
 
     def authority(state: dict) -> GateDecision:
         with agent_step_span("check", "tutoring.authority") as span:
-            verdict = check_authority(candidate, permit)
-            if verdict.ok and candidate.act in {"answer", "guide"} and visual_delivery_enabled():
-                verdict = replace(verdict, needs_leak_check=True)
-            if verdict.ok and judge_images and candidate.act in {'answer', 'guide', 'chat'}:
-                # The generator's non_work label cannot exempt image grading
-                # from independent review, including in a fresh conversation.
-                verdict = replace(verdict, needs_leak_check=True)
+            verdict, flags = _evaluate_authority(
+                candidate, permit=permit, judge_images=images_list, grade_stage=grade_stage,
+            )
             state["authority"] = verdict
+            state["flags"] = list(flags)
             span.set_attribute("agent.check.result", "pass" if verdict.ok else "rejected")
             set_observation_payload(span, output={"ok": verdict.ok, "reason": verdict.reason})
-        if verdict.ok:
-            flags = lint_shape(candidate.act, candidate.content, grade_stage=grade_stage)
-            if candidate.act == "answer" and candidate.depth == "reasoning":
-                flags.append("answer_on_reasoning")
-            if flags:
-                record_tutor_shape_lint(act=candidate.act, flags=flags)
-            state["flags"] = flags
-        return GateDecision("allow" if verdict.ok else "deny", verdict.reason or "ok")
+        if verdict.ok and flags:
+            record_tutor_shape_lint(act=candidate.act, flags=flags)
+        if not verdict.ok:
+            return GateDecision("deny", verdict.reason or "authority_denied")
+
+        # When running the declarative parallel tutoring-vet workflow, local math ledger validation
+        # executes here before fanning out to independent LLM Judges.
+        if parallel_topology and ledger is not None:
+            needs_semantic_math = (
+                candidate.act not in {"pronounce", "safety", "redirect"}
+                or bool(candidate.math_claims)
+                or bool(ledger.records)
+            )
+            try:
+                ledger.validate(candidate.math_claims)
+            except Exception:  # noqa: BLE001 - invalid local math claims short-circuit before LLM Judges
+                state["local_math_failed"] = True
+                return GateDecision("deny", "math_check_failed")
+            state["needs_math_review"] = (
+                needs_semantic_math and getattr(leak_judge, "check_math", None) is not None
+            )
+        else:
+            state["needs_math_review"] = False
+
+        state["needs_text_review"] = bool(verdict.needs_leak_check and reused_text_vetting is None)
+        state["needs_visual_review"] = bool(verdict.needs_leak_check and visual_text_init is not None)
+        return GateDecision("allow", "ok")
+
+    def math_consistency(state: dict) -> GateDecision:
+        with agent_step_span("check", MATH_NODE) as math_span:
+            check = getattr(leak_judge, "check_math", None)
+            checked = None
+            try:
+                if check is not None and ledger is not None:
+                    math_ctx = {
+                        "problem": raw_problem_summary if raw_problem_summary is not None else problem_summary,
+                        "candidate_turn": candidate.turn.model_dump() if candidate.turn else None,
+                        **ledger.context(candidate.math_claims),
+                    }
+                    math_text = candidate.content + ("\n" + visual_text_init if visual_text_init else "")
+                    for _ in range(2):
+                        checked = check(text=math_text, context=math_ctx, images=images_list)
+                        if checked is not None:
+                            break
+            except Exception:  # noqa: BLE001 - independent math check fails closed
+                checked = None
+            set_observation_payload(
+                math_span, output={"semantic_review": True, "math_consistent": checked},
+            )
+            math_span.set_attribute(
+                "agent.check.result",
+                "pass" if checked is True else "unknown" if checked is None else "rejected",
+            )
+        state["math_reviewed"] = True
+        state["math_checked"] = checked
+        return GateDecision(
+            "allow" if checked is True else "deny",
+            "ok" if checked is True else "math_check_failed" if checked is None else "math_inconsistent",
+        )
 
     def text_leak(state: dict) -> GateDecision:
+        if reused_text_vetting is not None:
+            state["text_leaks"] = False
+            state["leak_reason"] = None
+            state["visual_need"] = reused_text_vetting.visual_need
+            state["visual_feedback"] = reused_text_vetting.visual_feedback
+            if reused_text_vetting.verdict is not None:
+                state["turn_answer_protected"] = reused_text_vetting.verdict.answer_protected
+            return GateDecision("allow", "ok")
+
         record_tutor_fact_gate(outcome=fact_gate(candidate) or "short_fact_reviewed")
-        result = None
-        for _ in range(2):
-            try:
-                result = _check_text_leak(
-                    leak_judge, candidate.shown_text, task_title, problem_summary, list(judge_images or []),
-                )
-            except Exception:  # noqa: BLE001 - a judge failure must reject the candidate
-                result = None
-            state["text_leaks"], state["leak_reason"] = _text_leak_result(result)
-            if isinstance(result, dict) and result.get("visual_need") in {"requested", "helpful", "not_needed", "uncertain"}:
-                state["visual_need"] = result["visual_need"]
-                if isinstance(result.get("visual_evidence"), str):
-                    state["visual_feedback"] = result["visual_evidence"][:500]
-                if result.get("visual_adequate") is False and state["visual_need"] in {"requested", "helpful"}:
-                    state["visual"] = None
-                    state["visual_text"] = None
-                    state["dropped"] = "visual_not_helpful"
-            if state["text_leaks"] is not None:
-                break
+        result = _invoke_text_leak_with_retry(
+            leak_judge, candidate, task_title, effective_summary, images_list,
+        )
+        text_leaks, leak_reason = _text_leak_result(result)
+        visual_need = None
+        visual_feedback = None
+        visual_not_helpful = False
+        if isinstance(result, dict) and result.get("visual_need") in {"requested", "helpful", "not_needed", "uncertain"}:
+            visual_need = result["visual_need"]
+            if isinstance(result.get("visual_evidence"), str):
+                visual_feedback = result["visual_evidence"][:500]
+            if result.get("visual_adequate") is False and visual_need in {"requested", "helpful"}:
+                visual_not_helpful = True
         # Code-enforced confidence gate (§4.4): when neither a ready verified dossier nor
         # direct deterministic engine verification exists on this turn, affirming the student's
         # reasoning answer by pure LLM mental math is strictly denied!
         if (
-            state["text_leaks"] is False
+            text_leaks is False
             and not verdict_assertion_allowed
             and isinstance(result, dict)
             and result.get("affirms_student_answer") is True
             and (result.get("answer_protected") is not False)
         ):
-            state["text_leaks"] = True
-            state["leak_reason"] = "incorrect_confirmation"
+            text_leaks = True
+            leak_reason = "incorrect_confirmation"
 
-        # Only a successful independent review can scope this turn. The persisted
-        # permit stays unchanged, and visual review still uses the original trigger.
-        if (state["text_leaks"] is False and isinstance(result, dict)
-                and type(result.get("answer_protected")) is bool):
+        # Write isolated text-branch keys (safe during parallel fan-out).
+        state["text_leaks"] = text_leaks
+        state["leak_reason"] = leak_reason
+        state["visual_need"] = visual_need
+        state["visual_feedback"] = visual_feedback
+        state["text_visual_not_helpful"] = visual_not_helpful
+        if visual_not_helpful and not parallel_topology:
+            state["visual"] = None
+            state["visual_text"] = None
+            state["dropped"] = "visual_not_helpful"
+        if text_leaks is False and isinstance(result, dict) and type(result.get("answer_protected")) is bool:
             state["turn_answer_protected"] = result["answer_protected"]
 
         return GateDecision(
-            "allow" if state["text_leaks"] is False else "deny",
-            "ok" if state["text_leaks"] is False else
-            "leak_check_failed" if state["text_leaks"] is None else "leak_detected",
+            "allow" if text_leaks is False else "deny",
+            "ok" if text_leaks is False else
+            "leak_check_failed" if text_leaks is None else "leak_detected",
         )
 
     def visual_leak(state: dict) -> GateDecision:
-        result = _check_visual_leak(leak_judge, state["visual_text"], task_title, problem_summary)
-        if result is not False:
+        result = _check_visual_leak(leak_judge, visual_text_init, task_title, effective_summary)
+        # Write isolated visual-branch key (safe during parallel fan-out).
+        state["visual_leak_result"] = result
+        if not parallel_topology and result is not False:
             state["visual"] = None
             state["dropped"] = "visual_leak_check_failed" if result is None else "visual_leak_detected"
-        return GateDecision("allow" if result is False else "deny", "ok" if result is False else state["dropped"])
+        return GateDecision(
+            "allow" if result is False else "deny",
+            "ok" if result is False else ("visual_leak_check_failed" if result is None else "visual_leak_detected"),
+        )
 
     def complete(state: dict) -> Vetting:
         verdict = state["authority"]
+        if state.get("local_math_failed"):
+            return Vetting(candidate, None, "math_check_failed", "math_inconsistent")
         if not verdict.ok:
             return Vetting(candidate, verdict, verdict.reason)
-        if state.get("text_leaks") is not False:
-            reason = "leak_check_failed" if state.get("text_leaks") is None else "leak_detected"
+        # Deterministic precedence after parallel fan-in: math > text_leak > visual_leak.
+        if state.get("math_reviewed") and state.get("math_checked") is not True:
+            checked = state.get("math_checked")
+            return Vetting(
+                candidate, None,
+                "math_check_failed" if checked is None else "math_inconsistent",
+                "math_inconsistent",
+            )
+        if reused_text_vetting is not None:
+            text_leaks = False
+            visual_need = reused_text_vetting.visual_need
+            visual_feedback = reused_text_vetting.visual_feedback
+            if reused_text_vetting.verdict is not None:
+                state["turn_answer_protected"] = reused_text_vetting.verdict.answer_protected
+        else:
+            text_leaks = state.get("text_leaks")
+            visual_need = state.get("visual_need")
+            visual_feedback = state.get("visual_feedback")
+        if text_leaks is not False:
+            reason = "leak_check_failed" if text_leaks is None else "leak_detected"
             return Vetting(candidate, None, reason, leak_reason=state.get("leak_reason"), shape_flags=state["flags"])
-        if state["dropped"]:
-            record_tutor_visual_dropped(reason=state["dropped"])
+
+        visual = state["visual"]
+        dropped = state["dropped"]
+        if state.get("text_visual_not_helpful"):
+            visual = None
+            dropped = "visual_not_helpful"
+        elif "visual_leak_result" in state and state["visual_leak_result"] is not False:
+            visual = None
+            dropped = "visual_leak_check_failed" if state["visual_leak_result"] is None else "visual_leak_detected"
+        if dropped:
+            record_tutor_visual_dropped(reason=dropped)
         if "turn_answer_protected" in state:
             protected = state["turn_answer_protected"] or verdict.effective_work_product
             verdict = replace(verdict, answer_protected=protected,
                               effective_work_product=verdict.effective_work_product and protected)
         return Vetting(
-            candidate, verdict, visual=state["visual"], visual_dropped=state["dropped"],
-            shape_flags=state["flags"], visual_need=state.get("visual_need"),
-            visual_feedback=state.get("visual_feedback"),
+            candidate, verdict, visual=visual, visual_dropped=dropped,
+            shape_flags=state["flags"], visual_need=visual_need,
+            visual_feedback=visual_feedback,
         )
 
     conditions = {
         "always": lambda state: True,
-        "authority_denied": lambda state: not state["authority"].ok,
+        "authority_denied": lambda state: not state["authority"].ok or bool(state.get("local_math_failed")),
+        "authority_allowed_no_review": lambda state: (
+            state["authority"].ok
+            and not state.get("local_math_failed")
+            and not state.get("needs_math_review")
+            and not state.get("needs_text_review")
+            and not state.get("needs_visual_review")
+        ),
+        "needs_math_review": lambda state: (
+            state["authority"].ok and not state.get("local_math_failed") and bool(state.get("needs_math_review"))
+        ),
+        "needs_text_review": lambda state: (
+            state["authority"].ok and not state.get("local_math_failed") and bool(state.get("needs_text_review"))
+        ),
+        "needs_visual_review": lambda state: (
+            state["authority"].ok and not state.get("local_math_failed") and bool(state.get("needs_visual_review"))
+        ),
+        # Legacy serial tutoring-vet conditions (retained for backward compatibility with older snapshots)
         "authority_allowed_needs_leak_check": lambda state: state["authority"].ok and state["authority"].needs_leak_check,
         "authority_allowed_no_leak_check": lambda state: state["authority"].ok and not state["authority"].needs_leak_check,
         "text_denied": lambda state: state.get("text_leaks") is not False,
         "text_allowed_with_visual": lambda state: state.get("text_leaks") is False and state["visual_text"] is not None,
         "text_allowed_no_visual": lambda state: state.get("text_leaks") is False and state["visual_text"] is None,
-        "requires_text_leak": lambda state: state["authority"].ok and state["authority"].needs_leak_check,
+        "requires_text_leak": lambda state: (
+            state["authority"].ok and not state.get("local_math_failed")
+            and state["authority"].needs_leak_check and reused_text_vetting is None
+        ),
         "requires_visual_leak": lambda state: (
-            state["authority"].ok and state["authority"].needs_leak_check
-            and state.get("text_leaks") is False and state["visual_text"] is not None
+            state["authority"].ok and not state.get("local_math_failed")
+            and state["authority"].needs_leak_check and visual_text_init is not None
+            and (parallel_topology or (state.get("text_leaks") is False and state["visual_text"] is not None))
         ),
     }
-    state = execute_workflow(
-        load_catalog().spec("tutoring-vet"),
+    state = execute_tutoring_child(
+        VET_NODE,
         handlers={
             "tutoring.authority": authority,
+            VET_MATH_NODE: math_consistency,
+            "tutoring-vet.text_leak": text_leak,
             "tutoring.leak-judge": text_leak,
             "tutoring.visual-leak-judge": visual_leak,
             "tutoring.complete_vetting": complete,
@@ -554,7 +738,7 @@ def vet_candidate(
         conditions=conditions,
         initial_state={
             "visual": candidate.visual,
-            "visual_text": describe(candidate.visual) if candidate.visual is not None else None,
+            "visual_text": visual_text_init,
             "dropped": candidate.visual_dropped,
             "text_leaks": False,
         },
@@ -586,44 +770,66 @@ def run_tutor_turn(
             *(url for row in window for url in row.get("image_urls", [])), *images,
         ]))
 
-    def vet(candidate: TutorTurnCandidate) -> Vetting:
+    def vet(candidate: TutorTurnCandidate, *, reuse_text_vetting: Vetting | None = None) -> Vetting:
         with agent_step_span("check", "tutoring.exit_gate") as span:
             set_observation_payload(span, input={
                 "candidate": candidate.model_dump(mode="json"), "permit": permit.as_context(),
                 "task_title": task_title, "problem_summary": problem_summary,
             })
             ledger = getattr(tools, "math_verification", None)
-            if ledger is not None:
-                needs_semantic_math = (
-                    candidate.act not in {"pronounce", "safety", "redirect"}
-                    or bool(candidate.math_claims)
-                    or bool(ledger.records)
-                )
-                try:
-                    ledger.validate(candidate.math_claims)
-                    if needs_semantic_math:
-                        check = getattr(leak_judge, "check_math", None)
-                        checked = None
-                        if check is not None:
-                            math_ctx = {
-                                "problem": problem_summary,
-                                "candidate_turn": candidate.turn.model_dump() if candidate.turn else None,
-                                **ledger.context(candidate.math_claims),
-                            }
-                            math_text = candidate.content + ("\n" + describe(candidate.visual) if candidate.visual else "")
-                            for _ in range(2):
-                                checked = check(text=math_text, context=math_ctx, images=list(judge_images or []))
-                                if checked is not None:
-                                    break
-                    else:
-                        checked = True
-                except Exception:  # noqa: BLE001 - independent math check fails closed
-                    checked = None
-                if checked is not True:
-                    return Vetting(candidate, None, "math_check_failed" if checked is None else "math_inconsistent",
-                                   "math_inconsistent")
-            checked_summary = (json.dumps({"problem": problem_summary, **ledger.context(candidate.math_claims)},
-                                          ensure_ascii=False) if ledger is not None else problem_summary)
+            images_list = list(judge_images or [])
+            catalog = load_catalog()
+            explicit_calls = catalog.spec("tutoring").node(RETRY_NODE).kind == "workflow"
+            parallel_topology = has_parallel_vet(catalog)
+
+            if parallel_topology:
+                if explicit_calls:
+                    transition("tutoring", "tutoring.exit_gate", VET_NODE)
+            else:
+                # Legacy serial topology (pre-upgrade snapshots): run MATH_NODE before tutoring-vet.
+                if explicit_calls:
+                    transition("tutoring", "tutoring.exit_gate", MATH_NODE)
+                with math_review_step(explicit_calls) as math_span:
+                    if math_span is not None and ledger is None:
+                        set_observation_payload(math_span, output={"reviewed": False})
+                    if ledger is not None:
+                        needs_semantic_math = (
+                            candidate.act not in {"pronounce", "safety", "redirect"}
+                            or bool(candidate.math_claims)
+                            or bool(ledger.records)
+                        )
+                        try:
+                            ledger.validate(candidate.math_claims)
+                            if needs_semantic_math:
+                                check = getattr(leak_judge, "check_math", None)
+                                checked = None
+                                if check is not None:
+                                    math_ctx = {
+                                        "problem": problem_summary,
+                                        "candidate_turn": candidate.turn.model_dump() if candidate.turn else None,
+                                        **ledger.context(candidate.math_claims),
+                                    }
+                                    math_text = candidate.content + ("\n" + describe(candidate.visual) if candidate.visual else "")
+                                    for _ in range(2):
+                                        checked = check(text=math_text, context=math_ctx, images=images_list)
+                                        if checked is not None:
+                                            break
+                            else:
+                                checked = True
+                        except Exception:  # noqa: BLE001 - independent math check fails closed
+                            checked = None
+                        if math_span is not None:
+                            set_observation_payload(math_span, output={"semantic_review": needs_semantic_math, "math_consistent": checked})
+                        if checked is not True:
+                            return Vetting(candidate, None, "math_check_failed" if checked is None else "math_inconsistent",
+                                           "math_inconsistent")
+                if explicit_calls:
+                    transition("tutoring", MATH_NODE, VET_NODE, "math_allowed")
+
+            checked_summary = (
+                json.dumps({"problem": problem_summary, **ledger.context(candidate.math_claims)}, ensure_ascii=False)
+                if ledger is not None else problem_summary
+            )
             actor_stage = (envelope.get("actor") or {}).get("grade_stage") if isinstance(envelope, dict) else None
             has_direct_engine_verdict = bool(
                 ledger is not None
@@ -641,9 +847,12 @@ def run_tutor_turn(
 
             result = vet_candidate(
                 candidate, permit=permit, leak_judge=leak_judge,
-                task_title=task_title, problem_summary=checked_summary, judge_images=judge_images,
+                task_title=task_title, problem_summary=checked_summary, judge_images=images_list,
                 grade_stage=actor_stage,
                 verdict_assertion_allowed=verdict_allowed,
+                ledger=ledger if parallel_topology else None,
+                raw_problem_summary=problem_summary,
+                reused_text_vetting=reuse_text_vetting,
             )
             span.set_attribute("agent.check.result", "rejected" if result.failure else "pass")
             if result.failure:
@@ -667,6 +876,7 @@ def run_tutor_turn(
     def attempt(
         current_model: TutorModelPort, kind: str, *, repair_error: str | None = None,
         preload_svg_guidelines: bool = False,
+        approved_text_vetting: Vetting | None = None,
     ) -> tuple[ModelCall, Vetting | None]:
         transition("tutoring", "tutoring.model_loop" if kind == "primary" else "tutoring.exit_gate",
                    "tutoring.attempt", None if kind == "primary" else "retry")
@@ -679,6 +889,23 @@ def run_tutor_turn(
             if proposal.candidate is not None:
                 transition("tutoring", "tutoring.attempt", "tutoring.exit_gate", "candidate")
             candidate = proposal.candidate
+            if (
+                approved_text_vetting is not None
+                and candidate is not None
+                and (
+                    candidate.act != approved_text_vetting.candidate.act
+                    or candidate.content != approved_text_vetting.candidate.content
+                    or candidate.turn != approved_text_vetting.candidate.turn
+                )
+            ):
+                # Redraw must keep approved act/content/turn identical; if altered, reject without calling Judges.
+                set_observation_payload(span, output={
+                    "candidate_available": True,
+                    "used_model_calls": proposal.used_calls,
+                    "failure": "redraw_changed_approved_text",
+                    "leak_reason": None,
+                })
+                return proposal, None
             evidence = candidate.image_review if candidate is not None else None
             if judge_images and evidence is not None:
                 if evidence.conclusion != "not_checking":
@@ -711,7 +938,11 @@ def run_tutor_turn(
                         proposal = ModelCall(polished.candidate, polished.failure, proposal.used_calls + polished.used_calls)
                     else:
                         return proposal, Vetting(candidate, None, INVALID_CANDIDATE)
-            review = vet(proposal.candidate) if proposal.candidate is not None else None
+            review = (
+                vet(proposal.candidate, reuse_text_vetting=approved_text_vetting)
+                if proposal.candidate is not None
+                else None
+            )
             set_observation_payload(span, output={
                 "candidate_available": proposal.candidate is not None,
                 "used_model_calls": proposal.used_calls,
@@ -721,7 +952,7 @@ def run_tutor_turn(
             return proposal, review
 
     from app.agent_specs.catalog import load_catalog
-    from app.agent_specs.runtime import execute_workflow
+    from app.agent_specs.runtime import execute_tutoring_child
 
     def primary(state):
         state["call"], state["vetting"] = attempt(model, "primary")
@@ -742,7 +973,12 @@ def run_tutor_turn(
 
     def redraw(state):
         review = state["vetting"]
-        proposal, checked = attempt(model, "visual_redraw", repair_error=_visual_leak_repair(review))
+        proposal, checked = attempt(
+            model,
+            "visual_redraw",
+            repair_error=_visual_leak_repair(review),
+            approved_text_vetting=review,
+        )
         if (checked is not None and checked.failure is None and checked.visual is not None
                 and checked.candidate.act == review.candidate.act
                 and checked.candidate.content == review.candidate.content
@@ -790,8 +1026,8 @@ def run_tutor_turn(
             review.visual_need in {"requested", "helpful"} or _TEXT_DIAGRAM_TEX in review.candidate.content
         )
 
-    state = execute_workflow(
-        load_catalog().spec("tutoring-retry"), initial_state={"retried": False},
+    state = execute_tutoring_child(
+        RETRY_NODE, initial_state={"retried": False},
         handlers={
             "primary": primary, "repair": repair, "backup": backup,
             "visual_decision": lambda state: None, "visual_redraw": redraw,

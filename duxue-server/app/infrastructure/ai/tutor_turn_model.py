@@ -56,9 +56,15 @@ class QwenLeakJudge:
         import json
         user = build_context("tutoring.leak-judge", text=text, task_title=None,
                              problem_summary=json.dumps(context, ensure_ascii=False), images=images)
+        from contextlib import nullcontext
+
+        from app.agent_specs.catalog import executing_node
+        from app.agent_specs.subworkflows import MATH_NODE, VET_MATH_NODE
         from app.infrastructure.observability.telemetry import agent_step_span
+        review = (nullcontext() if executing_node.get() in {("tutoring", MATH_NODE), ("tutoring-vet", VET_MATH_NODE)} else
+                  agent_step_span("check", "tutoring.text_leak", **{"math.review.phase": "consistency"}))
         try:
-            with agent_step_span("check", "tutoring.text_leak", **{"math.review.phase": "consistency"}):
+            with review:
                 payload = components.invoke_json_component(
                     spec=load_catalog().component_by_id("tutoring-vet", "tutoring.leak-judge"),
                     user=user, settings_obj=self._settings,

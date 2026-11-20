@@ -35,6 +35,7 @@ _REQUIRED_GATES = {
 }
 _CONDITIONS = {
     "authority_denied", "authority_allowed_needs_leak_check", "authority_allowed_no_leak_check",
+    "authority_allowed_no_review", "needs_math_review", "needs_text_review", "needs_visual_review",
     "text_denied", "text_allowed_with_visual", "text_allowed_no_visual",
     "always", "requires_text_leak", "requires_visual_leak",
 }
@@ -49,7 +50,7 @@ class NodeSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: str
-    kind: Literal["agent", "gate", "action"]
+    kind: Literal["agent", "gate", "action", "workflow"]
     display_name: str | None = None
     trace_kind: Literal["route", "node", "stage", "check"] | None = None
     ref: str | None = None
@@ -178,7 +179,7 @@ class StepIdentity(BaseModel):
     required: bool
     # The configured object this step executes. Distinct from ``kind``, which is
     # only the trace shape (route, node, stage, check, tool).
-    unit_kind: Literal["agent", "gate", "tool", "action"]
+    unit_kind: Literal["agent", "gate", "tool", "action", "workflow"]
     unit_id: str
     unit_version: str
 
@@ -197,6 +198,8 @@ def _node_unit(spec: AgentSpec, node: NodeSpec) -> tuple[str, str, str]:
     """An action lives only in its Workflow; an Agent or Gate keeps its own version."""
     if node.kind == "action":
         return "action", node.id, spec.version
+    if node.kind == "workflow":
+        return "workflow", node.ref, spec.version
     return _configured_unit(node.ref or "")
 
 
@@ -213,6 +216,22 @@ class AgentCatalog:
         self._steps: dict[tuple[str, str], StepIdentity] = {}
         self._components: dict[str, StepIdentity] = {}
         referenced: set[str] = set()
+        from graphlib import TopologicalSorter
+
+        from app.agent_specs.subworkflows import (
+            CALL_TARGETS,
+            MATH_NODE,
+            PARALLEL_VET_CONDITIONS,
+            RETRY_NODE,
+            VET_MATH_NODE,
+            VET_NODE,
+        )
+
+        calls = {key: {node.ref for node in spec.nodes if node.kind == "workflow"}
+                 for key, spec in specs.items()}
+        if set().union(*calls.values()) - specs.keys():
+            raise ValueError("unknown subworkflow reference")
+        TopologicalSorter(calls).prepare()  # Reject cycles before binding the reviewed handlers.
         for spec in specs.values():
             if spec.id in OBSERVATION_WORKFLOWS:
                 from app.agent_specs.observation_contracts import workflow_documents
@@ -260,6 +279,39 @@ class AgentCatalog:
             handlers = {node.handler for node in spec.nodes if node.handler}
             conditions = {edge.condition for edge in spec.edges if edge.condition}
             conditions.update(gate["when"] for gate in spec.required_gates)
+            if calls[spec.id]:
+                bindings = {node.id: node.ref for node in spec.nodes if node.kind == "workflow"}
+                if spec.id != "tutoring" or bindings != CALL_TARGETS:
+                    raise ValueError("unknown subworkflow binding")
+                vet_spec = specs["tutoring-vet"]
+                vet_is_parallel = any(n.id == VET_MATH_NODE for n in vet_spec.nodes)
+                math = next((n for n in spec.nodes if n.id == MATH_NODE), None)
+                if vet_is_parallel:
+                    if (
+                        math is not None
+                        or spec.node(VET_NODE).trace != VET_NODE
+                        or spec.node(RETRY_NODE).trace != RETRY_NODE
+                        or not any(
+                            edge.source == "tutoring.exit_gate" and edge.target == VET_NODE and not edge.condition
+                            for edge in spec.edges
+                        )
+                    ):
+                        raise ValueError("invalid tutoring review topology")
+                else:
+                    if (math is None or math.kind != "gate" or math.ref != "tutoring.leak-judge" or math.trace != MATH_NODE
+                            or spec.node(VET_NODE).trace != VET_NODE or spec.node(RETRY_NODE).trace != RETRY_NODE
+                            or not any(edge.source == "tutoring.exit_gate" and edge.target == MATH_NODE and not edge.condition
+                                       for edge in spec.edges)
+                            or not any(edge.source == MATH_NODE and edge.target == VET_NODE
+                                       and edge.condition == "math_allowed" for edge in spec.edges)):
+                        raise ValueError("invalid tutoring review topology")
+                    registration = {"handlers": registration["handlers"],
+                                    "conditions": registration["conditions"] | {"math_allowed"}}
+            if spec.id == "tutoring-vet" and any(n.id == VET_MATH_NODE for n in spec.nodes):
+                registration = {
+                    "handlers": registration["handlers"],
+                    "conditions": registration["conditions"] | set(PARALLEL_VET_CONDITIONS),
+                }
             if handlers - registration["handlers"]:
                 raise ValueError(f"{spec.id}: unknown action handler")
             if conditions - registration["conditions"]:
@@ -280,6 +332,8 @@ class AgentCatalog:
                 for component_id in _node_components(node):
                     COMPONENTS.get(component_id)
                     referenced.add(component_id)
+                    if (node.id == MATH_NODE and calls[spec.id]) or node.id == VET_MATH_NODE:
+                        continue  # Shared Judge; default identity belongs to the text review.
                     if staged and (
                         (node.ref == "tutoring.blueprint-planner" and node.id == blueprint_steps.node_id("primary"))
                         or (node.ref == blueprint_steps.BACKUP and node.id == blueprint_steps.node_id("alternative"))
@@ -376,7 +430,7 @@ class AgentCatalog:
             digest = load_definitions().artifact_digest
             if digest:
                 return identity.model_copy(update={"unit_version": digest, "version": digest})
-            if identity.unit_kind != "action" and identity.unit_id != "tutoring.unknown_tool":
+            if identity.unit_kind not in {"action", "workflow"} and identity.unit_id != "tutoring.unknown_tool":
                 _, _, version = _configured_unit(identity.unit_id)
                 return identity.model_copy(update={"unit_version": version})
             return identity
@@ -396,8 +450,8 @@ class AgentCatalog:
     def component_identity(self, component_id: str) -> StepIdentity:
         identity = self._components[component_id]
         active = executing_node.get()
-        if active and active[0] == identity.owner and component_id in _node_components(self.spec(active[0]).node(active[1])):
-            identity = identity.model_copy(update={"node_id": active[1]})
+        if active and component_id in _node_components(self.spec(active[0]).node(active[1])):
+            identity = identity.model_copy(update={"owner": active[0], "node_id": active[1]})
         digest = load_definitions().artifact_digest
         if digest:
             return identity.model_copy(update={"unit_version": digest, "version": digest})

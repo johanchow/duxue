@@ -24,10 +24,16 @@ export function workflowDetailHref(
   node?: Json,
   definition?: Json,
   draftId?: string,
+  releaseId?: string,
 ) {
   const query = draftId ? `?draft=${encodeURIComponent(draftId)}` : '';
+  const snapshot =
+    query || (releaseId ? `?release=${encodeURIComponent(releaseId)}` : '');
+  if (node?.kind === 'workflow' && node.ref) {
+    return `/workflows/${encodeURIComponent(node.ref)}${snapshot}`;
+  }
   if (node?.kind === 'action')
-    return `/workflows/${encodeURIComponent(workflowId)}/nodes/${encodeURIComponent(node.id)}${query}`;
+    return `/workflows/${encodeURIComponent(workflowId)}/nodes/${encodeURIComponent(node.id)}${snapshot}`;
   if (
     node?.ref &&
     (node.kind === 'agent' ||
@@ -60,11 +66,13 @@ export function workflowGraph(
         names[node.ref],
       );
       const typeLabel =
-        node.kind === 'action'
-          ? 'Action · 固定代码'
-          : node.kind === 'agent'
-            ? `Agent · ${definition?.implementation === 'code' ? '代码' : '模型'}`
-            : `Gate · ${definition?.implementation === 'judge' ? '模型 Judge' : '代码门禁'}`;
+        node.kind === 'workflow'
+          ? 'Workflow · 子流程'
+          : node.kind === 'action'
+            ? 'Action · 固定代码'
+            : node.kind === 'agent'
+              ? `Agent · ${definition?.implementation === 'code' ? '代码' : '模型'}`
+              : `Gate · ${definition?.implementation === 'judge' ? '模型 Judge' : '代码门禁'}`;
       return {
         id: node.id,
         position: { x: 0, y: 0 },
@@ -97,6 +105,21 @@ export function workflowGraph(
               ineligible: '未达条件，结束本次观察',
             } as Record<string, string>
           )[edge.condition_id] || edge.condition_id
+        : flow.id === 'tutoring-vet' && edge.condition_id
+          ? (
+              {
+                authority_denied: '权限拒绝',
+                authority_allowed_no_review: '无需模型审核',
+                authority_allowed_no_leak_check: '无需模型审核',
+                authority_allowed_needs_leak_check: '需答案保护审核',
+                needs_math_review: '并行：数学一致性',
+                needs_text_review: '并行：正文答案保护',
+                needs_visual_review: '并行：配图答案保护',
+                text_denied: '正文未通过',
+                text_allowed_with_visual: '正文通过，检配图',
+                text_allowed_no_visual: '正文通过，无配图',
+              } as Record<string, string>
+            )[edge.condition_id] || edge.condition_id
         : flow.id === 'tutoring-blueprint' && edge.condition_id
           ? (
               {
