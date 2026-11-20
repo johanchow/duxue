@@ -1,0 +1,110 @@
+{
+  "math": {
+    "paper": {
+      "url": "https://www.jhgk.cn/upload/file/20250708/1751941972629003357.pdf",
+      "sha256": "5beec2b729f6dd71845ef46de83deac1ffaceab3a503793f6b8ddd3604fdecee",
+      "pages": 5
+    },
+    "key": {
+      "url": "https://www.jhgk.cn/upload/file/20250708/1751941984182009882.pdf",
+      "sha256": "f4348eee327066be4ace489956ba38532896f7f4f7cb6102ea2e4d6f9f342609",
+      "pages": 21
+    }
+  },
+  "biology": {
+    "paper": {
+      "url": "https://www.jhgk.cn/upload/file/20250708/1751942146341018630.pdf",
+      "sha256": "c013d165ae4ad1a139e008156ed061339e2c898078a4708059521a698af74bc7",
+      "pages": 10
+    },
+    "key": {
+      "url": "https://www.jhgk.cn/upload/file/20250708/1751942160972012076.pdf",
+      "sha256": "6976d96298e6018ef9f2f02ce18f670931a3b7b8567a0af93240df6c6371840d",
+      "pages": 21
+    }
+  },
+  "physics": {
+    "paper": {
+      "url": "https://www.jhgk.cn/upload/file/20250708/1751942024398052881.pdf",
+      "sha256": "a837b756b4e33551ea9bcef5f25199a13c2173b4ff266a7d33fa6d65d05b50f0",
+      "pages": 8
+    },
+    "key": {
+      "url": "https://www.jhgk.cn/upload/file/20250708/1751942036779074292.pdf",
+      "sha256": "37cd9a7cd8e95fee6c26ba6c12958b2378a3fba19eff32dc0d21d2c584d69732",
+      "pages": 19
+    }
+  },
+  "chemistry": {
+    "paper": {
+      "url": "https://www.jhgk.cn/upload/file/20250708/1751942072191083386.pdf",
+      "sha256": "bb0f56d816d4c7e6651504eab8923f391a08849d3b0c39365f48b60cec410ed9",
+      "pages": 12
+    },
+    "key": {
+      "url": "https://www.jhgk.cn/upload/file/20250708/1751942082732071320.pdf",
+      "sha256": "e516b1c192299cd446dac81488a084a3c3e996a4eb170921969d8c0ece429eff",
+      "pages": 23
+    }
+  },
+  "politics": {
+    "paper": {
+      "url": "https://www.jhgk.cn/upload/file/20250708/1751942122099087587.pdf",
+      "sha256": "332f2ccc1feeb7b7f8b64349a9a8ec761d93a50806d2fe5c7603d4421432b77c",
+      "pages": 9
+    },
+    "key": {
+      "url": "https://www.jhgk.cn/upload/file/20250708/1751942133727077814.pdf",
+      "sha256": "24be6fc0d15a8595423ef6b246b111b4af21be73323a995f86645894ff901bd8",
+      "pages": 24
+    }
+  },
+  "geography": {
+    "paper": {
+      "url": "https://www.jhgk.cn/upload/file/20250708/1751942106558037131.pdf",
+      "sha256": "341e695ddc456cb375335bebbce12d9d2fee1899dd164b5702828dede52eea25",
+      "pages": 8
+    },
+    "key": {
+      "url": "https://www.jhgk.cn/upload/file/20250708/1751942095696015108.pdf",
+      "sha256": "6486fb3d8f8f5bd8df6506eb56309e9818e71605ce79434d24fdff7fd36accd6",
+      "pages": 17
+    }
+  },
+  "history": {
+    "paper": {
+      "url": "https://www.jhgk.cn/upload/file/20250708/1751942048077009544.pdf",
+      "sha256": "8e6f63062b7a4d0c74f10dadcea81adca83a6426960210a6c822fcd9fcdb5425",
+      "pages": 7
+    },
+    "key": {
+      "url": "https://www.jhgk.cn/upload/file/20250708/1751942061165000395.pdf",
+      "sha256": "d989ad60389073e21b0cbfa3a1308eae97e848e0750481fbc2ed29cee1a6f9c1",
+      "pages": 16
+    }
+  },
+  "chinese": {
+    "paper": {
+      "url": "https://www.jhgk.cn/upload/file/20250708/1751941949359096440.pdf",
+      "sha256": "044f37e768cf6df9aa429a19ef04c479ced30a60e62b854b0b800bd0ca5cdf80",
+      "pages": 9
+    },
+    "key": {
+      "url": "https://www.jhgk.cn/upload/file/20250708/1751941961501043401.pdf",
+      "sha256": "1a9e38c6b14bec343270da3d03519b22d02c76a8ce3496d06d71829933dba244",
+      "pages": 25
+    }
+  },
+  "english": {
+    "paper": {
+      "url": "https://www.jhgk.cn/upload/file/20250708/1751941997599028812.pdf",
+      "sha256": "72c1c5226afafd32a922f1a3c736f9608f65498accb5ec16d1ab1fe37015a079",
+      "pages": 10
+    },
+    "key": {
+      "url": "https://www.jhgk.cn/upload/file/20250708/1751942010461033311.pdf",
+      "sha256": "c6ffb603a3437229ba39424cf01a53b7372b8c0051e4af2606d815163254382d",
+      "pages": 20
+    }
+  }
+}
