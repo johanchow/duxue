@@ -114,6 +114,55 @@ class TutoringWorkflow:
         self._media_cache: dict[str, tuple[list[dict], list[str | None]]] = {}
         self._selected_image_refs: dict[str, list[str]] = {}
 
+    def _selected_attachment_keys(
+        self, invocation: RunInvocation, selected_refs: list[str]
+    ) -> list[str]:
+        """Resolve authorized storage keys corresponding to the foreground-selected images."""
+        from app.agent_specs.image_refs import image_ref
+        from app.application.queries.run_transcript import (
+            current_turn_images,
+            recent_thread_utterances,
+            ward_media_prefix,
+        )
+
+        prefix = ward_media_prefix(invocation.ward_id)
+        current_keys = [
+            str(k)
+            for k in (invocation.turn.get("attachment_keys") or [])
+            if str(k).startswith(prefix)
+        ]
+        if not selected_refs:
+            return current_keys
+        if current_keys and invocation.turn.get("tutoring_intent") != "compare_previous_image":
+            return current_keys
+
+        wanted = set(selected_refs)
+        candidate_keys: list[str] = []
+        recent, _ = recent_thread_utterances(
+            self.db,
+            ward_id=invocation.ward_id,
+            thread_id=invocation.thread_id,
+            exclude_turn_id=invocation.turn_id,
+        )
+        for row in recent:
+            for key in row.get("attachment_refs") or []:
+                skey = str(key)
+                if skey.startswith(prefix) and skey not in candidate_keys:
+                    candidate_keys.append(skey)
+        for key in current_keys:
+            if key not in candidate_keys:
+                candidate_keys.append(key)
+
+        if not candidate_keys:
+            return current_keys
+        urls = current_turn_images(invocation.ward_id, candidate_keys)
+        matched = [
+            key
+            for key, url in zip(candidate_keys, urls, strict=False)
+            if url and image_ref(url) in wanted
+        ]
+        return matched or current_keys
+
     def _resolve_active_dossier(
         self,
         *,
@@ -502,12 +551,13 @@ class TutoringWorkflow:
             task_title=task_title, task_active=task_active, window=window, math_engine=self.math_engine,
         )
         all_authorized_images = self._judge_images(window, images)
+        selected_attachment_keys = self._selected_attachment_keys(invocation, prepared.refs)
         active_dossier, dossier_projection = self._resolve_active_dossier(
             ward_id=invocation.ward_id,
             problem_row=problem_row,
             content=content,
             images=all_authorized_images,
-            attachment_keys=list(turn.get("attachment_keys") or []),
+            attachment_keys=selected_attachment_keys,
             tutoring_intent=turn.get("tutoring_intent"),
         )
         model_envelope = envelope.model_dump()
@@ -703,7 +753,7 @@ class TutoringWorkflow:
                             from app.workers.solving_tasks import enqueue_solve_dossier
 
                             enqueue_cb = lambda did, _imgs=None: enqueue_solve_dossier(
-                                did, attachment_keys=list(turn.get("attachment_keys") or [])
+                                did, attachment_keys=selected_attachment_keys
                             )
                         created_dos = RequestSolveCommand(self.db, enqueue_fn=enqueue_cb).execute(
                             ward_id=invocation.ward_id,

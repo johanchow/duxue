@@ -105,9 +105,11 @@ def test_tutor_turn_context_attaches_crop_parts_without_leaking_bytes_in_json_ob
         current_images=[data_url],
         observations=[{"tool": "inspect_image", **public_obs}],
     )
-    # Text JSON part must not contain raw crop base64 URL
+    # Text JSON part must not contain raw crop base64 URL, and exposes image_manifest for inspect_image
     text_body = parts[0]["text"]
     assert res.crop_data_url not in text_body
+    payload = json.loads(text_body)
+    assert payload["image_manifest"] == [{"image_id": 1, "image_ref": ref}]
     # Multimodal parts include both original image and cropped zoom image
     image_urls = [p["image_url"]["url"] for p in parts if p.get("type") == "image_url"]
     assert data_url in image_urls

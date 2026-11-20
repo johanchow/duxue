@@ -356,6 +356,10 @@ def test_upgraded_solver_and_mentor_budgets_and_discipline_prompts():
     assert mentor_doc["models"][0]["thinking_budget"] <= 2560
     assert "[mentor-discipline.v2]" in mentor_doc["prompt"]["template"]
 
+    turn_doc = files["agents/tutoring.turn.json"]
+    assert all(m["max_output_tokens"] >= 8192 for m in turn_doc["models"])
+    assert "[tutor-visual-discipline.v1]" in turn_doc["prompt"]["template"]
+
 
 def test_t1_primary_failure_automatically_falls_back_to_backup(staged):
     class Solver:
@@ -510,3 +514,59 @@ def test_tool_budget_cannot_turn_a_request_into_a_finished_stem(staged, monkeypa
     )
     with use_definitions(staged):
         assert gateway.extract_stem(text="读图", images=[]) is None
+
+
+def test_student_request_solve_binds_image_identity_and_worker_extracts_new_image_problem(staged, db):
+    from app.application.commands.problem_solving import (
+        ExecuteDossierSolveCommand,
+        RequestSolveCommand,
+    )
+    from app.infrastructure.persistence.models import uid
+
+    ward_id = uid()
+    img_a = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAA=="
+    img_b = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAE/2wBDAA=="
+    enqueued = []
+    cmd = RequestSolveCommand(db, enqueue_fn=lambda did, imgs=None: enqueued.append((did, list(imgs or []))))
+
+    d1 = cmd.execute(ward_id=ward_id, text="帮我看看", images=[img_a])
+    d2 = cmd.execute(ward_id=ward_id, text="帮我看看", images=[img_b])
+    d1_repeat = cmd.execute(ward_id=ward_id, text="帮我看看", images=[img_a])
+
+    # Different images with identical generic text MUST NOT collide on the same dossier
+    assert d1.dossier_id != d2.dossier_id
+    assert d1_repeat.dossier_id == d1.dossier_id
+
+    # Worker runs `extract` on unextracted student image dossier and upgrades to T2 when classified
+    class Solver:
+        def __init__(self):
+            self.extracted = 0
+            self.routes = []
+
+        def extract_stem(self, *, independent_reread, **kwargs):
+            self.extracted += 1
+            return {
+                "subject": "physics",
+                "tier": "T2",
+                "raw_text": "压轴计算题完整题面",
+                "subproblems": ["(1)", "(2)"],
+                "needs_student_confirmation": False,
+            }
+
+        def solve_route(self, *, route_hint, **kwargs):
+            self.routes.append(route_hint)
+            return _good_math_route()
+
+    solver = Solver()
+    trace = Recorder()
+    with use_definitions(staged), trace.capture():
+        settled = ExecuteDossierSolveCommand(db, solver=solver).execute(
+            dossier_id=d1.dossier_id, images=[img_a]
+        )
+
+    assert solver.extracted == 1
+    assert set(solver.routes) == {"T2_algebraic", "T2_alternative"}
+    assert settled.tier == "T2"
+    assert settled.stem.subject == "physics"
+    nodes = [e["node_id"].split(".")[-1] for e in trace.events if e["kind"] in {"agent", "gate", "action"}]
+    assert nodes[0] == "extract"

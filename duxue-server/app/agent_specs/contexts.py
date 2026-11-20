@@ -26,6 +26,17 @@ def tutor_turn(*, envelope, instruction, recent_utterances=None, current_images=
     inspected_crops = clean_envelope.pop("inspected_crops", None) or []
     payload = {"contract": "tutor-turn.v4", "instruction": instruction, "context": clean_envelope}
     has_images = current_images or any(row.get("image_urls") for row in recent_utterances or [])
+    if has_images:
+        from app.agent_specs.image_refs import image_manifest
+
+        visible_imgs = [
+            url
+            for row in (recent_utterances or [])
+            for url in (row.get("image_urls") or [])
+            if url
+        ] + [url for url in (current_images or []) if url]
+        if visible_imgs:
+            payload["image_manifest"] = image_manifest(visible_imgs)
     if has_images and clean_envelope.get("image_review_phase") != "response":
         from app.application.workflows.image_review import ImageReview
         payload["image_review_rule"] = (

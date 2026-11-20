@@ -74,10 +74,21 @@ class RequestSolveCommand:
         subject: str = "general",
         initial_tier: str = "T1",
     ) -> ProblemDossier:
+        from app.agent_specs.image_refs import image_ref
+
         imgs = [img for img in (images or []) if isinstance(img, str) and img]
-        # Incorporate authorized image count/hashes into stem when text is minimal
-        img_tag = f" [images:{len(imgs)}]" if imgs and not text.strip() else ""
-        stem = StructuredStem(subject=subject, raw_text=(text.strip() + img_tag)[:4000])
+        # Bind authorized image identities into stem whenever images are present so different
+        # pictures with the same generic text ("帮我看看") never collide on an older dossier.
+        img_tag = (
+            " [images:" + ",".join(image_ref(img) for img in imgs) + "]"
+            if imgs
+            else ""
+        )
+        raw_prefix = text.strip()
+        stem_text = (
+            (raw_prefix + img_tag) if raw_prefix else img_tag.strip()
+        )[:4000]
+        stem = StructuredStem(subject=subject, raw_text=stem_text)
         current_time = now()
 
         existing = self.repo.find_reusable(stem=stem, ward_id=ward_id)
@@ -583,6 +594,7 @@ def solve_and_verify_problem(
     math_engine: MathEnginePort | None = None,
     initial_tier: DifficultyTier = "T1",
     allow_t2_escalation: bool = True,
+    question: str | None = None,
 ) -> VerifiedSolution:
     """Pure out-of-transaction solving & deterministic verification pipeline.
 
@@ -606,6 +618,7 @@ def solve_and_verify_problem(
             math_engine=math_engine,
             tier=tier,
             allow_upgrade=allow_t2_escalation,
+            question=question,
         )
 
     # On-demand reread only when image stem was explicitly flagged unclear
@@ -924,12 +937,20 @@ class ExecuteDossierSolveCommand:
         if dossier.status == "ready":
             return dossier
 
+        needs_initial_extract = bool(
+            images
+            and dossier.stem.subject == "general"
+            and not dossier.stem.subproblems
+            and not dossier.stem.diagram_summary
+            and dossier.stem.stem_version == 1
+        )
         solution = solve_and_verify_problem(
             stem=dossier.stem,
             images=images,
             solver=self._solver(),
             math_engine=self.math_engine,
             initial_tier=dossier.tier,
+            question=dossier.stem.raw_text if needs_initial_extract else None,
         )
         if solution.status == "failed":
             failed = dossier.mark_failed(reason=solution.failure_reason or "solve_failed")

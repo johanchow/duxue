@@ -54,6 +54,15 @@ VISION_INSPECT_GUIDANCE = (
     "请先调用 inspect_image 局部放大（返回 {\"tool_request\": {\"name\": \"inspect_image\", \"args\": {\"image_ref\": \"img_...\", \"bbox\": {\"x0\": 0.1, \"y0\": 0.2, \"x1\": 0.6, \"y1\": 0.7}, \"label\": \"...\"}}}）看清后再转写；若切片裁掉了主尺零刻度或距离标注，必须扩大 bbox 再裁一次。"
 )
 
+TUTOR_TURN_ID = "tutoring.turn"
+TUTOR_TURN_MAX_OUTPUT_TOKENS = 8192
+
+TUTOR_VISUAL_DISCIPLINE = (
+    "\n[tutor-visual-discipline.v1] 看图引导与题界纪律：\n"
+    "1. 整页邻题隔离：若学生拍整页作业并指定了某道题号，只聚焦引导该目标题，严禁顺带提及、解答或泄露同页其他邻题。\n"
+    "2. 围绕可核对的图上事实启发：遇到螺旋测微器/游标卡尺/电表刻度、纸带点迹标注或电路接线时，优先使用 image_manifest 中的 image_ref 调用 inspect_image 局部放大（若切片裁掉主尺零刻度或标注端点，扩大 bbox 再裁一次）。引导时把问题锚定在图上具体视觉特征（如「看看图上 x₂ 的箭头，它从哪个点量到哪个点？」），让孩子自己发现问题；即使裁图成功，也不要仅凭单次视觉估读强行判孩子读数或计算一定错，存在疑义时引导孩子对照原图一起核对刻度或端点。"
+)
+
 NODES = [
     ("extract", "agent", EXTRACT),
     ("select", "gate", ROUTE),
@@ -320,3 +329,15 @@ def upgrade_files(files):
 
     files.update(docs)
     files[FLOW_FILE] = workflow()
+
+    turn_path = f"agents/{TUTOR_TURN_ID}.json"
+    if turn_path in files:
+        turn_doc = files[turn_path]
+        for m in turn_doc.get("models") or []:
+            m["max_output_tokens"] = max(
+                int(m.get("max_output_tokens") or 0), TUTOR_TURN_MAX_OUTPUT_TOKENS
+            )
+        turn_tpl = turn_doc["prompt"]["template"]
+        if "[tutor-visual-discipline.v1]" in turn_tpl:
+            turn_tpl = turn_tpl.split("[tutor-visual-discipline.v1]", 1)[0]
+        turn_doc["prompt"]["template"] = turn_tpl.rstrip() + TUTOR_VISUAL_DISCIPLINE
