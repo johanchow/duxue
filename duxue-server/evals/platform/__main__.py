@@ -143,6 +143,7 @@ def select_items(items, *, batch=None, cases=None):
     return [
         item for item in items
         if item.status == "ACTIVE"
+        and item.input.get("execution_target") != "guardian_explain"
         and (not batch or (item.metadata or {}).get("batch") in batch)
         and (not cases or item.input["record"]["id"] in cases)
     ]

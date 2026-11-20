@@ -352,9 +352,10 @@ def test_upgraded_solver_and_mentor_budgets_and_discipline_prompts():
     )
     direct_mentor_workflow(files)
     mentor_doc = files[f"agents/{MENTOR_EXPLAIN_ID}.json"]
-    assert mentor_doc["models"][0]["max_output_tokens"] >= 8192
+    assert mentor_doc["models"][0]["max_output_tokens"] >= 16384
     assert mentor_doc["models"][0]["thinking_budget"] <= 2560
     assert "[mentor-discipline.v2]" in mentor_doc["prompt"]["template"]
+    assert "凝练交付原则" in mentor_doc["prompt"]["template"]
 
     turn_doc = files["agents/tutoring.turn.json"]
     def caps(doc):

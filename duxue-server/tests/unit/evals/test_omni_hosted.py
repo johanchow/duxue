@@ -161,10 +161,16 @@ def test_batch_and_case_selection_excludes_other_batches_and_archived_items():
         item("one", "omni-edu-v1"),
         item("two", "legacy"),
         item("three", "omni-edu-v1", "ARCHIVED"),
+        Obj(
+            status="ACTIVE",
+            metadata={"batch": "guardian-regression"},
+            input={"execution_target": "guardian_explain", "record": {"id": "four"}},
+        ),
     ]
     assert select_items(items, batch=["omni-edu-v1"]) == [items[0]]
     assert select_items(items, batch=["omni-edu-v1"], cases={"two"}) == []
     assert select_items(items) == items[:2]
+    assert select_items(items, batch=["guardian-regression"]) == []
 
 
 def test_solve_cannot_silently_receive_tutoring_scores():

@@ -1,13 +1,16 @@
 import json
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock
 from uuid import uuid4
 
 import pytest
 
-from app.agent_specs.admin_bundle import compile_bundle
+from app.agent_specs.admin_bundle import compile_bundle, contract_compatibility
 from app.agent_specs.definitions import use_definitions
 from app.application.workflows import guardian_mentor
 from app.infrastructure.ai import components
+from app.infrastructure.ai.components import invoke_json_component
 from scripts.upgrade_guardian_mentor_review import upgrade
 from scripts.upgrade_math_bundle import upgrade as add_guardian
 
@@ -35,6 +38,12 @@ def simple(base_guardian):
 @pytest.fixture(scope="module")
 def direct(base_guardian):
     staged_rec = upgrade(base_guardian)
+    bundle = staged_rec["bundle"]
+    mentor = bundle["files"]["agents/tutoring.mentor-explain.json"]
+    mentor["output_contract"] = "tutoring.mentor-explain.output.v1"
+    mentor["output_schema"]["properties"]["content"]["maxLength"] = 3600
+    bundle["compatibility"] = contract_compatibility(bundle["files"])
+    staged_rec["digest"] = compile_bundle(bundle).digest
     record = upgrade(staged_rec, direct=True)
     assert upgrade(record, direct=True)["digest"] == record["digest"]
     assert "gates/tutoring.mentor-review.json" not in record["bundle"]["files"]
@@ -44,6 +53,42 @@ def direct(base_guardian):
     prompt = record["bundle"]["files"]["agents/tutoring.mentor-explain.json"]["prompt"]["template"]
     assert "额外返回 sections" not in prompt
     return compile_bundle(record["bundle"]).catalog
+
+
+@pytest.mark.parametrize(
+    ("length", "expected"),
+    [(4204, "explain"), (8000, "explain"), (8001, "unavailable")],
+)
+def test_direct_mentor_applies_same_content_limit_at_both_validation_layers(
+    direct, monkeypatch, length, expected
+):
+    from app.infrastructure.ai import client
+
+    content = "解" * length
+    completion = components.ChatCompletionResult(
+        raw=json.dumps({"act": "explain", "content": content}, ensure_ascii=False),
+        finish_reason="stop",
+        stream_completed=True,
+    )
+    complete_chat = Mock(return_value=completion)
+    monkeypatch.setattr(client, "dashscope_client", lambda **kwargs: object())
+    monkeypatch.setattr(components, "complete_json_chat", complete_chat)
+    monkeypatch.setattr(components, "invoke_json_component", invoke_json_component)
+    monkeypatch.setattr(guardian_mentor, "_solve_for_mentor", lambda **kwargs: None)
+    with use_definitions(direct):
+        response = guardian_mentor.explain_for_guardian(
+            guardian_id=str(uuid4()),
+            content="请解答第21题的全部小问",
+            attachment_keys=[],
+            window=[],
+            images=[],
+            rows=[],
+            model_settings=SimpleNamespace(),
+        )
+    assert complete_chat.call_count == (1 if expected == "explain" else 2)
+    assert response["act"] == expected
+    if expected == "explain":
+        assert response["content"].endswith(content)
 
 
 @pytest.mark.parametrize("fixture_name", ["staged", "simple", "direct"])
@@ -93,3 +138,33 @@ def test_duplicate_keys_in_keyed_review_are_rejected(simple):
         components.validate_json_completion(
             completion, unit_id="tutoring.mentor-review"
         )
+
+
+def test_direct_guardian_mentor_retries_concisely_on_truncated_candidate(
+    direct, monkeypatch
+):
+    from app.infrastructure.ai.errors import ModelGatewayError
+
+    monkeypatch.setattr(guardian_mentor, "_solve_for_mentor", lambda **kwargs: None)
+    seen_users = []
+
+    def provider(*, spec, user, **kwargs):
+        seen_users.append(user)
+        if len(seen_users) == 1:
+            raise ModelGatewayError("invalid_model_candidate")
+        return {"act": "explain", "content": "（1）精简完整解答；（2）核心推导与结论。"}
+
+    monkeypatch.setattr(components, "invoke_json_component", provider)
+    with use_definitions(direct):
+        response = guardian_mentor.explain_for_guardian(
+            guardian_id=str(uuid4()),
+            content="请解答第21题",
+            attachment_keys=[],
+            window=[],
+            images=[],
+            rows=[],
+        )
+    assert len(seen_users) == 2
+    assert "截断" in str(seen_users[1])
+    assert response["act"] == "explain"
+    assert "精简完整解答" in response["content"]

@@ -24,6 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 
 from app.agent_specs.guardian_contracts import (
     DEFAULT_MENTOR_PROMPT,
+    MENTOR_CONTENT_MAX_LENGTH,
     MENTOR_EXPLAIN_ID,
     MENTOR_REVIEW_PROMPT,
 )
@@ -119,7 +120,7 @@ class MentorExplainCandidate(BaseModel):
     model_config = ConfigDict(extra="ignore")
     act: MentorAct
     topic_relation: Literal["same", "new"] | None = None
-    content: str = Field(min_length=1, max_length=8000)
+    content: str = Field(min_length=1, max_length=MENTOR_CONTENT_MAX_LENGTH)
     pronounce: PronouncePayload | None = None
     visual: Visual | None = None
     visual_dropped: str | None = Field(default=None, exclude=True)
@@ -531,7 +532,14 @@ def explain_for_guardian(
                         if repair_err is not None:
                             break
                         repair_err = f"JSON schema validation failed: {err.errors(include_input=False)[:3]}"
-                    except ModelGatewayError:
+                    except ModelGatewayError as err:
+                        if str(err) == "invalid_model_candidate" and repair_err is None:
+                            repair_err = (
+                                "上一轮输出的 JSON 不合法或因篇幅过长被截断。"
+                                "请精简推导与排版，控制在 3500 字内并确保 JSON 严格完整闭合；"
+                                "多小问题优先保证已确定的小问完整交付。"
+                            )
+                            continue
                         break
                 return None, {}
 

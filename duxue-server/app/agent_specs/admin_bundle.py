@@ -21,7 +21,7 @@ from app.agent_specs.guardian_contracts import FILES as GUARDIAN_MENTOR_FILES
 from app.agent_specs.guardian_contracts import MENTOR_EXPLAIN_ID, MENTOR_REPAIR_ID, MENTOR_REVIEW_ID, staged_contracts
 from app.agent_specs.guardian_contracts import WORKFLOWS as GUARDIAN_MENTOR_WORKFLOWS
 from app.agent_specs.guardian_contracts import (
-    frozen_contracts as guardian_mentor_contracts,
+    bundle_contracts as guardian_mentor_contracts,
 )
 from app.agent_specs.observation_contracts import FILES as OBSERVATION_FILES
 from app.agent_specs.observation_contracts import WORKFLOWS as OBSERVATION_WORKFLOWS
@@ -94,7 +94,7 @@ def contract_compatibility(files: dict) -> str:
                   **(blueprint_steps.contracts() if f"agents/{blueprint_steps.EXTRACT}.json" in files else {}),
                   **(observation_contracts() if has_obs else {}),
                   **(gaokao_contracts() if has_gaokao else {}),
-                  **(guardian_mentor_contracts() if has_mentor else {}),
+                  **(guardian_mentor_contracts(files) if has_mentor else {}),
                   **(staged_contracts(include_repair=f"agents/{MENTOR_REPAIR_ID}.json" in files) if f"gates/{MENTOR_REVIEW_ID}.json" in files else {}),
                   **{name: doc for name, doc in files.items() if name in WORKFLOW_FILES or (has_obs and name in {f"workflows/{key}.json" for key in OBSERVATION_WORKFLOWS}) or (has_gaokao and name in {f"workflows/{key}.json" for key in GAOKAO_WORKFLOWS}) or (has_mentor and name in {f"workflows/{key}.json" for key in GUARDIAN_MENTOR_WORKFLOWS})}},
         "handlers": {key: {field: sorted(items) for field, items in value.items()}
@@ -135,7 +135,7 @@ def compile_bundle(bundle: dict) -> CompiledBundle:
             dict.fromkeys([*contracts["tool_authority"]["tutoring.turn"], *GAOKAO_TOOLS])
         )
     if has_mentor:
-        contracts["files"].update(guardian_mentor_contracts())
+        contracts["files"].update(guardian_mentor_contracts(bundle["files"]))
         contracts["tool_authority"][MENTOR_EXPLAIN_ID] = []
     mentor_stage = staged_contracts(include_repair=f"agents/{MENTOR_REPAIR_ID}.json" in file_names) if has_mentor and f"gates/{MENTOR_REVIEW_ID}.json" in file_names else {}
     if mentor_stage:

@@ -9,6 +9,8 @@ from __future__ import annotations
 import copy
 
 MENTOR_EXPLAIN_ID = "tutoring.mentor-explain"
+MENTOR_CONTENT_MAX_LENGTH = 8000
+MENTOR_EXPANDED_OUTPUT_CONTRACT = MENTOR_EXPLAIN_ID + ".output.v2"
 MENTOR_WORKFLOW_ID = "guardian-mentor"
 WORKFLOWS = {MENTOR_WORKFLOW_ID: [MENTOR_EXPLAIN_ID]}
 
@@ -46,7 +48,7 @@ MENTOR_REVIEW_PROMPT = (
 )
 
 
-def _mentor_output_schema() -> dict:
+def _mentor_output_schema(max_length: int) -> dict:
     return {
         "type": "object",
         "properties": {
@@ -54,7 +56,7 @@ def _mentor_output_schema() -> dict:
                 "type": "string",
                 "enum": ["explain", "answer", "clarify", "pronounce", "safety"],
             },
-            "content": {"type": "string", "minLength": 1, "maxLength": 3600},
+            "content": {"type": "string", "minLength": 1, "maxLength": max_length},
             "visual": {"type": ["object", "null"]},
             "pronounce": {"type": ["object", "null"]},
         },
@@ -63,7 +65,7 @@ def _mentor_output_schema() -> dict:
     }
 
 
-def frozen_contracts() -> dict[str, dict]:
+def frozen_contracts(*, expanded_output: bool = False) -> dict[str, dict]:
     return {
         f"agents/{MENTOR_EXPLAIN_ID}.json": {
             "id": MENTOR_EXPLAIN_ID,
@@ -73,7 +75,11 @@ def frozen_contracts() -> dict[str, dict]:
             "risk_tier": "standard",
             "operation": MENTOR_EXPLAIN_ID,
             "input_contract": MENTOR_EXPLAIN_ID + ".input.v1",
-            "output_contract": MENTOR_EXPLAIN_ID + ".output.v1",
+            "output_contract": (
+                MENTOR_EXPANDED_OUTPUT_CONTRACT
+                if expanded_output
+                else MENTOR_EXPLAIN_ID + ".output.v1"
+            ),
             "input_schema": {
                 "type": "object",
                 "properties": {
@@ -82,7 +88,9 @@ def frozen_contracts() -> dict[str, dict]:
                 "required": ["user"],
                 "additionalProperties": False,
             },
-            "output_schema": _mentor_output_schema(),
+            "output_schema": _mentor_output_schema(
+                MENTOR_CONTENT_MAX_LENGTH if expanded_output else 3600
+            ),
             "context_builder_id": "tutoring.mentor_explain.context",
             "prompt": {"id": MENTOR_EXPLAIN_ID + ".prompt"},
             "models": [{"component_id": MENTOR_EXPLAIN_ID}],
@@ -97,6 +105,21 @@ def frozen_contracts() -> dict[str, dict]:
             ],
         }
     }
+
+
+def bundle_contracts(files: dict) -> dict[str, dict]:
+    mentor = files.get(f"agents/{MENTOR_EXPLAIN_ID}.json")
+    return frozen_contracts(
+        expanded_output=isinstance(mentor, dict)
+        and mentor.get("output_contract") == MENTOR_EXPANDED_OUTPUT_CONTRACT,
+    )
+
+
+def _expanded_content_prompt(template: str) -> str:
+    return template.replace(
+        "长度不超过 3200 字",
+        f"建议控制在 3200 字以内，复杂题优先保留必要推导，正文上限为 {MENTOR_CONTENT_MAX_LENGTH} 字",
+    )
 
 
 def workflow_documents() -> dict[str, dict]:
@@ -126,7 +149,8 @@ MENTOR_DISCIPLINE_RULES = (
     "- 整页题界隔离：当用户已明确指定目标题号（如「第14题」）时，正文只能讲解该目标题，严禁在末尾顺带解答同页其他邻题。\n"
     "- 单选题唯选与方向反推：单选题必须且只能给出唯一最优选项，严禁合并输出两个选项（如 AB、BC）；若初步推导出 ≥2 项成立，必须立刻判定至少有一个前置方向性规律用反了（如波的折射弯曲方向、光路可逆性、左手/右手定则等），重核规律后只选唯一 1 项。\n"
     "- 禁止轻率判定「无正确选项」或「题目有误」；若初步推导出四项均不符，必须反推重审图像坐标、方向、正负号与隐含条件后再作答。\n"
-    "- 实验题涉及螺旋测微器/游标卡尺/电表读数或纸带点迹时，须显式写明主尺与估读位，纸带题须先写出从左到右相邻点间距的变化趋势，再判断小车连接端。"
+    "- 实验题涉及螺旋测微器/游标卡尺/电表读数或纸带点迹时，须显式写明主尺与估读位，纸带题须先写出从左到右相邻点间距的变化趋势，再判断小车连接端。\n"
+    "- 凝练交付原则：正文只写清晰的最终推导与结论，禁止把反复试探、走不通的草稿枚举写进正文；若多小问压轴题的最后一问尚未构成完备证明，先完整交付已确定成立的前几小问，再简明给出最后一问的核心思路，严禁冗长铺陈导致输出截断。"
 )
 
 
@@ -137,7 +161,8 @@ def provision_mentor_explain(
     enable_thinking: bool = True,
     thinking_budget: int = 2560,
 ) -> dict:
-    doc = copy.deepcopy(frozen_contracts()[f"agents/{MENTOR_EXPLAIN_ID}.json"])
+    doc = frozen_contracts(expanded_output=True)[f"agents/{MENTOR_EXPLAIN_ID}.json"]
+    prompt = _expanded_content_prompt(prompt)
     doc["display_name"] = "家长视角导师说题解析"
     doc["description"] = "仅限成人体验沙盒使用：基于已核验解题骨架生成考点本质、完整破题链路与常见卡点解析，零学生域写入。"
     doc["prompt"]["template"] = (
@@ -150,7 +175,7 @@ def provision_mentor_explain(
         "component_id": MENTOR_EXPLAIN_ID,
         "name": model,
         "temperature": 0.2,
-        "max_output_tokens": 8192,
+        "max_output_tokens": 16384,
         "timeout_ms": 60000,
         "enable_thinking": enable_thinking,
     }
@@ -434,21 +459,24 @@ def direct_mentor_workflow(files):
     ]
     explain_path = f"agents/{MENTOR_EXPLAIN_ID}.json"
     if explain_path in files:
+        explain = files[explain_path]
+        explain["output_contract"] = MENTOR_EXPANDED_OUTPUT_CONTRACT
+        explain["output_schema"] = _mentor_output_schema(MENTOR_CONTENT_MAX_LENGTH)
         sections_suffix = (
             "\n当 act 为 explain 或 answer 时额外返回 sections。每一小问用独立条目，"
             "id 为题号或小问编号（单问用 main），content 为该问可独立阅读的解答。"
             "所有条目正文总计不超过 3200 字。全题背景和共享推导请放在相应小问内。"
         )
-        template = files[explain_path]["prompt"]["template"]
+        template = _expanded_content_prompt(explain["prompt"]["template"])
         if sections_suffix in template:
             template = template.replace(sections_suffix, "")
-        if "[mentor-discipline.v1]" in template:
-            template = template.split("[mentor-discipline.v1]", 1)[0].rstrip()
-        if "[mentor-discipline.v2]" not in template:
-            template = template.rstrip() + MENTOR_DISCIPLINE_RULES
-        files[explain_path]["prompt"]["template"] = template
-        for m in files[explain_path].get("models") or []:
-            m["max_output_tokens"] = max(int(m.get("max_output_tokens") or 0), 8192)
+        for marker in ("[mentor-discipline.v1]", "[mentor-discipline.v2]"):
+            if marker in template:
+                template = template.split(marker, 1)[0].rstrip()
+        template = template.rstrip() + MENTOR_DISCIPLINE_RULES
+        explain["prompt"]["template"] = template
+        for m in explain.get("models") or []:
+            m["max_output_tokens"] = max(int(m.get("max_output_tokens") or 0), 16384)
             if m.get("enable_thinking"):
                 m["thinking_budget"] = min(int(m.get("thinking_budget") or 2560), 2560)
 
