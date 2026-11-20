@@ -53,33 +53,3 @@ export function isTutoringAttempt(
     ].includes(node.handler_id)
   );
 }
-
-/** Collapse ownership only for display. Boundary edges retain their snapshot identity. */
-export function tutoringOverview(flow: Json, hierarchy: Hierarchy) {
-  const owner = hierarchy.loop.id;
-  const nested = new Set<string>();
-  const pending = [owner];
-  while (pending.length) {
-    const parent = pending.pop();
-    for (const n of flow.nodes) {
-      if (n.parent === parent && n.id !== owner && !nested.has(n.id)) {
-        nested.add(n.id);
-        pending.push(n.id);
-      }
-    }
-  }
-  return {
-    ...flow,
-    nodes: flow.nodes
-      .filter((n: Json) => !nested.has(n.id))
-      .map((n: Json) =>
-        n.id === owner ? { ...n, display_name: '生成辅导回复' } : n,
-      ),
-    edges: flow.edges.flatMap((edge: Json) => {
-      if (!nested.has(edge.from) && !nested.has(edge.to)) return [edge];
-      const from = nested.has(edge.from) ? owner : edge.from;
-      const to = nested.has(edge.to) ? owner : edge.to;
-      return from === to ? [] : [{ ...edge, from, to, snapshotEdge: edge }];
-    }),
-  };
-}

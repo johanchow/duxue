@@ -143,7 +143,7 @@ export function workflowGraph(
       width: 16,
       height: 16,
     },
-    data: { index, configuration: edge.snapshotEdge ?? edge },
+    data: { index, configuration: edge },
     interactionWidth: 24,
     labelStyle: { fontSize: 11 },
     style: { stroke: '#71877d', strokeWidth: 1.5 },

@@ -1,4 +1,4 @@
-import { tutoringHierarchy, tutoringOverview, isTutoringAttempt } from "../src/lib/tutoring-hierarchy";
+import { tutoringHierarchy, isTutoringAttempt } from "../src/lib/tutoring-hierarchy";
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -254,11 +254,9 @@ test('tutoring shows exit_gate in its declaring workflow and resolves the refere
   assert.equal(graph.edges.filter(e => !e.data?.relationship).length, flow.edges.length);
   assert.equal(hierarchy.review.ref, 'tutoring-vet');
   assert.equal(hierarchy.exit.kind, 'action');
-  const overview = workflowGraph(tutoringOverview(flow, hierarchy));
-  assert.ok(!overview.nodes.some(n => n.id === hierarchy.exit.id));
-  assert.equal(overview.nodes.find(n => n.id === loop.id)?.data.title, '生成辅导回复');
-  const boundary = overview.edges.find(e => e.source === loop.id && e.target === 'tutoring.output_safety');
-  assert.equal((boundary?.data?.configuration as any).from, hierarchy.exit.id);
+  assert.deepEqual(graph.nodes.map(n => n.id), ['START', ...flow.nodes.map((n: any) => n.id), 'END']);
+  assert.deepEqual(graph.edges.filter(e => !e.data?.relationship).map(e => [e.source, e.target]),
+    flow.edges.map((e: any) => [e.from, e.to]));
   const retry = workflows[loop.ref];
   assert.deepEqual(
     retry.nodes

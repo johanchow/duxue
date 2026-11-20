@@ -5,13 +5,15 @@
 
 ## 一、目标与边界
 
-目标：
+**Admin 数据库是 Workflow JSON 的唯一事实源。** 流程变更进入 `agent_drafts.bundle`，发布后由 `agent_environments.release_id` 指向生效的 `agent_releases.bundle`。`workflows/<id>.json` 是完整包内的逻辑路径。仓库和本地开发目录均不单独维护 Workflow JSON。本地联调使用 Admin 快照，离线调试使用导出的固定快照，历史测试夹具仅用于回归。
 
-- **统一查看**：在同一目录中查看 Workflow、Agent、Gate、Tool 的数量、职责、引用关系与版本。
-- **配置即运行依据**：模型参数、Prompt、工具权限和流程结构各有唯一配置来源，运行时加载并校验引用。
-- **流程可视化**：由执行所用的定义生成[独立流程图](agent-flow-current.md)，定位节点、条件边、门禁和失败路径。
-- **版本可追溯**：稳定 ID 与版本随 Trace 记录，便于定位和复现问题、审阅配置变更。
-- **保持业务边界**：配置只描述运行装配；授权、领域规则、状态写入和事务仍由相应代码负责。
+**Workflow 由 JSON 驱动。** 每轮固定一个配置快照，从中读取当前流程的节点、条件边、子流程引用和预算。运行时解析同一快照中的引用，代码提供已注册的处理器、条件判断、授权和事务。Admin 直接画出所选快照中当前流程的全部节点与控制边，点击 Workflow 节点进入它引用的定义。一次请求实际走过哪些分支，以该次 Trace 为准。
+
+设计与验收遵循以下优先级：
+
+1. **准确性。** 答疑既要数学结论正确，也要符合本轮教学授权。用同一组代表性题目对比正确率、错误确认和答案泄露，覆盖简单题、综合题与修复重试。确定性计算使用工具和结构化证据，开放语义由模型或独立 Judge 判断。
+2. **可靠性。** 必经审核、失败策略与重试预算随快照校验。遇到超时、无效候选或未知裁决，按对应 Gate 的策略拒绝、降级或结束。Trace 记录快照版本、节点、尝试和裁决，使失败可定位、可重放。
+3. **响应速度。** 在相同质量与可靠性要求下，优先消除无效等待和重复模型调用。候选生成先于依赖它的审核；互不依赖的审核可按 JSON 声明的分支并行，汇合后按明确优先级裁决。对照同题集与相近负载下的端到端 P50、P95、模型调用次数和重试率。父节点耗时包含子步骤，并行分支耗时有重叠，端到端时延应按实际经过时间统计。
 
 Agent可编辑配置只在Admin维护；全部Agent/Gate/Tool通过[配置管理台](design-admin.md)发布受限完整快照，独立管理草稿、校验、隔离调试、不可变版本与回滚。生产接入与离线快照模式见[配置管理台设计](design-admin.md#四加载固定快照与恢复)，本期不做A/B实验、在线分流或流程编排。配置不得包含任意可执行代码，也不得关闭必经门禁；答案保护和失败安全仍由代码强制。模型输出只是候选，不能直接写入业务事实。
 
@@ -19,7 +21,7 @@ Agent可编辑配置只在Admin维护；全部Agent/Gate/Tool通过[配置管理
 
 | 概念 | 定义 | 引用关系与边界 |
 | --- | --- | --- |
-| Workflow | 一项入口业务流程的编排，声明节点、条件边、重试上限与出口；例如 Companion 路由或 Tutoring Turn | 引用 Agent、Gate 和必要的代码步骤；不直接引用 Tool，不代替领域 Use Case |
+| Workflow | 一项入口业务流程的编排，声明节点、条件边、重试上限与出口；例如 Companion 路由或 Tutoring Turn | 引用 Agent、Gate、同一快照的子 Workflow 和必要的代码步骤；不直接引用 Tool，不代替领域 Use Case |
 | Agent | 承担一个明确任务、遵守类型化输入输出契约的可调用单元 | 由模型或固定代码实现；模型 Agent 声明可用 Tool，Prompt 属于使用它的 Agent |
 | Gate | 决定候选能否继续、重试、降级或退出的裁决点 | 由固定代码或独立模型 Judge 实现；多个 Gate 的顺序和条件由 Workflow 编排 |
 | Tool | 模型 Agent 或 Judge Gate 在受限执行期间可调用的能力 | 定义名称、用途和参数契约；执行函数、数据授权与副作用边界由代码持有 |
@@ -44,11 +46,22 @@ Prompt 默认**内嵌在使用它的 Agent 或模型 Gate JSON**，不设必需�
 
 ## 四、配置契约
 
-以下是**目标 JSON 契约**，用于后续迁移，不是当前 `agent_specs/*.json` 已支持的字段。所有文件禁止未知字段；`id` 在全目录唯一，组件不声明手工`version`，`kind` 必须与所在目录一致。输入使用 `input_schema`，Agent/Tool 结果使用 `output_schema`，Gate 裁决使用 `verdict_schema`；这些字段采用受限 JSON Schema（顶层 `object`，明确 `required` 与 `additionalProperties: false`）。运行时先按 JSON Schema 校验，再调用该 ID 在代码注册表中绑定的 Python 契约校验器；两者都必须通过，缺失 Python 契约时启动失败。测试用同一批合法/非法样本检查两层契约的结果一致，防止手工维护的 Schema 漂移。领域对象与业务不变量仍由代码持有。
+本节描述 Admin 完整快照的配置契约。Workflow 节点与边的字段以服务端 [NodeSpec 和 EdgeSpec](../../duxue-server/app/agent_specs/catalog.py) 为准。所有文件禁止未知字段；`id` 在全目录唯一，组件不声明手工`version`，`kind` 必须与所在目录一致。输入使用 `input_schema`，Agent/Tool 结果使用 `output_schema`，Gate 裁决使用 `verdict_schema`；这些字段采用受限 JSON Schema（顶层 `object`，明确 `required` 与 `additionalProperties: false`）。运行时先按 JSON Schema 校验，再调用该 ID 在代码注册表中绑定的 Python 契约校验器；两者都必须通过，缺失 Python 契约时启动失败。测试用同一批合法/非法样本检查两层契约的结果一致，防止手工维护的 Schema 漂移。领域对象与业务不变量仍由代码持有。
 
 ### 4.1 Workflow 契约
 
-Workflow 文件的 `kind` 固定为 `workflow`。`nodes[]` 的 `kind` 只允许 `agent`、`gate`、`action`；`agent` 和 `gate` 节点必须有 `ref` 指向对应目录的 ID，`action` 必须有代码注册的 `handler_id`，三者互斥。Workflow **没有 `tools` 字段**。`edges[]` 声明 `from`、`to` 和可选 `condition_id`；条件 ID 由受控代码计算，不能写表达式。通用执行器读取节点和边、维护状态与重试预算，调用代码注册的处理器和条件函数，并按条件选择下一节点；JSON 不包含任意表达式。多个 Gate 各占一个 Workflow 节点，由边声明先后、条件分支和出口，不在 Gate 内嵌套子 Gate。`entry` 与所有出口必须可达；`required_gates[]` 的每项声明 Gate ID 和适用条件 `when`（代码注册的条件 ID），启动时与代码安全基线核对，运行时只在条件成立的路径上强制执行。
+Workflow 文件的 `kind` 固定为 `workflow`。运行与观测区分五类执行单元：Agent、Gate、Action、Workflow、Tool。其中前四类可以出现在 `nodes[].kind`：
+
+| 节点类型 | JSON 绑定 | 用途 |
+| --- | --- | --- |
+| `agent` | `ref` → Agent | 执行一个有输入输出契约的任务，实现为 `llm` 或 `code` |
+| `gate` | `ref` → Gate | 对候选作出裁决，实现为 `judge` 或 `code` |
+| `action` | `handler_id` → 注册处理器 | 在流程内执行固定代码 |
+| `workflow` | `ref` → 同一快照的 Workflow | 调用子流程，结果返回调用方 |
+
+Tool 由模型 Agent 或 Judge 在各自的工具权限和预算内调用。节点绑定使用 `ref` 或 `handler_id` 二者之一。可选的 `parent` 描述归属；执行顺序看控制边，跨流程调用看 Workflow 节点的 `ref`。例如，答疑的 `tutoring.exit_gate` 是组织候选审核的 Action，其内部调用节点 `tutoring.review_candidate` 才引用 `tutoring-vet`；子流程的 `END` 将裁决交回调用方。
+
+`edges[]` 声明 `from`、`to` 和可选 `condition_id`；条件 ID 由受控代码计算，不能写表达式。通用执行器读取节点和边、维护状态与重试预算，调用代码注册的处理器和条件函数，并按条件选择下一节点；JSON 不包含任意表达式。多个 Gate 各占一个 Workflow 节点，由边声明先后、条件分支和出口，不在 Gate 内嵌套子 Gate。`entry` 与所有出口必须可达；`required_gates[]` 的每项声明 Gate ID 和适用条件 `when`（代码注册的条件 ID），启动时与代码安全基线核对，运行时只在条件成立的路径上强制执行。
 
 独立 API 调用也有自己的入口 Workflow：只有一次 Agent 调用时，可定义 `START → Agent → END`。例如 Guardian 任务整理与复盘维度提取分别有独立 Workflow，不把它们假接到 Planning Graph 或 Reflection 会话流程中。
 

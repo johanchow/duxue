@@ -20,7 +20,6 @@ import {
 } from '../lib/workflow-graph';
 import {
   tutoringHierarchy,
-  tutoringOverview,
   isTutoringAttempt,
 } from '../lib/tutoring-hierarchy';
 import { actionLogic, gateLogic } from '../lib/workflow-code';
@@ -689,15 +688,6 @@ export function WorkflowExplorer({
     () => tutoringHierarchy(catalog.workflows),
     [catalog.workflows],
   );
-  const [expanded, setExpanded] = useState(false);
-  const canCollapse = workflowId === 'tutoring' && !!hierarchy && !replay;
-  const visibleFlow = useMemo(
-    () =>
-      canCollapse && !expanded && flow && hierarchy
-        ? tutoringOverview(flow, hierarchy)
-        : flow,
-    [canCollapse, expanded, flow, hierarchy],
-  );
   const detailHref = (node?: Json) =>
     workflowDetailHref(
       workflowId,
@@ -710,7 +700,7 @@ export function WorkflowExplorer({
     () =>
       flow
         ? workflowGraph(
-            visibleFlow,
+            flow,
             catalog.definitions,
             Object.fromEntries(
               (catalog.components || []).map((component: Json) => [
@@ -721,7 +711,7 @@ export function WorkflowExplorer({
             direction,
           )
         : { nodes: [], edges: [] },
-    [flow, visibleFlow, catalog.definitions, catalog.components, direction],
+    [flow, catalog.definitions, catalog.components, direction],
   );
   useEffect(() => {
     if (!activeEvent || !flow || activeEvent.workflow_id !== workflowId) return;
@@ -828,8 +818,8 @@ export function WorkflowExplorer({
               Workflow 流程图 <span className="badge">只读</span>
             </h2>
             <p className="compact-meta">
-              {flow.id} · {visibleFlow.nodes.length} 个 Node ·{' '}
-              {visibleFlow.edges.length} 条 Edge · 入口 {flow.entry}
+              {flow.id} · {flow.nodes.length} 个 Node ·{' '}
+              {flow.edges.length} 条 Edge · 入口 {flow.entry}
             </p>
           </div>
           <div className="page-actions">
@@ -847,18 +837,6 @@ export function WorkflowExplorer({
             ? '点击节点查看本次执行记录。'
             : '点击带箭头的节点打开详情，点击连线查看分支配置。'}
         </p>
-        {canCollapse && (
-          <button
-            className="secondary"
-            aria-pressed={expanded}
-            onClick={() => {
-              setExpanded(!expanded);
-              setSelection(null);
-            }}
-          >
-            {expanded ? '收起子流程内部步骤' : '展开子流程内部步骤'}
-          </button>
-        )}
         <div className="workflow-toolbar">
           <div className="workflow-legend" aria-label="流程图图例">
             <span className="legend-agent">Agent</span>
@@ -892,7 +870,7 @@ export function WorkflowExplorer({
         </div>
         <div className="workflow-canvas" aria-label={`${workflowId} 流程图`}>
           <ReactFlow
-            key={`${workflowId}:${direction}:${expanded}`}
+            key={`${workflowId}:${direction}`}
             nodes={nodes}
             edges={edges}
             edgeTypes={edgeTypes}
