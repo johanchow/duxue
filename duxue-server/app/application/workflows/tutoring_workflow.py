@@ -378,422 +378,52 @@ class TutoringWorkflow:
 
     @traced_agent_node("tutoring.turn")
     def _turn(self, invocation: RunInvocation) -> WorkflowOutcome:
+        from app.agent_specs.catalog import load_catalog
+        from app.application.workflows.tutoring_turn_execution import execute_turn
+
+        turn = _TutoringTurn(self, invocation)
+        spec = load_catalog().spec("tutoring")
+        if spec.execution == "turn_graph" and invocation.turn.get("tutoring_graph_version", "turn_graph") == "turn_graph":
+            return execute_turn(spec, turn)
+        return self._legacy_turn(turn)
+
+    @staticmethod
+    def _legacy_turn(turn) -> WorkflowOutcome:
+        """Compatibility for pinned releases published before executable tutoring graphs."""
         transition("tutoring", "START", "tutoring.turn")
-        turn = invocation.turn
-        policy = PolicyRegistry()
-        ward = self.db.get(Ward, invocation.ward_id)
-        grade_stage = ward.grade_stage if isinstance(ward, Ward) else None
-        envelope = ContextBuilder(SqlAlchemyMemoryFacade(self.db)).build(
-            run_id=invocation.run_id, ward_id=invocation.ward_id, actor_id=invocation.ward_id,
-            actor_role="ward", agent_type="tutoring", context_refs=invocation.context_refs,
-            context_spec=policy.context_spec("tutoring"),
-            grade_stage=grade_stage,
-        )
-        session = self._find_session(invocation.ward_id, turn.get("study_session_id"))
-        tutor = (
-            self.db.query(TutoringSession).filter_by(study_session_id=session.id).one_or_none()
-            if session is not None else None
-        )
-        directive = turn.get("tutoring_directive") or "ask"
-        if directive == "close":
-            if tutor is None:
-                raise HTTPException(409, "there is no tutoring session to close")
-            if tutor.status != "closed":
-                tutor.status = "closed"
-                tutor.closed_at = now()
-            publish_learning_fact(
-                self.db, ward_id=session.ward_id, event_type="tutoring.session_closed",
-                source_type="tutoring_session", source_id=tutor.id,
-                payload={"tutoring_session_id": tutor.id, "study_session_id": session.id},
-            )
-            return WorkflowOutcome(
-                run_status="closed", outcome_type="completed", context_refs=[f"tutoring_session:{tutor.id}"],
-                next_interaction={"status": "closed"}, context_snapshot=envelope.trace_snapshot(),
-            )
-        if tutor is not None and tutor.status == "closed":
-            raise HTTPException(409, "tutoring session is closed")
-        if session is not None and session.status not in {"active", "paused"}:
-            raise HTTPException(409, "study session is no longer open for tutoring")
-
-        content = turn.get("content", "")
-        if (
-            tutor is not None
-            and not invocation.resume_from_checkpoint
-            and not invocation.context_refs
-            and not turn.get("study_session_id")
-        ):
-            for stale_problem in (
-                self.db.query(TutoringProblem)
-                .filter(
-                    TutoringProblem.tutoring_session_id == tutor.id,
-                    TutoringProblem.status.in_(sorted(PROTECTED_STATUSES)),
-                )
-                .all()
-            ):
-                stale_problem.status = "abandoned"
-        problem_row = self._open_problem(tutor) if tutor is not None else None
-        permit = TutorPermitPolicy.permit(_state(problem_row))
-        task_title = self._task_title(session.task_id if session else None)
-        task_active = bool(session and session.task_id and session.status in {"active", "paused"})
-        if self._safety().blocks_input(text=content):
-            session, tutor = self._ensure_tutor(invocation.ward_id, session, tutor, content)
-            refs = [f"tutoring_session:{tutor.id}"]
-            self._ward_message(tutor, content)
-            return self._reply(
-                invocation, tutor, refs, envelope, text=SAFE_TEXT, blocked=True,
-                permit=permit, problem_status=problem_row.status if problem_row else None,
-            )
-        if directive == "understood":
-            session, tutor = self._ensure_tutor(invocation.ward_id, session, tutor, content)
-            ward_msg = self._ward_message(tutor, content)
-            publish_learning_fact(
-                self.db, ward_id=session.ward_id, event_type="tutoring.understanding_confirmed",
-                source_type="tutoring_message", source_id=ward_msg.id, source="ward", visibility="ward",
-                payload={"tutoring_session_id": tutor.id, "study_session_id": session.id},
-            )
-            return WorkflowOutcome(
-                run_status="waiting_for_ward", outcome_type="waiting", context_refs=[f"tutoring_session:{tutor.id}"],
-                next_interaction={"status": "understood", "problem_status": problem_row.status if problem_row else None,
-                                  "answer_protected": permit.answer_protected, "safety_blocked": False},
-                context_snapshot=envelope.trace_snapshot(),
-            )
-
-        from app.application.queries.run_transcript import ward_media_prefix
-
-        prefix = ward_media_prefix(invocation.ward_id)
-        if any(not str(key).startswith(prefix) for key in turn.get("attachment_keys") or []):
-            interaction = build_interaction(
-                invocation=invocation, kind="text", text="这次不能读取这张图片。请重新拍一张再发。",
-            )
-            return WorkflowOutcome(
-                run_status="waiting_for_ward", outcome_type="response",
-                next_interaction={**interaction, "status": "rejected", "reason": "unauthorized_media"},
-            )
-        window, images, keys_by_ref = self._media(invocation)
-        from app.application.workflows.image_target import (
-            prepare_images,
-        )
-
-        has_images = bool(images or any(row.get("image_urls") for row in window))
+        if turn.load() == "closing":
+            return turn.close()
+        intake = turn.intake()
+        if intake == "unsafe_input":
+            return turn.blocked_input()
+        if intake == "confirmed":
+            return turn.understood()
+        if turn.media_access() == "foreign_media":
+            return turn.reject_media()
+        image_result = turn.select_images()
+        has_images = bool(turn.images or any(row.get("image_urls") for row in turn.window))
         if has_images:
             transition("tutoring", "tutoring.turn", "tutoring.image_target", "image_reference")
-        prepared = prepare_images(
-            window, images, content=content,
-            compare_previous=turn.get("tutoring_intent") == "compare_previous_image",
-            select=self.image_target_selector or self._select_image_target,
-        )
-        target = prepared.target
-        with agent_step_span("check", "tutoring.image_target") as target_span:
-            set_observation_payload(target_span, input={
-                "candidate_count": sum(len(row.get("image_urls") or []) for row in window) + len(images),
-                "current_image_count": len(images),
-            }, output={"target_image_ids": list(target.ids), "ambiguous": target.ambiguous})
-        if target.ambiguous:
-            interaction = build_interaction(
-                invocation=invocation, kind="text",
-                text=("你想让我检查哪张已上传的照片？请说第几张，我会继续用原图检查。"
-                      if any(images) or any(url for row in window for url in row.get("image_urls", []))
-                      else "这次图片没有读取成功，请重新上传或拍清楚一些，我再帮你检查。"),
-            )
-            return WorkflowOutcome(
-                run_status="waiting_for_ward", outcome_type="response",
-                next_interaction={**interaction, "status": "clarification_required", "reason": "image_target_ambiguous"},
-            )
-        window, images = prepared.window, prepared.images
-        self._selected_image_refs[f"{invocation.run_id}:{invocation.turn_id}"] = prepared.refs
-        candidates = history_candidates(window)
-        review_aspects = get_recent_self_reviews(
-            self.db, actor_id=invocation.ward_id, actor_role="ward",
-            ward_id=invocation.ward_id, use_case="tutoring", end_date=planning_today(),
-            task_ref=session.task_id, item_budget=4,
-        ) if session and session.task_id else []
-        instruction = build_tutor_instruction(
-            content=content, permit=permit, history_candidates=candidates,
-            tutoring_intent=turn.get("tutoring_intent"),
-            self_review_aspects=review_aspects,
-        )
-        if target.ids:
-            instruction += render_fragment("tutoring.turn", "image_review")
-            if turn.get("tutoring_intent") == "compare_previous_image":
-                instruction += render_fragment("tutoring.turn", "image_compare")
-        tools = TutorToolbox(
-            self.db, tutoring_session_id=tutor.id if tutor else None, problem=problem_row,
-            task_title=task_title, task_active=task_active, window=window, math_engine=self.math_engine,
-        )
-        all_authorized_images = self._judge_images(window, images)
-        selected_attachment_keys = [keys_by_ref[ref] for ref in prepared.refs if ref in keys_by_ref]
-        active_dossier, dossier_projection = self._resolve_active_dossier(
-            ward_id=invocation.ward_id,
-            problem_row=problem_row,
-            content=content,
-            images=all_authorized_images,
-            attachment_keys=selected_attachment_keys,
-            tutoring_intent=turn.get("tutoring_intent"),
-        )
-        model_envelope = envelope.model_dump()
-        if active_dossier is not None:
-            model_envelope["_dossier_gate"] = {
-                "dossier_id": active_dossier.dossier_id,
-                "status": active_dossier.status,
-                "confidence": active_dossier.confidence,
-                "allows_verdict_assertion": active_dossier.allows_verdict_assertion(),
-            }
-            if active_dossier.status in {"ready", "low_confidence"} and dossier_projection is not None:
-                model_envelope["problem_dossier"] = dossier_projection
-        if problem_row is not None and (not problem_row.dossier_id or active_dossier is not None):
-            if problem_row.internal_blueprint and "problem_dossier" not in model_envelope:
-                model_envelope["internal_blueprint"] = problem_row.internal_blueprint
-            if problem_row.group_context:
-                model_envelope["group_context"] = problem_row.group_context
-        high_conf_finals = (
-            active_dossier.final_answers
-            if active_dossier is not None
-            and active_dossier.status == "ready"
-            and active_dossier.confidence == "high"
-            and active_dossier.final_answers
-            else None
-        )
+        if image_result == "ambiguous":
+            return turn.clarify_image()
         transition("tutoring", "tutoring.image_target" if has_images else "tutoring.turn",
                    "tutoring.model_loop", "resolved" if has_images else "ready")
-        result = self._run_model(
-            model_envelope, instruction, window, images, tools, permit=permit, task_title=task_title,
-            problem_summary=judge_problem_summary(
-                self._recent_problem_summaries(tutor), content, recent_utterances=window,
-                verified_final_answers=high_conf_finals,
-            ),
-            judge_images=all_authorized_images,
-        )
-        candidate = verdict = visual = None
-        failure = "no_candidate"
-        vetting = result.vetting if result else None
-        leak_retried = bool(result and result.leak_retried)
-        if vetting is not None:
-            candidate, verdict, visual = vetting.candidate, vetting.verdict, vetting.visual
-            failure = vetting.failure
-        failed = candidate is None or verdict is None or not verdict.ok
-        # 独立输出安全审核看孩子将看到的全部文字：正文与图里的每个字。
-        if result and result.vetting is not None:
+        turn.read_self_review()
+        turn.generate()
+        if turn.vetting:
             transition("tutoring", "tutoring.exit_gate", "tutoring.output_safety", "checked")
-        with agent_step_span("check", "tutoring.output_safety") as safety_span:
-            review_text = None if failed else (
-                candidate.content if visual is None else f"{candidate.content}\n{describe(visual)}"
-            )
-            set_observation_payload(safety_span, input={"text": review_text, "skipped": failed})
-            safety = not failed and (
-                candidate.act == "safety" or self._safety().blocks_output(
-                    text=review_text,
-                )
-            )
-            safety_result = "skipped" if failed else "blocked" if safety else "pass"
-            safety_span.set_attribute("agent.check.result", safety_result)
-            set_observation_payload(safety_span, output={"result": safety_result})
-        # 发音和澄清是只读展示：不打开会话，不写消息、事实或题目记录。
-        if not failed and not safety and candidate.act == "pronounce":
-            outcome = project_lesson(
-                self.db, invocation, candidate.lesson,
-                lessons=candidate.lessons, content=candidate.content,
-            )
-            outcome.context_snapshot = envelope.trace_snapshot()
-            transition("tutoring", "tutoring.output_safety", "tutoring.result", "fallback_or_readonly")
-            record_tutor_turn_result(
-                act=candidate.act, relation=candidate.relation, topic=candidate.topic, depth=candidate.depth, outcome="shown", reason=None,
-                shown=candidate.content,
-            )
-            return outcome
-        if not failed and not safety and candidate.act == "clarify":
-            text = candidate.content
-            listed = "\n".join(f"{i}. {item}" for i, item in enumerate(candidate.candidates, start=1))
-            transition("tutoring", "tutoring.output_safety", "tutoring.result", "fallback_or_readonly")
-            record_tutor_turn_result(
-                act=candidate.act, relation=candidate.relation, topic=candidate.topic, depth=candidate.depth, outcome="shown", reason=None, shown=text,
-            )
-            interaction = build_interaction(
-                invocation=invocation, kind="clarify", text=f"{text}\n{listed}" if listed else text,
-                actions=[{"name": "reply", "label": "回复", "command": "clarify_reply", "enabled": True}],
-            )
-            return WorkflowOutcome(
-                run_status="waiting_for_ward", outcome_type="waiting",
-                next_interaction={**interaction, "status": "needs_input"},
-                context_snapshot=envelope.trace_snapshot(),
-            )
-
-        session, tutor = self._ensure_tutor(invocation.ward_id, session, tutor, content)
-        refs = [f"tutoring_session:{tutor.id}"]
-        ward_msg = self._ward_message(tutor, content)
-        if failed:
-            text = fallback_text(failure, vetting.leak_reason if vetting else None)
-            transition("tutoring", "tutoring.output_safety", "tutoring.result", "fallback_or_readonly")
-            record_tutor_turn_result(
-                act=candidate.act if candidate else None, relation=candidate.relation if candidate else None,
-                leak_retried=leak_retried, outcome="fallback", reason=failure or "exit_check", shown=text,
-                shape_flags=vetting.shape_flags if vetting else None,
-            )
-            return self._reply(
-                invocation, tutor, refs, envelope, text=text, blocked=False,
-                permit=permit, problem_status=problem_row.status if problem_row else None,
-            )
-        if safety:
-            transition("tutoring", "tutoring.output_safety", "tutoring.result", "fallback_or_readonly")
-            record_tutor_turn_result(
-                act=candidate.act, relation=candidate.relation, outcome="blocked", reason="safety", shown=SAFE_TEXT,
-            )
-            return self._reply(
-                invocation, tutor, refs, envelope, text=SAFE_TEXT, blocked=True,
-                permit=permit, problem_status=problem_row.status if problem_row else None,
-            )
-        text = candidate.content
-        work = verdict.effective_work_product
-        # A redirect already takes the Ward back to the task; a second reminder would repeat it.
-        remind = task_active and not work and candidate.act != "redirect"
-        if remind and REMINDER not in text:
-            text = f"{text.rstrip()}\n{REMINDER}"
-
-        problem_status = problem_row.status if problem_row else None
-        answer_protected = verdict.answer_protected
-        hint_index = None
-        attempted = False
-        evidence_problem_id = None
-        if work:
-            planned_blueprint = None
-            planned_group = None
-            target_dossier_id = active_dossier.dossier_id if active_dossier is not None else None
-            if candidate.relation == "new" and problem_row is not None:
-                target_dossier_id = None
-            if (
-                candidate.relation in {"new", "subproblem"}
-                and (candidate.depth or "reasoning") == "reasoning"
-                and (problem_row is None or candidate.relation != "same" or problem_row.last_turn_id != invocation.turn_id)
-            ):
-                from app.contexts.tutoring.domain.blueprint import (
-                    ProblemGroupContext,
-                    VerifiedPriorConclusion,
-                )
-
-                prior_group_vo = (
-                    ProblemGroupContext.from_dict(problem_row.group_context)
-                    if problem_row is not None and problem_row.group_context
-                    else None
-                )
-                if candidate.relation == "subproblem":
-                    base_group = prior_group_vo or ProblemGroupContext(
-                        shared_stem_ref=f"group_{problem_row.id}" if problem_row is not None else f"group_{tutor.id}",
-                        shared_stem_summary=(problem_row.summary if problem_row is not None else content)[:500],
-                        subproblem_label="(1)",
-                    )
-                    prior_conc = (
-                        VerifiedPriorConclusion(
-                            subproblem_label=base_group.subproblem_label or "(prev)",
-                            conclusion=candidate.work.verified_prior_conclusion,
-                        )
-                        if candidate.work and candidate.work.verified_prior_conclusion
-                        else None
-                    )
-                    prior_group_vo = base_group.advance_to_subproblem(
-                        next_label=(candidate.work.subproblem_label if candidate.work else None) or "(next)",
-                        verified_conclusion=prior_conc,
-                    )
-                    # Subproblems on a dossier-backed stem share the parent dossier!
-                    if target_dossier_id is None and problem_row is not None and problem_row.dossier_id:
-                        target_dossier_id = problem_row.dossier_id
-                else:
-                    prior_group_vo = None
-
-                # If explicit legacy `blueprint_planner` was injected in unit tests (and no async dossier requested),
-                # preserve transitional synchronous fallback; otherwise async `ProblemDossier` owns solving!
-                if target_dossier_id is None and self.blueprint_planner is not None:
-                    from app.application.workflows.blueprint_planner import (
-                        build_verified_blueprint_and_group,
-                    )
-
-                    planned_blueprint, planned_group = build_verified_blueprint_and_group(
-                        self.blueprint_planner,
-                        self.math_engine,
-                        content=content,
-                        images=all_authorized_images,
-                        prior_group=prior_group_vo,
-                        grade_stage=grade_stage,
-                    )
-                else:
-                    planned_group = prior_group_vo
-                    if target_dossier_id is None and (self.dossier_enqueue_fn is not None or self._live_turn_model):
-                        from app.application.commands.problem_solving import (
-                            RequestSolveCommand,
-                        )
-
-                        enqueue_cb = self.dossier_enqueue_fn
-                        if enqueue_cb is None:
-                            from app.workers.solving_tasks import enqueue_solve_dossier
-
-                            enqueue_cb = lambda did, _imgs=None: enqueue_solve_dossier(
-                                did, attachment_keys=selected_attachment_keys
-                            )
-                        created_dos = RequestSolveCommand(self.db, enqueue_fn=enqueue_cb).execute(
-                            ward_id=invocation.ward_id,
-                            text=content,
-                            images=all_authorized_images,
-                        )
-                        target_dossier_id = created_dos.dossier_id
-
+        decision = turn.screen()
+        if decision == "work":
             transition("tutoring", "tutoring.output_safety", "tutoring.apply_problem", "accepted_work")
-            problem_status, hint_index, attempted, evidence_problem_id = self._apply_problem(
-                tutor, problem_row, candidate, verdict, invocation, has_work_input=bool(content.strip() or images),
-                summary=content, planned_blueprint=planned_blueprint, planned_group=planned_group,
-                dossier_id=target_dossier_id,
-            )
-        transition("tutoring", "tutoring.apply_problem" if work else "tutoring.output_safety",
-                   "tutoring.result", None if work else "fallback_or_readonly")
-        if evidence_problem_id:
-            ward_msg.problem_id = evidence_problem_id
-            ward_msg.evidence_kind = "attempt" if attempted else "question"
-        message = TutoringMessage(
-            tutoring_session_id=tutor.id, role="assistant", content=text,
-            problem_id=evidence_problem_id,
-            evidence_kind=("guide" if hint_index is not None else "reply") if evidence_problem_id else None,
-        )
-        self.db.add(message)
-        self.db.flush()
-        payload = {"tutoring_session_id": tutor.id, "study_session_id": session.id}
-        if attempted:
-            publish_learning_fact(
-                self.db, ward_id=session.ward_id, event_type="tutoring.attempt_recorded",
-                source_type="tutoring_message", source_id=ward_msg.id, source="ward", visibility="ward",
-                payload={**payload, "directive": directive},
-            )
-        if work and hint_index is not None:
-            publish_learning_fact(
-                self.db, ward_id=session.ward_id, event_type="tutoring.hint_given",
-                source_type="tutoring_message", source_id=message.id, source="system",
-                payload={**payload, "hint_index": hint_index},
-            )
-        if candidate.topic == "spontaneous_curiosity":
-            publish_learning_fact(
-                self.db, ward_id=session.ward_id, event_type="tutoring.curiosity_observed",
-                source_type="tutoring_message", source_id=ward_msg.id, source="ward", visibility="ward", payload=payload,
-            )
-        record_tutor_turn_result(
-            act=candidate.act, relation=candidate.relation, topic=candidate.topic, depth=candidate.depth,
-            student_move=candidate.work.student_move if candidate.work else None, leak_retried=leak_retried,
-            outcome="shown", reason=None, shown=text,
-            visual_kind=visual.kind if visual else None, visual_dropped=vetting.visual_dropped if vetting else None,
-            shape_flags=vetting.shape_flags if vetting else None,
-        )
-        next_interaction = {
-            "status": "needs_input", "content": text, "act": candidate.act,
-            "hint_index": hint_index, "problem_status": problem_status,
-            "answer_protected": answer_protected, "safety_blocked": False,
-            "return_to_task": remind, "model": components.model_for("tutoring.turn"), "model_fallback": False,
-        }
-        if visual is not None:
-            # 只有通过全部检查的图才投影；kind 由 Application 决定，模型从不返回 kind。
-            next_interaction.update(build_interaction(
-                invocation=invocation, kind="text_visual", text=text,
-                visual=visual.model_dump(exclude_none=True),
-            ))
-        return WorkflowOutcome(
-            run_status="waiting_for_ward", outcome_type="waiting", context_refs=refs,
-            next_interaction=next_interaction,
-            context_snapshot=envelope.trace_snapshot(),
-        )
+            turn.apply_work()
+            transition("tutoring", "tutoring.apply_problem", "tutoring.result")
+        else:
+            transition("tutoring", "tutoring.output_safety", "tutoring.result", "fallback_or_readonly")
+        return {
+            "pronounce": turn.pronounce, "clarify": turn.clarify,
+            "failed": turn.fallback, "unsafe_output": turn.blocked_output,
+            "work": turn.answer, "conversation": turn.answer,
+        }[decision]()
 
     @traced_agent_node("tutoring.apply_problem")
     def _apply_problem(
@@ -881,3 +511,459 @@ class TutoringWorkflow:
         self.db.add(message)
         self.db.flush()
         return message
+
+
+class _TutoringTurn:
+    """Request-local business operations shared by the legacy and graph entry points."""
+
+    def __init__(self, owner: TutoringWorkflow, invocation: RunInvocation):
+        self.owner = owner
+        self.invocation = invocation
+        self.review_aspects = []
+        self.ward_msg = None
+        self.hint_index = None
+        self.attempted = False
+        self.evidence_problem_id = None
+
+    def load(self):
+        self.turn = self.invocation.turn
+        policy = PolicyRegistry()
+        ward = self.owner.db.get(Ward, self.invocation.ward_id)
+        self.grade_stage = ward.grade_stage if isinstance(ward, Ward) else None
+        self.envelope = ContextBuilder(SqlAlchemyMemoryFacade(self.owner.db)).build(
+            run_id=self.invocation.run_id, ward_id=self.invocation.ward_id, actor_id=self.invocation.ward_id,
+            actor_role="ward", agent_type="tutoring", context_refs=self.invocation.context_refs,
+            context_spec=policy.context_spec("tutoring"),
+            grade_stage=self.grade_stage,
+        )
+        self.session = self.owner._find_session(self.invocation.ward_id, self.turn.get("study_session_id"))
+        self.tutor = (
+            self.owner.db.query(TutoringSession).filter_by(study_session_id=self.session.id).one_or_none()
+            if self.session is not None else None
+        )
+        self.directive = self.turn.get("tutoring_directive") or "ask"
+        return "closing" if self.directive == "close" else "open"
+
+    def close(self):
+        if self.tutor is None:
+            raise HTTPException(409, "there is no tutoring session to close")
+        if self.tutor.status != "closed":
+            self.tutor.status = "closed"
+            self.tutor.closed_at = now()
+        publish_learning_fact(
+            self.owner.db, ward_id=self.session.ward_id, event_type="tutoring.session_closed",
+            source_type="tutoring_session", source_id=self.tutor.id,
+            payload={"tutoring_session_id": self.tutor.id, "study_session_id": self.session.id},
+        )
+        return WorkflowOutcome(
+            run_status="closed", outcome_type="completed", context_refs=[f"tutoring_session:{self.tutor.id}"],
+            next_interaction={"status": "closed"}, context_snapshot=self.envelope.trace_snapshot(),
+        )
+
+    def intake(self):
+        if self.tutor is not None and self.tutor.status == "closed":
+            raise HTTPException(409, "tutoring session is closed")
+        if self.session is not None and self.session.status not in {"active", "paused"}:
+            raise HTTPException(409, "study session is no longer open for tutoring")
+
+        self.content = self.turn.get("content", "")
+        if (
+            self.tutor is not None
+            and not self.invocation.resume_from_checkpoint
+            and not self.invocation.context_refs
+            and not self.turn.get("study_session_id")
+        ):
+            for stale_problem in (
+                self.owner.db.query(TutoringProblem)
+                .filter(
+                    TutoringProblem.tutoring_session_id == self.tutor.id,
+                    TutoringProblem.status.in_(sorted(PROTECTED_STATUSES)),
+                )
+                .all()
+            ):
+                stale_problem.status = "abandoned"
+        self.problem_row = self.owner._open_problem(self.tutor) if self.tutor is not None else None
+        self.problem_status = self.problem_row.status if self.problem_row else None
+        self.permit = TutorPermitPolicy.permit(_state(self.problem_row))
+        self.task_title = self.owner._task_title(self.session.task_id if self.session else None)
+        self.task_active = bool(self.session and self.session.task_id and self.session.status in {"active", "paused"})
+        if self.owner._safety().blocks_input(text=self.content):
+            return "unsafe_input"
+        return "confirmed" if self.directive == "understood" else "question"
+
+    def blocked_input(self):
+        self.session, self.tutor = self.owner._ensure_tutor(self.invocation.ward_id, self.session, self.tutor, self.content)
+        self.refs = [f"tutoring_session:{self.tutor.id}"]
+        self.owner._ward_message(self.tutor, self.content)
+        return self.owner._reply(
+            self.invocation, self.tutor, self.refs, self.envelope, text=SAFE_TEXT, blocked=True,
+            permit=self.permit, problem_status=self.problem_row.status if self.problem_row else None,
+        )
+
+    def understood(self):
+        self.session, self.tutor = self.owner._ensure_tutor(self.invocation.ward_id, self.session, self.tutor, self.content)
+        self.ward_msg = self.owner._ward_message(self.tutor, self.content)
+        publish_learning_fact(
+            self.owner.db, ward_id=self.session.ward_id, event_type="tutoring.understanding_confirmed",
+            source_type="tutoring_message", source_id=self.ward_msg.id, source="ward", visibility="ward",
+            payload={"tutoring_session_id": self.tutor.id, "study_session_id": self.session.id},
+        )
+        return WorkflowOutcome(
+            run_status="waiting_for_ward", outcome_type="waiting", context_refs=[f"tutoring_session:{self.tutor.id}"],
+            next_interaction={"status": "understood", "problem_status": self.problem_row.status if self.problem_row else None,
+                              "answer_protected": self.permit.answer_protected, "safety_blocked": False},
+            context_snapshot=self.envelope.trace_snapshot(),
+        )
+
+    def media_access(self):
+        from app.application.queries.run_transcript import ward_media_prefix
+
+        prefix = ward_media_prefix(self.invocation.ward_id)
+        return "foreign_media" if any(not str(key).startswith(prefix) for key in self.turn.get("attachment_keys") or []) else "authorized"
+
+    def reject_media(self):
+        interaction = build_interaction(
+            invocation=self.invocation, kind="text", text="这次不能读取这张图片。请重新拍一张再发。",
+        )
+        return WorkflowOutcome(
+            run_status="waiting_for_ward", outcome_type="response",
+            next_interaction={**interaction, "status": "rejected", "reason": "unauthorized_media"},
+        )
+
+    def select_images(self):
+        self.window, self.images, self.keys_by_ref = self.owner._media(self.invocation)
+        from app.application.workflows.image_target import (
+            prepare_images,
+        )
+
+        self.prepared = prepare_images(
+            self.window, self.images, content=self.content,
+            compare_previous=self.turn.get("tutoring_intent") == "compare_previous_image",
+            select=self.owner.image_target_selector or self.owner._select_image_target,
+        )
+        target = self.prepared.target
+        with agent_step_span("check", "tutoring.image_target") as target_span:
+            set_observation_payload(target_span, input={
+                "candidate_count": sum(len(row.get("image_urls") or []) for row in self.window) + len(self.images),
+                "current_image_count": len(self.images),
+            }, output={"target_image_ids": list(target.ids), "ambiguous": target.ambiguous})
+        return "ambiguous" if target.ambiguous else "resolved"
+
+    def clarify_image(self):
+        interaction = build_interaction(
+            invocation=self.invocation, kind="text",
+            text=("你想让我检查哪张已上传的照片？请说第几张，我会继续用原图检查。"
+                  if any(self.images) or any(url for row in self.window for url in row.get("image_urls", []))
+                  else "这次图片没有读取成功，请重新上传或拍清楚一些，我再帮你检查。"),
+        )
+        return WorkflowOutcome(
+            run_status="waiting_for_ward", outcome_type="response",
+            next_interaction={**interaction, "status": "clarification_required", "reason": "image_target_ambiguous"},
+        )
+
+    def read_self_review(self):
+        self.review_aspects = get_recent_self_reviews(
+            self.owner.db, actor_id=self.invocation.ward_id, actor_role="ward",
+            ward_id=self.invocation.ward_id, use_case="tutoring", end_date=planning_today(),
+            task_ref=self.session.task_id, item_budget=4,
+        ) if self.session and self.session.task_id else []
+        return "context_ready"
+
+    def generate(self):
+        self.window, self.images = self.prepared.window, self.prepared.images
+        self.owner._selected_image_refs[f"{self.invocation.run_id}:{self.invocation.turn_id}"] = self.prepared.refs
+        candidates = history_candidates(self.window)
+        instruction = build_tutor_instruction(
+            content=self.content, permit=self.permit, history_candidates=candidates,
+            tutoring_intent=self.turn.get("tutoring_intent"),
+            self_review_aspects=self.review_aspects,
+        )
+        if self.prepared.target.ids:
+            instruction += render_fragment("tutoring.turn", "image_review")
+            if self.turn.get("tutoring_intent") == "compare_previous_image":
+                instruction += render_fragment("tutoring.turn", "image_compare")
+        tools = TutorToolbox(
+            self.owner.db, tutoring_session_id=self.tutor.id if self.tutor else None, problem=self.problem_row,
+            task_title=self.task_title, task_active=self.task_active, window=self.window, math_engine=self.owner.math_engine,
+        )
+        self.all_authorized_images = self.owner._judge_images(self.window, self.images)
+        self.selected_attachment_keys = [self.keys_by_ref[ref] for ref in self.prepared.refs if ref in self.keys_by_ref]
+        self.active_dossier, dossier_projection = self.owner._resolve_active_dossier(
+            ward_id=self.invocation.ward_id,
+            problem_row=self.problem_row,
+            content=self.content,
+            images=self.all_authorized_images,
+            attachment_keys=self.selected_attachment_keys,
+            tutoring_intent=self.turn.get("tutoring_intent"),
+        )
+        model_envelope = self.envelope.model_dump()
+        if self.active_dossier is not None:
+            model_envelope["_dossier_gate"] = {
+                "dossier_id": self.active_dossier.dossier_id,
+                "status": self.active_dossier.status,
+                "confidence": self.active_dossier.confidence,
+                "allows_verdict_assertion": self.active_dossier.allows_verdict_assertion(),
+            }
+            if self.active_dossier.status in {"ready", "low_confidence"} and dossier_projection is not None:
+                model_envelope["problem_dossier"] = dossier_projection
+        if self.problem_row is not None and (not self.problem_row.dossier_id or self.active_dossier is not None):
+            if self.problem_row.internal_blueprint and "problem_dossier" not in model_envelope:
+                model_envelope["internal_blueprint"] = self.problem_row.internal_blueprint
+            if self.problem_row.group_context:
+                model_envelope["group_context"] = self.problem_row.group_context
+        high_conf_finals = (
+            self.active_dossier.final_answers
+            if self.active_dossier is not None
+            and self.active_dossier.status == "ready"
+            and self.active_dossier.confidence == "high"
+            and self.active_dossier.final_answers
+            else None
+        )
+        result = self.owner._run_model(
+            model_envelope, instruction, self.window, self.images, tools, permit=self.permit, task_title=self.task_title,
+            problem_summary=judge_problem_summary(
+                self.owner._recent_problem_summaries(self.tutor), self.content, recent_utterances=self.window,
+                verified_final_answers=high_conf_finals,
+            ),
+            judge_images=self.all_authorized_images,
+        )
+        self.candidate = self.verdict = self.visual = None
+        self.failure = "no_candidate"
+        self.vetting = result.vetting if result else None
+        self.leak_retried = bool(result and result.leak_retried)
+        if self.vetting is not None:
+            self.candidate, self.verdict, self.visual = self.vetting.candidate, self.vetting.verdict, self.vetting.visual
+            self.failure = self.vetting.failure
+        self.failed = self.candidate is None or self.verdict is None or not self.verdict.ok
+        return "generated"
+
+    def screen(self):
+        with agent_step_span("check", "tutoring.output_safety") as safety_span:
+            review_text = None if self.failed else (
+                self.candidate.content if self.visual is None else f"{self.candidate.content}\n{describe(self.visual)}"
+            )
+            set_observation_payload(safety_span, input={"text": review_text, "skipped": self.failed})
+            safety = not self.failed and (
+                self.candidate.act == "safety" or self.owner._safety().blocks_output(
+                    text=review_text,
+                )
+            )
+            safety_result = "skipped" if self.failed else "blocked" if safety else "pass"
+            safety_span.set_attribute("agent.check.result", safety_result)
+            set_observation_payload(safety_span, output={"result": safety_result})
+        if self.failed:
+            return "failed"
+        if safety:
+            return "unsafe_output"
+        if self.candidate.act in {"pronounce", "clarify"}:
+            return self.candidate.act
+        return "work" if self.verdict.effective_work_product else "conversation"
+
+    def pronounce(self):
+        outcome = project_lesson(
+            self.owner.db, self.invocation, self.candidate.lesson,
+            lessons=self.candidate.lessons, content=self.candidate.content,
+        )
+        outcome.context_snapshot = self.envelope.trace_snapshot()
+        record_tutor_turn_result(
+            act=self.candidate.act, relation=self.candidate.relation, topic=self.candidate.topic, depth=self.candidate.depth, outcome="shown", reason=None,
+            shown=self.candidate.content,
+        )
+        return outcome
+
+    def clarify(self):
+        text = self.candidate.content
+        listed = "\n".join(f"{i}. {item}" for i, item in enumerate(self.candidate.candidates, start=1))
+        record_tutor_turn_result(
+            act=self.candidate.act, relation=self.candidate.relation, topic=self.candidate.topic, depth=self.candidate.depth, outcome="shown", reason=None, shown=text,
+        )
+        interaction = build_interaction(
+            invocation=self.invocation, kind="clarify", text=f"{text}\n{listed}" if listed else text,
+            actions=[{"name": "reply", "label": "回复", "command": "clarify_reply", "enabled": True}],
+        )
+        return WorkflowOutcome(
+            run_status="waiting_for_ward", outcome_type="waiting",
+            next_interaction={**interaction, "status": "needs_input"},
+            context_snapshot=self.envelope.trace_snapshot(),
+        )
+
+    def open_messages(self):
+        self.session, self.tutor = self.owner._ensure_tutor(self.invocation.ward_id, self.session, self.tutor, self.content)
+        self.refs = [f"tutoring_session:{self.tutor.id}"]
+        self.ward_msg = self.owner._ward_message(self.tutor, self.content)
+
+    def fallback(self):
+        self.open_messages()
+        text = fallback_text(self.failure, self.vetting.leak_reason if self.vetting else None)
+        record_tutor_turn_result(
+            act=self.candidate.act if self.candidate else None, relation=self.candidate.relation if self.candidate else None,
+            leak_retried=self.leak_retried, outcome="fallback", reason=self.failure or "exit_check", shown=text,
+            shape_flags=self.vetting.shape_flags if self.vetting else None,
+        )
+        return self.owner._reply(
+            self.invocation, self.tutor, self.refs, self.envelope, text=text, blocked=False,
+            permit=self.permit, problem_status=self.problem_row.status if self.problem_row else None,
+        )
+
+    def blocked_output(self):
+        self.open_messages()
+        record_tutor_turn_result(
+            act=self.candidate.act, relation=self.candidate.relation, outcome="blocked", reason="safety", shown=SAFE_TEXT,
+        )
+        return self.owner._reply(
+            self.invocation, self.tutor, self.refs, self.envelope, text=SAFE_TEXT, blocked=True,
+            permit=self.permit, problem_status=self.problem_row.status if self.problem_row else None,
+        )
+
+    def apply_work(self):
+        self.open_messages()
+        planned_blueprint = None
+        planned_group = None
+        target_dossier_id = self.active_dossier.dossier_id if self.active_dossier is not None else None
+        if self.candidate.relation == "new" and self.problem_row is not None:
+            target_dossier_id = None
+        if (
+            self.candidate.relation in {"new", "subproblem"}
+            and (self.candidate.depth or "reasoning") == "reasoning"
+            and (self.problem_row is None or self.candidate.relation != "same" or self.problem_row.last_turn_id != self.invocation.turn_id)
+        ):
+            from app.contexts.tutoring.domain.blueprint import (
+                ProblemGroupContext,
+                VerifiedPriorConclusion,
+            )
+
+            prior_group_vo = (
+                ProblemGroupContext.from_dict(self.problem_row.group_context)
+                if self.problem_row is not None and self.problem_row.group_context
+                else None
+            )
+            if self.candidate.relation == "subproblem":
+                base_group = prior_group_vo or ProblemGroupContext(
+                    shared_stem_ref=f"group_{self.problem_row.id}" if self.problem_row is not None else f"group_{self.tutor.id}",
+                    shared_stem_summary=(self.problem_row.summary if self.problem_row is not None else self.content)[:500],
+                    subproblem_label="(1)",
+                )
+                prior_conc = (
+                    VerifiedPriorConclusion(
+                        subproblem_label=base_group.subproblem_label or "(prev)",
+                        conclusion=self.candidate.work.verified_prior_conclusion,
+                    )
+                    if self.candidate.work and self.candidate.work.verified_prior_conclusion
+                    else None
+                )
+                prior_group_vo = base_group.advance_to_subproblem(
+                    next_label=(self.candidate.work.subproblem_label if self.candidate.work else None) or "(next)",
+                    verified_conclusion=prior_conc,
+                )
+                # Subproblems on a dossier-backed stem share the parent dossier!
+                if target_dossier_id is None and self.problem_row is not None and self.problem_row.dossier_id:
+                    target_dossier_id = self.problem_row.dossier_id
+            else:
+                prior_group_vo = None
+
+            # If explicit legacy `blueprint_planner` was injected in unit tests (and no async dossier requested),
+            # preserve transitional synchronous fallback; otherwise async `ProblemDossier` owns solving!
+            if target_dossier_id is None and self.owner.blueprint_planner is not None:
+                from app.application.workflows.blueprint_planner import (
+                    build_verified_blueprint_and_group,
+                )
+
+                planned_blueprint, planned_group = build_verified_blueprint_and_group(
+                    self.owner.blueprint_planner,
+                    self.owner.math_engine,
+                    content=self.content,
+                    images=self.all_authorized_images,
+                    prior_group=prior_group_vo,
+                    grade_stage=self.grade_stage,
+                )
+            else:
+                planned_group = prior_group_vo
+                if target_dossier_id is None and (self.owner.dossier_enqueue_fn is not None or self.owner._live_turn_model):
+                    from app.application.commands.problem_solving import (
+                        RequestSolveCommand,
+                    )
+
+                    enqueue_cb = self.owner.dossier_enqueue_fn
+                    if enqueue_cb is None:
+                        from app.workers.solving_tasks import enqueue_solve_dossier
+
+                        enqueue_cb = lambda did, _imgs=None: enqueue_solve_dossier(
+                            did, attachment_keys=self.selected_attachment_keys
+                        )
+                    created_dos = RequestSolveCommand(self.owner.db, enqueue_fn=enqueue_cb).execute(
+                        ward_id=self.invocation.ward_id,
+                        text=self.content,
+                        images=self.all_authorized_images,
+                    )
+                    target_dossier_id = created_dos.dossier_id
+
+        self.problem_status, self.hint_index, self.attempted, self.evidence_problem_id = self.owner._apply_problem(
+            self.tutor, self.problem_row, self.candidate, self.verdict, self.invocation, has_work_input=bool(self.content.strip() or self.images),
+            summary=self.content, planned_blueprint=planned_blueprint, planned_group=planned_group,
+            dossier_id=target_dossier_id,
+        )
+        return "applied"
+
+    def answer(self):
+        if self.ward_msg is None:
+            self.open_messages()
+        text = self.candidate.content
+        work = self.verdict.effective_work_product
+        # A redirect already takes the Ward back to the task; a second reminder would repeat it.
+        remind = self.task_active and not work and self.candidate.act != "redirect"
+        if remind and REMINDER not in text:
+            text = f"{text.rstrip()}\n{REMINDER}"
+
+        answer_protected = self.verdict.answer_protected
+        if self.evidence_problem_id:
+            self.ward_msg.problem_id = self.evidence_problem_id
+            self.ward_msg.evidence_kind = "attempt" if self.attempted else "question"
+        message = TutoringMessage(
+            tutoring_session_id=self.tutor.id, role="assistant", content=text,
+            problem_id=self.evidence_problem_id,
+            evidence_kind=("guide" if self.hint_index is not None else "reply") if self.evidence_problem_id else None,
+        )
+        self.owner.db.add(message)
+        self.owner.db.flush()
+        payload = {"tutoring_session_id": self.tutor.id, "study_session_id": self.session.id}
+        if self.attempted:
+            publish_learning_fact(
+                self.owner.db, ward_id=self.session.ward_id, event_type="tutoring.attempt_recorded",
+                source_type="tutoring_message", source_id=self.ward_msg.id, source="ward", visibility="ward",
+                payload={**payload, "directive": self.directive},
+            )
+        if work and self.hint_index is not None:
+            publish_learning_fact(
+                self.owner.db, ward_id=self.session.ward_id, event_type="tutoring.hint_given",
+                source_type="tutoring_message", source_id=message.id, source="system",
+                payload={**payload, "hint_index": self.hint_index},
+            )
+        if self.candidate.topic == "spontaneous_curiosity":
+            publish_learning_fact(
+                self.owner.db, ward_id=self.session.ward_id, event_type="tutoring.curiosity_observed",
+                source_type="tutoring_message", source_id=self.ward_msg.id, source="ward", visibility="ward", payload=payload,
+            )
+        record_tutor_turn_result(
+            act=self.candidate.act, relation=self.candidate.relation, topic=self.candidate.topic, depth=self.candidate.depth,
+            student_move=self.candidate.work.student_move if self.candidate.work else None, leak_retried=self.leak_retried,
+            outcome="shown", reason=None, shown=text,
+            visual_kind=self.visual.kind if self.visual else None, visual_dropped=self.vetting.visual_dropped if self.vetting else None,
+            shape_flags=self.vetting.shape_flags if self.vetting else None,
+        )
+        next_interaction = {
+            "status": "needs_input", "content": text, "act": self.candidate.act,
+            "hint_index": self.hint_index, "problem_status": self.problem_status,
+            "answer_protected": answer_protected, "safety_blocked": False,
+            "return_to_task": remind, "model": components.model_for("tutoring.turn"), "model_fallback": False,
+        }
+        if self.visual is not None:
+            # 只有通过全部检查的图才投影；kind 由 Application 决定，模型从不返回 kind。
+            next_interaction.update(build_interaction(
+                invocation=self.invocation, kind="text_visual", text=text,
+                visual=self.visual.model_dump(exclude_none=True),
+            ))
+        return WorkflowOutcome(
+            run_status="waiting_for_ward", outcome_type="waiting", context_refs=self.refs,
+            next_interaction=next_interaction,
+            context_snapshot=self.envelope.trace_snapshot(),
+        )

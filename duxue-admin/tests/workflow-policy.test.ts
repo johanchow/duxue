@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { requireUnchangedWorkflows } from '../src/lib/workflow-policy';
+import { requireAuthorizedWorkflowChanges } from '../src/lib/workflow-policy';
 
 test('Admin permits agent edits but rejects changes, additions and removal of workflow configurations', () => {
   const baseline = {
@@ -11,7 +11,7 @@ test('Admin permits agent edits but rejects changes, additions and removal of wo
   };
   const edited = structuredClone(baseline);
   edited.files['agents/test.json'].prompt = 'changed';
-  requireUnchangedWorkflows(edited, baseline);
+  requireAuthorizedWorkflowChanges(edited, baseline);
   for (const mutation of [
     (b: any) => {
       b.files['workflows/test.json'].edges.push({ from: 'START', to: 'END' });
@@ -25,8 +25,24 @@ test('Admin permits agent edits but rejects changes, additions and removal of wo
   ]) {
     const changed = structuredClone(baseline);
     mutation(changed);
-    assert.throws(() => requireUnchangedWorkflows(changed, baseline), {
+    assert.throws(() => requireAuthorizedWorkflowChanges(changed, baseline), {
       status: 400,
     });
   }
+});
+
+test('only existing executable tutoring paths may change', () => {
+  const path = 'workflows/tutoring.json';
+  const baseline = {
+    files: {
+      [path]: { execution: 'turn_graph', nodes: ['a'], edges: [] as object[] },
+    },
+  };
+  const edit = structuredClone(baseline);
+  edit.files[path].edges.push({ from: 'a', to: 'END' });
+  requireAuthorizedWorkflowChanges(edit, baseline);
+  edit.files[path].nodes = [];
+  assert.throws(() => requireAuthorizedWorkflowChanges(edit, baseline), {
+    status: 400,
+  });
 });

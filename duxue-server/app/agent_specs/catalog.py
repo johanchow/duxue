@@ -86,6 +86,8 @@ class AgentSpec(BaseModel):
     id: str
     version: str
     handler: str
+    execution: Literal["turn_graph"] | None = None
+    rollout_percent: int = Field(default=0, strict=True, ge=0, le=100)
     invocation_agent: str | None = None
     entry: str
     nodes: list[NodeSpec]
@@ -97,6 +99,9 @@ class AgentSpec(BaseModel):
 
     @model_validator(mode="after")
     def valid_topology(self):
+        if self.execution:
+            from app.agent_specs.tutoring_paths import validate_paths
+            validate_paths(self)
         nodes = {node.id: node for node in self.nodes}
         if len(nodes) != len(self.nodes):
             raise ValueError(f"{self.id}: duplicate node ID")
@@ -291,7 +296,7 @@ class AgentCatalog:
                         math is not None
                         or spec.node(VET_NODE).trace != VET_NODE
                         or spec.node(RETRY_NODE).trace != RETRY_NODE
-                        or not any(
+                        or not spec.execution and not any(
                             edge.source == "tutoring.exit_gate" and edge.target == VET_NODE and not edge.condition
                             for edge in spec.edges
                         )
@@ -300,9 +305,9 @@ class AgentCatalog:
                 else:
                     if (math is None or math.kind != "gate" or math.ref != "tutoring.leak-judge" or math.trace != MATH_NODE
                             or spec.node(VET_NODE).trace != VET_NODE or spec.node(RETRY_NODE).trace != RETRY_NODE
-                            or not any(edge.source == "tutoring.exit_gate" and edge.target == MATH_NODE and not edge.condition
+                            or not spec.execution and not any(edge.source == "tutoring.exit_gate" and edge.target == MATH_NODE and not edge.condition
                                        for edge in spec.edges)
-                            or not any(edge.source == MATH_NODE and edge.target == VET_NODE
+                            or not spec.execution and not any(edge.source == MATH_NODE and edge.target == VET_NODE
                                        and edge.condition == "math_allowed" for edge in spec.edges)):
                         raise ValueError("invalid tutoring review topology")
                     registration = {"handlers": registration["handlers"],
@@ -311,6 +316,12 @@ class AgentCatalog:
                 registration = {
                     "handlers": registration["handlers"],
                     "conditions": registration["conditions"] | set(PARALLEL_VET_CONDITIONS),
+                }
+            if spec.execution:
+                from app.agent_specs.tutoring_paths import PORTS
+                registration = {
+                    "handlers": registration["handlers"] | {"tutoring." + key for key in PORTS},
+                    "conditions": set().union(*(outputs for _, outputs in PORTS.values())),
                 }
             if handlers - registration["handlers"]:
                 raise ValueError(f"{spec.id}: unknown action handler")

@@ -161,6 +161,26 @@ def observe_span(identity, span):
     if current is None:
         yield
         return
+    from app.agent_specs.catalog import executing_node, load_catalog
+    active = executing_node.get()
+    spec = load_catalog().spec(identity.owner)
+    if spec.execution and active is None and identity.node_id == spec.entry:
+        # The entry-point span covers the whole invocation; the runner records the entry node.
+        yield
+        return
+    if spec.execution and active and active[0] == identity.owner:
+        if any(edge.source == identity.node_id for edge in spec.edges):
+            # The runner already owns this visit. Keep the OTEL span and attach
+            # domain payloads to the actual operation, even for result projection.
+            event = current.stack[-1] if current.stack else None
+            if event is not None:
+                current.spans.setdefault(id(span), []).append(event)
+            try:
+                yield
+            finally:
+                if event is not None:
+                    current.spans[id(span)].pop()
+            return
     with current.step(
         kind=identity.unit_kind,
         node_id=identity.node_id,
@@ -236,6 +256,8 @@ def transition(workflow_id, source, target, condition=None):
     from app.agent_specs.catalog import load_catalog
 
     spec = load_catalog().spec(workflow_id)
+    if spec.execution:
+        return  # The runner records selected and unselected edges itself.
     edge = next(
         (
             e

@@ -28,6 +28,23 @@ KNOWLEDGE = tutor_raw(
 )
 
 
+@pytest.fixture(scope="module", params=["legacy", "turn_graph"], autouse=True)
+def turn_configuration(request):
+    if request.param == "legacy":
+        yield
+        return
+    from pathlib import Path
+
+    from app.agent_specs.admin_bundle import compile_bundle
+    from app.agent_specs.definitions import use_definitions
+    from scripts.upgrade_tutoring_turn import upgrade
+
+    source = Path(__file__).resolve().parents[2] / "fixtures/admin-release.json"
+    upgraded = upgrade(json.loads(source.read_text()))
+    with use_definitions(compile_bundle(upgraded["bundle"]).catalog):
+        yield
+
+
 def _events(db):
     return [e.payload.get("event_type") for e in db.query(OutboxEvent).all()]
 
