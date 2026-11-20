@@ -625,10 +625,11 @@ def solve_and_verify_problem(
         if isinstance(raw_t1, dict) and raw_t1.get("subject"):
             stem = replace(stem, subject=str(raw_t1["subject"])[:32])
         parsed_t1 = _parse_and_verify_route(math_engine, raw_t1)
-        if parsed_t1.anchor_state != "contradicted":
+        has_t1_candidate = isinstance(raw_t1, dict) and bool(parsed_t1.approaches or parsed_t1.final_answers)
+        if has_t1_candidate and parsed_t1.anchor_state != "contradicted":
             return _finalize_single_route(stem=stem, parsed=parsed_t1, used_backup=False)
         # Contradicted on image problem -> on-demand reread first to check misread digits
-        if imgs and not stem.reread_verified:
+        if parsed_t1.anchor_state == "contradicted" and imgs and not stem.reread_verified:
             stem, disputed = _reread_stem(solver, stem, imgs)
             if disputed:
                 return VerifiedSolution(
@@ -647,7 +648,11 @@ def solve_and_verify_problem(
             stem=stem,
             images=imgs,
             route_hint="T1_backup",
-            feedback={"contradictions": list(parsed_t1.contradictions)},
+            feedback=(
+                {"contradictions": list(parsed_t1.contradictions)}
+                if parsed_t1.contradictions
+                else None
+            ),
         )
         parsed_backup = _parse_and_verify_route(math_engine, raw_backup)
         return _finalize_single_route(
@@ -797,7 +802,10 @@ def execute_blueprint(
         if isinstance(raw_t1, dict) and raw_t1.get("subject"):
             stem = replace(stem, subject=str(raw_t1["subject"])[:32])
         parsed_t1 = _parse_and_verify_route(math_engine, raw_t1)
-        if parsed_t1.anchor_state == "contradicted":
+        has_t1_candidate = isinstance(raw_t1, dict) and bool(parsed_t1.approaches or parsed_t1.final_answers)
+        if not has_t1_candidate:
+            branch = "backup"
+        elif parsed_t1.anchor_state == "contradicted":
             if images and not stem.reread_verified:
                 reread_origin = "verify"
                 branch = "reread"
@@ -806,7 +814,7 @@ def execute_blueprint(
         else:
             branch = parsed_t1.anchor_state  # verified | not_applicable | unknown
         state["branch"] = branch
-        return GateDecision("allow", parsed_t1.anchor_state)
+        return GateDecision("allow", branch)
 
     def verify_backup(state):
         nonlocal parsed_backup
@@ -907,7 +915,7 @@ class ExecuteDossierSolveCommand:
         self.math_engine = math_engine
 
     def _solver(self) -> ProblemSolverModelPort:
-        return self.solver or QwenProblemSolverGateway()
+        return self.solver or QwenProblemSolverGateway(math_engine=self.math_engine)
 
     def execute(self, *, dossier_id: str, images: list[str] | None = None) -> ProblemDossier:
         dossier = self.repo.get(dossier_id)

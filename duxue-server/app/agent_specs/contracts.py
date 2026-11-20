@@ -19,6 +19,21 @@ def validate_input(unit: ModelUnit, user: str | list[dict]) -> None:
 
 
 def validate_output(unit: ModelUnit, payload: dict) -> None:
+    if unit.id in {
+        "tutoring.stem-extract", "tutoring.stem-review",
+        "tutoring.blueprint-planner", "tutoring.blueprint-backup",
+    } and "tool_request" in payload:
+        request = payload["tool_request"]
+        if (
+            set(payload) != {"tool_request"}
+            or not isinstance(request, dict)
+            or set(request) != {"name", "args"}
+            or not isinstance(request["name"], str)
+            or f"tutoring.{request['name']}" not in unit.tools
+            or not isinstance(request["args"], dict)
+        ):
+            raise ValueError(f"{unit.id}: invalid tool request")
+        return
     schema = unit.provider_output_schema or (unit.verdict_schema if unit.kind == "gate" else unit.output_schema)
     assert schema is not None
     Draft202012Validator(schema).validate(payload)

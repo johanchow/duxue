@@ -36,42 +36,102 @@ class ProblemSolverModelPort(Protocol):
 class QwenProblemSolverGateway(ProblemSolverModelPort):
     """Uses registered ProblemSolving components without student history."""
 
-    def __init__(self, settings_obj=None):
-        self._settings = settings_obj
+    MAX_TOOL_ROUNDS = 3
+    MAX_CROPS = 4
 
-    def _invoke(
+    def __init__(self, settings_obj=None, *, math_engine=None, image_inspector=None):
+        self._settings = settings_obj
+        self._math_engine = math_engine
+        self._image_inspector = image_inspector
+
+    def _run_tool(
         self,
-        payload: dict,
-        images: list[str],
         *,
-        use_reread_model: bool = False,
-        use_backup_model: bool = False,
-        retry_on_timeout: bool = True,
-    ) -> dict | None:
-        from app.agent_specs.blueprint_steps import BACKUP, EXTRACT, REREAD
-        from app.agent_specs.contexts import build_context
-        from app.agent_specs.definitions import load_definitions
-        from app.agent_specs.gaokao_contracts import PLANNER_ID, REREAD_ID
+        name: str,
+        args: dict,
+        allowed: set[str],
+        authorized_images: dict[str, str],
+        inspected_crops: list[dict],
+    ) -> dict:
+        from app.application.ports.image_inspection import InspectImageRequest
+        from app.application.ports.math_engine import MathInput
+        from app.infrastructure.media.pillow_crop import PillowImageInspector
+        from app.infrastructure.observability.telemetry import (
+            agent_step_span,
+            set_observation_payload,
+        )
+
+        with agent_step_span(
+            "tool",
+            name if name in allowed else "unknown_tool",
+            **{"agent.tool.source": "problem_solver_request"},
+        ) as span:
+            set_observation_payload(
+                span,
+                input={"op": args.get("op")} if name in {"math", "science"} else args,
+            )
+            if name not in allowed:
+                result = {"tool": name, "status": "tool_error", "detail": "unauthorized_tool"}
+                span.set_attribute("agent.tool.status", "tool_error")
+                set_observation_payload(span, output=result)
+                return result
+            try:
+                if name == "inspect_image":
+                    if len(inspected_crops) >= self.MAX_CROPS:
+                        result = {"tool": name, "status": "tool_error", "detail": "crop_limit_exceeded"}
+                    else:
+                        req = InspectImageRequest.model_validate(args)
+                        inspector = self._image_inspector or PillowImageInspector()
+                        res = inspector.inspect(req, authorized_images=authorized_images)
+                        if res.status == "unique" and res.crop_data_url and res.crop_ref:
+                            inspected_crops.append(
+                                {
+                                    "crop_ref": res.crop_ref,
+                                    "image_ref": res.image_ref,
+                                    "label": res.label,
+                                    "url": res.crop_data_url,
+                                }
+                            )
+                        result = {"tool": name, **res.public_observation()}
+                elif name in {"science", "math"}:
+                    engine = self._math_engine
+                    if engine is None:
+                        from app.bootstrap.math_engine import default_math_engine
+
+                        engine = default_math_engine()
+                    math_in = MathInput.model_validate(args)
+                    out = engine.execute(math_in)
+                    result = {
+                        "tool": name,
+                        "status": out.status,
+                        "result": out.result,
+                        "verdict": out.verdict,
+                        "conditions": out.conditions,
+                        "error_code": out.error_code,
+                    }
+                else:
+                    result = {"tool": name, "status": "tool_error", "detail": "unknown_tool"}
+            except Exception as exc:  # noqa: BLE001
+                result = {
+                    "tool": name,
+                    "status": "tool_error",
+                    "error_code": type(exc).__name__,
+                }
+            span.set_attribute("agent.tool.status", str(result.get("status", "tool_error")))
+            set_observation_payload(
+                span,
+                output={
+                    key: result[key]
+                    for key in ("status", "error_code", "crop_ref", "image_ref", "detail")
+                    if key in result
+                },
+            )
+            return result
+
+    def _invoke_once(self, *, spec, user, retry_on_timeout: bool) -> dict | None:
         from app.infrastructure.ai import components
         from app.infrastructure.ai.errors import ModelGatewayError
 
-        defs = load_definitions()
-        if PLANNER_ID not in defs.units:
-            return None
-        target_component = (
-            REREAD_ID if use_reread_model and REREAD_ID in defs.components else PLANNER_ID
-        )
-        unit = PLANNER_ID
-        if EXTRACT in defs.units and payload["mode"] in {"stem_extract", "independent_stem_reread"}:
-            unit = REREAD if use_reread_model else EXTRACT
-            target_component = unit
-        elif use_backup_model and BACKUP in defs.units:
-            unit = BACKUP
-            target_component = BACKUP
-        spec = components.COMPONENTS.get(target_component)
-        if spec is None:
-            return None
-        user = build_context(unit, payload=payload, images=images)
         max_attempts = 2 if retry_on_timeout else 1
         for attempt in range(max_attempts):
             try:
@@ -89,6 +149,103 @@ class QwenProblemSolverGateway(ProblemSolverModelPort):
                 return None
             except Exception:  # noqa: BLE001
                 return None
+        return None
+
+    def _invoke(
+        self,
+        payload: dict,
+        images: list[str],
+        *,
+        use_reread_model: bool = False,
+        use_backup_model: bool = False,
+        retry_on_timeout: bool = True,
+    ) -> dict | None:
+        from app.agent_specs.blueprint_steps import BACKUP, EXTRACT, REREAD
+        from app.agent_specs.contexts import build_context
+        from app.agent_specs.definitions import load_definitions
+        from app.agent_specs.gaokao_contracts import PLANNER_ID, REREAD_ID
+        from app.agent_specs.image_refs import image_manifest, image_ref
+        from app.infrastructure.ai import components
+
+        defs = load_definitions()
+        if PLANNER_ID not in defs.units:
+            return None
+        target_component = (
+            REREAD_ID if use_reread_model and REREAD_ID in defs.components else PLANNER_ID
+        )
+        unit = PLANNER_ID
+        if EXTRACT in defs.units and payload["mode"] in {"stem_extract", "independent_stem_reread"}:
+            unit = REREAD if use_reread_model else EXTRACT
+            target_component = unit
+        elif use_backup_model and BACKUP in defs.units:
+            unit = BACKUP
+            target_component = BACKUP
+        spec = components.COMPONENTS.get(target_component)
+        if spec is None:
+            return None
+
+        unit_def = defs.units.get(unit)
+        allowed_tools = {
+            tool_id.split(".", 1)[1]
+            for tool_id in (getattr(unit_def, "tools", ()) or ())
+            if "." in tool_id
+        }
+        authorized_images = {image_ref(url): url for url in (images or []) if url}
+        inspected_crops: list[dict] = []
+        observations: list[dict] = []
+
+        base_payload = dict(payload)
+        if images and "inspect_image" in allowed_tools:
+            base_payload["image_manifest"] = image_manifest(images)
+        if allowed_tools:
+            base_payload["available_tools"] = sorted(allowed_tools)
+
+        for tool_round in range(self.MAX_TOOL_ROUNDS + 1):
+            turn_payload = dict(base_payload)
+            if observations:
+                turn_payload["tool_observations"] = observations
+            elif images and unit in {EXTRACT, REREAD} and "inspect_image" in allowed_tools:
+                turn_payload["extraction_instructions"] = (
+                    "先定位目标题。若答题依赖刻度、端点或电路接线，本轮任务仅为框选一个最关键区域，"
+                    "从 image_manifest 复制对应 image_ref，只返回 inspect_image 的 tool_request。"
+                    "下一轮收到局部图后再转写。若无需精细读图，直接按要求完成题面转写和分级。"
+                )
+            elif (
+                unit in {PLANNER_ID, BACKUP}
+                and "science" in allowed_tools
+                and payload.get("route_hint") in {"T2_algebraic", "T2_alternative"}
+            ):
+                turn_payload["science_tool_hint"] = (
+                    "本题为复杂解答/压轴题：若涉及积分、求导、对数符号、方程组求解或不等式方向比较，"
+                    "建议先返回仅含 tool_request 的 JSON 调用 science（如 integrate / differentiate / solve / equivalent）"
+                    "核验关键符号与表达式，下一轮再输出完整求解 JSON。"
+                )
+            if tool_round >= self.MAX_TOOL_ROUNDS and allowed_tools:
+                turn_payload["tool_budget_exhausted"] = True
+            ctx_kwargs = {"payload": turn_payload, "images": images}
+            if inspected_crops:
+                ctx_kwargs["inspected_crops"] = inspected_crops
+            user = build_context(unit, **ctx_kwargs)
+            raw = self._invoke_once(
+                spec=spec, user=user, retry_on_timeout=retry_on_timeout
+            )
+            if not isinstance(raw, dict):
+                return raw
+            tool_req = raw.get("tool_request")
+            if tool_req is None:
+                return raw
+            if not allowed_tools or tool_round >= self.MAX_TOOL_ROUNDS:
+                return None
+            tool_name = str(tool_req["name"]).strip()
+            tool_args = tool_req.get("args") if isinstance(tool_req.get("args"), dict) else {}
+            obs = self._run_tool(
+                name=tool_name,
+                args=tool_args,
+                allowed=allowed_tools,
+                authorized_images=authorized_images,
+                inspected_crops=inspected_crops,
+            )
+            observations.append(obs)
         return None
 
     def extract_stem(

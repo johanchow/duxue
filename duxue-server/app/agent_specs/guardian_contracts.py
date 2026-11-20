@@ -121,23 +121,36 @@ def workflow_documents() -> dict[str, dict]:
     }
 
 
+MENTOR_DISCIPLINE_RULES = (
+    "\n[mentor-discipline.v2] 客观题、实验题与题界核对红线：\n"
+    "- 整页题界隔离：当用户已明确指定目标题号（如「第14题」）时，正文只能讲解该目标题，严禁在末尾顺带解答同页其他邻题。\n"
+    "- 单选题唯选与方向反推：单选题必须且只能给出唯一最优选项，严禁合并输出两个选项（如 AB、BC）；若初步推导出 ≥2 项成立，必须立刻判定至少有一个前置方向性规律用反了（如波的折射弯曲方向、光路可逆性、左手/右手定则等），重核规律后只选唯一 1 项。\n"
+    "- 禁止轻率判定「无正确选项」或「题目有误」；若初步推导出四项均不符，必须反推重审图像坐标、方向、正负号与隐含条件后再作答。\n"
+    "- 实验题涉及螺旋测微器/游标卡尺/电表读数或纸带点迹时，须显式写明主尺与估读位，纸带题须先写出从左到右相邻点间距的变化趋势，再判断小车连接端。"
+)
+
+
 def provision_mentor_explain(
     *,
     model: str,
     prompt: str = DEFAULT_MENTOR_PROMPT,
     enable_thinking: bool = True,
-    thinking_budget: int = 4096,
+    thinking_budget: int = 2560,
 ) -> dict:
     doc = copy.deepcopy(frozen_contracts()[f"agents/{MENTOR_EXPLAIN_ID}.json"])
     doc["display_name"] = "家长视角导师说题解析"
     doc["description"] = "仅限成人体验沙盒使用：基于已核验解题骨架生成考点本质、完整破题链路与常见卡点解析，零学生域写入。"
-    doc["prompt"]["template"] = prompt
+    doc["prompt"]["template"] = (
+        prompt
+        if "[mentor-discipline.v2]" in prompt
+        else prompt.split("[mentor-discipline.v1]", 1)[0].rstrip() + MENTOR_DISCIPLINE_RULES
+    )
     doc["tools"] = []
     model_cfg: dict = {
         "component_id": MENTOR_EXPLAIN_ID,
         "name": model,
         "temperature": 0.2,
-        "max_output_tokens": 4096,
+        "max_output_tokens": 8192,
         "timeout_ms": 60000,
         "enable_thinking": enable_thinking,
     }
@@ -428,9 +441,16 @@ def direct_mentor_workflow(files):
         )
         template = files[explain_path]["prompt"]["template"]
         if sections_suffix in template:
-            files[explain_path]["prompt"]["template"] = template.replace(
-                sections_suffix, ""
-            )
+            template = template.replace(sections_suffix, "")
+        if "[mentor-discipline.v1]" in template:
+            template = template.split("[mentor-discipline.v1]", 1)[0].rstrip()
+        if "[mentor-discipline.v2]" not in template:
+            template = template.rstrip() + MENTOR_DISCIPLINE_RULES
+        files[explain_path]["prompt"]["template"] = template
+        for m in files[explain_path].get("models") or []:
+            m["max_output_tokens"] = max(int(m.get("max_output_tokens") or 0), 8192)
+            if m.get("enable_thinking"):
+                m["thinking_budget"] = min(int(m.get("thinking_budget") or 2560), 2560)
 
 
 def review_json_object(pairs):

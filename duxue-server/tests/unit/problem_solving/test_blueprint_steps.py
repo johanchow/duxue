@@ -9,6 +9,7 @@ from app.agent_specs.catalog import load_catalog
 from app.agent_specs.definitions import use_definitions
 from app.agent_specs.execution_trace import Recorder
 from app.application.workflows.guardian_mentor import _solve_for_mentor
+from app.infrastructure.ai.components import invoke_json_component
 from app.infrastructure.math_engine.adapter import SubprocessMathEngineAdapter
 from scripts.upgrade_blueprint_steps import upgrade
 from scripts.upgrade_math_bundle import upgrade as add_blueprint
@@ -318,3 +319,194 @@ def test_explicit_branch_deadline_returns_only_valid_candidates(staged, timed_ou
         assert result.status == "failed" and not result.final_answers
     else:
         assert result.confidence == "medium" and result.final_answers == {"(1)": "2*x"}
+
+
+def test_upgraded_solver_and_mentor_budgets_and_discipline_prompts():
+    from app.agent_specs.blueprint_steps import BACKUP, EXTRACT, PLANNER_ID
+    from app.agent_specs.guardian_contracts import (
+        MENTOR_EXPLAIN_ID,
+        direct_mentor_workflow,
+        provision_mentor_explain,
+    )
+
+    source = json.loads(Path("tests/fixtures/admin-release.json").read_text())
+    record = upgrade(add_blueprint(source, gaokao=True))
+    files = record["bundle"]["files"]
+
+    for uid in (PLANNER_ID, BACKUP):
+        doc = files[f"agents/{uid}.json"]
+        for model_cfg in doc["models"]:
+            assert model_cfg["max_output_tokens"] >= 16384
+            if model_cfg.get("enable_thinking"):
+                assert model_cfg["thinking_budget"] <= 2560
+                assert model_cfg["max_output_tokens"] > model_cfg["thinking_budget"]
+        prompt = doc["prompt"]["template"]
+        assert "[solver-discipline.v2]" in prompt
+        assert "inspect_image" in prompt
+        assert "纸带" in prompt
+
+    assert "inspect_image" in files[f"agents/{EXTRACT}.json"]["prompt"]["template"]
+
+    files[f"agents/{MENTOR_EXPLAIN_ID}.json"] = provision_mentor_explain(
+        model="qwen3.5-plus", enable_thinking=True, thinking_budget=4096
+    )
+    direct_mentor_workflow(files)
+    mentor_doc = files[f"agents/{MENTOR_EXPLAIN_ID}.json"]
+    assert mentor_doc["models"][0]["max_output_tokens"] >= 8192
+    assert mentor_doc["models"][0]["thinking_budget"] <= 2560
+    assert "[mentor-discipline.v2]" in mentor_doc["prompt"]["template"]
+
+
+def test_t1_primary_failure_automatically_falls_back_to_backup(staged):
+    class Solver:
+        def __init__(self):
+            self.routes = []
+
+        def extract_stem(self, **kwargs):
+            return {"tier": "T1", "raw_text": "求 f(x)=x^2 的导数", "subproblems": ["(1)"]}
+
+        def solve_route(self, *, route_hint, **kwargs):
+            self.routes.append(route_hint)
+            if route_hint == "T1":
+                return None  # Simulates length_truncated / json_parse_error
+            return _good_math_route()
+
+    solver = Solver()
+    trace = Recorder()
+    with use_definitions(staged), trace.capture():
+        res = _solve_for_mentor(
+            content="求 f(x)=x^2 的导数", images=[], solver=solver, bank_lookup=None
+        )
+    assert solver.routes == ["T1", "T1_backup"]
+    assert res.status == "ready"
+    assert res.final_answers == {"(1)": "2*x"}
+    assert res.evidence.get("used_backup") is True
+    nodes = [e["node_id"].split(".")[-1] for e in trace.events if e["kind"] in {"agent", "gate", "action"}]
+    assert nodes == ["extract", "select", "ordinary", "verify", "backup", "verify_backup", "finish"]
+
+
+def test_problem_solver_gateway_executes_inspect_image_and_science_tool_loop(staged, monkeypatch):
+    from types import SimpleNamespace
+
+    from app.agent_specs.image_refs import image_ref
+    from app.application.ports.image_inspection import InspectImageResult
+    from app.application.ports.math_engine import MathResult
+    from app.application.ports.problem_solving import QwenProblemSolverGateway
+    from app.contexts.problem_solving.domain.dossier import StructuredStem
+    from app.infrastructure.ai import components
+
+    fake_img = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAA=="
+    expected_ref = image_ref(fake_img)
+    calls = []
+
+    class FakeInspector:
+        def inspect(self, req, *, authorized_images):
+            assert req.image_ref == expected_ref
+            assert expected_ref in authorized_images
+            return InspectImageResult(
+                status="unique",
+                image_ref=req.image_ref,
+                crop_ref="crop_01",
+                label=req.label,
+                crop_data_url="data:image/png;base64,iVBORw0KGgo=",
+                width=200,
+                height=120,
+            )
+
+    class FakeMathEngine:
+        def execute(self, math_input):
+            assert math_input.op == "evaluate"
+            return MathResult(status="ok", result="2.485")
+
+    responses = iter(
+        [
+            {
+                "tool_request": {
+                    "name": "inspect_image",
+                    "args": {
+                        "image_ref": expected_ref,
+                        "bbox": {"x0": 0.1, "y0": 0.2, "x1": 0.5, "y1": 0.6},
+                        "label": "螺旋测微器放大",
+                    },
+                }
+            },
+            {
+                "tool_request": {
+                    "name": "science",
+                    "args": {"op": "evaluate", "args": {"expression": "2 + 0.485"}},
+                }
+            },
+            _good_math_route(),
+        ]
+    )
+
+    def fake_completion(*, messages, **kwargs):
+        calls.append(messages[-1]["content"])
+        return components.ChatCompletionResult(
+            raw=json.dumps(next(responses)), finish_reason="stop", stream_completed=True
+        )
+
+    # Keep the production parser and schema checks, with the provider transport stubbed.
+    monkeypatch.setattr(components, "invoke_json_component", invoke_json_component)
+    monkeypatch.setattr(components, "complete_json_chat", fake_completion)
+    monkeypatch.setattr("app.infrastructure.ai.client.dashscope_client", lambda **kwargs: object())
+
+    gateway = QwenProblemSolverGateway(
+        settings_obj=SimpleNamespace(agent_model_timeout_seconds=30),
+        math_engine=FakeMathEngine(),
+        image_inspector=FakeInspector(),
+    )
+    with use_definitions(staged):
+        out = gateway.solve_route(
+            stem=StructuredStem("physics", "读出螺旋测微器示数"),
+            images=[fake_img],
+            route_hint="T1",
+        )
+
+    assert out == _good_math_route()
+    assert len(calls) == 3
+    # Second call receives inspected crop image part + observation
+    second_call = calls[1]
+    assert isinstance(second_call, list)
+    assert any(
+        part.get("type") == "image_url"
+        and part["image_url"]["url"] == "data:image/png;base64,iVBORw0KGgo="
+        for part in second_call
+    )
+    assert "crop_01" in second_call[0]["text"]
+    # Third call receives science tool deterministic observation
+    assert "2.485" in calls[2][0]["text"]
+
+
+@pytest.mark.parametrize("unit_id", [
+    "tutoring.stem-extract", "tutoring.stem-review", PLANNER_ID, BACKUP,
+])
+def test_blueprint_intermediate_and_final_contracts_are_distinct(staged, unit_id):
+    from jsonschema import ValidationError
+
+    from app.agent_specs.contracts import validate_output
+
+    unit = staged.units[unit_id]
+    request = {"name": "inspect_image", "args": {}}
+    validate_output(unit, {"tool_request": request})
+    for invalid in (
+        {"tool_request": request, "subject": "physics"},
+        {"tool_request": {"name": "unlisted", "args": {}}},
+        {"tool_request": {"name": "inspect_image", "args": []}},
+        {},
+    ):
+        with pytest.raises((ValueError, ValidationError)):
+            validate_output(unit, invalid)
+
+
+def test_tool_budget_cannot_turn_a_request_into_a_finished_stem(staged, monkeypatch):
+    from app.application.ports.problem_solving import QwenProblemSolverGateway
+
+    gateway = QwenProblemSolverGateway()
+    monkeypatch.setattr(gateway, "MAX_TOOL_ROUNDS", 0)
+    monkeypatch.setattr(
+        gateway, "_invoke_once",
+        lambda **kwargs: {"tool_request": {"name": "inspect_image", "args": {}}},
+    )
+    with use_definitions(staged):
+        assert gateway.extract_stem(text="读图", images=[]) is None
