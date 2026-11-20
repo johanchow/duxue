@@ -9,6 +9,7 @@ import io
 from PIL import Image, ImageOps
 
 from app.application.ports.image_inspection import (
+    CropBox,
     ImageInspectionPort,
     InspectImageRequest,
     InspectImageResult,
@@ -18,6 +19,20 @@ MAX_DECODED_BYTES = 15 * 1024 * 1024
 MAX_SOURCE_PIXELS = 25_000_000
 MIN_READABLE_SIDE = 256
 MAX_OUTPUT_SIDE = 1280
+MIN_SAFETY_PADDING = 0.04
+RELATIVE_SAFETY_PADDING = 0.15
+
+
+def _pad_bbox(b: CropBox) -> CropBox:
+    """Expand model-predicted crop boxes gently so ruler origins and dimension labels aren't clipped."""
+    pad_x = max(MIN_SAFETY_PADDING, RELATIVE_SAFETY_PADDING * (b.x1 - b.x0))
+    pad_y = max(MIN_SAFETY_PADDING, RELATIVE_SAFETY_PADDING * (b.y1 - b.y0))
+    return CropBox(
+        x0=max(0.0, b.x0 - pad_x),
+        y0=max(0.0, b.y0 - pad_y),
+        x1=min(1.0, b.x1 + pad_x),
+        y1=min(1.0, b.y1 + pad_y),
+    )
 
 
 class PillowImageInspector(ImageInspectionPort):
@@ -44,11 +59,11 @@ class PillowImageInspector(ImageInspectionPort):
             return InspectImageResult(status="tool_error")
 
         w, h = oriented.size
-        b = request.bbox
-        left = max(0, min(w - 1, int(round(b.x0 * w))))
-        top = max(0, min(h - 1, int(round(b.y0 * h))))
-        right = max(left + 1, min(w, int(round(b.x1 * w))))
-        bottom = max(top + 1, min(h, int(round(b.y1 * h))))
+        padded = _pad_bbox(request.bbox)
+        left = max(0, min(w - 1, int(round(padded.x0 * w))))
+        top = max(0, min(h - 1, int(round(padded.y0 * h))))
+        right = max(left + 1, min(w, int(round(padded.x1 * w))))
+        bottom = max(top + 1, min(h, int(round(padded.y1 * h))))
 
         cropped = oriented.crop((left, top, right, bottom))
         cw, ch = cropped.size
@@ -79,7 +94,7 @@ class PillowImageInspector(ImageInspectionPort):
             status="unique",
             image_ref=request.image_ref,
             crop_ref=crop_ref,
-            bbox=request.bbox,
+            bbox=padded,
             width=cropped.width,
             height=cropped.height,
             label=request.label,

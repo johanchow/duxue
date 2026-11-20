@@ -797,6 +797,11 @@ And 不呈现空选择题或 pronunciation_lesson
 
 ## Guardian 问答体验（2026-11-17 验收，2026-11-18 扩展双视角）
 
+### Admin 导师解析直出链路（方案 A）
+
+`guardian-mentor` 定位为成人体验沙盒与智能 + Harness 能力展示，采用极简单节点 `guardian-mentor.explain` 直接交付完整解析正文，不再在成稿出口叠加同步阻塞的 LLM 审核/修复门禁（`tutoring.mentor-review` / `tutoring.mentor-repair`）或强制 `sections` 拼装，避免协议误杀与延迟放大。质量与边界由四道低摩擦机制保障：1）前置 `tutoring-blueprint` 十二节点 Harness（按需复读、确定性引擎四态核验、证伪切异构备用、T2 并发异构）；2）双向 `LocalSafetyScreening` 本地安全拦截；3）配图/发音结构白名单校验（坏图仅丢图不拦正文）；4）`_apply_confidence_honesty_gate` 置信度诚实提示（仅附提示不拦正文）。历史含 `mentor-review` 的已发布快照仍保持只读编译兼容；新草稿可通过 `scripts/upgrade_guardian_mentor_review.py --direct` 切换为极简单节点。
+
+
 成人体验不进入 Ward 的 Companion Coordinator、Thread/Run 账本和 Tutoring/Study/ProblemSolving 持久化，不读取任何孩子上下文、私有 `ProblemDossier(scope="ward")` 或 Memory，也不发布学习事实。产品范围唯一归属 [用户 PRD §7.2](../product/prd-user.md#72-家长问答体验)。
 
 - **`mode="student_guide"`（默认，学生启发视角）**：复用无数据库依赖的 `run_tutor_turn`、答案保护策略 `TutorPermitPolicy`、独立 Judge、只读工具、图片目标选择与发音结构校验；不向 `TutorPermitPolicy` 或 `run_tutor_turn` 增加任何放宽保护的开关。

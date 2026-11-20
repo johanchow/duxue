@@ -62,3 +62,10 @@ test('execution inspection preserves repeated calls and separates parallel edge 
     '流程调试',
   );
 });
+
+test('shared solve agent records each model call on its executing node', () => {
+  const events = ['ordinary', 'primary', 'alternative'].map((node_id) => ({
+    workflow_id: 'blueprint', kind: 'model', node_id, unit_id: 'solver',
+  }));
+  assert.deepEqual(nodeExecutions(events, 'blueprint', {id: 'primary', ref: 'solver'}), [events[1]]);
+});

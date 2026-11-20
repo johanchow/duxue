@@ -105,9 +105,11 @@ def test_tutor_turn_context_attaches_crop_parts_without_leaking_bytes_in_json_ob
         current_images=[data_url],
         observations=[{"tool": "inspect_image", **public_obs}],
     )
-    # Text JSON part must not contain raw crop base64 URL
+    # Text JSON part must not contain raw crop base64 URL, and exposes image_manifest for inspect_image
     text_body = parts[0]["text"]
     assert res.crop_data_url not in text_body
+    payload = json.loads(text_body)
+    assert payload["image_manifest"] == [{"image_id": 1, "image_ref": ref}]
     # Multimodal parts include both original image and cropped zoom image
     image_urls = [p["image_url"]["url"] for p in parts if p.get("type") == "image_url"]
     assert data_url in image_urls
@@ -123,3 +125,22 @@ def test_image_prompt_exposes_not_checking_questions_contract():
     data = json.loads(parts[0]["text"])
     assert "not_checking" in data["image_review_rule"]
     assert "questions=[]" in data["image_review_rule"]
+
+
+def test_pillow_crop_applies_safety_padding_to_avoid_clipping_origin():
+    data_url = _make_quadrant_data_url()
+    ref = image_ref(data_url)
+    inspector = PillowImageInspector()
+
+    req = InspectImageRequest(
+        image_ref=ref,
+        bbox=CropBox(x0=0.40, y0=0.40, x1=0.60, y1=0.60),
+    )
+    res = inspector.inspect(req, authorized_images={ref: data_url})
+    assert res.status == "unique"
+    assert res.bbox is not None
+    # Expanded gently on all four sides within [0.0, 1.0]
+    assert res.bbox.x0 < 0.40 and res.bbox.y0 < 0.40
+    assert res.bbox.x1 > 0.60 and res.bbox.y1 > 0.60
+    assert 0.0 <= res.bbox.x0 < res.bbox.x1 <= 1.0
+    assert 0.0 <= res.bbox.y0 < res.bbox.y1 <= 1.0

@@ -121,23 +121,36 @@ def workflow_documents() -> dict[str, dict]:
     }
 
 
+MENTOR_DISCIPLINE_RULES = (
+    "\n[mentor-discipline.v2] 客观题、实验题与题界核对红线：\n"
+    "- 整页题界隔离：当用户已明确指定目标题号（如「第14题」）时，正文只能讲解该目标题，严禁在末尾顺带解答同页其他邻题。\n"
+    "- 单选题唯选与方向反推：单选题必须且只能给出唯一最优选项，严禁合并输出两个选项（如 AB、BC）；若初步推导出 ≥2 项成立，必须立刻判定至少有一个前置方向性规律用反了（如波的折射弯曲方向、光路可逆性、左手/右手定则等），重核规律后只选唯一 1 项。\n"
+    "- 禁止轻率判定「无正确选项」或「题目有误」；若初步推导出四项均不符，必须反推重审图像坐标、方向、正负号与隐含条件后再作答。\n"
+    "- 实验题涉及螺旋测微器/游标卡尺/电表读数或纸带点迹时，须显式写明主尺与估读位，纸带题须先写出从左到右相邻点间距的变化趋势，再判断小车连接端。"
+)
+
+
 def provision_mentor_explain(
     *,
     model: str,
     prompt: str = DEFAULT_MENTOR_PROMPT,
     enable_thinking: bool = True,
-    thinking_budget: int = 4096,
+    thinking_budget: int = 2560,
 ) -> dict:
     doc = copy.deepcopy(frozen_contracts()[f"agents/{MENTOR_EXPLAIN_ID}.json"])
     doc["display_name"] = "家长视角导师说题解析"
     doc["description"] = "仅限成人体验沙盒使用：基于已核验解题骨架生成考点本质、完整破题链路与常见卡点解析，零学生域写入。"
-    doc["prompt"]["template"] = prompt
+    doc["prompt"]["template"] = (
+        prompt
+        if "[mentor-discipline.v2]" in prompt
+        else prompt.split("[mentor-discipline.v1]", 1)[0].rstrip() + MENTOR_DISCIPLINE_RULES
+    )
     doc["tools"] = []
     model_cfg: dict = {
         "component_id": MENTOR_EXPLAIN_ID,
         "name": model,
         "temperature": 0.2,
-        "max_output_tokens": 4096,
+        "max_output_tokens": 8192,
         "timeout_ms": 60000,
         "enable_thinking": enable_thinking,
     }
@@ -145,3 +158,305 @@ def provision_mentor_explain(
         model_cfg["thinking_budget"] = thinking_budget
     doc["models"] = [model_cfg]
     return doc
+
+
+MENTOR_REVIEW_ID = "tutoring.mentor-review"
+MENTOR_REPAIR_ID = "tutoring.mentor-repair"
+MENTOR_DELIVER_ID = "guardian-mentor.deliver"
+MENTOR_BRANCHES = {"review", "skip_review", "repair", "finish"}
+
+
+def _sections_schema():
+    return {
+        "type": "object",
+        "required": ["sections"],
+        "additionalProperties": False,
+        "properties": {
+            "sections": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 10,
+                "items": {
+                    "type": "object",
+                    "required": ["id", "content"],
+                    "additionalProperties": False,
+                    "properties": {
+                        "id": {"type": "string", "minLength": 1, "maxLength": 32},
+                        "content": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 3600,
+                        },
+                    },
+                },
+            }
+        },
+    }
+
+
+def staged_contracts(*, include_repair=True):
+    result = {}
+    for uid, kind in ((MENTOR_REVIEW_ID, "gate"), (MENTOR_REPAIR_ID, "agent")):
+        doc = copy.deepcopy(frozen_contracts()[f"agents/{MENTOR_EXPLAIN_ID}.json"])
+        doc.update(
+            id=uid,
+            kind=kind,
+            operation=uid,
+            input_contract=uid + ".input.v1",
+            output_contract=uid + ".output.v1",
+            context_builder_id=uid.replace("-", "_") + ".context",
+            prompt={"id": uid + ".prompt"},
+            models=[{"component_id": uid}],
+        )
+        if kind == "agent":
+            doc["output_schema"] = _sections_schema()
+        else:
+            from app.agent_specs.verdicts import GateVerdict
+
+            row = {
+                "type": "object",
+                "required": ["id", "status", "reason"],
+                "additionalProperties": False,
+                "properties": {
+                    "id": {"type": "string", "minLength": 1, "maxLength": 32},
+                    "status": {"enum": ["pass", "wrong", "unknown"]},
+                    "reason": {"type": "string", "maxLength": 100},
+                },
+            }
+            doc.pop("output_schema")
+            doc.pop("error_codes")
+            doc.update(
+                implementation="judge",
+                on_error="deny",
+                safety_class="standard",
+                verdict_schema=GateVerdict.model_json_schema(),
+                provider_output_schema={
+                    "type": "object",
+                    "required": ["rows", "coverage_complete"],
+                    "additionalProperties": False,
+                    "properties": {
+                        "coverage_complete": {"type": "boolean"},
+                        "rows": {
+                            "type": "array",
+                            "minItems": 1,
+                            "maxItems": 10,
+                            "items": row,
+                        },
+                    },
+                },
+            )
+        result[f"{'agents' if kind == 'agent' else 'gates'}/{uid}.json"] = doc
+    if not include_repair:
+        result.pop(f"agents/{MENTOR_REPAIR_ID}.json")
+    return result
+
+
+def staged_workflow():
+    def node(key):
+        return f"guardian-mentor.{key}" if key not in {"START", "END"} else key
+
+    return {
+        "kind": "workflow",
+        "id": MENTOR_WORKFLOW_ID,
+        "handler": MENTOR_WORKFLOW_ID,
+        "entry": node("explain"),
+        "nodes": [
+            {"id": node("explain"), "kind": "agent", "ref": MENTOR_EXPLAIN_ID},
+            {
+                "id": node("review"),
+                "kind": "gate",
+                "ref": MENTOR_REVIEW_ID,
+                "display_name": "逐问审核",
+            },
+            {
+                "id": node("repair"),
+                "kind": "agent",
+                "ref": MENTOR_REPAIR_ID,
+                "display_name": "定向修复",
+            },
+            {
+                "id": node("recheck"),
+                "kind": "gate",
+                "ref": MENTOR_REVIEW_ID,
+                "display_name": "修复复核",
+            },
+            {
+                "id": node("deliver"),
+                "kind": "action",
+                "handler_id": MENTOR_DELIVER_ID,
+                "display_name": "汇总并交付",
+            },
+        ],
+        "edges": [
+            {"from": node(a), "to": node(b), **({"condition_id": c} if c else {})}
+            for a, b, c in [
+                ("START", "explain", None),
+                ("explain", "review", "review"),
+                ("explain", "deliver", "skip_review"),
+                ("review", "repair", "repair"),
+                ("review", "deliver", "finish"),
+                ("repair", "recheck", "review"),
+                ("repair", "deliver", "finish"),
+                ("recheck", "deliver", None),
+                ("deliver", "END", None),
+            ]
+        ],
+    }
+
+
+def stage_mentor_review(files):
+    path = f"agents/{MENTOR_EXPLAIN_ID}.json"
+    if path not in files:
+        source = files["agents/tutoring.turn.json"]["models"][0]
+        files[path] = provision_mentor_explain(
+            model=source["name"], enable_thinking=False
+        )
+    files[path]["prompt"]["template"] += (
+        "\n当 act 为 explain 或 answer 时额外返回 sections。每一小问用独立条目，"
+        "id 为题号或小问编号（单问用 main），content 为该问可独立阅读的解答。"
+        "所有条目正文总计不超过 3200 字。全题背景和共享推导请放在相应小问内。"
+    )
+    docs = staged_contracts()
+    repair_model = files[path]["models"][0]["name"]
+    judge_model = files["gates/tutoring.leak-judge.json"]["models"][0]["name"]
+    if repair_model == judge_model:
+        raise ValueError(
+            "Guardian Judge must be independent from the explanation model"
+        )
+    for key, uid, model, title, limit, prompt in (
+        (
+            "gates",
+            MENTOR_REVIEW_ID,
+            judge_model,
+            "家长解析逐问审核",
+            1000,
+            "依据原题、图片独立核对以下 sections。逐条用原 id 返回 rows，每条包含 id、status（pass/wrong/unknown）、"
+            "reason（不超过100字，正确时留空，错误指出首个错误步骤）。请直接输出简短 JSON，禁止长篇解释。"
+            "coverage_complete 表示本次待审范围完整。首次全题审核时根据原题检查小问是否齐全。"
+            "复核仅核对给定小问，其他小问是已通过的上下文。若一段混合正确和错误推导，把该段判为 wrong。",
+        ),
+        (
+            "agents",
+            MENTOR_REPAIR_ID,
+            repair_model,
+            "家长解析定向修复",
+            4096,
+            "依据原题、图片、已通过小问和审核反馈，仅重写 targets 中的错误小问。"
+            "输出 JSON 对象 sections，每条只含原 id 和 content。每问写必要推导和答案，合计不超过3200字。"
+            "已通过内容仅供参照，不要改写或重复输出。",
+        ),
+    ):
+        doc = docs[f"{key}/{uid}.json"]
+        doc.update(display_name=title, tools=[])
+        doc["prompt"]["template"] = prompt
+        doc["models"] = [
+            {
+                "component_id": uid,
+                "name": model,
+                "temperature": 0,
+                "max_output_tokens": limit,
+                "timeout_ms": 25000,
+                "enable_thinking": False,
+            }
+        ]
+    files.update(docs)
+    files["workflows/guardian-mentor.json"] = staged_workflow()
+
+
+def simple_workflow():
+    workflow = staged_workflow()
+    removed = {"guardian-mentor.repair", "guardian-mentor.recheck"}
+    workflow["nodes"] = [
+        node for node in workflow["nodes"] if node["id"] not in removed
+    ]
+    workflow["edges"] = [
+        edge for edge in workflow["edges"] if not ({edge["from"], edge["to"]} & removed)
+    ]
+    for edge in workflow["edges"]:
+        if edge["from"] == "guardian-mentor.review":
+            edge.pop("condition_id")
+    return workflow
+
+
+def simplify_mentor_review(files):
+    gate_path = f"gates/{MENTOR_REVIEW_ID}.json"
+    if gate_path not in files:
+        stage_mentor_review(files)
+    files.pop(f"agents/{MENTOR_REPAIR_ID}.json", None)
+    files[f"workflows/{MENTOR_WORKFLOW_ID}.json"] = simple_workflow()
+    files[gate_path]["prompt"]["template"] = (
+        "你是独立审核员。依据原题和图片审核 sections 中给定的每一项。"
+        "只输出一个 JSON 对象，示例："
+        '{"rows":[{"id":"24","status":"pass","reason":""},{"id":"25","status":"wrong","reason":"选项与原文矛盾"}],'
+        '"coverage_complete":true}。'
+        "严格使用输入 sections 中的原 ID，每个 ID 只出现一次。不要添加图片中的相邻题；"
+        "目标范围内无法判断的条目返回 unknown。每条 reason 最多100字，通过时用空字符串。"
+        "仅在目标题目及全部小问确实齐全时返回 coverage_complete=true；不明确时返回 false。"
+    )
+
+
+def normalize_review_shape(payload):
+    """Adapt observed wire shapes. Missing whole-question coverage stays unknown."""
+    if isinstance(payload, list):
+        payload = {"rows": payload}
+    if not isinstance(payload, dict):
+        return payload
+    if (
+        "rows" not in payload
+        and payload
+        and all(
+            isinstance(row, dict) and row.get("id") == key
+            for key, row in payload.items()
+        )
+    ):
+        payload = {"rows": list(payload.values())}
+
+    if isinstance(payload.get("rows"), list):
+        payload = {**payload}
+        payload.setdefault("coverage_complete", False)
+        # Reason is display metadata in the simplified graph. Keep the judgment
+        # and the ID unchanged, and bound the logged explanation.
+        payload["rows"] = [
+            {**row, "reason": row["reason"][:100]}
+            if isinstance(row, dict) and isinstance(row.get("reason"), str)
+            else row
+            for row in payload["rows"]
+        ]
+    return payload
+
+
+def direct_mentor_workflow(files):
+    """Restore direct single-node `guardian-mentor` workflow without blocking LLM draft review."""
+    files.pop(f"gates/{MENTOR_REVIEW_ID}.json", None)
+    files.pop(f"agents/{MENTOR_REPAIR_ID}.json", None)
+    files[f"workflows/{MENTOR_WORKFLOW_ID}.json"] = workflow_documents()[
+        f"workflows/{MENTOR_WORKFLOW_ID}.json"
+    ]
+    explain_path = f"agents/{MENTOR_EXPLAIN_ID}.json"
+    if explain_path in files:
+        sections_suffix = (
+            "\n当 act 为 explain 或 answer 时额外返回 sections。每一小问用独立条目，"
+            "id 为题号或小问编号（单问用 main），content 为该问可独立阅读的解答。"
+            "所有条目正文总计不超过 3200 字。全题背景和共享推导请放在相应小问内。"
+        )
+        template = files[explain_path]["prompt"]["template"]
+        if sections_suffix in template:
+            template = template.replace(sections_suffix, "")
+        if "[mentor-discipline.v1]" in template:
+            template = template.split("[mentor-discipline.v1]", 1)[0].rstrip()
+        if "[mentor-discipline.v2]" not in template:
+            template = template.rstrip() + MENTOR_DISCIPLINE_RULES
+        files[explain_path]["prompt"]["template"] = template
+        for m in files[explain_path].get("models") or []:
+            m["max_output_tokens"] = max(int(m.get("max_output_tokens") or 0), 8192)
+            if m.get("enable_thinking"):
+                m["thinking_budget"] = min(int(m.get("thinking_budget") or 2560), 2560)
+
+
+def review_json_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate review JSON key")
+        result[key] = value
+    return result

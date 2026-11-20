@@ -450,3 +450,49 @@ MATH_ENGINE_MODE=subprocess .venv/bin/python -m scripts.run_local_dialogues \
 每项两轮，`episode/generated_history`保留真实前轮回复。沿用`duxue-dataset.v1`投影，将评分要求从输入移入expectedOutput，保留图形语义rubric与两项确定性断言；使用已有六个原生评分维度。状态为ACTIVE、proposed/uncalibrated，以`metadata.batch=visual-delivery-v1`筛选。本次仅新增用例，未执行云端Experiment，未把已有本地pass写成云端分数，也未修改评分器或恢复暂停批次。云端后续编辑为托管事实源，仓库JSON保留为独立本地回归输入，不自动双向同步。
 
 逐字段回读验证与原104项不变审计在ignored `duxue-server/var/evals/visual-delivery-cloud-20261117/`。图形审核仍是SVG结构语义审核，非渲染像素验收。
+
+## 北京九科整卷本地评测
+
+从 `duxue-server/` 运行。数据版本为 2025 北京卷，英语为 100 分笔试。18 个 PDF 的来源、角色、页数和 SHA-256 见 [sources.json](../../duxue-server/evals/exams/sources.json)。地理出版方将题面和解析文件名对调，以摘要固定角色。原始材料和运行结果保存在本地忽略目录。
+
+```sh
+python -m pip install -r requirements-dev.txt
+exam_dir=var/exams/beijing-2025
+python -m evals.exams.prepare --data "$exam_dir" --download
+```
+
+使用隔离的本地 Guardian 服务和测试监护人。服务和执行器使用相同的本地测试库、密钥与快照，模型按快照正常联网推理。快照选择是实验条件，本次使用 `var/guardian-dual-device/snapshot.json`。下面的环境变量仅应用于该次启动的本地服务；单账号日配额覆盖首答和补答，全程保留正常答案审核和 105 秒请求预算。
+
+```sh
+AGENT_CONFIG_SOURCE=snapshot AGENT_CONFIG_SNAPSHOT=var/guardian-dual-device/snapshot.json \
+  OTEL_SDK_DISABLED=true LANGFUSE_ENABLED=false STORAGE_BACKEND=local \
+  GUARDIAN_MENTOR_LIMIT_PER_DAY=350 GUARDIAN_MENTOR_LIMIT_PER_MINUTE=30 \
+  python -m uvicorn app.bootstrap.app:app --host 127.0.0.1 --port 8039
+```
+
+执行器按独立题或共用阅读材料的题组调用 `/guardian/experience/turn` 的 `guardian_explain`，仅记录用户可见输出。独立题按原 PDF 页定位，页面上可能同时出现邻题，由提示点明目标编号。跨页题保留原图。语文微写作与作文按选答规则固定选择整理件的第 21 和 24 题。160 次首答覆盖 208 个计分题号，各学科分别按原卷满分汇总。
+
+```sh
+exam_dir=var/exams/beijing-2025
+python -m evals.exams.run --data "$exam_dir" --out "$exam_dir/run" --base http://127.0.0.1:8039 --snapshot var/guardian-dual-device/snapshot.json --smoke
+python -m evals.exams.run --data "$exam_dir" --out "$exam_dir/run" --base http://127.0.0.1:8039 --snapshot var/guardian-dual-device/snapshot.json --workers 8
+python -m evals.exams.score --data "$exam_dir" --run "$exam_dir/run" --out "$exam_dir/final-first"
+python -m evals.exams.recover --data "$exam_dir" --run "$exam_dir/run" --out "$exam_dir/recovered"
+python -m evals.exams.score --data "$exam_dir" --run "$exam_dir/recovered" --out "$exam_dir/final-recovered" --reuse-grades "$exam_dir/final-first"
+```
+
+补答仅针对服务错误及明确的 `unavailable`，每个失败请求最多一次；对于可定位的独立题裁去邻题，并使用更短的交卷提示。其他首答原样沿用。两次结果分别报告，答错题不触发重试。提交前写入 `submitted`，若进程在提交后中断，保留未知交付状态；查明后在新批次补跑，保留历史。执行器使用仅本地登记的测试账号 `guardian-home-qa@example.invalid`。评卷与结果汇总不连接 Langfuse 数据集或评分器。
+
+分值配置与评分提示在 [grading.py](../../duxue-server/evals/exams/grading.py)。客观单题由独立模型抽取选择及其答卷行号，再与固定选项比较。材料题组、填空、推导及作文由另一条阅卷调用参照教师版逐题估分，结果带依据与分项。数学、物理、化学、地理大题分值参考同卷的第三方分值表；历史与生物另有标分版可复核。政治主观题分值以对应题目设问的标分汇编交叉核对。语文中仅有题组总分的部分使用本地配分，作文及无公开分步细则的题使用本地量尺，分数属于自动估分。[数学](https://www.jdxzz.com/gkzx/2025/0908/10350161.html) · [物理](https://www.jdxzz.com/gkzx/2025/0902/10350101.html) · [化学](https://www.jdxzz.com/gkzx/2025/0902/10350102.html) · [地理](https://www.jdxzz.com/gkzx/2025/0904/10350131.html) · [历史](https://zujuan.zxls.com/PaperList.aspx?id=24452) · [生物](https://zy.21cnjy.com/23238546) · [思想政治](https://www.sohu.com/a/919656977_121124318)
+
+每份 `questions.tsv` 提供题号、满分、得分、状态、依据及分项，`totals.json` 提供试卷汇总。已确认的 HTTP 服务错误或产品未交付答案，端到端卷面分计零，并单列交付失败。未执行、提交状态未知和评分缺失计入待定分值；有待定分值时，当前区间为已定得分至已定得分加待定满分。
+
+材料题组与非单选题中，凡实际交付解析的项目统一复核。阅卷口径明确把 AI 撰写的示范解答也视为考生交付；复核保留初评分项和依据。两个场景交付相同答卷时复用同一复核结果。报告在两个批次的全部题号均已有可追溯分数后生成。
+
+```sh
+python -m evals.exams.review --data "$exam_dir" --run "$exam_dir/run" --out "$exam_dir/final-first"
+python -m evals.exams.review --data "$exam_dir" --run "$exam_dir/recovered" --out "$exam_dir/final-recovered" --reuse-grades "$exam_dir/final-first"
+python -m evals.exams.report --data "$exam_dir"
+```
+
+本批还对所有给出实质解析但开放题仍判零的题目执行一次原文摘取复核。再次运行 `review` 会定位这些题，将判分约束在实际交付过的原句上。遇到自动摘取遗漏，可通过 `--evidence` 指定带 `answer_sha256` 的逐文件原始行号 JSON，再运行 `report`。复核结果保留旧分与证据行号。发布的分数以最后一次证据复核为准。

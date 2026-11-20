@@ -10,3 +10,6 @@ ruff>=0.8.0
 
 # Isolated math executor tests; API runtime does not import SymPy.
 -r requirements-math.txt
+
+# Local PDF examination datasets.
+-r evals/exams/requirements.txt

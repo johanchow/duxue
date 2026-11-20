@@ -233,3 +233,42 @@
 - Guardian 双视角回归覆盖无规划器快照、换图与文字换题、两种快照的总预算超时。复核的事实判断、核验提示展示条件和观测字段分别验证，协议见 [Companion](../../docs/technical/domain-companion.md#guardian-问答体验2026-11-17-验收2026-11-18-扩展双视角)。
 
 - Android 真机双视角联调发现 DashScope JSON 模式需要消息中明确请求 JSON。题图只引导时，模型上下文需显式声明 `not_checking` 对应 `questions=[]`。文本追问选中历史题图后，题图来源优先于导师生成的换题标签。文字分数题与合成铅笔题已通过真实模型往返，铅笔题独立复核通过。临时测试包仅替换选图入口，随后已重装普通调试包并确认系统相机可打开。证据在 ignored `output/guardian-dual-device/`，调试实例 8027 使用本地配置草稿。
+
+- 答疑产品定位与验收范围已更新，见[产品架构的 K–12 能力目标](../../docs/product/ARCHITECTURE.md#k12-答疑覆盖与难度目标)。此前 3—8 年级的记录为当时的定位。
+
+- 2026-11-19 北京九科本地整卷评测已完成真实作答与估分，待 Gate 2。执行与判分契约见[整卷本地评测](../../docs/technical/eval-offline.md#北京九科整卷本地评测)，报告在本地 `duxue-server/var/exams/beijing-2025/REPORT.md`。本轮核对了地理题面/解析反标、政治主观题配分与独立裁判将讲解体答案误判为空答的问题。保留首答、单次补答和复核前后的判分。
+
+- 2026-11-19 内部求解八步拓扑、求解 Agent 复用和 T0/T1/T2 升级路径见[ProblemSolving 设计](../../docs/technical/domain-problem-solving.md#admin-内部解题工作流)。排查耗时时按执行中的节点 ID 关联模型；仅用 Agent ID 会把三条路线合并。测试业务库 duxue-test 与 Admin 测试配置库 duxue-admin-test 已实连核对。
+
+- 2026-11-19 按用户确认将八步配置导入 duxue-admin-test 工作草稿 da210b2f-d24e-40cf-9e4f-db60ef3c99e5（revision 2，基于测试 R13）。数据库回读完整包摘要与导入包一致，刷新本机 8011 控制执行器后 Admin catalog 验证 8 个节点、14 条连线。
+- 2026-11-19 按用户确认重构 `tutoring-blueprint` 为十二节点并发异构工作流（事实源见 [domain-problem-solving](../../docs/technical/domain-problem-solving.md#admin-内部解题工作流)）：1）取消 T1→T2 自动升级，T1 引擎证伪（`contradicted`）时转异构备用 `tutoring.blueprint-backup`（携带反例约束），超时原地重试最多 1 次；2）优化有图效率，仅在初读自报模糊/涂改或 T1 证伪怀疑读错数字时按需复读，只比对关键数值/符号/设问（忽略 `diagram_summary` 措辞），分歧立即短路；3）`execute_workflow` 支持线程安全的并发 fan-out/fan-in，T2 并发执行主路线与异构替代路线；4）确定性引擎核验升级为四态（`verified` / `contradicted` / `not_applicable` / `unknown`，含自由变量反例证伪）、T2 证伪淘汰与三态比对（`consistent` / `contradicted` / `incomparable`）、`finish` 按小问检查完整性并区分充分核验与必要条件（量纲/守恒）；求解 Agent 开放 `tutoring.science` 与 `tutoring.inspect_image` 工具权限；旧发布包兼容指纹不变。
+
+- 内部求解发布回归：有放回/无放回在数值与符号相同的情况下也属于不同转写；题面和小问逐项核对，缺失的复读结果不能回到原选路。小问完整性按声明标签/编号匹配显式最终答案。T2 在剩余预算内提前汇合，已结束的分支单独核验，迟到的候选和回放事件不参与当前结果。两种入口的双路超时、单路超时及旧快照路径见 [回归用例](../../duxue-server/tests/unit/problem_solving/test_blueprint_steps.py)，预算口径见 [ProblemSolving 设计](../../docs/technical/domain-problem-solving.md#admin-内部解题工作流)。
+- 2026-11-19 按用户确认实施 `guardian-mentor` 方案 A（事实源见 [domain-companion](../../docs/technical/domain-companion.md#admin-导师解析直出链路方案-a)）：移除成人体验沙盒出口的同步阻塞 LLM 审核与 `sections` 拼装摩擦，放宽 `MentorExplainCandidate.content` 至 8000 字，仅保留前置 `tutoring-blueprint` Harness、双向 `LocalSafetyScreening`、配图/发音结构校验与非阻塞置信度诚实提示（`draft_reviewed=False`）；新增 `direct_mentor_workflow` 与 `upgrade_guardian_mentor_review.py --direct`，历史含审核节点的已发布快照保持编译兼容。
+
+- 2026-11-19 用十二节点测试草稿 revision 3 和本地 commit 0ecf471 复跑 2025 北京数学卷。首答并发 8，失败补答并发最高 5，21 题均已判分。首答 83/150，一次补答后 113.5/150，首答 HTTP 错误 0、暂不可用 6，补答后仍暂不可用第 14、17、21 题。首答中位耗时 35.82 秒，P95 76.06 秒。上轮九科批次负载与本次单科不同。逐题证据及快照见 `duxue-server/var/exams/beijing-2025-math-rerun.hRxKYv/REPORT.md`。
+
+- 数学复跑空答第 14、17、21 题用原补答图和提示词做同配置隔离复现，三题均完成读题，蓝图主模型各用满 4096 推理 token、正文 0。第 14 题讲解也截断，第 17 题讲解生成后审核截断，第 21 题讲解生成后审核返回不通过；证据为该批次目录 `diagnosis-14.json`、`diagnosis-17.json`、`diagnosis-21.json`。复现与当次阅卷记录分开。
+
+- 数学第 14、17、21 题预算对照见 `duxue-server/var/exams/beijing-2025-math-rerun.hRxKYv/BUDGET-DIAGNOSIS.md`。只提高主求解 max_output_tokens 到 8192 未恢复交付；关闭主求解 thinking 后三题均产出 JSON 候选，分别停在讲解候选校验、审核截断、审核拒绝。第 17 题另试审核上限 1000，但本次讲解两次候选校验失败，未到审核步骤。使用本地隔离快照。
+
+- 数学空答 14/17/21 的隔离诊断记录见原复跑目录 `rejection-detail-17.json`、`rejection-detail-21.json`、`rejection-unblock-14.json`。14 的一次重放在核验中因 `MathResult.error` 字段不存在中断，确定性复现表明应读 `error_code`；另一轮可生成但给出错误体积且审核截断。17 的第 (1) 问错误断言平行，审核在解释错误时被截断。21 的第 (2)、(3) 问错误假设单个坐标的奇偶性每步都翻转，只有坐标和保证翻转。仅在隔离诊断进程中加观测和临时兼容，未变更产品代码。
+
+- Guardian 逐问审核拓扑已导入 duxue-admin-test 工作草稿 da210b2f-d24e-40cf-9e4f-db60ef3c99e5 revision 4。API 回读 5 节点、9 条边，测试发布指针仍为 R13。本地真实模型通过两小问的讲解、审核与交付；回归覆盖定向修复、复核拒绝/不可用及小问 ID 不匹配。修复蓝图非成功结果错误读取 MathResult.error 的崩溃。全量 1306 通过、1 跳过。流程与兼容入口见 [Guardian 设计](../../docs/technical/domain-companion.md#admin-导师解析逐问审核)。
+
+- 2026-11-19 复跑 2025 北京高考英语笔试。逐问审核升级快照上的真实审核模型会返回不符合 JSON 契约的裸数组或按题号键控的对象，成批阻断可见交付。英语整卷复核需对齐组内判分理由和数字分，材料中带相邻题时按目标请求计分。两份固定快照的成绩、逐题证据与限制见 [本地复跑报告](../../duxue-server/var/exams/beijing-2025-english-rerun.Xe9ns7/REPORT.md)。
+  - 追查分支确认，审核格式错误走 `review_unavailable` 并跳过定向修复，交付节点因没有已审核通过的小问返回暂不可用。数学快照对照使用旧整段审核，三次 `consistent=false` 的日志只保留判定状态，无法恢复具体拒绝理由。
+
+- Guardian 审核简化已写入 duxue-admin-test 草稿 da210b2f-d24e-40cf-9e4f-db60ef3c99e5 revision 5。回读 3 节点、5 条边，发布指针 R13。对照英语首答 47.5/100、6/9 组有实质答案、1/9 审核协议失败，旧五节点首答 0/100、0/9 组有实质答案、8/8 审核协议失败。剩余格式失败是第 1–10 题审核输出 20 条。第44题仅写作指导，人工计零。试卷证据见 `duxue-server/var/exams/beijing-2025-english-simple.PRtykP/REPORT.md`。全量 1314 通过、1 跳过。协议规则见 [Guardian 设计](../../docs/technical/domain-companion.md#admin-导师解析逐问审核)。
+  - 复核原答和参考 PDF 后补回第 28、29 题各 2 分，原批次修订为 51.5/100。七选五虽通过输出形状校验，分组 ID 与审核的逐题 ID 失配，仍被整体拒绝。证据与逐项失分见 [原批次复核](../../duxue-server/var/exams/beijing-2025-english-simple.PRtykP/REPORT.md#追查失分与阅卷复核)。
+
+- 2026-11-19 用当前工作区和仓库 `--direct` 生成的隔离快照复跑 2025 北京英语笔试。已对齐同卷首答协议，96.5/100，9/9 组交付，未触发出口审核或修复。通用阅卷先将范文误判为非答卷，原文摘取复核与独立作文估分最终一致。前置主求解仍有 8/9 次长度截断。逐题收据、失分及模型证据见 [直出复跑报告](../../duxue-server/var/exams/beijing-2025-english-direct.6HUpp5/REPORT.md)。
+
+- 2025 北京物理直出复跑沿用英语直出快照。首答 71/100，补齐第 13 题跨页输入后 74/100。复核发现物理第 13 题的评测页码漏掉后半页，以及第 16 题参考解析将 AE 错代为 CE。预算与逐题证据见 [物理复跑报告](../../duxue-server/var/exams/beijing-2025-physics-direct.axgsQ9/REPORT.md)。
+  - 错题原答表明，波形与刻度识读、斜面受力建模、机械能终态和声线可逆性属于不同失败点。合计 17 次主求解在 4096 token 截断，9 次无答案正文。当前日志无逐请求 trace 对齐，无法由聚合截断次数分配逐题失分。量纲或代数核验仅在有结构化输入时可检查符号及中间推导。
+
+- 2026-11-20 以当前工作区与升级本地快照复跑同一物理卷。第 13 题首答使用完整两页，复核 84/100，20/20 题首答交付。离线确认纯工具请求形状会被当前读题和求解输出契约拒绝，本轮审计未见模型提出工具请求。模型预算、耗时、逐题对照和探针证据见 [物理复跑报告](../../duxue-server/var/exams/beijing-2025-physics-rerun.000fBP/REPORT.md)。
+  - 修复读题、复读及主备求解对中间工具请求的校验，测试经真实组件解析验证裁图回传。物理第 15、16 题复测确认真实模型会请求并收到切片，但可能裁掉主尺或标注端点。判断工具效果须同时检查实际框选内容、后续模型输入和最终答卷。分版本核分及切片见[两道实验题复测](../../duxue-server/var/exams/physics-tools.XMpFeY/REPORT.md)。
+  - 同卷启用裁图扩边与 v2 提示再跑，20 题输入与上次整卷一致。首答 92/100（上轮 84），第 4 题超时；第 15 题局部图保留主尺仍读错，第 16 题在两张切片回传后四问全对。阅卷模型仍会沿用参考书错误的纸带加速度，须核对原图累计距离。见[整卷得分与切片](../../duxue-server/var/exams/beijing-2025-physics-current.9dlgqq/REPORT.md)。
+  - Ward 侧 `tutoring` 链路同步补齐 5 项：`RequestSolveCommand` 建档一律绑定已授权 `image_ref` 防止换图串题，前台入队改传实际选中的历史/本轮 `attachment_keys`；`ExecuteDossierSolveCommand` 对尚未转写的新图题走 `extract` 首次读题与分级；`tutor_turn` 注入 `image_manifest` 并在 `tutoring.turn` 中加入整页邻题隔离、围绕图上可核对事实启发（不因裁图成功单凭视觉估读硬判错）及 `max_output_tokens=8192`。
+  - Ward 图题的请求指纹由原始题面与有序图片身份生成，读题完成后仍用原请求查找；实际转写及学科另行保存。T0 不要求生成解题路线。换图时先隐藏旧档案，模型判定新题后重新绑定；历史附件键随同一次授权读图取得。学生输出预算在升级时保留现值，显式传入 `--ward-max-output-tokens` 可选择 4096 或 8192。

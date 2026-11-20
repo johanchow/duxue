@@ -1,6 +1,13 @@
 type CodeLogic = { title: string; summary: string };
 
 const actions: Record<string, Record<string, CodeLogic>> = {
+  'tutoring-blueprint': {
+    'tutoring.finish-solution': {
+      title: '汇总核验与置信度定级',
+      summary:
+        '按小问检查最终答案完整性，结合确定性引擎四态核验、核验强度（充分/必要条件）与双路三态比对结果定级置信度，返回 VerifiedSolution。',
+    },
+  },
   companion: {
     decide: {
       title: '决定对话去向',
@@ -137,6 +144,16 @@ const actions: Record<string, Record<string, CodeLogic>> = {
 };
 
 const gates: Record<string, string> = {
+  'tutoring.select-route':
+    '检查已授权题库命中与 T0 直答，判断是否需要按需复读（模糊/涂改图），并将 T1 普通题与 T2 并发双路彻底分轨。',
+  'tutoring.reread-check':
+    '仅比对初读与复读的关键数值、符号与设问（忽略图描述措辞差异）；确认分歧直接短路，一致则恢复路由或转备用求解。',
+  'tutoring.verify-route':
+    '调用确定性学科引擎（math_executor）输出四态核验（verified / contradicted / not_applicable / unknown）；仅 contradicted 时按需复读或切异构备用。',
+  'tutoring.verify-backup':
+    '调用确定性学科引擎复核异构备用求解结果的锚点四态，直接汇总交付，不再循环或升级。',
+  'tutoring.verify-t2':
+    '对 T2 并发双路逐路跑确定性引擎核验，自动淘汰被证伪的一路，并对最终答案输出三态比对（consistent / contradicted / incomparable）。',
   'planning.confirmation_gate':
     '检查孩子是否发出了有效的确认命令，并用命令携带的草稿版本执行确认。未确认时继续等待，校验通过后才写入正式安排。',
   'tutoring.check_authority':

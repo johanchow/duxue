@@ -226,10 +226,21 @@ class DefinitionCatalog:
                     gate = CodeGateDefinition.model_validate(raw)
                     if gate.id != path.stem or gate.id in self.code_gates:
                         raise ValueError(f"invalid code Gate file {path}")
-                    if gate.handler_id not in {"tutoring.check_authority", "planning.confirmation_gate",
-                                               "tutoring.tool_budget", "tutoring.candidate_schema",
-                                               "tutoring.visual_schema", "tutoring.candidate_exit",
-                                               "tutoring.visual", "tutoring.output_safety"}:
+                    if gate.handler_id not in {
+                        "tutoring.select-route",
+                        "tutoring.reread-check",
+                        "tutoring.verify-route",
+                        "tutoring.verify-backup",
+                        "tutoring.verify-t2",
+                        "tutoring.check_authority",
+                        "planning.confirmation_gate",
+                        "tutoring.tool_budget",
+                        "tutoring.candidate_schema",
+                        "tutoring.visual_schema",
+                        "tutoring.candidate_exit",
+                        "tutoring.visual",
+                        "tutoring.output_safety",
+                    }:
                         raise ValueError(f"{gate.id}: unknown Gate handler")
                     Draft202012Validator.check_schema(gate.input_schema)
                     Draft202012Validator.check_schema(gate.verdict_schema)

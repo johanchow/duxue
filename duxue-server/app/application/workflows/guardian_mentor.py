@@ -119,7 +119,7 @@ class MentorExplainCandidate(BaseModel):
     model_config = ConfigDict(extra="ignore")
     act: MentorAct
     topic_relation: Literal["same", "new"] | None = None
-    content: str = Field(min_length=1, max_length=3600)
+    content: str = Field(min_length=1, max_length=8000)
     pronounce: PronouncePayload | None = None
     visual: Visual | None = None
     visual_dropped: str | None = Field(default=None, exclude=True)
@@ -422,6 +422,17 @@ def _solve_for_mentor(
                     return VerifiedSolution.from_dossier(bank_hit)
             return None
 
+    from app.agent_specs.blueprint_steps import EXTRACT
+    from app.agent_specs.definitions import load_definitions
+    if EXTRACT in load_definitions().units:
+        from app.application.commands.problem_solving import execute_blueprint
+        img_tag = f" [images:{len(images)}]" if images and not content.strip() else ""
+        return execute_blueprint(
+            stem=StructuredStem(subject="general", raw_text=(content.strip() + img_tag)[:4000]),
+            question=content, images=images, solver=solver, math_engine=_resolve_math_engine(),
+            bank_lookup=bank_lookup,
+        )
+
     extracted = solver.extract_stem(text=content, images=images, independent_reread=False)
     if isinstance(extracted, dict):
         if extracted.get("tier") == "T0" and not extracted.get("needs_student_confirmation"):
@@ -464,6 +475,7 @@ def explain_for_guardian(
     origin: dict | None = None,
     handoff: bool = False,
     bank_lookup: Callable[..., ProblemDossier | None] | None = None,
+    model_settings=None,
 ) -> dict:
     """Process Manager executing one stateless Guardian mentor-explanation turn."""
     relation = None
@@ -494,41 +506,45 @@ def explain_for_guardian(
                     "history": [{"role": row["author"], "text": row["text"]} for row in clean_window],
                     "instruction": "结合相关上下文还原当前所问题面和补充条件。以本轮指定的题为准，历史作答不是已知条件。",
                 }, ensure_ascii=False)
-            solver = QwenProblemSolverGateway()
+            solver = QwenProblemSolverGateway(model_settings)
             verified_solution = _solve_for_mentor(
                 content=question,
                 images=valid_images,
                 solver=solver,
                 bank_lookup=bank_lookup,
             )
-            gateway = QwenMentorExplainGateway()
-            candidate: MentorExplainCandidate | None = None
-            repair_err: str | None = None
-            for _ in range(2):
-                try:
-                    raw = gateway.explain(
-                        content=content,
-                        verified_solution=verified_solution,
-                        recent_utterances=clean_window,
-                        current_images=target_images,
-                        repair_error=repair_err,
-                    )
-                    candidate = MentorExplainCandidate.model_validate(raw)
-                    break
-                except ValidationError as err:
-                    if repair_err is not None:
-                        break
-                    repair_err = f"JSON schema validation failed: {err.errors()[:3]}"
-                except ModelGatewayError:
-                    break
+            gateway = QwenMentorExplainGateway(model_settings)
 
-            review_required = candidate is not None and candidate.act in {"explain", "answer"} and (
-                verified_solution is None or verified_solution.tier != "T0" or candidate.act == "explain"
-            )
-            if review_required and gateway.review(
-                question=question, solution=verified_solution, candidate=candidate, images=valid_images,
-            ) is not True:
-                candidate = None
+            def generate():
+                repair_err = None
+                for _ in range(2):
+                    try:
+                        raw = gateway.explain(
+                            content=content,
+                            verified_solution=verified_solution,
+                            recent_utterances=clean_window,
+                            current_images=target_images,
+                            repair_error=repair_err,
+                        )
+                        return MentorExplainCandidate.model_validate(raw), raw
+                    except ValidationError as err:
+                        if repair_err is not None:
+                            break
+                        repair_err = f"JSON schema validation failed: {err.errors(include_input=False)[:3]}"
+                    except ModelGatewayError:
+                        break
+                return None, {}
+
+            def needs_honesty_gate(candidate):
+                return candidate is not None and candidate.act in {"explain", "answer"} and (
+                    verified_solution is None or verified_solution.tier != "T0" or candidate.act == "explain"
+                )
+
+            # Plan A: no blocking LLM draft review on adult Guardian showcase path;
+            # rely on upstream tutoring-blueprint harness, local safety screening,
+            # visual/pronounce structural checks, and non-blocking confidence honesty hints.
+            candidate, _ = generate()
+            review_required = needs_honesty_gate(candidate)
             if candidate is None:
                 answer = {
                     "content": FALLBACK_TEXT,
@@ -582,7 +598,7 @@ def explain_for_guardian(
                         answer["visual"] = candidate.visual.model_dump(mode="json")
                     if review_required and verified_solution is not None:
                         answer["verification"] = {
-                            "draft_reviewed": True,
+                            "draft_reviewed": False,
                             "status": verified_solution.status,
                             "confidence": verified_solution.confidence,
                             "tier": verified_solution.tier,

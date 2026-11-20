@@ -4,7 +4,7 @@ export function nodeExecutions(events: Doc[], workflowId: string, node: Doc) {
     (event) =>
       event.kind !== 'edge' &&
       ((event.workflow_id === workflowId && event.node_id === node.id) ||
-        (node.ref && event.kind === 'model' && event.unit_id === node.ref)),
+        (!event.node_id && node.ref && event.kind === 'model' && event.unit_id === node.ref)),
   );
 }
 export function edgeExecutions(events: Doc[], workflowId: string, edge: Doc) {

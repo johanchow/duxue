@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from fastapi import HTTPException
+from sqlalchemy.orm import Session
+
 from app.agent_specs.execution_trace import transition
 from app.application.commands.memory import SqlAlchemyMemoryFacade
 from app.application.ports.companion import RunInvocation, WorkflowOutcome
@@ -59,8 +62,6 @@ from app.infrastructure.persistence.models import (
     Ward,
     now,
 )
-from fastapi import HTTPException
-from sqlalchemy.orm import Session
 
 
 def _state(row: TutoringProblem | None) -> ProblemState | None:
@@ -111,7 +112,7 @@ class TutoringWorkflow:
         self.leak_judge = leak_judge
         self.safety_screening = safety_screening
         self.image_target_selector = image_target_selector
-        self._media_cache: dict[str, tuple[list[dict], list[str | None]]] = {}
+        self._media_cache: dict[str, tuple[list[dict], list[str | None], dict[str, str]]] = {}
         self._selected_image_refs: dict[str, list[str]] = {}
 
     def _resolve_active_dossier(
@@ -132,11 +133,19 @@ class TutoringWorkflow:
 
         query = GetProblemDossierQuery(self.db)
         if problem_row is not None and problem_row.dossier_id:
-            return query.tutoring_view(
+            dossier, projection = query.tutoring_view(
                 ward_id=ward_id,
                 dossier_id=problem_row.dossier_id,
                 student_progress=problem_row.milestone_progress or {},
             )
+
+            if images and dossier is not None:
+                from app.agent_specs.image_refs import image_ref
+
+                if dossier.evidence.get("request_image_refs") != [image_ref(img) for img in images]:
+                    # The model will decide whether this is new work or another photo of the same work.
+                    return None, None
+            return dossier, projection
 
         # Only pre-lookup or pre-schedule on open-problem miss when async dossier mode is explicitly configured
         # OR live model mode with gaokao blueprint component available; keep pronunciation/empty fast.
@@ -213,25 +222,34 @@ class TutoringWorkflow:
             self.safety_screening = LocalSafetyScreening()
         return self.safety_screening
 
-    def _media(self, invocation: RunInvocation) -> tuple[list[dict], list[str | None]]:
+    def _media(self, invocation: RunInvocation) -> tuple[list[dict], list[str | None], dict[str, str]]:
         """Window rows with their images, plus this turn's images. Read once per turn."""
         key = f"{invocation.run_id}:{invocation.turn_id}"
         if key not in self._media_cache:
+            from app.agent_specs.image_refs import image_ref
             from app.application.queries.run_transcript import (
+                _default_reader,
                 current_turn_images,
                 load_visible_utterances,
             )
 
-            current = current_turn_images(invocation.ward_id, invocation.turn.get("attachment_keys"))
+            keys_by_ref = {}
+
+            def read_image(attachment_key):
+                url = _default_reader(attachment_key)
+                keys_by_ref[image_ref(url)] = attachment_key
+                return url
+
+            current = current_turn_images(invocation.ward_id, invocation.turn.get("attachment_keys"), read_image=read_image)
             image_budget = 8
             if current:
                 image_budget = 1 if any(current) and invocation.turn.get("tutoring_intent") == "compare_previous_image" else 0
             self._media_cache[key] = (
                 load_visible_utterances(
                     self.db, ward_id=invocation.ward_id, thread_id=invocation.thread_id,
-                    exclude_turn_id=invocation.turn_id, image_budget=image_budget,
+                    exclude_turn_id=invocation.turn_id, image_budget=image_budget, read_image=read_image,
                 ),
-                current,
+                current, keys_by_ref,
             )
         return self._media_cache[key]
 
@@ -247,6 +265,7 @@ class TutoringWorkflow:
                 return outcome
             finally:
                 self._selected_image_refs.pop(key, None)
+                self._media_cache.pop(key, None)
 
     def _find_session(self, ward_id: str, session_id: str | None) -> StudySession | None:
         if session_id:
@@ -450,7 +469,7 @@ class TutoringWorkflow:
                 run_status="waiting_for_ward", outcome_type="response",
                 next_interaction={**interaction, "status": "rejected", "reason": "unauthorized_media"},
             )
-        window, images = self._media(invocation)
+        window, images, keys_by_ref = self._media(invocation)
         from app.application.workflows.image_target import (
             prepare_images,
         )
@@ -502,12 +521,13 @@ class TutoringWorkflow:
             task_title=task_title, task_active=task_active, window=window, math_engine=self.math_engine,
         )
         all_authorized_images = self._judge_images(window, images)
+        selected_attachment_keys = [keys_by_ref[ref] for ref in prepared.refs if ref in keys_by_ref]
         active_dossier, dossier_projection = self._resolve_active_dossier(
             ward_id=invocation.ward_id,
             problem_row=problem_row,
             content=content,
             images=all_authorized_images,
-            attachment_keys=list(turn.get("attachment_keys") or []),
+            attachment_keys=selected_attachment_keys,
             tutoring_intent=turn.get("tutoring_intent"),
         )
         model_envelope = envelope.model_dump()
@@ -520,7 +540,7 @@ class TutoringWorkflow:
             }
             if active_dossier.status in {"ready", "low_confidence"} and dossier_projection is not None:
                 model_envelope["problem_dossier"] = dossier_projection
-        if problem_row is not None:
+        if problem_row is not None and (not problem_row.dossier_id or active_dossier is not None):
             if problem_row.internal_blueprint and "problem_dossier" not in model_envelope:
                 model_envelope["internal_blueprint"] = problem_row.internal_blueprint
             if problem_row.group_context:
@@ -637,6 +657,8 @@ class TutoringWorkflow:
             planned_blueprint = None
             planned_group = None
             target_dossier_id = active_dossier.dossier_id if active_dossier is not None else None
+            if candidate.relation == "new" and problem_row is not None:
+                target_dossier_id = None
             if (
                 candidate.relation in {"new", "subproblem"}
                 and (candidate.depth or "reasoning") == "reasoning"
@@ -703,7 +725,7 @@ class TutoringWorkflow:
                             from app.workers.solving_tasks import enqueue_solve_dossier
 
                             enqueue_cb = lambda did, _imgs=None: enqueue_solve_dossier(
-                                did, attachment_keys=list(turn.get("attachment_keys") or [])
+                                did, attachment_keys=selected_attachment_keys
                             )
                         created_dos = RequestSolveCommand(self.db, enqueue_fn=enqueue_cb).execute(
                             ward_id=invocation.ward_id,

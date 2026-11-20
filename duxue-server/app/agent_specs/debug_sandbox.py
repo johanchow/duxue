@@ -79,7 +79,7 @@ def run_domain(workflow_id, data, runtime):
 
                 class SandboxTutoring(TutoringWorkflow):
                     def _media(self, invocation):
-                        return window, []
+                        return window, [], {}
 
                 from app.bootstrap.math_engine import math_engine
                 workflow = SandboxTutoring(

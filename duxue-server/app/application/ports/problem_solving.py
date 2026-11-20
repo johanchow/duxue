@@ -24,22 +24,147 @@ class ProblemSolverModelPort(Protocol):
     ) -> dict | None: ...
 
     def solve_route(
-        self, *, stem: StructuredStem, images: list[str], route_hint: str
+        self,
+        *,
+        stem: StructuredStem,
+        images: list[str],
+        route_hint: str,
+        feedback: dict | None = None,
     ) -> dict | None: ...
 
 
 class QwenProblemSolverGateway(ProblemSolverModelPort):
-    """Uses the registered `tutoring.blueprint-planner` component without student history."""
+    """Uses registered ProblemSolving components without student history."""
 
-    def __init__(self, settings_obj=None):
+    MAX_TOOL_ROUNDS = 3
+    MAX_CROPS = 4
+
+    def __init__(self, settings_obj=None, *, math_engine=None, image_inspector=None):
         self._settings = settings_obj
+        self._math_engine = math_engine
+        self._image_inspector = image_inspector
+
+    def _run_tool(
+        self,
+        *,
+        name: str,
+        args: dict,
+        allowed: set[str],
+        authorized_images: dict[str, str],
+        inspected_crops: list[dict],
+    ) -> dict:
+        from app.application.ports.image_inspection import InspectImageRequest
+        from app.application.ports.math_engine import MathInput
+        from app.infrastructure.media.pillow_crop import PillowImageInspector
+        from app.infrastructure.observability.telemetry import (
+            agent_step_span,
+            set_observation_payload,
+        )
+
+        with agent_step_span(
+            "tool",
+            name if name in allowed else "unknown_tool",
+            **{"agent.tool.source": "problem_solver_request"},
+        ) as span:
+            set_observation_payload(
+                span,
+                input={"op": args.get("op")} if name in {"math", "science"} else args,
+            )
+            if name not in allowed:
+                result = {"tool": name, "status": "tool_error", "detail": "unauthorized_tool"}
+                span.set_attribute("agent.tool.status", "tool_error")
+                set_observation_payload(span, output=result)
+                return result
+            try:
+                if name == "inspect_image":
+                    if len(inspected_crops) >= self.MAX_CROPS:
+                        result = {"tool": name, "status": "tool_error", "detail": "crop_limit_exceeded"}
+                    else:
+                        req = InspectImageRequest.model_validate(args)
+                        inspector = self._image_inspector or PillowImageInspector()
+                        res = inspector.inspect(req, authorized_images=authorized_images)
+                        if res.status == "unique" and res.crop_data_url and res.crop_ref:
+                            inspected_crops.append(
+                                {
+                                    "crop_ref": res.crop_ref,
+                                    "image_ref": res.image_ref,
+                                    "label": res.label,
+                                    "url": res.crop_data_url,
+                                }
+                            )
+                        result = {"tool": name, **res.public_observation()}
+                elif name in {"science", "math"}:
+                    engine = self._math_engine
+                    if engine is None:
+                        from app.bootstrap.math_engine import default_math_engine
+
+                        engine = default_math_engine()
+                    math_in = MathInput.model_validate(args)
+                    out = engine.execute(math_in)
+                    result = {
+                        "tool": name,
+                        "status": out.status,
+                        "result": out.result,
+                        "verdict": out.verdict,
+                        "conditions": out.conditions,
+                        "error_code": out.error_code,
+                    }
+                else:
+                    result = {"tool": name, "status": "tool_error", "detail": "unknown_tool"}
+            except Exception as exc:  # noqa: BLE001
+                result = {
+                    "tool": name,
+                    "status": "tool_error",
+                    "error_code": type(exc).__name__,
+                }
+            span.set_attribute("agent.tool.status", str(result.get("status", "tool_error")))
+            set_observation_payload(
+                span,
+                output={
+                    key: result[key]
+                    for key in ("status", "error_code", "crop_ref", "image_ref", "detail")
+                    if key in result
+                },
+            )
+            return result
+
+    def _invoke_once(self, *, spec, user, retry_on_timeout: bool) -> dict | None:
+        from app.infrastructure.ai import components
+        from app.infrastructure.ai.errors import ModelGatewayError
+
+        max_attempts = 2 if retry_on_timeout else 1
+        for attempt in range(max_attempts):
+            try:
+                return components.invoke_agent_component(
+                    spec=spec, user=user, settings_obj=self._settings
+                ).unwrap()
+            except ModelTimeBudgetExceeded:
+                raise
+            except (TimeoutError, ModelGatewayError) as exc:
+                is_retryable = isinstance(exc, TimeoutError) or (
+                    isinstance(exc, ModelGatewayError) and str(exc) == "model_transport_error"
+                )
+                if is_retryable and attempt + 1 < max_attempts:
+                    continue
+                return None
+            except Exception:  # noqa: BLE001
+                return None
+        return None
 
     def _invoke(
-        self, payload: dict, images: list[str], *, use_reread_model: bool = False
+        self,
+        payload: dict,
+        images: list[str],
+        *,
+        use_reread_model: bool = False,
+        use_backup_model: bool = False,
+        retry_on_timeout: bool = True,
     ) -> dict | None:
+        from app.agent_specs.blueprint_steps import BACKUP, EXTRACT, REREAD
         from app.agent_specs.contexts import build_context
         from app.agent_specs.definitions import load_definitions
         from app.agent_specs.gaokao_contracts import PLANNER_ID, REREAD_ID
+        from app.agent_specs.image_refs import image_manifest, image_ref
         from app.infrastructure.ai import components
 
         defs = load_definitions()
@@ -48,18 +173,80 @@ class QwenProblemSolverGateway(ProblemSolverModelPort):
         target_component = (
             REREAD_ID if use_reread_model and REREAD_ID in defs.components else PLANNER_ID
         )
+        unit = PLANNER_ID
+        if EXTRACT in defs.units and payload["mode"] in {"stem_extract", "independent_stem_reread"}:
+            unit = REREAD if use_reread_model else EXTRACT
+            target_component = unit
+        elif use_backup_model and BACKUP in defs.units:
+            unit = BACKUP
+            target_component = BACKUP
         spec = components.COMPONENTS.get(target_component)
         if spec is None:
             return None
-        try:
-            user = build_context(PLANNER_ID, payload=payload, images=images)
-            return components.invoke_agent_component(
-                spec=spec, user=user, settings_obj=self._settings
-            ).unwrap()
-        except ModelTimeBudgetExceeded:
-            raise
-        except Exception:  # noqa: BLE001
-            return None
+
+        unit_def = defs.units.get(unit)
+        allowed_tools = {
+            tool_id.split(".", 1)[1]
+            for tool_id in (getattr(unit_def, "tools", ()) or ())
+            if "." in tool_id
+        }
+        authorized_images = {image_ref(url): url for url in (images or []) if url}
+        inspected_crops: list[dict] = []
+        observations: list[dict] = []
+
+        base_payload = dict(payload)
+        if images and "inspect_image" in allowed_tools:
+            base_payload["image_manifest"] = image_manifest(images)
+        if allowed_tools:
+            base_payload["available_tools"] = sorted(allowed_tools)
+
+        for tool_round in range(self.MAX_TOOL_ROUNDS + 1):
+            turn_payload = dict(base_payload)
+            if observations:
+                turn_payload["tool_observations"] = observations
+            elif images and unit in {EXTRACT, REREAD} and "inspect_image" in allowed_tools:
+                turn_payload["extraction_instructions"] = (
+                    "先定位目标题。若答题依赖刻度、端点或电路接线，本轮任务仅为框选一个最关键区域，"
+                    "从 image_manifest 复制对应 image_ref，只返回 inspect_image 的 tool_request。"
+                    "下一轮收到局部图后再转写。若无需精细读图，直接按要求完成题面转写和分级。"
+                )
+            elif (
+                unit in {PLANNER_ID, BACKUP}
+                and "science" in allowed_tools
+                and payload.get("route_hint") in {"T2_algebraic", "T2_alternative"}
+            ):
+                turn_payload["science_tool_hint"] = (
+                    "本题为复杂解答/压轴题：若涉及积分、求导、对数符号、方程组求解或不等式方向比较，"
+                    "建议先返回仅含 tool_request 的 JSON 调用 science（如 integrate / differentiate / solve / equivalent）"
+                    "核验关键符号与表达式，下一轮再输出完整求解 JSON。"
+                )
+            if tool_round >= self.MAX_TOOL_ROUNDS and allowed_tools:
+                turn_payload["tool_budget_exhausted"] = True
+            ctx_kwargs = {"payload": turn_payload, "images": images}
+            if inspected_crops:
+                ctx_kwargs["inspected_crops"] = inspected_crops
+            user = build_context(unit, **ctx_kwargs)
+            raw = self._invoke_once(
+                spec=spec, user=user, retry_on_timeout=retry_on_timeout
+            )
+            if not isinstance(raw, dict):
+                return raw
+            tool_req = raw.get("tool_request")
+            if tool_req is None:
+                return raw
+            if not allowed_tools or tool_round >= self.MAX_TOOL_ROUNDS:
+                return None
+            tool_name = str(tool_req["name"]).strip()
+            tool_args = tool_req.get("args") if isinstance(tool_req.get("args"), dict) else {}
+            obs = self._run_tool(
+                name=tool_name,
+                args=tool_args,
+                allowed=allowed_tools,
+                authorized_images=authorized_images,
+                inspected_crops=inspected_crops,
+            )
+            observations.append(obs)
+        return None
 
     def extract_stem(
         self, *, text: str, images: list[str], independent_reread: bool = False
@@ -69,7 +256,10 @@ class QwenProblemSolverGateway(ProblemSolverModelPort):
                 "mode": "independent_stem_reread" if independent_reread else "stem_extract",
                 "problem_text": text,
                 "extraction_instructions": (
-                    "本轮只转写与分类，无需求解。输出 subject、shared_stem_summary（完整转写题面、数值及设问）、"
+                    "独立按原文转写完整题面、关键条件和全部设问；保留限定词、数值、符号与角标，无需求解。"
+                    "输出 subject、shared_stem_summary、subproblems、needs_student_confirmation。"
+                    if independent_reread
+                    else "本轮只转写与分类，无需求解。输出 subject、shared_stem_summary（完整转写题面、数值及设问）、"
                     "subproblems、diagram_summary、needs_student_confirmation，approaches 固定为空数组。"
                     "纯概念、发音或事实查询标为 tier=T0，普通题标为 T1，确需多条独立推导核验的复杂题标为 T2。"
                 ),
@@ -83,23 +273,32 @@ class QwenProblemSolverGateway(ProblemSolverModelPort):
             "tier": raw.get("tier"),
             "needs_student_confirmation": raw.get("needs_student_confirmation") is True,
             "subject": str(raw.get("subject") or "general"),
-            "raw_text": str(raw.get("shared_stem_summary") or raw.get("raw_text") or text),
+            "raw_text": str(raw.get("shared_stem_summary") or raw.get("raw_text") or ("" if independent_reread else text)),
             "subproblems": list(raw.get("subproblems") or []),
             "diagram_summary": str(raw.get("diagram_summary") or ""),
         }
 
     def solve_route(
-        self, *, stem: StructuredStem, images: list[str], route_hint: str
+        self,
+        *,
+        stem: StructuredStem,
+        images: list[str],
+        route_hint: str,
+        feedback: dict | None = None,
     ) -> dict | None:
+        payload: dict = {
+            "mode": "independent_solve",
+            "route_hint": route_hint,
+            "route_instructions": "只输出当前路线，保留必要的核验锚点。不要重复转写题面或生成其他路线。final_answers 按题面小问的编号或原标签逐一作答，单问无标签时用 main。",
+            "stem": stem.to_dict(),
+            "problem_text": stem.raw_text,
+        }
+        if feedback:
+            payload["contradiction_feedback"] = feedback
         return self._invoke(
-            {
-                "mode": "independent_solve",
-                "route_hint": route_hint,
-                "route_instructions": "只输出当前路线，保留必要的核验锚点。不要重复转写题面或生成其他路线。",
-                "stem": stem.to_dict(),
-                "problem_text": stem.raw_text,
-            },
+            payload,
             images,
+            use_backup_model=route_hint in {"T1_backup", "T2_alternative"},
         )
 
 
@@ -167,6 +366,12 @@ class SqlProblemDossierRepository:
     def find_bank_ready(self, *, stem: StructuredStem) -> ProblemDossier | None:
         query = self.db.query(ProblemDossierRecord).filter_by(scope="bank", status="ready")
         return self._matching(query, stem)
+
+    def find_image_request(self, *, ward_id: str, fingerprint: str) -> ProblemDossier | None:
+        row = self.db.query(ProblemDossierRecord).filter_by(
+            scope="ward", owner_ward_id=ward_id, fingerprint=fingerprint,
+        ).order_by(ProblemDossierRecord.updated_at.desc()).first()
+        return self.to_domain(row) if row else None
 
     def find_reusable(self, *, stem: StructuredStem, ward_id: str) -> ProblemDossier | None:
         bank = self.find_bank_ready(stem=stem)

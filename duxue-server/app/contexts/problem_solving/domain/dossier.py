@@ -24,6 +24,10 @@ DossierScope = Literal["ward", "institution", "bank"]
 DifficultyTier = Literal["T0", "T1", "T2", "T3"]
 DossierConfidence = Literal["high", "medium", "low"]
 DossierStatus = Literal["pending", "ready", "low_confidence", "failed"]
+RouteComparisonStatus = Literal["consistent", "contradicted", "incomparable"]
+AnchorVerifyState = Literal["verified", "contradicted", "unknown", "not_applicable"]
+
+_NECESSARY_ONLY_CHECK_KINDS = frozenset({"physics_dimension_and_eq", "chemistry_conservation"})
 
 _FRAC_RE = re.compile(r"\\frac\s*\{\s*([^{}]+?)\s*\}\s*\{\s*([^{}]+?)\s*\}")
 _LATEX_CMD_RE = re.compile(r"\\(ln|sin|cos|tan|cot|sqrt|pi)\b")
@@ -107,6 +111,11 @@ def compute_stem_fingerprint(stem: StructuredStem, *, legacy: bool = False) -> s
     return ("fp_" if legacy else "fp2_") + hashlib.sha256(joined.encode("utf-8")).hexdigest()[:40]
 
 
+def image_request_fingerprint(stem: StructuredStem, image_refs: list[str]) -> str:
+    payload = json.dumps([compute_stem_fingerprint(stem), image_refs])
+    return "imgreq_" + hashlib.sha256(payload.encode()).hexdigest()
+
+
 @dataclass(frozen=True)
 class ScoringPoint:
     id: str
@@ -133,8 +142,43 @@ class ScoringPoint:
         )
 
 
+def compare_critical_conditions(
+    primary: StructuredStem, reread: StructuredStem
+) -> tuple[bool, tuple[str, ...]]:
+    """Confirm matching transcriptions only. A different reading needs clarification."""
+    reasons = []
+    if reread.needs_student_confirmation:
+        reasons.append("reread_flagged_unclear")
+    if not reread.raw_text.strip() or primary.raw_text.strip() != reread.raw_text.strip():
+        reasons.append("stem_transcription_unconfirmed")
+    if primary.subproblems != reread.subproblems:
+        reasons.append("subproblems_unconfirmed")
+    return not reasons, tuple(reasons)
+
+
+# Deterministic question labels only. Question text and answer prose are opaque.
+_ORDINALS = dict(zip("一二三四五六七八九十", range(1, 11)))
+_LABEL = re.compile(r"^(?:[（(]([0-9]+)[）)]|第([一二三四五六七八九十]|[0-9]+)问|([0-9]+)(?:[.、](?![0-9])|$))")
+
+
+def _question_number(label: str, *, standalone: bool = False) -> int | None:
+    match = _LABEL.fullmatch(label) if standalone else _LABEL.match(label)
+    if not match:
+        return None
+    number = next(value for value in match.groups() if value is not None)
+    return _ORDINALS[number] if number in _ORDINALS else int(number)
+
+
 class DossierConfidencePolicy:
-    """Stateless domain rules for T1->T2 escalation and confidence grading."""
+    """Stateless domain rules for anchor verification classification, completeness, and confidence grading."""
+
+    @staticmethod
+    def has_contradicted_anchor(approaches: tuple[Approach, ...]) -> bool:
+        return any(
+            ms.check_kind != "conceptual_rubric" and ms.verification_status == "contradicted"
+            for app in approaches
+            for ms in app.milestones
+        )
 
     @staticmethod
     def _has_failed_computable_anchor(approaches: tuple[Approach, ...]) -> bool:
@@ -156,6 +200,82 @@ class DossierConfidencePolicy:
             for ms in app.milestones
         )
 
+    @staticmethod
+    def _has_sufficient_verified_anchor(approaches: tuple[Approach, ...]) -> bool:
+        return any(
+            ms.check_kind not in _NECESSARY_ONLY_CHECK_KINDS
+            and ms.check_kind != "conceptual_rubric"
+            and ms.verification_status == "verified"
+            for app in approaches
+            for ms in app.milestones
+        )
+
+    @staticmethod
+    def _has_necessary_only_anchor(approaches: tuple[Approach, ...]) -> bool:
+        return any(
+            ms.check_kind in _NECESSARY_ONLY_CHECK_KINDS
+            for app in approaches
+            for ms in app.milestones
+        )
+
+    @classmethod
+    def classify_anchor_verification(cls, approaches: tuple[Approach, ...]) -> AnchorVerifyState:
+        """Aggregate milestone verification into four-state outcome:
+        contradicted > unknown > verified > not_applicable.
+        """
+        if not approaches or not any(app.milestones for app in approaches):
+            return "unknown"
+        computable = [
+            ms
+            for app in approaches
+            for ms in app.milestones
+            if ms.check_kind != "conceptual_rubric"
+        ]
+        if not computable:
+            return "not_applicable"
+        if any(ms.verification_status == "contradicted" for ms in computable):
+            return "contradicted"
+        if any(ms.verification_status in {"unknown", "unverified"} for ms in computable):
+            return "unknown"
+        return "verified"
+
+    @staticmethod
+    def evaluate_subproblem_completeness(
+        stem: StructuredStem, final_answers: dict[str, str]
+    ) -> dict:
+        """Check whether every declared subproblem has a non-empty final answer."""
+        non_empty = {
+            str(k).strip(): str(v).strip()
+            for k, v in (final_answers or {}).items()
+            if str(k).strip() and str(v).strip()
+        }
+        expected = [sp.strip() for sp in stem.subproblems if sp.strip()]
+        if not expected:
+            return {
+                "expected_count": 0,
+                "answered_count": len(non_empty),
+                "missing_subproblems": [],
+                "complete": bool(non_empty),
+            }
+        matched: set[int] = set()
+        numbers = [_question_number(label) for label in expected]
+        for key in non_empty:
+            indices = [i for i, label in enumerate(expected) if label == key]
+            if not indices:
+                number = _question_number(key, standalone=True)
+                if number is not None:
+                    indices = [i for i, explicit in enumerate(numbers)
+                               if (explicit if explicit is not None else i + 1) == number]
+            if len(indices) == 1:
+                matched.add(indices[0])
+        missing = [label for i, label in enumerate(expected) if i not in matched]
+        return {
+            "expected_count": len(expected),
+            "answered_count": len(matched),
+            "missing_subproblems": missing,
+            "complete": not missing,
+        }
+
     @classmethod
     def should_escalate_t1_to_t2(
         cls,
@@ -173,25 +293,43 @@ class DossierConfidencePolicy:
         *,
         bank_matched: bool,
         route_count: int,
-        routes_consistent: bool,
+        routes_consistent: bool = True,
+        comparison: RouteComparisonStatus | None = None,
         approaches: tuple[Approach, ...],
         stem_disputed: bool = False,
+        subproblems_complete: bool = True,
     ) -> DossierConfidence:
         if stem_disputed:
             return "low"
         if bank_matched:
             return "high"
-        if not approaches or cls._has_failed_computable_anchor(approaches):
+        if not approaches or not subproblems_complete:
             return "low"
-        # Single-route generation without authoritative bank hit cannot exceed `low` per §2 invariant,
-        # UNLESS every milestone is deterministically engine-verified with zero conceptual gaps (medium).
-        # Wait: §2 invariant states "单路模型输出最多是 low 置信度" when unverified, and §4.3 table:
-        # high: bank_matched OR (route_count >= 2 and routes_consistent and all computable anchors verified & no conceptual)
-        # medium: route_count >= 2 and routes_consistent and has conceptual_rubric
-        # low: single route, routes inconsistent, or anchor verification failed.
-        if route_count < 2 or not routes_consistent:
+        anchor_state = cls.classify_anchor_verification(approaches)
+        if anchor_state in {"contradicted", "unknown"}:
+            return "low"
+        effective_comparison: RouteComparisonStatus = (
+            comparison
+            if comparison is not None
+            else ("consistent" if routes_consistent else "contradicted")
+        )
+        if route_count < 2:
+            # Single-route output without authoritative bank hit can NEVER exceed `medium`,
+            # and requires at least one sufficient deterministic verification with zero conceptual gaps.
+            if (
+                anchor_state == "verified"
+                and not cls._has_conceptual_milestone(approaches)
+                and cls._has_sufficient_verified_anchor(approaches)
+            ):
+                return "medium"
+            return "low"
+        if effective_comparison != "consistent":
             return "low"
         if cls._has_conceptual_milestone(approaches):
+            return "medium"
+        if anchor_state == "not_applicable":
+            return "medium"
+        if cls._has_necessary_only_anchor(approaches) and not cls._has_sufficient_verified_anchor(approaches):
             return "medium"
         return "high"
 
@@ -284,9 +422,11 @@ class ProblemDossier:
             needs_student_confirmation=False,
             disputed_conditions=(),
         )
+        refs = self.evidence.get("request_image_refs")
+        fingerprint = image_request_fingerprint(new_stem, refs) if refs else compute_stem_fingerprint(new_stem)
         return replace(
             self,
-            fingerprint=compute_stem_fingerprint(new_stem),
+            fingerprint=fingerprint,
             stem=new_stem,
             status="pending",
             confidence="low",
@@ -306,11 +446,16 @@ class ProblemDossier:
         stem: StructuredStem | None = None,
     ) -> ProblemDossier:
         next_status: DossierStatus = (
-            "ready" if confidence in {"high", "medium"} and approaches else "low_confidence"
+            "ready" if confidence in {"high", "medium"} and (approaches or tier == "T0") else "low_confidence"
         )
+        settled_stem = stem or self.stem
+        settled_evidence = dict(evidence)
+        if "request_image_refs" in self.evidence:
+            settled_evidence["request_image_refs"] = self.evidence["request_image_refs"]
         return replace(
             self,
-            stem=stem or self.stem,
+            stem=settled_stem,
+            subject=settled_stem.subject,
             approaches=approaches,
             invariants=invariants,
             scoring_points=scoring_points,
@@ -318,7 +463,7 @@ class ProblemDossier:
             confidence=confidence,
             tier=tier,
             status=next_status,
-            evidence=dict(evidence),
+            evidence=settled_evidence,
             lease_until=None,
         )
 

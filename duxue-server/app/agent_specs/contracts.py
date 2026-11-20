@@ -19,6 +19,21 @@ def validate_input(unit: ModelUnit, user: str | list[dict]) -> None:
 
 
 def validate_output(unit: ModelUnit, payload: dict) -> None:
+    if unit.id in {
+        "tutoring.stem-extract", "tutoring.stem-review",
+        "tutoring.blueprint-planner", "tutoring.blueprint-backup",
+    } and "tool_request" in payload:
+        request = payload["tool_request"]
+        if (
+            set(payload) != {"tool_request"}
+            or not isinstance(request, dict)
+            or set(request) != {"name", "args"}
+            or not isinstance(request["name"], str)
+            or f"tutoring.{request['name']}" not in unit.tools
+            or not isinstance(request["args"], dict)
+        ):
+            raise ValueError(f"{unit.id}: invalid tool request")
+        return
     schema = unit.provider_output_schema or (unit.verdict_schema if unit.kind == "gate" else unit.output_schema)
     assert schema is not None
     Draft202012Validator(schema).validate(payload)
@@ -26,11 +41,13 @@ def validate_output(unit: ModelUnit, payload: dict) -> None:
     if unit_id in {"behavior.visible-activity", "behavior.support-opportunity"}:
         from app.agent_specs.observation_contracts import IDS
         IDS[unit_id].model_validate(payload)
-    elif unit_id == "evals.semantic-judge":
+    elif unit_id in {"evals.semantic-judge", "tutoring.stem-extract", "tutoring.stem-review"}:
         pass  # The strict score/verdict/error schema above owns this contract.
-    elif unit_id == "tutoring.blueprint-planner":
+    elif unit_id in {"tutoring.blueprint-planner", "tutoring.blueprint-backup"}:
         if not isinstance(payload.get("approaches"), list):
             raise ValueError("invalid blueprint approaches")
+    elif unit_id in {"tutoring.mentor-review", "tutoring.mentor-repair"}:
+        pass  # Validated by the typed provider schema above.
     elif unit_id == "tutoring.mentor-explain":
         if payload.get("act") not in {"explain", "answer", "clarify", "pronounce", "safety"}:
             raise ValueError("invalid mentor explain act")
@@ -80,7 +97,9 @@ def validate_output(unit: ModelUnit, payload: dict) -> None:
 def has_python_contract(unit_id: str) -> bool:
     return unit_id in {
         "behavior.visible-activity", "behavior.support-opportunity",
-        "evals.semantic-judge", "tutoring.blueprint-planner", "tutoring.mentor-explain",
+        "tutoring.stem-extract", "tutoring.stem-review",
+        "evals.semantic-judge", "tutoring.blueprint-planner", "tutoring.blueprint-backup", "tutoring.mentor-explain",
+        "tutoring.mentor-review", "tutoring.mentor-repair",
         "companion.intent", "companion.scene-switch", "planning.intake",
         "task.intake", "tutoring.turn", "evaluation.review-aspects", "study.sprint-intake",
         "tutoring.image-target", "tutoring.leak-judge", "tutoring.visual-leak-judge",

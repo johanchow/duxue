@@ -97,6 +97,7 @@
 - 同轮验证完成：Admin57项测试全绿、typecheck与生产build通过，Prettier及diff检查通过；修复后真实读取5 Dataset总览成功，27个只读API响应均HTTP200且JSON解析通过，日志.local/overview-fix-{tests,typecheck,build,live}.log（ignored）。本地3021为next dev，修改由开发服务加载；未执行浏览器UI验收，未提交/推送/部署。当前诊断日志在Admin服务控制台，不宣称已接入Grafana；当时具体上游响应未记录，根因仍限于已确认错误分类缺陷和瞬时网络/读取故障的合理推断。
 - 用户授权切换独立分支并commit本次修复：fix/admin-langfuse-read-reliability，范围仅Admin读取器、5项新增回归测试、管理台设计和本领域笔记；既有57项测试、typecheck、build、Prettier及真实27个只读请求验证通过，代码未在验证后改变。凭据/临时诊断脚本/日志及个人文件不入提交；未push或部署。
 
+- 2026-11-17 只读复核最近全量：MCP逐页回读Experiment Items任务根eval.status，`run-086d16a0`仍237项（220 pass/16 fail/1 error），目标248项、11项未完成；最近完整批次`run-efd4278a`248项（205 pass/43 fail）。运行背景和证据限制唯一说明见[运行记录](../../docs/technical/eval-omni-langfuse-2026-11-16.md)。最新失败根摘要涉及引导8、正确性7、逐例要求5、确定性1、答案保护1（同例可重复）；不得把维度数当根因数。英语001保护裁判false与其“保护维度通过”理由矛盾，另政治017/历史015/语文022失败理由仅数字，不能据此确认业务缺陷；数学015等裁判间知识判断也有冲突，需人工复核。本轮未重跑模型、恢复批次或修改云端数据。
 
 - 2026-11-18 Guardian两题延迟诊断：用户报告分数/比喻等待长（题目按本地最新审计推定，已异步请其核对）。上一轮独立8021服务显式OTEL_SDK_DISABLED=true，App构建亦未启用telemetry；原请求无云端链路，审计又没有时间戳/耗时，因此不能还原原始总秒数。Grafana该时间窗可读到其它服务任务，但无对应问答；Langfuse原时段为空。保留原服务配置，未实施性能修复。
 - 原审计最后两组：分数1次Max+3次Flash+1次Plus（5次），其中visual_evidence551字超过500协议上限，额外重试；比喻2次Max+4次Flash+2次Plus（8次），首次图审核leaks=true导致整轮重画再审核。这里只能证明调用顺序/重试，不可把token量或调用数当耗时。
@@ -113,3 +114,5 @@
 - 2026-11-18 用户重新接上 Android 后恢复 USB 转发，在原调试 App 输入同一组分数的英文问法并要求中文解释。请求真实到达 8021，trace `657fe5011f960aede1a31a1a83ec68ac` 服务端 6.404 秒，DeepSeek 1.611 秒，两次数学审核 2.166 和 2.503 秒，仍因缺 `math_consistent` 走兜底。另用 R12 同题同配置，仅替换主模型名，隔离单次主生成对照为 DeepSeek 2.038 秒/196输出token，Qwen Max 4.644 秒/215输出token，均有正文候选且无配图。对照没有跑审核，每模型一次，不作通用速度结论。3021 Admin 当时未监听，恢复本地 dev 服务后 8021 拉取及回执均已恢复 200。未改运行配置模型或发布。
 
 - 2026-11-18 对照旧体验快照和当前测试 Admin R12 的 `tutoring.leak-judge`。旧快照提示词明确要求数学阶段返回 `math_consistent`，分数追问复测 `a0fe87d4476db881fde98159c9e0fada` 实际返回 `true`。R12 移除了提示词中的该要求，两份 schema 均将该字段列为可选，R12 真机 trace 的两次裁判调用均返回合法 JSON 但缺该字段，故模型 span 标记成功而出口 `math_check_failed`。R12 同时换了裁判模型与超时配置。此次只读核对，未编辑或发布。
+
+- 2026-11-19 北京高考九科本地 Guardian 评测。将 Tempo HTTP 根 span 的 trace ID 左补零到 32 位后，与 Langfuse 的 1,000 次模型调用全部对齐。243 次作答尝试（含补答）中 98 次 HTTP 503，服务端耗时中位数 105.15 秒。按调用输入 mode 拆分，超时请求平均独立求解 58.40 秒、首次读题 27.15 秒、独立重读 10.25 秒、讲解 7.76 秒、审核 1.64 秒；89 次出现输出长度截断。按 operation 聚合会将读题和独立求解混在一起。示例 trace 6c9c73adbba1cddd7f5872b5cd68e4a3。

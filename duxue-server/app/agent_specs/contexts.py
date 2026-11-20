@@ -110,9 +110,21 @@ def sprint_intake(*, request):
                        "previous": request.previous.model_dump() if request.previous else {}}, ensure_ascii=False)
 
 
-def eval_grade(*, payload, images=None):
+def eval_grade(*, payload, images=None, inspected_crops=None):
     body = json.dumps(payload, ensure_ascii=False)
-    return [{"type": "text", "text": body}, *image_parts([], images)] if images else body
+    crops = [
+        crop
+        for crop in (inspected_crops or [])
+        if isinstance(crop, dict) and crop.get("url") and crop.get("crop_ref")
+    ]
+    if not images and not crops:
+        return body
+    parts = [{"type": "text", "text": body}, *image_parts([], images or [])]
+    for crop in crops:
+        label = f"（{crop['label']}）" if crop.get("label") else ""
+        parts.append({"type": "text", "text": f"局部放大切片 {crop['crop_ref']}{label}："})
+        parts.append({"type": "image_url", "image_url": {"url": crop["url"]}})
+    return parts
 
 
 def guardian_mentor_explain(*, payload, recent_utterances=None, current_images=None):
@@ -123,7 +135,12 @@ BUILDERS = {
     "behavior.visible_activity.context": eval_grade,
     "behavior.support_opportunity.context": eval_grade,
     "evals.semantic_judge.context": eval_grade,
+    "tutoring.stem_extract.context": eval_grade,
+    "tutoring.stem_review.context": eval_grade,
     "tutoring.blueprint_planner.context": eval_grade,
+    "tutoring.blueprint_backup.context": eval_grade,
+    "tutoring.mentor_review.context": guardian_mentor_explain,
+    "tutoring.mentor_repair.context": guardian_mentor_explain,
     "tutoring.mentor_explain.context": guardian_mentor_explain,
     "study.sprint_intake.context": sprint_intake,
     "companion.intent.context": intent,

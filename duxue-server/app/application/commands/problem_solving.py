@@ -13,22 +13,28 @@ from app.application.ports.problem_solving import (
     QwenProblemSolverGateway,
     SqlProblemDossierRepository,
 )
-from app.application.workflows.blueprint_planner import verify_milestone_anchor
+from app.application.workflows.blueprint_planner import verify_milestone_anchor_detail
 from app.contexts.problem_solving.domain.dossier import (
+    AnchorVerifyState,
     DifficultyTier,
     DossierConfidence,
     DossierConfidencePolicy,
     DossierStatus,
     ProblemDossier,
+    RouteComparisonStatus,
     ScoringPoint,
     StructuredStem,
-    compute_stem_fingerprint,
+    compare_critical_conditions,
+    image_request_fingerprint,
 )
 from app.contexts.tutoring.domain.blueprint import (
     Approach,
     Milestone,
     ProblemInvariant,
 )
+from app.infrastructure.ai.client import remaining_model_time
+from app.infrastructure.ai.errors import ModelTimeBudgetExceeded
+from app.infrastructure.ai.parallel_routes import collect_solve_routes
 from app.infrastructure.persistence.models import now, uid
 
 
@@ -69,13 +75,17 @@ class RequestSolveCommand:
         subject: str = "general",
         initial_tier: str = "T1",
     ) -> ProblemDossier:
-        imgs = [img for img in (images or []) if isinstance(img, str) and img]
-        # Incorporate authorized image count/hashes into stem when text is minimal
-        img_tag = f" [images:{len(imgs)}]" if imgs and not text.strip() else ""
-        stem = StructuredStem(subject=subject, raw_text=(text.strip() + img_tag)[:4000])
-        current_time = now()
+        from app.agent_specs.image_refs import image_ref
 
-        existing = self.repo.find_reusable(stem=stem, ward_id=ward_id)
+        imgs = [img for img in (images or []) if isinstance(img, str) and img]
+        refs = [image_ref(img) for img in imgs]
+        stem = StructuredStem(subject=subject, raw_text=text.strip()[:4000])
+        current_time = now()
+        if refs:
+            fingerprint = image_request_fingerprint(stem, refs)
+            existing = self.repo.find_image_request(ward_id=ward_id, fingerprint=fingerprint)
+        else:
+            existing = self.repo.find_reusable(stem=stem, ward_id=ward_id)
         if existing is not None:
             if existing.status in {"ready", "low_confidence"}:
                 return existing
@@ -98,6 +108,8 @@ class RequestSolveCommand:
             solver_version=self.solver_version,
             now_at=current_time,
         )
+        if refs:
+            created = replace(created, fingerprint=fingerprint, evidence={"request_image_refs": refs})
         saved = self.repo.save(created)
         self._dispatch(saved.dossier_id, imgs)
         return saved
@@ -134,12 +146,56 @@ class ConfirmStemCommand:
         return saved
 
 
+@dataclass(frozen=True)
+class _ParsedRoute:
+    approaches: tuple[Approach, ...] = ()
+    invariants: tuple[ProblemInvariant, ...] = ()
+    scoring_points: tuple[ScoringPoint, ...] = ()
+    final_answers: dict[str, str] = None  # type: ignore[assignment]
+    uncertain: bool = True
+    anchor_state: AnchorVerifyState = "unknown"
+    contradictions: tuple[dict, ...] = ()
+
+    def __post_init__(self):
+        if self.final_answers is None:
+            object.__setattr__(self, "final_answers", {})
+
+
+def _call_solve_route(
+    solver: ProblemSolverModelPort,
+    *,
+    stem: StructuredStem,
+    images: list[str],
+    route_hint: str,
+    feedback: dict | None = None,
+) -> dict | None:
+    """Invoke solver route with single in-place retry on timeout (never escalate tier)."""
+    for attempt in range(2):
+        try:
+            if feedback is not None:
+                try:
+                    return solver.solve_route(
+                        stem=stem, images=images, route_hint=route_hint, feedback=feedback
+                    )
+                except TypeError:
+                    return solver.solve_route(stem=stem, images=images, route_hint=route_hint)
+            return solver.solve_route(stem=stem, images=images, route_hint=route_hint)
+        except ModelTimeBudgetExceeded:
+            raise
+        except TimeoutError:
+            if attempt == 0:
+                continue
+            return None
+    return None
+
+
 def _parse_and_verify_route(
     engine: MathEnginePort | None, raw: dict | None
-) -> tuple[tuple[Approach, ...], tuple[ProblemInvariant, ...], tuple[ScoringPoint, ...], dict[str, str], bool]:
+) -> _ParsedRoute:
     if not isinstance(raw, dict):
-        return (), (), (), {}, True
+        return _ParsedRoute()
     approaches: list[Approach] = []
+    contradictions: list[dict] = []
     for raw_app in (raw.get("approaches") or [])[:3]:
         if not isinstance(raw_app, dict) or not raw_app.get("id") or not raw_app.get("name"):
             continue
@@ -147,7 +203,18 @@ def _parse_and_verify_route(
         for raw_ms in (raw_app.get("milestones") or [])[:8]:
             if not isinstance(raw_ms, dict) or not raw_ms.get("id") or not raw_ms.get("goal"):
                 continue
-            v_status = verify_milestone_anchor(engine, raw_ms)
+            detail = verify_milestone_anchor_detail(engine, raw_ms)
+            v_status = detail["status"]
+            if v_status == "contradicted":
+                contradictions.append(
+                    {
+                        "milestone_id": str(raw_ms["id"])[:32],
+                        "goal": str(raw_ms["goal"])[:200],
+                        "canonical_target": raw_ms.get("canonical_target"),
+                        "reason": detail["reason"],
+                        "engine_result": detail["engine_result"],
+                    }
+                )
             milestones.append(
                 Milestone.from_dict({**raw_ms, "verification_status": v_status})
             )
@@ -175,32 +242,51 @@ def _parse_and_verify_route(
         for k, v in list(raw_finals.items())[:10]:
             if isinstance(v, (str, int, float)) and str(v).strip():
                 finals[str(k)[:32]] = str(v).strip()[:500]
-    elif approaches and approaches[0].milestones:
-        last_target = approaches[0].milestones[-1].canonical_target
-        if last_target:
-            finals["main"] = last_target
     uncertain = bool(raw.get("uncertain", False))
-    return tuple(approaches), invariants, scoring, finals, uncertain
+    apps_tuple = tuple(approaches)
+    anchor_state = DossierConfidencePolicy.classify_anchor_verification(apps_tuple)
+    return _ParsedRoute(
+        approaches=apps_tuple,
+        invariants=invariants,
+        scoring_points=scoring,
+        final_answers=finals,
+        uncertain=uncertain,
+        anchor_state=anchor_state,
+        contradictions=tuple(contradictions),
+    )
 
 
-def _answers_agree(
+def _compare_answers(
     engine: MathEnginePort | None, ans_a: dict[str, str], ans_b: dict[str, str]
-) -> bool:
+) -> RouteComparisonStatus:
+    """Three-state route comparison: consistent | contradicted | incomparable."""
     if not ans_a or not ans_b or set(ans_a) != set(ans_b):
-        return False
+        return "incomparable"
+    saw_incomparable = False
     for key, va in ans_a.items():
         vb = ans_b[key]
         if va.strip() == vb.strip():
             continue
         if engine is None:
-            return False
+            saw_incomparable = True
+            continue
         try:
             res = engine.execute(MathInput(op="equivalent", args={"left": va, "right": vb}))
-            if not (res.status == "ok" and res.verdict == "equal" and not res.conditions):
-                return False
+            if res.status == "ok" and not res.conditions:
+                if res.verdict == "equal":
+                    continue
+                if res.verdict == "not_equal":
+                    return "contradicted"
+            saw_incomparable = True
         except Exception:  # noqa: BLE001
-            return False
-    return True
+            saw_incomparable = True
+    return "incomparable" if saw_incomparable else "consistent"
+
+
+def _answers_agree(
+    engine: MathEnginePort | None, ans_a: dict[str, str], ans_b: dict[str, str]
+) -> bool:
+    return _compare_answers(engine, ans_a, ans_b) == "consistent"
 
 
 @dataclass(frozen=True)
@@ -261,118 +347,188 @@ class VerifiedSolution:
         }
 
 
-def solve_and_verify_problem(
+def _reread_stem(solver, stem: StructuredStem, images) -> tuple[StructuredStem, bool]:
+    """Attempt one independent read and stop if usable evidence is unavailable."""
+    try:
+        reread_raw = solver.extract_stem(text=stem.raw_text, images=images, independent_reread=True)
+    except TimeoutError:
+        remaining_model_time()  # Preserve the enclosing turn deadline if it expired.
+        reread_raw = None
+    if not isinstance(reread_raw, dict) or not str(reread_raw.get("raw_text") or "").strip():
+        return replace(stem, needs_student_confirmation=True, reread_verified=False,
+                       disputed_conditions=("reread_unavailable",)), True
+    reread_stem = StructuredStem.from_dict(reread_raw)
+    agreed, disputed_reasons = compare_critical_conditions(stem, reread_stem)
+    if agreed:
+        return replace(stem, reread_verified=True, needs_student_confirmation=False), False
+    return (
+        replace(
+            stem,
+            reread_verified=False,
+            needs_student_confirmation=True,
+            disputed_conditions=disputed_reasons or (reread_stem.raw_text[:200],),
+        ),
+        True,
+    )
+
+
+def _finalize_single_route(
     *,
     stem: StructuredStem,
-    images: list[str] | None = None,
-    solver: ProblemSolverModelPort,
-    math_engine: MathEnginePort | None = None,
-    initial_tier: DifficultyTier = "T1",
-    allow_t2_escalation: bool = True,
+    parsed: _ParsedRoute,
+    used_backup: bool = False,
+    prior_contradictions: tuple[dict, ...] = (),
 ) -> VerifiedSolution:
-    """Pure out-of-transaction T1 -> optional T2 consensus & deterministic verification pipeline."""
-    imgs = [img for img in (images or []) if isinstance(img, str) and img]
-    tier: DifficultyTier = "T2" if initial_tier == "T2" else "T1"
-
-    t1_apps: tuple[Approach, ...] = ()
-    t1_invs: tuple[ProblemInvariant, ...] = ()
-    t1_sps: tuple[ScoringPoint, ...] = ()
-    t1_finals: dict[str, str] = {}
-    escalated_reason: str | None = None
-
-    if tier == "T1":
-        raw_t1 = solver.solve_route(stem=stem, images=imgs, route_hint="T1")
-        if isinstance(raw_t1, dict) and raw_t1.get("subject"):
-            stem = replace(stem, subject=str(raw_t1["subject"])[:32])
-        t1_apps, t1_invs, t1_sps, t1_finals, t1_uncertain = _parse_and_verify_route(
-            math_engine, raw_t1
+    if not parsed.approaches:
+        return VerifiedSolution(
+            stem=stem,
+            tier="T1",
+            status="failed",
+            confidence="low",
+            evidence={
+                "route_count": 1,
+                "anchor_verification": parsed.anchor_state,
+                "used_backup": used_backup,
+                "prior_contradictions": list(prior_contradictions),
+            },
+            failure_reason="no_valid_approaches_produced",
         )
-        if DossierConfidencePolicy.should_escalate_t1_to_t2(
-            t1_apps, model_uncertain=t1_uncertain
-        ):
-            if not allow_t2_escalation:
-                if not t1_apps:
-                    return VerifiedSolution(
-                        stem=stem,
-                        tier="T1",
-                        status="failed",
-                        confidence="low",
-                        failure_reason="no_valid_approaches_produced",
-                    )
-                return VerifiedSolution(
-                    stem=stem,
-                    tier="T1",
-                    status="low_confidence",
-                    confidence="low",
-                    approaches=t1_apps,
-                    invariants=t1_invs,
-                    scoring_points=t1_sps,
-                    final_answers=t1_finals,
-                    evidence={
-                        "route_count": 1,
-                        "routes_consistent": True,
-                        "all_anchors_verified": False,
-                        "t2_escalation_skipped": True,
-                    },
-                )
-            tier = "T2"
-            escalated_reason = "t1_anchor_unverified_or_uncertain"
-        else:
-            has_only_verified_math = bool(t1_apps) and all(
-                ms.verification_status == "verified"
-                for app in t1_apps
-                for ms in app.milestones
-            )
-            conf: DossierConfidence = "medium" if has_only_verified_math else "low"
-            status: DossierStatus = "ready" if conf in {"high", "medium"} and t1_apps else "low_confidence"
-            return VerifiedSolution(
-                stem=stem,
-                tier="T1",
-                status=status,
-                confidence=conf,
-                approaches=t1_apps,
-                invariants=t1_invs,
-                scoring_points=t1_sps,
-                final_answers=t1_finals,
-                evidence={
-                    "route_count": 1,
-                    "routes_consistent": True,
-                    "all_anchors_verified": has_only_verified_math,
-                },
-            )
+    completeness = DossierConfidencePolicy.evaluate_subproblem_completeness(
+        stem, parsed.final_answers
+    )
+    confidence = DossierConfidencePolicy.evaluate_confidence(
+        bank_matched=False,
+        route_count=1,
+        comparison="consistent",
+        approaches=parsed.approaches,
+        stem_disputed=False,
+        subproblems_complete=completeness["complete"],
+    )
+    if parsed.uncertain:
+        confidence = "low"
+    status: DossierStatus = (
+        "ready" if confidence in {"high", "medium"} and parsed.approaches else "low_confidence"
+    )
+    return VerifiedSolution(
+        stem=stem,
+        tier="T1",
+        status=status,
+        confidence=confidence,
+        approaches=parsed.approaches,
+        invariants=parsed.invariants,
+        scoring_points=parsed.scoring_points,
+        final_answers=parsed.final_answers,
+        evidence={
+            "route_count": 1,
+            "anchor_verification": parsed.anchor_state,
+            "all_anchors_verified": parsed.anchor_state == "verified",
+            "subproblem_completeness": completeness,
+            "used_backup": used_backup,
+            "prior_contradictions": list(prior_contradictions),
+            "contradictions": list(parsed.contradictions),
+        },
+    )
 
-    stem_disputed = False
-    if imgs and not stem.reread_verified:
-        reread_raw = solver.extract_stem(text=stem.raw_text, images=imgs, independent_reread=True)
-        if isinstance(reread_raw, dict):
-            reread_stem = StructuredStem.from_dict(reread_raw)
-            if compute_stem_fingerprint(reread_stem) == compute_stem_fingerprint(stem):
-                stem = replace(stem, reread_verified=True, needs_student_confirmation=False)
-            else:
-                stem_disputed = True
-                stem = replace(
-                    stem,
-                    reread_verified=False,
-                    needs_student_confirmation=True,
-                    disputed_conditions=(reread_stem.raw_text[:200],),
-                )
 
-    raw_r1 = solver.solve_route(stem=stem, images=imgs, route_hint="T2_algebraic")
-    raw_r2 = solver.solve_route(stem=stem, images=imgs, route_hint="T2_alternative")
-    apps_1, invs_1, sps_1, finals_1, _ = _parse_and_verify_route(math_engine, raw_r1)
-    apps_2, _invs_2, _sps_2, finals_2, _ = _parse_and_verify_route(math_engine, raw_r2)
+def _finalize_t2_routes(
+    *,
+    stem: StructuredStem,
+    parsed_1: _ParsedRoute,
+    parsed_2: _ParsedRoute,
+    math_engine: MathEnginePort | None,
+    stem_disputed: bool = False,
+) -> VerifiedSolution:
+    eliminated_route: str | None = None
+    # Contradiction elimination: if one route is deterministically falsified and the other is not,
+    # discard the falsified route and evaluate the surviving route independently.
+    r1_bad = parsed_1.anchor_state == "contradicted"
+    r2_bad = parsed_2.anchor_state == "contradicted"
+    if r1_bad and not r2_bad and parsed_2.approaches:
+        eliminated_route = "T2_algebraic"
+        surviving = parsed_2
+        completeness = DossierConfidencePolicy.evaluate_subproblem_completeness(
+            stem, surviving.final_answers
+        )
+        confidence = DossierConfidencePolicy.evaluate_confidence(
+            bank_matched=False,
+            route_count=1,
+            comparison="incomparable",
+            approaches=surviving.approaches,
+            stem_disputed=stem_disputed,
+            subproblems_complete=completeness["complete"],
+        )
+        status: DossierStatus = (
+            "ready" if confidence in {"high", "medium"} else "low_confidence"
+        )
+        return VerifiedSolution(
+            stem=stem,
+            tier="T2",
+            status=status,
+            confidence=confidence,
+            approaches=surviving.approaches,
+            invariants=surviving.invariants,
+            scoring_points=surviving.scoring_points,
+            final_answers=surviving.final_answers,
+            evidence={
+                "route_count": 1,
+                "comparison": "incomparable",
+                "routes_consistent": False,
+                "eliminated_route": eliminated_route,
+                "anchor_verification": surviving.anchor_state,
+                "subproblem_completeness": completeness,
+                "stem_disputed": stem_disputed,
+            },
+        )
+    if r2_bad and not r1_bad and parsed_1.approaches:
+        eliminated_route = "T2_alternative"
+        surviving = parsed_1
+        completeness = DossierConfidencePolicy.evaluate_subproblem_completeness(
+            stem, surviving.final_answers
+        )
+        confidence = DossierConfidencePolicy.evaluate_confidence(
+            bank_matched=False,
+            route_count=1,
+            comparison="incomparable",
+            approaches=surviving.approaches,
+            stem_disputed=stem_disputed,
+            subproblems_complete=completeness["complete"],
+        )
+        status = "ready" if confidence in {"high", "medium"} else "low_confidence"
+        return VerifiedSolution(
+            stem=stem,
+            tier="T2",
+            status=status,
+            confidence=confidence,
+            approaches=surviving.approaches,
+            invariants=surviving.invariants,
+            scoring_points=surviving.scoring_points,
+            final_answers=surviving.final_answers,
+            evidence={
+                "route_count": 1,
+                "comparison": "incomparable",
+                "routes_consistent": False,
+                "eliminated_route": eliminated_route,
+                "anchor_verification": surviving.anchor_state,
+                "subproblem_completeness": completeness,
+                "stem_disputed": stem_disputed,
+            },
+        )
 
-    consistent = _answers_agree(math_engine, finals_1, finals_2)
-    merged_apps = list(apps_1)
-    if consistent and apps_2:
+    comparison = _compare_answers(math_engine, parsed_1.final_answers, parsed_2.final_answers)
+    merged_apps = list(parsed_1.approaches)
+    if comparison == "consistent" and parsed_2.approaches:
         existing_ids = {a.id for a in merged_apps}
-        for alt_app in apps_2:
-            alt_id = alt_app.id if alt_app.id not in existing_ids else f"alt_{alt_app.id}"[:32]
+        for alt_app in parsed_2.approaches:
+            alt_id = (
+                alt_app.id
+                if alt_app.id not in existing_ids
+                else f"alt_{alt_app.id}"[:32]
+            )
             merged_apps.append(replace(alt_app, id=alt_id))
-    chosen_apps = tuple(merged_apps[:3]) or t1_apps
-    chosen_invs = invs_1 or t1_invs
-    chosen_sps = sps_1 or t1_sps
-    chosen_finals = finals_1 or t1_finals
+    chosen_apps = tuple(merged_apps[:3]) or parsed_2.approaches
+    chosen_invs = parsed_1.invariants or parsed_2.invariants
+    chosen_sps = parsed_1.scoring_points or parsed_2.scoring_points
+    chosen_finals = parsed_1.final_answers or parsed_2.final_answers
 
     if not chosen_apps:
         return VerifiedSolution(
@@ -380,17 +536,31 @@ def solve_and_verify_problem(
             tier="T2",
             status="failed",
             confidence="low",
+            evidence={
+                "route_count": 0,
+                "comparison": comparison,
+                "stem_disputed": stem_disputed,
+            },
             failure_reason="no_valid_approaches_produced",
         )
 
+    active_routes = int(bool(parsed_1.approaches)) + int(bool(parsed_2.approaches))
+    completeness = DossierConfidencePolicy.evaluate_subproblem_completeness(
+        stem, chosen_finals
+    )
     confidence = DossierConfidencePolicy.evaluate_confidence(
         bank_matched=False,
-        route_count=2,
-        routes_consistent=consistent,
+        route_count=active_routes,
+        comparison=comparison,
         approaches=chosen_apps,
         stem_disputed=stem_disputed,
+        subproblems_complete=completeness["complete"],
     )
-    status = "ready" if confidence in {"high", "medium"} and chosen_apps else "low_confidence"
+    status = (
+        "ready"
+        if confidence in {"high", "medium"} and chosen_apps
+        else "low_confidence"
+    )
     return VerifiedSolution(
         stem=stem,
         tier="T2",
@@ -401,12 +571,341 @@ def solve_and_verify_problem(
         scoring_points=chosen_sps,
         final_answers=chosen_finals,
         evidence={
-            "route_count": 2,
-            "routes_consistent": consistent,
-            "escalated_reason": escalated_reason,
+            "route_count": active_routes,
+            "comparison": comparison,
+            "routes_consistent": comparison == "consistent",
+            "eliminated_route": eliminated_route,
+            "anchor_verification": DossierConfidencePolicy.classify_anchor_verification(chosen_apps),
+            "subproblem_completeness": completeness,
             "stem_disputed": stem_disputed,
         },
     )
+
+
+def solve_and_verify_problem(
+    *,
+    stem: StructuredStem,
+    images: list[str] | None = None,
+    solver: ProblemSolverModelPort,
+    math_engine: MathEnginePort | None = None,
+    initial_tier: DifficultyTier = "T1",
+    allow_t2_escalation: bool = True,
+    question: str | None = None,
+) -> VerifiedSolution:
+    """Pure out-of-transaction solving & deterministic verification pipeline.
+
+    T1 and T2 are strictly separated (no T1 -> T2 escalation):
+    - T1: single route + 4-state deterministic verification; if `contradicted`, optional on-demand
+      reread for images (short-circuit on dispute) then heterogeneous backup solver.
+    - T2: parallel heterogeneous dual routes + 4-state verification + contradiction elimination +
+      3-state comparison.
+    """
+    imgs = [img for img in (images or []) if isinstance(img, str) and img]
+    tier: DifficultyTier = "T2" if initial_tier == "T2" else "T1"
+
+    from app.agent_specs.blueprint_steps import EXTRACT
+    from app.agent_specs.definitions import load_definitions
+
+    if EXTRACT in load_definitions().units:
+        return execute_blueprint(
+            stem=stem,
+            images=imgs,
+            solver=solver,
+            math_engine=math_engine,
+            tier=tier,
+            allow_upgrade=allow_t2_escalation,
+            question=question,
+        )
+
+    # On-demand reread only when image stem was explicitly flagged unclear
+    if imgs and stem.needs_student_confirmation and not stem.reread_verified:
+        stem, disputed = _reread_stem(solver, stem, imgs)
+        if disputed:
+            return VerifiedSolution(
+                stem=stem,
+                tier=tier,
+                status="low_confidence",
+                confidence="low",
+                evidence={"stem_disputed": True, "short_circuited": True},
+            )
+
+    if tier == "T1":
+        raw_t1 = _call_solve_route(solver, stem=stem, images=imgs, route_hint="T1")
+        if isinstance(raw_t1, dict) and raw_t1.get("subject"):
+            stem = replace(stem, subject=str(raw_t1["subject"])[:32])
+        parsed_t1 = _parse_and_verify_route(math_engine, raw_t1)
+        has_t1_candidate = isinstance(raw_t1, dict) and bool(parsed_t1.approaches or parsed_t1.final_answers)
+        if has_t1_candidate and parsed_t1.anchor_state != "contradicted":
+            return _finalize_single_route(stem=stem, parsed=parsed_t1, used_backup=False)
+        # Contradicted on image problem -> on-demand reread first to check misread digits
+        if parsed_t1.anchor_state == "contradicted" and imgs and not stem.reread_verified:
+            stem, disputed = _reread_stem(solver, stem, imgs)
+            if disputed:
+                return VerifiedSolution(
+                    stem=stem,
+                    tier="T1",
+                    status="low_confidence",
+                    confidence="low",
+                    evidence={
+                        "stem_disputed": True,
+                        "short_circuited": True,
+                        "prior_contradictions": list(parsed_t1.contradictions),
+                    },
+                )
+        raw_backup = _call_solve_route(
+            solver,
+            stem=stem,
+            images=imgs,
+            route_hint="T1_backup",
+            feedback=(
+                {"contradictions": list(parsed_t1.contradictions)}
+                if parsed_t1.contradictions
+                else None
+            ),
+        )
+        parsed_backup = _parse_and_verify_route(math_engine, raw_backup)
+        return _finalize_single_route(
+            stem=stem,
+            parsed=parsed_backup,
+            used_backup=True,
+            prior_contradictions=parsed_t1.contradictions,
+        )
+
+    routes = collect_solve_routes(("T2_algebraic", "T2_alternative"), lambda hint: _call_solve_route(
+        solver, stem=stem, images=imgs, route_hint=hint))
+    raw_r1, raw_r2 = routes.get("T2_algebraic"), routes.get("T2_alternative")
+    parsed_1 = _parse_and_verify_route(math_engine, raw_r1)
+    parsed_2 = _parse_and_verify_route(math_engine, raw_r2)
+    result = _finalize_t2_routes(
+        stem=stem,
+        parsed_1=parsed_1,
+        parsed_2=parsed_2,
+        math_engine=math_engine,
+        stem_disputed=False,
+    )
+    timeouts = [hint for hint in ("T2_algebraic", "T2_alternative") if hint not in routes]
+    return replace(result, evidence={**result.evidence, "timed_out_routes": timeouts})
+
+
+
+def execute_blueprint(
+    *,
+    stem,
+    images,
+    solver,
+    math_engine,
+    tier="T1",
+    allow_upgrade=True,
+    question=None,
+    bank_lookup=None,
+):
+    """Run the pinned topology; workers with a prepared stem resume at selection."""
+    from app.agent_specs import blueprint_steps as steps
+    from app.agent_specs.catalog import executing_node, load_catalog
+    from app.agent_specs.runtime import GateDecision, execute_workflow
+
+    _ = allow_upgrade  # Retained for backward-compatible signature; T1->T2 escalation removed.
+    solution: VerifiedSolution | None = None
+    disputed = False
+    reread_origin: str | None = None
+    route_outputs: dict[str, dict | None] = {}
+    parsed_t1: _ParsedRoute | None = None
+    parsed_backup: _ParsedRoute | None = None
+    parsed_t2: tuple[_ParsedRoute, _ParsedRoute] | None = None
+
+    def extract(state):
+        nonlocal stem, tier, solution
+        raw = solver.extract_stem(
+            text=question, images=images, independent_reread=False
+        )
+        if isinstance(raw, dict):
+            stem = StructuredStem.from_dict(raw)
+            tier = raw.get("tier") or "T1"
+            if tier == "T0" and not raw.get("needs_student_confirmation"):
+                solution = VerifiedSolution(
+                    stem=stem, tier="T0", status="ready", confidence="medium"
+                )
+        else:
+            tier = "T1"
+        if solution is None and bank_lookup and not stem.needs_student_confirmation and (not images or isinstance(raw, dict)):
+            hit = bank_lookup(stem=stem)
+            if hit and hit.scope == "bank" and hit.status == "ready":
+                solution = VerifiedSolution.from_dossier(hit)
+        return {"tier": tier, "extracted": isinstance(raw, dict)}
+
+    def choose(state):
+        nonlocal reread_origin
+        if solution is not None:
+            branch = "complete"
+        elif images and stem.needs_student_confirmation and not stem.reread_verified:
+            reread_origin = "select"
+            branch = "reread"
+        elif tier == "T2":
+            branch = "complex"
+        else:
+            branch = "ordinary"
+        state["branch"] = branch
+        return GateDecision("allow", branch)
+
+    def reread(state):
+        nonlocal stem, disputed
+        stem, disputed = _reread_stem(solver, stem, images)
+        return {"verified": stem.reread_verified, "disputed": disputed}
+
+    def reread_check(state):
+        nonlocal solution
+        if disputed:
+            solution = VerifiedSolution(
+                stem=stem,
+                tier="T2" if tier == "T2" else "T1",
+                status="low_confidence",
+                confidence="low",
+                evidence={
+                    "stem_disputed": True,
+                    "short_circuited": True,
+                    "reread_origin": reread_origin,
+                },
+            )
+            branch = "disputed"
+        elif reread_origin == "verify":
+            branch = "backup"
+        else:
+            branch = "resume_select"
+        state["branch"] = branch
+        return GateDecision("allow", branch)
+
+    def solve_primary(state):
+        node = executing_node.get()[1]
+        hint = {
+            steps.node_id("ordinary"): "T1",
+            steps.node_id("primary"): "T2_algebraic",
+        }[node]
+        raw = _call_solve_route(solver, stem=stem, images=images, route_hint=hint)
+        if hint.startswith("T2_"):
+            return {"route_hint": hint, "route": raw}
+        route_outputs[hint] = raw
+        return {"route_hint": hint, "candidate": isinstance(raw, dict)}
+
+    def solve_backup(state):
+        node = executing_node.get()[1]
+        hint = {
+            steps.node_id("backup"): "T1_backup",
+            steps.node_id("alternative"): "T2_alternative",
+        }[node]
+        feedback = (
+            {"contradictions": list(parsed_t1.contradictions)}
+            if hint == "T1_backup" and parsed_t1 and parsed_t1.contradictions
+            else None
+        )
+        raw = _call_solve_route(
+            solver, stem=stem, images=images, route_hint=hint, feedback=feedback
+        )
+        if hint.startswith("T2_"):
+            return {"route_hint": hint, "route": raw}
+        route_outputs[hint] = raw
+        return {"route_hint": hint, "candidate": isinstance(raw, dict)}
+
+    def verify_t1(state):
+        nonlocal stem, parsed_t1, reread_origin
+        raw_t1 = route_outputs.get("T1")
+        if isinstance(raw_t1, dict) and raw_t1.get("subject"):
+            stem = replace(stem, subject=str(raw_t1["subject"])[:32])
+        parsed_t1 = _parse_and_verify_route(math_engine, raw_t1)
+        has_t1_candidate = isinstance(raw_t1, dict) and bool(parsed_t1.approaches or parsed_t1.final_answers)
+        if not has_t1_candidate:
+            branch = "backup"
+        elif parsed_t1.anchor_state == "contradicted":
+            if images and not stem.reread_verified:
+                reread_origin = "verify"
+                branch = "reread"
+            else:
+                branch = "backup"
+        else:
+            branch = parsed_t1.anchor_state  # verified | not_applicable | unknown
+        state["branch"] = branch
+        return GateDecision("allow", branch)
+
+    def verify_backup(state):
+        nonlocal parsed_backup
+        parsed_backup = _parse_and_verify_route(
+            math_engine, route_outputs.get("T1_backup")
+        )
+        return GateDecision("allow", parsed_backup.anchor_state)
+
+    def verify_t2(state):
+        nonlocal parsed_t2
+        def read_branch(key):
+            result = state["results"].get(steps.node_id(key))
+            return _parse_and_verify_route(math_engine, result.data.get("route") if result else None)
+
+        p1, p2 = read_branch("primary"), read_branch("alternative")
+        parsed_t2 = (p1, p2)
+        comp = _compare_answers(math_engine, p1.final_answers, p2.final_answers)
+        return GateDecision("allow", comp)
+
+    def finish(state):
+        nonlocal solution
+        if solution is None:
+            if parsed_t2 is not None:
+                solution = _finalize_t2_routes(
+                    stem=stem,
+                    parsed_1=parsed_t2[0],
+                    parsed_2=parsed_t2[1],
+                    math_engine=math_engine,
+                    stem_disputed=disputed,
+                )
+                timeouts = [hint for key, hint in (("primary", "T2_algebraic"), ("alternative", "T2_alternative"))
+                            if steps.node_id(key) not in state["results"]]
+                solution = replace(solution, evidence={**solution.evidence, "timed_out_routes": timeouts})
+            elif parsed_backup is not None:
+                solution = _finalize_single_route(
+                    stem=stem,
+                    parsed=parsed_backup,
+                    used_backup=True,
+                    prior_contradictions=parsed_t1.contradictions if parsed_t1 else (),
+                )
+            elif parsed_t1 is not None:
+                solution = _finalize_single_route(
+                    stem=stem,
+                    parsed=parsed_t1,
+                    used_backup=False,
+                )
+            else:
+                solution = VerifiedSolution(
+                    stem=stem,
+                    tier="T2" if tier == "T2" else "T1",
+                    status="failed",
+                    confidence="low",
+                    failure_reason="no_valid_approaches_produced",
+                )
+        return {
+            "tier": solution.tier,
+            "status": solution.status,
+            "confidence": solution.confidence,
+        }
+
+    execute_workflow(
+        load_catalog().spec(steps.WORKFLOW_ID),
+        handlers={
+            steps.EXTRACT: extract,
+            steps.ROUTE: choose,
+            steps.REREAD: reread,
+            steps.REREAD_CHECK: reread_check,
+            steps.PLANNER_ID: solve_primary,
+            steps.BACKUP: solve_backup,
+            steps.VERIFY: verify_t1,
+            steps.VERIFY_BACKUP: verify_backup,
+            steps.VERIFY_T2: verify_t2,
+            steps.FINISH: finish,
+        },
+        conditions={
+            branch: (lambda state, expected=branch: state.get("branch") == expected)
+            for branch in steps.CONDITIONS
+        },
+        entry_node=steps.node_id("select") if question is None else None,
+        parallel_runner=collect_solve_routes,
+    )
+    return solution
 
 
 class ExecuteDossierSolveCommand:
@@ -425,7 +924,7 @@ class ExecuteDossierSolveCommand:
         self.math_engine = math_engine
 
     def _solver(self) -> ProblemSolverModelPort:
-        return self.solver or QwenProblemSolverGateway()
+        return self.solver or QwenProblemSolverGateway(math_engine=self.math_engine)
 
     def execute(self, *, dossier_id: str, images: list[str] | None = None) -> ProblemDossier:
         dossier = self.repo.get(dossier_id)
@@ -434,12 +933,20 @@ class ExecuteDossierSolveCommand:
         if dossier.status == "ready":
             return dossier
 
+        needs_initial_extract = bool(
+            images
+            and dossier.stem.subject == "general"
+            and not dossier.stem.subproblems
+            and not dossier.stem.diagram_summary
+            and dossier.stem.stem_version == 1
+        )
         solution = solve_and_verify_problem(
             stem=dossier.stem,
             images=images,
             solver=self._solver(),
             math_engine=self.math_engine,
             initial_tier=dossier.tier,
+            question=dossier.stem.raw_text if needs_initial_extract else None,
         )
         if solution.status == "failed":
             failed = dossier.mark_failed(reason=solution.failure_reason or "solve_failed")

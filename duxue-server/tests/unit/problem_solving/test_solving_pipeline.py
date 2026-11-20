@@ -35,13 +35,24 @@ def _seed_wards(db) -> tuple[Ward, Ward]:
 
 
 class FakeSolverPort:
-    """Controllable solver & stem-reader double for T1/T2 pipeline verification."""
+    """Controllable solver & stem-reader double for T1/backup/T2 pipeline verification."""
 
-    def __init__(self, *, t1_payload: dict | None, t2_routes: list[dict] | None = None, reread_stem: dict | None = None):
+    def __init__(
+        self,
+        *,
+        t1_payload: dict | None,
+        backup_payload: dict | None = None,
+        t2_routes: list[dict] | None = None,
+        reread_stem: dict | None = None,
+        timeout_once_hints: set[str] | None = None,
+    ):
         self.t1_payload = t1_payload
+        self.backup_payload = backup_payload
         self.t2_routes = list(t2_routes or [])
         self.reread_stem = reread_stem
+        self.timeout_once_hints = set(timeout_once_hints or ())
         self.solve_calls: list[str] = []
+        self.feedbacks: list[dict | None] = []
         self.reread_calls = 0
 
     def extract_stem(self, *, text: str, images: list[str], independent_reread: bool = False) -> dict | None:
@@ -50,15 +61,31 @@ class FakeSolverPort:
             return self.reread_stem
         return {"subject": "math", "raw_text": text, "subproblems": ["(1)"]}
 
-    def solve_route(self, *, stem: StructuredStem, images: list[str], route_hint: str) -> dict | None:
+    def solve_route(
+        self,
+        *,
+        stem: StructuredStem,
+        images: list[str],
+        route_hint: str,
+        feedback: dict | None = None,
+    ) -> dict | None:
         self.solve_calls.append(route_hint)
+        self.feedbacks.append(feedback)
+        if route_hint in self.timeout_once_hints:
+            self.timeout_once_hints.remove(route_hint)
+            raise TimeoutError("simulated_timeout")
         if route_hint == "T1":
             return self.t1_payload
-        idx = len([c for c in self.solve_calls if c.startswith("T2")]) - 1
-        return self.t2_routes[idx] if 0 <= idx < len(self.t2_routes) else None
+        if route_hint == "T1_backup":
+            return self.backup_payload
+        if route_hint == "T2_algebraic":
+            return self.t2_routes[0] if len(self.t2_routes) > 0 else None
+        if route_hint == "T2_alternative":
+            return self.t2_routes[1] if len(self.t2_routes) > 1 else None
+        return None
 
 
-def test_t1_failed_anchor_escalates_to_t2_method_diverse_consensus_and_achieves_high_confidence(db):
+def test_t1_contradicted_anchor_uses_heterogeneous_backup_without_t2_escalation(db):
     w1, w2 = _seed_wards(db)
     enqueued: list[str] = []
 
@@ -78,7 +105,7 @@ def test_t1_failed_anchor_escalates_to_t2_method_diverse_consensus_and_achieves_
     with pytest.raises(PermissionError):
         query.get_for_ward(ward_id=w2.id, dossier_id=r1.dossier_id)
 
-    # T1 gives an unverified/wrong anchor -> automatically escalates to T2 with 2 method-diverse routes that agree!
+    # T1 gives a contradicted anchor -> does NOT escalate to T2; routes to heterogeneous `T1_backup` with feedback!
     good_route = {
         "subject": "math",
         "final_answers": {"(1)": "{-1, 1}"},
@@ -116,7 +143,7 @@ def test_t1_failed_anchor_escalates_to_t2_method_diverse_consensus_and_achieves_
                         "id": "M1",
                         "goal": "求导",
                         "check_kind": "symbolic_equivalence",
-                        "canonical_target": "999*x",  # Wrong! Engine returns 3*x**2 - 3 != 999*x
+                        "canonical_target": "999*x",  # Contradicted! Engine returns 3*x**2 - 3 != 999*x
                         "verify_request": {
                             "op": "differentiate",
                             "args": {"expression": "x**3 - 3*x", "variable": "x", "order": 1},
@@ -128,42 +155,62 @@ def test_t1_failed_anchor_escalates_to_t2_method_diverse_consensus_and_achieves_
             }
         ],
     }
-    solver = FakeSolverPort(t1_payload=bad_t1, t2_routes=[good_route, good_route])
+    solver = FakeSolverPort(t1_payload=bad_t1, backup_payload=good_route)
     exec_cmd = ExecuteDossierSolveCommand(db, solver=solver, math_engine=SubprocessMathEngineAdapter())
     settled = exec_cmd.execute(dossier_id=r1.dossier_id, images=[])
 
-    assert solver.solve_calls == ["T1", "T2_algebraic", "T2_alternative"]
-    assert settled.tier == "T2"
+    assert solver.solve_calls == ["T1", "T1_backup"]
+    assert solver.feedbacks[1] and solver.feedbacks[1]["contradictions"]
+    assert settled.tier == "T1"
     assert settled.status == "ready"
-    assert settled.confidence == "high"
+    assert settled.confidence == "medium"
+    assert settled.evidence["used_backup"] is True
 
 
 def test_t2_disagreement_or_image_reread_mismatch_falls_back_to_low_confidence_until_stem_confirmed(db):
     w1, _ = _seed_wards(db)
     req_cmd = RequestSolveCommand(db, enqueue_fn=lambda _did: None)
-    r = req_cmd.execute(ward_id=w1.id, text="模糊图片题 f(x)=ax^2", images=["data:image/png;base64,iVBORw0KGgo="])
+    r = req_cmd.execute(
+        ward_id=w1.id,
+        text="模糊图片题 f(x)=ax^2",
+        images=["data:image/png;base64,iVBORw0KGgo="],
+        initial_tier="T1",
+    )
 
-    route_a = {
+    bad_t1 = {
         "subject": "math",
-        "uncertain": True,
-        "final_answers": {"(1)": "a=1"},
-        "approaches": [{"id": "A1", "name": "路线1", "milestones": [{"id": "M1", "goal": "步1", "check_kind": "conceptual_rubric"}]}],
+        "final_answers": {"(1)": "999"},
+        "approaches": [
+            {
+                "id": "A1",
+                "name": "路线1",
+                "milestones": [
+                    {
+                        "id": "M1",
+                        "goal": "求导",
+                        "check_kind": "symbolic_equivalence",
+                        "canonical_target": "999*x",
+                        "verify_request": {
+                            "op": "differentiate",
+                            "args": {"expression": "x**2", "variable": "x", "order": 1},
+                            "symbols": [{"name": "x", "domain": "real"}],
+                            "assumptions": [],
+                        },
+                    }
+                ],
+            }
+        ],
     }
-    route_b = {
-        "subject": "math",
-        "final_answers": {"(1)": "a=2"},  # Disagrees with route_a!
-        "approaches": [{"id": "A1", "name": "路线2", "milestones": [{"id": "M1", "goal": "步1", "check_kind": "conceptual_rubric"}]}],
-    }
-    # Independent image reread also spots a number discrepancy ("ax^3" vs "ax^2")
+    # Independent image reread spots a critical exponent discrepancy ("ax^3" vs "ax^2") -> short-circuits before backup!
     solver = FakeSolverPort(
-        t1_payload=route_a,
-        t2_routes=[route_a, route_b],
+        t1_payload=bad_t1,
         reread_stem={"subject": "math", "raw_text": "模糊图片题 f(x)=ax^3", "subproblems": ["(1)"]},
     )
     exec_cmd = ExecuteDossierSolveCommand(db, solver=solver, math_engine=SubprocessMathEngineAdapter())
     settled = exec_cmd.execute(dossier_id=r.dossier_id, images=["data:image/png;base64,iVBORw0KGgo="])
 
     assert solver.reread_calls == 1
+    assert solver.solve_calls == ["T1"]  # Short-circuited on reread dispute!
     assert settled.status == "low_confidence"
     assert settled.confidence == "low"
     assert settled.stem.needs_student_confirmation is True
@@ -179,6 +226,75 @@ def test_t2_disagreement_or_image_reread_mismatch_falls_back_to_low_confidence_u
     assert updated.stem.stem_version == 2
     assert updated.status == "pending"
     assert reenqueued == [r.dossier_id]
+
+
+def test_t1_timeout_retries_once_and_t2_eliminates_contradicted_route():
+    good_route = {
+        "subject": "math",
+        "final_answers": {"(1)": "2*x"},
+        "approaches": [
+            {
+                "id": "A1",
+                "name": "求导法",
+                "milestones": [
+                    {
+                        "id": "M1",
+                        "goal": "求导",
+                        "check_kind": "symbolic_equivalence",
+                        "canonical_target": "2*x",
+                        "verify_request": {
+                            "op": "differentiate",
+                            "args": {"expression": "x**2", "variable": "x", "order": 1},
+                            "symbols": [{"name": "x", "domain": "real"}],
+                            "assumptions": [],
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+    bad_route = {
+        **good_route,
+        "final_answers": {"(1)": "9*x"},
+        "approaches": [
+            {
+                "id": "A2",
+                "name": "错误路线",
+                "milestones": [
+                    {
+                        "id": "M1",
+                        "goal": "求导",
+                        "check_kind": "symbolic_equivalence",
+                        "canonical_target": "9*x",
+                        "verify_request": {
+                            "op": "differentiate",
+                            "args": {"expression": "x**2", "variable": "x", "order": 1},
+                            "symbols": [{"name": "x", "domain": "real"}],
+                            "assumptions": [],
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+    stem = StructuredStem(subject="math", raw_text="求 f(x)=x^2 导数", subproblems=("(1)",))
+    engine = SubprocessMathEngineAdapter()
+
+    # 1. Timeout retries once in-place without escalating to T2
+    solver_retry = FakeSolverPort(t1_payload=good_route, timeout_once_hints={"T1"})
+    sol_t1 = solve_and_verify_problem(stem=stem, solver=solver_retry, math_engine=engine, initial_tier="T1")
+    assert solver_retry.solve_calls == ["T1", "T1"]
+    assert sol_t1.status == "ready"
+    assert sol_t1.confidence == "medium"
+
+    # 2. T2 parallel dual routes: one route contradicted -> eliminated, surviving verified route retained
+    solver_t2 = FakeSolverPort(t1_payload=None, t2_routes=[bad_route, good_route])
+    sol_t2 = solve_and_verify_problem(stem=stem, solver=solver_t2, math_engine=engine, initial_tier="T2")
+    assert set(solver_t2.solve_calls) == {"T2_algebraic", "T2_alternative"}
+    assert sol_t2.evidence["eliminated_route"] == "T2_algebraic"
+    assert sol_t2.final_answers == {"(1)": "2*x"}
+    assert sol_t2.status == "ready"
+    assert sol_t2.confidence == "medium"
 
 
 def test_stateless_solve_and_verify_problem_and_bank_only_query_never_leak_ward_dossiers(db):

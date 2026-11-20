@@ -198,9 +198,9 @@ def test_blueprint_preverified_persisted_privately_and_advanced_across_turns_and
     prob1 = db_session.query(TutoringProblem).one()
     assert prob1.internal_blueprint is not None
     ms_list = prob1.internal_blueprint["approaches"][0]["milestones"]
-    # M1 verified by SubprocessMathEngineAdapter -> verified; M2 (1+1==5) -> downgraded to unverified!
+    # M1 verified by SubprocessMathEngineAdapter -> verified; M2 (1+1==5) -> deterministically contradicted!
     assert ms_list[0]["verification_status"] == "verified"
-    assert ms_list[1]["verification_status"] == "unverified"
+    assert ms_list[1]["verification_status"] == "contradicted"
     assert planner.calls == 1
 
     # --- Turn 2: reuses persisted blueprint without calling planner again, advances M1 -> M2 ---
