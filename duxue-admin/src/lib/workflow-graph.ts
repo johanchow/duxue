@@ -24,8 +24,14 @@ export function workflowDetailHref(
   node?: Json,
   definition?: Json,
   draftId?: string,
+  releaseId?: string,
 ) {
   const query = draftId ? `?draft=${encodeURIComponent(draftId)}` : '';
+  if (node?.kind === 'workflow' && node.ref) {
+    const snapshot =
+      query || (releaseId ? `?release=${encodeURIComponent(releaseId)}` : '');
+    return `/workflows/${encodeURIComponent(node.ref)}${snapshot}`;
+  }
   if (node?.kind === 'action')
     return `/workflows/${encodeURIComponent(workflowId)}/nodes/${encodeURIComponent(node.id)}${query}`;
   if (
@@ -60,11 +66,13 @@ export function workflowGraph(
         names[node.ref],
       );
       const typeLabel =
-        node.kind === 'action'
-          ? 'Action · 固定代码'
-          : node.kind === 'agent'
-            ? `Agent · ${definition?.implementation === 'code' ? '代码' : '模型'}`
-            : `Gate · ${definition?.implementation === 'judge' ? '模型 Judge' : '代码门禁'}`;
+        node.kind === 'workflow'
+          ? 'Workflow · 子流程'
+          : node.kind === 'action'
+            ? 'Action · 固定代码'
+            : node.kind === 'agent'
+              ? `Agent · ${definition?.implementation === 'code' ? '代码' : '模型'}`
+              : `Gate · ${definition?.implementation === 'judge' ? '模型 Judge' : '代码门禁'}`;
       return {
         id: node.id,
         position: { x: 0, y: 0 },

@@ -69,3 +69,13 @@ test('shared solve agent records each model call on its executing node', () => {
   }));
   assert.deepEqual(nodeExecutions(events, 'blueprint', {id: 'primary', ref: 'solver'}), [events[1]]);
 });
+
+test('历史回放只展开选中调用的后代事件', async () => {
+  const { childExecution } = await import('../src/lib/execution-inspector');
+  const events = [
+    {id: '1'}, {id: '2', parent_id: '1'}, {id: '3', parent_id: '2'},
+    {id: '4', parent_id: '1'}, {id: '5', parent_id: '4'},
+  ];
+  assert.deepEqual(childExecution(events, '2').map(e => e.id), ['3']);
+  assert.deepEqual(childExecution(events, '4').map(e => e.id), ['5']);
+});

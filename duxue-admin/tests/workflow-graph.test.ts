@@ -171,3 +171,25 @@ test('workflow cards prefer the snapshot name, then the inventory name, and keep
   );
   assert.equal(workflowDetailHref('tutoring', { kind: 'agent' }), undefined);
 });
+
+test('子流程卡片打开同一草稿或发布版本', () => {
+  const node = {
+    id: 'tutoring.model_loop',
+    kind: 'workflow',
+    ref: 'tutoring-retry',
+    display_name: '生成与重试',
+  };
+  const graph = workflowGraph({ id: 'tutoring', nodes: [node], edges: [] });
+  assert.equal(
+    graph.nodes.find((n) => n.id === node.id)?.data.typeLabel,
+    'Workflow · 子流程',
+  );
+  assert.equal(
+    workflowDetailHref('tutoring', node, undefined, 'draft/a', 'r1'),
+    '/workflows/tutoring-retry?draft=draft%2Fa',
+  );
+  assert.equal(
+    workflowDetailHref('tutoring', node, undefined, undefined, 'r1'),
+    '/workflows/tutoring-retry?release=r1',
+  );
+});

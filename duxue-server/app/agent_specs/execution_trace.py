@@ -67,6 +67,13 @@ class Recorder:
 
         catalog, definitions = load_catalog(), load_definitions()
         ids = {e.get("workflow_id") for e in self.events}
+        # Freeze referenced children even when a conditional call did not execute.
+        pending = list(ids.intersection(catalog.specs))
+        while pending:
+            for node in catalog.spec(pending.pop()).nodes:
+                if node.kind == "workflow" and node.ref not in ids:
+                    ids.add(node.ref)
+                    pending.append(node.ref)
         flows = {key: spec.model_dump(mode="json", by_alias=True)
                  for key, spec in catalog.specs.items() if key in ids}
         units = {**definitions.units, **definitions.code_agents,

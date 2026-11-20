@@ -14,6 +14,12 @@ from pydantic import ValidationError
 from app.agent_specs.catalog import load_catalog
 from app.agent_specs.execution_trace import transition
 from app.agent_specs.static_tools import static_tool_result
+from app.agent_specs.subworkflows import (
+    MATH_NODE,
+    RETRY_NODE,
+    VET_NODE,
+    math_review_step,
+)
 from app.application.workflows.tutor_shape import lint_shape
 from app.application.workflows.tutor_tools import (
     TutorToolbox,
@@ -421,8 +427,7 @@ def vet_candidate(
     verdict_assertion_allowed: bool = True,
 ) -> Vetting:
     """Run the configured authority, text and optional visual Gates."""
-    from app.agent_specs.catalog import load_catalog
-    from app.agent_specs.runtime import GateDecision, execute_workflow
+    from app.agent_specs.runtime import GateDecision, execute_tutoring_child
     from app.application.workflows.image_review import review_problem
     problem_summary = review_problem(problem_summary, candidate, list(judge_images or []))
     from app.agent_specs.visual_delivery import enabled as visual_delivery_enabled
@@ -543,8 +548,8 @@ def vet_candidate(
             and state.get("text_leaks") is False and state["visual_text"] is not None
         ),
     }
-    state = execute_workflow(
-        load_catalog().spec("tutoring-vet"),
+    state = execute_tutoring_child(
+        VET_NODE,
         handlers={
             "tutoring.authority": authority,
             "tutoring.leak-judge": text_leak,
@@ -593,35 +598,45 @@ def run_tutor_turn(
                 "task_title": task_title, "problem_summary": problem_summary,
             })
             ledger = getattr(tools, "math_verification", None)
-            if ledger is not None:
-                needs_semantic_math = (
-                    candidate.act not in {"pronounce", "safety", "redirect"}
-                    or bool(candidate.math_claims)
-                    or bool(ledger.records)
-                )
-                try:
-                    ledger.validate(candidate.math_claims)
-                    if needs_semantic_math:
-                        check = getattr(leak_judge, "check_math", None)
+            explicit_calls = load_catalog().spec("tutoring").node(RETRY_NODE).kind == "workflow"
+            if explicit_calls:
+                transition("tutoring", "tutoring.exit_gate", MATH_NODE)
+            with math_review_step(explicit_calls) as math_span:
+                if math_span is not None and ledger is None:
+                    set_observation_payload(math_span, output={"reviewed": False})
+                if ledger is not None:
+                    needs_semantic_math = (
+                        candidate.act not in {"pronounce", "safety", "redirect"}
+                        or bool(candidate.math_claims)
+                        or bool(ledger.records)
+                    )
+                    try:
+                        ledger.validate(candidate.math_claims)
+                        if needs_semantic_math:
+                            check = getattr(leak_judge, "check_math", None)
+                            checked = None
+                            if check is not None:
+                                math_ctx = {
+                                    "problem": problem_summary,
+                                    "candidate_turn": candidate.turn.model_dump() if candidate.turn else None,
+                                    **ledger.context(candidate.math_claims),
+                                }
+                                math_text = candidate.content + ("\n" + describe(candidate.visual) if candidate.visual else "")
+                                for _ in range(2):
+                                    checked = check(text=math_text, context=math_ctx, images=list(judge_images or []))
+                                    if checked is not None:
+                                        break
+                        else:
+                            checked = True
+                    except Exception:  # noqa: BLE001 - independent math check fails closed
                         checked = None
-                        if check is not None:
-                            math_ctx = {
-                                "problem": problem_summary,
-                                "candidate_turn": candidate.turn.model_dump() if candidate.turn else None,
-                                **ledger.context(candidate.math_claims),
-                            }
-                            math_text = candidate.content + ("\n" + describe(candidate.visual) if candidate.visual else "")
-                            for _ in range(2):
-                                checked = check(text=math_text, context=math_ctx, images=list(judge_images or []))
-                                if checked is not None:
-                                    break
-                    else:
-                        checked = True
-                except Exception:  # noqa: BLE001 - independent math check fails closed
-                    checked = None
-                if checked is not True:
-                    return Vetting(candidate, None, "math_check_failed" if checked is None else "math_inconsistent",
-                                   "math_inconsistent")
+                    if math_span is not None:
+                        set_observation_payload(math_span, output={"semantic_review": needs_semantic_math, "math_consistent": checked})
+                    if checked is not True:
+                        return Vetting(candidate, None, "math_check_failed" if checked is None else "math_inconsistent",
+                                       "math_inconsistent")
+            if explicit_calls:
+                transition("tutoring", MATH_NODE, VET_NODE, "math_allowed")
             checked_summary = (json.dumps({"problem": problem_summary, **ledger.context(candidate.math_claims)},
                                           ensure_ascii=False) if ledger is not None else problem_summary)
             actor_stage = (envelope.get("actor") or {}).get("grade_stage") if isinstance(envelope, dict) else None
@@ -721,7 +736,7 @@ def run_tutor_turn(
             return proposal, review
 
     from app.agent_specs.catalog import load_catalog
-    from app.agent_specs.runtime import execute_workflow
+    from app.agent_specs.runtime import execute_tutoring_child
 
     def primary(state):
         state["call"], state["vetting"] = attempt(model, "primary")
@@ -790,8 +805,8 @@ def run_tutor_turn(
             review.visual_need in {"requested", "helpful"} or _TEXT_DIAGRAM_TEX in review.candidate.content
         )
 
-    state = execute_workflow(
-        load_catalog().spec("tutoring-retry"), initial_state={"retried": False},
+    state = execute_tutoring_child(
+        RETRY_NODE, initial_state={"retried": False},
         handlers={
             "primary": primary, "repair": repair, "backup": backup,
             "visual_decision": lambda state: None, "visual_redraw": redraw,

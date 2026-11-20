@@ -21,7 +21,11 @@ import {
 import { actionLogic, gateLogic } from '../lib/workflow-code';
 import { componentTypes } from '../lib/component-types';
 import { filterAgents } from '../lib/agent-filter';
-import { nodeExecutions, edgeExecutions } from '../lib/execution-inspector';
+import {
+  nodeExecutions,
+  edgeExecutions,
+  childExecution,
+} from '../lib/execution-inspector';
 import { IconArrowRight, IconCode, IconSearch, IconWorkflow } from './icons';
 
 function CatalogEdge({ id, data, label, markerEnd, style }: EdgeProps) {
@@ -620,7 +624,7 @@ export function WorkflowExplorer({
   catalog,
   initialWorkflow,
   navigate,
-  execution = [],
+  execution: allEvents = [],
   activeEvent = null,
   draftId,
 }: {
@@ -631,7 +635,16 @@ export function WorkflowExplorer({
   draftId?: string;
   navigate: (url: string) => void;
 }) {
-  const workflowId = initialWorkflow;
+  const [calls, setCalls] = useState<{ flow: string; event: Json }[]>([]);
+  const call = calls.at(-1);
+  const workflowId = call?.flow || initialWorkflow;
+  const replay =
+    allEvents.length > 0 || catalog.source === 'execution-snapshot';
+  const execution = call ? childExecution(allEvents, call.event.id) : allEvents;
+  function openCall(flow: string, event: Json) {
+    setSelection(null);
+    setCalls([...calls, { flow, event }]);
+  }
   const [selection, setSelection] = useState<{
     kind: string;
     config: Json;
@@ -645,7 +658,8 @@ export function WorkflowExplorer({
       workflowId,
       node,
       catalog.definitions?.[node?.ref],
-      draftId,
+      draftId || catalog.source_draft?.id,
+      catalog.source_release?.id,
     );
   const graph = useMemo(
     () =>
@@ -703,7 +717,7 @@ export function WorkflowExplorer({
       ...node,
       data: {
         ...node.data,
-        href: execution.length ? undefined : detailHref(config),
+        href: replay ? undefined : detailHref(config),
         navigate,
       },
       className:
@@ -752,6 +766,17 @@ export function WorkflowExplorer({
   return (
     <>
       <section>
+        {call && (
+          <button
+            className="secondary"
+            onClick={() => {
+              setCalls(calls.slice(0, -1));
+              setSelection(null);
+            }}
+          >
+            返回父流程 · 调用 #{call.event.id}
+          </button>
+        )}
         <div className="section-head">
           <div>
             <h2>
@@ -782,6 +807,9 @@ export function WorkflowExplorer({
             <span className="legend-agent">Agent</span>
             <span className="legend-gate">Gate</span>
             <span className="legend-action">Action</span>
+            {flow.nodes.some((n: Json) => n.kind === 'workflow') && (
+              <span className="legend-workflow">Workflow · 子流程</span>
+            )}
             <span className="legend-parent">虚线 · 归属</span>
           </div>
           <div
@@ -838,7 +866,18 @@ export function WorkflowExplorer({
                 (item: Json) => item.id === node.id,
               );
               const href = detailHref(config);
-              if (!execution.length && href) {
+              if (
+                replay &&
+                config?.kind === 'workflow' &&
+                catalog.workflows[config.ref]
+              ) {
+                const events = nodeExecutions(execution, workflowId, config);
+                if (events.length === 1) {
+                  openCall(config.ref, events[0]);
+                  return;
+                }
+              }
+              if (!replay && href) {
                 navigate(href);
                 return;
               }
@@ -888,8 +927,22 @@ export function WorkflowExplorer({
                     selectionEvents.map((event) => (
                       <details key={event.id} open>
                         <summary>
-                          执行 #{event.id} · {event.status}
+                          执行 #{event.id} · {event.status} ·{' '}
+                          {event.duration_ms == null
+                            ? '耗时未记录'
+                            : `${event.duration_ms} ms`}
                         </summary>
+                        {selection.config.kind === 'workflow' &&
+                          catalog.workflows[selection.config.ref] && (
+                            <button
+                              className="secondary"
+                              onClick={() =>
+                                openCall(selection.config.ref, event)
+                              }
+                            >
+                              查看此次子流程执行
+                            </button>
+                          )}
                         <pre>{pretty(event)}</pre>
                       </details>
                     ))
