@@ -24,7 +24,7 @@
 
 ### 4. 多监护人共管（Co-Guardian）与多 Ward 极速切换
 - **学生切换**：支持 Guardian 名下 1~100 名学生的秒级滑动/检索切换；
-- **共管同步**：支持一键生成 6 位邀请码/二维码，被邀请人扫码后本地状态全量自动就绪；主监护人后续新增学生时免重新扫码自动同步。
+- **家庭共管**见[家庭共管成员 PRD](../product/prd-user.md#54-家庭共管成员)。
 
 ---
 
@@ -71,7 +71,7 @@
 | **轻量键值存储**| `shared_preferences` | 2.2+ | 用户偏好（角色记忆、离线草稿、主题设置） |
 | **图表可视化** | `fl_chart` | 0.68+ | 开源 MIT 协议，绘制自主度趋势、专注占比与成长雷达图 |
 | **公式与文本** | `markdown` + `flutter_math_fork` | `^7.2.2` / `^0.7.3` | 伴学答疑 `ChatMarkdownBody` 中 GFM 文本、4 项生成式容错扩展与 LaTeX 公式（KaTeX 解析）无缝安全排版 |
-| **二维码生成** | `pretty_qr_code` | 3.3+ | 生成设备绑定码与家庭共管邀请码，支持中心嵌入 App Logo |
+| **二维码生成** | `pretty_qr_code` | 3.3+ | 生成设备绑定码，支持中心嵌入 App Logo |
 | **图片缓存** | `cached_network_image` | 3.3+ | 题目抓拍与头像的二级磁盘/内存缓存，避免重复网络流量 |
 
 ---
@@ -107,7 +107,7 @@ duxue-app/
 │       ├── guardian_insights/       # 家长端：双轨日报、跨周期周报、专注模式分析
 │       ├── guardian_pass/           # 家长端：作业与通知传递、多模态智能拆解
 │       ├── guardian_action/         # 家长端：睡前正向沟通建议、协商发起
-│       ├── guardian_coguardian/     # 家长端：共管邀请生成、扫码预览接受、成员治理
+│       ├── guardian_coguardian/     # 家长端：按邮箱邀请、接受邀请、成员管理
 │       └── device/                  # 设备管理：摄像头绑定码、网关代理接入与采集状态（见 design-gateway.md）
 ```
 
@@ -147,7 +147,7 @@ graph TD
 | **公共认证** | `/splash`<br>`/auth/role-select`<br>`/auth/login` | 闪屏页<br>角色选择页（我是学生 / 我是家长）<br>Guardian 邮箱验证码与 Ward 绑定码入口 | 公开访问；已登录用户访问自动重定向至对应角色主页 |
 | **Ward Shell**<br>(5 Tabs) | `/ward/home`<br>`/ward/schedule`<br>`/ward/companion`<br>`/ward/growth`<br>`/ward/profile` | 学习行动首页<br>协商式计划任务清单<br>AI 启发伴学工作台<br>成长档案与自主度趋势<br>学生个人中心 | 仅 `Role = ward` 可访问；越权访问自动重定向至 `/ward/home` |
 | **Guardian Shell**<br>(5 Tabs) | `/guardian/children`<br>`/guardian/insights`<br>`/guardian/pass`<br>`/guardian/action`<br>`/guardian/profile` | 孩子动态与多 Ward 切换<br>双轨日报与跨周期洞察<br>作业与学校通知传递<br>睡前正向沟通与协商<br>家长个人中心与共管成员 | 仅 `Role = guardian` 可访问；越权访问自动重定向至 `/guardian/children` |
-| **全屏沉浸流** | `/ward/tutoring/:sessionId`<br>`/ward/evaluate/:scheduleId`<br>`/guardian/coguardian/invite`<br>`/guardian/coguardian/accept/:code` | 沉浸答疑全屏页（隐藏底部 Tab）<br>今日自评盲评全屏页<br>发起共管邀请全屏页<br>扫码接受共管邀请页 | 使用 `rootNavigatorKey` 挂载，覆盖底部导航栏 |
+| **全屏沉浸流** | `/ward/tutoring/:sessionId`<br>`/ward/evaluate/:scheduleId` | 沉浸答疑全屏页（隐藏底部 Tab）<br>今日自评盲评全屏页 | 使用 `rootNavigatorKey` 挂载，覆盖底部导航栏 |
 
 #### 路由守卫核心逻辑（精简伪代码）
 
@@ -278,20 +278,9 @@ CLASS DualTrackTimelinePainter EXTENDS CustomPainter:
 - 在全局持有 `currentWardProvider`，切换 Ward 时级联触发所有以 `wardId` 为入参的下游 Provider（日报、周报、任务传递、设备状态）自动刷新；
 - 顶部导航支持两种交互形态：1~3 人使用横向滑动头像 Tab，4~100 人自动降级为带拼音搜索的下拉抽屉。
 
-#### 2. 共管邀请码生成与扫码接收流程（精简伪代码）
+#### 2. 家庭共管
 
-```text
-CLASS CoGuardianNotifier:
-    // 1. 发起共管邀请 (生成 6 位短码/二维码)
-    ASYNC METHOD createInvitation(wardIds, permissionLevel):
-        response = POST('/api/v1/bindings/invitations', {ward_ids: wardIds, permission: permissionLevel})
-        RETURN response.invite_code
-
-    // 2. 扫码一键接受共管邀请
-    ASYNC METHOD acceptInvitation(inviteCode):
-        POST('/api/v1/bindings/invitations/accept', {invite_code: inviteCode})
-        REFRESH(guardianWardsProvider) // 本地学生列表即刻全量就绪
-```
+「我的」进入 `GuardianMembersPage`，从 `GET /guardian-members` 获取邀请及成员。接受邀请、退出或移除成员后刷新成员视图与 `wardsProvider`。孩子设置中的档案编辑调用 `PATCH /wards/{ward_id}`。授权语义见[家庭共管成员 PRD](../product/prd-user.md#54-家庭共管成员)。
 
 ---
 

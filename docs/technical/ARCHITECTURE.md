@@ -116,9 +116,8 @@ Runtime，不是 Memory & Understanding 的持久化模型。
 Guardian/Ward 的角色资料扩展，而非泛化 `users` 外键。物理字段、索引、无数据库 Cascade 的
 删除约束以及 Ward 登录邀请码均以 [Server 端详细技术设计](design-server.md#31-当前物理-er-图无-tenant直连-guardian-ward-关系) 为准。
 
-本概览只约定授权语义：Ward 仅访问自身数据；Guardian 仅能访问存在绑定关系的 Ward 数据。
-关系类型、权限分级、人数上限或共管邀请均不是当前 Schema 已实现能力，若要引入必须先在
-Identity & Relationship Context 和物理 Schema 中新增设计，不能在此处预设字段。
+Ward 仅访问自身数据。Guardian 日常访问以 Guardian–Ward 绑定为准，共管邀请及创建者专属操作见
+[身份与关系接口](design-server.md#71-认证与关系管理-iam--bindings)。
 
 ### 极简 ACL 鉴权机制
 服务端通过统一的依赖注入拦截器收口数据权限，杜绝越权访问：

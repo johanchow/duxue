@@ -7,6 +7,7 @@ import re
 from sqlalchemy import text
 
 from app.infrastructure.messaging.email import send_email_code
+from .guardian_members import require_ward_creator
 
 router = APIRouter(tags=["identity"])
 
@@ -204,7 +205,7 @@ def create_ward(body: WardCreate, principal: Principal = Depends(current_guardia
     user = User(type="ward")
     db.add(user)
     db.flush()
-    ward = Ward(id=user.id, **body.model_dump())
+    ward = Ward(id=user.id, owner_guardian_id=principal.user_id, **body.model_dump())
     db.add(ward)
     # PostgreSQL validates this FK immediately; persist user_wards before
     # adding guardian_ward_relations rather than relying on ORM insert order.
@@ -219,6 +220,13 @@ def create_ward(body: WardCreate, principal: Principal = Depends(current_guardia
 def patch_ward(ward_id: str, body: WardPatch, principal: Principal = Depends(current_guardian), db: Session = Depends(get_db)):
     ward = owned_ward(db, principal.user_id, ward_id)
     changes = body.model_dump(exclude_unset=True)
+    if "display_name" in changes:
+        name = (changes["display_name"] or "").strip()
+        if not 1 <= len(name) <= 100:
+            raise HTTPException(422, "invalid ward display name")
+        changes["display_name"] = name
+    if "grade_stage" in changes and changes["grade_stage"] is None:
+        raise HTTPException(422, "invalid grade stage")
     profile_id = changes.get("analysis_profile_id")
     if profile_id and db.query(AnalysisProfile).filter(
         AnalysisProfile.id == profile_id, AnalysisProfile.created_by == principal.user_id,
@@ -237,7 +245,7 @@ def patch_ward(ward_id: str, body: WardPatch, principal: Principal = Depends(cur
 
 @router.delete("/wards/{ward_id}/data", status_code=204)
 def delete_ward_data(ward_id: str, principal: Principal = Depends(current_guardian), db: Session = Depends(get_db)):
-    owned_ward(db, principal.user_id, ward_id)
+    require_ward_creator(db, principal.user_id, ward_id)
     # Serialize erasure with in-flight frame commits before removing evidence.
     db.query(Device).filter_by(ward_id=ward_id).order_by(Device.id).with_for_update().all()
     from app.application.commands.erase_observation import erase_observation
