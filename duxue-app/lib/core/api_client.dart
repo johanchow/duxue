@@ -213,6 +213,30 @@ class ApiClient {
                 data: {'display_name': name, 'grade_stage': gradeStage}))
             .data,
       );
+  Future<void> editWard(String id, String name, String grade) async {
+    await dio.patch('/wards/$id',
+        data: {'display_name': name, 'grade_stage': grade});
+  }
+
+  Future<Map<String, dynamic>> guardianMembers() async =>
+      (await dio.get<Map<String, dynamic>>('/guardian-members')).data!;
+
+  Future<void> inviteGuardian(String wardId, String email) async {
+    await dio.post('/wards/$wardId/guardian-invites', data: {'email': email});
+  }
+
+  Future<void> acceptGuardianInvite(String id) async {
+    await dio.post('/guardian-invites/$id/accept');
+  }
+
+  Future<void> cancelGuardianInvite(String wardId, String id) async {
+    await dio.delete('/wards/$wardId/guardian-invites/$id');
+  }
+
+  Future<void> removeGuardian(String wardId, String id) async {
+    await dio.delete('/wards/$wardId/guardian-members/$id');
+  }
+
   Future<Ward> updateWard(String wardId, {String? analysisProfileId}) async =>
       Ward.fromJson(
         (await dio.patch(

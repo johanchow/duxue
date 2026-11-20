@@ -69,6 +69,8 @@ erDiagram
     users ||--o| user_wards : "Ward 角色资料"
     user_guardians ||--o{ guardian_ward_relations : "监护/共管关系"
     user_wards ||--o{ guardian_ward_relations : "被监护关系"
+    user_guardians o|--o{ user_wards : "档案创建者"
+    user_wards ||--o{ guardian_ward_invites : "家庭共管邀请"
     user_guardians ||--o{ refresh_tokens : "持有"
     user_wards ||--o| ward_credentials : "Ward 登录凭据版本"
     user_wards ||--o{ ward_invites : "Ward 登录邀请码"
@@ -145,6 +147,7 @@ erDiagram
 
     user_wards {
         uuid id PK,FK "users.id"
+        uuid owner_guardian_id FK "user_guardians.id"
         string display_name
         string grade_stage "primary | middle | high"
         text notes
@@ -155,6 +158,14 @@ erDiagram
         uuid id PK
         uuid guardian_id FK "user_guardians.id"
         uuid ward_id FK "user_wards.id"
+    }
+
+    guardian_ward_invites {
+        uuid id PK
+        uuid ward_id FK
+        string email "规范化登录邮箱"
+        timestamp expires_at
+        timestamp accepted_at
     }
 
     conversation_threads {
@@ -801,12 +812,15 @@ graph TD
 
 ### 7.1 认证与关系管理 (IAM & Bindings)
 
-当前实现采用 `users` 作为身份根、`user_guardians` / `user_wards` 作为角色资料扩展，并以 `guardian_ward_relations` 表示 Guardian 与 Ward 的唯一绑定关系。当前没有跨 Guardian 共管邀请实体；`ward_invites` 仅用于 Ward 登录或换机绑定。
+当前实现采用 `users` 作为身份根、`user_guardians` / `user_wards` 作为角色资料扩展，并以 `guardian_ward_relations` 表示 Guardian 与 Ward 的唯一绑定关系。`ward_invites` 用于 Ward 登录或换机绑定。家庭共管使用独立的 `guardian_ward_invites`。
 
 - `POST /auth/email-code/send`：向邮箱发送一次性验证码，挑战摘要存于 `email_auth_challenges`，校验失败计数存于 `email_auth_failures`；
 - `POST /auth/register`：验证邮箱验证码后注册 Guardian，创建 `users` 与 `user_guardians`，不保存读学密码；
 - `POST /auth/login`、`POST /auth/refresh`：Guardian 使用邮箱验证码登录及刷新令牌，令牌记录写入 `refresh_tokens`；
 - `GET /wards`、`POST /wards`：Guardian 查询或创建名下 Ward；创建时同时写入 `users`、`user_wards`、`guardian_ward_relations`；
+- `GET /guardian-members` 返回本人收到的待确认邀请和孩子关系。创建者可用 `POST /wards/{ward_id}/guardian-invites` 发起邀请，以标准化邮箱匹配登录账号。受邀人通过 `POST /guardian-invites/{invite_id}/accept` 确认，同一事务内写入 `guardian_ward_relations` 并记录接受时间。
+- `DELETE /wards/{ward_id}/guardian-invites/{invite_id}` 取消待确认邀请，`DELETE /wards/{ward_id}/guardian-members/{guardian_id}` 移除成员。成员可用同一路径的 `me` 退出。状态变更以 Ward 行锁串行化，重复接受已消费的邀请不会恢复已撤销的关系。
+- `user_wards.owner_guardian_id` 标识创建者，用于共管管理和整份孩子数据清除。历史单绑定档案回填创建者。历史多绑定档案需先核实创建者；日常访问继续由现有绑定处理。
 - `POST /wards/{ward_id}/login-invite`：创建一次性 `ward_invites` 登录码；
 - `POST /ward-auth/bind`：Ward 使用邀请码绑定，递增 `ward_credentials.session_version` 使旧 Ward token 失效；
 - `GET /ward/profile`：Ward 查询自己的资料与已绑定 Guardian。

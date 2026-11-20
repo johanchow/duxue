@@ -7,6 +7,7 @@ import 'package:pretty_qr_code/pretty_qr_code.dart';
 import '../core/models.dart';
 import 'guardian_report_view.dart';
 import 'guardian_question_page.dart';
+import 'guardian_members_page.dart';
 import '../core/user_error_message.dart';
 import '../providers.dart';
 import '../shared/app_ui.dart';
@@ -21,6 +22,21 @@ class WardListPage extends ConsumerStatefulWidget {
 class _WardListPageState extends ConsumerState<WardListPage> {
   int tab = 0;
   String? selectedWardId;
+  late final AppLifecycleListener _lifecycle;
+
+  @override
+  void initState() {
+    super.initState();
+    _lifecycle =
+        AppLifecycleListener(onResume: () => ref.invalidate(wardsProvider));
+  }
+
+  @override
+  void dispose() {
+    _lifecycle.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final wards = ref.watch(wardsProvider);
@@ -200,8 +216,10 @@ class _WardListPageState extends ConsumerState<WardListPage> {
                 title: Text('家长账号'),
                 subtitle: Text('管理账号与家庭'))),
         const SectionLabel('家庭'),
-        const AppCard(
-            child: ListTile(
+        AppCard(
+            onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+                builder: (_) => const GuardianMembersPage())),
+            child: const ListTile(
                 leading: Icon(Icons.group_outlined),
                 title: Text('共管成员'),
                 subtitle: Text('邀请其他监护人共同关注'))),
@@ -380,6 +398,11 @@ class _WardSettingsPageState extends ConsumerState<WardSettingsPage> {
                 title: Text('添加读学Eye 设备'),
                 subtitle: Text('用闲置 Android 手机扫码绑定'))),
         const SectionLabel('档案与进阶设置'),
+        if (ward != null)
+          AppCard(
+              onTap: () => _editProfile(ward),
+              child: const ListTile(
+                  leading: Icon(Icons.edit_outlined), title: Text('编辑孩子档案'))),
         AppCard(
             onTap: () => context.go('/wards/${widget.wardId}/profiles'),
             child: ListTile(
@@ -389,6 +412,22 @@ class _WardSettingsPageState extends ConsumerState<WardSettingsPage> {
                     ? '系统默认，不修改也能正常工作'
                     : '已使用自定义配置')))
       ]);
+
+  Future<void> _editProfile(Ward ward) async {
+    final profile = await showDialog<({String name, String grade})>(
+      context: context,
+      builder: (_) => _WardProfileDialog(ward: ward),
+    );
+    if (profile == null || !mounted) return;
+    try {
+      await ref
+          .read(apiProvider)
+          .editWard(ward.id, profile.name, profile.grade);
+      if (mounted) ref.invalidate(wardsProvider);
+    } catch (error) {
+      if (mounted) showMessage(context, '保存失败：${userErrorMessage(error)}');
+    }
+  }
 
   Future<void> _wardAppInvite() async {
     final wards = ref.read(wardsProvider).valueOrNull ?? const <Ward>[];
@@ -465,4 +504,65 @@ Future<void> showWardAppInviteDialog(
       showMessage(context, '生成学生 App 绑定码失败：${userErrorMessage(error)}');
     }
   }
+}
+
+class _WardProfileDialog extends StatefulWidget {
+  const _WardProfileDialog({required this.ward});
+
+  final Ward ward;
+
+  @override
+  State<_WardProfileDialog> createState() => _WardProfileDialogState();
+}
+
+class _WardProfileDialogState extends State<_WardProfileDialog> {
+  final _form = GlobalKey<FormState>();
+  late final _name = TextEditingController(text: widget.ward.displayName);
+  late String _grade = widget.ward.gradeStage;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('编辑孩子档案'),
+        content: Form(
+          key: _form,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            TextFormField(
+              controller: _name,
+              maxLength: 100,
+              decoration: const InputDecoration(labelText: '孩子显示名称'),
+              validator: (name) =>
+                  name == null || name.trim().isEmpty ? '请输入名称' : null,
+            ),
+            DropdownButtonFormField<String>(
+              initialValue: _grade,
+              decoration: const InputDecoration(labelText: '学段'),
+              items: const [
+                DropdownMenuItem(value: 'primary', child: Text('小学')),
+                DropdownMenuItem(value: 'middle', child: Text('初中')),
+                DropdownMenuItem(value: 'high', child: Text('高中')),
+              ],
+              onChanged: (grade) => _grade = grade!,
+            ),
+          ]),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context), child: const Text('取消')),
+          FilledButton(
+            onPressed: () {
+              if (_form.currentState!.validate()) {
+                Navigator.pop(
+                    context, (name: _name.text.trim(), grade: _grade));
+              }
+            },
+            child: const Text('保存'),
+          ),
+        ],
+      );
 }

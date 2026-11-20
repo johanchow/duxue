@@ -74,6 +74,7 @@ class EmailAuthFailure(Base):
 class Ward(Base):
     __tablename__ = "user_wards"
     id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    owner_guardian_id: Mapped[str | None] = mapped_column(ForeignKey("user_guardians.id"))
     display_name: Mapped[str] = mapped_column(String(100))
     history_generation: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     grade_stage: Mapped[str] = mapped_column(String(20), default="primary")
@@ -87,6 +88,16 @@ class GuardianWard(Base):
     id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
     guardian_id: Mapped[str] = mapped_column(ForeignKey("user_guardians.id"))
     ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id"))
+
+
+class GuardianWardInvite(Base):
+    __tablename__ = "guardian_ward_invites"
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
+    ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id"), index=True)
+    email: Mapped[str] = mapped_column(String(255), index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class RefreshToken(Base):
