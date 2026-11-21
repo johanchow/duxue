@@ -24,9 +24,14 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 
 from app.agent_specs.guardian_contracts import (
     DEFAULT_MENTOR_PROMPT,
+    MENTOR_BLUEPRINT,
     MENTOR_CONTENT_MAX_LENGTH,
     MENTOR_EXPLAIN_ID,
+    MENTOR_FINISH,
+    MENTOR_PARENT_BRANCHES,
+    MENTOR_PREPARE,
     MENTOR_REVIEW_PROMPT,
+    MENTOR_WORKFLOW_ID,
 )
 from app.application.commands.problem_solving import (
     VerifiedSolution,
@@ -409,6 +414,8 @@ def _solve_for_mentor(
     images: list[str],
     solver: ProblemSolverModelPort,
     bank_lookup: Callable[..., ProblemDossier | None] | None,
+    workflow_spec=None,
+    allow_language_direct=False,
 ) -> VerifiedSolution | None:
     if type(solver) is QwenProblemSolverGateway:
         from app.agent_specs.definitions import load_definitions
@@ -431,7 +438,7 @@ def _solve_for_mentor(
         return execute_blueprint(
             stem=StructuredStem(subject="general", raw_text=(content.strip() + img_tag)[:4000]),
             question=content, images=images, solver=solver, math_engine=_resolve_math_engine(),
-            bank_lookup=bank_lookup,
+            bank_lookup=bank_lookup, workflow_spec=workflow_spec, allow_language_direct=allow_language_direct,
         )
 
     extracted = solver.extract_stem(text=content, images=images, independent_reread=False)
@@ -465,6 +472,73 @@ def _solve_for_mentor(
     )
 
 
+def _mentor_answer(guardian_id, candidate, verified_solution, safety):
+    review_required = candidate is not None and candidate.act in {"explain", "answer"} and (
+        verified_solution is None or verified_solution.tier != "T0" or candidate.act == "explain"
+    )
+    if candidate is None:
+        answer = {
+            "content": FALLBACK_TEXT,
+            "act": "unavailable",
+            "mode": "guardian_explain",
+        }
+    elif candidate.act == "pronounce":
+        lesson_err = _check_pronounce(candidate.lessons)
+        if lesson_err is not None:
+            answer = {
+                "content": fallback_text(lesson_err),
+                "act": "unavailable",
+                "mode": "guardian_explain",
+            }
+        else:
+            review_txt = candidate.content + json.dumps(
+                [ls.model_dump() for ls in candidate.lessons], ensure_ascii=False
+            )
+            if safety.blocks_output(text=review_txt):
+                answer = {"content": SAFE_TEXT, "act": "safety", "mode": "guardian_explain"}
+            else:
+                answer = {
+                    "content": candidate.content,
+                    "act": "pronounce",
+                    "mode": "guardian_explain",
+                    "lessons": [
+                        {
+                            **ls.model_dump(),
+                            "supported_rates": [0.5, 0.75, 1.0],
+                            "speech_ref": seal(guardian_id, "speech", ls.model_dump()),
+                        }
+                        for ls in candidate.lessons
+                    ],
+                }
+    else:
+        final_text = (
+            _apply_confidence_honesty_gate(candidate.content, verified_solution)
+            if review_required and (verified_solution is not None or candidate.act == "explain")
+            else candidate.content
+        )
+        review_txt = final_text + (describe(candidate.visual) if candidate.visual else "")
+        if candidate.act == "safety" or safety.blocks_output(text=review_txt):
+            answer = {"content": SAFE_TEXT, "act": "safety", "mode": "guardian_explain"}
+        else:
+            answer = {
+                "content": final_text,
+                "act": candidate.act,
+                "mode": "guardian_explain",
+            }
+            if candidate.visual is not None:
+                answer["visual"] = candidate.visual.model_dump(mode="json")
+            if review_required and verified_solution is not None:
+                answer["verification"] = {
+                    "draft_reviewed": False,
+                    "status": verified_solution.status,
+                    "confidence": verified_solution.confidence,
+                    "tier": verified_solution.tier,
+                    "needs_condition_confirmation": verified_solution.stem.needs_student_confirmation,
+                }
+
+    return answer
+
+
 def explain_for_guardian(
     *,
     guardian_id: str,
@@ -479,143 +553,114 @@ def explain_for_guardian(
     model_settings=None,
 ) -> dict:
     """Process Manager executing one stateless Guardian mentor-explanation turn."""
-    relation = None
+    from app.agent_specs.catalog import load_catalog
+    from app.agent_specs.runtime import execute_workflow
+
+    catalog = load_catalog()
+    spec = catalog.specs.get(MENTOR_WORKFLOW_ID)
+    parent = spec is not None and spec.entry == MENTOR_PREPARE
+    attempt_limit = spec.limits["model_calls"] if parent else 2
     safety = LocalSafetyScreening()
-    if safety.blocks_input(text=content):
-        answer: dict[str, Any] = {
-            "content": SAFE_TEXT,
-            "act": "safety",
-            "mode": "guardian_explain",
-        }
-    else:
-        mentor_rate_limiter.check_and_record(guardian_id)
-        prepared = prepare_images(window, images, content=content)
-        if prepared.target.ambiguous:
-            answer = {
-                "content": "这次图片没有读取成功或指向不明确，请重新拍照或说明要看哪一张。",
-                "act": "clarify",
-                "mode": "guardian_explain",
-            }
+    prepared = None
+    answer = None
+    candidate = None
+    verified_solution = None
+    repair_error = None
+    attempts = 0
+    gateway = None
+
+    def prepare(state):
+        nonlocal answer, prepared
+        if safety.blocks_input(text=content):
+            answer = {"content": SAFE_TEXT, "act": "safety", "mode": "guardian_explain"}
         else:
-            clean_window, target_images = prepared.window, prepared.images
-            valid_images = [img for row in clean_window for img in row.get("image_urls", []) if img]
-            valid_images.extend(img for img in target_images if img)
-            question = content
-            if clean_window:
-                question = json.dumps({
-                    "current_request": content,
-                    "history": [{"role": row["author"], "text": row["text"]} for row in clean_window],
-                    "instruction": "结合相关上下文还原当前所问题面和补充条件。以本轮指定的题为准，历史作答不是已知条件。",
-                }, ensure_ascii=False)
-            solver = QwenProblemSolverGateway(model_settings)
-            verified_solution = _solve_for_mentor(
-                content=question,
-                images=valid_images,
-                solver=solver,
-                bank_lookup=bank_lookup,
-            )
-            gateway = QwenMentorExplainGateway(model_settings)
-
-            def generate():
-                repair_err = None
-                for _ in range(2):
-                    try:
-                        raw = gateway.explain(
-                            content=content,
-                            verified_solution=verified_solution,
-                            recent_utterances=clean_window,
-                            current_images=target_images,
-                            repair_error=repair_err,
-                        )
-                        return MentorExplainCandidate.model_validate(raw), raw
-                    except ValidationError as err:
-                        if repair_err is not None:
-                            break
-                        repair_err = f"JSON schema validation failed: {err.errors(include_input=False)[:3]}"
-                    except ModelGatewayError as err:
-                        if str(err) == "invalid_model_candidate" and repair_err is None:
-                            repair_err = (
-                                "上一轮输出的 JSON 不合法或因篇幅过长被截断。"
-                                "请精简推导与排版，控制在 3500 字内并确保 JSON 严格完整闭合；"
-                                "多小问题优先保证已确定的小问完整交付。"
-                            )
-                            continue
-                        break
-                return None, {}
-
-            def needs_honesty_gate(candidate):
-                return candidate is not None and candidate.act in {"explain", "answer"} and (
-                    verified_solution is None or verified_solution.tier != "T0" or candidate.act == "explain"
-                )
-
-            # Plan A: no blocking LLM draft review on adult Guardian showcase path;
-            # rely on upstream tutoring-blueprint harness, local safety screening,
-            # visual/pronounce structural checks, and non-blocking confidence honesty hints.
-            candidate, _ = generate()
-            review_required = needs_honesty_gate(candidate)
-            if candidate is None:
+            mentor_rate_limiter.check_and_record(guardian_id)
+            prepared = prepare_images(window, images, content=content)
+            if prepared.target.ambiguous:
                 answer = {
-                    "content": FALLBACK_TEXT,
-                    "act": "unavailable",
-                    "mode": "guardian_explain",
+                    "content": "这次图片没有读取成功或指向不明确，请重新拍照或说明要看哪一张。",
+                    "act": "clarify", "mode": "guardian_explain",
                 }
-            elif candidate.act == "pronounce":
-                lesson_err = _check_pronounce(candidate.lessons)
-                if lesson_err is not None:
-                    answer = {
-                        "content": fallback_text(lesson_err),
-                        "act": "unavailable",
-                        "mode": "guardian_explain",
-                    }
-                else:
-                    review_txt = candidate.content + json.dumps(
-                        [ls.model_dump() for ls in candidate.lessons], ensure_ascii=False
-                    )
-                    if safety.blocks_output(text=review_txt):
-                        answer = {"content": SAFE_TEXT, "act": "safety", "mode": "guardian_explain"}
-                    else:
-                        answer = {
-                            "content": candidate.content,
-                            "act": "pronounce",
-                            "mode": "guardian_explain",
-                            "lessons": [
-                                {
-                                    **ls.model_dump(),
-                                    "supported_rates": [0.5, 0.75, 1.0],
-                                    "speech_ref": seal(guardian_id, "speech", ls.model_dump()),
-                                }
-                                for ls in candidate.lessons
-                            ],
-                        }
-            else:
-                final_text = (
-                    _apply_confidence_honesty_gate(candidate.content, verified_solution)
-                    if review_required and (verified_solution is not None or candidate.act == "explain")
-                    else candidate.content
+        state["branch"] = "solve" if answer is None else "deliver"
+        return {"branch": state["branch"]}
+
+    def solve(state):
+        nonlocal verified_solution
+        clean_window, target_images = prepared.window, prepared.images
+        valid_images = [img for row in clean_window for img in row.get("image_urls", []) if img]
+        valid_images.extend(img for img in target_images if img)
+        question = content
+        if clean_window:
+            question = json.dumps({
+                "current_request": content,
+                "history": [{"role": row["author"], "text": row["text"]} for row in clean_window],
+                "instruction": "结合相关上下文还原当前所问题面和补充条件。以本轮指定的题为准，历史作答不是已知条件。",
+            }, ensure_ascii=False)
+        child = catalog.spec(spec.node(MENTOR_BLUEPRINT).ref) if parent else None
+        scoped = (
+            child is not None and bool(valid_images) and not clean_window
+            and any(edge.condition == "mentor_language" for edge in child.edges)
+        )
+        solver = (
+            QwenProblemSolverGateway(model_settings, guardian_request=content)
+            if scoped else QwenProblemSolverGateway(model_settings)
+        )
+        verified_solution = _solve_for_mentor(
+            content=question, images=valid_images, solver=solver,
+            bank_lookup=bank_lookup, workflow_spec=child, allow_language_direct=scoped,
+        )
+        return {"status": verified_solution.status if verified_solution else "unavailable"}
+
+    def explain(state):
+        nonlocal attempts, gateway, repair_error, candidate
+        attempts += 1
+        if gateway is None:
+            gateway = QwenMentorExplainGateway(model_settings)
+        prior_error, repair_error = repair_error, None
+        try:
+            raw = gateway.explain(
+                content=content, verified_solution=verified_solution,
+                recent_utterances=prepared.window, current_images=prepared.images, repair_error=prior_error,
+            )
+            candidate = MentorExplainCandidate.model_validate(raw)
+        except ValidationError as err:
+            repair_error = f"JSON schema validation failed: {err.errors(include_input=False)[:3]}"
+        except ModelGatewayError as err:
+            if str(err) == "invalid_model_candidate":
+                repair_error = (
+                    "上一轮输出的 JSON 不合法或因篇幅过长被截断。"
+                    "请精简推导与排版，控制在 3500 字内并确保 JSON 严格完整闭合；"
+                    "多小问题优先保证已确定的小问完整交付。"
                 )
-                review_txt = final_text + (describe(candidate.visual) if candidate.visual else "")
-                if candidate.act == "safety" or safety.blocks_output(text=review_txt):
-                    answer = {"content": SAFE_TEXT, "act": "safety", "mode": "guardian_explain"}
-                else:
-                    answer = {
-                        "content": final_text,
-                        "act": candidate.act,
-                        "mode": "guardian_explain",
-                    }
-                    if candidate.visual is not None:
-                        answer["visual"] = candidate.visual.model_dump(mode="json")
-                    if review_required and verified_solution is not None:
-                        answer["verification"] = {
-                            "draft_reviewed": False,
-                            "status": verified_solution.status,
-                            "confidence": verified_solution.confidence,
-                            "tier": verified_solution.tier,
-                            "needs_condition_confirmation": verified_solution.stem.needs_student_confirmation,
-                        }
+        state["branch"] = "retry" if repair_error and attempts < attempt_limit else "deliver"
+        return {"attempt": attempts, "branch": state["branch"]}
 
-            if candidate is not None and answer["act"] not in {"safety", "unavailable"}:
-                relation = candidate.topic_relation
+    def finish(state):
+        nonlocal answer
+        if answer is None:
+            answer = _mentor_answer(guardian_id, candidate, verified_solution, safety)
+        return {"act": answer["act"]}
 
+    if parent:
+        execute_workflow(
+            spec,
+            handlers={MENTOR_PREPARE: prepare, MENTOR_BLUEPRINT: solve,
+                      MENTOR_EXPLAIN_ID: explain, MENTOR_FINISH: finish},
+            conditions={branch: (lambda state, expected=branch: state["branch"] == expected)
+                        for branch in MENTOR_PARENT_BRANCHES},
+        )
+    else:
+        # Published snapshots predating the parent graph keep their direct delivery protocol.
+        state = {}
+        prepare(state)
+        if state["branch"] == "solve":
+            solve(state)
+            explain(state)
+            if state["branch"] == "retry":
+                explain(state)
+        finish(state)
+
+    relation = candidate.topic_relation if candidate and answer["act"] not in {"safety", "unavailable"} else None
     turn_id = str(uuid4())
     utterance = {"turn_id": turn_id, "author": "ward", "text": content, "attachment_refs": attachment_keys}
     if not handoff and relation == "new":

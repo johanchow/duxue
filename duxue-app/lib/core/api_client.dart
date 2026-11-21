@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'models.dart';
 import 'token_storage.dart';
 import 'telemetry.dart';
+import 'conversation_latency.dart';
 
 class ApiClient {
   ApiClient({
@@ -30,10 +31,18 @@ class ApiClient {
           });
           options.extra['telemetry_span'] = span;
           final traceparent = span.traceparent;
-          if (traceparent != null) options.headers['traceparent'] = traceparent;
+          final turn = options.extra['conversation_turn'] as ConversationTurn?;
+          if (turn != null) options.headers['X-Duxue-Turn-Id'] = turn.id;
+          if (traceparent != null) {
+            options.headers['traceparent'] = traceparent;
+            turn?.traceId = span.traceId;
+          }
           handler.next(options);
         },
         onResponse: (response, handler) {
+          final turn = response.requestOptions.extra['conversation_turn'] as ConversationTurn?;
+          final traceId = response.headers.value('x-duxue-trace-id');
+          if (turn != null && traceId != null) turn.traceId = traceId;
           final span = response.requestOptions.extra['telemetry_span'];
           if (span is TelemetrySpan) {
             span.finish(attributes: {
@@ -434,7 +443,7 @@ class ApiClient {
               },
               // A planning turn with an image runs several model calls and
               // exceeds the 20s default before the HTTP response is written.
-              options: Options(receiveTimeout: const Duration(seconds: 90))))
+              options: Options(extra: {'conversation_turn': ConversationTurn.current}, receiveTimeout: const Duration(seconds: 90))))
           .data);
 
   Future<Map<String, dynamic>> guardianExperienceTurn({
@@ -442,16 +451,58 @@ class ApiClient {
     String? stateToken,
     List<String> attachmentKeys = const [],
     String mode = 'student_guide',
-  }) async =>
-      Map<String, dynamic>.from((await dio.post('/guardian/experience/turn',
-              data: {
-                'content': content,
-                'state_token': stateToken,
-                'attachment_keys': attachmentKeys,
-                'mode': mode,
-              },
-              options: Options(receiveTimeout: const Duration(seconds: 120))))
-          .data as Map);
+    void Function(String)? onStage,
+  }) async {
+    final stream = mode == 'guardian_explain' && onStage != null;
+    late final Response response;
+    try {
+      response = await dio.post('/guardian/experience/turn',
+        data: {
+          'content': content,
+          'state_token': stateToken,
+          'attachment_keys': attachmentKeys,
+          'mode': mode,
+        },
+        options: Options(
+            extra: {'conversation_turn': ConversationTurn.current},
+            headers: stream ? {'Accept': 'text/event-stream'} : null,
+            responseType: stream ? ResponseType.stream : ResponseType.json,
+            receiveTimeout: const Duration(seconds: 120)));
+    } on DioException catch (error) {
+      final body = error.response?.data;
+      if (body is ResponseBody &&
+          (error.response?.headers.value('content-type') ?? '').contains('json')) {
+        final text = await body.stream.cast<List<int>>().transform(utf8.decoder).join();
+        error.response?.data = jsonDecode(text);
+      }
+      rethrow;
+    }
+    if (!stream) return Map<String, dynamic>.from(response.data as Map);
+    final bytes = (response.data as ResponseBody).stream.cast<List<int>>();
+    final text = bytes.transform(utf8.decoder);
+    if (!(response.headers.value('content-type') ?? '').contains('text/event-stream')) {
+      return Map<String, dynamic>.from(jsonDecode(await text.join()) as Map);
+    }
+    await for (final line in text.transform(const LineSplitter())) {
+      if (!line.startsWith('data: ')) continue;
+      final event = jsonDecode(line.substring(6)) as Map;
+      switch (event['type']) {
+        case 'stage':
+          onStage(event['value'] as String);
+          break;
+        case 'result':
+          return Map<String, dynamic>.from(event['value'] as Map);
+        case 'error':
+          final error = event['value'] as Map;
+          throw DioException.badResponse(
+              statusCode: error['status'] as int,
+              requestOptions: response.requestOptions,
+              response: Response(requestOptions: response.requestOptions,
+                  statusCode: error['status'] as int, data: {'detail': error['detail']}));
+      }
+    }
+    throw const FormatException('Incomplete mentor event stream');
+  }
 
   Future<String> uploadGuardianExperienceImage(
       Uint8List bytes, String extension) async {

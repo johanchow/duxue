@@ -6,13 +6,16 @@ from collections import defaultdict
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import nullcontext
-from contextvars import copy_context
+from contextvars import ContextVar, copy_context
 from dataclasses import dataclass
 
 from langgraph.graph import END, START
 
 from app.agent_specs.catalog import AgentSpec, executing_node
 from app.agent_specs.execution_trace import record_workflow_execution
+
+
+node_started: ContextVar[Callable[[str], None] | None] = ContextVar("node_started", default=None)
 
 
 @dataclass(frozen=True)
@@ -98,6 +101,9 @@ def execute_workflow(
         with context as event:
             token = executing_node.set((spec.id, node_id))
             try:
+                listener = node_started.get()
+                if listener is not None:
+                    listener(node_id)
                 result = handler(state)
             finally:
                 executing_node.reset(token)

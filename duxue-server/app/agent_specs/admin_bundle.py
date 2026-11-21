@@ -71,6 +71,8 @@ def _frozen(doc):
                 "timeout_ms",
                 "enable_thinking",
                 "thinking_budget",
+                "guardian_t1_reasoning_effort",
+                "guardian_crop_handoff",
             ):
                 model.pop(key, None)
         result["prompt"].pop("template")
@@ -91,7 +93,7 @@ def contract_compatibility(files: dict) -> str:
     has_mentor = GUARDIAN_MENTOR_FILES <= set(files)
     return digest({
         "files": {**code_contract()["files"],
-                  **(blueprint_steps.contracts() if f"agents/{blueprint_steps.EXTRACT}.json" in files else {}),
+                  **(blueprint_steps.contracts(files) if f"agents/{blueprint_steps.EXTRACT}.json" in files else {}),
                   **(observation_contracts() if has_obs else {}),
                   **(gaokao_contracts() if has_gaokao else {}),
                   **(guardian_mentor_contracts(files) if has_mentor else {}),
@@ -120,7 +122,7 @@ def compile_bundle(bundle: dict) -> CompiledBundle:
     has_mentor = GUARDIAN_MENTOR_FILES <= file_names
     split_files = {}
     if has_gaokao and f"agents/{blueprint_steps.EXTRACT}.json" in file_names:
-        split_files = blueprint_steps.contracts()
+        split_files = blueprint_steps.contracts(bundle["files"])
         contracts["files"].update(split_files)
         for uid in (blueprint_steps.EXTRACT, blueprint_steps.REREAD):
             contracts["tool_authority"][uid] = list(blueprint_steps.VISION_TOOLS)

@@ -251,11 +251,22 @@ class ClientTelemetryEvent(BaseModel):
 
     signal: str = Field(pattern=r"^(span|metric|event|log)$")
     name: str = Field(pattern=r"^app\.[a-z0-9_.-]{1,80}$")
-    duration_ms: int | None = Field(default=None, ge=0, le=120_000)
+    duration_ms: int | None = Field(default=None, ge=0, le=86_400_000)
+    turn_id: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$")
+    completed_ms: int | None = Field(default=None, gt=0, le=9_000_000_000_000)
     value: float | None = Field(default=None, ge=0, le=1_000_000)
     attributes: dict[str, TelemetryPrimitive] = Field(default_factory=dict, max_length=12)
     trace_id: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$")
     span_id: str | None = Field(default=None, pattern=r"^[0-9a-f]{16}$")
+
+    @model_validator(mode="after")
+    def legacy_event_limits(self):
+        if self.name != "app.conversation.completed":
+            if self.duration_ms is not None and self.duration_ms > 120_000:
+                raise ValueError("duration exceeds telemetry event limit")
+            if self.completed_ms is not None or self.turn_id is not None:
+                raise ValueError("turn fields require a conversation completion")
+        return self
 
 
 class ClientTelemetryBatch(BaseModel):

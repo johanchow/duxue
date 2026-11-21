@@ -276,3 +276,36 @@ test('tutoring shows exit_gate in its declaring workflow and resolves the refere
     '/workflows/tutoring-retry/nodes/tutoring-retry.primary?release=r13',
   );
 });
+
+test('导师重试线连接同一讲解节点的出口与入口，分支标签说明触发条件', () => {
+  const prepare = 'guardian-mentor.prepare';
+  const explain = 'guardian-mentor.explain';
+  const solve = 'guardian-mentor.blueprint';
+  const finish = 'guardian-mentor.finish';
+  const flow = {
+    id: 'guardian-mentor',
+    nodes: [prepare, solve, explain, finish].map(id => ({ id, kind: 'action' })),
+    edges: [
+      { from: 'START', to: prepare },
+      { from: prepare, to: solve, condition_id: 'solve' },
+      { from: prepare, to: finish, condition_id: 'deliver' },
+      { from: solve, to: explain },
+      { from: explain, to: explain, condition_id: 'retry' },
+      { from: explain, to: finish, condition_id: 'deliver' },
+      { from: finish, to: 'END' },
+    ],
+  };
+  for (const direction of ['LR', 'TB'] as const) {
+    const { nodes, edges } = workflowGraph(flow, {}, {}, direction);
+    const card = nodes.find(n => n.id === explain)!;
+    const retry = edges.find(e => e.source === explain && e.target === explain)!;
+    const points = retry.data!.route as { x: number; y: number }[];
+    const anchors = card.handles!.map(h => ({ x: card.position.x + h.x!, y: card.position.y + h.y! }));
+    assert.deepEqual(points[0], anchors[1]);
+    assert.deepEqual(points.at(-1), anchors[0]);
+    assert.match(String(retry.label), /重试/);
+    assert.match(String(edges[1].label), /求解/);
+    assert.match(String(edges[2].label), /安全|澄清/);
+    assert.match(String(edges[5].label), /交付/);
+  }
+});

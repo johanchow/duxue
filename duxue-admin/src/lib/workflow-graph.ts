@@ -42,6 +42,18 @@ export function workflowDetailHref(
     return `/agents/${encodeURIComponent(node.ref)}${query}`;
 }
 
+function mentorBranchLabel(edge: Json) {
+  if (edge.from === 'guardian-mentor.prepare') {
+    if (edge.condition_id === 'solve') return '题目明确，进入求解';
+    if (edge.condition_id === 'deliver') return '安全拦截或需要澄清';
+  }
+  if (edge.from === 'guardian-mentor.explain') {
+    if (edge.condition_id === 'retry') return '讲解格式可修复，重试';
+    if (edge.condition_id === 'deliver') return '结束讲解，进入交付';
+  }
+  return edge.condition_id;
+}
+
 /** Preserve every declared node/edge, including parallel branches and cycles.
  * Parent links are separate presentation relationships, never control edges. */
 export function workflowGraph(
@@ -98,6 +110,7 @@ export function workflowGraph(
     source: edge.from,
     target: edge.to,
     label:
+      flow.id === 'guardian-mentor' ? mentorBranchLabel(edge) :
       flow.id === 'behavior-observation' && edge.condition_id
         ? (
             {
@@ -183,7 +196,7 @@ export function workflowGraph(
       edge.source,
       edge.target,
       {
-        width: edge.label ? String(edge.label).length * 7 + 16 : 0,
+        width: edge.label ? Array.from(String(edge.label)).reduce((w, c) => w + (c.charCodeAt(0) > 127 ? 12 : 7), 16) : 0,
         height: edge.label ? 24 : 0,
         labelpos: 'c',
       },
@@ -220,11 +233,24 @@ export function workflowGraph(
   });
   const routedEdges: Edge[] = [...edges, ...relationships].map((edge) => {
     const route = graph.edge({ v: edge.source, w: edge.target, name: edge.id });
+    let points = route.points;
+    if (edge.source === edge.target) {
+      // Dagre reserves a label lane for a self-edge but its polyline can miss both card handles.
+      const { x, y, width, height } = graph.node(edge.source);
+      const left = x - width / 2, right = x + width / 2;
+      const top = y - height / 2, bottom = y + height / 2;
+      const gap = 18;
+      points = direction === 'LR'
+        ? [{ x: right, y }, { x: right + gap, y }, { x: right + gap, y: route.y },
+           { x: left - gap, y: route.y }, { x: left - gap, y }, { x: left, y }]
+        : [{ x, y: bottom }, { x, y: bottom + gap }, { x: route.x, y: bottom + gap },
+           { x: route.x, y: top - gap }, { x, y: top - gap }, { x, y: top }];
+    }
     return {
       ...edge,
       data: {
         ...edge.data,
-        route: route.points,
+        route: points,
         labelX: route.x,
         labelY: route.y,
       },

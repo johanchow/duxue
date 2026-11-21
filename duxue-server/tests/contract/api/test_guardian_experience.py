@@ -806,3 +806,26 @@ def test_standard_mentor_problem_does_not_repeat_solver_after_unverified_anchors
         _solve_for_mentor(content="比较3/4和2/3", images=[], solver=solver, bank_lookup=None)
     assert solve.call_args.kwargs["initial_tier"] == "T1"
     assert solve.call_args.kwargs["allow_t2_escalation"] is False
+
+
+@pytest.mark.parametrize("fail", [True, False])
+def test_mentor_stream_only_exposes_stages_and_checked_terminal(client, adult, monkeypatch, fail):
+    from app.agent_specs.runtime import node_started
+    from app.infrastructure.ai.errors import ModelTimeBudgetExceeded
+
+    def invoke(**kwargs):
+        for node in ["tutoring-blueprint.extract", "tutoring-blueprint.select",
+                     "tutoring-blueprint.ordinary", "tutoring-blueprint.ordinary", "guardian-mentor.explain"]:
+            node_started.get()(node)
+        if fail:
+            raise ModelTimeBudgetExceeded("deadline")
+        return {"act": "explain", "content": "已校验正文", "state_token": "signed"}
+
+    monkeypatch.setattr("app.api.v1.guardian_experience.experience_turn", invoke)
+    res = client.post(f"{BASE}/turn", headers={**adult[1], "Accept": "text/event-stream"},
+                      json={"content": "解题", "mode": "guardian_explain"})
+    assert res.status_code == 200
+    events = [json.loads(line.removeprefix("data: ")) for line in res.text.splitlines() if line]
+    assert events[:-1] == [{"type": "stage", "value": value} for value in ("read", "solve", "explain")]
+    assert events[-1] == ({"type": "error", "value": {"status": 503, "detail": {"code": "mentor_timeout"}}}
+                          if fail else {"type": "result", "value": {"act": "explain", "content": "已校验正文", "state_token": "signed"}})

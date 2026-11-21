@@ -122,3 +122,11 @@
   Admin 测试环境当时绑定 R13。`tutoring.attempt` 的定义归 `tutoring`，父节点为 `tutoring.model_loop`，引用组件 `tutoring.turn`。Admin 卡片显示引用组件的名称及 ref，节点 ID 在点选后的配置里。[卡片标题与引用规则](../../duxue-admin/src/lib/workflow-graph.ts)。
 
 - 2026-11-20 22:04 分数首问复查。Tempo 与 Langfuse 同一 trace `c73548ffc3ed952b73f87ab40cb2f6cf`，R13 家长体验学生引导入口 HTTP 64.893 秒，答疑 64.803 秒。数学与正文审核同时启动，分别耗时 2.354 和 62.849 秒；慢正文审核的单条出站 POST 62.806 秒并返回 200。三次模型调用各对应一条出站 POST。历史同题已有约 62 秒的单次审核样本；遥测未拆分提供方排队、推理与传输，不能从这次样本判断并发对长尾的影响。
+
+- Guardian 体验入口查慢轮次时，可从本地模型审计的候选回复取 trace_id，在 Tempo 直接读取 `POST /guardian/experience/turn`。2026-11-21 样本没有 `agent.turn`。外呼 span 仅提供整次 HTTP 耗时，缺少首 token 时刻时无法区分上游排队与生成。
+
+- 对话端到端耗时使用端上单调计时，确认丢失重试须保留完成时刻及轮次 ID。测试 Guardian 的真实客户端样本已在 Loki 回读。当前 Grafana 连接只有看板读取权限，云端保存待授权。[计时与看板口径](../../docs/observability.md#app-对话端到端耗时)。
+
+- 2026-11-21 导师评测原回执只保留节点名，丢失 Recorder 的耗时。新的评测应保存逐次访问摘要；HTTP、节点、模型首片段及总耗时口径见[可观测性方案](../../docs/observability.md#服务端-workflow-与模型耗时)。
+
+- 2026-11-21 导师三个慢例用原 R13 快照、本地空题库、三路并发各复测一次。回执在 `duxue-server/var/evals/mentor-three-timing-bGSrw1/`。英语 44、物理 16、英语 1 的 planner 分别用时 19.54、40.26、33.38 秒。本轮三题各三次模型调用，均交付。英语 1–10 实际求解并讲解到第 20 题。评分器漏提英语第 1 题的 C，并误将物理第 (3) 问与参考不符的公式判对。两轮长尾不同，耗时与正确率分别核对。

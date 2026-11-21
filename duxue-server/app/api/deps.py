@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from string import hexdigits
 
-from fastapi import Depends, Header, HTTPException
+from fastapi import Depends, Header, HTTPException, Request, Response
+from opentelemetry import trace
 from sqlalchemy.orm import Session
 
 from app.infrastructure.persistence.database import get_db
@@ -69,3 +71,13 @@ def current_device(authorization: str | None = Header(default=None), db: Session
     if device is None:
         raise HTTPException(401, "invalid device token")
     return device
+
+
+def expose_turn_trace(request: Request, response: Response) -> None:
+    span = trace.get_current_span()
+    turn_id = request.headers.get("X-Duxue-Turn-Id", "")
+    if len(turn_id) == 32 and all(char in hexdigits for char in turn_id):
+        span.set_attribute("app.conversation.turn_id", turn_id.lower())
+    context = span.get_span_context()
+    if context.is_valid and context.trace_flags.sampled:
+        response.headers["X-Duxue-Trace-Id"] = format(context.trace_id, "032x")

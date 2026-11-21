@@ -122,7 +122,9 @@ def _expanded_content_prompt(template: str) -> str:
     )
 
 
-def workflow_documents() -> dict[str, dict]:
+def workflow_documents(*, linked_blueprint: bool = False) -> dict[str, dict]:
+    if linked_blueprint:
+        return {f"workflows/{MENTOR_WORKFLOW_ID}.json": parent_workflow()}
     return {
         f"workflows/{MENTOR_WORKFLOW_ID}.json": {
             "kind": "workflow",
@@ -141,6 +143,38 @@ def workflow_documents() -> dict[str, dict]:
                 {"from": f"{MENTOR_WORKFLOW_ID}.explain", "to": "END"},
             ],
         }
+    }
+
+
+MENTOR_PREPARE = "guardian-mentor.prepare"
+MENTOR_BLUEPRINT = "guardian-mentor.blueprint"
+MENTOR_EXPLAIN_NODE = "guardian-mentor.explain"
+MENTOR_FINISH = "guardian-mentor.finish"
+MENTOR_PARENT_BRANCHES = {"solve", "deliver", "retry"}
+
+
+def parent_workflow():
+    from app.agent_specs.blueprint_steps import WORKFLOW_ID
+
+    return {
+        "kind": "workflow", "id": MENTOR_WORKFLOW_ID, "handler": MENTOR_WORKFLOW_ID,
+        "entry": MENTOR_PREPARE,
+        "limits": {"model_calls": 2},
+        "nodes": [
+            {"id": MENTOR_PREPARE, "kind": "action", "handler_id": MENTOR_PREPARE, "display_name": "安全检查与选图"},
+            {"id": MENTOR_BLUEPRINT, "kind": "workflow", "ref": WORKFLOW_ID, "display_name": "读题、求解与核验"},
+            {"id": MENTOR_EXPLAIN_NODE, "kind": "agent", "ref": MENTOR_EXPLAIN_ID, "display_name": "导师讲解"},
+            {"id": MENTOR_FINISH, "kind": "action", "handler_id": MENTOR_FINISH, "display_name": "校验并交付"},
+        ],
+        "edges": [
+            {"from": "START", "to": MENTOR_PREPARE},
+            {"from": MENTOR_PREPARE, "to": MENTOR_BLUEPRINT, "condition_id": "solve"},
+            {"from": MENTOR_PREPARE, "to": MENTOR_FINISH, "condition_id": "deliver"},
+            {"from": MENTOR_BLUEPRINT, "to": MENTOR_EXPLAIN_NODE},
+            {"from": MENTOR_EXPLAIN_NODE, "to": MENTOR_EXPLAIN_NODE, "condition_id": "retry"},
+            {"from": MENTOR_EXPLAIN_NODE, "to": MENTOR_FINISH, "condition_id": "deliver"},
+            {"from": MENTOR_FINISH, "to": "END"},
+        ],
     }
 
 
@@ -451,12 +485,12 @@ def normalize_review_shape(payload):
 
 
 def direct_mentor_workflow(files):
-    """Restore direct single-node `guardian-mentor` workflow without blocking LLM draft review."""
+    """Select direct delivery and link the staged blueprint when the snapshot provides it."""
+    from app.agent_specs.blueprint_steps import EXTRACT
+
     files.pop(f"gates/{MENTOR_REVIEW_ID}.json", None)
     files.pop(f"agents/{MENTOR_REPAIR_ID}.json", None)
-    files[f"workflows/{MENTOR_WORKFLOW_ID}.json"] = workflow_documents()[
-        f"workflows/{MENTOR_WORKFLOW_ID}.json"
-    ]
+    files.update(workflow_documents(linked_blueprint=f"agents/{EXTRACT}.json" in files))
     explain_path = f"agents/{MENTOR_EXPLAIN_ID}.json"
     if explain_path in files:
         explain = files[explain_path]
@@ -488,3 +522,40 @@ def review_json_object(pairs):
             raise ValueError("duplicate review JSON key")
         result[key] = value
     return result
+
+def mentor_latency_trial(files):
+    """Prepare an isolated Guardian candidate against the staged direct workflow."""
+    from app.agent_specs import blueprint_steps as steps
+
+    if files["workflows/guardian-mentor.json"]["entry"] != MENTOR_PREPARE:
+        raise ValueError("mentor latency trial requires the direct parent workflow")
+    files[steps.FLOW_FILE] = steps.workflow(mentor_language=True)
+    path = f"agents/{steps.EXTRACT}.json"
+    extract = files[path]
+    extract["output_contract"] = steps.EXTRACT + ".output.guardian.v2"
+    extract["output_schema"] = steps.contracts(files)[path]["output_schema"]
+    prompts = {
+        steps.EXTRACT: (
+            "输入含 guardian_request 时，以其中明确指定的题号和小问限定作答范围。先确定该范围，再看原图。"
+            "仅当指定目标全是英语写作且图片清晰、无需计算、实验、跨学科或独立核验时，"
+            "返回 guardian_task=english_writing，subject=english；题面摘要仅写目标题号、共享材料位置及必要限制，"
+            "subproblems仅列请求的小问，不逐字抄录原文。阅读、完形、语法、混合任务及不确定时均填 solve；完整保留必要材料，只列目标题号内的设问。"
+            "精细图像仍须核对标注端点和读数。按实际难度分级。"
+        ),
+        steps.PLANNER_ID: (
+            "输入含 guardian_request 时该请求限定作答范围，邻题仅供理解上下文。"
+            "仅输出目标题号的结论、必要推导与核验依据，每条采分点、易错点用简短短语；保留全部影响结论的条件及核验请求。"
+        ),
+        MENTOR_EXPLAIN_ID: (
+            "按 guardian_question 的交付目的与题号作答。核对试卷时，严格只答指定的题和小问："
+            "先给题号与最终答案，随后写必要依据、计算或完整证明。简易选择填空每题一句依据即可。"
+            "家长明确要求完整作文时直接给出符合题意、字数和格式的成文。"
+            "核对答案不另写教学对话、考点综述及通用易错点；家长明确问如何教时，再给最相关的启发建议。"
+            "若 verified_solution.evidence.target_scope 存在，正文仅回答这段用户原文明确要求的范围。共享文章仅作依据。关键条件模糊仍须澄清，未核验不得声称已核验。"
+        ),
+    }
+    for unit, guidance in prompts.items():
+        prompt = files[f"agents/{unit}.json"]["prompt"]
+        marker = "[guardian-latency-trial.v1]"
+        if marker not in prompt["template"]:
+            prompt["template"] += "\n" + marker + guidance

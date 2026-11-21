@@ -404,6 +404,7 @@ def test_thinking_mode_streams_chunks_hides_cot_and_records_reasoning_tokens(mon
     generation = next(
         s for s in exporter.get_finished_spans() if s.name == "llm.request"
     )
+    assert 0 <= generation.attributes["llm.first_token_ms"] <= generation.attributes["llm.first_content_ms"] <= generation.attributes["llm.duration_ms"]
     assert generation.attributes["llm.provider_request_id"] == "req-think-1"
     assert generation.attributes["llm.finish_reason"] == "stop"
     assert generation.attributes["llm.stream_completed"] is True
@@ -454,7 +455,9 @@ def test_completion_evidence_enforces_termination_and_separates_failure_kinds():
             )
         )
 
-    with capture_llm_calls() as calls:
+    from app.agent_specs.execution_trace import Recorder
+    recording = Recorder()
+    with recording.capture(), capture_llm_calls() as calls:
         with pytest.raises(ModelGatewayError, match="invalid_model_candidate"):
             invoke_json_component(
                 spec=thinking_intent,
@@ -463,6 +466,8 @@ def test_completion_evidence_enforces_termination_and_separates_failure_kinds():
                 settings_obj=_settings(),
             )
     assert len(calls) == 1
+    assert recording.timings()[0]["outcome"] == "length_truncated"
+    assert recording.timings()[0]["first_content_ms"] >= 0
     assert calls[0]["provider_request_id"] == "req-len-1"
     assert calls[0]["finish_reason"] == "length"
     assert calls[0]["stream_completed"] is True
@@ -568,3 +573,32 @@ def test_completion_evidence_enforces_termination_and_separates_failure_kinds():
         "structured_decode_gap",
         None,
     ]
+
+
+def test_stream_timing_ignores_metadata_and_survives_interruption(monkeypatch):
+    ticks = iter([0.0, 0.25, 1.5])
+    monkeypatch.setattr(components, "perf_counter", lambda: next(ticks))
+
+    def chunks(**kwargs):
+        yield SimpleNamespace(choices=[])
+        for delta in (
+            SimpleNamespace(content=""),
+            SimpleNamespace(reasoning_content="private"),
+            SimpleNamespace(content="{"),
+        ):
+            yield SimpleNamespace(choices=[SimpleNamespace(delta=delta)])
+        raise TimeoutError()
+
+    client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=chunks)))
+    usage = {}
+    with pytest.raises(TimeoutError):
+        components.complete_json_chat(client=client, model="test", messages=[], temperature=0,
+                                      max_tokens=10, enable_thinking=True, telemetry=usage)
+    assert usage["first_token_ms"] == 250
+    assert usage["first_content_ms"] == 1500
+    assert "private" not in repr(usage)
+
+    usage = {}
+    components.complete_json_chat(client=_Client("{}"), model="test", messages=[], temperature=0,
+                                  max_tokens=10, telemetry=usage)
+    assert "first_token_ms" not in usage and "first_content_ms" not in usage

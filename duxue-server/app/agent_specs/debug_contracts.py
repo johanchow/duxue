@@ -50,7 +50,7 @@ CODE_AGENTS.update({identifier:identifier.replace('.', '-') for identifier in OB
 
 def _available_workflows(catalog):
     optional = {"tutoring-blueprint": "tutoring.stem-extract",
-                "guardian-mentor": "tutoring.mentor-review"}
+                "guardian-mentor": "tutoring.mentor-explain"}
     return WORKFLOWS | {workflow for workflow, unit in optional.items()
                         if catalog is not None and unit in catalog.units}
 

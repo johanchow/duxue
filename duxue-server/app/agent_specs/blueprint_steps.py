@@ -124,6 +124,7 @@ EDGES = [
 CONDITIONS = frozenset(
     {
         "complete",
+        "mentor_language",
         "reread",
         "ordinary",
         "complex",
@@ -141,7 +142,7 @@ def node_id(key):
     return key if key in {"START", "END"} else f"{WORKFLOW_ID}.{key}"
 
 
-def workflow():
+def workflow(*, mentor_language=False):
     return dict(
         kind="workflow",
         id=WORKFLOW_ID,
@@ -162,12 +163,12 @@ def workflow():
                 "to": node_id(dst),
                 **({"condition_id": condition} if condition else {}),
             }
-            for src, dst, condition in EDGES
+            for src, dst, condition in EDGES + ([("select", "finish", "mentor_language")] if mentor_language else [])
         ],
     )
 
 
-def contracts():
+def contracts(files=None):
     result = {}
     base_planner = frozen_contracts()[f"agents/{PLANNER_ID}.json"]
 
@@ -196,7 +197,12 @@ def contracts():
             ],
         },
     )
-    result[f"agents/{EXTRACT}.json"] = extract_doc
+    path = f"agents/{EXTRACT}.json"
+    if files and files.get(path, {}).get("output_contract") == EXTRACT + ".output.guardian.v2":
+        extract_doc["output_contract"] = EXTRACT + ".output.guardian.v2"
+        extract_doc["output_schema"]["properties"]["guardian_task"] = {"enum": ["english_writing", "solve"]}
+        extract_doc["output_schema"]["properties"]["target_scope"] = {"type": "string", "maxLength": 160}
+    result[path] = extract_doc
 
     reread_doc = deepcopy(base_planner)
     reread_doc.update(
