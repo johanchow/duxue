@@ -66,6 +66,23 @@ def test_read_aloud_supports_visible_agent_replies_and_hides_legacy_invitations(
     assert result.content == b"mp3"
     assert result.headers["content-type"] == "audio/mpeg"
     synth.assert_awaited_once_with("先看已知条件。")
+    async def frames(text):
+        assert text == "先看已知条件。"
+        yield b"first"
+        yield b"second"
+
+    monkeypatch.setattr("app.api.v1.companion.tutor_audio_frames", frames)
+    assert client.get(url + "?stream=true", headers=headers(other)).status_code == 404
+    streamed = client.get(url + "?stream=true", headers=headers(ward))
+    assert streamed.content == b"firstsecond"
+    assert streamed.headers["content-type"] == "audio/mpeg"
+
+    async def broken_frames(text):
+        raise RuntimeError("provider unavailable")
+        yield
+
+    monkeypatch.setattr("app.api.v1.companion.tutor_audio_frames", broken_frames)
+    assert client.get(url + "?stream=true", headers=headers(ward)).status_code == 503
     legacy = CompanionCommand(id=uid(), ward_id=ward.id, thread_id=thread.id,
                               payload_digest="support.invitation.v1")
     plan_command = CompanionCommand(id=uid(), ward_id=ward.id, thread_id=thread.id, payload_digest="planning")

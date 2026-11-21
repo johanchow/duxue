@@ -117,6 +117,24 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  test('orbital arc arrowheads are materialized for the native SVG renderer', () {
+    const diagram = '<svg viewBox="0 0 680 320"><defs>'
+      '<marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">'
+      '<path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke"/></marker></defs>'
+      '<path d="M 150 100 A 70 70 0 0 1 220 170" stroke="red" marker-end="url(#arrow)"/></svg>';
+    final rendered = materializeSvgTheme(diagram, Brightness.light);
+    expect(rendered, isNot(contains('<marker')));
+    expect(rendered, contains('rotate('));
+    expect(rendered, contains('M2 1L8 5L2 9'));
+  });
+
+  testWidgets('SVG with a standard namespace shows the drawing', (tester) async {
+    final markup = (svgVisual['svg'] as String).replaceFirst(
+      '<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ');
+    await pump(tester, {...svgVisual, 'svg': markup});
+    expect(find.byKey(const ValueKey('svg-visual-view')), findsOneWidget);
+  });
+
   testWidgets('svg renders with flutter_svg and materializes theme tokens', (tester) async {
     await pump(tester, svgVisual);
     expect(find.byKey(const ValueKey('visual-block')), findsOneWidget);

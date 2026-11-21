@@ -536,10 +536,11 @@ class ApiClient {
       Map<String, dynamic>.from(
           (await dio.get('/pronunciation-lessons/$lessonRef')).data as Map);
 
-  Future<Uint8List> companionSpeech(String id) async {
-    final response = await dio.get<List<int>>('/companion/messages/$id/speech',
-        options: Options(responseType: ResponseType.bytes, receiveTimeout: const Duration(seconds: 30)));
-    return Uint8List.fromList(response.data ?? const []);
+  Future<Stream<Uint8List>> companionSpeech(String id, CancelToken cancel) async {
+    final response = await dio.get<ResponseBody>('/companion/messages/$id/speech',
+        queryParameters: {'stream': true}, cancelToken: cancel,
+        options: Options(responseType: ResponseType.stream, receiveTimeout: const Duration(seconds: 30)));
+    return response.data!.stream;
   }
 
   Future<Uint8List> pronunciationSpeech(String lessonRef, double rate) async {

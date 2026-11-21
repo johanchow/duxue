@@ -88,3 +88,10 @@ def test_visual_extension_requires_all_three_facts(field):
     schema['required'].remove(field)
     with pytest.raises(ValueError, match='incomplete visual delivery'):
         compile_bundle(updated['bundle'])
+
+
+def test_unrepairable_svg_cannot_deliver_text_pointing_to_a_missing_picture():
+    draft = tutor_raw(content="看下图的箭头。", visual={"kind": "svg", "alt": "箭头", "svg": "<svg/>"})
+    result = run(StaticTutorModel(draft, draft), StaticVisualLeakJudge(result={"leaks": False}))
+    assert result.vetting.failure == "visual_unavailable"
+    assert result.vetting.verdict is None

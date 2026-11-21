@@ -853,7 +853,7 @@ graph TD
 
 `POST /companion/turn` 的 `content` 承载原始转写。可选 `voice_display_text` 仅写入学生答疑消息的展示元数据。路由、导师上下文、发音原句、今日总结及历史逐字引用沿用原始转写。接口兼容历史消息，无需迁移表结构。
 
-`GET /companion/messages/{message_id}/speech` 读取当前 Ward 可见历史中的 Agent 文本回复，排除旧版系统邀请与发音卡，返回 `audio/mpeg`。历史消息投影用 `can_read_aloud` 描述可点读性；请求不能传合成文本。默认使用 `TUTOR_TTS_MODEL=qwen-audio-3.1-tts-flash` 和 `TUTOR_TTS_VOICE=longanhuan_v3.1`，由服务端设置教师语气并过滤 Markdown。封闭公式里的单项负数幂按负号作用范围展开；含其他 LaTeX 公式的回复交给支持公式的 CosyVoice v3 Flash。发音卡沿用独立播放接口。合成使用服务端的百炼凭据，可通过 `SPEECH_TASK_URL` 指定部署地域的双工地址。
+`GET /companion/messages/{message_id}/speech` 读取当前 Ward 可见历史中的 Agent 文本回复，排除旧版系统邀请与发音卡，返回 `audio/mpeg`。历史消息投影用 `can_read_aloud` 描述可点读性；请求不能传合成文本。默认使用 `TUTOR_TTS_MODEL=qwen-audio-3.1-tts-flash` 和 `TUTOR_TTS_VOICE=longanhuan_v3.1`，由服务端设置教师语气并过滤 Markdown。封闭公式里的单项负数幂按负号作用范围展开；含其他 LaTeX 公式的回复交给支持公式的 CosyVoice v3 Flash。发音卡沿用独立播放接口。合成使用服务端的百炼凭据，可通过 `SPEECH_TASK_URL` 指定部署地域的双工地址。带 `?stream=true` 时首段合成成功即返回并逐段发送 MP3，播放器取消时关闭上游连接；旧客户端仍可一次获取完整 MP3。
 
 ### 7.4 评估与双轨对比 (Evaluations & Reflection)
 - `GET /api/v1/evaluations/schedules/{schedule_id}/blind-card`：获取锁闭状态的自评盲评卡片；

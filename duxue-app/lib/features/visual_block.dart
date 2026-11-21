@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import 'svg_markers.dart';
+
 /// 答疑配图：服务端只给语义（有哪些对象、什么关系或数量），布局与绘制全在这里。
 ///
 /// 契约与预算见 docs/technical/domain-tutoring-presentation.md §五。客户端不信任输入：
@@ -335,6 +337,9 @@ class SvgData extends VisualData {
   static final RegExp _rawAmp = RegExp(
     r'&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);)',
   );
+  static final RegExp _rootSvgNamespace = RegExp(
+    r'''^(<svg(?:\s+[^\s=/>]+\s*=\s*(?:"[^"]*"|'[^']*'))*?)\s+xmlns\s*=\s*(["'])http://www\.w3\.org/2000/svg\2(?=\s|/?>)''',
+  );
   static final RegExp _forbidden = RegExp(
     r'<!(?:DOCTYPE|ENTITY)|<\?xml|<(?:/?\s*(?:html|head|body|script|style|foreignObject|iframe|form|image|a)\b)'
     r'|/\*|position\s*:\s*fixed|\b(?:localStorage|sessionStorage|javascript:|data:)\b|https?:|www\.'
@@ -379,6 +384,7 @@ class SvgData extends VisualData {
       svgObj.replaceAll(_xmlComment, '').replaceAll(_styleBlock, '').trim(),
     );
     if (code.length < 20 || code.length > maxChars) return null;
+    code = code.replaceFirstMapped(_rootSvgNamespace, (m) => m.group(1)!);
     if (_forbidden.hasMatch(code)) return null;
     final lower = code.toLowerCase();
     if (!lower.startsWith('<svg') || !lower.endsWith('</svg>')) return null;
@@ -420,7 +426,7 @@ class SvgData extends VisualData {
 String materializeSvgTheme(String svg, Brightness brightness) {
   final isDark = brightness == Brightness.dark;
   final vars = isDark ? _darkVars : _lightVars;
-  var out = svg.replaceAllMapped(
+  var out = expandSvgMarkers(svg).replaceAllMapped(
     RegExp(r'var\(\s*--color-([a-z-]+)\s*\)'),
     (m) => vars[m.group(1)] ?? (isDark ? '#F2F1ED' : '#1A1A18'),
   );

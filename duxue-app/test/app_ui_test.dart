@@ -28,6 +28,13 @@ class _FakePlayback implements SpeechPlayback {
   final played = <Uint8List>[];
 
   @override
+  Future<void> playStream(Stream<List<int>> frames) async {
+    final bytes = BytesBuilder();
+    await for (final frame in frames) { bytes.add(frame); }
+    await playMp3(bytes.takeBytes());
+  }
+
+  @override
   Future<void> playMp3(Uint8List bytes) async {
     played.add(bytes);
   }
@@ -53,9 +60,9 @@ class _WardHomeApi extends ApiClient {
   Completer<Uint8List>? pendingSpeech;
 
   @override
-  Future<Uint8List> companionSpeech(String id) {
+  Future<Stream<Uint8List>> companionSpeech(String id, CancelToken cancel) async {
     replySpeechRequests.add(id);
-    return pendingSpeech?.future ?? Future.value(Uint8List.fromList([1, 2]));
+    return Stream.value(await (pendingSpeech?.future ?? Future.value(Uint8List.fromList([1, 2]))));
   }
 
   final speechRates = <double>[];
@@ -2612,6 +2619,10 @@ void main() {
     await tester.tap(find.text('停止朗读'));
     await tester.pumpAndSettle();
     expect(find.text('朗读'), findsOneWidget);
+    await tester.tap(find.text('朗读'));
+    await tester.pumpAndSettle();
+    expect(api.replySpeechRequests, ['reply', 'reply']);
+    expect(playback.played, hasLength(2));
   });
 
   testWidgets('plan review card has only the confirm action', (tester) async {

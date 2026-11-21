@@ -43,3 +43,19 @@ async def test_synthesis_failure_discards_partial_audio(monkeypatch):
     with pytest.raises(RuntimeError, match="incomplete"):
         await tutor_audio("先看条件。")
     task.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_audio_stream_delivers_first_frame_and_closes_on_stop(monkeypatch):
+    from app.infrastructure.ai.speech_task import tutor_audio_frames
+
+    async def frames():
+        yield b"first"
+        raise AssertionError("playback stopped before requesting more")
+
+    task = SimpleNamespace(connection=frames(), command=AsyncMock(), close=AsyncMock())
+    monkeypatch.setattr(SpeechTask, "open", AsyncMock(return_value=task))
+    stream = tutor_audio_frames("地球绕太阳公转。")
+    assert await anext(stream) == b"first"
+    await stream.aclose()
+    task.close.assert_awaited_once()

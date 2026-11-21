@@ -8,7 +8,6 @@ import 'package:duxue_app/features/evening_report_card.dart';
 import 'package:duxue_app/features/support_companion_panel.dart';
 import 'package:duxue_app/providers.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -39,6 +38,13 @@ class _Playback implements SpeechPlayback {
   int plays = 0;
   @override
   Stream<void> get onComplete => completed.stream;
+  @override
+  Future<void> playStream(Stream<List<int>> frames) async {
+    final bytes = BytesBuilder();
+    await for (final frame in frames) { bytes.add(frame); }
+    await playMp3(bytes.takeBytes());
+  }
+
   @override
   Future<void> playMp3(Uint8List bytes) async {
     plays++;

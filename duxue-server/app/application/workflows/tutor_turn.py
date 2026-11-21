@@ -233,6 +233,7 @@ class TutorTurnCandidate(BaseModel):
     math_claims: list[MathClaim] = Field(default_factory=list, max_length=16)
     visual: Visual | None = None
     visual_dropped: str | None = Field(default=None, exclude=True)
+    rejected_svg: bool = Field(default=False, exclude=True)
     visual_error: str | None = Field(default=None, exclude=True)
 
     @model_validator(mode="before")
@@ -286,6 +287,7 @@ class TutorTurnCandidate(BaseModel):
         else:
             value.pop("turn", None)
         value.pop("visual_dropped", None)  # 只由这里写，模型自报的无效
+        value.pop("rejected_svg", None)
         value.pop("visual_error", None)
         raw_visual = value.pop("visual", None)
         if raw_visual not in (None, "", {}, []):
@@ -297,6 +299,7 @@ class TutorTurnCandidate(BaseModel):
                 except ValidationError as error:
                     value["visual_dropped"] = drop_reason(error)
                     value["visual_error"] = format_schema_error(error)
+                    value["rejected_svg"] = isinstance(raw_visual, dict) and raw_visual.get("kind") == "svg"
         for key in ("lesson", "lessons", *_LESSON_KEYS, "candidates"):
             value.pop(key, None)
         return value

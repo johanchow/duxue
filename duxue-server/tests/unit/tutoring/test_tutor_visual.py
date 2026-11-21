@@ -396,3 +396,11 @@ def test_svg_design_retry_cannot_change_the_original_problem_text():
     assert result.candidate.content == "先列 660 ÷ 130 的竖式。"
     assert result.candidate.visual is None
 
+
+
+def test_default_svg_namespace_is_metadata_and_links_are_still_rejected():
+    visual = dict(SVG, svg=SVG["svg"].replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" '))
+    normalized = cand(visual).visual
+    assert normalized is not None and "xmlns=" not in normalized.svg
+    external = visual["svg"].replace('fill="#E6F1FB"', 'fill="url(https://example.com/color)"')
+    assert cand(dict(visual, svg=external)).visual is None

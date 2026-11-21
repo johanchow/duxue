@@ -198,7 +198,7 @@ FUNCTION routerRedirectGuard(authState, targetPath):
 - **来源**：交互 `kind=text_visual` 的 `visual` part（见 [Companion 交互协议](domain-companion.md#52-companion-interaction-protocol)）；采用两层渲染架构，不引入 WebView 或可执行脚本。
 - **图型**：第一层为 Flutter 原生结构化图 `steps`、`compare`、`segment`（线段图）、`number_line`（数轴）；第二层为 `flutter_svg` 渲染的受限静态矢量图 `svg`（固定 `viewBox="0 0 680 H"`，渲染前由 `materializeSvgTheme` 将语义色板与 `var(--color-*)` 摊平为当前明暗主题色值），均位于 `lib/features/visual_block.dart`；窄屏、深色、系统字号放大可用。
 - **不信任输入**：先解析成纯 Dart 数据并复核预算（节点数、文字长度、未知量不带数值、SVG 禁止 `<script>`/`<foreignObject>`/`<style>`/外链/事件属性）；未知 `kind`、结构或预算不对就**整张不画**，文字照常展示，不报错、不弹窗。旧客户端遇到 `text_visual` 按协议降级为 `text`。
-- **无障碍**：`Semantics` 标签为 `alt`，`steps` 另按顺序线性化朗读，`svg` 附加图内 `<text>` 顺序拼接文本供读屏。
+- **无障碍**：`Semantics` 标签为 `alt`，`steps` 另按顺序线性化朗读，`svg` 附加图内 `<text>` 顺序拼接文本供读屏。原生 SVG 渲染前将路径端点的 marker 按切线方向展开为普通图形，支持轨道和旋转箭头。
 - **生命周期**：通过检查的 `visual` 随该轮 `CompanionMessage.interaction_ref` 写入消息 journal，在对应历史气泡内持久展示（进入新一轮对话或重新打开对话列表不会消失），但不会注入后续轮次传给大模型的对话上下文。
 - **与流式的关系**：当前伴学对话是一次请求返回完整交互，图随该交互一次性出现。若将来改为 SSE，`delta` 事件不得携带图的任何内容，只有最终 `interaction` 事件携带 `visual`。
 
@@ -220,7 +220,7 @@ FUNCTION routerRedirectGuard(authState, targetPath):
 
 Ward 的普通对话在收到转写终稿后提交原话与可选整理稿。答疑气泡展示整理稿，二者有差异时可点「查看原话」。今日总结和专注挑战的专用录音入口使用原始转写。接口字段及模型见[服务端语音设计](design-server.md#ward-实时转写与正式答复朗读)。
 
-可点读的 Agent 回复气泡提供「朗读／停止朗读」。「更多 → 自动朗读 Agent 回复」按 Ward 保存在设备上，默认关闭。文字或语音输入均可触发；自动播放按本次请求的 command_id 对应回复；翻历史不会触发播放。录音、收起对话、退出或切到后台会打断播放并使未完成的音频请求失效。现阶段下载完整 MP3 后调用播放器。移动端启用遥测时，`app.asr.final_latency` 记录松手到终稿，`app.tts.playback_latency` 记录发起朗读至原生播放器启动，两者单位均为毫秒。
+可点读的 Agent 回复气泡提供「朗读／停止朗读」。「更多 → 自动朗读 Agent 回复」按 Ward 保存在设备上，默认关闭。文字或语音输入均可触发；自动播放按本次请求的 command_id 对应回复；翻历史不会触发播放。录音、收起对话、退出或切到后台会打断播放并使未完成的音频请求失效。首次点读以鉴权请求接收 MP3 音频流，接入原生播放器；Android 初始缓冲目标 200 毫秒。完整接收的音频可在当前 Ward 页面内重复播放，最多缓存 4 条、每条最多 2 MiB；切换孩子、清空历史或退出页面会清理缓存。移动端启用遥测时，`app.asr.final_latency` 记录松手到终稿，`app.tts.playback_latency` 记录发起朗读至原生播放器启动，两者单位均为毫秒。
 
 ### 3.2 评估复盘：盲评锁闭与双轨对比时间轴手绘引擎
 

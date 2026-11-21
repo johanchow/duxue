@@ -101,9 +101,10 @@ def distinguish_negative_powers(text: str) -> str:
     return MATH_DELIMITERS.sub(spoken, text)
 
 
-async def tutor_audio(text: str) -> bytes:
+async def tutor_audio_frames(text: str):
     text = distinguish_negative_powers(text)
-    async with asyncio.timeout(25):
+    deadline = asyncio.get_running_loop().time() + 25
+    async with asyncio.timeout_at(deadline):
         parameters = {
             "text_type": "PlainText",
             "voice": settings.tutor_tts_voice,
@@ -120,19 +121,31 @@ async def tutor_audio(text: str) -> bytes:
         task = await SpeechTask.open(
             task="tts", function="SpeechSynthesizer", model=model, parameters=parameters
         )
-        try:
+    try:
+        async with asyncio.timeout_at(deadline):
             await task.command("continue-task", input={"text": text})
             await task.command("finish-task")
-            audio = bytearray()
-            async for frame in task.connection:
-                if isinstance(frame, bytes):
-                    audio.extend(frame)
-                    continue
-                event = json.loads(frame)["header"]["event"]
-                if event == "task-finished" and audio:
-                    return bytes(audio)
-                if event == "task-failed":
-                    break
-            raise RuntimeError("incomplete speech synthesis")
-        finally:
-            await task.close()
+        has_audio = False
+        frames = aiter(task.connection)
+        while True:
+            async with asyncio.timeout_at(deadline):
+                frame = await anext(frames, None)
+            if isinstance(frame, bytes):
+                if frame:
+                    has_audio = True
+                    yield frame
+                continue
+            if frame is None:
+                break
+            event = json.loads(frame)["header"]["event"]
+            if event == "task-finished" and has_audio:
+                return
+            if event == "task-failed":
+                break
+        raise RuntimeError("incomplete speech synthesis")
+    finally:
+        await task.close()
+
+
+async def tutor_audio(text: str) -> bytes:
+    return b"".join([chunk async for chunk in tutor_audio_frames(text)])

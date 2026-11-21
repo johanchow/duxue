@@ -508,7 +508,7 @@ def test_coordinator_persists_text_visual_in_companion_message_interaction_ref(d
     )
     assert utterances == [
         {"author": "ward", "text": "水循环是怎么回事"},
-        {"author": "companion", "text": "水先蒸发，再凝结，最后降下来。"},
+        {"author": "companion", "text": "水先蒸发，再凝结，最后降下来。", "shown_visual_kind": "steps"},
     ]
 
 

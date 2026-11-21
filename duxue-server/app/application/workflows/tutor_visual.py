@@ -213,6 +213,12 @@ _SVG_FORBIDDEN_RAW = re.compile(
     r"|/\*|position\s*:\s*fixed|\b(?:localStorage|sessionStorage|javascript:|data:)\b|https?:|www\.",
     re.I,
 )
+# Match complete attributes from the root start, so quoted text cannot masquerade
+# as the standard namespace declaration.
+_SVG_ROOT_NS = re.compile(
+    r"""^(<svg(?:\s+[^\s=/>]+\s*=\s*(?:"[^"]*"|'[^']*'))*?)"""
+    rf"""\s+xmlns\s*=\s*(["']){re.escape(_SVG_NS)}\2(?=\s|/?>)"""
+)
 _SVG_URL_REF = re.compile(r"url\(([^)]*)\)", re.I)
 _SVG_SAFE_FRAGMENT = re.compile(r"^['\"]?#[A-Za-z_][A-Za-z0-9_.-]*['\"]?$")
 _SVG_FONT_SIZE_CSS = re.compile(r"font-size\s*:\s*([0-9.]+)\s*(px|pt|em|rem)?", re.I)
@@ -256,6 +262,7 @@ def _validate_and_normalize_svg(raw_svg: str) -> str:
     code = _escape_svg_text_nodes(_SVG_STYLE_BLOCK.sub("", _SVG_XML_COMMENT.sub("", raw_svg)).strip())
     if len(code) > SVG_MAX_CHARS:
         raise ValueError("svg exceeds maximum character budget")
+    code = _SVG_ROOT_NS.sub(r"\1", code, count=1)
     if _SVG_FORBIDDEN_RAW.search(code):
         raise ValueError("svg contains forbidden markup or patterns")
     if not code.lower().startswith("<svg") or not code.lower().endswith("</svg>"):

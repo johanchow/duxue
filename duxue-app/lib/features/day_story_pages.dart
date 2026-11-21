@@ -208,7 +208,30 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   bool _playbackClaimed = false;
   StreamSubscription<void>? _playbackComplete;
 
+  CancelToken? _speechRequest;
+  final _replyAudio = <String, Uint8List>{};
+
+  Stream<List<int>> _cacheReply(Stream<Uint8List> frames, String key, int generation) async* {
+    final buffer = BytesBuilder(copy: false);
+    const maxBytes = 2 * 1024 * 1024;
+    var cacheable = true;
+    await for (final frame in frames) {
+      if (generation != _speechGeneration) return;
+      if (cacheable && buffer.length + frame.length > maxBytes) {
+        buffer.clear();
+        cacheable = false;
+      }
+      if (cacheable) buffer.add(frame);
+      yield frame;
+    }
+    if (cacheable && buffer.isNotEmpty && generation == _speechGeneration) {
+      if (_replyAudio.length >= 4) _replyAudio.remove(_replyAudio.keys.first);
+      _replyAudio[key] = buffer.takeBytes();
+    }
+  }
+
   Future<void> _stopSpeech() async {
+    _speechRequest?.cancel();
     _speechGeneration++;
     if (mounted && _readingId != null) setState(() => _readingId = null);
     if (_playbackClaimed) {
@@ -219,6 +242,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
 
   Future<void> _readReply(_ChatLine message) async {
     final latency = Stopwatch()..start();
+    _speechRequest?.cancel();
     final stopping = _readingId == message.id;
     final generation = ++_speechGeneration;
     setState(() => _readingId = stopping ? null : message.id);
@@ -227,9 +251,16 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     try {
       await playback.stop();
       if (stopping || !mounted || generation != _speechGeneration) return;
-      final bytes = await ref.read(apiProvider).companionSpeech(message.id!);
-      if (!mounted || generation != _speechGeneration) return;
-      await playback.playMp3(bytes);
+      final key = '${widget.wardId}/${message.id!}';
+      final cached = _replyAudio[key];
+      if (cached != null) {
+        await playback.playMp3(cached);
+      } else {
+        final cancel = _speechRequest = CancelToken();
+        final frames = await ref.read(apiProvider).companionSpeech(message.id!, cancel);
+        if (!mounted || generation != _speechGeneration) return;
+        await playback.playStream(_cacheReply(frames, key, generation));
+      }
       if (mounted && generation == _speechGeneration) {
         ref.read(telemetryProvider).recordMetric(
             'app.tts.playback_latency', latency.elapsedMilliseconds.toDouble());
@@ -286,8 +317,22 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     final playback = (widget.speechPlayback ?? DeviceSpeechPlayback.new)();
     _playbackComplete = playback.onComplete.listen((_) {
       if (mounted && _readingId != null) setState(() => _readingId = null);
+    }, onError: (Object error) {
+      if (mounted && _readingId != null) {
+        unawaited(_stopSpeech());
+        showMessage(context, '暂时无法朗读，请稍后重试');
+      }
     });
     return _speechPlayback = playback;
+  }
+
+  @override
+  void didUpdateWidget(covariant WardDayPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.wardId != widget.wardId) {
+      _replyAudio.clear();
+      unawaited(_stopSpeech());
+    }
   }
 
   @override
@@ -299,6 +344,8 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     cueRefresh?.cancel();
     sprintRefresh?.cancel();
     sprintCountdown.dispose();
+    _speechGeneration++;
+    _speechRequest?.cancel();
     _playbackComplete?.cancel();
     _speechPlayback?.dispose();
     super.dispose();
@@ -1002,6 +1049,8 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     try {
       await ref.read(apiProvider).clearCompanionHistory(_pendingClearCommand!);
       serverCleared = true;
+      _replyAudio.clear();
+      await _stopSpeech();
       if (!mounted) return;
       setState(() {
         _questionTiming?.finish('cancelled');

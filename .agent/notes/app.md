@@ -108,3 +108,5 @@ Guardian 用邮箱验证码注册和登录，不保存读学密码。Ward 使用
 - 2026-11-18 Guardian 问答双视角扩展已验收归档：`GuardianQuestionPage` 默认 `student_guide`（苏格拉底分步启发），支持切换 `guardian_explain`（导师完整解析）及从学生视角有效回复一键「查看本题导师解析」透传原题图文；两套视角使用独立 `_PerspectiveSession` 隔离消息、待发照片、未发草稿、签名 `stateToken` 与异步 `generation`，清空与迟到结果互不串台，320px 窄屏 1.4x 字号无溢出。产品与契约事实源见 [用户 PRD §7.2](../../docs/product/prd-user.md#72-家长问答体验) 与 [Companion 成人体验](../../docs/technical/domain-companion.md#guardian-问答体验2026-11-17-验收2026-11-18-扩展双视角)。验证：Flutter 全量 170 通过、`flutter analyze` 无问题；本地分支提交，不包含推送或发布授权。
 
 - 家庭共管已实现按登录邮箱邀请和共享同一份孩子档案。App 接受、退出、刷新共管列表或回到前台时刷新孩子列表。规则归 [家庭共管成员 PRD](../../docs/product/prd-user.md#54-家庭共管成员)，当前待人工验收。
+
+- 2026-11-21 Ward 点读改为首次流式、完整接收后会话内复用。真实消息 HTTP 首批音频 0.925 秒、收齐 4.074 秒；独立 Android 模拟器短文实测云端合成、原生首播就绪 2.042 秒、缓存重播就绪 38 毫秒，两次均完整结束。播放器就绪指标与扬声器实际首声有区别。Media3 读未知长度 MP3 时需要正确结束 HTTP 分块，否则可能从头重读。设计见[点读](../../docs/technical/design-app.md#3-提问转写与答疑朗读)。

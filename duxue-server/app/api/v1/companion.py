@@ -2,8 +2,9 @@ from app.api.deps import expose_turn_trace
 from .common import *
 from app.api.schemas import CompanionHistoryClearRequest
 from app.application.commands.companion_history import clear_history, history_is_visible, visible_threads
+from contextlib import aclosing
 from uuid import UUID
-from app.infrastructure.ai.speech_task import tutor_audio
+from app.infrastructure.ai.speech_task import tutor_audio, tutor_audio_frames
 from app.infrastructure.persistence.models import PlanDraft
 from app.application.workflows.planning_domain_service import PlanningDomainService
 from app.infrastructure.observability.telemetry import record_companion_rejection
@@ -115,7 +116,7 @@ def _readable_reply(row: CompanionMessage) -> bool:
 
 
 @router.get("/companion/messages/{message_id}/speech")
-async def companion_message_speech(message_id: UUID, principal: Principal = Depends(current_ward),
+async def companion_message_speech(message_id: UUID, stream: bool = False, principal: Principal = Depends(current_ward),
                                    db: Session = Depends(get_db)):
     row = _chat_messages(db).filter(CompanionMessage.id == str(message_id), CompanionMessage.ward_id == principal.user_id).one_or_none()
     if row is None or not history_is_visible(db, principal.user_id, row.thread_id):
@@ -125,6 +126,18 @@ async def companion_message_speech(message_id: UUID, principal: Principal = Depe
     text = row.content
     db.rollback()  # Release the read transaction before waiting on synthesis.
     try:
+        if stream:
+            frames = tutor_audio_frames(text)
+            first = await anext(frames)
+
+            async def body():
+                async with aclosing(frames):
+                    yield first
+                    async for frame in frames:
+                        yield frame
+
+            return StreamingResponse(body(), media_type="audio/mpeg",
+                                     headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
         audio = await tutor_audio(text)
     except Exception as error:
         raise HTTPException(503, "朗读服务暂不可用") from error

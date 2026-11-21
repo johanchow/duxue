@@ -678,6 +678,8 @@ class _TutoringTurn:
             tutoring_intent=self.turn.get("tutoring_intent"),
             self_review_aspects=self.review_aspects,
         )
+        if any(row.get("shown_visual_kind") for row in self.window):
+            instruction += "\n参考历史中实际展示的 shown_visual_kind。学生要求换成更直观的图时，选择能表现原理的图形，避免重复已有表格。"
         if self.prepared.target.ids:
             instruction += render_fragment("tutoring.turn", "image_review")
             if self.turn.get("tutoring_intent") == "compare_previous_image":

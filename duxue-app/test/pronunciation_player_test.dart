@@ -13,6 +13,13 @@ class _FakePlayback implements SpeechPlayback {
   int stops = 0;
 
   @override
+  Future<void> playStream(Stream<List<int>> frames) async {
+    final bytes = BytesBuilder();
+    await for (final frame in frames) { bytes.add(frame); }
+    await playMp3(bytes.takeBytes());
+  }
+
+  @override
   Future<void> playMp3(Uint8List bytes) async {
     played.add(bytes);
   }

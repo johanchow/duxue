@@ -267,7 +267,7 @@ def call_tutor_model(
             # Require the design system before accepting a model-drawn vector.
             best_candidate = candidate.model_copy(update={
                 "visual": None, "visual_dropped": "visual_invalid",
-                "visual_error": "svg generated without widget_guidelines",
+                "visual_error": "svg generated without widget_guidelines", "rejected_svg": True,
             })
             if repair is not None:
                 return result(best_candidate)
@@ -1004,7 +1004,9 @@ def run_tutor_turn(
 
     def finish(state):
         call, review = state["call"], state["vetting"]
-        if review is not None and review.failure is None and review.visual is None and review.visual_need in {"requested", "helpful"}:
+        if review is not None and review.failure is None and review.visual is None and (
+            review.visual_need in {"requested", "helpful"} or review.candidate.rejected_svg
+        ):
             review = replace(review, verdict=None, failure="visual_unavailable")
         failure = review.failure if review is not None else call.failure or INVALID_CANDIDATE
         if failure:
