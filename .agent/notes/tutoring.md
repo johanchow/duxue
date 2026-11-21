@@ -284,3 +284,8 @@
 - Langfuse 的 [teaching-correctness](https://us.cloud.langfuse.com/project/cmvfvorj601l6ad0jhvajth4c/datasets/cmwbz8j5y006jad0jzj4jffaq/items) 已收录 Guardian 试卷回归批次 `beijing-gaokao-2025-regression-v1`，14 条 ACTIVE，回读校验 16 张唯一原图。按原请求范围作答，按 expectedOutput 的单个题号核分；英语 36 和 39 可共享同一次首答。执行目标为 `guardian_explain`，通用评测器跳过该目标。
 
 - Guardian 提高输出预算并收紧交付提示后，第 21 题真实首答可交付。自动复核对两道无效证明给满，需要按原答逐行核对奇偶转移和路径计数。见 [更新后单题复测](../../duxue-server/var/exams/math-q21-updated.r8r6my/REPORT.md)。
+
+- 2026-11-21 Guardian 导师延迟评估：直出入口仍同步依赖解题结果，同题追问重新读题求解。候选优化优先评估已确认同题且条件未变时复用已核验结果；图片相同不足以证明题目相同。数学与物理 v2 首答基线分别见[数学复测](../../duxue-server/var/exams/beijing-2025-math-current.YGPpNu/REPORT.md)与[物理复测](../../duxue-server/var/exams/beijing-2025-physics-current.9dlgqq/REPORT.md)，旧版主求解截断率不能代作当前基线。仅评估，未实施。
+- 补查 Guardian 候选项：物理 v2 整卷工具回传中带 crop_ref 的记录全部属于 blueprint-planner，未观察到 extract 切片在主解中重裁，后续按跨阶段重复率决定优先级。[工具记录](../../duxue-server/var/exams/beijing-2025-physics-current.9dlgqq/tool-events.jsonl)。数学 Q21 的 8000 字符快照恢复交付但仍耗时 78.78 秒，属于契约兼容性证据。[单题复测](../../duxue-server/var/exams/math-q21-updated.r8r6my/REPORT.md)。
+
+- Guardian 导师直出父图已导入测试 Admin 工作草稿 revision 13。蓝图作为子流程执行，父图快照约束讲解重试，模型配置与求解输入沿用原快照。Admin 调试能力按讲解 Agent 是否存在判定；以审核 Agent 判定会隐藏直出流程调试。见[导师直出设计](../../docs/technical/domain-companion.md#admin-导师解析直出链路方案-a)与[验收记录](../specs/guardian-mentor-parent.md)。

@@ -122,7 +122,9 @@ def _expanded_content_prompt(template: str) -> str:
     )
 
 
-def workflow_documents() -> dict[str, dict]:
+def workflow_documents(*, linked_blueprint: bool = False) -> dict[str, dict]:
+    if linked_blueprint:
+        return {f"workflows/{MENTOR_WORKFLOW_ID}.json": parent_workflow()}
     return {
         f"workflows/{MENTOR_WORKFLOW_ID}.json": {
             "kind": "workflow",
@@ -141,6 +143,38 @@ def workflow_documents() -> dict[str, dict]:
                 {"from": f"{MENTOR_WORKFLOW_ID}.explain", "to": "END"},
             ],
         }
+    }
+
+
+MENTOR_PREPARE = "guardian-mentor.prepare"
+MENTOR_BLUEPRINT = "guardian-mentor.blueprint"
+MENTOR_EXPLAIN_NODE = "guardian-mentor.explain"
+MENTOR_FINISH = "guardian-mentor.finish"
+MENTOR_PARENT_BRANCHES = {"solve", "deliver", "retry"}
+
+
+def parent_workflow():
+    from app.agent_specs.blueprint_steps import WORKFLOW_ID
+
+    return {
+        "kind": "workflow", "id": MENTOR_WORKFLOW_ID, "handler": MENTOR_WORKFLOW_ID,
+        "entry": MENTOR_PREPARE,
+        "limits": {"model_calls": 2},
+        "nodes": [
+            {"id": MENTOR_PREPARE, "kind": "action", "handler_id": MENTOR_PREPARE, "display_name": "安全检查与选图"},
+            {"id": MENTOR_BLUEPRINT, "kind": "workflow", "ref": WORKFLOW_ID, "display_name": "读题、求解与核验"},
+            {"id": MENTOR_EXPLAIN_NODE, "kind": "agent", "ref": MENTOR_EXPLAIN_ID, "display_name": "导师讲解"},
+            {"id": MENTOR_FINISH, "kind": "action", "handler_id": MENTOR_FINISH, "display_name": "校验并交付"},
+        ],
+        "edges": [
+            {"from": "START", "to": MENTOR_PREPARE},
+            {"from": MENTOR_PREPARE, "to": MENTOR_BLUEPRINT, "condition_id": "solve"},
+            {"from": MENTOR_PREPARE, "to": MENTOR_FINISH, "condition_id": "deliver"},
+            {"from": MENTOR_BLUEPRINT, "to": MENTOR_EXPLAIN_NODE},
+            {"from": MENTOR_EXPLAIN_NODE, "to": MENTOR_EXPLAIN_NODE, "condition_id": "retry"},
+            {"from": MENTOR_EXPLAIN_NODE, "to": MENTOR_FINISH, "condition_id": "deliver"},
+            {"from": MENTOR_FINISH, "to": "END"},
+        ],
     }
 
 
@@ -451,12 +485,12 @@ def normalize_review_shape(payload):
 
 
 def direct_mentor_workflow(files):
-    """Restore direct single-node `guardian-mentor` workflow without blocking LLM draft review."""
+    """Select direct delivery and link the staged blueprint when the snapshot provides it."""
+    from app.agent_specs.blueprint_steps import EXTRACT
+
     files.pop(f"gates/{MENTOR_REVIEW_ID}.json", None)
     files.pop(f"agents/{MENTOR_REPAIR_ID}.json", None)
-    files[f"workflows/{MENTOR_WORKFLOW_ID}.json"] = workflow_documents()[
-        f"workflows/{MENTOR_WORKFLOW_ID}.json"
-    ]
+    files.update(workflow_documents(linked_blueprint=f"agents/{EXTRACT}.json" in files))
     explain_path = f"agents/{MENTOR_EXPLAIN_ID}.json"
     if explain_path in files:
         explain = files[explain_path]

@@ -698,6 +698,7 @@ def execute_blueprint(
     allow_upgrade=True,
     question=None,
     bank_lookup=None,
+    workflow_spec=None,
 ):
     """Run the pinned topology; workers with a prepared stem resume at selection."""
     from app.agent_specs import blueprint_steps as steps
@@ -885,7 +886,7 @@ def execute_blueprint(
         }
 
     execute_workflow(
-        load_catalog().spec(steps.WORKFLOW_ID),
+        workflow_spec or load_catalog().spec(steps.WORKFLOW_ID),
         handlers={
             steps.EXTRACT: extract,
             steps.ROUTE: choose,

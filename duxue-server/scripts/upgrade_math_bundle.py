@@ -204,6 +204,7 @@ def upgrade(
         if "[gaokao-blueprint-science.v1]" not in tutor["prompt"]["template"]:
             tutor["prompt"]["template"] += GAOKAO_TUTOR_ADDITION
     if guardian_mentor:
+        from app.agent_specs.blueprint_steps import EXTRACT
         from app.agent_specs.guardian_contracts import (
             MENTOR_EXPLAIN_ID,
             provision_mentor_explain,
@@ -212,7 +213,7 @@ def upgrade(
             workflow_documents as mentor_workflows,
         )
 
-        files.update(copy.deepcopy(mentor_workflows()))
+        files.update(mentor_workflows(linked_blueprint=f"agents/{EXTRACT}.json" in files))
         primary_tutor_model = tutor["models"][0]["name"]
         files[f"agents/{MENTOR_EXPLAIN_ID}.json"] = provision_mentor_explain(
             model=primary_tutor_model,

@@ -11,16 +11,23 @@ from app.agent_specs.admin_bundle import compile_bundle, contract_compatibility
 from app.agent_specs.guardian_contracts import (
     MENTOR_REVIEW_ID,
     direct_mentor_workflow,
+    parent_workflow,
     simplify_mentor_review,
     stage_mentor_review,
 )
 
 
-def upgrade(record, *, simplify=False, direct=False):
+def upgrade(record, *, simplify=False, direct=False, parent=False):
     bundle = deepcopy(record["bundle"])
     if compile_bundle(bundle).digest != record["digest"]:
         raise ValueError("source digest mismatch")
-    if direct:
+    if parent:
+        files = bundle["files"]
+        path = "workflows/guardian-mentor.json"
+        if path not in files or f"gates/{MENTOR_REVIEW_ID}.json" in files:
+            raise ValueError("guardian parent upgrade requires a direct mentor workflow")
+        files[path] = parent_workflow()
+    elif direct:
         direct_mentor_workflow(bundle["files"])
     elif simplify:
         simplify_mentor_review(bundle["files"])
@@ -44,8 +51,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path)
     parser.add_argument("output", type=Path)
-    parser.add_argument("--simplify", action="store_true")
-    parser.add_argument("--direct", action="store_true")
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--parent", action="store_true", help="Link the direct mentor to its staged blueprint")
+    modes.add_argument("--simplify", action="store_true")
+    modes.add_argument("--direct", action="store_true")
     args = parser.parse_args()
     args.output.write_text(
         json.dumps(
@@ -53,6 +62,7 @@ if __name__ == "__main__":
                 json.loads(args.source.read_text()),
                 simplify=args.simplify,
                 direct=args.direct,
+                parent=args.parent,
             ),
             ensure_ascii=False,
         )

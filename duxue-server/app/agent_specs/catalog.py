@@ -261,13 +261,21 @@ class AgentCatalog:
                 raise ValueError("gaokao blueprint required protocol node changed")
             from app.agent_specs import guardian_contracts as mentor
             mentor_staged = spec.id == mentor.MENTOR_WORKFLOW_ID and mentor.MENTOR_REVIEW_ID in load_definitions().units
+            mentor_parent = spec.id == mentor.MENTOR_WORKFLOW_ID and spec.entry == mentor.MENTOR_PREPARE
+            if mentor_parent:
+                expected = mentor.parent_workflow()
+                actual = spec.model_dump(by_alias=True, exclude_defaults=True)
+                if (mentor_staged or blueprint_steps.EXTRACT not in load_definitions().units
+                        or any(actual.get(key) != expected[key] for key in ("nodes", "edges"))
+                        or not 1 <= spec.limits.get("model_calls", 0) <= 2 or spec.required_gates):
+                    raise ValueError("invalid guardian mentor parent topology or budget")
             if mentor_staged:
                 expected = (mentor.staged_workflow() if mentor.MENTOR_REPAIR_ID in load_definitions().units
                             else mentor.simple_workflow())
                 actual = spec.model_dump(by_alias=True, exclude_defaults=True)
                 if any(actual[key] != expected[key] for key in ("entry", "nodes", "edges")) or spec.required_gates:
                     raise ValueError("guardian mentor required review topology changed")
-            if not mentor_staged and spec.id in GUARDIAN_MENTOR_WORKFLOWS and [n.ref for n in spec.nodes] != GUARDIAN_MENTOR_WORKFLOWS[spec.id]:
+            if not mentor_parent and not mentor_staged and spec.id in GUARDIAN_MENTOR_WORKFLOWS and [n.ref for n in spec.nodes] != GUARDIAN_MENTOR_WORKFLOWS[spec.id]:
                 raise ValueError("guardian mentor required protocol node changed")
             registration = (
                 {'conditions': {'eligible','ineligible'} if spec.id == 'behavior-observation' else set(), 'handlers':set()}
@@ -278,13 +286,16 @@ class AgentCatalog:
                 registration = {"handlers": {blueprint_steps.FINISH}, "conditions": set(blueprint_steps.CONDITIONS)}
             if mentor_staged:
                 registration = {"handlers": {mentor.MENTOR_DELIVER_ID}, "conditions": mentor.MENTOR_BRANCHES}
+            if mentor_parent:
+                registration = {"handlers": {mentor.MENTOR_PREPARE, mentor.MENTOR_FINISH},
+                                "conditions": mentor.MENTOR_PARENT_BRANCHES}
             expected_handler = "coordinator" if spec.id == "companion" else spec.id
             if spec.handler != expected_handler:
                 raise ValueError(f"{spec.id}: workflow handler must match its domain")
             handlers = {node.handler for node in spec.nodes if node.handler}
             conditions = {edge.condition for edge in spec.edges if edge.condition}
             conditions.update(gate["when"] for gate in spec.required_gates)
-            if calls[spec.id]:
+            if calls[spec.id] and not mentor_parent:
                 bindings = {node.id: node.ref for node in spec.nodes if node.kind == "workflow"}
                 if spec.id != "tutoring" or bindings != CALL_TARGETS:
                     raise ValueError("unknown subworkflow binding")
