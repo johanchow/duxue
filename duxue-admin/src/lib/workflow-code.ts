@@ -61,10 +61,63 @@ const actions: Record<string, Record<string, CodeLogic>> = {
     },
   },
   tutoring: {
+    'tutoring.intake': {
+      title: '检查输入与会话状态',
+      summary:
+        '检查当前会话、已有题目和本轮输入，返回输入安全与孩子主动确认的结果。',
+    },
+    'tutoring.close': {
+      title: '结束答疑',
+      summary: '关闭当前答疑会话，记录结束事实并返回会话引用。',
+    },
+    'tutoring.blocked_input': {
+      title: '处理受限输入',
+      summary: '记录本轮提问，并向孩子展示预设安全提示。',
+    },
+    'tutoring.understood': {
+      title: '记录孩子确认',
+      summary: '保存孩子自己确认已理解的事实，并返回当前题目状态。',
+    },
+    'tutoring.media_access': {
+      title: '检查图片归属',
+      summary: '检查所有附件键是否属于当前孩子。',
+    },
+    'tutoring.reject_media': {
+      title: '提示重新拍照',
+      summary: '附件授权检查未通过时，请孩子重新上传。',
+    },
+    'tutoring.clarify_image': {
+      title: '澄清图片指代',
+      summary: '请孩子指出要检查哪张照片，或补传未读取成功的图片。',
+    },
+    'tutoring.self_review': {
+      title: '读取近期自述',
+      summary: '存在任务时，按孩子和任务读取近期自述，供本轮教学使用。',
+    },
+    'tutoring.answer': {
+      title: '交付审核后的回复',
+      summary: '按本轮教学结果记录消息与学习事实，投影已通过检查的配图。',
+    },
+    'tutoring.fallback': {
+      title: '返回审核兜底',
+      summary: '依据失败类型返回预设反馈，保留题目进度。',
+    },
+    'tutoring.blocked_output': {
+      title: '替换受限输出',
+      summary: '记录安全拦截，交付预设提示。',
+    },
+    'tutoring.pronounce': {
+      title: '展示发音',
+      summary: '投影发音课卡，并保留上下文来源。',
+    },
+    'tutoring.clarify': {
+      title: '澄清问题',
+      summary: '展示需要澄清的问题和候选项，等待孩子回复。',
+    },
+
     'tutoring.turn': {
       title: '准备答疑上下文',
-      summary:
-        '读取本轮问题、授权图片和已有题目状态。需要判断指代图片时，先进入图片定位，再把选定题面交给答疑流程。',
+      summary: '加载孩子的上下文和当前会话，识别本轮是否要求结束答疑。',
     },
     'tutoring.model_loop': {
       title: '编排答疑生成与重试',
@@ -83,8 +136,7 @@ const actions: Record<string, Record<string, CodeLogic>> = {
     },
     'tutoring.result': {
       title: '整理并返回答疑结果',
-      summary:
-        '生成孩子看到的回复和下一步交互。正常辅导按规则保存本轮记录，发音和澄清可直接返回，审核失败时使用安全兜底。',
+      summary: '返回已经准备好的答疑结果和下一步交互。',
     },
   },
   'tutoring-retry': {

@@ -38,7 +38,7 @@ test('offline upgrade refuses concurrent edits, changed release and unrelated dr
 });
 
 import { upgradedWorkflowBaseline } from '../src/lib/config-upgrade';
-import { requireUnchangedWorkflows } from '../src/lib/workflow-policy';
+import { requireAuthorizedWorkflowChanges } from '../src/lib/workflow-policy';
 test('validated migration adopts topology without erasing component change baseline', () => {
   const before = {
     files: {
@@ -54,14 +54,14 @@ test('validated migration adopts topology without erasing component change basel
     },
   };
   const baseline = upgradedWorkflowBaseline(before, after);
-  assert.doesNotThrow(() => requireUnchangedWorkflows(after, baseline));
+  assert.doesNotThrow(() => requireAuthorizedWorkflowChanges(after, baseline));
   assert.equal(baseline.files['agents/new.json'], undefined);
   assert.deepEqual(
     baseline.files['agents/old.json'],
     before.files['agents/old.json'],
   );
   assert.throws(() =>
-    requireUnchangedWorkflows(
+    requireAuthorizedWorkflowChanges(
       { files: { ...after.files, 'workflows/new.json': { nodes: [] } } },
       baseline,
     ),

@@ -269,13 +269,13 @@ export default function Studio() {
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
   }, [dirty]);
-  function edit(next: Doc) {
+  function edit(next: Doc, targetFile = file) {
     if (!canEdit) return;
     setDraft({
       ...draft!,
       bundle: {
         ...draft!.bundle,
-        files: { ...draft!.bundle.files, [file]: next },
+        files: { ...draft!.bundle.files, [targetFile]: next },
       },
     });
     setDirty(true);
@@ -1521,6 +1521,116 @@ export default function Studio() {
                   : '未找到此 Action，请返回流程图。'}
               </p>
             </section>
+          ))}
+        {tab === 'flow-detail' &&
+          entityId === 'tutoring' &&
+          canEdit &&
+          workflowCatalog?.workflows.tutoring?.execution === 'turn_graph' &&
+          (draftId && draft ? (
+            <section>
+              <h2>答疑执行路径</h2>
+              <label>
+                新会话使用主图的比例（%）
+                <input
+                  disabled={busy}
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={
+                    workflowCatalog.workflows.tutoring.rollout_percent ?? 0
+                  }
+                  onChange={(e) =>
+                    edit(
+                      {
+                        ...workflowCatalog.workflows.tutoring,
+                        rollout_percent: Number(e.target.value),
+                      },
+                      'workflows/tutoring.json',
+                    )
+                  }
+                />
+              </label>
+              <label>
+                题目上下文
+                <select
+                  disabled={busy}
+                  value={
+                    workflowCatalog.workflows.tutoring.edges.find(
+                      (edge: Doc) =>
+                        edge.from === 'tutoring.image_target' &&
+                        edge.condition_id === 'resolved',
+                    )?.to
+                  }
+                  onChange={(e) => {
+                    const flow = workflowCatalog.workflows.tutoring;
+                    edit(
+                      {
+                        ...flow,
+                        edges: flow.edges.map((edge: Doc) =>
+                          edge.from === 'tutoring.image_target' &&
+                          edge.condition_id === 'resolved'
+                            ? { ...edge, to: e.target.value }
+                            : edge,
+                        ),
+                      },
+                      'workflows/tutoring.json',
+                    );
+                  }}
+                >
+                  <option value="tutoring.self_review">
+                    按任务读取近期自述
+                  </option>
+                  <option value="tutoring.model_loop">直接生成</option>
+                </select>
+              </label>
+              {workflowCatalog.workflows.tutoring.edges.map(
+                (edge: Doc, index: number) =>
+                  edge.from !== 'tutoring.result' &&
+                  (edge.to === 'tutoring.result' || edge.to === 'END') && (
+                    <label key={edge.from}>
+                      {edge.from} 的出口
+                      <select
+                        disabled={busy}
+                        value={edge.to}
+                        onChange={(e) => {
+                          const flow = workflowCatalog.workflows.tutoring;
+                          edit(
+                            {
+                              ...flow,
+                              edges: flow.edges.map((row: Doc, i: number) =>
+                                i === index
+                                  ? { ...row, to: e.target.value }
+                                  : row,
+                              ),
+                            },
+                            'workflows/tutoring.json',
+                          );
+                        }}
+                      >
+                        <option value="tutoring.result">经过结果节点</option>
+                        <option value="END">直接结束</option>
+                      </select>
+                    </label>
+                  ),
+              )}
+              <button disabled={busy || !dirty} onClick={() => action(save)}>
+                保存草稿
+              </button>
+            </section>
+          ) : (
+            !pinnedReleaseId && (
+              <button
+                disabled={busy}
+                onClick={() =>
+                  action(async () => {
+                    const current = await api('drafts', 'POST', {});
+                    navigate('/workflows/tutoring?draft=' + current.id);
+                  })
+                }
+              >
+                编辑答疑路径
+              </button>
+            )
           ))}
         {tab === 'flow-detail' &&
           (pinnedReleaseId || draftId) &&

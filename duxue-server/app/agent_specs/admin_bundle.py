@@ -96,7 +96,9 @@ def contract_compatibility(files: dict) -> str:
                   **(gaokao_contracts() if has_gaokao else {}),
                   **(guardian_mentor_contracts(files) if has_mentor else {}),
                   **(staged_contracts(include_repair=f"agents/{MENTOR_REPAIR_ID}.json" in files) if f"gates/{MENTOR_REVIEW_ID}.json" in files else {}),
-                  **{name: doc for name, doc in files.items() if name in WORKFLOW_FILES or (has_obs and name in {f"workflows/{key}.json" for key in OBSERVATION_WORKFLOWS}) or (has_gaokao and name in {f"workflows/{key}.json" for key in GAOKAO_WORKFLOWS}) or (has_mentor and name in {f"workflows/{key}.json" for key in GUARDIAN_MENTOR_WORKFLOWS})}},
+                  **{name: ({k: v for k, v in doc.items() if k not in {"edges", "rollout_percent"}}
+                            if name == "workflows/tutoring.json" and doc.get("execution") == "turn_graph" else doc)
+                     for name, doc in files.items() if name in WORKFLOW_FILES or (has_obs and name in {f"workflows/{key}.json" for key in OBSERVATION_WORKFLOWS}) or (has_gaokao and name in {f"workflows/{key}.json" for key in GAOKAO_WORKFLOWS}) or (has_mentor and name in {f"workflows/{key}.json" for key in GUARDIAN_MENTOR_WORKFLOWS})}},
         "handlers": {key: {field: sorted(items) for field, items in value.items()}
                      for key, value in WORKFLOW_BINDINGS.items()},
         "protocol": 3,

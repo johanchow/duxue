@@ -142,6 +142,9 @@ class CompanionCoordinator:
             id=run_id, thread_id=thread.id, ward_id=thread.ward_id,
             agent_type=decision.target, run_ref=f"agent_run:{run_id}", attempt=1,
         )
+        if decision.target == "tutoring":
+            from app.agent_specs.tutoring_paths import new_run_version
+            run.graph_version = new_run_version(load_catalog().spec("tutoring"), run_id)
         if decision.target == "planning" and focus_run and focus_run.agent_type == "tutoring":
             run.outcome = {"sprint_return_ref": focus_run.run_ref}
         elif decision.target == "planning" and previous and previous.agent_type == "planning" and return_ref:
@@ -504,6 +507,8 @@ class CompanionCoordinator:
             )
             return result
 
+        if run.agent_type == "tutoring":
+            turn = {**turn, "tutoring_graph_version": run.graph_version}
         invocation = RunInvocation(
             run_id=run.id, thread_id=thread.id, ward_id=ward_id, agent_type=run.agent_type,
             turn=turn, turn_id=run.current_turn_id, command_id=command_id, attempt=run.attempt,

@@ -40,3 +40,5 @@ Ward 可见对话是 Companion 的 append-only 账本，统一走 `/companion/tu
 - 2026-11-04 答疑内图标已复用Study只读挑战预览，保留对话。自然语言路径回归发现挑战后继续原题会新建Run，已增加服务端受控的原Run恢复引用，只在Sprint交互后恢复同Thread/Ward的paused Tutoring Run；不凭客户端引用恢复。契约归[Companion设计](../../docs/technical/domain-companion.md#答疑中的挑战插曲2026-11-04本轮待验收)。
 
 - 2026-11-04 真机发现初路由能识别挑战但独立scene-switch因原题未结束而拒绝，导致明确挑战请求被当作答疑。scene-switch.system.v2允许保留原题的挑战/提醒插曲，仍拒绝仅估时和解题续答；真实模型红绿验证及可重复CLI见 `duxue-server/scripts/check_reminder_sprint_models.py`。
+
+- 2026-11-21 答疑主图按发布边执行。灰度绑定既有 Run 的 graph_version，回放由执行器记录；改边回归须从真实入口验证可选数据读取和审核访问。设计见[答疑主图的执行与切换](../../docs/technical/domain-tutoring.md#13-答疑主图的执行与切换)。测试环境已验证发布、并发重放与回滚；物理手机接口和安卓模拟器界面证据见[验收清单](../specs/tutoring-json-execution.md)。

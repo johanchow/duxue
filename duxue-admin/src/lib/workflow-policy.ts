@@ -1,18 +1,32 @@
 import { isDeepStrictEqual } from 'node:util';
 import { ApiError } from './auth';
 
-// Read-only is a management policy. The baseline is the Admin draft/release,
-// never a second copy of the topology in the Server repository.
-export function requireUnchangedWorkflows(bundle: any, baseline: any) {
+const tutoring = 'workflows/tutoring.json';
+
+export function requireAuthorizedWorkflowChanges(bundle: any, baseline: any) {
+  const allowEdges = baseline?.files?.[tutoring]?.execution === 'turn_graph';
   const workflows = (value: any) =>
     Object.fromEntries(
-      Object.entries(value?.files || {}).filter(([name]) =>
-        name.startsWith('workflows/'),
-      ),
+      Object.entries(value?.files || {})
+        .filter(([name]) => name.startsWith('workflows/'))
+        .map(([name, doc]) => {
+          if (
+            allowEdges &&
+            name === tutoring &&
+            doc &&
+            typeof doc === 'object'
+          ) {
+            const { edges, rollout_percent, ...contract } = doc as Record<
+              string,
+              unknown
+            >;
+            if (!Array.isArray(edges))
+              throw new ApiError(400, '缺少答疑主流程路径');
+            return [name, contract];
+          }
+          return [name, doc];
+        }),
     );
   if (!isDeepStrictEqual(workflows(bundle), workflows(baseline)))
-    throw new ApiError(
-      400,
-      'Workflow 当前只支持查看，不能通过草稿修改流程配置',
-    );
+    throw new ApiError(400, '只能修改已升级答疑主流程的路径');
 }
