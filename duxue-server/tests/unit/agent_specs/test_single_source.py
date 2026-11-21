@@ -318,3 +318,45 @@ def test_thinking_model_parameters_compile_without_breaking_compatibility():
     model = compiled.catalog.units['tutoring.turn'].models[0]
     assert model.enable_thinking is True
     assert model.thinking_budget == 4096
+
+
+def test_online_source_rejects_files_and_production_working_draft(monkeypatch):
+    from app.agent_specs.release_runtime import configured_runtime
+    monkeypatch.setenv("AGENT_CONFIG_SOURCE", "snapshot")
+    with pytest.raises(ValueError, match="必须从 Admin"):
+        configured_runtime()
+    monkeypatch.setenv("AGENT_CONFIG_SOURCE", "admin")
+    monkeypatch.setenv("AGENT_CONFIG_CHANNEL", "working-draft")
+    monkeypatch.setenv("AGENT_CONFIG_SOURCE_URL", "http://localhost/api/internal")
+    monkeypatch.setenv("AGENT_ADMIN_INTERNAL_TOKEN", "x"*32)
+    monkeypatch.setenv("APP_ENV", "production")
+    with pytest.raises(ValueError, match="工作草稿"):
+        configured_runtime()
+
+
+def test_local_preview_reads_revisions_from_admin_only(tmp_path, monkeypatch):
+    import httpx
+    from app.agent_specs.release_runtime import WorkingDraftRuntime
+    bundle = snapshot_bundle()
+    draft = {"id": "draft", "revision": 15, "bundle": bundle}
+    data = {"environment": "test", "draft": draft}
+    def get(url, **kwargs):
+        body = data if url.endswith("/working-draft") else {
+            "environment": "test", "generation": 2, "release": {
+                "id": "r1", "bundle": bundle, "digest": compile_bundle(bundle).digest}}
+        return httpx.Response(200, json=body, request=httpx.Request("GET", url))
+    monkeypatch.setattr(httpx, "get", get)
+    path = tmp_path/"unused.json"
+    preview = WorkingDraftRuntime("http://localhost/api/internal", "token", path)
+    preview.tick()
+    assert preview.current[0]["revision"] == 15
+    draft["revision"] = 16
+    preview.tick()
+    assert preview.current[0]["revision"] == 16
+    data["draft"] = None
+    preview.tick()
+    assert preview.current[0]["kind"] == "release"
+    assert not path.exists()
+    data["environment"] = "prod"
+    preview.tick()
+    assert preview.current is None

@@ -63,6 +63,13 @@ class LocalStorage:
             raise HTTPException(413, "image exceeds gateway limit")
         return data
 
+    def write_reviewed_photo(self, key: str, data: bytes) -> None:
+        try:
+            self.write_uploaded(key, data, immutable=True)
+        except HTTPException as exc:
+            if exc.status_code != 409:
+                raise
+
     def write_uploaded(self, key: str, data: bytes, *, immutable: bool = False) -> None:
         path = self.path(key)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -133,6 +140,13 @@ class OssStorage:
         url = self.public_bucket.sign_url("PUT", key, lifetime, headers=headers)
         return url, expires, headers
 
+    def write_reviewed_photo(self, key: str, data: bytes) -> None:
+        from oss2.exceptions import OssError
+        try:
+            self.internal_bucket.put_object(key, data, headers={"Content-Type": "image/jpeg"})
+        except OssError as exc:
+            raise OSError("reviewed photo upload failed") from exc
+
     def read_limited(self, key: str, maximum: int) -> bytes:
         try:
             result = self.internal_bucket.get_object(key)
@@ -166,3 +180,9 @@ camera_storage = OssStorage(
     public_endpoint=settings.oss_camera_endpoint,
     internal_endpoint=settings.oss_camera_endpoint_internal,
 ) if settings.storage_backend == "oss" else storage
+
+
+def save_reviewed_photo(ward_id: str, jpeg: bytes) -> str:
+    key = f"ward/{ward_id}/search-photos/{hashlib.sha256(jpeg).hexdigest()}.jpg"
+    storage.write_reviewed_photo(key, jpeg)
+    return key

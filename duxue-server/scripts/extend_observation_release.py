@@ -28,10 +28,16 @@ def upgrade(record, *, model=None, activity_prompt=None, support_prompt=None):
     }
     # Only registered extension files may be migrated. All unrelated configuration
     # must still pass the existing complete baseline compiler, unchanged.
+    from app.agent_specs.reminder_policy import FILE as policy_path
+    if policy_path in bundle["files"]:
+        # The optional policy also changes the planning / VLM contracts.
+        # Validate that complete version as a unit before refreshing components.
+        compile_bundle(bundle)
     for name in FILES | LEGACY_FILES:
         bundle["files"].pop(name, None)
-    bundle["compatibility"] = contract_compatibility(bundle["files"])
-    compile_bundle(bundle)
+    if policy_path not in bundle["files"]:
+        bundle["compatibility"] = contract_compatibility(bundle["files"])
+        compile_bundle(bundle)
     for identifier, prompt in [
         ("behavior.visible-activity", activity_prompt),
         ("behavior.support-opportunity", support_prompt),

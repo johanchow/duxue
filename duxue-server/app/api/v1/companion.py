@@ -2,7 +2,10 @@ from app.api.deps import expose_turn_trace
 from .common import *
 from app.api.schemas import CompanionHistoryClearRequest
 from app.application.commands.companion_history import clear_history, history_is_visible, visible_threads
+from contextlib import aclosing
+import re
 from uuid import UUID
+from app.infrastructure.ai.speech_task import tutor_audio, tutor_audio_frames
 from app.infrastructure.persistence.models import PlanDraft
 from app.application.workflows.planning_domain_service import PlanningDomainService
 from app.infrastructure.observability.telemetry import record_companion_rejection
@@ -87,7 +90,7 @@ def companion_message_image(
     except ValueError:
         raise HTTPException(404, "companion image not found") from None
     message = db.get(CompanionMessage, message_id)
-    if message is None or message.ward_id != principal.user_id or message.author_type != "ward":
+    if message is None or message.ward_id != principal.user_id:
         raise HTTPException(404, "companion image not found")
     if not history_is_visible(db, principal.user_id, message.thread_id):
         raise HTTPException(404, "companion image not found")
@@ -97,7 +100,11 @@ def companion_message_image(
     key = refs[index]
     suffix = key.rsplit(".", 1)[-1].lower() if isinstance(key, str) else ""
     media_types = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}
-    if not _valid_companion_attachment_key(principal.user_id, key) or suffix not in media_types:
+    valid = message.author_type == "ward" and _valid_companion_attachment_key(principal.user_id, key)
+    if message.author_type == "companion" and isinstance(key, str):
+        prefix = f"ward/{principal.user_id}/search-photos/"
+        valid = key.startswith(prefix) and re.fullmatch(r"[0-9a-f]{64}\.jpg", key[len(prefix):]) is not None
+    if not valid or suffix not in media_types:
         raise HTTPException(404, "companion image not found")
     if not storage.exists(key):
         raise HTTPException(404, "companion image not found")
@@ -108,14 +115,57 @@ def companion_message_image(
     return Response(content=content, media_type=media_types[suffix], headers={"Cache-Control": "private, max-age=300"})
 
 
+def _readable_reply(row: CompanionMessage) -> bool:
+    return (row.author_type == "companion" and bool(row.content.strip())
+            and (row.interaction_ref or {}).get("kind") != "pronunciation_lesson")
+
+
+@router.get("/companion/messages/{message_id}/speech")
+async def companion_message_speech(message_id: UUID, stream: bool = False, principal: Principal = Depends(current_ward),
+                                   db: Session = Depends(get_db)):
+    row = _chat_messages(db).filter(CompanionMessage.id == str(message_id), CompanionMessage.ward_id == principal.user_id).one_or_none()
+    if row is None or not history_is_visible(db, principal.user_id, row.thread_id):
+        raise HTTPException(404, "reply unavailable")
+    if not _readable_reply(row):
+        raise HTTPException(404, "reply unavailable")
+    text = row.content
+    db.rollback()  # Release the read transaction before waiting on synthesis.
+    try:
+        if stream:
+            frames = tutor_audio_frames(text)
+            first = await anext(frames)
+
+            async def body():
+                async with aclosing(frames):
+                    yield first
+                    async for frame in frames:
+                        yield frame
+
+            return StreamingResponse(body(), media_type="audio/mpeg",
+                                     headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
+        audio = await tutor_audio(text)
+    except Exception as error:
+        raise HTTPException(503, "朗读服务暂不可用") from error
+    return Response(content=audio, media_type="audio/mpeg", headers={"Cache-Control": "no-store"})
+
+
 def _serialize_message(row: CompanionMessage) -> dict:
     return {
         "id": row.id, "thread_id": row.thread_id, "run_id": row.run_id,
         "turn_id": row.turn_id, "attempt": row.attempt, "command_id": row.command_id,
         "thread_version": row.thread_version, "author_type": row.author_type,
-        "content": row.content, "attachment_refs": row.attachment_refs,
+        "content": row.content, "can_read_aloud": _readable_reply(row), "attachment_refs": row.attachment_refs,
         "interaction_ref": row.interaction_ref, "created_at": row.created_at,
     }
+
+
+def _chat_messages(db: Session):
+    # Older clients persisted support receipts as ordinary companion messages.
+    reminder = db.query(CompanionCommand.id).filter(
+        CompanionCommand.id == CompanionMessage.command_id,
+        CompanionCommand.payload_digest == "support.invitation.v1",
+    ).exists()
+    return db.query(CompanionMessage).filter(~reminder)
 
 
 def _previous_thread_with_messages(db: Session, ward_id: str, current_thread: ConversationThread) -> ConversationThread | None:
@@ -133,7 +183,7 @@ def _previous_thread_with_messages(db: Session, ward_id: str, current_thread: Co
         if item.created_at == current_thread.created_at and item.id >= current_thread.id:
             continue
         has_msg = (
-            db.query(CompanionMessage.id)
+            _chat_messages(db)
             .filter_by(thread_id=item.id, ward_id=ward_id)
             .first()
         )
@@ -150,7 +200,7 @@ def _thread_messages_payload(
     before_thread_version: int | None,
     limit: int,
 ) -> dict:
-    query = db.query(CompanionMessage).filter_by(thread_id=thread.id, ward_id=ward_id)
+    query = _chat_messages(db).filter_by(thread_id=thread.id, ward_id=ward_id)
     if before_thread_version is not None:
         query = query.filter(CompanionMessage.thread_version < before_thread_version)
     rows = query.order_by(CompanionMessage.thread_version.desc()).limit(limit + 1).all()
@@ -180,7 +230,7 @@ def current_companion_messages(
     db: Session = Depends(get_db),
 ):
     latest_msg = (
-        db.query(CompanionMessage)
+        _chat_messages(db)
         .join(ConversationThread, ConversationThread.id == CompanionMessage.thread_id)
         .join(Ward, Ward.id == CompanionMessage.ward_id)
         .filter(CompanionMessage.ward_id == principal.user_id, ConversationThread.history_generation == Ward.history_generation)
@@ -255,6 +305,7 @@ def companion_turn(body: CompanionTurnRequest, principal: Principal = Depends(cu
         result = CompanionCoordinator(db).handle(
             ward_id=principal.user_id,
             content=body.content,
+            voice_display_text=body.voice_display_text,
             thread_id=body.thread_id,
             expected_thread_version=body.expected_thread_version,
             route_hint=body.route_hint,

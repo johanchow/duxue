@@ -1,0 +1,6 @@
+<network-security-config>
+    <!-- ReplyAudioSource serves the authenticated byte stream to the native player on loopback. -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain>127.0.0.1</domain>
+    </domain-config>
+</network-security-config>

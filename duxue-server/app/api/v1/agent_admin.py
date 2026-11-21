@@ -57,7 +57,9 @@ def _catalog(bundle):
     current = release_runtime.runtime.current if release_runtime.runtime else None
     data["debug_capabilities"] = debug_capabilities(compiled.catalog)
     data["runtime"] = {
-        "release_id": current[0]["id"] if current else None,
+        "release_id": current[0]["id"] if current and current[0].get("kind") != "draft" else None,
+        "draft_id": current[0]["id"] if current and current[0].get("kind") == "draft" else None,
+        "revision": current[0].get("revision") if current else None,
         "digest": current[1].digest if current else None,
         "source": "admin" if release_runtime.runtime else "snapshot",
     }
@@ -75,6 +77,15 @@ def catalog_from_bundle(body: BundleInput):
 @router.get("/catalog")
 def catalog():
     try:
+        from app.agent_specs import release_runtime
+        runtime = release_runtime.runtime
+        if runtime is not None:
+            current = runtime.current
+            if current is None:
+                raise HTTPException(503, "Admin配置尚未加载")
+            return _catalog(current[1].bundle)
+        if os.getenv("AGENT_CONFIG_SOURCE") != "snapshot":
+            raise HTTPException(503, "独立执行器须传入 Admin 选中的配置")
         return _catalog(snapshot_bundle())
     except ValueError as error:
         raise HTTPException(503, str(error)) from error

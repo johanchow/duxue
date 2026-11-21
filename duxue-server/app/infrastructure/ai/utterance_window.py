@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 
-_ROW_FIELDS = ("author", "text", "leading_omitted", "image_target_refs")
+_ROW_FIELDS = ("author", "text", "leading_omitted", "image_target_refs", "shown_visual_kind")
 
 
 def _numbering(utterances: list[dict], current_count: int) -> tuple[list[list[int]], list[int]]:

@@ -42,6 +42,11 @@ def tutor_turn(*, envelope, instruction, recent_utterances=None, current_images=
                            "turn": {"type": "object"}, "content": {"type": "string", "minLength": 1, "maxLength": 1200}},
             "additionalProperties": True,
         }
+    from app.agent_specs.definitions import load_definitions
+    from app.agent_specs.web_search import TOOL
+    if TOOL in load_definitions().units["tutoring.turn"].tools:
+        tool = load_definitions().tools[TOOL]
+        payload["optional_search_tool"] = {"tool": "web_search", "args_schema": tool.input_schema}
     if observations:
         payload["observations"] = observations
     if repair_error:
@@ -77,8 +82,14 @@ def text_judge(*, text, task_title, problem_summary, images=None):
     return [{"type": "text", "text": body}, *image_parts([], images)] if images else body
 
 
-def visual_judge(*, text, task_title, problem_summary):
-    return json.dumps({"task_title": task_title, "problem": _judge_problem(problem_summary), "visual": text}, ensure_ascii=False)
+def visual_judge(*, text, task_title, problem_summary, image=None):
+    payload = {"task_title": task_title, "problem": _judge_problem(problem_summary), "visual": text}
+    if image:
+        from app.agent_specs.web_search import PHOTO_REVIEW
+        payload["required_photo_review"] = PHOTO_REVIEW
+    body = json.dumps(payload, ensure_ascii=False)
+
+    return [{"type": "text", "text": body}, *image_parts([], [image])] if image else body
 
 
 def image_target(*, window, content):

@@ -69,6 +69,8 @@ class Settings:
     vlm_model: str = os.getenv("VLM_MODEL_NAME") or os.getenv("VLM_MODEL", "qwen3-vl-flash-2026-01-22")
     # Deprecated: non-empty overrides are rejected; Agent settings come from Admin.
     ai_model_overrides: str = os.getenv("AI_MODEL_OVERRIDES", "").strip()
+    iqs_api_key: str = os.getenv("IQS_API_KEY", "").strip()
+    search_budget_ms: int = _integer("TUTOR_SEARCH_BUDGET_MS", "4000")
     agent_model_timeout_seconds: int = _integer("AGENT_MODEL_TIMEOUT_SECONDS", "20")
     agent_model_enabled: bool = os.getenv("AGENT_MODEL_ENABLED", "").lower() in {"1", "true", "yes"}
     batch_completion_window: str = os.getenv("VLM_BATCH_COMPLETION_WINDOW", "24h")
@@ -78,7 +80,10 @@ class Settings:
     # Real-time ASR is optional at startup so existing non-voice deployments
     # remain available until the provider workspace has been configured.
     asr_api_key: str = os.getenv("ASR_API_KEY") or os.getenv("VLM_API_KEY") or os.getenv("DASHSCOPE_API_KEY", "")
-    asr_model: str = os.getenv("ASR_MODEL", "qwen3-asr-flash-realtime")
+    asr_model: str = os.getenv("ASR_MODEL", "qwen-audio-3.1-asr-flash-message")
+    speech_task_url: str = os.getenv("SPEECH_TASK_URL", "")
+    tutor_tts_model: str = os.getenv("TUTOR_TTS_MODEL", "qwen-audio-3.1-tts-flash")
+    tutor_tts_voice: str = os.getenv("TUTOR_TTS_VOICE", "longanhuan_v3.1")
     asr_workspace_id: str = os.getenv("ASR_WORKSPACE_ID", "")
     asr_websocket_url: str = os.getenv("ASR_WEBSOCKET_URL", "")
     asr_max_record_seconds: int = _integer("ASR_MAX_RECORD_SECONDS", "60")

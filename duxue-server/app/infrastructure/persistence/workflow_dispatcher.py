@@ -41,7 +41,9 @@ class SqlAlchemyWorkflowDispatcher:
         if handler not in factories:
             raise ValueError(f"unregistered workflow handler: {handler}")
         result = factories[handler](self.db).invoke(invocation=invocation)
-        Draft202012Validator(agent.output_schema).validate(result.model_dump(mode="json"))
         typed = WorkflowOutcome.model_validate(result)
-        envelope = completed(typed.model_dump(mode="json"), needs_input=typed.run_status == "waiting_for_ward")
-        return WorkflowOutcome.model_validate(envelope.unwrap())
+        public_result = typed.model_dump(mode="json")
+        Draft202012Validator(agent.output_schema).validate(public_result)
+        completed(public_result, needs_input=typed.run_status == "waiting_for_ward")
+        # The coordinator also needs the private keys of reviewed attachments.
+        return typed

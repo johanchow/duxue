@@ -19,12 +19,14 @@ class VoiceComposer extends StatefulWidget {
     this.holdToTalkText = '按住说话',
     this.helperText,
     this.onTap,
+    this.onVoiceDisplayText,
     this.onBeforeRecording,
     this.enabled = true,
     this.showImageAction = true,
     this.voiceFactory = VoiceTranscriptionService.new,
   });
 
+  final TranscriptHandler? onVoiceDisplayText;
   final String baseUrl;
   final TokenStorage tokens;
   final AppTelemetry telemetry;
@@ -52,6 +54,10 @@ class _VoiceComposerState extends State<VoiceComposer> {
   Timer? _limit;
   OverlayEntry? _overlay;
   var _recording = false;
+  var _starting = false;
+  var _releasePending = false;
+  var _cancelPending = false;
+  var _committing = false;
   var _cancelArmed = false;
   var _aborted = false;
 
@@ -138,11 +144,21 @@ class _VoiceComposerState extends State<VoiceComposer> {
   }
 
   Future<void> _start() async {
-    if (_recording || !widget.enabled) return;
+    if (_starting || _recording || !widget.enabled) return;
+    _starting = true;
+    _releasePending = _cancelPending = _committing = false;
     _aborted = false;
+    _cancelArmed = false;
     try {
       await widget.onBeforeRecording?.call();
+      if (!mounted || _cancelPending) return;
+      final onDisplay = widget.onVoiceDisplayText;
       await _voice.start(
+          onDisplayText: onDisplay == null
+              ? null
+              : (text) {
+                  if (mounted && !_aborted) onDisplay(text);
+                },
           onPartial: (text) => _updateFeedback(transcript: text),
           onFinal: (text) async {
             if (_aborted) return;
@@ -156,31 +172,42 @@ class _VoiceComposerState extends State<VoiceComposer> {
             _aborted = true;
             _showError(message);
           });
-      if (!mounted || _aborted) return;
+      if (!mounted || _aborted || _cancelPending) {
+        if (mounted) await _voice.cancel();
+        return;
+      }
+      _starting = false;
       setState(() => _recording = true);
-      _cancelArmed = false;
+      if (_releasePending) {
+        await _stop();
+        return;
+      }
       _feedback.value = const _RecordingFeedback();
       _showOverlay();
-      _limit = Timer(const Duration(seconds: 60), () async {
-        await _stop();
-        _showError('最长可录 60 秒，已结束识别');
-      });
+      _limit = Timer(const Duration(seconds: 60), _stop);
     } catch (error) {
       _aborted = true;
       _showError('语音启动失败：${userErrorMessage(error)}');
+    } finally {
+      _starting = false;
     }
   }
 
   Future<void> _stop() async {
-    if (!_recording) return;
+    _releasePending = true;
+    if (!_recording || _committing) return;
+    _committing = true;
     _limit?.cancel();
     await _voice.commit();
   }
 
   Future<void> _cancel() async {
+    _cancelPending = true;
     if (!_recording) return;
     _limit?.cancel();
+    _aborted = true;
     await _voice.cancel();
+    if (!mounted) return;
     _removeOverlay();
     _feedback.value = null;
     if (mounted) setState(() => _recording = false);

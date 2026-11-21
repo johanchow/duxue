@@ -126,15 +126,24 @@ export async function handle(request: Request, parts: string[]) {
         '内部鉴权失败',
         401,
       );
+      if (key === 'internal/working-draft' && method === 'GET') {
+        assert(environmentName === 'test', '工作草稿预览仅用于测试环境', 403);
+        const result = await pool().query(
+          "SELECT id,revision,bundle FROM agent_drafts WHERE state='working'",
+        );
+        return Response.json({ environment: environmentName, draft: result.rows[0] ?? null },
+          { headers: { 'Cache-Control': 'no-store' } });
+      }
       if (key === 'internal/release' && method === 'GET') {
         const result = await pool().query(
-          'SELECT e.generation,r.id,r.digest,r.bundle FROM agent_environments e LEFT JOIN agent_releases r ON r.id=e.release_id WHERE e.name=$1',
+          'SELECT e.generation,e.updated_at,r.id,r.digest,r.bundle FROM agent_environments e LEFT JOIN agent_releases r ON r.id=e.release_id WHERE e.name=$1',
           [environmentName],
         );
         const row = result.rows[0];
         return Response.json({
           environment: environmentName,
           generation: row.generation,
+          activated_at: row.updated_at,
           release: row.id
             ? { id: row.id, digest: row.digest, bundle: row.bundle }
             : null,
@@ -415,9 +424,11 @@ export async function handle(request: Request, parts: string[]) {
         );
         requireAuthorizedWorkflowChanges(data.bundle, draft.base_bundle);
         if (
-          draft.base_bundle?.files?.['workflows/tutoring.json']?.execution === 'turn_graph' &&
-          JSON.stringify(data.bundle.files['workflows/tutoring.json']) !==
-            JSON.stringify(draft.bundle.files['workflows/tutoring.json'])
+          (draft.base_bundle?.files?.['workflows/tutoring.json']?.execution === 'turn_graph' &&
+           JSON.stringify(data.bundle.files['workflows/tutoring.json']) !==
+             JSON.stringify(draft.bundle.files['workflows/tutoring.json'])) ||
+          JSON.stringify(data.bundle.files['policies/observation-support.json']) !==
+            JSON.stringify(draft.bundle.files['policies/observation-support.json'])
         ) {
           await serverCall('validate', { bundle: data.bundle });
         }

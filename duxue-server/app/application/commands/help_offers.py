@@ -5,6 +5,8 @@ from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException
 
 from app.application.commands.behavior_observation import lock, utc
+from app.application.commands.observation_quiet import quiet_boundary
+from app.application.queries.observation_day import observation_owner, published_day
 from app.contexts.study.domain.help_offer import invitation_allowed
 from app.application.workflows.observation_workflow import observation_step
 
@@ -12,8 +14,6 @@ from app.infrastructure.persistence.models import (
     AgentRun,
     HelpOfferBudgetRecord,
     HelpOfferRecord,
-    ObservationDayRecord,
-    ObservationRevisionRecord,
     ObservationSettings,
     OutboxEvent,
     StartCueRecord,
@@ -26,6 +26,15 @@ PROMPTS = {
     "offer_help": "这题需要一点提示吗？",
     "invite_return": "要不要回到刚才这一步？",
 }
+
+
+def current_rule(candidate):
+    from app.agent_specs.reminder_policy import current_policy, policy_identity
+
+    policy = current_policy()
+    return candidate.get("policy_digest") == (
+        policy_identity(policy) if policy else None
+    )
 
 
 class HelpOfferCommands:
@@ -55,15 +64,15 @@ class HelpOfferCommands:
     @observation_step("behavior.invitation")
     def consider(self, day_id):
         db = self.db
-        day = db.get(ObservationDayRecord, day_id)
-        if not day:
+        ward_id = observation_owner(db, day_id)
+        if not ward_id:
             return
-        lock(db, f"observation-ward:{day.ward_id}")
-        db.refresh(day)
-        setting = db.get(ObservationSettings, day.ward_id)
-        if not setting or not setting.enabled:
+        lock(db, f"observation-ward:{ward_id}")
+        day = published_day(db, ward_id=ward_id, day_id=day_id)
+        setting = db.get(ObservationSettings, ward_id)
+        if not day or not setting or not setting.enabled:
             return
-        snapshot = db.get(ObservationRevisionRecord, (day.id, day.revision)).snapshot
+        snapshot = day.snapshot
         if not snapshot.get("candidates"):
             return
         candidate = snapshot["candidates"][0]
@@ -76,6 +85,11 @@ class HelpOfferCommands:
             datetime.fromisoformat(candidate["start"]),
             datetime.fromisoformat(candidate["end"]),
         )
+        if not current_rule(candidate):
+            return
+        boundary = quiet_boundary(db, day.ward_id)
+        if boundary and start < boundary:
+            return
         same = any(
             datetime.fromisoformat(o.candidate["start"]) < end
             and start < datetime.fromisoformat(o.candidate["end"])
@@ -186,23 +200,36 @@ class HelpOfferCommands:
         )
         if not offer:
             return None
-        day = db.get(ObservationDayRecord, offer.candidate["day_id"])
-        snapshot = (
-            db.get(ObservationRevisionRecord, (day.id, day.revision)).snapshot
-            if day
-            else {}
-        )
+        day = published_day(db, ward_id=ward_id, day_id=offer.candidate["day_id"])
+        snapshot = day.snapshot if day else {}
         runs = snapshot.get("runs", [])
         expected = (
             "still_with_material"
             if offer.kind == "offer_help"
             else "other_visible_activity"
         )
+        boundary = quiet_boundary(db, ward_id)
         if (
-            offer.candidate.get("generation") != setting.generation
+            (boundary and datetime.fromisoformat(offer.candidate["start"]) < boundary)
+            or offer.candidate.get("generation") != setting.generation
             or utc(offer.expires_at) <= current
-            or not runs
-            or runs[-1]["activity"] != expected
+            or not current_rule(offer.candidate)
+            or (
+                not offer.candidate.get("rule_id")
+                and (not runs or runs[-1]["activity"] != expected)
+            )
+            or (
+                offer.candidate.get("rule_id")
+                and not any(
+                    r["rule_id"] == offer.candidate["rule_id"]
+                    and r["policy_digest"] == offer.candidate["policy_digest"]
+                    and datetime.fromisoformat(r["start"])
+                    <= datetime.fromisoformat(offer.candidate["start"])
+                    and datetime.fromisoformat(r["end"])
+                    >= datetime.fromisoformat(offer.candidate["end"])
+                    for r in snapshot.get("rule_runs", [])
+                )
+            )
             or current - datetime.fromisoformat(offer.candidate["observed_at"])
             > timedelta(seconds=60)
         ):
@@ -276,7 +303,7 @@ class HelpOfferCommands:
             or self.clock() >= utc(offer.expires_at)
         ):
             raise HTTPException(409, "invitation expired or changed")
-        if medium == "card_rendered" and self.present(ward_id, channel_id) is None:
+        if medium != "speech_suppressed" and (self.present(ward_id, channel_id) or {}).get("offer_id") != offer_id:
             raise HTTPException(409, "invitation no longer eligible")
         if medium == "speech_completed" and not channel.handsfree:
             raise HTTPException(409, "speech not enabled")
@@ -290,13 +317,6 @@ class HelpOfferCommands:
             )
         )
         if medium != "speech_suppressed" and offer.status == "ready":
-            from app.application.commands.companion_history import (
-                append_support_invitation,
-            )
-
-            append_support_invitation(
-                db, ward_id=ward_id, offer_id=offer.id, content=PROMPTS[offer.kind]
-            )
             offer.status = "presented"
             offer.presented_at = presented_at
             offer.expires_at = min(

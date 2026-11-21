@@ -19,6 +19,12 @@ class TokenStorage {
     }
   }
 
+  Future<bool> autoReadReplies(String wardId) async =>
+      await _storage.read(key: 'auto_read_replies_$wardId') == 'true';
+
+  Future<void> setAutoReadReplies(String wardId, bool enabled) => _storage
+      .write(key: 'auto_read_replies_$wardId', value: enabled.toString());
+
   Future<String?> get access => _storage.read(key: 'access_token');
   Future<String?> get refresh => _storage.read(key: 'refresh_token');
   Future<String?> get wardId => _storage.read(key: 'ward_id');

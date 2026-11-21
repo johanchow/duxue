@@ -65,7 +65,7 @@ class PlanIntakeInput(BaseModel):
 
 
 class StudyActionProposal(BaseModel):
-    action: Literal["sprint_prepare", "sprint_pause", "sprint_resume", "sprint_end", "task_list", "task_time", "task_start", "task_pause", "task_resume", "task_end", "task_complete"]
+    action: Literal["quiet_start", "quiet_extend", "quiet_end", "sprint_prepare", "sprint_pause", "sprint_resume", "sprint_end", "task_list", "task_time", "task_start", "task_pause", "task_resume", "task_end", "task_complete"]
     topic: str | None = Field(default=None, max_length=300)
     target_minutes: int | None = Field(default=None, ge=1, le=180)
     task_reference: str | None = Field(default=None, max_length=300)

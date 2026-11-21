@@ -34,6 +34,8 @@ class TutorToolbox:
         task_title: str | None, task_active: bool, window: list[dict], math_engine=None,
         image_inspector=None,
     ):
+        from app.infrastructure.ai.learning_search import LearningSearch
+        self.web_search = LearningSearch()
         self.math_engine = math_engine
         self.math_verification = None
         self.image_inspector = image_inspector
@@ -51,7 +53,14 @@ class TutorToolbox:
         with agent_step_span("tool", name if name in allowed else "unknown_tool",
                              **{"agent.tool.source": "model_request"}) as span:
             args = args if isinstance(args, dict) else {}
-            set_observation_payload(span, input={"op": args.get("op")} if name in {"math", "science"} else args)
+            observed_args = args
+            if name == "web_search":
+                observed_args = {"mode": args.get("mode")}
+                if args.get("mode") in ("image", "web"):
+                    span.set_attribute("search.mode", args["mode"])
+            elif name in {"math", "science"}:
+                observed_args = {"op": args.get("op")}
+            set_observation_payload(span, input=observed_args)
             handlers = {
                 "get_task_context": self._task_context,
                 "get_attempt_summary": self._attempt_summary,
@@ -59,6 +68,7 @@ class TutorToolbox:
                 "math": self._math,
                 "science": self._math,
                 "inspect_image": self._inspect_image,
+                "web_search": self.web_search.search,
             }
             for tool_id in load_definitions().units["tutoring.turn"].tools:
                 if load_definitions().tools[tool_id].handler_id == "tool.static_result":
@@ -78,6 +88,9 @@ class TutorToolbox:
                 result = {"tool": name, **handler(args)}
             except Exception:
                 result = {"tool": name, "status": "tool_error"}
+            if name == "web_search":
+                span.set_attribute("search.attempt", self.web_search.calls)
+                span.set_attribute("search.result_count", len(result.get("results", [])))
             span.set_attribute("agent.tool.status", result.get("status", "tool_error"))
             set_observation_payload(
                 span,
@@ -86,7 +99,7 @@ class TutorToolbox:
                     for key in ("status", "request_id", "input_digest", "error_code", "crop_ref", "image_ref")
                     if key in result
                 }
-                if name in {"math", "science", "inspect_image"}
+                if name in {"math", "science", "inspect_image", "web_search"}
                 else result,
             )
             return result

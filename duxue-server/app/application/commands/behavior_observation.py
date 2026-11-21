@@ -172,6 +172,25 @@ class ObservationCommands:
                 if f.oss_key and utc(f.purge_after) > self.clock()
             ],
         }
+        from app.agent_specs.reminder_policy import current_policy, policy_identity
+
+        policy = current_policy()
+        if policy:
+            from app.application.commands.observation_quiet import excluded_slots
+            from app.agent_specs.reminder_policy import activation_time, policy_source
+
+            activated = activation_time()
+            excluded = set(excluded_slots(db, job.ward_id, start, end))
+            for slot in range(4):
+                slot_start = start + timedelta(seconds=slot * 15)
+                if activated and slot_start < activated:
+                    excluded.add(slot_start.isoformat())
+            manifest.update(
+                rule_source=policy_source(),
+                rule_groups=policy["groups"],
+                rule_policy_digest=policy_identity(policy),
+                quiet_slots=sorted(excluded),
+            )
         fingerprint = digest(
             {
                 "manifest": manifest,
@@ -259,6 +278,13 @@ class ObservationCommands:
             ),
         )
         cells = validate_outcome(manifest, response["cells"])
+        matches = {}
+        if "rule_groups" in payload:
+            from app.contexts.behavior_analysis.domain.reminder_rules import (
+                checked_matches,
+            )
+
+            matches = checked_matches(payload, response["cells"], cells)
         lock(db, f"observation-ward:{job.ward_id}")
         db.expire_all()
         active_job = db.get(ObservationJob, job_id)
@@ -284,7 +310,12 @@ class ObservationCommands:
             ObservationInterpretation(
                 window_id=window_id,
                 input_version=input_version,
-                cells=wire([asdict(c) for c in cells]),
+                cells=wire(
+                    [
+                        {**asdict(c), "rule_matches": matches.get(c.start, [])}
+                        for c in cells
+                    ]
+                ),
                 provenance=response["provenance"],
             )
         )
@@ -345,6 +376,7 @@ class ObservationCommands:
             .all()
         )
         cells, sources = [], []
+        rule_slots = {}
         for window, interpretation in rows:
             sources.append({"window_id": window.id, "version": window.input_version})
             if interpretation is None:
@@ -367,6 +399,11 @@ class ObservationCommands:
                     )
                 continue
             for c in interpretation.cells:
+                rule_slots[datetime.fromisoformat(c["start"])] = (
+                    window.assignment_revision,
+                    window.manifest.get("rule_policy_digest"),
+                    c.get("rule_matches", []),
+                )
                 cells.append(
                     Cell(
                         datetime.fromisoformat(c["start"]),
@@ -404,6 +441,36 @@ class ObservationCommands:
                 < min(end, self.clock(), datetime.fromisoformat(b))
             ]
         snapshot = ObservationAssembler().assemble(cells, ranges)
+        from app.agent_specs.reminder_policy import current_policy, policy_identity
+
+        policy = current_policy()
+        if policy:
+            from app.contexts.behavior_analysis.domain.reminder_rules import (
+                trailing_rules,
+            )
+
+            slots = [
+                (c, *rule_slots.get(c.start, (None, None, [])))
+                for c in sorted(cells, key=lambda item: item.start)
+                if ranges is None or any(a <= c.start and c.end <= b for a, b in ranges)
+            ]
+            slots = [
+                (
+                    c,
+                    source,
+                    version,
+                    []
+                    if c.uncertainty_reason == "source_assignment_changed"
+                    else matches,
+                )
+                for c, source, version, matches in slots
+            ]
+            if slots and rows and slots[-1][0].end < utc(rows[-1][0].end_at):
+                # A closed window whose tail is missing cannot trigger a live invitation.
+                slots = []
+            snapshot["rule_runs"] = trailing_rules(
+                slots, policy["groups"], policy_identity(policy)
+            )
         snapshot.update(
             sources=sources, policy_version=setting.policy_version, candidates=[]
         )
@@ -424,26 +491,7 @@ class ObservationCommands:
             )
             db.add(day)
             db.flush()
-        day.revision += 1
-        day.fingerprint = fingerprint
-        db.add(
-            ObservationRevisionRecord(
-                day_id=day.id, revision=day.revision, snapshot=wire(snapshot)
-            )
-        )
-        db.add(
-            OutboxEvent(
-                aggregate_type="observation_day",
-                aggregate_id=day.id,
-                event_type="ObservationRevisionPublished.v1",
-                payload={
-                    "schema_version": "ObservationRevisionPublished.v1",
-                    "ward_id": job.ward_id,
-                    "day_id": day.id,
-                    "revision": day.revision,
-                },
-            )
-        )
+        self._publish_revision(day, snapshot)
         enqueue(
             db,
             key=f"assess:{day.id}:{day.revision}",
@@ -592,7 +640,18 @@ class ObservationCommands:
         runs = snapshot["runs"]
         if not runs:
             return
+        from app.agent_specs.reminder_policy import current_policy, policy_identity
+        from app.application.commands.observation_quiet import quiet_boundary
+
+        policy = current_policy()
         last = runs[-1]
+        if policy:
+            matches = snapshot.get("rule_runs", [])
+            if not matches or matches[0]["policy_digest"] != policy_identity(policy):
+                return
+            last = matches[0]
+        elif "rule_runs" in snapshot:
+            return
         start, end = (
             datetime.fromisoformat(last["start"]),
             datetime.fromisoformat(last["end"]),
@@ -607,12 +666,33 @@ class ObservationCommands:
             .order_by(AcceptedEvidence.captured_at)
             .all()
         )
-        if not evidence:
+        boundary = quiet_boundary(db, job.ward_id)
+        if boundary and start < boundary:
+            # A partial slot at the boundary cannot count as post-rest evidence.
+            seconds = (boundary - start).total_seconds()
+            import math
+
+            start += timedelta(seconds=15 * math.ceil(seconds / 15))
+            evidence = [e for e in evidence if utc(e.captured_at) >= start]
+        if not evidence or start >= end:
             return
         observed_at = utc(evidence[-1].captured_at)
-        run = {**last, "start": start, "end": end, "observed_at": observed_at}
+        run = {
+            **last,
+            "start": start,
+            "end": end,
+            "seconds": (end - start).total_seconds(),
+            "observed_at": observed_at,
+        }
         from app.application.workflows.observation_workflow import check_eligibility
-        if not check_eligibility(bool(eligible_runs([run], self.clock()))):
+
+        eligible = (
+            run["seconds"] >= last["min_seconds"]
+            and timedelta(0) <= self.clock() - observed_at <= timedelta(seconds=60)
+            if policy
+            else bool(eligible_runs([run], self.clock()))
+        )
+        if not check_eligibility(eligible):
             return
         frames = evidence[-16:]
         assignments = {e.assignment_revision for e in frames}
@@ -627,7 +707,8 @@ class ObservationCommands:
             "camera_id": setting.camera_id,
             "assignment_revision": assignments.pop(),
             "trigger": "stillness_reached_duration"
-            if last["activity"] == "still_with_material"
+            if last.get("kind") == "offer_help"
+            or last.get("activity") == "still_with_material"
             else "other_activity_reached_duration",
             "observed_period": {"start": start.isoformat(), "end": end.isoformat()},
             "learning_context": {"observed_learning": has_learning},
@@ -635,6 +716,13 @@ class ObservationCommands:
                 {"id": e.frame_id, "at": utc(e.captured_at).isoformat()} for e in frames
             ],
         }
+        if policy:
+            payload.update(
+                assessment_rule=last["assessment_rule"],
+                requested_kind=last["kind"],
+                rule_id=last["rule_id"],
+                rule_policy_digest=last["policy_digest"],
+            )
         fingerprint = digest(
             {
                 "input": payload,
@@ -690,11 +778,21 @@ class ObservationCommands:
                     fingerprint=fingerprint, ward_id=job.ward_id, result=result
                 )
             )
+        boundary = quiet_boundary(db, job.ward_id)
+        if boundary and start < boundary:
+            return
+        if policy and candidate and candidate.decision != last["kind"]:
+            return
         if not candidate or self.clock() - observed_at > timedelta(seconds=60):
             return
         snapshot["candidates"] = [
             {
                 **candidate.model_dump(),
+                **(
+                    {"rule_id": last["rule_id"], "policy_digest": last["policy_digest"]}
+                    if policy
+                    else {}
+                ),
                 "start": start.isoformat(),
                 "end": end.isoformat(),
                 "observed_at": observed_at.isoformat(),
@@ -703,11 +801,15 @@ class ObservationCommands:
                 "source_revision": source_revision,
             }
         ]
+        self._publish_revision(day, snapshot)
+
+    def _publish_revision(self, day, snapshot):
+        db = self.db
         day.revision += 1
         day.fingerprint = digest(snapshot)
         db.add(
             ObservationRevisionRecord(
-                day_id=day.id, revision=day.revision, snapshot=snapshot
+                day_id=day.id, revision=day.revision, snapshot=wire(snapshot)
             )
         )
         db.add(
@@ -717,7 +819,7 @@ class ObservationCommands:
                 event_type="ObservationRevisionPublished.v1",
                 payload={
                     "schema_version": "ObservationRevisionPublished.v1",
-                    "ward_id": job.ward_id,
+                    "ward_id": day.ward_id,
                     "day_id": day.id,
                     "revision": day.revision,
                 },

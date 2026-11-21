@@ -508,7 +508,7 @@ def test_coordinator_persists_text_visual_in_companion_message_interaction_ref(d
     )
     assert utterances == [
         {"author": "ward", "text": "水循环是怎么回事"},
-        {"author": "companion", "text": "水先蒸发，再凝结，最后降下来。"},
+        {"author": "companion", "text": "水先蒸发，再凝结，最后降下来。", "shown_visual_kind": "steps"},
     ]
 
 
@@ -713,3 +713,18 @@ def test_companion_message_image_requires_owned_visible_attachment(db, monkeypat
     with pytest.raises(HTTPException) as error:
         companion_message_image(message.id, 0, Principal(role="ward", user_id=ward.id), db)
     assert error.value.status_code == 404
+
+
+@pytest.mark.parametrize("scene", ["tutoring", "reflection"])
+def test_voice_display_is_optional_and_never_replaces_source_for_workflow(db, scene):
+    ward = create_ward(db)
+    db.commit()
+    dispatcher = FakeWorkflowDispatcher()
+    coordinator = CompanionCoordinator(db, dispatcher=dispatcher, classifier=StaticIntentClassifier(scene))
+    source = "嗯，我以为是负三，不对，是三。"
+    display = "我以为是三。"
+    result = coordinator.handle(ward_id=ward.id, content=source, voice_display_text=display,
+                                thread_id=None, expected_thread_version=0, route_hint=scene)
+    message = db.query(CompanionMessage).filter_by(thread_id=result.thread_id, author_type="ward").one()
+    assert message.content == dispatcher.invocations[0].turn["content"] == source
+    assert (message.interaction_ref or {}).get("voice_display_text") == (display if scene == "tutoring" else None)

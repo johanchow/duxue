@@ -8,7 +8,10 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+from builtins import ExceptionGroup
 from collections.abc import AsyncIterator
+
+from websockets.exceptions import WebSocketException
 
 from app.bootstrap.settings import settings
 
@@ -18,13 +21,13 @@ class AsrConfigurationError(RuntimeError):
 
 
 class DashscopeRealtimeAsr:
-    """Minimal Manual-mode client for qwen3-asr-flash-realtime."""
+    """Legacy Qwen realtime protocol with server-side VAD."""
 
     def __init__(self, connection) -> None:
         self._connection = connection
 
     @classmethod
-    async def connect(cls) -> "DashscopeRealtimeAsr":
+    async def connect(cls) -> DashscopeRealtimeAsr:
         if not settings.asr_api_key:
             raise AsrConfigurationError("ASR_API_KEY is not configured")
         url = settings.asr_websocket_url
@@ -82,7 +85,9 @@ class DashscopeRealtimeAsr:
             elif event_type == "conversation.item.input_audio_transcription.completed":
                 yield {"type": "final", "text": payload.get("transcript", "")}
             elif event_type == "error":
-                yield {"type": "error", "message": payload.get("error", {}).get("message", "ASR provider error")}
+                error = payload.get("error", {})
+                yield {"type": "error", "message": "语音识别失败，请重试",
+                       "empty_buffer": error.get("code") == "input_audio_buffer_commit_empty"}
 
 
 _SERVER_VAD = {
@@ -114,7 +119,7 @@ class AsrHold:
             return []
         kind = event.get("type")
         if kind == "error":
-            if self.committed and self._preview():
+            if self.committed and not self.live and self.segments and event.get("empty_buffer"):
                 return self._emit_final()
             self.finished = True
             return [event]
@@ -144,6 +149,9 @@ class AsrHold:
         if self.finished:
             return []
         self.committed = True
+        if self.live or self.pending_audio:
+            self.finished = True
+            return [{"type": "error", "message": "语音识别中断，请重试"}]
         return self._emit_final()
 
     def _emit_final(self) -> list[dict]:
@@ -170,5 +178,105 @@ async def forward_asr_events(session: DashscopeRealtimeAsr, send, hold: AsrHold 
     if hold.committed and not hold.finished:
         for item in hold.unfinished_final():
             await send(item)
-        return "final"
+            return item["type"]
     return "error"
+
+
+class MessageAsr:
+    """Emit cumulative drafts, then one final only after task-finished."""
+    def __init__(self, task):
+        self.task = task
+
+    @classmethod
+    async def connect(cls, *, polish=False):
+        from app.infrastructure.ai.speech_task import SpeechTask
+        task = await SpeechTask.open(
+            task="asr", function="recognition", model=settings.asr_model,
+            parameters={"format": "pcm", "sample_rate": 16000,
+                        "keep_dialect": True, "intermediate_result_enabled": True,
+                        "disfluency_removal_enabled": polish},
+        )
+        return cls(task)
+
+    async def send_audio(self, chunk):
+        await self.task.connection.send(chunk)
+
+    async def commit(self):
+        await self.task.command("finish-task")
+
+    async def events(self):
+        sentences = {}
+        pending = set()
+        async for frame in self.task.connection:
+            event = json.loads(frame)
+            kind = event["header"]["event"]
+            if kind == "task-finished":
+                if pending:
+                    break
+                yield {"type": "final", "text": "".join(sentences[i] for i in sorted(sentences)).strip()}
+                return
+            if kind == "task-failed":
+                break
+            if kind == "result-generated":
+                sentence = event["payload"]["output"]["sentence"]
+                if sentence.get("heartbeat") or not sentence.get("text"):
+                    continue
+                index = sentence["sentence_id"]
+                sentences[index] = sentence["text"]
+                if sentence.get("sentence_end"):
+                    pending.discard(index)
+                else:
+                    pending.add(index)
+                yield {"type": "partial", "text": "".join(sentences[i] for i in sorted(sentences))}
+        yield {"type": "error", "message": "语音识别中断，请重试"}
+
+    async def finish(self):
+        # Closing cancels uncommitted tasks. commit already sent finish-task.
+        pass
+
+    async def close(self):
+        await self.task.close()
+
+
+class DisplayTranscript:
+    """Optional native polishing on the same live PCM, off the raw recognition path."""
+
+    def __init__(self):
+        self.chunks: asyncio.Queue[bytes | None] = asyncio.Queue()
+        self.task = asyncio.create_task(self._recognize())
+
+    def append(self, chunk: bytes) -> None:
+        if not self.task.done():
+            self.chunks.put_nowait(chunk)
+
+    def commit(self) -> None:
+        self.chunks.put_nowait(None)
+
+    async def result(self) -> str | None:
+        done, _ = await asyncio.wait({self.task}, timeout=1.5)
+        return self.task.result() if done else None
+
+    async def close(self) -> None:
+        self.task.cancel()
+        await asyncio.gather(self.task, return_exceptions=True)
+
+    async def _recognize(self) -> str | None:
+        try:
+            session = await MessageAsr.connect(polish=True)
+            try:
+                async with asyncio.TaskGroup() as group:
+                    group.create_task(self._send(session))
+                    async for event in session.events():
+                        if event["type"] == "final":
+                            return event["text"] or None
+            finally:
+                await session.close()
+        except (ExceptionGroup, OSError, RuntimeError, ValueError, WebSocketException, KeyError):
+            # The raw session independently reports recognition failures.
+            return None
+        return None
+
+    async def _send(self, session: MessageAsr) -> None:
+        while (chunk := await self.chunks.get()) is not None:
+            await session.send_audio(chunk)
+        await session.commit()

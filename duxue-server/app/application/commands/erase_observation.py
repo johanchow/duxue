@@ -26,6 +26,8 @@ def erase_observation(db, ward_id):
     ):
         db.query(model).filter(column.in_(query)).delete(synchronize_session=False)
     for model in (
+        m.QuietCommand,
+        m.QuietPeriod,
         m.ObservationJob,
         m.ObservationWindowRecord,
         m.ObservationDayRecord,

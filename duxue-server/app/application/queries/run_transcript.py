@@ -81,6 +81,11 @@ def recent_thread_utterances(
             "turn_id": row.turn_id,
             "author": row.author_type,
             "text": _strip_system_reminder(row.author_type, row.content),
+            "shown_visual_kind": next((
+                part["visual"].get("kind") for part in (row.interaction_ref or {}).get("parts", [])
+                if isinstance(part, dict) and part.get("type") == "visual"
+                and isinstance(part.get("visual"), dict)
+            ), None),
             "attachment_refs": list(row.attachment_refs or []),
             "image_target_refs": (row.interaction_ref or {}).get("image_target_refs", []),
         }
@@ -127,6 +132,8 @@ def visible_utterances(
                     raise
                 urls.append(None)
         view: dict = {"author": row.get("author"), "text": row.get("text") or ""}
+        if view["author"] == "companion" and row.get("shown_visual_kind"):
+            view["shown_visual_kind"] = row["shown_visual_kind"]
         if row.get("image_target_refs"):
             view["image_target_refs"] = list(row["image_target_refs"])
         if row.get("leading_omitted"):

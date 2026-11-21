@@ -6,9 +6,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class _FakePlayback implements SpeechPlayback {
+  @override
+  Stream<void> get onComplete => const Stream.empty();
   final played = <Uint8List>[];
   final spoken = <({String text, String locale})>[];
   int stops = 0;
+
+  @override
+  Future<void> playStream(Stream<List<int>> frames) async {
+    final bytes = BytesBuilder();
+    await for (final frame in frames) { bytes.add(frame); }
+    await playMp3(bytes.takeBytes());
+  }
 
   @override
   Future<void> playMp3(Uint8List bytes) async {

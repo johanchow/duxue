@@ -154,19 +154,21 @@ class PlanningWorkflowAdapter:
             )
             utterances = visible_utterances(raw_utterances, ward_id=run.ward_id)
             with planning_stage_span("plan_intake", run_id=run.id):
+                execution_context = self._current_sprint_context(run.ward_id)
                 extracted = PlanIntakeService().respond(
                     ward={"id": ward.id, "display_name": ward.display_name, "grade_stage": ward.grade_stage},
                     tasks=[{"title": task.title, "details": task.details, "planned_minutes": task.planned_minutes,
                             "scheduled": bool(task.schedule_id), "end_reminder_mode": task.end_reminder_mode} for task in tasks],
                     request=PlanIntakeInput(content=invocation.turn.get("content", ""),
-                        current_sprint=self._current_sprint_context(run.ward_id),
+                        current_sprint=execution_context,
                         draft_items=active_draft.items if active_draft else [], clarification_slots=model_slots,
                         attachment_keys=attachment_keys, recent_utterances=utterances,
                         omitted_utterance_count=omitted_utterances,
                         self_review_aspects=review_aspects),
                 )
             if extracted.study_action is not None:
-                return self._handle_study_action(run, invocation, extracted.study_action)
+                return self._handle_study_action(run, invocation, extracted.study_action,
+                                                    expected_quiet_version=execution_context.get("camera_hints_version"))
             substantive = [op for op in extracted.operations if _operation_changes_task(op, tasks)]
             unchanged_only = bool(extracted.operations) and not substantive
             if (extracted.clarification_required or unchanged_only) and not extracted.slot_updates:
@@ -496,7 +498,7 @@ class PlanningWorkflowAdapter:
             context_snapshot=context_snapshot,
         )
 
-    def _study_response(self, run, text, *, sprint=None, needs_start=False):
+    def _study_response(self, run, text, *, sprint=None, needs_start=False, observation_quiet=None):
         actions = []
         if needs_start and sprint:
             actions = [{"id": f"sprint:{run.id}:{run.attempt}:{sprint['id']}:{sprint['version']}",
@@ -506,14 +508,34 @@ class PlanningWorkflowAdapter:
         interaction = {"protocol":"companion-interaction.v2" if sprint else "companion-interaction.v1",
             "kind":"sprint_control" if sprint else "text", "content":text,
             "parts":[{"type":"text","text":text}], "actions":actions, "sprint":sprint}
+        if observation_quiet is not None:
+            interaction["observation_quiet"] = observation_quiet
         return WorkflowOutcome(run_status="waiting_for_ward" if needs_start else "closed",
             outcome_type="waiting" if needs_start else "completed", response=interaction)
 
-    def _handle_study_action(self, run, invocation, proposal):
+    def _handle_study_action(self, run, invocation, proposal, *, expected_quiet_version=None):
         from app.application.commands.sprint import SprintService
         from app.application.commands.task_execution import TaskExecutionService
         sprint_service = SprintService(self.db)
         action = proposal.action
+        if action in {"quiet_start", "quiet_extend", "quiet_end"}:
+            from datetime import datetime, timezone
+            from zoneinfo import ZoneInfo
+            from app.application.commands.observation_quiet import change_quiet
+            from app.infrastructure.persistence.models import ObservationSettings
+            if action != "quiet_end" and not proposal.target_minutes:
+                return self._study_response(run, "想休息多久？")
+            settings = self.db.get(ObservationSettings, run.ward_id)
+            result = change_quiet(self.db, run.ward_id, str(invocation.command_id),
+                                  action.removeprefix("quiet_"),
+                                  proposal.target_minutes * 60 if proposal.target_minutes and action != "quiet_end" else None,
+                                  datetime.now(timezone.utc), expected_quiet_version)
+            message = "好了，摄像头陪伴提示已恢复。"
+            if result["active"]:
+                until = datetime.fromisoformat(result["effective_until"]).astimezone(
+                    ZoneInfo(settings.timezone if settings else "Asia/Shanghai"))
+                message = f"好，{until:%H:%M} 前不会发摄像头陪伴提示。"
+            return self._study_response(run, message, observation_quiet=result)
         if action == "sprint_prepare":
             if not proposal.target_minutes:
                 return self._study_response(run,"想试多久？")
@@ -564,4 +586,15 @@ class PlanningWorkflowAdapter:
     def _current_sprint_context(self, ward_id):
         from app.application.commands.sprint import SprintService
         current = SprintService(self.db).current(ward_id)["sprint"]
-        return {key:current[key] for key in ("topic","status","remaining_seconds")} if current else {}
+        context = {key:current[key] for key in ("topic","status","remaining_seconds")} if current else {}
+        from app.agent_specs.reminder_policy import current_policy
+        if current_policy():
+            from datetime import datetime, timezone
+            from app.application.commands.observation_quiet import latest_period
+            from app.application.commands.behavior_observation import utc
+            period = latest_period(self.db, ward_id)
+            context["camera_hints_version"] = period.version if period else 0
+            until = utc(period.ended_at or period.scheduled_until) if period else None
+            if until and until > datetime.now(timezone.utc):
+                context["camera_hints_paused_until"] = until.isoformat()
+        return context

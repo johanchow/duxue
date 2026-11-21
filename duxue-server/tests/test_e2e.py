@@ -699,11 +699,15 @@ class EndToEndTest(unittest.TestCase):
         ).json()["id"]
 
         class FakeAsr:
+            def __init__(self):
+                import asyncio
+                self.committed = asyncio.Event()
+
             async def send_audio(self, chunk):
                 self.chunk = chunk
 
             async def commit(self):
-                self.committed = True
+                self.committed.set()
 
             async def finish(self):
                 pass
@@ -713,9 +717,10 @@ class EndToEndTest(unittest.TestCase):
 
             async def events(self):
                 yield {"type": "partial", "text": "安排明天的数"}
+                await self.committed.wait()
                 yield {"type": "final", "text": "安排明天的数学作业"}
 
-        with patch(
+        with patch("app.api.v1.system.MessageAsr.connect", new=AsyncMock(return_value=FakeAsr())), patch(
             "app.api.v1.system.DashscopeRealtimeAsr.connect",
             new=AsyncMock(return_value=FakeAsr()),
         ):

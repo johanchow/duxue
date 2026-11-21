@@ -160,6 +160,7 @@ class SessionFinish(BaseModel):
 
 class CompanionTurnRequest(BaseModel):
     """One Ward input to the deterministic companion entrypoint."""
+    voice_display_text: str | None = Field(default=None, max_length=4000)
     content: str = Field(default="", max_length=4000)
     command_id: str = Field(default_factory=lambda: str(uuid4()))
     thread_id: str | None = None

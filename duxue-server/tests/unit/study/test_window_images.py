@@ -203,3 +203,10 @@ def test_tutor_turn_gateway_attaches_window_and_current_pictures(monkeypatch):
         current_images=["data:b"],
     )
     assert [p["image_url"]["url"] for p in sent["user"] if p["type"] == "image_url"] == ["data:a", "data:b"]
+
+
+def test_followup_carries_the_previous_visible_diagram_kind_to_the_model():
+    row = _row("companion", "自转与公转的区别")
+    row["shown_visual_kind"] = "compare"
+    parts = user_content({}, visible_utterances([row], ward_id="w1"))
+    assert json.loads(parts[0]["text"])["recent_utterances"][0]["shown_visual_kind"] == "compare"

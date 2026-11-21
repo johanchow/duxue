@@ -5,7 +5,7 @@ from dataclasses import asdict
 from datetime import date, datetime, timedelta, timezone
 from uuid import uuid4
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
 from app.agent_specs.observation_contracts import CODE_AGENTS
@@ -14,8 +14,11 @@ from app.agent_specs.observation_contracts import CODE_AGENTS
 def debug_vision(value, *, support=False, runtime=None):
     from app.infrastructure.ai.behavior_observation import ObservationVision
 
+    from app.agent_specs.reminder_policy import current_policy, policy_identity
+    policy = current_policy()
+    metadata = {"rule_groups": policy["groups"], "rule_policy_digest": policy_identity(policy)} if policy and not support else {}
     if value.get("synthetic") is not True:
-        return ObservationVision(settings_obj=runtime), value
+        return ObservationVision(settings_obj=runtime), {**value, **metadata}
     import base64
     import struct
     import zlib
@@ -28,6 +31,7 @@ def debug_vision(value, *, support=False, runtime=None):
         for i in range(4)
     ]
     manifest = {
+        **metadata,
         "ward_id": str(uuid4()),
         "camera_id": str(uuid4()),
         "assignment_revision": 1,
@@ -162,8 +166,27 @@ def run_persistent_sandbox(identifier, value):
     from app.infrastructure.persistence import models as m
     from app.infrastructure.persistence.database import Base
 
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
+    import os
+    from pathlib import Path
+    from dotenv import dotenv_values
+    from sqlalchemy.engine import make_url
+    from app.agent_specs.reminder_policy import current_policy
+
+    # Keep legacy offline debug compatible. New rule workflows use a private
+    # rolled-back schema on the explicitly selected test/debug PostgreSQL.
+    use_pg = current_policy() is not None or os.getenv("OBSERVATION_TEST_POSTGRES") == "1"
+    if use_pg:
+        target = os.getenv("OBSERVATION_DEBUG_DATABASE_URL")
+        if not target and os.getenv("APP_ENV", "test") not in {"prod", "production"}:
+            target = dotenv_values(Path(__file__).resolve().parents[2] / ".env").get("DATABASE_URL")
+        if not target:
+            raise ValueError("configure an isolated observation debug PostgreSQL database")
+        url = make_url(target)
+        if url.get_backend_name() != "postgresql" or url.database not in {"duxue-test", "duxue-observation-debug"}:
+            raise ValueError("invalid observation debug PostgreSQL target")
+        engine = create_engine(url.set(drivername="postgresql+psycopg"))
+    else:
+        engine = create_engine("sqlite:///:memory:")
     ward, camera = str(uuid4()), str(uuid4())
     current = (
         datetime.fromisoformat(value["clock"])
@@ -174,7 +197,12 @@ def run_persistent_sandbox(identifier, value):
         raise ValueError("clock requires timezone")
     day = date.fromisoformat(value.get("date", current.date().isoformat()))
     try:
-        with Session(engine, expire_on_commit=False) as db:
+        with engine.connect() as connection, Session(connection, expire_on_commit=False) as db:
+            if use_pg:
+                schema = "observation_debug_" + uuid4().hex
+                connection.execute(text(f'CREATE SCHEMA "{schema}"'))
+                connection.execute(text(f'SET LOCAL search_path TO "{schema}"'))
+            Base.metadata.create_all(connection)
             db.add(m.User(id=ward, type="ward"))
             db.flush()
             db.add(m.Ward(id=ward, display_name="isolated observation debug"))
@@ -219,6 +247,10 @@ def run_persistent_sandbox(identifier, value):
                         ),
                         window_input["result"]["cells"],
                     )
+                    matches = {}
+                    if "rule_groups" in manifest:
+                        from app.contexts.behavior_analysis.domain.reminder_rules import checked_matches
+                        matches = checked_matches(manifest, window_input["result"]["cells"], cells)
                     window = m.ObservationWindowRecord(
                         ward_id=ward,
                         camera_id=camera,
@@ -237,7 +269,7 @@ def run_persistent_sandbox(identifier, value):
                         m.ObservationInterpretation(
                             window_id=window.id,
                             input_version=1,
-                            cells=wire([asdict(cell) for cell in cells]),
+                            cells=wire([{**asdict(cell), "rule_matches": matches.get(cell.start, [])} for cell in cells]),
                             provenance={"source": "debug_fixture"},
                         )
                     )
@@ -270,7 +302,7 @@ def run_persistent_sandbox(identifier, value):
                 db.flush()
             if identifier == "behavior-delivery":
                 result = HelpOfferCommands(db, lambda: current).present(
-                    ward, "no-channel"
+                    ward, str(uuid4())
                 )
                 return {"presented": result is not None, "sandbox": True}
             if identifier == "behavior-invitation":
@@ -294,7 +326,7 @@ def run_persistent_sandbox(identifier, value):
                 HelpOfferCommands(db, lambda: current).consider(observation.id)
                 db.flush()
                 presentation = HelpOfferCommands(db, lambda: current).present(
-                    ward, "no-channel"
+                    ward, str(uuid4())
                 )
                 return {
                     "presentation": presentation,
@@ -350,15 +382,22 @@ def run_business_debug(value, runtime):
             if f["id"] in run["evidence"]
         )
         runs.append(run)
-    ready = check_eligibility(bool(eligible_runs(runs, end)))
+    selected = None
+    if "rule_runs" in snapshot:
+        if snapshot["rule_runs"]:
+            selected = snapshot["rule_runs"][0]
+        ready = check_eligibility(bool(selected and runs and end-runs[-1]["observed_at"] <= timedelta(seconds=60)))
+    else:
+        ready = check_eligibility(bool(eligible_runs(runs, end)))
     assessment = None
     if ready:
         payload = {
             **manifest,
+            **({"requested_kind":selected["kind"], "assessment_rule":selected["assessment_rule"]} if selected else {}),
             "trigger": "debug_observed_duration",
             "observed_period": {
-                "start": snapshot["runs"][-1]["start"],
-                "end": snapshot["runs"][-1]["end"],
+                "start": selected["start"] if selected else snapshot["runs"][-1]["start"],
+                "end": selected["end"] if selected else snapshot["runs"][-1]["end"],
             },
             "learning_context": {
                 "observed_learning": any(
@@ -376,12 +415,13 @@ def run_business_debug(value, runtime):
         )
         snapshot["candidates"] = (
             []
-            if candidate is None
+            if candidate is None or (selected and candidate.decision != selected["kind"])
             else [
                 {
                     **candidate.model_dump(),
-                    "start": runs[-1]["start"],
-                    "end": runs[-1]["end"],
+                    **({"rule_id":selected["rule_id"], "policy_digest":selected["policy_digest"]} if selected else {}),
+                    "start": selected["start"] if selected else runs[-1]["start"],
+                    "end": selected["end"] if selected else runs[-1]["end"],
                     "observed_at": runs[-1]["observed_at"].isoformat(),
                     "fresh_until": (
                         runs[-1]["observed_at"] + timedelta(seconds=120)

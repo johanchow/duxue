@@ -213,6 +213,12 @@ _SVG_FORBIDDEN_RAW = re.compile(
     r"|/\*|position\s*:\s*fixed|\b(?:localStorage|sessionStorage|javascript:|data:)\b|https?:|www\.",
     re.I,
 )
+# Match complete attributes from the root start, so quoted text cannot masquerade
+# as the standard namespace declaration.
+_SVG_ROOT_NS = re.compile(
+    r"""^(<svg(?:\s+[^\s=/>]+\s*=\s*(?:"[^"]*"|'[^']*'))*?)"""
+    rf"""\s+xmlns\s*=\s*(["']){re.escape(_SVG_NS)}\2(?=\s|/?>)"""
+)
 _SVG_URL_REF = re.compile(r"url\(([^)]*)\)", re.I)
 _SVG_SAFE_FRAGMENT = re.compile(r"^['\"]?#[A-Za-z_][A-Za-z0-9_.-]*['\"]?$")
 _SVG_FONT_SIZE_CSS = re.compile(r"font-size\s*:\s*([0-9.]+)\s*(px|pt|em|rem)?", re.I)
@@ -256,6 +262,7 @@ def _validate_and_normalize_svg(raw_svg: str) -> str:
     code = _escape_svg_text_nodes(_SVG_STYLE_BLOCK.sub("", _SVG_XML_COMMENT.sub("", raw_svg)).strip())
     if len(code) > SVG_MAX_CHARS:
         raise ValueError("svg exceeds maximum character budget")
+    code = _SVG_ROOT_NS.sub(r"\1", code, count=1)
     if _SVG_FORBIDDEN_RAW.search(code):
         raise ValueError("svg contains forbidden markup or patterns")
     if not code.lower().startswith("<svg") or not code.lower().endswith("</svg>"):
@@ -400,11 +407,31 @@ class SvgVisual(_Base):
         return self
 
 
+class SearchPhoto(_Base):
+    """Constructed by the server from a result of this turn, never from model-supplied URLs."""
+    kind: Literal["web_photo"] = "web_photo"
+    source: str
+    source_title: str
+    jpeg: bytes = Field(exclude=True, repr=False)
+
+    @classmethod
+    def from_result(cls, caption, result):
+        source, title, jpeg = result
+        return cls(alt=caption, source=source, source_title=title, jpeg=jpeg)
+
+    def judge_image(self):
+        import base64
+        return "data:image/jpeg;base64," + base64.b64encode(self.jpeg).decode("ascii")
+
+
+
 Visual = Annotated[
     StepsVisual | CompareVisual | SegmentVisual | NumberLineVisual | SvgVisual,
     Field(discriminator="kind"),
 ]
+# Model-authored visuals cannot introduce a search photo or a remote URL.
 VISUAL_ADAPTER: TypeAdapter = TypeAdapter(Visual)
+DeliveredVisual = Visual | SearchPhoto
 
 # 可承载图的正文：答案、辅导。其余 act 没有这样的正文，丢弃图是结构原因，不是教学判断。
 VISUAL_ACTS = frozenset({"answer", "guide"})
@@ -433,7 +460,9 @@ def describe(visual) -> str:
     if visual.title:
         lines.append(f"标题：{visual.title}")
     lines.append(f"说明：{visual.alt}")
-    if isinstance(visual, StepsVisual):
+    if isinstance(visual, SearchPhoto):
+        lines.append(f"来源：{visual.source_title} {visual.source}")
+    elif isinstance(visual, StepsVisual):
         lines.append("步骤：" + " → ".join(
             step.label + (f"（{step.detail}）" if step.detail else "") for step in visual.steps
         ))

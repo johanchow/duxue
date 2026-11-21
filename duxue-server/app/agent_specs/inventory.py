@@ -98,6 +98,7 @@ COMPONENT_PURPOSES = {
     ),
     "tutoring.math": ("数学核验工具", "受限四则与SymPy核验，结果不改变答案保护。"),
     "tutoring.science": ("多学科符号与约束引擎", "覆盖高阶数学、含参反例证伪、物理量纲、化学守恒与生物遗传核算。"),
+    "tutoring.web_search": ("学习资料检索", "按当前学习目的查找网页或真实照片。"),
     "tutoring.inspect_image": ("局部看图放大工具", "在当前已授权图片上按归一化坐标裁剪放大细节，图片字节不进遥测。"),
     "tutoring.blueprint-planner": ("内部解题蓝图规划", "首轮复杂新题生成服务端私有路线、里程碑与预验算锚点，绝不下发客户端。"),
     "tutoring.blueprint-backup": ("异构备用与替代求解", "T1 确定性引擎证伪后的异构重解，以及 T2 并发替代路线求解；可独立配置模型家族。"),

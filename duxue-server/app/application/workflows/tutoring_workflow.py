@@ -33,7 +33,7 @@ from app.application.workflows.tutor_turn import (
     build_tutor_instruction,
     fallback_text,
 )
-from app.application.workflows.tutor_visual import describe
+from app.application.workflows.tutor_visual import SearchPhoto, describe
 from app.contexts.companion.domain.policy import PolicyRegistry
 from app.contexts.tutoring.domain.tutor_permit import (
     PROTECTED_STATUSES,
@@ -678,6 +678,8 @@ class _TutoringTurn:
             tutoring_intent=self.turn.get("tutoring_intent"),
             self_review_aspects=self.review_aspects,
         )
+        if any(row.get("shown_visual_kind") for row in self.window):
+            instruction += "\n参考历史中实际展示的 shown_visual_kind。学生要求换成更直观的图时，选择能表现原理的图形，避免重复已有表格。"
         if self.prepared.target.ids:
             instruction += render_fragment("tutoring.turn", "image_review")
             if self.turn.get("tutoring_intent") == "compare_previous_image":
@@ -728,7 +730,7 @@ class _TutoringTurn:
             judge_images=self.all_authorized_images,
         )
         self.candidate = self.verdict = self.visual = None
-        self.failure = "no_candidate"
+        self.failure = "photo_unavailable" if tools.web_search.image_requested else "no_candidate"
         self.vetting = result.vetting if result else None
         self.leak_retried = bool(result and result.leak_retried)
         if self.vetting is not None:
@@ -755,6 +757,14 @@ class _TutoringTurn:
             return "failed"
         if safety:
             return "unsafe_output"
+        if isinstance(self.visual, SearchPhoto):
+            from app.infrastructure.storage.object_storage import save_reviewed_photo
+            try:
+                self.photo_key = save_reviewed_photo(self.invocation.ward_id, self.visual.jpeg)
+            except OSError:
+                self.failure = "photo_unavailable"
+                self.failed = True
+                return "failed"
         if self.candidate.act in {"pronounce", "clarify"}:
             return self.candidate.act
         return "work" if self.verdict.effective_work_product else "conversation"
@@ -965,5 +975,6 @@ class _TutoringTurn:
         return WorkflowOutcome(
             run_status="waiting_for_ward", outcome_type="waiting", context_refs=self.refs,
             next_interaction=next_interaction,
+            reviewed_photo_keys=[self.photo_key] if isinstance(self.visual, SearchPhoto) else [],
             context_snapshot=self.envelope.trace_snapshot(),
         )

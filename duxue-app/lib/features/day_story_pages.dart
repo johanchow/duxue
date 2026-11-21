@@ -199,11 +199,96 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   String? failedPlanText;
   List<Map<String, dynamic>> pronunciationLessons = const [];
   SpeechPlayback? _speechPlayback;
+  String? _voiceDisplayText;
+  bool _autoRead = false;
+  bool _autoReadChanged = false;
+  String? _failedVoiceDisplay;
+  int _speechGeneration = 0;
+  String? _readingId;
+  bool _playbackClaimed = false;
+  StreamSubscription<void>? _playbackComplete;
+
+  CancelToken? _speechRequest;
+  final _replyAudio = <String, Uint8List>{};
+
+  Stream<List<int>> _cacheReply(Stream<Uint8List> frames, String key, int generation) async* {
+    final buffer = BytesBuilder(copy: false);
+    const maxBytes = 2 * 1024 * 1024;
+    var cacheable = true;
+    await for (final frame in frames) {
+      if (generation != _speechGeneration) return;
+      if (cacheable && buffer.length + frame.length > maxBytes) {
+        buffer.clear();
+        cacheable = false;
+      }
+      if (cacheable) buffer.add(frame);
+      yield frame;
+    }
+    if (cacheable && buffer.isNotEmpty && generation == _speechGeneration) {
+      if (_replyAudio.length >= 4) _replyAudio.remove(_replyAudio.keys.first);
+      _replyAudio[key] = buffer.takeBytes();
+    }
+  }
+
+  Future<void> _stopSpeech() async {
+    _speechRequest?.cancel();
+    _speechGeneration++;
+    if (mounted && _readingId != null) setState(() => _readingId = null);
+    if (_playbackClaimed) {
+      _playbackClaimed = false;
+      await _speechPlayback?.stop();
+    }
+  }
+
+  Future<void> _readReply(_ChatLine message) async {
+    final latency = Stopwatch()..start();
+    _speechRequest?.cancel();
+    final stopping = _readingId == message.id;
+    final generation = ++_speechGeneration;
+    setState(() => _readingId = stopping ? null : message.id);
+    final playback = _playback();
+    _playbackClaimed = !stopping;
+    try {
+      await playback.stop();
+      if (stopping || !mounted || generation != _speechGeneration) return;
+      final key = '${widget.wardId}/${message.id!}';
+      final cached = _replyAudio[key];
+      if (cached != null) {
+        await playback.playMp3(cached);
+      } else {
+        final cancel = _speechRequest = CancelToken();
+        final frames = await ref.read(apiProvider).companionSpeech(message.id!, cancel);
+        if (!mounted || generation != _speechGeneration) return;
+        await playback.playStream(_cacheReply(frames, key, generation));
+      }
+      if (mounted && generation == _speechGeneration) {
+        ref.read(telemetryProvider).recordMetric(
+            'app.tts.playback_latency', latency.elapsedMilliseconds.toDouble());
+      }
+    } catch (_) {
+      if (mounted && generation == _speechGeneration) {
+        setState(() => _readingId = null);
+        showMessage(context, '暂时无法朗读，请稍后重试');
+      }
+    }
+  }
   bool planSending = false;
   bool clearingHistory = false;
   bool get _chatBusy => planSending || clearingHistory;
   int _chatGeneration = 0;
+  int _quietVersion = 0;
   ConversationTurn? _questionTiming;
+  Stopwatch? _photoLatency;
+  String? _photoCommandId;
+
+  void _photoVisible(String? commandId) {
+    if (!mounted || commandId == null || commandId != _photoCommandId) return;
+    final timer = _photoLatency;
+    if (timer == null) return;
+    _photoLatency = null;
+    ref.read(telemetryProvider).recordMetric(
+        'app.search_photo.visible_latency', timer.elapsedMilliseconds.toDouble());
+  }
   String? _pendingClearCommand;
 
   bool planListOpen = false;
@@ -216,6 +301,9 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   @override
   void initState() {
     super.initState();
+    ref.read(tokenStorageProvider).autoReadReplies(widget.wardId).then((enabled) {
+      if (mounted && !_autoReadChanged && enabled) setState(() => _autoRead = true);
+    });
     sprintCountdown = SprintCountdown(onElapsed: _refreshSprint);
     WidgetsBinding.instance.addObserver(this);
     _chatScrollController.addListener(_onChatScroll);
@@ -235,8 +323,28 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     });
   }
 
-  SpeechPlayback _playback() =>
-      _speechPlayback ??= (widget.speechPlayback ?? DeviceSpeechPlayback.new)();
+  SpeechPlayback _playback() {
+    if (_speechPlayback != null) return _speechPlayback!;
+    final playback = (widget.speechPlayback ?? DeviceSpeechPlayback.new)();
+    _playbackComplete = playback.onComplete.listen((_) {
+      if (mounted && _readingId != null) setState(() => _readingId = null);
+    }, onError: (Object error) {
+      if (mounted && _readingId != null) {
+        unawaited(_stopSpeech());
+        showMessage(context, '暂时无法朗读，请稍后重试');
+      }
+    });
+    return _speechPlayback = playback;
+  }
+
+  @override
+  void didUpdateWidget(covariant WardDayPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.wardId != widget.wardId) {
+      _replyAudio.clear();
+      unawaited(_stopSpeech());
+    }
+  }
 
   @override
   void dispose() {
@@ -247,12 +355,16 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     cueRefresh?.cancel();
     sprintRefresh?.cancel();
     sprintCountdown.dispose();
+    _speechGeneration++;
+    _speechRequest?.cancel();
+    _playbackComplete?.cancel();
     _speechPlayback?.dispose();
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) unawaited(_stopSpeech());
     sprintForeground = state == AppLifecycleState.resumed;
     sprintGeneration++;
     if (state == AppLifecycleState.resumed) {
@@ -270,15 +382,21 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(
-          child: switch (tab) {
-        0 => _home(context),
-        1 => _growth(context),
-        _ => _profile(context)
-      }),
+      body: Stack(fit: StackFit.expand, children: [
+        SupportCompanionPanel(
+            key: ValueKey(widget.wardId),
+            wardId: widget.wardId,
+            quietVersion: _quietVersion),
+        SafeArea(child: switch (tab) {
+          0 => _home(context),
+          1 => _growth(context),
+          _ => _profile(context)
+        }),
+      ]),
       bottomNavigationBar: NavigationBar(
           selectedIndex: tab,
           onDestinationSelected: (value) {
+            if (value != 0) unawaited(_stopSpeech());
             setState(() {
               if (value != 0) _discardSprintSetup();
               if (value == 0) hiddenSprintId = null;
@@ -321,6 +439,11 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         tooltip: '更多',
         onSelected: (value) {
           switch (value) {
+            case 'autoRead':
+              _autoReadChanged = true;
+              setState(() => _autoRead = !_autoRead);
+              unawaited(ref.read(tokenStorageProvider).setAutoReadReplies(widget.wardId, _autoRead));
+              if (!_autoRead) unawaited(_stopSpeech());
             case 'tasks':
               _openPlanList();
             case 'history':
@@ -331,8 +454,9 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
               _clearChatHistory();
           }
         },
-        itemBuilder: (_) => const [
-          PopupMenuItem(value: 'tasks', child: Text('作业')),
+        itemBuilder: (_) => [
+          CheckedPopupMenuItem(value: 'autoRead', checked: _autoRead, child: const Text('自动朗读 Agent 回复')),
+          const PopupMenuItem(value: 'tasks', child: Text('作业')),
           PopupMenuItem(value: 'history', child: Text('历史对话')),
           PopupMenuItem(value: 'sprint', child: Text('专注挑战')),
           PopupMenuItem(value: 'clear', child: Text('清空历史对话')),
@@ -406,7 +530,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
                 padding: EdgeInsets.fromLTRB(
                     20, 24, 20, stagedImages.isNotEmpty ? 184 : 112),
                 child: Column(children: [
-                  SupportCompanionPanel(wardId: widget.wardId, onAsk: _openPlanChat),
                   if (sprintSetupOpen)
                     _spokenSprintCard()
                   else ...[
@@ -570,8 +693,10 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   }
 
   Future<void> _beforeHomeRecording() async {
+    _voiceDisplayText = null;
     recordingForSprint = sprintSetupOpen;
     recordingSetupGeneration = sprintSetupGeneration;
+    await _stopSpeech();
     await ref.read(apiProvider).ensureValidAccess();
   }
 
@@ -585,7 +710,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     if (sprintSetupOpen) {
       await _previewSpokenSprint(text);
     } else {
-      await _sendDraft(spoken: text);
+      await _sendDraft(spoken: text, display: _voiceDisplayText);
     }
   }
 
@@ -623,6 +748,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
             onTap: sprintSetupOpen ? null : _openPlanChat,
             onBeforeRecording: _beforeHomeRecording,
             onPickImage: _pickPlanImage,
+            onVoiceDisplayText: sprintSetupOpen ? null : (text) => _voiceDisplayText = text,
             onVoiceFinal: _onHomeVoiceFinal),
       ]));
 
@@ -864,7 +990,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
                     style: TextStyle(fontSize: 12, color: Colors.redAccent))),
             TextButton(
                 onPressed:
-                    _chatBusy ? null : () => _submitPlanInput(failedPlanText!),
+                    _chatBusy ? null : () => _submitPlanInput(failedPlanText!, display: _failedVoiceDisplay),
                 child: const Text('重试')),
           ]),
         ),
@@ -934,6 +1060,8 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     try {
       await ref.read(apiProvider).clearCompanionHistory(_pendingClearCommand!);
       serverCleared = true;
+      _replyAudio.clear();
+      await _stopSpeech();
       if (!mounted) return;
       setState(() {
         _questionTiming?.finish('cancelled');
@@ -969,7 +1097,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         chatSubject = null;
       });
       await ref.read(tokenStorageProvider).clearCompanionThread();
-      await _speechPlayback?.stop();
+      await _stopSpeech();
       if (mounted) showMessage(context, '对话已清空，可以重新开始');
     } catch (_) {
       if (mounted) {
@@ -982,6 +1110,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   }
 
   void _closeHomeOverlay() {
+    unawaited(_stopSpeech());
     setState(() {
       _discardSprintSetup();
       planListOpen = false;
@@ -991,11 +1120,14 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     _refreshSprint();
   }
 
-  void _openPlanList() => setState(() {
-        _discardSprintSetup();
-        planChatOpen = false;
-        planListOpen = true;
-      });
+  void _openPlanList() {
+    unawaited(_stopSpeech());
+    setState(() {
+      _discardSprintSetup();
+      planChatOpen = false;
+      planListOpen = true;
+    });
+  }
 
   void _openPlanChat([String? subject]) {
     final wasOpen = planChatOpen;
@@ -1023,7 +1155,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     return end == null ? '${clock(start)} 开始' : '${clock(start)}–${clock(end)}';
   }
 
-  Future<void> _sendDraft({String? spoken, bool pronunciation = false}) async {
+  Future<void> _sendDraft({String? spoken, String? display, bool pronunciation = false}) async {
     if (_chatBusy) return;
     if (stagedImages.any((image) => image.key == null && !image.failed)) {
       showMessage(context, '图片还在上传，请稍候再发送');
@@ -1049,7 +1181,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
       planMessages.add(_ChatLine(label: '我', content: content, images: images));
     });
     _scrollToChatBottom();
-    await _submitPlanInput(content, pronunciation: pronunciation);
+    await _submitPlanInput(content, pronunciation: pronunciation, display: display);
     _scrollToChatBottom();
   }
 
@@ -1208,6 +1340,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
 
   Future<void> _openSprint() async {
     if (sprintBusy || _chatBusy) return;
+    unawaited(_stopSpeech());
     final generation = ++sprintSetupGeneration;
     setState(() {
       planListOpen = false;
@@ -1299,6 +1432,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   Future<void> _acceptSprintProposal() async {
     final action = sprintAction;
     if (action == null || _chatBusy) return;
+    final speechGeneration = _speechGeneration;
     setState(() => planSending = true);
     try {
       final result = await ref.read(apiProvider).companionTurn(
@@ -1313,7 +1447,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
           });
       if (!mounted) return;
       sprintAction = null;
-      await _applyPlanTurnResult(result);
+      await _applyPlanTurnResult(result, speechGeneration: speechGeneration);
       await _refreshSprint();
     } catch (error) {
       if (mounted) showMessage(context, '请重新查看这轮挑战：${userErrorMessage(error)}');
@@ -1870,7 +2004,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   }
 
   Future<void> _submitPlanInput(String text,
-      {bool pronunciation = false}) async {
+      {bool pronunciation = false, String? display}) async {
     if (_chatBusy) return;
     planAttachments
       ..clear()
@@ -1878,8 +2012,12 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         for (final image in stagedImages)
           if (image.key != null) image.key!,
       ]);
+    final speechGeneration = _speechGeneration;
     final timing = ref.read(conversationLatencyProvider).start('ward');
     _questionTiming = timing;
+    final photoTimer = Stopwatch()..start();
+    _photoCommandId = null;
+    _photoLatency = null;
     final generation = _chatGeneration;
     setState(() {
       planSending = true;
@@ -1887,18 +2025,24 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     try {
       final result = await timing.request(() => ref.read(apiProvider).companionTurn(
           content: text,
+          voiceDisplayText: display,
           threadId: companionThreadId,
           expectedThreadVersion: companionThreadVersion,
           attachmentKeys: List<String>.from(planAttachments),
           routeHint: pronunciation ? 'tutoring' : null,
           tutoringIntent: pronunciation ? 'pronunciation' : null));
       if (!mounted || generation != _chatGeneration) return;
-      await _applyPlanTurnResult(result, timing: timing);
+      _photoCommandId = result['command_id'] as String?;
+      _photoLatency = photoTimer;
+      await _applyPlanTurnResult(result, speechGeneration: speechGeneration, timing: timing);
     } catch (error) {
       timing.fail(error);
       if (!mounted || generation != _chatGeneration) return;
       if (mounted && generation == _chatGeneration) {
-        setState(() => failedPlanText = text);
+        setState(() {
+          failedPlanText = text;
+          _failedVoiceDisplay = display;
+        });
         showMessage(context, '暂时无法整理今天的计划，请重试');
       }
     } finally {
@@ -1917,6 +2061,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
       return;
     }
     final generation = _chatGeneration;
+    final speechGeneration = _speechGeneration;
     setState(() => planSending = true);
     try {
       final result = await ref.read(apiProvider).companionTurn(
@@ -1930,7 +2075,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         },
       );
       if (!mounted || generation != _chatGeneration) return;
-      await _applyPlanTurnResult(result);
+      await _applyPlanTurnResult(result, speechGeneration: speechGeneration);
     } on DioException catch (error) {
       if (!mounted || generation != _chatGeneration) return;
       if (error.response?.statusCode == 409) {
@@ -1959,7 +2104,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     }
   }
 
-  Future<void> _applyPlanTurnResult(Map<String, dynamic> result, {ConversationTurn? timing}) async {
+  Future<void> _applyPlanTurnResult(Map<String, dynamic> result, {required int speechGeneration, ConversationTurn? timing}) async {
     final generation = _chatGeneration;
     final interaction =
         Map<String, dynamic>.from(result['interaction'] as Map? ?? const {});
@@ -1993,6 +2138,10 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     final nextDraftId = draft?['draft_id'] as String?;
     final nextDraftVersion = draft?['object_version'] as int?;
     setState(() {
+      final quiet = interaction['observation_quiet'];
+      if (quiet is Map && quiet['ward_version'] is int && quiet['ward_version'] > _quietVersion) {
+        _quietVersion = quiet['ward_version'] as int;
+      }
       failedPlanText = null;
       stagedImages.clear();
       planAttachments.clear();
@@ -2059,6 +2208,18 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     await _load();
     if (!mounted || generation != _chatGeneration) return;
     await _refreshTranscript(timing: timing);
+    if (!mounted || !sprintForeground || !_autoRead || tab != 0 || !planChatOpen ||
+        generation != _chatGeneration || speechGeneration != _speechGeneration) {
+      return;
+    }
+    final commandId = result['command_id'];
+    if (commandId == null) return;
+    for (final message in planMessages.reversed) {
+      if (message.readable && message.commandId == commandId) {
+        unawaited(_readReply(message));
+        break;
+      }
+    }
   }
 
   String? _suggestedClock(dynamic value) {
@@ -2141,6 +2302,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
                 (target['${kind}_suggestion'] as Map)['fingerprint'],
           };
     final generation = _chatGeneration;
+    final speechGeneration = _speechGeneration;
     setState(() => planSending = true);
     try {
       final result = await ref.read(apiProvider).companionTurn(
@@ -2154,7 +2316,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         },
       );
       if (!mounted || generation != _chatGeneration) return;
-      await _applyPlanTurnResult(result);
+      await _applyPlanTurnResult(result, speechGeneration: speechGeneration);
     } on DioException catch (error) {
       if (!mounted || generation != _chatGeneration) return;
       if (error.response?.statusCode == 409) {
@@ -2306,7 +2468,9 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         threadId: item['thread_id'] as String?,
         threadVersion: item['thread_version'] as int?,
         label: item['author_type'] == 'ward' ? '我' : '读学 AI',
-        content: item['content'] as String,
+        content: (item['author_type'] == 'ward' ? (interactionRef?['voice_display_text'] as String?) : null) ?? item['content'] as String,
+        readable: item['can_read_aloud'] == true && item['id'] is String,
+        commandId: item['command_id'] as String?,
         imageRefs: refs.toList(),
         images: [
           for (final ref in refs)
@@ -2380,6 +2544,12 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         loadSpeech: (speechRef, rate) =>
             ref.read(apiProvider).pronunciationSpeech(speechRef, rate),
         playback: _playback(),
+        claimPlayback: () {
+          unawaited(_stopSpeech());
+          final generation = _speechGeneration;
+          _playbackClaimed = true;
+          return () => generation == _speechGeneration;
+        },
       );
 
   Widget _chatMessage(_ChatLine message) => Padding(
@@ -2398,7 +2568,16 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
                 loadImage: message.imageRefs.isEmpty
                     ? null
                     : (index) => _loadChatImage(message, index),
+                onPhotoVisible: message.visual?['kind'] == 'web_photo'
+                    ? () => _photoVisible(message.commandId)
+                    : null,
                 visual: message.visual),
+            if (message.readable)
+              TextButton.icon(
+                onPressed: () => _readReply(message),
+                icon: Icon(_readingId == message.id ? Icons.stop : Icons.volume_up_outlined),
+                label: Text(_readingId == message.id ? '停止朗读' : '朗读'),
+              ),
             if (message.intentActions.isNotEmpty &&
                 message.threadId == companionThreadId &&
                 message.threadVersion == companionThreadVersion)
@@ -2730,6 +2909,8 @@ class _ChatLine {
     required this.content,
     this.images = const [],
     this.imageRefs = const [],
+    this.commandId,
+    this.readable = false,
     this.visual,
     this.lessons = const [],
     this.intentActions = const [],
@@ -2738,6 +2919,8 @@ class _ChatLine {
   final String? id;
   final String? threadId;
   final int? threadVersion;
+  final String? commandId;
+  final bool readable;
   final String label;
   final String content;
   final List<Uint8List> images;
@@ -2764,6 +2947,8 @@ class _ChatLine {
         id: id,
         threadId: threadId,
         threadVersion: threadVersion,
+        commandId: commandId,
+        readable: readable,
         label: label,
         content: content,
         images: images,
@@ -2795,6 +2980,7 @@ class _ChatBubble extends StatelessWidget {
     required this.text,
     this.images = const [],
     this.imageCount = 0,
+    this.onPhotoVisible,
     this.loadImage,
     this.visual,
   });
@@ -2802,6 +2988,7 @@ class _ChatBubble extends StatelessWidget {
   final String text;
   final List<Uint8List> images;
   final int imageCount;
+  final VoidCallback? onPhotoVisible;
   final Future<Uint8List> Function(int index)? loadImage;
   final Map<String, dynamic>? visual;
 
@@ -2814,6 +3001,8 @@ class _ChatBubble extends StatelessWidget {
     return LayoutBuilder(builder: (context, constraints) {
       final maxWidth =
           isWard ? constraints.maxWidth * 2 / 3 : constraints.maxWidth;
+      final photoWidth = (maxWidth - 26).clamp(1.0, 320.0).toDouble();
+      final previewWidth = onPhotoVisible == null ? 72.0 : photoWidth;
       return Align(
           alignment: isWard ? Alignment.centerRight : Alignment.centerLeft,
           child: Container(
@@ -2859,17 +3048,19 @@ class _ChatBubble extends StatelessWidget {
                                 builder: (context, snapshot) => snapshot.hasData
                                     ? Image.memory(snapshot.data!,
                                         key: ValueKey('sent-chat-image-$index'),
-                                        width: 72,
-                                        height: 72,
-                                        fit: BoxFit.cover,
-                                        cacheWidth: chatImageCachePixels(
-                                            72,
-                                            MediaQuery.devicePixelRatioOf(
-                                                context)),
-                                        cacheHeight: chatImageCachePixels(
-                                            72,
-                                            MediaQuery.devicePixelRatioOf(
-                                                context)),
+                                        width: previewWidth,
+                                        height: onPhotoVisible == null ? 72 : null,
+                                        fit: onPhotoVisible == null ? BoxFit.cover : BoxFit.contain,
+                                        cacheWidth: chatImageCachePixels(previewWidth,
+                                            MediaQuery.devicePixelRatioOf(context)),
+                                        cacheHeight: onPhotoVisible == null ? chatImageCachePixels(72, MediaQuery.devicePixelRatioOf(context)) : null,
+                                        frameBuilder: onPhotoVisible == null ? null :
+                                            (context, child, frame, sync) {
+                                          if (frame != null || sync) {
+                                            WidgetsBinding.instance.addPostFrameCallback((_) => onPhotoVisible!());
+                                          }
+                                          return child;
+                                        },
                                         gaplessPlayback: true)
                                     : Container(
                                         key: ValueKey('sent-chat-image-$index'),

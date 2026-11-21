@@ -27,7 +27,7 @@ from app.application.workflows.pronunciation_guidance import (
 from app.application.workflows.tutor_visual import (
     VISUAL_ACTS,
     VISUAL_ADAPTER,
-    Visual,
+    DeliveredVisual,
     drop_reason,
 )
 from app.contexts.tutoring.domain.tutor_permit import TutorPermit
@@ -65,6 +65,8 @@ def fallback_text(failure: str | None, leak_reason: str | None = None) -> str:
     A judge outage must use the technical fallback even if an earlier attempt
     carried a teaching-boundary reason.
     """
+    if failure == "photo_unavailable":
+        return "这次没找到可以核实并展示的合适照片。"
     if failure == "visual_unavailable":
         return "这次没能生成可用的示意图，暂时无法用图帮你说明。请稍后再试。"
     if failure == "leak_detected":
@@ -231,8 +233,9 @@ class TutorTurnCandidate(BaseModel):
     # 配图是可选的展示增强：非法或不适用时整张丢弃并记下原因，绝不让候选整体失败。
     image_review: ImageReview | None = None
     math_claims: list[MathClaim] = Field(default_factory=list, max_length=16)
-    visual: Visual | None = None
+    visual: DeliveredVisual | None = None
     visual_dropped: str | None = Field(default=None, exclude=True)
+    rejected_svg: bool = Field(default=False, exclude=True)
     visual_error: str | None = Field(default=None, exclude=True)
 
     @model_validator(mode="before")
@@ -286,6 +289,7 @@ class TutorTurnCandidate(BaseModel):
         else:
             value.pop("turn", None)
         value.pop("visual_dropped", None)  # 只由这里写，模型自报的无效
+        value.pop("rejected_svg", None)
         value.pop("visual_error", None)
         raw_visual = value.pop("visual", None)
         if raw_visual not in (None, "", {}, []):
@@ -297,6 +301,7 @@ class TutorTurnCandidate(BaseModel):
                 except ValidationError as error:
                     value["visual_dropped"] = drop_reason(error)
                     value["visual_error"] = format_schema_error(error)
+                    value["rejected_svg"] = isinstance(raw_visual, dict) and raw_visual.get("kind") == "svg"
         for key in ("lesson", "lessons", *_LESSON_KEYS, "candidates"):
             value.pop(key, None)
         return value

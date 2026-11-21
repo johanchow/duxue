@@ -101,9 +101,7 @@ class _WardListPageState extends ConsumerState<WardListPage> {
                         onInviteChild: () => showWardAppInviteDialog(
                             context, ref, selected.id,
                             wardName: selected.displayName))),
-            GuardianQuestionPage(
-                active: tab == 1,
-                onStartWithChild: () => _startWithChild(items)),
+            GuardianQuestionPage(active: tab == 1),
             _profile(),
           ]),
           bottomNavigationBar: NavigationBar(
@@ -282,31 +280,6 @@ class _WardListPageState extends ConsumerState<WardListPage> {
     } catch (e) {
       if (mounted) showMessage(context, '创建失败：${userErrorMessage(e)}');
     }
-  }
-
-  Future<void> _startWithChild(List<Ward> wards) async {
-    if (wards.isEmpty) {
-      await _create();
-      return;
-    }
-    Ward? selected = wards.length == 1 ? wards.first : null;
-    selected ??= await showModalBottomSheet<Ward>(
-        context: context,
-        useSafeArea: true,
-        builder: (context) => ListView(
-                shrinkWrap: true,
-                padding: const EdgeInsets.all(16),
-                children: [
-                  const ListTile(title: Text('让哪个孩子试试？')),
-                  for (final ward in wards)
-                    ListTile(
-                        title: Text(ward.displayName),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () => Navigator.pop(context, ward)),
-                ]));
-    if (!mounted || selected == null) return;
-    await showWardAppInviteDialog(context, ref, selected.id,
-        wardName: selected.displayName);
   }
 
   String _gradeName(String value) => switch (value) {

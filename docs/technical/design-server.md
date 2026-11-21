@@ -847,6 +847,14 @@ graph TD
 - `POST /api/v1/companion/tutoring-sessions`：开启某任务的答疑会话；
 - `POST /api/v1/companion/tutoring-sessions/{tutoring_session_id}/ask`：流式发起提问（返回 `text/event-stream` SSE，按已提交证据逐步引导）。
 
+#### Ward 实时转写与正式答复朗读
+
+`/ws/asr/transcribe` 接收 16 kHz 单声道 PCM16。使用 `ASR_MODEL=qwen-audio-3.1-asr-flash-message` 时按供应商的句子 ID 修订草稿，松手后等整次任务结束，再发送一次包含原始转写的 `final.text`。普通对话的客户端可在 `start` 中传 `display_transcript: true`，同时将同一音频送入启用原生润色的第二条 ASR 连接。两条连接分别计量，不保存录音。整理结果最多额外等 1.5 秒，超时或失败时仅返回原始转写。旧实时模型仍可通过 `ASR_MODEL=qwen3-asr-flash-realtime` 选用。
+
+`POST /companion/turn` 的 `content` 承载原始转写。可选 `voice_display_text` 仅写入学生答疑消息的展示元数据。路由、导师上下文、发音原句、今日总结及历史逐字引用沿用原始转写。接口兼容历史消息，无需迁移表结构。
+
+`GET /companion/messages/{message_id}/speech` 读取当前 Ward 可见历史中的 Agent 文本回复，排除旧版系统邀请与发音卡，返回 `audio/mpeg`。历史消息投影用 `can_read_aloud` 描述可点读性；请求不能传合成文本。默认使用 `TUTOR_TTS_MODEL=qwen-audio-3.1-tts-flash` 和 `TUTOR_TTS_VOICE=longanhuan_v3.1`，由服务端设置教师语气并过滤 Markdown。封闭公式里的单项负数幂按负号作用范围展开；含其他 LaTeX 公式的回复交给支持公式的 CosyVoice v3 Flash。发音卡沿用独立播放接口。合成使用服务端的百炼凭据，可通过 `SPEECH_TASK_URL` 指定部署地域的双工地址。带 `?stream=true` 时首段合成成功即返回并逐段发送 MP3，播放器取消时关闭上游连接；旧客户端仍可一次获取完整 MP3。
+
 ### 7.4 评估与双轨对比 (Evaluations & Reflection)
 - `GET /api/v1/evaluations/schedules/{schedule_id}/blind-card`：获取锁闭状态的自评盲评卡片；
 - `POST /api/v1/evaluations/schedules/{schedule_id}/submit`：学生提交今日自评，触发双轨对比报告即时就绪；

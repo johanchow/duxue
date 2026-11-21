@@ -3,9 +3,16 @@
 > 状态：配置与运行适配迁移已实现；领域 Port 通过解包适配保持原调用协议。配置入口见[目录说明](../../duxue-server/agent_specs/README.md)，当前运行图见[现状流程图](agent-flow-current.md)。
 > 关联：[项目 DDD 约定](../../.cursor/skills/domain-driven-design/SKILL.md) · [Companion 编排](domain-companion.md) · [当前模型组件注册表](../../duxue-server/app/infrastructure/ai/components.py)
 
-## 一、目标与边界
+## 配置铁律
 
-**Admin 数据库是 Workflow JSON 的唯一事实源。** 流程变更进入 `agent_drafts.bundle`，发布后由 `agent_environments.release_id` 指向生效的 `agent_releases.bundle`。`workflows/<id>.json` 是完整包内的逻辑路径。仓库和本地开发目录均不单独维护 Workflow JSON。本地联调使用 Admin 快照，离线调试使用导出的固定快照，历史测试夹具仅用于回归。
+**Admin 数据库是 Workflow、Agent、Gate 和 Tool 可编辑配置的唯一事实源。** 流程节点、条件边、Prompt、模型参数和工具绑定都在当前工作草稿 `agent_drafts.bundle` 中修改。发布时固化为 `agent_releases.bundle`，各环境通过 `agent_environments.release_id` 选择生效版本。包内的 `workflows/<id>.json`、`agents/<id>.json` 等名称是逻辑路径。
+
+- **改配置**：从 Admin 读取当前草稿和 revision，基于该版本保存增量，再从 Admin 回读并核对变更。修改本地 JSON 不能交付流程或 Agent 配置。
+- **本地联调**：本机 App 后端通过 Admin 接口读取测试工作草稿。验收时将实际服务加载的草稿 ID、revision 和摘要与 Admin 回读结果对齐。
+- **更新单测基线**：仓库内的业务配置 JSON 副本仅作测试夹具。需要让单测覆盖新版配置时，先在 Admin 保存并校验，再按指定版本导出到本地，核对来源和摘要后更新夹具。专门验证旧版本兼容性的夹具继续固定在原版本。
+- **其他 JSON 产物**：离线回放和备份可使用 Admin 导出，发布服务可使用自动生成的已验证发布缓存。这些文件均为派生物，不作为配置编辑入口。代码维护的 Schema 和处理器契约另见[服务端目录说明](../../duxue-server/agent_specs/README.md#代码保留的内容)。
+
+## 一、目标与边界
 
 **Workflow 由 JSON 驱动。** 每轮固定一个配置快照，从中读取当前流程的节点、条件边、子流程引用和预算。运行时解析同一快照中的引用，代码提供已注册的处理器、条件判断、授权和事务。Admin 直接画出所选快照中当前流程的全部节点与控制边，点击 Workflow 节点进入它引用的定义。一次请求实际走过哪些分支，以该次 Trace 为准。
 
@@ -204,7 +211,7 @@ Tool 文件的 `kind` 固定为 `tool`，声明 `id`、`description`、`input_sc
 
 ## 五、执行、领域边界与观测
 
-启动时校验文件 Schema、ID 唯一性、引用、Workflow 可达性、处理器白名单、模型及工具预算、条件 Gate 与安全失败策略。通用执行器从 Workflow 定义装配控制流；处理器、条件函数、授权和领域写入仍由代码负责。迁移时用现有离线评测重放模型行为，并用单元与集成测试覆盖重试次数、条件 Gate、失败安全、确认恢复和事务边界。Workflow 装配和 Agent/Gate/Tool 查找都使用同一目录；流程图也从它生成。Git配置改动与代码、评测和文档同一PR审阅并发布；测试环境组件在线变更走[管理台发布协议](design-admin.md#五发布拉取与恢复)。每轮固定一个完整快照，不引入分流规则。
+启动时校验文件 Schema、ID 唯一性、引用、Workflow 可达性、处理器白名单、模型及工具预算、条件 Gate 与安全失败策略。通用执行器从 Workflow 定义装配控制流；处理器、条件函数、授权和领域写入仍由代码负责。迁移时用现有离线评测重放模型行为，并用单元与集成测试覆盖重试次数、条件 Gate、失败安全、确认恢复和事务边界。Workflow 装配和 Agent/Gate/Tool 查找都使用同一目录；流程图也从它生成。代码契约、评测和文档通过 PR 审阅；可编辑配置变更走[管理台发布协议](design-admin.md#五发布拉取与恢复)。每轮固定一个完整快照，不引入分流规则。
 
 按项目当前 DDD 约定，Domain 是拥有业务语义、模型和规则的边界；Workflow 和 Agent 是 Application/Infrastructure 的运行角色，不是新的 Domain 或 Aggregate。Companion 只维护 Thread/Run 连续性并路由受权调用；Planning、Tutoring、Evaluation 各自裁决并写入自己的业务状态。配置目录集中的是**运行描述**，不是跨 Domain 的共享业务模型。装配器应处于应用组合层，领域模块不读取配置，也不依赖模型或工具实现。
 

@@ -42,3 +42,5 @@ Ward 可见对话是 Companion 的 append-only 账本，统一走 `/companion/tu
 - 2026-11-04 真机发现初路由能识别挑战但独立scene-switch因原题未结束而拒绝，导致明确挑战请求被当作答疑。scene-switch.system.v2允许保留原题的挑战/提醒插曲，仍拒绝仅估时和解题续答；真实模型红绿验证及可重复CLI见 `duxue-server/scripts/check_reminder_sprint_models.py`。
 
 - 2026-11-21 答疑主图按发布边执行。灰度绑定既有 Run 的 graph_version，回放由执行器记录；改边回归须从真实入口验证可选数据读取和审核访问。设计见[答疑主图的执行与切换](../../docs/technical/domain-tutoring.md#13-答疑主图的执行与切换)。测试环境已验证发布、并发重放与回滚；物理手机接口和安卓模拟器界面证据见[验收清单](../specs/tutoring-json-execution.md)。
+
+- 2026-11-21 Ward 语音输入与答疑朗读已实现，待真实童声和听感验收。原生润色可能吞掉孩子改口；导师、逐字引用及发音目标必须消费原始转写，整理稿仅用于学生气泡。两路 ASR 的计量及正文点读授权见[服务端设计](../../docs/technical/design-server.md#ward-实时转写与正式答复朗读)，播放器打断与指标见[端侧设计](../../docs/technical/design-app.md#3-提问转写与答疑朗读)。

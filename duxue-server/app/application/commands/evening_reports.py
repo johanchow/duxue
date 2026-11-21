@@ -4,14 +4,13 @@ from datetime import datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from app.application.commands.behavior_observation import digest, lock, utc
+from app.application.queries.observation_day import published_day
 from app.application.queries.tutoring_evidence import evening_evidence
 from app.application.workflows.observation_workflow import observation_step
 
 from app.infrastructure.persistence.models import (
     GuardianReportInbox,
     GuardianWard,
-    ObservationDayRecord,
-    ObservationRevisionRecord,
     ObservationSettings,
     ReflectionReportRecord,
     ReflectionReportVersion,
@@ -33,20 +32,11 @@ class EveningReportCommands:
         cutoff = datetime.combine(day, time(hour, minute), ZoneInfo(setting.timezone))
         if self.clock() < cutoff:
             return None
-        observation = (
-            db.query(ObservationDayRecord)
-            .filter_by(ward_id=ward_id, local_date=day)
-            .one_or_none()
-        )
-        revision = (
-            db.get(ObservationRevisionRecord, (observation.id, observation.revision))
-            if observation
-            else None
-        )
+        observation = published_day(db, ward_id=ward_id, local_date=day)
         missing = []
-        if not revision:
+        if not observation:
             missing.append("observation_unavailable")
-        snapshot = revision.snapshot if revision else {}
+        snapshot = observation.snapshot if observation else {}
         if snapshot.get("coverage", {}).get("ratio") is None:
             missing.append("coverage_unavailable")
         elif snapshot["coverage"].get("missing_seconds", 0) or snapshot["coverage"].get(
@@ -73,7 +63,7 @@ class EveningReportCommands:
             "tutoring": digest(teaching),
         }
         projection = None
-        if revision:
+        if observation:
             projection = {
                 "totals": snapshot["totals"],
                 "coverage": snapshot["coverage"],
@@ -85,7 +75,7 @@ class EveningReportCommands:
                     }
                     for episode in snapshot.get("episodes", [])
                 ],
-                "generated_at": utc(revision.created_at).isoformat(),
+                "generated_at": utc(observation.generated_at).isoformat(),
             }
         content = {
             "status": "partial" if missing else "ready",
@@ -97,7 +87,7 @@ class EveningReportCommands:
             },
             "missing_reasons": missing,
             "summary": "以下为已收到证据的观察结果；缺失或看不清的时段不作行为判断。"
-            if revision
+            if observation
             else "本晚观察证据不足，暂时无法还原学习活动。",
         }
         fingerprint = digest({"content": content, "sources": source_vector})

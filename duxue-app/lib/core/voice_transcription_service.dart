@@ -24,6 +24,7 @@ typedef VoiceTranscriptionFactory = VoiceTranscription Function({
 
 abstract interface class VoiceTranscription {
   Future<void> start({
+    TranscriptHandler? onDisplayText,
     required TranscriptHandler onPartial,
     required TranscriptHandler onFinal,
     required VoiceErrorHandler onError,
@@ -46,6 +47,7 @@ class VoiceTranscriptionService implements VoiceTranscription {
   final AppTelemetry telemetry;
   final AudioRecorder _recorder;
   IOWebSocketChannel? _socket;
+  Stopwatch? _commitLatency;
   StreamSubscription<Uint8List>? _audioSubscription;
   StreamSubscription<dynamic>? _socketSubscription;
 
@@ -60,10 +62,12 @@ class VoiceTranscriptionService implements VoiceTranscription {
 
   @override
   Future<void> start({
+    TranscriptHandler? onDisplayText,
     required TranscriptHandler onPartial,
     required TranscriptHandler onFinal,
     required VoiceErrorHandler onError,
   }) async {
+    _commitLatency = null;
     const route = '/ws/asr/transcribe';
     final span =
         telemetry.startSpan('app.asr.session', attributes: {'route': route});
@@ -89,20 +93,32 @@ class VoiceTranscriptionService implements VoiceTranscription {
         'error_kind': 'connect',
         'route': route
       });
+      await _closeSocket();
       rethrow;
     }
+    if (_socket != socket) return;
+    var terminal = false;
     _socketSubscription = socket.stream.listen((raw) {
+      if (terminal || _socket != socket) return;
       final event = jsonDecode(raw as String) as Map<String, dynamic>;
       switch (event['type']) {
         case 'partial':
           onPartial(event['text'] as String? ?? '');
         case 'final':
+          terminal = true;
           span.finish(attributes: {'result': 'success'});
           telemetry.recordMetric('app.asr.session', 1,
               attributes: {'result': 'success', 'route': route});
+          final latency = _commitLatency;
+          if (latency != null) {
+            telemetry.recordMetric('app.asr.final_latency', latency.elapsedMilliseconds.toDouble());
+          }
+          final display = event['display_text'];
+          if (display is String) onDisplayText?.call(display);
           onFinal(event['text'] as String? ?? '');
           unawaited(_closeSocket());
         case 'error':
+          terminal = true;
           final errorKind = event['code'] == 'unauthorized' ? 'auth' : 'server';
           span.finish(attributes: {'result': 'error', 'error_kind': errorKind});
           telemetry.recordMetric('app.asr.session', 1, attributes: {
@@ -111,8 +127,11 @@ class VoiceTranscriptionService implements VoiceTranscription {
             'route': route
           });
           onError(voiceProtocolErrorMessage(event['code']));
+          unawaited(cancel());
       }
     }, onError: (_, __) {
+      if (terminal) return;
+      terminal = true;
       span.finish(attributes: {'result': 'error', 'error_kind': 'socket'});
       telemetry.recordMetric('app.asr.session', 1, attributes: {
         'result': 'error',
@@ -120,20 +139,38 @@ class VoiceTranscriptionService implements VoiceTranscription {
         'route': route
       });
       onError('语音连接已断开');
+      unawaited(cancel());
+    }, onDone: () {
+      if (terminal || _socket != socket) return;
+      terminal = true;
+      span.finish(attributes: {'result': 'error', 'error_kind': 'disconnect'});
+      onError('语音连接已断开');
+      unawaited(cancel());
     });
-    socket.sink.add(jsonEncode({'type': 'start'}));
+    socket.sink.add(jsonEncode({
+      'type': 'start',
+      if (onDisplayText != null) 'display_transcript': true
+    }));
     final stream = await _recorder.startStream(const RecordConfig(
       encoder: AudioEncoder.pcm16bits,
       sampleRate: 16000,
       numChannels: 1,
     ));
+    if (terminal || _socket != socket) {
+      await _recorder.cancel();
+      return;
+    }
     _audioSubscription = stream.listen(socket.sink.add, onError: (_, __) {
+      if (terminal) return;
+      terminal = true;
       onError('无法读取麦克风音频');
+      unawaited(cancel());
     });
   }
 
   @override
   Future<void> commit() async {
+    _commitLatency = Stopwatch()..start();
     await _audioSubscription?.cancel();
     _audioSubscription = null;
     await _recorder.stop();
@@ -145,7 +182,9 @@ class VoiceTranscriptionService implements VoiceTranscription {
     await _audioSubscription?.cancel();
     _audioSubscription = null;
     await _recorder.cancel();
-    _socket?.sink.add(jsonEncode({'type': 'cancel'}));
+    if (_socket?.closeCode == null) {
+      _socket?.sink.add(jsonEncode({'type': 'cancel'}));
+    }
     await _closeSocket();
   }
 
@@ -156,9 +195,11 @@ class VoiceTranscriptionService implements VoiceTranscription {
   }
 
   Future<void> _closeSocket() async {
-    await _socketSubscription?.cancel();
+    final subscription = _socketSubscription;
+    final socket = _socket;
     _socketSubscription = null;
-    await _socket?.sink.close();
     _socket = null;
+    await subscription?.cancel();
+    await socket?.sink.close();
   }
 }

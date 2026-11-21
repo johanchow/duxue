@@ -23,7 +23,16 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
 class _FakePlayback implements SpeechPlayback {
+  @override
+  Stream<void> get onComplete => const Stream.empty();
   final played = <Uint8List>[];
+
+  @override
+  Future<void> playStream(Stream<List<int>> frames) async {
+    final bytes = BytesBuilder();
+    await for (final frame in frames) { bytes.add(frame); }
+    await playMp3(bytes.takeBytes());
+  }
 
   @override
   Future<void> playMp3(Uint8List bytes) async {
@@ -46,6 +55,16 @@ class _WardHomeApi extends ApiClient {
   var startedAssignment = false;
   String? lastRouteHint;
   String? lastTutoringIntent;
+  String? lastDisplay;
+  final replySpeechRequests = <String>[];
+  Completer<Uint8List>? pendingSpeech;
+
+  @override
+  Future<Stream<Uint8List>> companionSpeech(String id, CancelToken cancel) async {
+    replySpeechRequests.add(id);
+    return Stream.value(await (pendingSpeech?.future ?? Future.value(Uint8List.fromList([1, 2]))));
+  }
+
   final speechRates = <double>[];
   String? startedPlanItem;
   String? pausedSessionId;
@@ -154,18 +173,20 @@ class _WardHomeApi extends ApiClient {
     required int? expectedThreadVersion,
     String? routeHint,
     String? tutoringIntent,
+    String? voiceDisplayText,
     Map<String, dynamic>? structuredCommand,
     List<String> attachmentKeys = const [],
   }) async {
     submittedThreads.add(threadId);
-    if (delayedTurn != null) return delayedTurn!.future;
     lastStructuredCommand = structuredCommand;
     lastRouteHint = routeHint;
     lastTutoringIntent = tutoringIntent;
+    lastDisplay = voiceDisplayText;
     turns.add((
       content: content,
       attachmentKeys: List<String>.from(attachmentKeys),
     ));
+    if (delayedTurn != null) return delayedTurn!.future;
     if (showSprintProposal) {
       return {
         'thread_id': threadId ?? 'thread-1',
@@ -920,7 +941,8 @@ class _FakeVoice implements VoiceTranscription {
 
   @override
   Future<void> start(
-      {required TranscriptHandler onPartial,
+      {TranscriptHandler? onDisplayText,
+      required TranscriptHandler onPartial,
       required TranscriptHandler onFinal,
       required VoiceErrorHandler onError}) async {
     this.onPartial = onPartial;
@@ -1471,7 +1493,7 @@ void main() {
     await tester.tap(find.text('问答'));
     await tester.pumpAndSettle();
     expect(find.byType(VoiceComposer), findsOneWidget);
-    expect(find.text('体验 AI 伴学'), findsOneWidget);
+    expect(find.text('体验孩子怎么学'), findsOneWidget);
   });
 
   testWidgets('ordinary tasks and active sessions never pin progress to home',
@@ -1799,6 +1821,31 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('chat-image-viewer')), findsNothing);
     expect(find.byKey(const ValueKey('sent-chat-image-0')), findsOneWidget);
+  });
+
+  testWidgets('agent photo is loaded from its message and shows the source', (tester) async {
+    FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform({});
+    final api = _WardHomeApi()..currentTranscriptOverride = {
+      'thread_id': 'thread-1', 'thread_version': 2,
+      'messages': [{
+        'id': 'reply', 'author_type': 'companion', 'content': '看看代表们的座位。',
+        'attachment_refs': ['ward/ward-1/search-photos/photo.jpg'],
+        'interaction_ref': {'kind': 'text_visual', 'parts': [
+          {'type': 'visual', 'visual': {'kind': 'web_photo', 'alt': '代表会议',
+            'source_title': '会议照片', 'source': 'https://www.apec.org/example'}}
+        ]}
+      }]
+    };
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiProvider.overrideWithValue(api)],
+      child: const MaterialApp(home: WardDayPage(wardId: 'ward-1')),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('说出你的任何想法、问题、安排'));
+    await tester.pumpAndSettle();
+    expect(api.imageCalls, ['reply:0']);
+    expect(find.textContaining('https://www.apec.org/example'), findsOneWidget);
+    expect(tester.widget<Image>(find.byKey(const ValueKey('sent-chat-image-0'))).width, greaterThan(72));
   });
 
   testWidgets('reloaded historical images open at the tapped page',
@@ -2548,6 +2595,58 @@ void main() {
     expect(find.text('重绑前的历史提问'), findsOneWidget);
     expect(find.text('重绑前的历史回答'), findsOneWidget);
     expect(find.byKey(const Key('load-older-messages-button')), findsNothing);
+  });
+
+  testWidgets('spoken question retains its original and reads only the matching reply', (tester) async {
+    FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform({});
+    final api = _WardHomeApi();
+    final playback = _FakePlayback();
+    final voice = _FakeVoice();
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiProvider.overrideWithValue(api)],
+      child: MaterialApp(home: WardDayPage(wardId: 'ward-1', speechPlayback: () => playback,
+          voiceFactory: ({required baseUrl, required tokens, required telemetry}) => voice)),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('更多'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(CheckedPopupMenuItem<String>));
+    await tester.pumpAndSettle();
+    const source = '嗯，那个，为什么要通分？';
+    const display = '为什么要通分？';
+    api.threadTranscriptOverrides['thread-1:latest'] = {
+      'thread_id': 'thread-1', 'thread_version': 2, 'messages': [
+        {'id': 'ask', 'author_type': 'ward', 'content': source, 'interaction_ref': {'voice_display_text': display}},
+        {'id': 'reply', 'author_type': 'companion', 'content': '先看分母。', 'can_read_aloud': true, 'command_id': 'turn-1'}
+      ]
+    };
+    final composer = tester.widget<VoiceComposer>(find.byType(VoiceComposer));
+    composer.onVoiceDisplayText!(display);
+    api.delayedTurn = Completer()..complete({'thread_id': 'thread-1', 'thread_version': 2, 'command_id': 'turn-1'});
+    api.pendingSpeech = Completer();
+    final sent = composer.onVoiceFinal(source);
+    await tester.pumpAndSettle();
+    await sent;
+    expect(api.turns.single.content, source);
+    expect(api.lastDisplay, display);
+    expect(api.replySpeechRequests, ['reply']);
+    expect(find.text(display), findsOneWidget);
+    expect(find.text(source), findsNothing);
+    expect(find.text('查看原话'), findsNothing);
+    await tester.widget<VoiceComposer>(find.byType(VoiceComposer)).onBeforeRecording!();
+    api.pendingSpeech!.complete(Uint8List.fromList([1]));
+    await tester.pumpAndSettle();
+    expect(playback.played, isEmpty);
+    await tester.tap(find.text('朗读'));
+    await tester.pumpAndSettle();
+    expect(playback.played, hasLength(1));
+    await tester.tap(find.text('停止朗读'));
+    await tester.pumpAndSettle();
+    expect(find.text('朗读'), findsOneWidget);
+    await tester.tap(find.text('朗读'));
+    await tester.pumpAndSettle();
+    expect(api.replySpeechRequests, ['reply', 'reply']);
+    expect(playback.played, hasLength(2));
   });
 
   testWidgets('plan review card has only the confirm action', (tester) async {

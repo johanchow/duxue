@@ -1,4 +1,6 @@
 from .common import *
+from contextlib import suppress
+from app.infrastructure.ai.asr import DisplayTranscript, MessageAsr
 
 router = APIRouter(tags=["system"])
 _asr_logger = logging.getLogger("duxue.asr")
@@ -30,10 +32,11 @@ def relay_mobile_telemetry(
 
 @router.websocket("/ws/asr/transcribe")
 async def transcribe_voice(websocket: WebSocket) -> None:
-    """Authenticate a Guardian and proxy one hold-to-talk turn to DashScope."""
+    """Authenticate a Guardian or Ward and relay one hold-to-talk turn."""
     db = SessionLocal()
     provider = None
     forward_task = None
+    display_session = None
     try:
         # Accept first so an authentication failure is a structured, actionable
         # protocol event rather than an opaque client-side handshake exception.
@@ -60,6 +63,7 @@ async def transcribe_voice(websocket: WebSocket) -> None:
             })
             await websocket.close(code=1008)
             return
+        db.close()  # Authentication is complete; release the pooled connection during recording.
         _asr_logger.info("asr.ws.accepted", extra={"telemetry": {"principal.role": principal.role}})
         start = await websocket.receive_json()
         if start.get("type") != "start":
@@ -67,17 +71,39 @@ async def transcribe_voice(websocket: WebSocket) -> None:
             await websocket.close(code=1008)
             return
 
-        provider = await DashscopeRealtimeAsr.connect()
+        message_model = settings.asr_model.startswith("qwen-audio-3.1-asr-flash-message")
+        provider = await (MessageAsr.connect() if message_model else DashscopeRealtimeAsr.connect())
+        if message_model and start.get("display_transcript") is True:
+            display_session = DisplayTranscript()
+
+        async def send_result(event):
+            if display_session and event["type"] == "final" and event.get("text"):
+                display = await display_session.result()
+                if display and len(display) <= 4000:
+                    event = {**event, "display_text": display}
+            await websocket.send_json(event)
+
+        total_bytes = 0
+        deadline = asyncio.get_running_loop().time() + settings.asr_max_record_seconds + 2
         await websocket.send_json({"type": "ready", "max_seconds": settings.asr_max_record_seconds})
         hold = AsrHold()
-        forward_task = asyncio.create_task(forward_asr_events(provider, websocket.send_json, hold))
+        forward_task = asyncio.create_task(forward_asr_events(provider, send_result, hold))
         while True:
             try:
-                message = await asyncio.wait_for(websocket.receive(), timeout=settings.asr_max_record_seconds)
+                message = await asyncio.wait_for(websocket.receive(), timeout=deadline - asyncio.get_running_loop().time())
             except TimeoutError:
                 await websocket.send_json({"type": "error", "message": "recording exceeded the maximum duration"})
                 return
+            if message["type"] == "websocket.disconnect":
+                return
             if message.get("bytes") is not None:
+                chunk = message["bytes"]
+                total_bytes += len(chunk)
+                if total_bytes > (settings.asr_max_record_seconds + 1) * 32000:
+                    await websocket.send_json({"type": "error", "message": "recording too long"})
+                    return
+                if display_session:
+                    display_session.append(chunk)
                 hold.note_audio()
                 await provider.send_audio(message["bytes"])
                 continue
@@ -87,18 +113,22 @@ async def transcribe_voice(websocket: WebSocket) -> None:
                     record_asr_session(result="cancelled", stage="recording", role=principal.role)
                     return
                 if command.get("type") == "commit":
+                    if display_session:
+                        display_session.commit()
+                    outcome = None
                     ready = hold.commit()
                     if not hold.finished:
                         if forward_task.done():
                             ready = hold.unfinished_final()
                         else:
                             await provider.commit()
-                            await forward_task
+                            outcome = await asyncio.wait_for(forward_task, timeout=15)
                             if not hold.finished:
                                 ready = hold.unfinished_final()
                     for item in ready:
-                        await websocket.send_json(item)
-                    record_asr_session(result="success" if hold.finished else "error", stage="completed" if hold.finished else "provider", role=principal.role)
+                        await send_result(item)
+                    success = (ready[-1]["type"] if ready else outcome) == "final"
+                    record_asr_session(result="success" if success else "error", stage="completed" if success else "provider", role=principal.role)
                     return
                 await websocket.send_json({"type": "error", "message": "unsupported ASR command"})
                 return
@@ -114,10 +144,16 @@ async def transcribe_voice(websocket: WebSocket) -> None:
         record_asr_session(result="error", stage="provider")
         await websocket.send_json({"type": "error", "code": "unavailable", "message": "voice transcription is temporarily unavailable"})
     finally:
-        if forward_task and not forward_task.done():
+        if forward_task:
             forward_task.cancel()
+            with suppress(asyncio.CancelledError, Exception):
+                await forward_task
+        if display_session:
+            await display_session.close()
         if provider:
-            await provider.finish()
-            await provider.close()
+            with suppress(Exception):
+                await provider.finish()
+            with suppress(Exception):
+                await provider.close()
         db.close()
 

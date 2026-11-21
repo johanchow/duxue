@@ -109,6 +109,44 @@ Future<void> _tab(WidgetTester tester, String label) async {
 }
 
 void main() {
+  testWidgets('empty modes offer the same opt-in example and no invite prompt',
+      (tester) async {
+    final api = _Api();
+    await _home(tester, api);
+    await _tab(tester, '问答');
+
+    final studentMode = find.text('体验孩子怎么学');
+    final mentorMode = find.text('看导师怎么讲');
+    final example = find.text('用一道示例题');
+
+    expect(studentMode, findsOneWidget);
+    expect(mentorMode, findsOneWidget);
+    expect(example, findsOneWidget);
+    expect(find.text('问个知识点'), findsNothing);
+    expect(find.text('听听发音'), findsNothing);
+    expect(api.turns, isEmpty);
+
+    await tester.tap(example);
+    await tester.pumpAndSettle();
+    final studentTurn = api.turns.single;
+    expect(studentTurn.mode, 'student_guide');
+    expect(example, findsNothing);
+    expect(find.text('看这道题的完整讲解'), findsOneWidget);
+    expect(find.text('让孩子也试试'), findsNothing);
+
+    await tester.tap(mentorMode);
+    await tester.pumpAndSettle();
+    expect(example, findsOneWidget);
+    expect(find.text('看分数比较讲题教案'), findsNothing);
+    expect(api.turns, hasLength(1));
+    await tester.tap(example);
+    await tester.pumpAndSettle();
+    expect(api.turns.last.mode, 'guardian_explain');
+    expect(api.turns.last.content, studentTurn.content);
+    expect(example, findsNothing);
+    expect(find.text('让孩子也试试'), findsNothing);
+  });
+
   testWidgets(
       'Android back from questions returns to children and preserves the draft',
       (tester) async {
@@ -263,8 +301,7 @@ void main() {
                     textScaler: TextScaler.linear(1.4),
                     viewInsets: EdgeInsets.only(bottom: 250)),
                 child: Scaffold(
-                    body: GuardianQuestionPage(
-                        active: true, onStartWithChild: () {}))))));
+                    body: GuardianQuestionPage(active: true))))));
     await tester.pumpAndSettle();
     tester.widget<VoiceComposer>(find.byType(VoiceComposer)).onTap!();
     await tester.pumpAndSettle();
@@ -285,10 +322,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.turns.single.mode, 'student_guide');
     expect(api.turns.single.state, isNull);
-    expect(find.text('查看本题导师解析'), findsOneWidget);
+    expect(find.text('看这道题的完整讲解'), findsOneWidget);
 
     // 2. One-tap reveal switches to guardian_explain with the signed topic start token and preserves student stateToken
-    await tester.tap(find.text('查看本题导师解析'));
+    await tester.tap(find.text('看这道题的完整讲解'));
     await tester.pumpAndSettle();
     expect(api.turns.last.mode, 'guardian_explain');
     expect(api.turns.last.content, '比较 3/4 和 2/3');
@@ -312,7 +349,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.turns.last.mode, 'student_guide');
     expect(api.turns.last.state, 'state-1');
-    await tester.tap(find.text('查看本题导师解析'));
+    await tester.tap(find.text('看这道题的完整讲解'));
     await tester.pumpAndSettle();
     expect(api.turns.last.content, '比较 3/4 和 2/3');
     expect(api.turns.last.state, 'topic-4');

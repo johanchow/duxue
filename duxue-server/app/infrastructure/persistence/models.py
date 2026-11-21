@@ -924,6 +924,33 @@ class SupportAssessment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+class QuietPeriod(Base):
+    __tablename__ = "study_observation_quiet_periods"
+    __table_args__ = (
+        Index("ix_observation_quiet_latest", "ward_id", "starts_at"),
+        CheckConstraint("starts_at < scheduled_until"),
+        CheckConstraint("ended_at IS NULL OR (ended_at >= starts_at AND ended_at <= scheduled_until)"),
+    )
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
+    ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id", ondelete="CASCADE"))
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    scheduled_until: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    version: Mapped[int] = mapped_column(Integer)
+
+
+class QuietCommand(Base):
+    __tablename__ = "study_observation_quiet_commands"
+    ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id", ondelete="CASCADE"), primary_key=True)
+    command_id: Mapped[str] = mapped_column(String(200), primary_key=True)
+    request_digest: Mapped[str] = mapped_column(String(64))
+    period_id: Mapped[str | None] = mapped_column(ForeignKey("study_observation_quiet_periods.id", ondelete="CASCADE"))
+    action: Mapped[str] = mapped_column(String(10))
+    ward_version: Mapped[int] = mapped_column(Integer)
+    result: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 class HelpOfferBudgetRecord(Base):
     __tablename__ = 'help_offer_budgets'
     ward_id: Mapped[str] = mapped_column(ForeignKey('user_wards.id'), primary_key=True)
@@ -940,6 +967,7 @@ class HelpOfferRecord(Base):
     version: Mapped[int] = mapped_column(Integer, default=1)
     kind: Mapped[str] = mapped_column(String(30))
     status: Mapped[str] = mapped_column(String(20))
+    closed_reason: Mapped[str | None] = mapped_column(String(40))
     candidate: Mapped[dict] = mapped_column(JSON)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     presented_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

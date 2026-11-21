@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parents[2] / "agent_specs"
 _TOOL_HANDLERS = {
     "tutoring.get_task_context", "tutoring.get_attempt_summary",
     "tutoring.lookup_history", "tutoring.math", "tutoring.science",
-    "tutoring.inspect_image", "tool.static_result",
+    "tutoring.inspect_image", "tool.static_result", "tutoring.web_search",
 }
 
 
@@ -326,7 +326,7 @@ def base_definitions() -> DefinitionCatalog:
     import os
 
     from app.agent_specs.admin_bundle import compile_bundle
-    mode = os.getenv("AGENT_CONFIG_SOURCE", "admin" if os.getenv("APP_ENV") in {"production", "prod"} else "snapshot")
+    mode = os.getenv("AGENT_CONFIG_SOURCE", "admin")
     if mode == "admin":
         from app.agent_specs.release_runtime import AgentConfigurationUnavailable
         raise AgentConfigurationUnavailable("Admin运行配置尚未初始化，拒绝读取离线快照兜底")
