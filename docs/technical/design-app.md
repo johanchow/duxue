@@ -52,7 +52,7 @@
 
 ### Guardian 问答的技术边界
 
-成人独立体验的 API 与短期状态协议归 [Companion · Guardian 问答体验](domain-companion.md#guardian-问答体验2026-11-17-验收2026-11-18-扩展双视角)。客户端 `GuardianQuestionPage` 复用 `VoiceComposer`、Markdown/LaTeX、`VisualBlock` 和发音卡，不保存 Ward Thread，不借用学生登录身份。页面在内存中维护严格隔离的双视角会话状态（`student_guide` 默认学生分步启发、`guardian_explain` 导师完整解析），各自独立保存消息、待发照片、未发送文字草稿、签名 `stateToken` 与本地 `generation`；在学生视角收到有效启发回复后，支持一键「查看本题导师解析」将原题文本与已上传成人照片引用带入导师视角展开完整思路，不污染原学生视角 `stateToken`。切换视角或底部导航均保留两套本轮内存状态；离开问答停止播放并卸载录音控件；销毁后的迟到ASR回调被忽略，退出/重启不恢复历史。
+成人独立体验的 API 与短期状态协议归 [Companion · Guardian 问答体验](domain-companion.md#guardian-问答体验2026-11-17-验收2026-11-18-扩展双视角)。客户端 `GuardianQuestionPage` 复用 `VoiceComposer`、Markdown/LaTeX、`VisualBlock` 和发音卡，不保存 Ward Thread，不借用学生登录身份。页面在内存中维护严格隔离的双视角会话状态（`student_guide` 默认学生分步启发、`guardian_explain` 导师完整解析），各自独立保存消息、待发照片、未发送文字草稿、签名 `stateToken` 与本地 `generation`；在学生视角收到有效启发回复后，同题讲解入口将原题文本与已上传成人照片引用带入导师视角展开完整思路，不污染原学生视角 `stateToken`。切换视角或底部导航均保留两套本轮内存状态；离开问答停止播放并卸载录音控件；销毁后的迟到ASR回调被忽略，退出/重启不恢复历史。
 
 失败保留文字与已上传图片供重试，成功才追加一组对话。重新开始仅推进当前激活视角的本地 `generation` 并清空该视角，拍照/上传/回答的迟到结果均不能写回新一轮或串入另一视角；过期状态（409）需显式重新开始，频控超限（429）提示稍后再试或切回学生视角。输入/图片请求期间禁用当前视角重复发送，正文与照片走成人专属接口。无记录的孩子页由真实空态条件提供体验/绑定入口，不将加载失败伪装成空记录。
 

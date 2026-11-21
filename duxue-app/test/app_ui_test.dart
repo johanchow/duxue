@@ -1493,7 +1493,7 @@ void main() {
     await tester.tap(find.text('问答'));
     await tester.pumpAndSettle();
     expect(find.byType(VoiceComposer), findsOneWidget);
-    expect(find.text('体验 AI 伴学'), findsOneWidget);
+    expect(find.text('体验孩子怎么学'), findsOneWidget);
   });
 
   testWidgets('ordinary tasks and active sessions never pin progress to home',

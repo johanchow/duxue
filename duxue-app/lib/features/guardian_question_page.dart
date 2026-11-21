@@ -48,10 +48,8 @@ class _PerspectiveSession {
 }
 
 class GuardianQuestionPage extends ConsumerStatefulWidget {
-  const GuardianQuestionPage(
-      {required this.active, required this.onStartWithChild, super.key});
+  const GuardianQuestionPage({required this.active, super.key});
   final bool active;
-  final VoidCallback onStartWithChild;
   @override
   ConsumerState<GuardianQuestionPage> createState() =>
       _GuardianQuestionPageState();
@@ -60,6 +58,7 @@ class GuardianQuestionPage extends ConsumerStatefulWidget {
 class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
   static const _studentMode = 'student_guide';
   static const _mentorMode = 'guardian_explain';
+  static const _exampleQuestion = '3/4 和 2/3 哪个大？';
 
   final input = TextEditingController();
   final focus = FocusNode();
@@ -397,30 +396,16 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
   Widget build(BuildContext context) {
     final session = _cur;
     final isMentor = mode == _mentorMode;
-    final examples = isMentor
-        ? const [
-            ('看应用题完整解析', '一桶油连桶重 12 千克，用去一半油后连桶重 7 千克，求油和桶各重多少？请给完整破题思路与易错点。', Icons.psychology_outlined),
-            ('看分数比较讲题教案', '3/4 和 2/3 怎样比较大小？请给家长讲题思路与常见卡点。', Icons.menu_book_outlined),
-          ]
-        : const [
-            ('试一道题', '请带我理解：3/4 和 2/3 怎样比较大小？', Icons.lightbulb_outline),
-            ('问个知识点', '请用生活中的例子解释什么是比喻。', Icons.menu_book_outlined),
-            ('听听发音', '请示范 apple 的发音。', Icons.volume_up_outlined),
-          ];
-
     return Column(children: [
       Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
           child: Row(children: [
-            const Text('体验 AI 伴学',
-                style: TextStyle(fontSize: 15, color: Colors.blueGrey)),
-            const SizedBox(width: 10),
             Expanded(
               child: Align(
-                alignment: Alignment.centerRight,
+                alignment: Alignment.centerLeft,
                 child: FittedBox(
                   fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerRight,
+                  alignment: Alignment.centerLeft,
                   child: Container(
                     padding: const EdgeInsets.all(2),
                     decoration: BoxDecoration(
@@ -430,12 +415,12 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                       _modeChip(
                         value: _studentMode,
-                        label: '学生视角',
+                        label: '体验孩子怎么学',
                         icon: Icons.school_outlined,
                       ),
                       _modeChip(
                         value: _mentorMode,
-                        label: '导师视角',
+                        label: '看导师怎么讲',
                         icon: Icons.auto_awesome_outlined,
                       ),
                     ]),
@@ -462,38 +447,21 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
               const SizedBox(height: 24),
               Text(
                   isMentor
-                      ? '切换导师视角，\n直接看完整思路与解答。'
-                      : '先试一题，\n看看怎样一步步想明白。',
-                  style: const TextStyle(
-                      fontSize: 26,
-                      height: 1.45,
-                      fontWeight: FontWeight.w600)),
-              const SizedBox(height: 12),
-              Text(
-                  isMentor
-                      ? '展示考点本质、完整破题推导与孩子高频易错点，帮助你快速评估导师功底或备课点拨。'
-                      : '拍一道题，或说出你的问题。\n你可以像孩子一样追问、尝试。',
-                  style: const TextStyle(color: Colors.blueGrey, height: 1.6)),
-              const SizedBox(height: 28),
-              for (final example in examples)
-                Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: OutlinedButton(
-                        style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 15),
-                            side: const BorderSide(color: Color(0xffe2e8f0)),
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14))),
-                        onPressed: session.busy || session.expired
-                            ? null
-                            : () => _send(example.$2),
-                        child: Row(children: [
-                          Icon(example.$3, size: 20),
-                          const SizedBox(width: 12),
-                          Expanded(child: Text(example.$1)),
-                          const Icon(Icons.arrow_forward, size: 17)
-                        ]))),
+                      ? '拍一道题，或说出题目，看看导师怎么完整讲解。'
+                      : '拍一道题，或说出题目，看看 AI 怎么一步步引导孩子。',
+                  style: Theme.of(context).textTheme.titleLarge),
+              if (!keyboard && session.pictures.isEmpty) ...[
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton(
+                    onPressed: session.expired
+                        ? null
+                        : () => _send(_exampleQuestion),
+                    child: const Text('用一道示例题'),
+                  ),
+                ),
+              ],
             ],
             for (var index = 0; index < session.messages.length; index++)
               _message(session.messages[index], index),
@@ -538,27 +506,17 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
                         onPressed: session.expired ? _clear : () => _send(),
                         child: Text(session.expired ? '重新开始' : '重试')),
                   ])),
-            if (session.messages.isNotEmpty && !session.busy)
+            if (_canRevealInMentor)
               Padding(
-                  padding: const EdgeInsets.only(top: 16),
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 6,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      if (_canRevealInMentor)
-                        OutlinedButton.icon(
-                          onPressed: _revealInMentor,
-                          icon:
-                              const Icon(Icons.auto_awesome_outlined, size: 16),
-                          label: const Text('查看本题导师解析'),
-                        ),
-                      TextButton.icon(
-                          onPressed: widget.onStartWithChild,
-                          icon: const Icon(Icons.child_care_outlined, size: 18),
-                          label: const Text('让孩子也试试')),
-                    ],
-                  )),
+                padding: const EdgeInsets.only(top: 16),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton(
+                    onPressed: _revealInMentor,
+                    child: const Text('看这道题的完整讲解'),
+                  ),
+                ),
+              ),
           ])),
       if (session.pictures.isNotEmpty && !session.busy)
         SizedBox(
