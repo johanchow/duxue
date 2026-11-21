@@ -799,7 +799,7 @@ Schema 合法、接口成功和自动化测试全绿，只能证明部分工程�
 1. 在目标环境按现有部署流程运行 `alembic upgrade head`，API、Celery worker 与 beat 使用相同版本和配置发布。
 2. Admin 发布包需要完整包含 `behavior.visible-activity`、`behavior.support-opportunity` 两个 LLM Agent、八个 code Agent 及两个业务 Workflow。旧包继续加载，缺少扩展时不会使用隐藏 Prompt 兜底。可用 `scripts/extend_observation_release.py SOURCE OUTPUT --model MODEL --activity-prompt FILE --support-prompt FILE` 从兼容的完整导出构建导入包；命令只生成文件，不发布。模型名称须在目标账号/端点实测可用，不能沿用过期环境变量值。
 3. Guardian 在孩子设置中选择绑定摄像头并开启观察/晚间报告。观察范围缺少权威配置时覆盖率为 unavailable，不以首尾帧之间跨度充当预期采集时间。旧每日分析与手动入口跳过新路径 Ward。
-4. 部署开关 `OBSERVATION_LIVE_INVITATIONS_ENABLED` 默认为 false。Ward 主动打开前台陪伴通道，也不能绕过 shadow。只在 §9.6 验收后设置该开关；仍需 Ward opt-in、有效45秒通道、最新证据与额度门禁。关闭开关并重启服务可恢复 shadow；关闭观察阻止后续推理写回，历史报告保留版本语义。
+4. 部署开关 `OBSERVATION_LIVE_INVITATIONS_ENABLED` 默认为 false。Ward 前台自动建立陪伴通道，服务端继续执行 shadow 门禁。只在 §9.6 验收后设置该开关；真实邀请仍需获授权的观察、有效的 45 秒通道、最新证据与额度门禁。关闭开关并重启服务可恢复 shadow；关闭观察阻止后续推理写回，历史报告保留版本语义。
 5. 报告截止任务按启用 Ward 独立持久化，默认上海21:30；失败重试、重启补处理。观察事件触发晚到图片报告新版本；答疑事实暂每5分钟对当天复核。更早日期的答疑补写尚无事件通知链路。报告与 Guardian 收件索引同事务提交，查询每次校验当前绑定。
 
 ### 10.2 协议与故障可见性

@@ -303,7 +303,7 @@ class HelpOfferCommands:
             or self.clock() >= utc(offer.expires_at)
         ):
             raise HTTPException(409, "invitation expired or changed")
-        if medium == "card_rendered" and self.present(ward_id, channel_id) is None:
+        if medium != "speech_suppressed" and (self.present(ward_id, channel_id) or {}).get("offer_id") != offer_id:
             raise HTTPException(409, "invitation no longer eligible")
         if medium == "speech_completed" and not channel.handsfree:
             raise HTTPException(409, "speech not enabled")
@@ -317,13 +317,6 @@ class HelpOfferCommands:
             )
         )
         if medium != "speech_suppressed" and offer.status == "ready":
-            from app.application.commands.companion_history import (
-                append_support_invitation,
-            )
-
-            append_support_invitation(
-                db, ward_id=ward_id, offer_id=offer.id, content=PROMPTS[offer.kind]
-            )
             offer.status = "presented"
             offer.presented_at = presented_at
             offer.expires_at = min(

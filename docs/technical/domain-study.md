@@ -391,7 +391,7 @@ Then 命令被拒绝，不发布 StudySessionCompleted.v1
 
 ### 9.1 边界与语言
 
-`HelpOffer` 是“要不要一起看看”的一次求助邀请，不是遇到难题的诊断、任务开始命令或 TutoringSession。邀请有两种 `kind`：`offer_help` 针对持续停滞，`invite_return` 针对连续可见活动偏离。前者询问“这题需要一点提示吗？”，后者询问“要不要回到刚才这一步？”。接受后分别聚焦提问入口或让孩子继续纸面学习；都不自动发题、开会话或改任务。默认 shadow，获授权观察并由 Ward 在 App 开启陪伴模式后才真实呈现。正式运行支持卡片与可选轻声提示；App 不可触达时保持静默，不能声称已经完成干预。
+`HelpOffer` 是“要不要一起看看”的一次求助邀请，不是遇到难题的诊断、任务开始命令或 TutoringSession。邀请有两种 `kind`：`offer_help` 针对持续停滞，`invite_return` 针对连续可见活动偏离。前者询问“这题需要一点提示吗？”，后者询问“要不要回到刚才这一步？”。接受后分别聚焦提问入口或让孩子继续纸面学习；都不自动发题、开会话或改任务。默认 shadow。真实邀请需获授权的观察、部署开关和有效的送达通道。Ward 前台自动播放语音，完成后记录回执。
 
 Study 的 `HelpOfferPolicy` 只接收 Behavior Query 的停滞/活动偏离候选和受权上下文快照，不直接解释图片；校验本人开启、具有有效陪伴通道、观察够新、当前在桌、无答疑 Run/确认操作/主动休息、无 StartCue 待呈现、未达频次上限。没有授权、通道缺席或 Query 失败即跳过且不占额度。StartCue 有优先权，两种邀请共享 Companion 安全呈现点。
 
@@ -477,7 +477,7 @@ stateDiagram-v2
 
 `HelpOfferReady.v1` payload：`{ward_id, budget_id, offer_id, offer_version, expires_at, source_revision_ref, kind}`；公共 envelope、schema_version、event_id、occurred_at 必填。Companion consumer 调自己的 `PresentHelpOffer` Command：按 offer_id + version 去重，重新 Query 有效邀请与最新观察/设置/Run 状态；只在有效陪伴通道和回复安全点写入登记过的交互，实际通道规则见 §9.6。当前没有安全点或未建立有效陪伴通道就等待，过期丢弃。初次送达/实际显示时均检查 expires_at，避免离线缓存迟到弹出。
 
-Companion 保存交互消息与待发布回执同事务；`HelpOfferPresented.v1` payload 为 `{ward_id, offer_id, offer_version, receipt_id, presented_at, medium}`，由 App 前台呈现确认后签发，不将入队或写消息当作孩子已看到。Study inbox 按 receipt_id 去重。用户点击是新授权动作，走 Study Command；Companion 不自动构造孩子的提问。回执可区分 card_rendered 与 speech_completed，前者证明卡片已显示、后者证明播报已完成，二者均不证明孩子听见或理解；同一 offer 的第二种媒介回执只补充审计，不再次转移 Presented 状态或增加额度。
+Study 保存呈现回执与待发布事件，同一事务提交；`HelpOfferPresented.v1` payload 为 `{ward_id, offer_id, offer_version, receipt_id, presented_at, medium}`，由 App 前台呈现确认后签发，不将入队或写消息当作孩子已看到。Study inbox 按 receipt_id 去重。用户点击是新授权动作，走 Study Command；Companion 不自动构造孩子的提问。回执可区分 card_rendered 与 speech_completed，前者证明卡片已显示、后者证明播报已完成，二者均不证明孩子听见或理解；同一 offer 的第二种媒介回执只补充审计，不再次转移 Presented 状态或增加额度。
 
 两事件允许重复/乱序；待呈现版本失效即丢弃，回执不改变已终结 Root。瞬时失败沿用 Outbox 退避，死信后对账；过期邀请不重放。跨域没有全局事务，不承诺 exactly-once 物理显示，客户端也按 offer_id 去重，前后台切换不重复播报。
 
@@ -565,8 +565,8 @@ ER 图源：本文 §9.5；budgets/offer 表分别支撑 Root/Entity，没有新
 
 | 场景 | Behavior 提供的证据 | Study 允许的动作 | 实际交互与后续 |
 |---|---|---|---|
-| 疑似卡壳超时 | 连续约 4 分钟 still_with_material、覆盖充分，语义评估支持 offer_help；不能据此确定真的遇到难题 | 邀请一次求助 | 卡片和可选轻声“这题需要一点提示吗？”；接受后使用 VoiceComposer 拍题/说卡点，既有 Tutoring 分步启发与微验证接手 |
-| 持续活动偏离 | 连续约 2 分钟 other_visible_activity，模型结合多帧和可选学习上下文支持 invite_return；转头、单次停笔、查资料或原因不明不触发 | 一次自主回归邀请 | 卡片和可选轻声“要不要回到刚才这一步？”；可接受或暂不需要，不给分心标签，不通知家长 |
+| 疑似卡壳超时 | 连续约 4 分钟 still_with_material、覆盖充分，语义评估支持 offer_help；不能据此确定真的遇到难题 | 邀请一次求助 | 语音“这题需要一点提示吗？”；接受后使用 VoiceComposer 拍题/说卡点，既有 Tutoring 分步启发与微验证接手 |
+| 持续活动偏离 | 连续约 2 分钟 other_visible_activity，模型结合多帧和可选学习上下文支持 invite_return；转头、单次停笔、查资料或原因不明不触发 | 一次自主回归邀请 | 语音“要不要回到刚才这一步？”；可接受或暂不需要，不给分心标签，不通知家长 |
 | 阅读、正常思考或原因不明 | reading_material、uncertain、unknown 或存在采集缺口 | 不干预 | 保持观察，不用静止时长代替语义判断 |
 | 已进入主动休息、离座、正在答疑或有确认操作 | 最新受权状态表明不适合介入 | 抑制或使待呈现邀请过期 | 不追问、不积压到后来突然播报 |
 
@@ -576,10 +576,9 @@ ER 图源：本文 §9.5；budgets/offer 表分别支撑 Root/Entity，没有新
 
 Companion 的 `support-channel`（目标协议）补齐实际触达：
 
-- Ward 无需创建计划或点击学习开始，在 App 打开一次陪伴模式即可建立本人设备的短租约通道；`card` 仅显示卡片，主动开启 `handsfree` 才可播报。App 保持可运行的陪伴界面；不依赖网关播放声音，也不假设操作系统允许后台出声。
-- 该通道是可失效的运行时能力租约，不新增业务 Aggregate。绑定 Ward/device/channel，租约 90 秒、每 30 秒心跳；切后台、关闭陪伴模式或断开后禁止新的播报。SSE 只送已授权、未过期交互引用，不传桌面图片。
-- App 内预置两句对应 prompt_id 的短语音，离线可播放，无须临时调 TTS。用户允许声音、App 在前台、无正在播放/录音/答疑输出、邀请和最新观察仍有效时，只播放一次；静音、不可播放或未开启 handsfree 则保留卡片，并标记 speech_suppressed，不能算已播报。
-- App 按 offer_id 持久化去重；断线重连可恢复有效卡片，不重播已尝试的语音。播放完成才回 `speech_completed`；异常中断记失败，不为获取回执反复播音。卡片显示单独回 card_rendered。
+- Ward 前台自动续租通道，租约 45 秒，每 15 秒轮询一次。服务端复核当前观察、免打扰、有效期、干预额度和通道状态。
+- App 按 prompt_id 播放预置短语音，按 Ward 和 offer_id 持久化去重。播完回传 `speech_completed`，邀请及回执独立于聊天历史。兼容旧客户端的 `card_rendered` 回执仍可处理。
+- 当前后台与进程关闭时的送达状态见[提醒方案](observation-reminder-policy.md#6-已实现的入口与验证边界)。
 - 邀请在有效期内无人回应即过期；孩子继续学习、忽略或暂不需要均不追加催促。接受只改变本次邀请，之后是否恢复可观察活动供实验统计，不能直接宣称“已提升专注”或“难题已解决”。
 
 通道 API、呈现回执及动作协议由 [Companion](domain-companion.md#522-关闭的-kind-清单) 唯一维护。交付约束：**无在线可运行 App/出声通道，只能保证记录和晚间报告，不能保证即时递梯子。** 正式验收必须覆盖纸质作业中不看屏幕、音频开关、前后台切换、断线重连与播放失败；shadow 阶段只验证拟触发，不冒充已完成干预。

@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:typed_data';
+import 'package:duxue_app/core/speech_playback.dart';
 import 'package:dio/dio.dart';
 import 'package:duxue_app/core/api_client.dart';
 import 'package:duxue_app/core/token_storage.dart';
@@ -5,6 +8,7 @@ import 'package:duxue_app/features/evening_report_card.dart';
 import 'package:duxue_app/features/support_companion_panel.dart';
 import 'package:duxue_app/providers.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -30,6 +34,24 @@ class ReportApi extends ApiClient {
   }
 }
 
+class _Playback implements SpeechPlayback {
+  final completed = StreamController<void>.broadcast();
+  int plays = 0;
+  @override
+  Stream<void> get onComplete => completed.stream;
+  @override
+  Future<void> playMp3(Uint8List bytes) async {
+    plays++;
+  }
+
+  @override
+  Future<void> stop() async {}
+  @override
+  Future<void> dispose() => completed.close();
+  @override
+  Future<void> speak(String text, String locale) => throw UnimplementedError();
+}
+
 void main() {
   setUp(() => FlutterSecureStorage.setMockInitialValues({}));
   testWidgets(
@@ -53,49 +75,68 @@ void main() {
     expect(find.text('晚间实况 · 第 1 版'), findsOneWidget);
   });
 
-  testWidgets(
-      'support stays silent until opt-in and expires a rendered invitation',
-      (tester) async {
-    final api = ReportApi();
-    final paths = <String>[];
-    api.dio.interceptors.insert(0,
-        InterceptorsWrapper(onRequest: (options, handler) {
-      paths.add(options.path);
-      Object data;
-      if (options.path.endsWith('/receipts')) {
-        data = {'version': 2, 'status': 'presented'};
-      } else if (options.path.endsWith('/offer')) {
-        data = {
-          'offer': {
-            'offer_id': 'fixture',
-            'version': 1,
-            'protocol_version': 'support.v1',
-            'expires_at': DateTime.now()
-                .add(const Duration(seconds: 2))
-                .toIso8601String(),
-            'text': '这题需要一点提示吗？',
-            'prompt_id': 'offer_help'
-          }
-        };
-      } else {
-        data = {'id': 'channel'};
-      }
-      handler.resolve(
-          Response(requestOptions: options, statusCode: 200, data: data));
-    }));
-    await tester.pumpWidget(ProviderScope(
-        overrides: [apiProvider.overrideWithValue(api)],
-        child: MaterialApp(
-            home: Scaffold(
-                body: SupportCompanionPanel(wardId: 'ward', onAsk: () {})))));
-    await tester.pump(const Duration(seconds: 16));
-    expect(paths, isEmpty);
-    await tester.tap(find.text('开启陪伴提示'));
-    await tester.pumpAndSettle();
-    expect(find.text('这题需要一点提示吗？'), findsOneWidget);
-    expect(paths.where((p) => p.endsWith('/receipts')).length, 1);
-    await tester.pump(const Duration(seconds: 3));
-    expect(find.text('这题需要一点提示吗？'), findsNothing);
-    await tester.pumpWidget(const SizedBox());
-  });
+  for (final prompt in ['invite_return', 'offer_help']) {
+    testWidgets('$prompt automatically speaks once without rendering a card',
+        (tester) async {
+      final api = ReportApi();
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      tester.binding.defaultBinaryMessenger.setMockMessageHandler(
+        'flutter/assets',
+        (_) async => ByteData(32),
+      );
+      addTearDown(() => tester.binding.defaultBinaryMessenger
+          .setMockMessageHandler('flutter/assets', null));
+      final playback = _Playback();
+      final paths = <String>[];
+      api.dio.interceptors.insert(0,
+          InterceptorsWrapper(onRequest: (options, handler) {
+        paths.add(options.path);
+        Object data;
+        if (options.path.endsWith('/receipts')) {
+          expect(options.data['medium'], 'speech_completed');
+          data = {'version': 2, 'status': 'presented'};
+        } else if (options.path.endsWith('/offer')) {
+          data = {
+            'offer': {
+              'offer_id': 'fixture',
+              'version': 1,
+              'protocol_version': 'support.v1',
+              'expires_at': DateTime.now()
+                  .add(const Duration(seconds: 2))
+                  .toIso8601String(),
+              'text': '这题需要一点提示吗？',
+              'prompt_id': prompt
+            }
+          };
+        } else {
+          data = {'id': 'channel'};
+        }
+        handler.resolve(
+            Response(requestOptions: options, statusCode: 200, data: data));
+      }));
+      await tester.pumpWidget(ProviderScope(
+          overrides: [apiProvider.overrideWithValue(api)],
+          child: MaterialApp(
+              home: Scaffold(
+                  body: SupportCompanionPanel(
+                      wardId: 'ward', playback: () => playback)))));
+      await tester.pumpAndSettle();
+      expect(find.text('这题需要一点提示吗？'), findsNothing);
+      expect(playback.plays, 1, reason: paths.toString());
+      expect(paths.where((p) => p.endsWith('/receipts')), isEmpty);
+      playback.completed.add(null);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 1));
+      expect(paths.where((p) => p.endsWith('/receipts')).length, 1);
+      await tester.pump(const Duration(seconds: 15));
+      expect(playback.plays, 1, reason: paths.toString());
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      final before = paths.where((p) => p.endsWith('/offer')).length;
+      await tester.pump(const Duration(seconds: 30));
+      expect(paths.where((p) => p.endsWith('/offer')).length, before);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
 }

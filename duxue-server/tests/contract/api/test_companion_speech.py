@@ -11,7 +11,7 @@ from app.infrastructure.security.tokens import create_access_token
 from tests.support.factories import create_ward
 
 
-def test_read_aloud_only_synthesizes_visible_final_tutoring_replies(
+def test_read_aloud_supports_visible_agent_replies_and_hides_legacy_invitations(
     client, db, monkeypatch
 ):
     ward = create_ward(db, display_name="甲", session_version=1)
@@ -66,6 +66,23 @@ def test_read_aloud_only_synthesizes_visible_final_tutoring_replies(
     assert result.content == b"mp3"
     assert result.headers["content-type"] == "audio/mpeg"
     synth.assert_awaited_once_with("先看已知条件。")
+    legacy = CompanionCommand(id=uid(), ward_id=ward.id, thread_id=thread.id,
+                              payload_digest="support.invitation.v1")
+    plan_command = CompanionCommand(id=uid(), ward_id=ward.id, thread_id=thread.id, payload_digest="planning")
+    db.add_all([legacy, plan_command])
+    db.flush()
+    reminder = message("companion", 3, "要不要回到刚才这一步？")
+    reminder.command_id = legacy.id
+    reminder.run_id = None
+    planning = message("companion", 4, "作业已经记下了。")
+    planning.run_id = None
+    planning.command_id = plan_command.id
+    db.add_all([reminder, planning])
+    db.commit()
+    history = client.get("/companion/threads/current/messages", headers=headers(ward)).json()
+    assert [m["id"] for m in history["messages"]] == [question.id, reply.id, planning.id]
+    assert client.get(f"/companion/messages/{reminder.id}/speech", headers=headers(ward)).status_code == 404
+    assert client.get(f"/companion/messages/{planning.id}/speech", headers=headers(ward)).content == b"mp3"
     ward.history_generation += 1
     db.commit()
     assert client.get(url, headers=headers(ward)).status_code == 404

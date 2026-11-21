@@ -121,6 +121,21 @@ def test_duplicate_candidate_reserves_once_and_requires_actual_receipt(db):
     )
 
 
+def test_speech_without_card_marks_presented_without_creating_chat(db):
+    from app.infrastructure.persistence.models import CompanionMessage, ConversationThread
+    frame, day, channel = scenario(db)
+    channel.handsfree = True
+    service = HelpOfferCommands(db, lambda: T)
+    service.consider(day.id)
+    offer = service.present(frame.ward_id, channel.id)
+    receipt = service.receipt(frame.ward_id, channel.id, offer_id=offer["offer_id"],
+                              receipt_id=str(uuid4()), medium="speech_completed",
+                              presented_at=T, expected_version=offer["version"])
+    assert receipt["status"] == "presented"
+    assert db.query(ConversationThread).filter_by(ward_id=frame.ward_id).count() == 0
+    assert db.query(CompanionMessage).filter_by(ward_id=frame.ward_id).count() == 0
+
+
 def test_new_observation_missing_or_recovered_suppresses_offer(db):
     frame, day, channel = scenario(db)
     service = HelpOfferCommands(db, lambda: T)

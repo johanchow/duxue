@@ -203,7 +203,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   bool _autoRead = false;
   bool _autoReadChanged = false;
   String? _failedVoiceDisplay;
-  bool _failedWasVoice = false;
   int _speechGeneration = 0;
   String? _readingId;
   bool _playbackClaimed = false;
@@ -325,12 +324,17 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(
-          child: switch (tab) {
-        0 => _home(context),
-        1 => _growth(context),
-        _ => _profile(context)
-      }),
+      body: Stack(fit: StackFit.expand, children: [
+        SupportCompanionPanel(
+            key: ValueKey(widget.wardId),
+            wardId: widget.wardId,
+            quietVersion: _quietVersion),
+        SafeArea(child: switch (tab) {
+          0 => _home(context),
+          1 => _growth(context),
+          _ => _profile(context)
+        }),
+      ]),
       bottomNavigationBar: NavigationBar(
           selectedIndex: tab,
           onDestinationSelected: (value) {
@@ -393,7 +397,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
           }
         },
         itemBuilder: (_) => [
-          CheckedPopupMenuItem(value: 'autoRead', checked: _autoRead, child: const Text('语音提问后自动朗读')),
+          CheckedPopupMenuItem(value: 'autoRead', checked: _autoRead, child: const Text('自动朗读 Agent 回复')),
           const PopupMenuItem(value: 'tasks', child: Text('作业')),
           PopupMenuItem(value: 'history', child: Text('历史对话')),
           PopupMenuItem(value: 'sprint', child: Text('专注挑战')),
@@ -468,7 +472,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
                 padding: EdgeInsets.fromLTRB(
                     20, 24, 20, stagedImages.isNotEmpty ? 184 : 112),
                 child: Column(children: [
-                  SupportCompanionPanel(wardId: widget.wardId, onAsk: _openPlanChat, quietVersion: _quietVersion),
                   if (sprintSetupOpen)
                     _spokenSprintCard()
                   else ...[
@@ -929,7 +932,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
                     style: TextStyle(fontSize: 12, color: Colors.redAccent))),
             TextButton(
                 onPressed:
-                    _chatBusy ? null : () => _submitPlanInput(failedPlanText!, display: _failedVoiceDisplay, voice: _failedWasVoice),
+                    _chatBusy ? null : () => _submitPlanInput(failedPlanText!, display: _failedVoiceDisplay),
                 child: const Text('重试')),
           ]),
         ),
@@ -1118,7 +1121,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
       planMessages.add(_ChatLine(label: '我', content: content, images: images));
     });
     _scrollToChatBottom();
-    await _submitPlanInput(content, pronunciation: pronunciation, display: display, voice: spoken != null);
+    await _submitPlanInput(content, pronunciation: pronunciation, display: display);
     _scrollToChatBottom();
   }
 
@@ -1369,6 +1372,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   Future<void> _acceptSprintProposal() async {
     final action = sprintAction;
     if (action == null || _chatBusy) return;
+    final speechGeneration = _speechGeneration;
     setState(() => planSending = true);
     try {
       final result = await ref.read(apiProvider).companionTurn(
@@ -1383,7 +1387,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
           });
       if (!mounted) return;
       sprintAction = null;
-      await _applyPlanTurnResult(result);
+      await _applyPlanTurnResult(result, speechGeneration: speechGeneration);
       await _refreshSprint();
     } catch (error) {
       if (mounted) showMessage(context, '请重新查看这轮挑战：${userErrorMessage(error)}');
@@ -1940,7 +1944,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   }
 
   Future<void> _submitPlanInput(String text,
-      {bool pronunciation = false, String? display, bool voice = false}) async {
+      {bool pronunciation = false, String? display}) async {
     if (_chatBusy) return;
     planAttachments
       ..clear()
@@ -1965,15 +1969,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
           routeHint: pronunciation ? 'tutoring' : null,
           tutoringIntent: pronunciation ? 'pronunciation' : null));
       if (!mounted || generation != _chatGeneration) return;
-      await _applyPlanTurnResult(result, timing: timing);
-      if (mounted && voice && _autoRead && planChatOpen && speechGeneration == _speechGeneration) {
-        for (final message in planMessages.reversed) {
-          if (message.readable && message.commandId == result['command_id'] && message.commandId != null) {
-            unawaited(_readReply(message));
-            break;
-          }
-        }
-      }
+      await _applyPlanTurnResult(result, speechGeneration: speechGeneration, timing: timing);
     } catch (error) {
       timing.fail(error);
       if (!mounted || generation != _chatGeneration) return;
@@ -1981,7 +1977,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         setState(() {
           failedPlanText = text;
           _failedVoiceDisplay = display;
-          _failedWasVoice = voice;
         });
         showMessage(context, '暂时无法整理今天的计划，请重试');
       }
@@ -2001,6 +1996,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
       return;
     }
     final generation = _chatGeneration;
+    final speechGeneration = _speechGeneration;
     setState(() => planSending = true);
     try {
       final result = await ref.read(apiProvider).companionTurn(
@@ -2014,7 +2010,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         },
       );
       if (!mounted || generation != _chatGeneration) return;
-      await _applyPlanTurnResult(result);
+      await _applyPlanTurnResult(result, speechGeneration: speechGeneration);
     } on DioException catch (error) {
       if (!mounted || generation != _chatGeneration) return;
       if (error.response?.statusCode == 409) {
@@ -2043,7 +2039,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     }
   }
 
-  Future<void> _applyPlanTurnResult(Map<String, dynamic> result, {ConversationTurn? timing}) async {
+  Future<void> _applyPlanTurnResult(Map<String, dynamic> result, {required int speechGeneration, ConversationTurn? timing}) async {
     final generation = _chatGeneration;
     final interaction =
         Map<String, dynamic>.from(result['interaction'] as Map? ?? const {});
@@ -2147,6 +2143,18 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     await _load();
     if (!mounted || generation != _chatGeneration) return;
     await _refreshTranscript(timing: timing);
+    if (!mounted || !sprintForeground || !_autoRead || tab != 0 || !planChatOpen ||
+        generation != _chatGeneration || speechGeneration != _speechGeneration) {
+      return;
+    }
+    final commandId = result['command_id'];
+    if (commandId == null) return;
+    for (final message in planMessages.reversed) {
+      if (message.readable && message.commandId == commandId) {
+        unawaited(_readReply(message));
+        break;
+      }
+    }
   }
 
   String? _suggestedClock(dynamic value) {
@@ -2229,6 +2237,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
                 (target['${kind}_suggestion'] as Map)['fingerprint'],
           };
     final generation = _chatGeneration;
+    final speechGeneration = _speechGeneration;
     setState(() => planSending = true);
     try {
       final result = await ref.read(apiProvider).companionTurn(
@@ -2242,7 +2251,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         },
       );
       if (!mounted || generation != _chatGeneration) return;
-      await _applyPlanTurnResult(result);
+      await _applyPlanTurnResult(result, speechGeneration: speechGeneration);
     } on DioException catch (error) {
       if (!mounted || generation != _chatGeneration) return;
       if (error.response?.statusCode == 409) {

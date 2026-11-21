@@ -13,12 +13,8 @@ abstract class SpeechPlayback {
 }
 
 class DeviceSpeechPlayback implements SpeechPlayback {
-  DeviceSpeechPlayback()
-      : _player = AudioPlayer(),
-        _tts = FlutterTts();
-
-  final AudioPlayer _player;
-  final FlutterTts _tts;
+  final AudioPlayer _player = AudioPlayer();
+  FlutterTts? _tts;
   int _generation = 0;
 
   @override
@@ -27,7 +23,7 @@ class DeviceSpeechPlayback implements SpeechPlayback {
   @override
   Future<void> playMp3(Uint8List bytes) async {
     final generation = ++_generation;
-    await _tts.stop();
+    await _tts?.stop();
     if (generation != _generation) return;
     await _player.stop();
     if (generation != _generation) return;
@@ -39,17 +35,18 @@ class DeviceSpeechPlayback implements SpeechPlayback {
     final generation = ++_generation;
     await _player.stop();
     if (generation != _generation) return;
-    await _tts.stop();
-    await _tts.setLanguage(locale);
+    final tts = _tts ??= FlutterTts();
+    await tts.stop();
+    await tts.setLanguage(locale);
     if (generation != _generation) return;
-    await _tts.speak(text);
+    await tts.speak(text);
   }
 
   @override
   Future<void> stop() async {
     _generation++;
     await _player.stop();
-    await _tts.stop();
+    await _tts?.stop();
   }
 
   @override

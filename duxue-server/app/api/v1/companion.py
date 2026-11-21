@@ -109,20 +109,18 @@ def companion_message_image(
     return Response(content=content, media_type=media_types[suffix], headers={"Cache-Control": "private, max-age=300"})
 
 
-def _readable_reply(row: CompanionMessage, tutor_runs: set[str]) -> bool:
-    return (row.author_type == "companion" and row.run_id in tutor_runs and bool(row.content.strip())
+def _readable_reply(row: CompanionMessage) -> bool:
+    return (row.author_type == "companion" and bool(row.content.strip())
             and (row.interaction_ref or {}).get("kind") != "pronunciation_lesson")
 
 
 @router.get("/companion/messages/{message_id}/speech")
 async def companion_message_speech(message_id: UUID, principal: Principal = Depends(current_ward),
                                    db: Session = Depends(get_db)):
-    row = db.get(CompanionMessage, str(message_id))
-    if row is None or row.ward_id != principal.user_id or not history_is_visible(db, principal.user_id, row.thread_id):
+    row = _chat_messages(db).filter(CompanionMessage.id == str(message_id), CompanionMessage.ward_id == principal.user_id).one_or_none()
+    if row is None or not history_is_visible(db, principal.user_id, row.thread_id):
         raise HTTPException(404, "reply unavailable")
-    run = db.get(AgentRun, row.run_id) if row.run_id else None
-    tutor_runs = {run.id} if run and run.agent_type == "tutoring" else set()
-    if not _readable_reply(row, tutor_runs):
+    if not _readable_reply(row):
         raise HTTPException(404, "reply unavailable")
     text = row.content
     db.rollback()  # Release the read transaction before waiting on synthesis.
@@ -133,14 +131,23 @@ async def companion_message_speech(message_id: UUID, principal: Principal = Depe
     return Response(content=audio, media_type="audio/mpeg", headers={"Cache-Control": "no-store"})
 
 
-def _serialize_message(row: CompanionMessage, tutor_runs: set[str]) -> dict:
+def _serialize_message(row: CompanionMessage) -> dict:
     return {
         "id": row.id, "thread_id": row.thread_id, "run_id": row.run_id,
         "turn_id": row.turn_id, "attempt": row.attempt, "command_id": row.command_id,
         "thread_version": row.thread_version, "author_type": row.author_type,
-        "content": row.content, "can_read_aloud": _readable_reply(row, tutor_runs), "attachment_refs": row.attachment_refs,
+        "content": row.content, "can_read_aloud": _readable_reply(row), "attachment_refs": row.attachment_refs,
         "interaction_ref": row.interaction_ref, "created_at": row.created_at,
     }
+
+
+def _chat_messages(db: Session):
+    # Older clients persisted support receipts as ordinary companion messages.
+    reminder = db.query(CompanionCommand.id).filter(
+        CompanionCommand.id == CompanionMessage.command_id,
+        CompanionCommand.payload_digest == "support.invitation.v1",
+    ).exists()
+    return db.query(CompanionMessage).filter(~reminder)
 
 
 def _previous_thread_with_messages(db: Session, ward_id: str, current_thread: ConversationThread) -> ConversationThread | None:
@@ -158,7 +165,7 @@ def _previous_thread_with_messages(db: Session, ward_id: str, current_thread: Co
         if item.created_at == current_thread.created_at and item.id >= current_thread.id:
             continue
         has_msg = (
-            db.query(CompanionMessage.id)
+            _chat_messages(db)
             .filter_by(thread_id=item.id, ward_id=ward_id)
             .first()
         )
@@ -175,17 +182,13 @@ def _thread_messages_payload(
     before_thread_version: int | None,
     limit: int,
 ) -> dict:
-    query = db.query(CompanionMessage).filter_by(thread_id=thread.id, ward_id=ward_id)
+    query = _chat_messages(db).filter_by(thread_id=thread.id, ward_id=ward_id)
     if before_thread_version is not None:
         query = query.filter(CompanionMessage.thread_version < before_thread_version)
     rows = query.order_by(CompanionMessage.thread_version.desc()).limit(limit + 1).all()
     has_more = len(rows) > limit
     rows = rows[:limit]
-    run_ids = {row.run_id for row in rows if row.run_id}
-    tutor_runs = {rid for rid, in db.query(AgentRun.id).filter(
-        AgentRun.id.in_(run_ids), AgentRun.agent_type == "tutoring"
-    )} if run_ids else set()
-    messages = [_serialize_message(row, tutor_runs) for row in reversed(rows)]
+    messages = [_serialize_message(row) for row in reversed(rows)]
     next_before = rows[-1].thread_version if has_more and rows else None
     previous_thread_id: str | None = None
     if next_before is None:
@@ -209,7 +212,7 @@ def current_companion_messages(
     db: Session = Depends(get_db),
 ):
     latest_msg = (
-        db.query(CompanionMessage)
+        _chat_messages(db)
         .join(ConversationThread, ConversationThread.id == CompanionMessage.thread_id)
         .join(Ward, Ward.id == CompanionMessage.ward_id)
         .filter(CompanionMessage.ward_id == principal.user_id, ConversationThread.history_generation == Ward.history_generation)

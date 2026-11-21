@@ -45,3 +45,5 @@ Study 拥有学习会话、计时和到点开始邀请。任务是否入池、�
 - 2026-11-21 [摄像头规则与 Ward 临时免打扰提案](../../docs/technical/observation-reminder-policy.md)已实现并用测试业务 PostgreSQL 验证。免打扰独立于 StudySession，恢复后只累计新证据。Admin 工作草稿及现场验收状态见方案第六节。
 
 - 2026-11-21 测试 Admin「行为观察与帮助」工作草稿 revision 15 新增离座回归规则。归并边界已验证：连续八个 15 秒槽进入评估，中断后重新累计；实际描述和阈值以 Admin 发布包为准。
+
+- Ward 前台系统邀请使用预置语音，只有播放完成才记录语音回执。聊天历史按旧命令类型过滤存量邀请。后台及进程关闭时的远程投递仍待接入。见[提醒规则](../../docs/technical/observation-reminder-policy.md)。
