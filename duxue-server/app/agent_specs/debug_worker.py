@@ -116,6 +116,9 @@ def execute(request):
                     from app.agent_specs.observation_debug import debug_vision
                     vision, manifest = debug_vision(json.loads(data.content), support=spec.component_id == 'behavior.support-opportunity')
                     user = vision.prepare(manifest, limit=8 if spec.component_id == 'behavior.visible-activity' else 16)
+                    if spec.component_id == "behavior.visible-activity" and "rule_groups" in manifest:
+                        from app.infrastructure.ai.behavior_observation import rule_output_guide
+                        user.append(rule_output_guide(manifest))
                 output = components.invoke_json_component(
                     spec=spec, user=user, settings_obj=runtime
                 )

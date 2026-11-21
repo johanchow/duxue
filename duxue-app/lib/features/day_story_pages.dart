@@ -203,6 +203,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   bool clearingHistory = false;
   bool get _chatBusy => planSending || clearingHistory;
   int _chatGeneration = 0;
+  int _quietVersion = 0;
   ConversationTurn? _questionTiming;
   String? _pendingClearCommand;
 
@@ -406,7 +407,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
                 padding: EdgeInsets.fromLTRB(
                     20, 24, 20, stagedImages.isNotEmpty ? 184 : 112),
                 child: Column(children: [
-                  SupportCompanionPanel(wardId: widget.wardId, onAsk: _openPlanChat),
+                  SupportCompanionPanel(wardId: widget.wardId, onAsk: _openPlanChat, quietVersion: _quietVersion),
                   if (sprintSetupOpen)
                     _spokenSprintCard()
                   else ...[
@@ -1993,6 +1994,10 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     final nextDraftId = draft?['draft_id'] as String?;
     final nextDraftVersion = draft?['object_version'] as int?;
     setState(() {
+      final quiet = interaction['observation_quiet'];
+      if (quiet is Map && quiet['ward_version'] is int && quiet['ward_version'] > _quietVersion) {
+        _quietVersion = quiet['ward_version'] as int;
+      }
       failedPlanText = null;
       stagedImages.clear();
       planAttachments.clear();

@@ -58,7 +58,15 @@ def guard_external_ai_gateway():
 
 
 @pytest.fixture
-def db_engine():
+def db_engine(request):
+    if os.environ.get("OBSERVATION_TEST_POSTGRES") == "1":
+        connection = request.getfixturevalue("observation_pg_connection")
+        case = connection.begin_nested()
+        try:
+            yield connection
+        finally:
+            case.rollback()
+        return
     engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
@@ -70,9 +78,35 @@ def db_engine():
     engine.dispose()
 
 
+@pytest.fixture(scope="session")
+def observation_pg_connection():
+    """Isolate opt-in PostgreSQL regressions from every existing business row."""
+    from uuid import uuid4
+    from dotenv import dotenv_values
+    from sqlalchemy import text
+    from sqlalchemy.engine import make_url
+
+    url = make_url(dotenv_values(Path(__file__).resolve().parents[1] / ".env")["DATABASE_URL"])
+    if url.database != "duxue-test" or url.get_backend_name() != "postgresql":
+        raise ValueError("expected PostgreSQL duxue-test")
+    engine = create_engine(url.set(drivername="postgresql+psycopg"))
+    with engine.connect() as connection:
+        tx = connection.begin()
+        try:
+            schema = "observation_test_" + uuid4().hex
+            connection.execute(text(f'CREATE SCHEMA "{schema}"'))
+            connection.execute(text(f'SET LOCAL search_path TO "{schema}"'))
+            Base.metadata.create_all(connection)
+            yield connection
+        finally:
+            tx.rollback()
+    engine.dispose()
+
+
 @pytest.fixture
 def db(db_engine):
-    Session = sessionmaker(bind=db_engine, expire_on_commit=False)
+    Session = sessionmaker(bind=db_engine, expire_on_commit=False,
+                           join_transaction_mode="create_savepoint")
     session = Session()
     try:
         yield session

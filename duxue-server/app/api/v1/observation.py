@@ -307,3 +307,31 @@ def report_inbox(
         ],
         "next_cursor": rows[-1][1].id if len(rows) == limit else None,
     }
+
+
+class QuietRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    command_id: UUID
+    action: Literal["start", "extend", "end"]
+    duration_seconds: int | None = None
+    expected_version: int | None = None
+
+
+@router.post("/study/observation-quiet")
+def change_observation_quiet(body: QuietRequest, principal: Principal = Depends(current_ward),
+                             db: Session = Depends(get_db)):
+    from app.application.commands.observation_quiet import change_quiet
+    result = change_quiet(db, principal.user_id, str(body.command_id), body.action,
+                          body.duration_seconds, now(), body.expected_version)
+    db.commit()
+    return result
+
+
+@router.get("/study/observation-quiet")
+def read_observation_quiet(principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
+    from app.application.commands.observation_quiet import latest_period
+    from app.application.commands.behavior_observation import utc
+    period = latest_period(db, principal.user_id)
+    active = bool(period and not period.ended_at and utc(period.scheduled_until) > now())
+    return {"active": active, "ward_version": period.version if period else 0,
+            "effective_until": period.scheduled_until if active else None}

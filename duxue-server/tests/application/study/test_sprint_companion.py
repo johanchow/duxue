@@ -139,3 +139,24 @@ def test_natural_sprint_interlude_resumes_original_tutoring_run(db):
                                  expected_thread_version=started.thread_version, route_hint=None)
     assert resumed.run_id == question.run_id
     assert resumed.thread_id == question.thread_id
+
+
+def test_quiet_interlude_updates_study_without_creating_a_task(db):
+    from app.infrastructure.persistence.models import QuietPeriod
+    ward = create_ward(db)
+    db.commit()
+    coordinator = CompanionCoordinator(db, dispatcher=Dispatcher(db), classifier=StaticIntentClassifier("planning"))
+    def turn(content, action, minutes=None, previous=None):
+        result = PlanIntakeResult(assistant_text="收到", study_action={"action": action, "target_minutes": minutes})
+        with patch("app.application.commands.plan_intake.PlanIntakeService.respond", return_value=result):
+            return coordinator.handle(ward_id=ward.id, content=content,
+                                      thread_id=previous.thread_id if previous else None,
+                                      expected_thread_version=previous.thread_version if previous else 0,
+                                      route_hint=None)
+    started = turn("我去上厕所十五分钟", "quiet_start", 15)
+    assert started.interaction["observation_quiet"]["active"]
+    extended = turn("再休息五分钟", "quiet_extend", 5, started)
+    ended = turn("我回来了", "quiet_end", previous=extended)
+    assert not ended.interaction["observation_quiet"]["active"]
+    assert db.query(QuietPeriod).filter_by(ward_id=ward.id).one().version == 3
+    assert db.query(Task).count() == db.query(StudySession).count() == 0

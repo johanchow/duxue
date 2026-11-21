@@ -603,7 +603,7 @@ class CompanionCoordinator:
         return_ref = (run.outcome or {}).get("sprint_return_ref")
         run.outcome = {
             "sprint_return_ref": return_ref,
-            "sprint_interlude": bool(return_ref and interaction.get("kind") == "sprint_control"),
+            "sprint_interlude": bool(return_ref and (interaction.get("kind") == "sprint_control" or "observation_quiet" in interaction)),
             "type": outcome.outcome_type,
             "resume_action": outcome.resume_action,
             # The issued action is persisted with its run outcome.  A later

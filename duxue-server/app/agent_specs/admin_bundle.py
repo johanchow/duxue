@@ -9,7 +9,8 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from app.agent_specs import blueprint_steps
+from app.agent_specs import blueprint_steps, reminder_policy
+from app.contexts.behavior_analysis.domain.reminder_rules import ReminderPolicy
 from app.agent_specs.configuration import code_contract
 from app.agent_specs.definitions import DefinitionCatalog
 from app.agent_specs.gaokao_contracts import FILES as GAOKAO_FILES
@@ -91,10 +92,11 @@ def contract_compatibility(files: dict) -> str:
     has_obs = OBSERVATION_FILES <= set(files)
     has_gaokao = GAOKAO_FILES <= set(files)
     has_mentor = GUARDIAN_MENTOR_FILES <= set(files)
+    reminder_contracts = reminder_policy.upgraded_contracts({**code_contract()["files"], **observation_contracts()}) if reminder_policy.FILE in files else {}
     return digest({
         "files": {**code_contract()["files"],
                   **(blueprint_steps.contracts(files) if f"agents/{blueprint_steps.EXTRACT}.json" in files else {}),
-                  **(observation_contracts() if has_obs else {}),
+                  **(observation_contracts() if has_obs else {}), **reminder_contracts,
                   **(gaokao_contracts() if has_gaokao else {}),
                   **(guardian_mentor_contracts(files) if has_mentor else {}),
                   **(staged_contracts(include_repair=f"agents/{MENTOR_REPAIR_ID}.json" in files) if f"gates/{MENTOR_REVIEW_ID}.json" in files else {}),
@@ -145,11 +147,18 @@ def compile_bundle(bundle: dict) -> CompiledBundle:
     if mentor_stage:
         contracts["files"].update(mentor_stage)
         contracts["tool_authority"].update({MENTOR_REVIEW_ID: [], MENTOR_REPAIR_ID: []})
+    policy = None
+    if reminder_policy.FILE in file_names:
+        if not has_observation:
+            raise ValueError("reminder policy requires observation workflow")
+        policy = ReminderPolicy.model_validate(bundle["files"][reminder_policy.FILE]).model_dump()
+        contracts["files"].update(reminder_policy.upgraded_contracts(contracts["files"]))
     expected_files = (
         set(BUNDLE_FILES) | set(split_files)
         | (OBSERVATION_FILES if has_observation else set())
         | (GAOKAO_FILES if has_gaokao else set())
         | (GUARDIAN_MENTOR_FILES if has_mentor else set())
+        | ({reminder_policy.FILE} if policy else set())
         | set(mentor_stage)
     )
     if (
@@ -166,6 +175,8 @@ def compile_bundle(bundle: dict) -> CompiledBundle:
     if bundle["compatibility"] != contract_compatibility(bundle["files"]):
         raise ValueError("code compatibility mismatch; validate the complete Admin snapshot")
     for name, doc in bundle["files"].items():
+        if name == reminder_policy.FILE:
+            continue
         if not isinstance(doc, dict):
             raise ValueError(f"{name}: malformed configuration")
         if "version" in doc or any(
@@ -221,6 +232,7 @@ def compile_bundle(bundle: dict) -> CompiledBundle:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(json.dumps(doc, ensure_ascii=False))
         catalog = DefinitionCatalog(root)
+        catalog.observation_policy = policy
         catalog.artifact_digest = bundle_id
         from app.agent_specs.catalog import AgentCatalog
         from app.agent_specs.definitions import use_definitions

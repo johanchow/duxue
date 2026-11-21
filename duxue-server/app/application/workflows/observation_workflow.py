@@ -87,7 +87,10 @@ def validate_activity(payload, response):
             for f in payload["frames"]
         ),
     )
-    validate_outcome(manifest, response["cells"])
+    cells = validate_outcome(manifest, response["cells"])
+    if "rule_groups" in payload:
+        from app.contexts.behavior_analysis.domain.reminder_rules import checked_matches
+        checked_matches(payload, response["cells"], cells)
     return response
 
 

@@ -15,6 +15,50 @@ from app.infrastructure.persistence.models import (
 from app.infrastructure.storage.object_storage import camera_storage, storage
 
 
+def rule_output_guide(manifest):
+    """Supply exact slot boundaries and IDs, leaving all visual judgments to the model."""
+    from datetime import timedelta
+
+    start = datetime.fromisoformat(manifest["start"])
+    end = datetime.fromisoformat(manifest["end"])
+    quiet = {datetime.fromisoformat(t) for t in manifest.get("quiet_slots", [])}
+    ids = [rule["id"] for group in manifest["rule_groups"].values() for rule in group]
+    slots = {}
+    for frame in manifest["frames"]:
+        at = datetime.fromisoformat(frame["at"])
+        if start <= at < end:
+            slot = start + timedelta(seconds=15 * ((at - start).total_seconds() // 15))
+            row = slots.setdefault(
+                slot,
+                {
+                    "start": slot.isoformat(),
+                    "end": min(slot + timedelta(seconds=15), end).isoformat(),
+                    "frame_ids": [],
+                    "rule_ids": [] if slot in quiet else ids,
+                },
+            )
+            row["frame_ids"].append(frame["id"])
+    guide = {
+        "target_slots": list(slots.values()),
+        "output_cell_fields": [
+            "start",
+            "end",
+            "activity",
+            "evidence_frame_ids",
+            "uncertainty_reason",
+            "rule_matches",
+        ],
+        "rule_match_fields": ["rule_id", "verdict", "evidence_frame_ids"],
+    }
+    return {
+        "type": "text",
+        "text": "请返回一个 JSON 对象，顶层 cells 数组。按以下槽原样复制起止时间、帧和规则标识；"
+        "每个 rule_id 一条 rule_matches，verdict 只能是 matched、not_matched 或 uncertain。"
+        "空白、遮挡或用途不清时仍返回该槽和规则，使用 unknown / uncertain。"
+        + json.dumps(guide, ensure_ascii=False),
+    }
+
+
 class ObservationVision:
     def __init__(self, session_factory=SessionLocal, *, settings_obj=None):
         self.session_factory = session_factory
@@ -115,6 +159,8 @@ class ObservationVision:
             return {"frame_count": len(payload["frames"]), "authorized": True}
 
         def infer(_state):
+            if component_id == "behavior.visible-activity" and "rule_groups" in payload:
+                parts.append(rule_output_guide(payload))
             result.update(self.invoke_model(component_id, parts))
             return result
 

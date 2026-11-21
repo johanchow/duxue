@@ -49,6 +49,7 @@ class ReleaseRuntime:
             Path(name).replace(self.cache)
         finally:
             Path(name).unlink(missing_ok=True)
+        snapshot.catalog.activation = {k: release[k] for k in ("id", "generation", "activated_at") if k in release}
         self.current = (release, snapshot)
 
     def tick(self, *, acknowledge=True):
@@ -62,8 +63,10 @@ class ReleaseRuntime:
                 raise ValueError("Admin环境不匹配，拒绝加载其他环境配置")
             if target.get("release"):
                 incoming = target["release"]
-                if self.current is None or self.current[0]["id"] != incoming["id"]:
-                    self.accept({**incoming, "environment": target.get("environment")})
+                if (self.current is None or self.current[0]["id"] != incoming["id"]
+                        or self.current[0].get("generation") != target.get("generation")):
+                    self.accept({**incoming, "environment": target.get("environment"),
+                                 "generation": target.get("generation"), "activated_at": target.get("activated_at")})
             if self.current is None:
                 raise ValueError("Admin没有可加载的已发布配置")
             self.last_error = None

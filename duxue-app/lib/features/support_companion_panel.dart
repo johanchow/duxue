@@ -18,8 +18,9 @@ String supportCommandId() {
 /// An explicitly opened foreground channel; never opens the microphone.
 class SupportCompanionPanel extends ConsumerStatefulWidget {
   const SupportCompanionPanel(
-      {required this.wardId, required this.onAsk, super.key});
+      {required this.wardId, required this.onAsk, this.quietVersion = 0, super.key});
   final String wardId;
+  final int quietVersion;
   final VoidCallback onAsk;
   @override
   ConsumerState<SupportCompanionPanel> createState() =>
@@ -43,6 +44,18 @@ class _SupportCompanionPanelState extends ConsumerState<SupportCompanionPanel>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     timer = Timer.periodic(const Duration(seconds: 15), (_) => _refresh());
+  }
+
+  @override
+  void didUpdateWidget(SupportCompanionPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.quietVersion != oldWidget.quietVersion) {
+      generation++;
+      expiry?.cancel();
+      completion?.cancel();
+      _player?.stop();
+      offer = null;
+    }
   }
 
   @override
@@ -196,6 +209,13 @@ class _SupportCompanionPanelState extends ConsumerState<SupportCompanionPanel>
         await _receipt('speech_completed');
       } catch (_) {/* Never invent completion after a failed receipt. */}
     });
+    final authorization = await ref.read(apiProvider).dio.get(
+        '/companion/support-channels/$channel/offer');
+    if (!mounted || epoch != generation || !foreground || !handsfree ||
+        authorization.data['offer']?['offer_id'] != current['offer_id'] ||
+        offer?['offer_id'] != current['offer_id']) {
+      return;
+    }
     await player.play(AssetSource('support/$prompt.mp3'));
   }
 

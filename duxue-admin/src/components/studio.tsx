@@ -8,6 +8,7 @@ import {
   WorkflowExplorer,
   WorkflowActionDetail,
 } from './inventory';
+import { ObservationRules } from './observation-rules';
 import { workflowNodeTitle } from '../lib/workflow-graph';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { studioRoute, studioPaths } from '../lib/studio-route';
@@ -1522,6 +1523,19 @@ export default function Studio() {
               </p>
             </section>
           ))}
+        {tab === 'flow-detail' && entityId === 'behavior-observation' && (() => {
+          const file = 'policies/observation-support.json';
+          const policy = (graphSnapshot?.bundle || (!draftId && !pinnedReleaseId && state?.catalog?.bundle))?.files?.[file];
+          if (!policy) return <p>此配置版本使用固定行为阈值，导入提醒规则升级包后可编辑。</p>;
+          return <>
+            <ObservationRules policy={policy} change={draft && canEdit ? next => edit(next, file) : undefined}/>
+            {draft && canEdit && <button disabled={busy || !dirty} onClick={() => action(save)}>保存规则草稿</button>}
+            {!draftId && !pinnedReleaseId && canEdit && <button onClick={() => action(async () => {
+              const current = await api('drafts', 'POST', {});
+              navigate('/workflows/behavior-observation?draft=' + current.id);
+            })}>编辑提醒规则</button>}
+          </>;
+        })()}
         {tab === 'flow-detail' &&
           entityId === 'tutoring' &&
           canEdit &&

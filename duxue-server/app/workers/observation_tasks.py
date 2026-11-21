@@ -34,6 +34,7 @@ def deliver_observation_events(limit=100):
         "ObservationRevisionPublished.v1",
         "HelpOfferReady.v1",
         "HelpOfferPresented.v1",
+        "ObservationQuietPeriodChanged.v1",
     ]
     with SessionLocal() as db:
         rows = (

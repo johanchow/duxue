@@ -40,7 +40,11 @@ def validate_output(unit: ModelUnit, payload: dict) -> None:
     unit_id = unit.id
     if unit_id in {"behavior.visible-activity", "behavior.support-opportunity"}:
         from app.agent_specs.observation_contracts import IDS
-        IDS[unit_id].model_validate(payload)
+        if unit_id == "behavior.visible-activity" and "RuleCell" in unit.output_schema.get("$defs", {}):
+            from app.contexts.behavior_analysis.domain.reminder_rules import RuleActivityResult
+            RuleActivityResult.model_validate(payload)
+        else:
+            IDS[unit_id].model_validate(payload)
     elif unit_id in {"evals.semantic-judge", "tutoring.stem-extract", "tutoring.stem-review"}:
         pass  # The strict score/verdict/error schema above owns this contract.
     elif unit_id in {"tutoring.blueprint-planner", "tutoring.blueprint-backup"}:
