@@ -427,6 +427,7 @@ class ApiClient {
     required int? expectedThreadVersion,
     String? routeHint,
     String? tutoringIntent,
+    String? voiceDisplayText,
     Map<String, dynamic>? structuredCommand,
     List<String> attachmentKeys = const [],
   }) async =>
@@ -436,6 +437,7 @@ class ApiClient {
                 'thread_id': threadId,
                 'expected_thread_version': expectedThreadVersion,
                 if (routeHint != null) 'route_hint': routeHint,
+                if (voiceDisplayText != null) 'voice_display_text': voiceDisplayText,
                 if (tutoringIntent != null) 'tutoring_intent': tutoringIntent,
                 if (structuredCommand != null)
                   'structured_command': structuredCommand,
@@ -533,6 +535,12 @@ class ApiClient {
   Future<Map<String, dynamic>> pronunciationLesson(String lessonRef) async =>
       Map<String, dynamic>.from(
           (await dio.get('/pronunciation-lessons/$lessonRef')).data as Map);
+
+  Future<Uint8List> companionSpeech(String id) async {
+    final response = await dio.get<List<int>>('/companion/messages/$id/speech',
+        options: Options(responseType: ResponseType.bytes, receiveTimeout: const Duration(seconds: 30)));
+    return Uint8List.fromList(response.data ?? const []);
+  }
 
   Future<Uint8List> pronunciationSpeech(String lessonRef, double rate) async {
     final response = await dio.get<List<int>>(

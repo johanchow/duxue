@@ -123,10 +123,20 @@ def migrated_engine(postgres_url):
     from app.infrastructure.persistence.database import Base
 
     initial = create_engine(postgres_url)
-    Base.metadata.create_all(initial)
+    bootstrap = []
+    with initial.begin() as connection:
+        if not inspect(connection).has_table("alembic_version"):
+            Base.metadata.create_all(connection)
+            # Align create_all with the named FK in migration 38 and apply
+            # migration 40's PostgreSQL-only exclusion constraint before rollback.
+            connection.exec_driver_sql(
+                "ALTER TABLE user_wards RENAME CONSTRAINT user_wards_owner_guardian_id_fkey "
+                "TO fk_ward_owner_guardian"
+            )
+            bootstrap = [("stamp", "20261121_39"), ("upgrade", "head")]
     initial.dispose()
     for action, revision in (
-        ("stamp", "head"),
+        *bootstrap,
         ("downgrade", "20261030_30"),
         ("upgrade", "head"),
     ):

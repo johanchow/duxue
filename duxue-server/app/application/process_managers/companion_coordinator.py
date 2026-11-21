@@ -278,7 +278,7 @@ class CompanionCoordinator:
         tutoring_directive: str | None = None, tutoring_intent: str | None = None, review_date=None,
         review_feeling: str | None = None, review_reflection: str | None = None,
         attachment_keys: list[str] | None = None,
-        structured_command: dict | None = None,
+        structured_command: dict | None = None, voice_display_text: str | None = None,
     ) -> CoordinatorResult:
         started = perf_counter()
         command_id = command_id or str(uuid4())
@@ -293,7 +293,10 @@ class CompanionCoordinator:
             "attachment_keys": attachment_keys or [],
             "structured_command": structured_command,
         }
-        digest = self._digest({"thread_id": thread_id, "expected_version": expected_thread_version, "route_hint": route_hint, "turn": turn})
+        fingerprint = {"thread_id": thread_id, "expected_version": expected_thread_version, "route_hint": route_hint, "turn": turn}
+        if voice_display_text:
+            fingerprint["voice_display_text"] = voice_display_text
+        digest = self._digest(fingerprint)
         lock_history(self.db, ward_id)
         cached = self._restore_idempotent(command_id, ward_id, digest)
         if cached is not None:
@@ -472,6 +475,9 @@ class CompanionCoordinator:
             thread_version=version, run=run, turn_id=run.current_turn_id if run else None,
             attempt=run.attempt if run else None,
             attachment_refs=[] if choice_selected else attachment_keys,
+            interaction_ref=({"voice_display_text": voice_display_text}
+                             if voice_display_text and decision.target == "tutoring"
+                             and not structured_command and not tutoring_intent else None),
         )
         terminal_reply = { "clarify": _CLARIFY_REPLY, "safety": _SAFETY_REPLY }.get(decision.target)
         intent_choice = (self._intent_choice_interaction(thread.id, command_id)

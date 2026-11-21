@@ -58,6 +58,8 @@ class AppTelemetry {
     'app.device.bind',
     'app.companion.turn',
     'app.asr.session',
+    'app.asr.final_latency',
+    'app.tts.playback_latency',
     'app.screen.load',
     'app.startup',
     'app.unhandled_error',

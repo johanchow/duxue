@@ -9,12 +9,14 @@ class PronunciationLessonCard extends StatefulWidget {
     required this.lesson,
     required this.loadSpeech,
     required this.playback,
+    this.claimPlayback,
     super.key,
   });
 
   final Map<String, dynamic> lesson;
   final Future<Uint8List> Function(String speechRef, double rate) loadSpeech;
   final SpeechPlayback playback;
+  final bool Function() Function()? claimPlayback;
 
   @override
   State<PronunciationLessonCard> createState() => _PronunciationLessonCardState();
@@ -45,7 +47,7 @@ class _PronunciationLessonCardState extends State<PronunciationLessonCard> {
 
   @override
   void dispose() {
-    widget.playback.stop();
+    if (widget.claimPlayback == null) widget.playback.stop();
     super.dispose();
   }
 
@@ -54,24 +56,26 @@ class _PronunciationLessonCardState extends State<PronunciationLessonCard> {
     final source = widget.lesson['source_text'] as String? ?? '';
     final locale = widget.lesson['locale'] as String? ?? 'en-US';
     if (speechRef == null || speechRef.isEmpty || source.isEmpty) return;
+    final ownsPlayback = widget.claimPlayback?.call();
+    bool active() => mounted && (ownsPlayback?.call() ?? true);
     setState(() {
       _loading = true;
       _status = null;
     });
     try {
       final bytes = await widget.loadSpeech(speechRef, _rate);
-      if (!mounted) return;
+      if (!active()) return;
       await widget.playback.playMp3(bytes);
-      if (!mounted) return;
+      if (!active()) return;
       setState(() => _status = '正在播放');
     } catch (_) {
-      if (!mounted) return;
+      if (!active()) return;
       try {
         await widget.playback.speak(source, locale);
-        if (!mounted) return;
+        if (!active()) return;
         setState(() => _status = '服务端暂时读不了，已改用手机朗读');
       } catch (_) {
-        if (!mounted) return;
+        if (!active()) return;
         setState(() => _status = '暂时读不出来');
       }
     } finally {

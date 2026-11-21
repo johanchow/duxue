@@ -3,6 +3,7 @@ from .common import *
 from app.api.schemas import CompanionHistoryClearRequest
 from app.application.commands.companion_history import clear_history, history_is_visible, visible_threads
 from uuid import UUID
+from app.infrastructure.ai.speech_task import tutor_audio
 from app.infrastructure.persistence.models import PlanDraft
 from app.application.workflows.planning_domain_service import PlanningDomainService
 from app.infrastructure.observability.telemetry import record_companion_rejection
@@ -108,12 +109,36 @@ def companion_message_image(
     return Response(content=content, media_type=media_types[suffix], headers={"Cache-Control": "private, max-age=300"})
 
 
-def _serialize_message(row: CompanionMessage) -> dict:
+def _readable_reply(row: CompanionMessage, tutor_runs: set[str]) -> bool:
+    return (row.author_type == "companion" and row.run_id in tutor_runs and bool(row.content.strip())
+            and (row.interaction_ref or {}).get("kind") != "pronunciation_lesson")
+
+
+@router.get("/companion/messages/{message_id}/speech")
+async def companion_message_speech(message_id: UUID, principal: Principal = Depends(current_ward),
+                                   db: Session = Depends(get_db)):
+    row = db.get(CompanionMessage, str(message_id))
+    if row is None or row.ward_id != principal.user_id or not history_is_visible(db, principal.user_id, row.thread_id):
+        raise HTTPException(404, "reply unavailable")
+    run = db.get(AgentRun, row.run_id) if row.run_id else None
+    tutor_runs = {run.id} if run and run.agent_type == "tutoring" else set()
+    if not _readable_reply(row, tutor_runs):
+        raise HTTPException(404, "reply unavailable")
+    text = row.content
+    db.rollback()  # Release the read transaction before waiting on synthesis.
+    try:
+        audio = await tutor_audio(text)
+    except Exception as error:
+        raise HTTPException(503, "朗读服务暂不可用") from error
+    return Response(content=audio, media_type="audio/mpeg", headers={"Cache-Control": "no-store"})
+
+
+def _serialize_message(row: CompanionMessage, tutor_runs: set[str]) -> dict:
     return {
         "id": row.id, "thread_id": row.thread_id, "run_id": row.run_id,
         "turn_id": row.turn_id, "attempt": row.attempt, "command_id": row.command_id,
         "thread_version": row.thread_version, "author_type": row.author_type,
-        "content": row.content, "attachment_refs": row.attachment_refs,
+        "content": row.content, "can_read_aloud": _readable_reply(row, tutor_runs), "attachment_refs": row.attachment_refs,
         "interaction_ref": row.interaction_ref, "created_at": row.created_at,
     }
 
@@ -156,7 +181,11 @@ def _thread_messages_payload(
     rows = query.order_by(CompanionMessage.thread_version.desc()).limit(limit + 1).all()
     has_more = len(rows) > limit
     rows = rows[:limit]
-    messages = [_serialize_message(row) for row in reversed(rows)]
+    run_ids = {row.run_id for row in rows if row.run_id}
+    tutor_runs = {rid for rid, in db.query(AgentRun.id).filter(
+        AgentRun.id.in_(run_ids), AgentRun.agent_type == "tutoring"
+    )} if run_ids else set()
+    messages = [_serialize_message(row, tutor_runs) for row in reversed(rows)]
     next_before = rows[-1].thread_version if has_more and rows else None
     previous_thread_id: str | None = None
     if next_before is None:
@@ -255,6 +284,7 @@ def companion_turn(body: CompanionTurnRequest, principal: Principal = Depends(cu
         result = CompanionCoordinator(db).handle(
             ward_id=principal.user_id,
             content=body.content,
+            voice_display_text=body.voice_display_text,
             thread_id=body.thread_id,
             expected_thread_version=body.expected_thread_version,
             route_hint=body.route_hint,
