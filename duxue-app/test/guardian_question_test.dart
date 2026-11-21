@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'recording_conversation_latency.dart';
 
 import 'package:duxue_app/core/api_client.dart';
 import 'package:duxue_app/core/models.dart';
@@ -91,9 +92,10 @@ class _Api extends ApiClient {
 }
 
 Future<void> _home(WidgetTester tester, _Api api,
-    {List<Ward> wards = const []}) async {
+    {List<Ward> wards = const [], RecordingConversationLatency? latency}) async {
   await tester.pumpWidget(ProviderScope(overrides: [
     apiProvider.overrideWithValue(api),
+    if (latency != null) conversationLatencyProvider.overrideWithValue(latency),
     wardsProvider.overrideWith((ref) async => wards)
   ], child: const MaterialApp(home: WardListPage())));
   await tester.pumpAndSettle();
@@ -175,7 +177,8 @@ void main() {
       'clear rejects a late response and the next turn starts with no state',
       (tester) async {
     final api = _Api()..pending = Completer();
-    await _home(tester, api);
+    final latency = RecordingConversationLatency();
+    await _home(tester, api, latency: latency);
     await _tab(tester, '问答');
     final sending = tester
         .widget<VoiceComposer>(find.byType(VoiceComposer))
@@ -190,12 +193,15 @@ void main() {
     await sending;
     await tester.pumpAndSettle();
     expect(find.text('迟到的回复'), findsNothing);
+    expect(latency.events.single['attributes']['result'], 'cancelled');
     api.pending = null;
     await tester
         .widget<VoiceComposer>(find.byType(VoiceComposer))
         .onVoiceFinal('新问题');
     await tester.pumpAndSettle();
     expect(api.turns.last.state, isNull);
+    expect(latency.events.last['attributes'], {'result': 'success', 'role': 'guardian'});
+    expect(latency.events.length, 2);
   });
 
   testWidgets(

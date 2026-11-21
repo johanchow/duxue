@@ -1,0 +1,504 @@
+{
+  "schemaVersion": 39,
+  "uid": "duxue-conversation-latency",
+  "title": "读学 · 对话端到端耗时",
+  "description": "从 App 发送问题到完整回复可展示。按轮次去重，失败、超时与取消单列。",
+  "tags": [
+    "duxue",
+    "mobile"
+  ],
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "refresh": "1m",
+  "templating": {
+    "list": [
+      {
+        "name": "environment",
+        "label": "环境",
+        "type": "custom",
+        "query": "test,production,development",
+        "includeAll": true,
+        "allValue": "test|production|development",
+        "multi": true,
+        "current": {
+          "text": "test",
+          "value": [
+            "test"
+          ]
+        },
+        "options": []
+      },
+      {
+        "name": "entry",
+        "label": "入口",
+        "type": "custom",
+        "query": "guardian,ward",
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": {
+          "text": "All",
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": []
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "平均每轮耗时",
+      "type": "stat",
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max_over_time({service_name=\"duxue-app\", deployment_environment_name=~\"${environment:regex}\"} |= \"app.conversation.completed\" | json | event=\"app.conversation.completed\" | entry=~\"${entry:regex}\" | result=\"success\" | unwrap duration_ms | __error__=\"\" [$__range]) by (turn_id)",
+          "queryType": "instant",
+          "legendFormat": "",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "noValue": "无样本"
+        },
+        "overrides": []
+      },
+      "transformations": [
+        {
+          "id": "seriesToRows",
+          "options": {}
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "mean"
+          ],
+          "fields": "/^Value$/"
+        },
+        "textMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 2,
+      "title": "P95",
+      "type": "stat",
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max_over_time({service_name=\"duxue-app\", deployment_environment_name=~\"${environment:regex}\"} |= \"app.conversation.completed\" | json | event=\"app.conversation.completed\" | entry=~\"${entry:regex}\" | result=\"success\" | unwrap duration_ms | __error__=\"\" [$__range]) by (turn_id)",
+          "queryType": "instant",
+          "legendFormat": "",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "noValue": "无样本"
+        },
+        "overrides": []
+      },
+      "transformations": [
+        {
+          "id": "seriesToRows",
+          "options": {}
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "p95"
+          ],
+          "fields": "/^Value$/"
+        },
+        "textMode": "value",
+        "graphMode": "none"
+      },
+      "description": "对去重的成功轮次按耗时排序，采用 Grafana 的样本分位数。"
+    },
+    {
+      "id": 3,
+      "title": "P99",
+      "type": "stat",
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max_over_time({service_name=\"duxue-app\", deployment_environment_name=~\"${environment:regex}\"} |= \"app.conversation.completed\" | json | event=\"app.conversation.completed\" | entry=~\"${entry:regex}\" | result=\"success\" | unwrap duration_ms | __error__=\"\" [$__range]) by (turn_id)",
+          "queryType": "instant",
+          "legendFormat": "",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "noValue": "无样本"
+        },
+        "overrides": []
+      },
+      "transformations": [
+        {
+          "id": "seriesToRows",
+          "options": {}
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "p99"
+          ],
+          "fields": "/^Value$/"
+        },
+        "textMode": "value",
+        "graphMode": "none"
+      },
+      "description": "对去重的成功轮次按耗时排序，采用 Grafana 的样本分位数。"
+    },
+    {
+      "id": 4,
+      "title": "成功轮数",
+      "type": "stat",
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max_over_time({service_name=\"duxue-app\", deployment_environment_name=~\"${environment:regex}\"} |= \"app.conversation.completed\" | json | event=\"app.conversation.completed\" | entry=~\"${entry:regex}\" | result=\"success\" | unwrap duration_ms | __error__=\"\" [$__range]) by (turn_id)",
+          "queryType": "instant",
+          "legendFormat": "",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "无样本"
+        },
+        "overrides": []
+      },
+      "transformations": [
+        {
+          "id": "seriesToRows",
+          "options": {}
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "count"
+          ],
+          "fields": "/^Value$/"
+        },
+        "textMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 5,
+      "title": "成功轮次耗时趋势",
+      "type": "timeseries",
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 16,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max_over_time({service_name=\"duxue-app\", deployment_environment_name=~\"${environment:regex}\"} |= \"app.conversation.completed\" | json | event=\"app.conversation.completed\" | entry=~\"${entry:regex}\" | result=\"success\" | unwrap duration_ms | __error__=\"\" [$__interval]) by (turn_id)",
+          "queryType": "range",
+          "legendFormat": "",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "noValue": "无样本"
+        },
+        "overrides": []
+      },
+      "interval": "5m",
+      "maxDataPoints": 300,
+      "transformations": [
+        {
+          "id": "seriesToRows",
+          "options": {}
+        },
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "Time": {
+                "operation": "groupby",
+                "aggregations": []
+              },
+              "Value": {
+                "operation": "aggregate",
+                "aggregations": [
+                  "mean",
+                  "p95",
+                  "p99"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "description": "窗口随看板时间范围调整，最短 5 分钟。"
+    },
+    {
+      "id": 6,
+      "title": "失败、超时与取消",
+      "type": "stat",
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 4,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "count by (result) (max_over_time({service_name=\"duxue-app\", deployment_environment_name=~\"${environment:regex}\"} |= \"app.conversation.completed\" | json | event=\"app.conversation.completed\" | entry=~\"${entry:regex}\" | result!=\"success\" | unwrap duration_ms | __error__=\"\" [$__range]) by (turn_id,result))",
+          "queryType": "instant",
+          "legendFormat": "{{result}}",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "无样本"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 7,
+      "title": "逐轮明细",
+      "type": "table",
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 24,
+        "h": 12
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max_over_time({service_name=\"duxue-app\", deployment_environment_name=~\"${environment:regex}\"} |= \"app.conversation.completed\" | json | event=\"app.conversation.completed\" | entry=~\"${entry:regex}\"  | unwrap duration_ms | __error__=\"\" [$__range]) by (turn_id,entry,result,completed_ms,server_trace,deployment_environment_name)",
+          "queryType": "instant",
+          "legendFormat": "",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "完成时间"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dateTimeAsLocal"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "耗时"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "服务端链路"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "打开 Tempo 链路",
+                    "url": "/explore?left=%7B%22datasource%22%3A%22grafanacloud-traces%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22${__value.raw}%22%7D%5D%7D",
+                    "targetBlank": true
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "轮次"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "按轮次查找服务端链路",
+                    "url": "/explore?left=%7B%22datasource%22%3A%22grafanacloud-traces%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20span.app.conversation.turn_id%20%3D%20%5C%22${__value.raw}%5C%22%20%7D%22%7D%5D%7D",
+                    "targetBlank": true
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "convertFieldType",
+          "options": {
+            "conversions": [
+              {
+                "targetField": "completed_ms",
+                "destinationType": "number"
+              }
+            ]
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "completed_ms",
+                "desc": true
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "renameByName": {
+              "completed_ms": "完成时间",
+              "Value": "耗时",
+              "entry": "入口",
+              "result": "结果",
+              "deployment_environment_name": "环境",
+              "turn_id": "轮次",
+              "server_trace": "服务端链路"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

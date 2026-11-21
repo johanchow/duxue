@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'recording_conversation_latency.dart';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
@@ -1580,10 +1581,11 @@ void main() {
     FlutterSecureStoragePlatform.instance =
         TestFlutterSecureStoragePlatform({});
     final api = _WardHomeApi();
+    final latency = RecordingConversationLatency();
     final playback = _FakePlayback();
     final voice = _FakeVoice()..finalText = 'apple';
     await tester.pumpWidget(ProviderScope(
-      overrides: [apiProvider.overrideWithValue(api)],
+      overrides: [apiProvider.overrideWithValue(api), conversationLatencyProvider.overrideWithValue(latency)],
       child: MaterialApp(
           home: WardDayPage(
               wardId: 'ward-1',
@@ -1603,6 +1605,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(api.turns.single.content, 'apple');
+    expect(latency.events.single['attributes'], {'role': 'ward', 'result': 'success'});
     expect(find.text('apple'), findsWidgets);
     expect(playback.played, isEmpty);
 

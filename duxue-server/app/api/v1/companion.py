@@ -1,3 +1,4 @@
+from app.api.deps import expose_turn_trace
 from .common import *
 from app.api.schemas import CompanionHistoryClearRequest
 from app.application.commands.companion_history import clear_history, history_is_visible, visible_threads
@@ -242,7 +243,7 @@ def clear_companion_history(
         raise
 
 
-@router.post("/companion/turn")
+@router.post("/companion/turn", dependencies=[Depends(expose_turn_trace)])
 def companion_turn(body: CompanionTurnRequest, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
     """Create or continue exactly one controlled companion domain Run.
 

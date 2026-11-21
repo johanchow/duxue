@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.orm import Session
 
-from app.api.deps import Principal, current_guardian, get_db
+from app.api.deps import Principal, current_guardian, expose_turn_trace, get_db
 from app.api.schemas import UploadUrlRequest
 from app.application.queries.problem_dossier import GetProblemDossierQuery
 from app.application.queries.pronunciation_speech import canonical_rate
@@ -55,7 +55,7 @@ def _state(token: str, principal: Principal, purpose: str) -> dict:
         raise HTTPException(409, {"code": "experience_expired"}) from error
 
 
-@router.post("/turn")
+@router.post("/turn", dependencies=[Depends(expose_turn_trace)])
 def turn(
     body: ExperienceTurnRequest,
     principal: Annotated[Principal, Depends(current_guardian)],

@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/api_client.dart';
 import 'core/models.dart';
 import 'core/token_storage.dart';
 import 'core/telemetry.dart';
+import 'core/conversation_latency.dart';
 
 /// Compile with `--dart-define=API_BASE_URL=https://api.example.com`.
 /// This is intentionally a build-time value: mobile clients cannot read the
@@ -17,6 +20,19 @@ final telemetryProvider = Provider((ref) => AppTelemetry(
       config: TelemetryConfig.fromEnvironment(apiBaseUrl),
       accessToken: () => ref.read(tokenStorageProvider).access,
     ));
+final conversationLatencyProvider = Provider((ref) {
+  final storage = ref.watch(tokenStorageProvider);
+  final reporter = ConversationLatency(
+    TelemetryConfig.fromEnvironment(apiBaseUrl).relayUrl,
+    () => storage.access,
+    enabled: const bool.fromEnvironment('APP_CONVERSATION_LATENCY_ENABLED',
+        defaultValue:
+            bool.fromEnvironment('APP_TELEMETRY_ENABLED', defaultValue: true)),
+  );
+  unawaited(reporter.restore());
+  ref.onDispose(reporter.dispose);
+  return reporter;
+});
 final apiProvider = Provider(
   (ref) => ApiClient(
     baseUrl: apiBaseUrl,

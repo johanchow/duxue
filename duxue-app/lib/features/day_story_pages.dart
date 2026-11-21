@@ -13,6 +13,7 @@ import '../core/speech_playback.dart';
 import '../core/voice_transcription_service.dart';
 import '../core/user_error_message.dart';
 import '../providers.dart';
+import '../core/conversation_latency.dart';
 import '../shared/app_ui.dart';
 import '../shared/chat_markdown.dart';
 import '../shared/voice_composer.dart';
@@ -202,6 +203,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   bool clearingHistory = false;
   bool get _chatBusy => planSending || clearingHistory;
   int _chatGeneration = 0;
+  ConversationTurn? _questionTiming;
   String? _pendingClearCommand;
 
   bool planListOpen = false;
@@ -238,6 +240,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
 
   @override
   void dispose() {
+    _questionTiming?.finish('cancelled');
     WidgetsBinding.instance.removeObserver(this);
     _chatScrollController.dispose();
     timer?.cancel();
@@ -933,6 +936,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
       serverCleared = true;
       if (!mounted) return;
       setState(() {
+        _questionTiming?.finish('cancelled');
         _chatGeneration++;
         _pendingClearCommand = null;
         planSending = false;
@@ -1874,21 +1878,24 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         for (final image in stagedImages)
           if (image.key != null) image.key!,
       ]);
+    final timing = ref.read(conversationLatencyProvider).start('ward');
+    _questionTiming = timing;
     final generation = _chatGeneration;
     setState(() {
       planSending = true;
     });
     try {
-      final result = await ref.read(apiProvider).companionTurn(
+      final result = await timing.request(() => ref.read(apiProvider).companionTurn(
           content: text,
           threadId: companionThreadId,
           expectedThreadVersion: companionThreadVersion,
           attachmentKeys: List<String>.from(planAttachments),
           routeHint: pronunciation ? 'tutoring' : null,
-          tutoringIntent: pronunciation ? 'pronunciation' : null);
+          tutoringIntent: pronunciation ? 'pronunciation' : null));
       if (!mounted || generation != _chatGeneration) return;
-      await _applyPlanTurnResult(result);
-    } catch (_) {
+      await _applyPlanTurnResult(result, timing: timing);
+    } catch (error) {
+      timing.fail(error);
       if (!mounted || generation != _chatGeneration) return;
       if (mounted && generation == _chatGeneration) {
         setState(() => failedPlanText = text);
@@ -1952,7 +1959,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     }
   }
 
-  Future<void> _applyPlanTurnResult(Map<String, dynamic> result) async {
+  Future<void> _applyPlanTurnResult(Map<String, dynamic> result, {ConversationTurn? timing}) async {
     final generation = _chatGeneration;
     final interaction =
         Map<String, dynamic>.from(result['interaction'] as Map? ?? const {});
@@ -2051,7 +2058,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     // actual task-pool home, not only in this transient chat card.
     await _load();
     if (!mounted || generation != _chatGeneration) return;
-    await _refreshTranscript();
+    await _refreshTranscript(timing: timing);
   }
 
   String? _suggestedClock(dynamic value) {
@@ -2544,7 +2551,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     }
   }
 
-  Future<void> _refreshTranscript({bool restoreReviewAction = true}) async {
+  Future<void> _refreshTranscript({bool restoreReviewAction = true, ConversationTurn? timing}) async {
     final generation = _chatGeneration;
     final Map<String, dynamic> transcript;
     if (companionThreadId != null) {
@@ -2610,6 +2617,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         pronunciationLessons = const [];
       }
     });
+    timing?.finish('success');
     if (version != null && companionThreadId != null) {
       await ref
           .read(tokenStorageProvider)

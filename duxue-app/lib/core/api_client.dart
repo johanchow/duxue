@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'models.dart';
 import 'token_storage.dart';
 import 'telemetry.dart';
+import 'conversation_latency.dart';
 
 class ApiClient {
   ApiClient({
@@ -30,10 +31,18 @@ class ApiClient {
           });
           options.extra['telemetry_span'] = span;
           final traceparent = span.traceparent;
-          if (traceparent != null) options.headers['traceparent'] = traceparent;
+          final turn = options.extra['conversation_turn'] as ConversationTurn?;
+          if (turn != null) options.headers['X-Duxue-Turn-Id'] = turn.id;
+          if (traceparent != null) {
+            options.headers['traceparent'] = traceparent;
+            turn?.traceId = span.traceId;
+          }
           handler.next(options);
         },
         onResponse: (response, handler) {
+          final turn = response.requestOptions.extra['conversation_turn'] as ConversationTurn?;
+          final traceId = response.headers.value('x-duxue-trace-id');
+          if (turn != null && traceId != null) turn.traceId = traceId;
           final span = response.requestOptions.extra['telemetry_span'];
           if (span is TelemetrySpan) {
             span.finish(attributes: {
@@ -434,7 +443,7 @@ class ApiClient {
               },
               // A planning turn with an image runs several model calls and
               // exceeds the 20s default before the HTTP response is written.
-              options: Options(receiveTimeout: const Duration(seconds: 90))))
+              options: Options(extra: {'conversation_turn': ConversationTurn.current}, receiveTimeout: const Duration(seconds: 90))))
           .data);
 
   Future<Map<String, dynamic>> guardianExperienceTurn({
@@ -450,7 +459,7 @@ class ApiClient {
                 'attachment_keys': attachmentKeys,
                 'mode': mode,
               },
-              options: Options(receiveTimeout: const Duration(seconds: 120))))
+              options: Options(extra: {'conversation_turn': ConversationTurn.current}, receiveTimeout: const Duration(seconds: 120))))
           .data as Map);
 
   Future<String> uploadGuardianExperienceImage(

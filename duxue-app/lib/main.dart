@@ -89,6 +89,7 @@ class DuxueApp extends ConsumerWidget {
   const DuxueApp({super.key});
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(conversationLatencyProvider); // Resume unacknowledged turns on launch.
     final telemetry = ref.watch(telemetryProvider);
     telemetry.recordEvent('app.startup', attributes: {'platform': 'flutter'});
     FlutterError.onError = (details) {

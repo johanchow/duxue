@@ -9,6 +9,7 @@ import 'package:image_picker/image_picker.dart';
 import '../core/speech_playback.dart';
 import '../core/user_error_message.dart';
 import '../providers.dart';
+import '../core/conversation_latency.dart';
 import '../shared/app_ui.dart';
 import '../shared/chat_markdown.dart';
 import '../shared/voice_composer.dart';
@@ -27,8 +28,10 @@ class _PerspectiveSession {
   String? retryStartToken;
   bool busy = false, expired = false;
   int generation = 0;
+  ConversationTurn? timing;
 
   void clear() {
+    timing?.finish('cancelled');
     generation++;
     messages.clear();
     pictures.clear();
@@ -84,6 +87,7 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
   @override
   void dispose() {
     for (final s in _sessions.values) {
+      s.timing?.finish('cancelled');
       s.generation++;
     }
     input.dispose();
@@ -241,6 +245,8 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
   }) async {
     final session = _sessions[targetMode]!;
     if (session.busy || (session.expired && useComposerDraft)) return;
+    final timing = ref.read(conversationLatencyProvider).start('guardian');
+    session.timing = timing;
     final epoch = session.generation;
     final displayPictures = preUploadedPictures ??
         [for (final picture in session.pictures) picture.bytes];
@@ -270,12 +276,12 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
         }
         attachmentKeys = [for (final picture in session.pictures) picture.key!];
       }
-      final response = await api.guardianExperienceTurn(
+      final response = await timing.request(() => api.guardianExperienceTurn(
         content: content,
         stateToken: useComposerDraft ? session.stateToken : startToken,
         attachmentKeys: attachmentKeys,
         mode: targetMode,
-      );
+      ));
       if (!mounted || epoch != session.generation) return;
       setState(() {
         session.messages.add({
@@ -296,8 +302,10 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
         session.expired = false;
         session.pendingPictures = const [];
       });
+      timing.finish('success');
       _bottom();
     } catch (e) {
+      timing.fail(e);
       if (!mounted || epoch != session.generation) return;
       final detailCode = e is DioException &&
               e.response?.data is Map &&

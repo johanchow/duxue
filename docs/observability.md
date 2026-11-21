@@ -184,6 +184,15 @@ App 端所有 HTTP 请求通过 dio Interceptor 统一注入 `traceparent` Heade
 | **采集监控** | 运维 | 在线设备数、帧上传成功率、各设备本地队列积压趋势、心跳掉线事件时间线 |
 | **链路追踪（Tempo）** | 开发排障 | 按 trace_id / ward_id / service 过滤，查端到端链路 |
 
+### App 对话端到端耗时
+
+[Grafana 看板定义](../ops/observability/grafana/dashboards/duxue-conversation-latency.json) 使用 Loki 数据源 `grafanacloud-logs`。在 Grafana 的 Dashboards → New → Import 导入，保存需要目标文件夹的看板创建权限。
+
+- Guardian、Ward 在实际发送问题时用单调时钟计时。Guardian 在完整回复写入会话状态时结束，Ward 在最新对话记录写入消息列表时结束。语音在提交转写文本时开始。用户主动重发算新轮次。清空或销毁会话会结束在途轮次。
+- 新版 App 默认上报此事件，可用 `APP_CONVERSATION_LATENCY_ENABLED=false` 关闭。使用现有认证中继和 API 基址，服务端需要配置 OTLP 日志导出。终态事件独立于 trace 采样。抽中的服务端链路以 `X-Duxue-Trace-Id` 返回。发生网络超时时，点击明细的轮次 ID 可在 Tempo 检索已采集的服务端请求。
+- Loki 的 `app.conversation.completed` 事件保存端上完成时间、匿名轮次 ID、耗时、入口和结果。App 缓存待确认事件并重试，重试沿用原 ID 和时间戳。统计覆盖已送达的终态，App 在轮次中被强制终止可能缺样。离线过久的历史事件还受 Loki 接收时间范围限制。
+- 明细和统计按轮次去重。平均、P95、P99 和成功轮数取同一筛选窗口内的成功轮次。Grafana 分位数对原始毫秒值排序，以四舍五入的 `(N-1) × p` 为零起点下标。失败、超时和取消另行计数。数据量超过 Loki 单次查询序列限制时应缩短时间范围。旧版 App 的历史数据只能从服务端 trace 查询 API 耗时。
+
 ### 5.2 三信号联动路径
 
 ```

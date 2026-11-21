@@ -12,10 +12,11 @@ from collections import defaultdict, deque
 from time import monotonic
 from typing import Any
 
-from opentelemetry import metrics, trace
+from opentelemetry import trace
 from opentelemetry.trace import NonRecordingSpan, SpanContext, TraceFlags, TraceState
 
 from app.api.schemas import ClientTelemetryEvent
+from app.infrastructure.observability import conversation_latency
 
 _ALLOWED_NAMES = {
     "app.http", "app.auth.refresh", "app.report.load", "app.device.bind",
@@ -46,11 +47,15 @@ def _providers():
     with _lock:
         if _tracer is not None:
             return _tracer, _meter
-        from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
-        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+        from opentelemetry.exporter.otlp.proto.http.metric_exporter import (
+            OTLPMetricExporter,
+        )
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+            OTLPSpanExporter,
+        )
         from opentelemetry.sdk.metrics import MeterProvider
         from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-        from opentelemetry.sdk.resources import Resource, SERVICE_NAME
+        from opentelemetry.sdk.resources import SERVICE_NAME, Resource
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
@@ -93,11 +98,18 @@ def relay(events: list[ClientTelemetryEvent]) -> int:
     # Validate before checking exporter availability. A disabled exporter must
     # not accidentally turn the authenticated relay into an arbitrary payload
     # sink that accepts private content.
-    validated = [(event, _attributes(event)) for event in events]
+    completions = [conversation_latency.completion_record(event) for event in events
+                   if event.name == conversation_latency.EVENT]
+    validated = [(event, _attributes(event)) for event in events if event.name != conversation_latency.EVENT]
+    if completions:
+        if not _enabled() or not conversation_latency.export_completions(completions):
+            return 0
+        if not validated:
+            return len(completions)
     tracer, meter = _providers()
     if tracer is None or meter is None:
         return 0
-    accepted = 0
+    accepted = len(completions)
     for event, attrs in validated:
         if event.signal == "metric":
             if event.value is None:
