@@ -108,3 +108,5 @@ Guardian 用邮箱验证码注册和登录，不保存读学密码。Ward 使用
 - 2026-11-18 Guardian 问答双视角扩展已验收归档：`GuardianQuestionPage` 默认 `student_guide`（苏格拉底分步启发），支持切换 `guardian_explain`（导师完整解析）及从学生视角有效回复一键「查看本题导师解析」透传原题图文；两套视角使用独立 `_PerspectiveSession` 隔离消息、待发照片、未发草稿、签名 `stateToken` 与异步 `generation`，清空与迟到结果互不串台，320px 窄屏 1.4x 字号无溢出。产品与契约事实源见 [用户 PRD §7.2](../../docs/product/prd-user.md#72-家长问答体验) 与 [Companion 成人体验](../../docs/technical/domain-companion.md#guardian-问答体验2026-11-17-验收2026-11-18-扩展双视角)。验证：Flutter 全量 170 通过、`flutter analyze` 无问题；本地分支提交，不包含推送或发布授权。
 
 - 家庭共管已实现按登录邮箱邀请和共享同一份孩子档案。App 接受、退出、刷新共管列表或回到前台时刷新孩子列表。规则归 [家庭共管成员 PRD](../../docs/product/prd-user.md#54-家庭共管成员)，当前待人工验收。
+
+- Guardian 孩子列表（含空态）已有「新增孩子档案」按钮，隐藏重复的标题栏加号。自动展示报告的单孩子首页及多孩子的报告视图保留标题栏新增入口。

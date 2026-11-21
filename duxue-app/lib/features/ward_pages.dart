@@ -75,7 +75,7 @@ class _WardListPageState extends ConsumerState<WardListPage> {
                       tooltip: '孩子设置',
                       icon: const Icon(Icons.settings_outlined),
                       onPressed: () => showWardSettings(context, selected.id)),
-                if (tab == 0)
+                if (tab == 0 && selected != null)
                   IconButton(
                       tooltip: '新增孩子',
                       icon: const Icon(Icons.person_add_alt_outlined),

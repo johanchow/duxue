@@ -2277,6 +2277,7 @@ void main() {
     expect(find.text('传递作业或留言'), findsNothing);
     expect(find.text('还没有孩子档案'), findsOneWidget);
     expect(find.text('新增孩子档案'), findsOneWidget);
+    expect(find.byTooltip('新增孩子'), findsNothing);
 
     await tester.tap(find.text('新增孩子档案'));
     await tester.pumpAndSettle();
@@ -2293,6 +2294,7 @@ void main() {
 
     expect(find.text('传递作业或留言'), findsNothing);
     expect(find.text('报告尚未生成'), findsOneWidget);
+    expect(find.byTooltip('新增孩子'), findsOneWidget);
     await tester.tap(find.text('孩子'));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('孩子设置'));
