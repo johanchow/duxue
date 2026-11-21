@@ -13,6 +13,7 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
+from time import perf_counter
 from typing import Any, Literal
 
 from jsonschema.exceptions import ValidationError as JSONSchemaValidationError
@@ -63,6 +64,7 @@ class ComponentSpec:
     definition_digest: str | None = None
     enable_thinking: bool = False
     thinking_budget: int | None = None
+    reasoning_effort: str | None = None
 
     @property
     def overridable(self) -> bool:
@@ -247,6 +249,7 @@ def complete_json_chat(
     max_tokens: int,
     enable_thinking: bool = False,
     thinking_budget: int | None = None,
+    reasoning_effort: str | None = None,
     telemetry: dict[str, Any] | None = None,
 ) -> ChatCompletionResult:
     """Execute one structured JSON chat completion.
@@ -270,6 +273,7 @@ def complete_json_chat(
                 max_tokens=max_tokens,
                 enable_thinking=enable_thinking,
                 thinking_budget=thinking_budget,
+                reasoning_effort=reasoning_effort,
                 telemetry=telemetry,
             )
 
@@ -314,8 +318,11 @@ def complete_json_chat(
         return result
 
     extra_body: dict[str, Any] = {"enable_thinking": True}
+    if reasoning_effort is not None:
+        extra_body["reasoning_effort"] = reasoning_effort
     if thinking_budget is not None:
         extra_body["thinking_budget"] = thinking_budget
+    started = perf_counter()
     response = client.chat.completions.create(
         model=model,
         messages=messages,
@@ -376,7 +383,12 @@ def complete_json_chat(
             delta = getattr(choice, "delta", None) or getattr(choice, "message", None)
             if delta is not None:
                 piece = getattr(delta, "content", None)
+                if telemetry is not None and "first_token_ms" not in telemetry:
+                    if piece or getattr(delta, "reasoning_content", None):
+                        telemetry["first_token_ms"] = round((perf_counter() - started) * 1000)
                 if piece:
+                    if telemetry is not None and not parts:
+                        telemetry["first_content_ms"] = round((perf_counter() - started) * 1000)
                     parts.append(piece)
     finally:
         tokens_in = getattr(usage, "prompt_tokens", None)
@@ -496,6 +508,7 @@ def invoke_json_component(*, spec: ComponentSpec, user, client=None, settings_ob
         messages.insert(0, {"role": "system", "content": spec.prompt.text})
     telemetry_ref: dict[str, Any] = {}
     raw_seen = ""
+    started = perf_counter()
     try:
         with model_call_span(
             operation=spec.operation, model=model, agent_type=spec.agent_label,
@@ -504,6 +517,7 @@ def invoke_json_component(*, spec: ComponentSpec, user, client=None, settings_ob
             definition_digest=spec.definition_digest,
             enable_thinking=spec.enable_thinking,
             thinking_budget=spec.thinking_budget,
+            reasoning_effort=spec.reasoning_effort,
             input_payload=None if spec.component_id.startswith("behavior.") else messages,
         ) as telemetry:
             telemetry_ref = telemetry
@@ -515,14 +529,19 @@ def invoke_json_component(*, spec: ComponentSpec, user, client=None, settings_ob
                 max_tokens=spec.max_tokens,
                 enable_thinking=spec.enable_thinking,
                 thinking_budget=spec.thinking_budget,
+                reasoning_effort=spec.reasoning_effort,
                 telemetry=telemetry,
             )
             raw_seen = completion.raw_wire or completion.raw
-            payload, outcome, abrupt_detail = validate_json_completion(
-                completion,
-                unit_id=unit.id,
-                validate_payload=lambda data: validate_output(unit, data),
-            )
+            try:
+                payload, outcome, abrupt_detail = validate_json_completion(
+                    completion,
+                    unit_id=unit.id,
+                    validate_payload=lambda data: validate_output(unit, data),
+                )
+            except _CompletionClassifiedError as error:
+                telemetry["outcome"] = error.outcome
+                raise
             telemetry["outcome"] = outcome
             telemetry["abrupt_detail"] = abrupt_detail
             raw = completion.raw
@@ -544,6 +563,9 @@ def invoke_json_component(*, spec: ComponentSpec, user, client=None, settings_ob
                 tokens_reasoning=completion.tokens_reasoning,
                 outcome=outcome,
                 abrupt_detail=abrupt_detail,
+                duration_ms=round((perf_counter() - started) * 1000),
+                first_token_ms=telemetry.get("first_token_ms"),
+                first_content_ms=telemetry.get("first_content_ms"),
             )
             _record_call_evidence(
                 {
@@ -580,6 +602,9 @@ def invoke_json_component(*, spec: ComponentSpec, user, client=None, settings_ob
             tokens_answer=telemetry_ref.get("tokens_answer"),
             tokens_reasoning=telemetry_ref.get("tokens_reasoning"),
             outcome=error.outcome,
+            duration_ms=round((perf_counter() - started) * 1000),
+            first_token_ms=telemetry_ref.get("first_token_ms"),
+            first_content_ms=telemetry_ref.get("first_content_ms"),
         )
         _record_call_evidence(
             {

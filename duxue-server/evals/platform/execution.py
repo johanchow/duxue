@@ -275,6 +275,7 @@ def _execute_item(client, item, scorer, backends):
                 execution_error=error,
             )
             if execution_recording is not None:
+                result["timings"] = execution_recording.timings()
                 result["execution_summary"] = [
                     {k: event[k] for k in (
                         "kind", "unit_id", "component_id", "node_id", "workflow_id", "model",

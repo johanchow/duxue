@@ -60,6 +60,18 @@ class Recorder:
                 "parent_id": str(offset + int(event["parent_id"])) if event["parent_id"] else parent_id,
             })
 
+    def timings(self):
+        """Return completed visits with timing metadata and no request/response bodies."""
+        fields = (
+            "id", "parent_id", "kind", "workflow_id", "node_id", "component_id", "model",
+            "started_at", "duration_ms", "first_token_ms", "first_content_ms", "status",
+            "outcome", "finish_reason", "tokens_in", "tokens_out", "tokens_reasoning", "tokens_answer", "reasoning_effort", "error",
+        )
+        return [
+            {key: event[key] for key in fields if key in event}
+            for event in self.events if "duration_ms" in event
+        ]
+
     def document(self):
         """Freeze executed topology from the active immutable configuration."""
         from app.agent_specs.catalog import load_catalog

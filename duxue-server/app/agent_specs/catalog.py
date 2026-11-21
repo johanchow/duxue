@@ -253,7 +253,7 @@ class AgentCatalog:
             from app.agent_specs import blueprint_steps
             staged = spec.id in GAOKAO_WORKFLOWS and blueprint_steps.EXTRACT in load_definitions().units
             if staged:
-                expected = blueprint_steps.workflow()
+                expected = blueprint_steps.workflow(mentor_language=any(e.condition == "mentor_language" for e in spec.edges))
                 actual = spec.model_dump(by_alias=True, exclude_defaults=True)
                 if any(actual[key] != expected[key] for key in ("entry", "nodes", "edges")):
                     raise ValueError("blueprint required protocol nodes or branches changed")

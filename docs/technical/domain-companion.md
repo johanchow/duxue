@@ -801,6 +801,13 @@ And 不呈现空选择题或 pronunciation_lesson
 
 成人导师入口在同一固定快照内执行 `guardian-mentor` 父图。准备节点先做输入安全、账号频控和题图选择；安全拦截及题图不明确直接进入交付。正常请求通过 Workflow 节点引用同一快照的 `tutoring-blueprint`，取得求解结果后进入 `tutoring.mentor-explain`。可修复的候选错误按条件边回到讲解，父图的 `limits.model_calls` 约束讲解尝试次数（默认两次，含首答）。修复复用本轮蓝图结果。交付处理器检查置信提示、正文与配图安全、发音协议，随后入口签发会话状态。整轮共用原有 105 秒模型预算。
 
+离线候选快照由 `scripts/upgrade_guardian_mentor_review.py --latency-trial` 生成。首次带清晰图片且无历史条件时，读题器接收家长的原始请求，可返回原文内的题号范围 `target_scope`。求解器在读题、复读和主备求解中携带原始范围；核对试卷的讲解使用题号、答案及必要依据。对于读题器同时标注为 `english_writing`、英语、T1 且无须确认的任务，候选子图允许 `select → finish`，随后由讲解节点结合原图完成英文写作。此路由的结果标为低置信度，保留交付安全检查。紧凑题面定位不能用于已核验题库指纹，因此该分支不查题库。选择、完形、阅读、跨学科、模糊图和 T2 按完整求解路径处理。此开关属于待验收的快照变体。
+
+该候选可分别使用 `--low-effort-trial` 或 `--crop-trial` 生成。前者仅在带图、无历史的 Guardian T1 主求解请求上发送 `reasoning_effort=low`，保留思考并省略该调用的 `thinking_budget`；其他路线沿用其模型配置。后者允许读题模型在完成转写时一并返回局部图位置，由已有 inspect_image 工具在本次授权的原图上裁切。同次主求解可同时看原图与切片，独立复读和备用路线仍使用各自证据。两项均须单独验收。
+
+Guardian App 的导师请求可向原 POST 接口声明 `Accept: text/event-stream`。服务端按实际节点发送 `stage`（read、solve、explain），完成原有解析、重试和交付校验后发送一次 `result`；流内失败以 `error` 携带状态码与原有 detail，流意外中断进入客户端重试界面。学生视角和普通 JSON 请求沿用原协议。阶段事件仅含阶段名；正文与下一轮 state_token 仅随最终结果交付。
+
+
 Admin 展示准备、蓝图、讲解、交付四个节点，点击蓝图可查看[求解流程](domain-problem-solving.md)。从已有单节点直出草稿运行 `scripts/upgrade_guardian_mentor_review.py SOURCE OUTPUT --parent`，只更新父图，前提是草稿包含分阶段蓝图。通过 Admin 的 `config:import-upgrade` 导入后校验、调试、发布。已有单节点及历史分段审核快照按原摘要加载，成人 API 继续原直出兼容路径。
 
 新建或经 `--direct` 升级的导师解析配置使用 `tutoring.mentor-explain.output.v2`。JSON Schema 和运行时共用 8000 字符正文上限。默认提示以 3200 字为建议长度，复杂题优先保留必要推导。历史 v1 快照仍按其既有契约与摘要编译。

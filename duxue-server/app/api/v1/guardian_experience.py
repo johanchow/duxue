@@ -1,4 +1,6 @@
 """Authenticated adult experience, isolated from every Ward aggregate."""
+import asyncio
+import json
 import secrets
 from datetime import datetime, timezone
 from typing import Annotated
@@ -6,6 +8,10 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
+from starlette.responses import StreamingResponse
+
+from app.agent_specs.runtime import node_started
 
 from app.api.deps import Principal, current_guardian, expose_turn_trace, get_db
 from app.api.schemas import UploadUrlRequest
@@ -55,9 +61,58 @@ def _state(token: str, principal: Principal, purpose: str) -> dict:
         raise HTTPException(409, {"code": "experience_expired"}) from error
 
 
+_MENTOR_STAGES = {
+    "tutoring-blueprint.extract": "read",
+    "tutoring-blueprint.reread": "read",
+    "tutoring-blueprint.primary": "solve",
+    "tutoring-blueprint.ordinary": "solve",
+    "tutoring-blueprint.backup": "solve",
+    "guardian-mentor.explain": "explain",
+}
+
+
+async def _mentor_events(invoke):
+    loop = asyncio.get_running_loop()
+    events = asyncio.Queue()
+
+    def progress(node):
+        stage = _MENTOR_STAGES.get(node)
+        if stage:
+            loop.call_soon_threadsafe(events.put_nowait, ("stage", stage))
+
+    async def run():
+        token = node_started.set(progress)
+        try:
+            result = await run_in_threadpool(invoke)
+            await events.put(("result", result))
+        except HTTPException as exc:
+            await events.put(("error", {"status": exc.status_code, "detail": exc.detail}))
+        except Exception:
+            await events.put(("error", {"status": 500, "detail": {"code": "mentor_error"}}))
+        finally:
+            node_started.reset(token)
+
+    worker = asyncio.create_task(run())
+    previous = None
+    try:
+        while True:
+            kind, data = await events.get()
+            if kind == "stage" and data == previous:
+                continue
+            previous = data
+            yield "data: " + json.dumps({"type": kind, "value": data}, ensure_ascii=False) + "\n\n"
+            if kind != "stage":
+                break
+    finally:
+        worker.cancel()
+        await asyncio.gather(worker, return_exceptions=True)
+
+
 @router.post("/turn", dependencies=[Depends(expose_turn_trace)])
 def turn(
     body: ExperienceTurnRequest,
+    request: Request,
+    response: Response,
     principal: Annotated[Principal, Depends(current_guardian)],
     db: Annotated[Session, Depends(get_db)],
 ):
@@ -79,19 +134,27 @@ def turn(
         with Session(bind) as reader:
             return GetProblemDossierQuery(reader).find_bank_ready(stem=stem)
 
-    try:
-        return experience_turn(
-            guardian_id=principal.user_id,
-            content=body.content or default_prompt,
-            attachment_keys=body.attachment_keys,
-            state=state,
-            mode=body.mode,
-            bank_lookup=lookup,
+    def invoke():
+        try:
+            return experience_turn(
+                guardian_id=principal.user_id,
+                content=body.content or default_prompt,
+                attachment_keys=body.attachment_keys,
+                state=state,
+                mode=body.mode,
+                bank_lookup=lookup,
+            )
+        except ModelTimeBudgetExceeded as error:
+            raise HTTPException(503, {"code": "mentor_timeout"}) from error
+        except MentorRateLimitExceeded as error:
+            raise HTTPException(429, {"code": "mentor_rate_limited"}) from error
+
+    if body.mode == "guardian_explain" and "text/event-stream" in request.headers.get("accept", ""):
+        return StreamingResponse(
+            _mentor_events(invoke), media_type="text/event-stream",
+            headers={**dict(response.headers), "Cache-Control": "no-store", "X-Accel-Buffering": "no"},
         )
-    except ModelTimeBudgetExceeded as error:
-        raise HTTPException(503, {"code": "mentor_timeout"}) from error
-    except MentorRateLimitExceeded as error:
-        raise HTTPException(429, {"code": "mentor_rate_limited"}) from error
+    return invoke()
 
 
 @router.post("/attachments/upload-url")

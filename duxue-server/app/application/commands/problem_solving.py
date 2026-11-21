@@ -699,6 +699,7 @@ def execute_blueprint(
     question=None,
     bank_lookup=None,
     workflow_spec=None,
+    allow_language_direct=False,
 ):
     """Run the pinned topology; workers with a prepared stem resume at selection."""
     from app.agent_specs import blueprint_steps as steps
@@ -728,6 +729,18 @@ def execute_blueprint(
                 )
         else:
             tier = "T1"
+        if allow_language_direct and isinstance(raw, dict) and raw.get("target_scope"):
+            state["target_scope"] = raw["target_scope"]
+        language_direct = (
+            allow_language_direct and images and tier == "T1" and isinstance(raw, dict)
+            and raw.get("guardian_task") == "english_writing" and stem.subject == "english"
+            and raw.get("needs_student_confirmation") is False
+            and bool(stem.raw_text.strip())
+        )
+        if language_direct:
+            # A compact passage locator is not a bank fingerprint or verified answer.
+            state["mentor_language"] = True
+            solution = VerifiedSolution(stem=stem, tier="T1", status="low_confidence", confidence="low")
         if solution is None and bank_lookup and not stem.needs_student_confirmation and (not images or isinstance(raw, dict)):
             hit = bank_lookup(stem=stem)
             if hit and hit.scope == "bank" and hit.status == "ready":
@@ -736,7 +749,9 @@ def execute_blueprint(
 
     def choose(state):
         nonlocal reread_origin
-        if solution is not None:
+        if state.get("mentor_language"):
+            branch = "mentor_language"
+        elif solution is not None:
             branch = "complete"
         elif images and stem.needs_student_confirmation and not stem.reread_verified:
             reread_origin = "select"
@@ -879,6 +894,8 @@ def execute_blueprint(
                     confidence="low",
                     failure_reason="no_valid_approaches_produced",
                 )
+        if state.get("target_scope"):
+            solution = replace(solution, evidence={**solution.evidence, "target_scope": state["target_scope"]})
         return {
             "tier": solution.tier,
             "status": solution.status,

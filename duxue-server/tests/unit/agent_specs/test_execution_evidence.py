@@ -28,6 +28,10 @@ def test_model_evidence_keeps_inputs_raw_output_errors_and_repeated_attempts():
     assert trace.events[0]["input"][0]["content"] == "test input"
     assert trace.events[0]["tokens_out"] == 5
     assert trace.events[2]["error"] == "ValueError"
+    timings = trace.timings()
+    assert len(timings) == 3
+    assert timings[-1]["error"] == "ValueError"
+    assert all(t["duration_ms"] >= 0 and "input" not in t and "output" not in t for t in timings)
     doc = trace.document()
     assert doc["schema_version"] == "duxue-execution.v1"
     assert doc["catalog"]["workflows"]

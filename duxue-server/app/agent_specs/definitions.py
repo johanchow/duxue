@@ -75,8 +75,17 @@ class ModelDefinition(BaseModel):
     enable_thinking: bool = False
     thinking_budget: int | None = Field(default=None, gt=0, le=32768)
 
+    guardian_t1_reasoning_effort: Literal["low"] | None = None
+    guardian_crop_handoff: bool = False
+
     @model_validator(mode="after")
     def valid_thinking(self):
+        if self.guardian_crop_handoff and self.component_id != "tutoring.stem-extract":
+            raise ValueError("Guardian crop handoff requires the stem extractor")
+        if self.guardian_t1_reasoning_effort and (
+            self.component_id != "tutoring.blueprint-planner" or not self.enable_thinking
+        ):
+            raise ValueError("Guardian T1 effort requires a thinking blueprint planner")
         if self.thinking_budget is not None and not self.enable_thinking:
             raise ValueError(f"{self.component_id}: thinking_budget requires enable_thinking=true")
         return self

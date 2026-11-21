@@ -415,6 +415,7 @@ def _solve_for_mentor(
     solver: ProblemSolverModelPort,
     bank_lookup: Callable[..., ProblemDossier | None] | None,
     workflow_spec=None,
+    allow_language_direct=False,
 ) -> VerifiedSolution | None:
     if type(solver) is QwenProblemSolverGateway:
         from app.agent_specs.definitions import load_definitions
@@ -437,7 +438,7 @@ def _solve_for_mentor(
         return execute_blueprint(
             stem=StructuredStem(subject="general", raw_text=(content.strip() + img_tag)[:4000]),
             question=content, images=images, solver=solver, math_engine=_resolve_math_engine(),
-            bank_lookup=bank_lookup, workflow_spec=workflow_spec,
+            bank_lookup=bank_lookup, workflow_spec=workflow_spec, allow_language_direct=allow_language_direct,
         )
 
     extracted = solver.extract_stem(text=content, images=images, independent_reread=False)
@@ -596,9 +597,17 @@ def explain_for_guardian(
                 "instruction": "结合相关上下文还原当前所问题面和补充条件。以本轮指定的题为准，历史作答不是已知条件。",
             }, ensure_ascii=False)
         child = catalog.spec(spec.node(MENTOR_BLUEPRINT).ref) if parent else None
+        scoped = (
+            child is not None and bool(valid_images) and not clean_window
+            and any(edge.condition == "mentor_language" for edge in child.edges)
+        )
+        solver = (
+            QwenProblemSolverGateway(model_settings, guardian_request=content)
+            if scoped else QwenProblemSolverGateway(model_settings)
+        )
         verified_solution = _solve_for_mentor(
-            content=question, images=valid_images, solver=QwenProblemSolverGateway(model_settings),
-            bank_lookup=bank_lookup, workflow_spec=child,
+            content=question, images=valid_images, solver=solver,
+            bank_lookup=bank_lookup, workflow_spec=child, allow_language_direct=scoped,
         )
         return {"status": verified_solution.status if verified_solution else "unavailable"}
 

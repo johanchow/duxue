@@ -24,7 +24,8 @@ class _Api extends ApiClient {
       {required String content,
       String? stateToken,
       List<String> attachmentKeys = const [],
-      String mode = 'student_guide'}) async {
+      String mode = 'student_guide', void Function(String)? onStage}) async {
+    onStage?.call('read');
     turns.add((content: content, state: stateToken, mode: mode, keys: attachmentKeys));
     if (fail) throw StateError('offline');
     if (pending != null) return pending!.future;
@@ -342,6 +343,7 @@ void main() {
     await tester.tap(find.byTooltip('发送问题'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('正在识别题面…'), findsOneWidget);
     await tester.tap(find.byTooltip('重新开始问答'));
     await tester.pump(const Duration(milliseconds: 300));
     await tester.tap(find.widgetWithText(TextButton, '重新开始'));

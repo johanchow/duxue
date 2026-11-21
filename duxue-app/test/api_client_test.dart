@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -49,6 +50,31 @@ class _MemoryTokens extends TokenStorage {
 }
 
 void main() {
+  test('mentor progress is visible before the checked result arrives', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(server.close);
+    final read = Completer<void>();
+    server.listen((request) async {
+      await request.drain<void>();
+      expect(request.headers.value('accept'), 'text/event-stream');
+      request.response.headers.contentType = ContentType('text', 'event-stream', charset: 'utf-8');
+      request.response.bufferOutput = false;
+      request.response.write('data: {"type":"stage","value":"read"}\n\n');
+      await request.response.flush();
+      await read.future.timeout(const Duration(seconds: 5));
+      request.response.write('data: {"type":"result","value":{"content":"最终答案"}}\n\n');
+      await request.response.close();
+    });
+    final api = ApiClient(baseUrl: 'http://${server.address.address}:${server.port}',
+        tokens: _MemoryTokens(accessToken: 'guardian', refreshToken: null, ward: null));
+    final result = await api.guardianExperienceTurn(content: '请解答', mode: 'guardian_explain',
+        onStage: (stage) {
+          expect(stage, 'read');
+          read.complete();
+        });
+    expect(result['content'], '最终答案');
+  });
+
   test('guardian email code, registration and login use code without password',
       () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);

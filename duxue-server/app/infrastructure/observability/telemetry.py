@@ -792,6 +792,7 @@ def model_call_span(*, operation: str, model: str, agent_type: str | None = None
                     definition_digest: str | None = None,
                     enable_thinking: bool | None = None,
                     thinking_budget: int | None = None,
+                    reasoning_effort: str | None = None,
                     input_payload: Any = None) -> Iterator[dict[str, Any]]:
     started = perf_counter()
     if component_id is not None:
@@ -814,6 +815,7 @@ def model_call_span(*, operation: str, model: str, agent_type: str | None = None
         "ai.model_source": model_source,
         "llm.enable_thinking": enable_thinking,
         "llm.thinking_budget": thinking_budget,
+        "llm.reasoning_effort": reasoning_effort,
         # These are mapping keys, not prompt/completion payloads. Langfuse
         # also exports the controlled Agent spans enclosing this generation.
         "langfuse.observation.type": "generation",
@@ -863,9 +865,15 @@ def model_call_span(*, operation: str, model: str, agent_type: str | None = None
                     tokens_reasoning=result["tokens_reasoning"],
                     enable_thinking=enable_thinking,
                     thinking_budget=thinking_budget,
+                    reasoning_effort=reasoning_effort,
                     definition_digest=definition_digest,
                     component_version=component_version,
                 )
+            for key in ("first_token_ms", "first_content_ms"):
+                if key in result:
+                    span.set_attribute(f"llm.{key}", result[key])
+                    if model_event is not None:
+                        model_event[key] = result[key]
             attrs_with_result = {**attrs, "llm.result": result["result"]}
             _llm_requests.add(1, attributes=attrs_with_result)
             _llm_outcomes.add(
@@ -967,6 +975,8 @@ def record_model_response(
     outcome: str | None = None,
     abrupt_detail: str | None = None,
     duration_ms: int | None = None,
+    first_token_ms: int | None = None,
+    first_content_ms: int | None = None,
 ) -> None:
     """Record one model completion on the active generation and audit sink."""
     summary = _summary(content)
@@ -982,9 +992,11 @@ def record_model_response(
         "llm.tokens_out": tokens_out,
         "llm.tokens_answer": tokens_answer,
         "llm.tokens_reasoning": tokens_reasoning,
+        "llm.duration_ms": duration_ms,
+        "llm.first_token_ms": first_token_ms,
+        "llm.first_content_ms": first_content_ms,
         "llm.outcome": outcome,
         "llm.abrupt_detail": abrupt_detail,
-        "llm.duration_ms": duration_ms,
     })
     attrs = _attrs(**{
         "agent.type": agent_type,
@@ -1024,6 +1036,9 @@ def record_model_rejection(
     tokens_answer: int | None = None,
     tokens_reasoning: int | None = None,
     outcome: str | None = None,
+    duration_ms: int | None = None,
+    first_token_ms: int | None = None,
+    first_content_ms: int | None = None,
 ) -> None:
     """Record a rejected model completion to the audit log and local debug sink."""
     summary = _summary(raw_content)
@@ -1042,6 +1057,9 @@ def record_model_rejection(
         "llm.tokens_out": tokens_out,
         "llm.tokens_answer": tokens_answer,
         "llm.tokens_reasoning": tokens_reasoning,
+        "llm.duration_ms": duration_ms,
+        "llm.first_token_ms": first_token_ms,
+        "llm.first_content_ms": first_content_ms,
         "llm.outcome": outcome,
     })
     _audit_logger.warning("llm.completion.rejected", extra={"telemetry": meta})

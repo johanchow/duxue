@@ -289,3 +289,6 @@
 - 补查 Guardian 候选项：物理 v2 整卷工具回传中带 crop_ref 的记录全部属于 blueprint-planner，未观察到 extract 切片在主解中重裁，后续按跨阶段重复率决定优先级。[工具记录](../../duxue-server/var/exams/beijing-2025-physics-current.9dlgqq/tool-events.jsonl)。数学 Q21 的 8000 字符快照恢复交付但仍耗时 78.78 秒，属于契约兼容性证据。[单题复测](../../duxue-server/var/exams/math-q21-updated.r8r6my/REPORT.md)。
 
 - Guardian 导师直出父图已导入测试 Admin 工作草稿 revision 13。蓝图作为子流程执行，父图快照约束讲解重试，模型配置与求解输入沿用原快照。Admin 调试能力按讲解 Agent 是否存在判定；以审核 Agent 判定会隐藏直出流程调试。见[导师直出设计](../../docs/technical/domain-companion.md#admin-导师解析直出链路方案-a)与[验收记录](../specs/guardian-mentor-parent.md)。
+- 2026-11-21 导师回归批次已按测试草稿 revision 13 跑完，云端 14 项逐项回读一致。七选五同一首答按两题计分，英语作文的教学示例成文须按可见原文复核。原始答案、超时阶段、分科得分与评分口径见[首答报告](../../duxue-server/var/evals/guardian-mentor-20261121-110342/REPORT.md)和[Langfuse 实验](https://us.cloud.langfuse.com/project/cmvfvorj601l6ad0jhvajth4c/experiments/results?baseline=d1db3de6c48e16ab)。
+- 2026-11-21 Guardian 延迟候选保留为显式试验；英语写作直答单题从 32.97s 到 9.29s，同为 20/20。全英语直答出现七选五错误与题界越界；T1 普遍关思考的理科得分为 33.5/58。写作候选全批次未通过得分验收，详见[逐项对照](../../duxue-server/var/evals/mentor-latency-validation-agtTH4/REPORT.md)。
+- 2026-11-21 Guardian 二轮延迟对照：T1 主路线 low 在匹配四请求两轮均提速，完整原集首答 85.5/85.5、平均 35.84s，与 writing 的 35.61s 接近；物理 6 的讲解单次耗时 63.5s。读题给裁图位置能省一轮 planner，但纸带端点误读复现，独立实验开关默认关闭。数学 21 自动阅卷漏判错误证明；物理 16 评分须按图上距离标注核对。[实验配置、逐题记录与复核](../../duxue-server/var/evals/mentor-latency-validation-agtTH4/NEXT-REPORT.md)

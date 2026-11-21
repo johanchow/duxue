@@ -576,3 +576,46 @@ def test_student_request_solve_binds_image_identity_and_worker_extracts_new_imag
     assert settled.stem.subject == "physics"
     nodes = [e["node_id"].split(".")[-1] for e in trace.events if e["kind"] in {"agent", "gate", "action"}]
     assert nodes[0] == "extract"
+
+
+@pytest.mark.parametrize("inline", [False, True])
+def test_mentor_extract_crops_are_authorized_for_primary_only(staged, monkeypatch, inline):
+    from app.agent_specs.blueprint_steps import EXTRACT
+    from app.agent_specs.image_refs import image_ref
+    from app.application.ports.image_inspection import InspectImageResult
+    from app.application.ports.problem_solving import QwenProblemSolverGateway
+    from app.contexts.problem_solving.domain.dossier import StructuredStem
+
+    source = "data:image/png;base64,YQ=="
+    crop = "data:image/png;base64,Yg=="
+    ref = image_ref(source)
+
+    class Inspector:
+        def inspect(self, request, *, authorized_images):
+            assert authorized_images == {ref: source}
+            return InspectImageResult(status="unique", image_ref=ref, crop_ref="crop_01",
+                                      crop_data_url=crop, width=10, height=10)
+
+    gateway = QwenProblemSolverGateway(guardian_request="读数", image_inspector=Inspector())
+    args = {"image_ref": ref, "bbox": {"x0": 0.1, "y0": 0.1, "x1": 0.9, "y1": 0.9}, "label": "刻度"}
+    extracted = {"tier": "T1", "subject": "physics", "shared_stem_summary": "读数"}
+    extract_turns = ([{**extracted, "planner_crop": args}] if inline else
+                     [{"tool_request": {"name": "inspect_image", "args": args}}, extracted])
+    responses = iter([*extract_turns, {}, {}, {}, {}, {}])
+    calls = []
+
+    def complete(**kwargs):
+        calls.append(kwargs["user"])
+        return next(responses)
+
+    monkeypatch.setattr(gateway, "_invoke_once", complete)
+    stem = StructuredStem("physics", "读数")
+    monkeypatch.setattr(staged.units[EXTRACT].models[0], "guardian_crop_handoff", True)
+    with use_definitions(staged):
+        gateway.extract_stem(text="读数", images=[source])
+        gateway.solve_route(stem=stem, images=[source], route_hint="T1")
+        gateway.solve_route(stem=stem, images=[source], route_hint="T1_backup")
+        gateway.solve_route(stem=stem, images=["data:image/png;base64,Yw=="], route_hint="T1")
+        gateway.extract_stem(text="换题", images=[source])
+        gateway.solve_route(stem=stem, images=[source], route_hint="T1")
+    assert [crop in str(call) for call in calls] == [False, *([] if inline else [True]), True, False, False, False, False]

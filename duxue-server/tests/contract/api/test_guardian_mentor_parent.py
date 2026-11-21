@@ -113,3 +113,83 @@ def test_http_turn_obeys_parent_retry_budget(client, db, releases, monkeypatch):
     assert result.status_code == 200
     assert result.json()["act"] == "unavailable"
     assert gateway.call_count == 1
+
+
+@pytest.mark.parametrize(("task", "tier", "unclear", "enabled", "expected_direct"), [
+    ("english_writing", "T1", False, True, True),
+    ("solve", "T1", False, True, False),
+    ("english_language", "T1", False, True, False),
+    (None, "T1", False, True, False),
+    ("english_writing", "T2", False, True, False),
+    ("english_writing", "T1", True, True, False),
+    ("english_writing", "T1", False, False, False),
+])
+def test_opt_in_language_route(releases, task, tier, unclear, enabled, expected_direct):
+    from app.application.commands.problem_solving import execute_blueprint
+    from app.contexts.problem_solving.domain.dossier import StructuredStem
+
+    trial = upgrade(releases[1], latency_trial=True)
+    assert trial["digest"] == upgrade(trial, latency_trial=True)["digest"]
+    raw = dict(subject="english", tier=tier, raw_text="指定题组", guardian_task=task,
+               needs_student_confirmation=unclear)
+    solver = Mock()
+    solver.extract_stem.return_value = raw
+    solver.solve_route.return_value = {"final_answers": {"main": "C"}}
+    recording = Recorder()
+    with use_definitions(compile_bundle(trial["bundle"]).catalog), recording.capture():
+        result = execute_blueprint(stem=StructuredStem(subject="general", raw_text="题面"),
+                                   solver=solver, images=["image"], math_engine=None,
+                                   question="指定题组", allow_language_direct=enabled)
+    direct = any(e.get("selected") and e.get("condition_id") == "mentor_language" for e in recording.events)
+    assert bool(direct) == expected_direct
+    if direct:
+        solver.solve_route.assert_not_called()
+        assert result.confidence == "low"
+        assert not result.mentor_projection()["verified_final_answers"]
+
+
+def test_trial_keeps_guardian_scope_on_solver_calls(releases, monkeypatch):
+    from app.application.ports.problem_solving import QwenProblemSolverGateway
+    from app.contexts.problem_solving.domain.dossier import StructuredStem
+
+    record = upgrade(releases[1], latency_trial=True)
+    request = "请只解答图中第1至10题"
+    solver = QwenProblemSolverGateway(guardian_request=request)
+    sent = []
+
+    def invoke(*, spec, user, retry_on_timeout):
+        body = json.loads(user[0]["text"])
+        sent.append(body)
+        return {"subject": "english", "guardian_task": "solve", "target_scope": "第1至10题", "tier": "T1",
+                "shared_stem_summary": "图中另有第11至20题", "needs_student_confirmation": False}
+
+    monkeypatch.setattr(solver, "_invoke_once", invoke)
+    with use_definitions(compile_bundle(record["bundle"]).catalog):
+        images = ["data:image/jpeg;base64,AA=="]
+        raw = solver.extract_stem(text=request, images=images)
+        solver.solve_route(stem=StructuredStem.from_dict(raw), images=images, route_hint="T1")
+    assert sent[0]["guardian_request"] == sent[1]["guardian_request"] == request
+    assert raw["guardian_task"] == "solve"
+    assert raw["target_scope"] == sent[1]["target_scope"] == "第1至10题"
+    assert "guardian_routing_contract" in sent[0]
+    assert "guardian_routing_contract" not in sent[1]
+
+
+def test_low_effort_is_scoped_to_guardian_t1_primary(releases, monkeypatch):
+    from app.application.ports.problem_solving import QwenProblemSolverGateway
+    from app.contexts.problem_solving.domain.dossier import StructuredStem
+
+    record = upgrade(releases[1], low_effort_trial=True)
+    specs = []
+    def capture(self, *, spec, **kwargs):
+        specs.append(spec)
+        return {}
+
+    monkeypatch.setattr(QwenProblemSolverGateway, "_invoke_once", capture)
+    with use_definitions(compile_bundle(record["bundle"]).catalog):
+        for guardian, hint in [("问题", "T1"), (None, "T1"), ("问题", "T2_algebraic"), ("问题", "T1_backup")]:
+            QwenProblemSolverGateway(guardian_request=guardian).solve_route(
+                stem=StructuredStem("physics", "题面"), images=[], route_hint=hint,
+            )
+    assert [spec.reasoning_effort for spec in specs] == ["low", None, None, None]
+    assert specs[0].enable_thinking and specs[0].thinking_budget is None
