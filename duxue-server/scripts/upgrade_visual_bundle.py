@@ -50,8 +50,8 @@ def upgrade(record):
     tutor['prompt']['fragments']['missing_visual']['template'] = REPAIR
     if 'tutoring.widget_guidelines' not in tutor['tools']:
         tutor['tools'].append('tutoring.widget_guidelines')
-    result['migration_source'] = {key: record.get(key) for key in ('id', 'digest', 'kind')}
-    result['id'], result['kind'] = 'visual-delivery-draft', 'draft'
+    result['migration_source'] = {key: record[key] for key in ('id', 'digest', 'kind', 'revision') if key in record}
+    result['kind'] = 'draft'
     result['digest'] = compile_bundle(result['bundle']).digest
     return result
 

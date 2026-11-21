@@ -74,15 +74,16 @@ class QwenLeakJudge:
         value = payload.get("math_consistent") if isinstance(payload, dict) else None
         return value if type(value) is bool else None
 
-    def visual_leaks(self, *, text: str, task_title: str | None, problem_summary: str | None) -> bool | None:
+    def visual_leaks(self, *, text: str, task_title: str | None, problem_summary: str | None, image: str | None = None) -> bool | None:
         """``text`` 是 ``describe(visual)``。独立的提示词与组件，不与文字判官共用。"""
         return self._judge(
             "tutoring.visual-leak-judge",
             build_context("tutoring.visual-leak-judge", text=text, task_title=task_title,
-                          problem_summary=problem_summary),
+                          problem_summary=problem_summary, image=image),
+            photo_review=image is not None,
         )
 
-    def _judge(self, component_id: str, user: str | list[dict], *, with_reason: bool = False) -> bool | dict | None:
+    def _judge(self, component_id: str, user: str | list[dict], *, with_reason: bool = False, photo_review: bool = False) -> bool | dict | None:
         try:
             payload = components.invoke_json_component(
                 spec=load_catalog().component_by_id("tutoring-vet", component_id),
@@ -90,6 +91,13 @@ class QwenLeakJudge:
             )
         except ModelGatewayError:
             return None
+        if photo_review:
+            from app.agent_specs.web_search import PHOTO_CHECKS
+            review = payload.get("photo_review")
+            if not isinstance(review, dict):
+                return None
+            if any(review.get(key) is not True for key in PHOTO_CHECKS):
+                return True
         verdict = normalize_judge(component_id, payload)
         if verdict.verdict == "unknown":
             return None

@@ -27,7 +27,7 @@ from app.application.workflows.pronunciation_guidance import (
 from app.application.workflows.tutor_visual import (
     VISUAL_ACTS,
     VISUAL_ADAPTER,
-    Visual,
+    DeliveredVisual,
     drop_reason,
 )
 from app.contexts.tutoring.domain.tutor_permit import TutorPermit
@@ -65,6 +65,8 @@ def fallback_text(failure: str | None, leak_reason: str | None = None) -> str:
     A judge outage must use the technical fallback even if an earlier attempt
     carried a teaching-boundary reason.
     """
+    if failure == "photo_unavailable":
+        return "这次没找到可以核实并展示的合适照片。"
     if failure == "visual_unavailable":
         return "这次没能生成可用的示意图，暂时无法用图帮你说明。请稍后再试。"
     if failure == "leak_detected":
@@ -231,7 +233,7 @@ class TutorTurnCandidate(BaseModel):
     # 配图是可选的展示增强：非法或不适用时整张丢弃并记下原因，绝不让候选整体失败。
     image_review: ImageReview | None = None
     math_claims: list[MathClaim] = Field(default_factory=list, max_length=16)
-    visual: Visual | None = None
+    visual: DeliveredVisual | None = None
     visual_dropped: str | None = Field(default=None, exclude=True)
     rejected_svg: bool = Field(default=False, exclude=True)
     visual_error: str | None = Field(default=None, exclude=True)

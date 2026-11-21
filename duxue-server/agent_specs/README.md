@@ -1,6 +1,8 @@
 # Agent 运行配置入口
 
-Agent可编辑配置的唯一维护源是Admin。生产目录不再保留`agents/`、`gates/`、`tools/`业务默认值；不能从测试夹具初始化业务或补齐缺失配置。管理流程见[Admin设计](../../docs/technical/design-admin.md)。
+## 配置维护与验收
+
+修改前阅读 [Agent 设计中的配置铁律](../../docs/technical/design-agent.md#配置铁律)。管理台提供[草稿升级与版本导出命令](../../duxue-admin/README.md#配置快照导入导出)，后端读取方式见下文「本地联调」。
 
 ## 代码保留的内容
 
@@ -14,7 +16,8 @@ Agent可编辑配置的唯一维护源是Admin。生产目录不再保留`agents
 
 | 参数 | 含义 |
 |---|---|
-| `AGENT_CONFIG_SOURCE=admin` | API/Worker加载Admin发布，生产默认模式 |
+| `AGENT_CONFIG_SOURCE=admin` | 业务 API/Worker 唯一支持的配置来源，默认渠道为 release |
+| `AGENT_CONFIG_CHANNEL` | `release` 跟随环境发布；本机显式设为 `working-draft` 跟随测试 Admin 工作草稿，没有草稿时读取测试发布。草稿渠道不写恢复缓存 |
 | `AGENT_CONFIG_SOURCE_URL` | 私有发布接口前缀，例如`http://duxue-admin:3000/api/internal` |
 | `AGENT_ADMIN_INTERNAL_TOKEN` | 与Admin一致、至少32字符的内部密钥 |
 | `AGENT_CONFIG_CACHE` | 最后成功发布的持久缓存路径，正式Docker挂载`/app/var/admin` |
@@ -27,7 +30,7 @@ Agent可编辑配置的唯一维护源是Admin。生产目录不再保留`agents
 
 ## 本地联调
 
-在 Server 的 `.env` 设置 `AGENT_CONFIG_SOURCE=admin`、`AGENT_CONFIG_SOURCE_URL=http://127.0.0.1:3021/api/internal`，并填入与测试 Admin 一致的 `AGENT_ADMIN_INTERNAL_TOKEN`。测试 Admin 需已有生效发布。启动或重启本地 API 后，在 Admin 发布管理确认该实例的加载回执。实例定期拉取已发布配置，工作草稿在发布之前只用于显式调试。`AGENT_CONFIG_CACHE` 由服务自动维护，Admin 暂时不可用时可使用最后一次通过校验的发布。
+本地 App 联调在 Server 的 `.env` 使用 `AGENT_CONFIG_SOURCE=admin`、`AGENT_CONFIG_CHANNEL=working-draft`、`AGENT_CONFIG_SOURCE_URL=http://127.0.0.1:3021/api/internal`，内部通信密钥与本机测试 Admin 一致。约每 30 秒检查数据库草稿 revision，每轮答疑固定使用一版。用内部鉴权访问本机 API 的 `GET /internal/agent-admin/catalog` 查看实际 draft_id、revision、digest 和工具绑定。验证已发布行为时将渠道设为 `release`。
 
 ## 离线评测
 

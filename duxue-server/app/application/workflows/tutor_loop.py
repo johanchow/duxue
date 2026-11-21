@@ -35,7 +35,11 @@ from app.application.workflows.tutor_turn import (
     format_schema_error,
     schema_error_diagnostic,
 )
-from app.application.workflows.tutor_visual import Visual, describe
+from app.application.workflows.tutor_visual import (
+    DeliveredVisual,
+    SearchPhoto,
+    describe,
+)
 from app.contexts.tutoring.domain.tutor_permit import TutorPermit
 from app.infrastructure.ai.errors import ModelGatewayError
 from app.infrastructure.ai.prompts import render_fragment
@@ -99,7 +103,7 @@ class Vetting:
     verdict: Verdict | None
     failure: str | None = None
     leak_reason: str | None = None
-    visual: Visual | None = None
+    visual: DeliveredVisual | None = None
     visual_dropped: str | None = None
     shape_flags: list[str] = field(default_factory=list)
     visual_need: str | None = None
@@ -188,6 +192,11 @@ def call_tutor_model(
                 set_observation_payload(span, input=raw)
                 try:
                     candidate = TutorTurnCandidate.model_validate(raw)
+                    if raw.get("photo_ref") is not None:
+                        if candidate.act not in {"guide", "answer"} or raw.get("visual"):
+                            raise ValueError("photo requires an answer or guide without another visual")
+                        photo = SearchPhoto.from_result(raw.get("photo_caption"), tools.web_search.photo(raw["photo_ref"]))
+                        candidate = candidate.model_copy(update={"visual": photo})
                     if review_evidence is not None:
                         candidate = candidate.model_copy(update={"image_review": review_evidence})
                     elif candidate.image_review is not None and ledger is None:
@@ -286,7 +295,7 @@ def call_tutor_model(
     return result(None, INVALID_CANDIDATE)
 
 
-def _check_visual_leak(leak_judge: LeakJudgePort, text: str, task_title, problem_summary) -> bool | None:
+def _check_visual_leak(leak_judge: LeakJudgePort, text: str, task_title, problem_summary, *, photo=None) -> bool | None:
     """图泄露判官。任何异常都按"判不准"处理：图判不准只丢图，不影响文字。"""
     judge = getattr(leak_judge, "visual_leaks", None)
     if judge is None:
@@ -296,7 +305,8 @@ def _check_visual_leak(leak_judge: LeakJudgePort, text: str, task_title, problem
             "visual": text, "task_title": task_title, "problem": problem_summary,
         })
         try:
-            result = judge(text=text, task_title=task_title, problem_summary=problem_summary)
+            result = judge(text=text, task_title=task_title, problem_summary=problem_summary,
+                           **({"image": photo.judge_image()} if photo else {}))
         except Exception:  # noqa: BLE001 - unavailable optional judge drops the visual
             result = None
         span.set_attribute("agent.check.result", "unknown" if result is None else "leak" if result else "pass")
@@ -432,6 +442,8 @@ def _evaluate_authority(
 
     verdict = check_authority(candidate, permit)
     if verdict.ok and candidate.act in {"answer", "guide"} and visual_delivery_enabled():
+        verdict = replace(verdict, needs_leak_check=True)
+    if verdict.ok and isinstance(candidate.visual, SearchPhoto):
         verdict = replace(verdict, needs_leak_check=True)
     if verdict.ok and judge_images and candidate.act in {"answer", "guide", "chat"}:
         # The generator's non_work label cannot exempt image grading
@@ -631,7 +643,8 @@ def vet_candidate(
         )
 
     def visual_leak(state: dict) -> GateDecision:
-        result = _check_visual_leak(leak_judge, visual_text_init, task_title, effective_summary)
+        result = _check_visual_leak(leak_judge, visual_text_init, task_title, effective_summary,
+                                    photo=candidate.visual if isinstance(candidate.visual, SearchPhoto) else None)
         # Write isolated visual-branch key (safe during parallel fan-out).
         state["visual_leak_result"] = result
         if not parallel_topology and result is not False:
@@ -672,7 +685,10 @@ def vet_candidate(
 
         visual = state["visual"]
         dropped = state["dropped"]
-        if state.get("text_visual_not_helpful"):
+        if isinstance(visual, SearchPhoto) and state.get("visual_leak_result") is not False:
+            visual = None
+            dropped = "visual_leak_detected" if state.get("visual_leak_result") else "visual_leak_check_failed"
+        elif state.get("text_visual_not_helpful"):
             visual = None
             dropped = "visual_not_helpful"
         elif "visual_leak_result" in state and state["visual_leak_result"] is not False:
@@ -1008,6 +1024,9 @@ def run_tutor_turn(
             review.visual_need in {"requested", "helpful"} or review.candidate.rejected_svg
         ):
             review = replace(review, verdict=None, failure="visual_unavailable")
+        if (review and tools.web_search.image_requested and review.failure in {None, "visual_unavailable"}
+                and not isinstance(review.visual, SearchPhoto)):
+            review = replace(review, visual=None, verdict=None, failure="photo_unavailable")
         failure = review.failure if review is not None else call.failure or INVALID_CANDIDATE
         if failure:
             record_llm_fallback(operation="tutor_turn", reason=failure)
@@ -1020,11 +1039,11 @@ def run_tutor_turn(
 
     def needs_redraw(state):
         review = state["vetting"]
-        return review.failure is None and review.visual_dropped == "visual_leak_detected"
+        return not tools.web_search.image_requested and review.failure is None and review.visual_dropped == "visual_leak_detected"
 
     def needs_missing(state):
         review = state["vetting"]
-        return review.failure is None and review.visual is None and (
+        return not tools.web_search.image_requested and review.failure is None and review.visual is None and (
             review.visual_need in {"requested", "helpful"} or _TEXT_DIAGRAM_TEX in review.candidate.content
         )
 

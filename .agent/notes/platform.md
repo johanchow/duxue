@@ -190,3 +190,7 @@
 - 设计边界合理。采集域按采集时的工位归属接收证据，Behavior 区分可见活动、有图难判和缺帧，Study 决定是否邀请，Evaluation 发布带覆盖度的晚报。窗口与观察日分别管理解释版本和日汇总版本。见[领域设计](../../docs/technical/domain-behavior.md)。
 - 主链路已有实现，DDD 封装仍有缺口。观察日版本在[应用命令](../../duxue-server/app/application/commands/behavior_observation.py)的两条路径直接递增，建议集中为一次发布行为。[报告命令](../../duxue-server/app/application/commands/evening_reports.py)直接读取观察域 ORM，建议改用领域设计中的 GetObservationDay 查询契约。
 - 本轮行为单测与观察 API 契约测试 74 项通过。已有五帧真机短测；真实标注、多晚静默验证、邀请误漏率、现场延迟和网关故障恢复仍待验收。默认邀请为 shadow。本轮未核查线上开关或重跑实机；完整验收项见[观察清单](../specs/realtime-behavior-observation.md)和[网关清单](../specs/go-camera-gateway.md)。
+
+- 2026-11-21 本机 App 的配置源已切回测试 Admin 工作草稿。搜索、配图交付审核、有据选择题核验与多学科工具说明已在测试 Admin 草稿 revision 18 回读；此前用于搜索联调的独立 JSON 已删除。草稿、发布、离线导出的维护与验收统一见[配置维护与验收](../../duxue-server/agent_specs/README.md#配置维护与验收)。
+
+- Workflow 和 Agent 的配置归属及单测基线更新顺序统一见[Agent 设计的配置铁律](../../docs/technical/design-agent.md#配置铁律)。

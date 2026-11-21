@@ -426,3 +426,11 @@ Then  只记录，回答照常展示，不触发 fallback
 - **真实模型的 K=5 对照评测尚未运行**（需要本机密钥与费用）。数据集已加四类共 8 条 `proposed` 用例（`turn-visual-*`）。建议顺序：先在 `main`（v4 提示词、无 `visual`）上跑一次基线，再在本分支（v5）上跑，两次都用同一数据集哈希；用 `python -m evals run --component tutoring.turn --tag visual` 看配图召回、误触发、丢弃原因与延迟，用全量跑看既有 outcome 与 fallback 原因分布是否退化。
 - §十 第 0 步的现状度量、第 1.5 步教研盘点、人工评审（§九）都需要真实数据或人，不由本次实现代替。
 - 第二期图型 `geometry`、`layers`、`relation`。
+
+### 联网资料与真实照片
+
+`tutoring.web_search` 是 `tutoring.turn` 的可选只读工具。Agent 根据当前请求和历史选择是否需要学习资料、近期事实或真实照片；一般知识、纯娱乐和不适龄请求不检索。网页摘要和图片标题作为外部证据，模型结合来源、日期、地点核对。默认取 3 条，Agent 可按问题选 1–10 条。首次搜索开始计时，再次检索须与首轮共用截止时间，最多补搜一次。阿里云 IQS 网页检索使用 UnifiedSearch 的 LiteAdvanced，图片检索使用 MultimodalSearch 的 MultimodalSpeed。学习相关性与适龄性沿用答疑和交付审核。
+
+图片候选使用回合内引用。服务器从选中候选的公网 HTTPS 地址下载原图，限制体积和像素数并缩放、重编码为 JPEG，再将相同像素、图注、出处和当前问题交给现有图审。通过文字、图像和输出安全检查后，缩略图进入 Ward 私有附件；App 通过消息鉴权读取，展示图注与来源。检索无可用图、审核拒绝或存储失败时给出找图失败的提示。搜索 span 记录次数、耗时与状态，App 的 `app.search_photo.visible_latency` 记录提问到该回复照片首帧可见的毫秒数。
+
+启用时在 Server 设置 `IQS_API_KEY`，可通过 `TUTOR_SEARCH_BUDGET_MS` 调整默认 4000 毫秒。升级当前 Admin 工作草稿并回读，按[配置维护与验收](../../duxue-server/agent_specs/README.md#配置维护与验收)启用。旧快照继续使用自己的工具绑定；缩略图下载、模型判断和 App 显示另计耗时。

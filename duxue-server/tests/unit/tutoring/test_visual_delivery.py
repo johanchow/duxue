@@ -58,7 +58,10 @@ def test_optional_visual_extension_keeps_old_release_compatibility():
     from app.agent_specs.configuration import read_snapshot
     from scripts.upgrade_visual_bundle import upgrade
     original = read_snapshot()
+    original = {**original, 'kind': 'draft', 'revision': 15}
     updated = upgrade(original)
+    assert updated['id'] == original['id']
+    assert updated['migration_source'] == {key: original[key] for key in ('kind', 'id', 'digest', 'revision')}
     assert updated['bundle']['compatibility'] == original['bundle']['compatibility']
     assert updated['digest'] != original['digest']
     compile_bundle(original['bundle'])

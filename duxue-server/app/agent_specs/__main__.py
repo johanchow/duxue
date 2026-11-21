@@ -17,19 +17,13 @@ def main():
         from app.infrastructure.ai.components import validate_overrides
         validate_overrides()
         candidate = release_runtime.configured_runtime()
-        if candidate is not None:
-            candidate.restore_cache()
-            candidate.tick(acknowledge=False)
-            if candidate.current is None:
-                raise RuntimeError('Admin发布包与兼容缓存均不可用，保留原运行服务')
-            from app.application.workflows.image_review import require_configuration
-            require_configuration(candidate.current[0]['bundle'])
-            print('Admin发布配置已验证并缓存：' + candidate.current[1].digest)
-        else:
-            if settings.app_env in {'production', 'prod'}:
-                raise RuntimeError('正式Server必须使用Admin发布配置')
-            from app.agent_specs.configuration import read_snapshot
-            print('Admin离线快照已验证：' + read_snapshot()['digest'])
+        candidate.restore_cache()
+        candidate.tick(acknowledge=False)
+        if candidate.current is None:
+            raise RuntimeError('Admin配置不可用，保留原运行服务')
+        from app.application.workflows.image_review import require_configuration
+        require_configuration(candidate.current[0]['bundle'])
+        print('Admin配置已验证：' + candidate.current[1].digest)
         return
     from app.agent_specs.catalog import load_catalog, render_mermaid
     catalog = load_catalog()

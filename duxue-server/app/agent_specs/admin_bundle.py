@@ -9,7 +9,7 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from app.agent_specs import blueprint_steps, reminder_policy
+from app.agent_specs import blueprint_steps, reminder_policy, web_search
 from app.contexts.behavior_analysis.domain.reminder_rules import ReminderPolicy
 from app.agent_specs.configuration import code_contract
 from app.agent_specs.definitions import DefinitionCatalog
@@ -95,6 +95,7 @@ def contract_compatibility(files: dict) -> str:
     reminder_contracts = reminder_policy.upgraded_contracts({**code_contract()["files"], **observation_contracts()}) if reminder_policy.FILE in files else {}
     return digest({
         "files": {**code_contract()["files"],
+                  **(web_search.upgraded_contracts(code_contract()["files"]) if web_search.FILE in files else {}),
                   **(blueprint_steps.contracts(files) if f"agents/{blueprint_steps.EXTRACT}.json" in files else {}),
                   **(observation_contracts() if has_obs else {}), **reminder_contracts,
                   **(gaokao_contracts() if has_gaokao else {}),
@@ -129,6 +130,9 @@ def compile_bundle(bundle: dict) -> CompiledBundle:
         for uid in (blueprint_steps.EXTRACT, blueprint_steps.REREAD):
             contracts["tool_authority"][uid] = list(blueprint_steps.VISION_TOOLS)
         contracts["tool_authority"][blueprint_steps.BACKUP] = list(blueprint_steps.SOLVER_TOOLS)
+    if web_search.FILE in file_names:
+        contracts["files"].update(web_search.upgraded_contracts(contracts["files"]))
+        contracts["tool_authority"]["tutoring.turn"].append(web_search.TOOL)
     if has_observation:
         contracts["files"].update(observation_contracts())
         contracts["tool_authority"].update({doc["id"]: [] for doc in observation_contracts().values()})
@@ -159,6 +163,7 @@ def compile_bundle(bundle: dict) -> CompiledBundle:
         | (GAOKAO_FILES if has_gaokao else set())
         | (GUARDIAN_MENTOR_FILES if has_mentor else set())
         | ({reminder_policy.FILE} if policy else set())
+        | ({web_search.FILE} if web_search.FILE in file_names else set())
         | set(mentor_stage)
     )
     if (

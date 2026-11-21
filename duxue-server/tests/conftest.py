@@ -17,6 +17,7 @@ from app.agent_specs.catalog import AgentCatalog, AgentSpec
 _TEST_ROOT = Path(__file__).parent / "fixtures/agent_specs"
 _TEST_SNAPSHOT = Path(__file__).parent / "fixtures/admin-release.json"
 os.environ["AGENT_CONFIG_SOURCE"] = "snapshot"
+os.environ["AGENT_CONFIG_CHANNEL"] = "release"
 os.environ["AGENT_CONFIG_SNAPSHOT"] = str(_TEST_SNAPSHOT)
 _definitions.ROOT = _TEST_ROOT
 
@@ -44,6 +45,10 @@ from sqlalchemy.pool import StaticPool
 
 from app.infrastructure.persistence.database import Base, get_db
 from app.bootstrap.app import app
+from app.agent_specs.release_runtime import start_runtime
+
+# Test catalogs are explicitly installed above, outside the business startup path.
+app.router.on_startup.remove(start_runtime)
 from app.infrastructure.ai.errors import ModelGatewayError
 
 

@@ -21,13 +21,13 @@ from app.infrastructure.observability import conversation_latency
 _ALLOWED_NAMES = {
     "app.http", "app.auth.refresh", "app.report.load", "app.device.bind",
     "app.companion.turn", "app.asr.session", "app.screen.load", "app.startup",
-    "app.unhandled_error", "app.route.view", "app.asr.final_latency", "app.tts.playback_latency",
+    "app.unhandled_error", "app.route.view", "app.asr.final_latency", "app.tts.playback_latency", "app.search_photo.visible_latency",
 }
 _ALLOWED_ATTRIBUTES = {
     "result", "route", "method", "status_class", "screen", "error_kind",
     "platform", "app_version", "network_type", "report_status", "role",
 }
-_DURATION_METRICS = {"app.screen.load", "app.asr.final_latency", "app.tts.playback_latency"}
+_DURATION_METRICS = {"app.screen.load", "app.asr.final_latency", "app.tts.playback_latency", "app.search_photo.visible_latency"}
 _lock = threading.Lock()
 _tracer = None
 _meter = None

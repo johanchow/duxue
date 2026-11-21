@@ -69,6 +69,8 @@ class Settings:
     vlm_model: str = os.getenv("VLM_MODEL_NAME") or os.getenv("VLM_MODEL", "qwen3-vl-flash-2026-01-22")
     # Deprecated: non-empty overrides are rejected; Agent settings come from Admin.
     ai_model_overrides: str = os.getenv("AI_MODEL_OVERRIDES", "").strip()
+    iqs_api_key: str = os.getenv("IQS_API_KEY", "").strip()
+    search_budget_ms: int = _integer("TUTOR_SEARCH_BUDGET_MS", "4000")
     agent_model_timeout_seconds: int = _integer("AGENT_MODEL_TIMEOUT_SECONDS", "20")
     agent_model_enabled: bool = os.getenv("AGENT_MODEL_ENABLED", "").lower() in {"1", "true", "yes"}
     batch_completion_window: str = os.getenv("VLM_BATCH_COMPLETION_WINDOW", "24h")

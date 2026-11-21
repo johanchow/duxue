@@ -278,6 +278,17 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   int _chatGeneration = 0;
   int _quietVersion = 0;
   ConversationTurn? _questionTiming;
+  Stopwatch? _photoLatency;
+  String? _photoCommandId;
+
+  void _photoVisible(String? commandId) {
+    if (!mounted || commandId == null || commandId != _photoCommandId) return;
+    final timer = _photoLatency;
+    if (timer == null) return;
+    _photoLatency = null;
+    ref.read(telemetryProvider).recordMetric(
+        'app.search_photo.visible_latency', timer.elapsedMilliseconds.toDouble());
+  }
   String? _pendingClearCommand;
 
   bool planListOpen = false;
@@ -2004,6 +2015,9 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     final speechGeneration = _speechGeneration;
     final timing = ref.read(conversationLatencyProvider).start('ward');
     _questionTiming = timing;
+    final photoTimer = Stopwatch()..start();
+    _photoCommandId = null;
+    _photoLatency = null;
     final generation = _chatGeneration;
     setState(() {
       planSending = true;
@@ -2018,6 +2032,8 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
           routeHint: pronunciation ? 'tutoring' : null,
           tutoringIntent: pronunciation ? 'pronunciation' : null));
       if (!mounted || generation != _chatGeneration) return;
+      _photoCommandId = result['command_id'] as String?;
+      _photoLatency = photoTimer;
       await _applyPlanTurnResult(result, speechGeneration: speechGeneration, timing: timing);
     } catch (error) {
       timing.fail(error);
@@ -2453,8 +2469,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         threadVersion: item['thread_version'] as int?,
         label: item['author_type'] == 'ward' ? '我' : '读学 AI',
         content: (item['author_type'] == 'ward' ? (interactionRef?['voice_display_text'] as String?) : null) ?? item['content'] as String,
-        rawVoiceText: item['author_type'] == 'ward' && interactionRef?['voice_display_text'] != null &&
-                interactionRef?['voice_display_text'] != item['content'] ? item['content'] as String : null,
         readable: item['can_read_aloud'] == true && item['id'] is String,
         commandId: item['command_id'] as String?,
         imageRefs: refs.toList(),
@@ -2554,15 +2568,10 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
                 loadImage: message.imageRefs.isEmpty
                     ? null
                     : (index) => _loadChatImage(message, index),
+                onPhotoVisible: message.visual?['kind'] == 'web_photo'
+                    ? () => _photoVisible(message.commandId)
+                    : null,
                 visual: message.visual),
-            if (message.rawVoiceText != null)
-              TextButton(
-                onPressed: () => showDialog<void>(context: context, builder: (_) => AlertDialog(
-                  title: const Text('原始转写'), content: Text(message.rawVoiceText!),
-                  actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('关闭'))],
-                )),
-                child: const Text('查看原话'),
-              ),
             if (message.readable)
               TextButton.icon(
                 onPressed: () => _readReply(message),
@@ -2900,7 +2909,6 @@ class _ChatLine {
     required this.content,
     this.images = const [],
     this.imageRefs = const [],
-    this.rawVoiceText,
     this.commandId,
     this.readable = false,
     this.visual,
@@ -2911,7 +2919,6 @@ class _ChatLine {
   final String? id;
   final String? threadId;
   final int? threadVersion;
-  final String? rawVoiceText;
   final String? commandId;
   final bool readable;
   final String label;
@@ -2940,7 +2947,6 @@ class _ChatLine {
         id: id,
         threadId: threadId,
         threadVersion: threadVersion,
-        rawVoiceText: rawVoiceText,
         commandId: commandId,
         readable: readable,
         label: label,
@@ -2974,6 +2980,7 @@ class _ChatBubble extends StatelessWidget {
     required this.text,
     this.images = const [],
     this.imageCount = 0,
+    this.onPhotoVisible,
     this.loadImage,
     this.visual,
   });
@@ -2981,6 +2988,7 @@ class _ChatBubble extends StatelessWidget {
   final String text;
   final List<Uint8List> images;
   final int imageCount;
+  final VoidCallback? onPhotoVisible;
   final Future<Uint8List> Function(int index)? loadImage;
   final Map<String, dynamic>? visual;
 
@@ -2993,6 +3001,8 @@ class _ChatBubble extends StatelessWidget {
     return LayoutBuilder(builder: (context, constraints) {
       final maxWidth =
           isWard ? constraints.maxWidth * 2 / 3 : constraints.maxWidth;
+      final photoWidth = (maxWidth - 26).clamp(1.0, 320.0).toDouble();
+      final previewWidth = onPhotoVisible == null ? 72.0 : photoWidth;
       return Align(
           alignment: isWard ? Alignment.centerRight : Alignment.centerLeft,
           child: Container(
@@ -3038,17 +3048,19 @@ class _ChatBubble extends StatelessWidget {
                                 builder: (context, snapshot) => snapshot.hasData
                                     ? Image.memory(snapshot.data!,
                                         key: ValueKey('sent-chat-image-$index'),
-                                        width: 72,
-                                        height: 72,
-                                        fit: BoxFit.cover,
-                                        cacheWidth: chatImageCachePixels(
-                                            72,
-                                            MediaQuery.devicePixelRatioOf(
-                                                context)),
-                                        cacheHeight: chatImageCachePixels(
-                                            72,
-                                            MediaQuery.devicePixelRatioOf(
-                                                context)),
+                                        width: previewWidth,
+                                        height: onPhotoVisible == null ? 72 : null,
+                                        fit: onPhotoVisible == null ? BoxFit.cover : BoxFit.contain,
+                                        cacheWidth: chatImageCachePixels(previewWidth,
+                                            MediaQuery.devicePixelRatioOf(context)),
+                                        cacheHeight: onPhotoVisible == null ? chatImageCachePixels(72, MediaQuery.devicePixelRatioOf(context)) : null,
+                                        frameBuilder: onPhotoVisible == null ? null :
+                                            (context, child, frame, sync) {
+                                          if (frame != null || sync) {
+                                            WidgetsBinding.instance.addPostFrameCallback((_) => onPhotoVisible!());
+                                          }
+                                          return child;
+                                        },
                                         gaplessPlayback: true)
                                     : Container(
                                         key: ValueKey('sent-chat-image-$index'),

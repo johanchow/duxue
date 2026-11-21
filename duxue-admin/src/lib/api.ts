@@ -126,6 +126,14 @@ export async function handle(request: Request, parts: string[]) {
         '内部鉴权失败',
         401,
       );
+      if (key === 'internal/working-draft' && method === 'GET') {
+        assert(environmentName === 'test', '工作草稿预览仅用于测试环境', 403);
+        const result = await pool().query(
+          "SELECT id,revision,bundle FROM agent_drafts WHERE state='working'",
+        );
+        return Response.json({ environment: environmentName, draft: result.rows[0] ?? null },
+          { headers: { 'Cache-Control': 'no-store' } });
+      }
       if (key === 'internal/release' && method === 'GET') {
         const result = await pool().query(
           'SELECT e.generation,e.updated_at,r.id,r.digest,r.bundle FROM agent_environments e LEFT JOIN agent_releases r ON r.id=e.release_id WHERE e.name=$1',

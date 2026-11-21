@@ -294,3 +294,9 @@
 - 2026-11-21 Guardian 二轮延迟对照：T1 主路线 low 在匹配四请求两轮均提速，完整原集首答 85.5/85.5、平均 35.84s，与 writing 的 35.61s 接近；物理 6 的讲解单次耗时 63.5s。读题给裁图位置能省一轮 planner，但纸带端点误读复现，独立实验开关默认关闭。数学 21 自动阅卷漏判错误证明；物理 16 评分须按图上距离标注核对。[实验配置、逐题记录与复核](../../duxue-server/var/evals/mentor-latency-validation-agtTH4/NEXT-REPORT.md)
 
 - 2026-11-21 学生追问配图修复：服务端与 Flutter 均将标准根 SVG 命名空间视为元数据；只有已交付图型进入下一轮对话窗口。无可用 SVG 时复用 visual_unavailable，沿用现有图审节点。原始第二稿与两次真实追问返回的 SVG 已用 Flutter 回放；flutter_svg 忽略 marker 的限制通过原生路径切线展开处理。示例 trace f910bb03da654d81837e258be470f1c8、b3bf192f40ab4176b36b4d32382eea0f。见[表达设计](../../docs/technical/domain-tutoring-presentation.md)。
+
+- 2026-11-21 学习检索按需绑定答疑 Agent。配图时必须在已有图审看过实际缩略图后保存同一份字节；旧版图审仅接收文字。注册工具、审核和启用方式见[答疑表达设计](../../docs/technical/domain-tutoring-presentation.md#联网资料与真实照片)。
+
+- IQS 文搜图返回第三方原图，下载和图审必须针对同一份像素；网页和图片字段不同。配置与交付见[答疑表达设计](../../docs/technical/domain-tutoring-presentation.md#联网资料与真实照片)。
+
+- 联网照片回归须经过实际 Workflow dispatcher 并从对话消息读取附件。公开结果序列化会排除已审照片的私有存储键，校验公开契约后须将原类型化结果传给 Coordinator 持久化。

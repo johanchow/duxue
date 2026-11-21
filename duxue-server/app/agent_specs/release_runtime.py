@@ -106,15 +106,17 @@ class ReleaseRuntime:
     def pin(self):
         current = self.current
         if current is None:
-            self.definitions()  # Admin mode never silently executes code defaults.
-        else:
-            with use_definitions(current[1].catalog):
-                from opentelemetry import trace
+            raise AgentConfigurationUnavailable("No compatible Admin configuration is loaded")
+        with use_definitions(current[1].catalog):
+            from opentelemetry import trace
 
-                span = trace.get_current_span()
-                span.set_attribute("agent.release.id", current[0]["id"])
-                span.set_attribute("agent.release.digest", current[1].digest)
-                yield
+            span = trace.get_current_span()
+            prefix = "agent.draft" if current[0].get("kind") == "draft" else "agent.release"
+            span.set_attribute(prefix + ".id", current[0]["id"])
+            span.set_attribute(prefix + ".digest", current[1].digest)
+            if prefix == "agent.draft":
+                span.set_attribute("agent.draft.revision", current[0]["revision"])
+            yield
 
     def restore_cache(self):
         if self.cache.is_file():
@@ -144,6 +146,43 @@ class ReleaseRuntime:
             self.thread.join(timeout=1)
 
 
+class WorkingDraftRuntime(ReleaseRuntime):
+    """Local App preview of Admin test data. Keep the pinned bundle in memory only."""
+
+    def restore_cache(self):
+        pass
+
+    def tick(self, *, acknowledge=False):
+        headers = {"Authorization": "Bearer " + self.token}
+        try:
+            response = httpx.get(self.source + "/working-draft", headers=headers, timeout=5)
+            response.raise_for_status()
+            data = response.json()
+            if data["environment"] != "test":
+                raise ValueError("草稿环境不匹配")
+            draft = data["draft"]
+            if draft is None:
+                response = httpx.get(self.source + "/release", headers=headers, timeout=5)
+                response.raise_for_status()
+                data = response.json()
+                if data["environment"] != "test" or not data.get("release"):
+                    raise ValueError("测试 Admin 没有工作草稿或发布")
+                record = {**data["release"], "kind": "release", "revision": data["generation"]}
+            else:
+                record = {**draft, "kind": "draft"}
+            if not self.current or any(self.current[0].get(k) != record[k] for k in ("kind", "id", "revision")):
+                compiled = compile_bundle(record["bundle"])
+                if record["kind"] == "release" and record["digest"] != compiled.digest:
+                    raise ValueError("release digest mismatch")
+                compiled.catalog.activation = {"id": record["id"], "generation": record["revision"]}
+                self.current = (record, compiled)
+            self.last_error = None
+        except (httpx.HTTPError, KeyError, ValueError) as error:
+            self.last_error = type(error).__name__
+            self.current = None
+            logging.getLogger(__name__).warning("Admin working draft unavailable: %s", self.last_error)
+
+
 class AgentConfigurationUnavailable(RuntimeError):
     pass
 
@@ -152,26 +191,30 @@ runtime = None
 
 
 def configured_runtime():
-    # APP_ENV never disables Admin implicitly. CLI evaluations force snapshot mode.
-    mode = os.getenv("AGENT_CONFIG_SOURCE", "admin" if os.getenv("APP_ENV") in {"production", "prod"} else "snapshot")
-    if mode not in {"admin", "snapshot"}:
-        raise ValueError("AGENT_CONFIG_SOURCE只允许admin或snapshot")
-    if mode == "snapshot":
-        return
+    if os.getenv("AGENT_CONFIG_SOURCE", "admin") != "admin":
+        raise ValueError("业务 API/Worker 必须从 Admin 加载配置；文件快照仅用于离线评测")
     source = os.getenv("AGENT_CONFIG_SOURCE_URL", "")
     token = os.getenv("AGENT_ADMIN_INTERNAL_TOKEN", "")
     if not source or len(token) < 32:
         raise ValueError("Admin配置模式必须提供内部发布地址和至少32字符通信密钥")
-    return ReleaseRuntime(source, token, Path(os.getenv("AGENT_CONFIG_CACHE", "var/admin/last-good.json")),
-                             expected_environment="prod" if os.getenv("APP_ENV") in {"production", "prod"} else "test")
+    environment = "prod" if os.getenv("APP_ENV") in {"production", "prod"} else "test"
+    channel = os.getenv("AGENT_CONFIG_CHANNEL", "release")
+    cache = Path(os.getenv("AGENT_CONFIG_CACHE", "var/admin/last-good.json"))
+    if channel == "working-draft":
+        from urllib.parse import urlsplit
+        if environment != "test" or urlsplit(source).hostname not in {"127.0.0.1", "localhost", "::1"}:
+            raise ValueError("工作草稿仅允许本机连接测试 Admin")
+        return WorkingDraftRuntime(source, token, cache, expected_environment="test")
+    if channel != "release":
+        raise ValueError("未知 Admin 配置渠道")
+    return ReleaseRuntime(source, token, cache, expected_environment=environment)
 
 
 
 def start_runtime(*, block=True):
     global runtime
     runtime = configured_runtime()
-    if runtime is not None:
-        runtime.start(block=block)
+    runtime.start(block=block)
 
 
 def close_runtime():

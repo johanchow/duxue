@@ -63,6 +63,7 @@ class VisualBlock extends StatelessWidget {
               SegmentData d => _SegmentView(d),
               NumberLineData d => _NumberLineView(d),
               SvgData d => _SvgView(d),
+              SearchPhotoData d => SelectableText(d.semanticLabel),
             },
           ]),
         ),
@@ -105,6 +106,7 @@ sealed class VisualData {
         'compare' => CompareData.tryParse(raw, alt, title),
         'segment' => SegmentData.tryParse(raw, alt, title),
         'number_line' => NumberLineData.tryParse(raw, alt, title),
+        'web_photo' => SearchPhotoData.parse(raw, alt),
         'svg' => SvgData.tryParse(raw, alt, title),
         _ => null, // 词汇表之外：降级为只有文字
       };
@@ -112,6 +114,24 @@ sealed class VisualData {
       return null;
     }
   }
+}
+
+class SearchPhotoData extends VisualData {
+  const SearchPhotoData(this.source, this.sourceTitle, {required super.alt});
+  final Uri source;
+  final String sourceTitle;
+
+  static SearchPhotoData? parse(Map<String, dynamic> raw, String alt) {
+    final uri = Uri.tryParse(_str(raw['source'], max: 2048) ?? '');
+    final title = _str(raw['source_title'], max: 250);
+    if (uri == null || uri.scheme != 'https' || uri.host.isEmpty || title == null) {
+      return null;
+    }
+    return SearchPhotoData(uri, title, alt: alt);
+  }
+
+  @override
+  String get semanticLabel => '$alt\n来源：$sourceTitle\n$source';
 }
 
 class StepsData extends VisualData {

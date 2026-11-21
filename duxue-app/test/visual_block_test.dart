@@ -84,6 +84,13 @@ Future<void> pump(WidgetTester tester, Map<String, dynamic> visual,
 }
 
 void main() {
+  testWidgets('photo shows its caption and source page', (tester) async {
+    const photo = {'kind': 'web_photo', 'alt': '代表会议', 'source_title': '会议照片',
+      'source': 'https://www.apec.org/example'};
+    await tester.pumpWidget(const MaterialApp(home: Scaffold(body: VisualBlock(visual: photo))));
+    expect(find.text('代表会议\n来源：会议照片\nhttps://www.apec.org/example'), findsOneWidget);
+  });
+
   testWidgets('steps shows numbered steps in order', (tester) async {
     await pump(tester, steps);
     expect(find.byKey(const ValueKey('visual-block')), findsOneWidget);

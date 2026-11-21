@@ -661,6 +661,7 @@ class CompanionCoordinator:
                 thread=thread, command_id=command_id, author_type="companion",
                 content=visible_content, thread_version=version, run=run, turn_id=turn_id,
                 attempt=attempt, interaction_ref=self._visible_interaction_ref(outcome),
+                attachment_refs=outcome.reviewed_photo_keys,
             )
         self.db.commit()
         record_tutor_subgoal_committed()

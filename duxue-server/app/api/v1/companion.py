@@ -3,6 +3,7 @@ from .common import *
 from app.api.schemas import CompanionHistoryClearRequest
 from app.application.commands.companion_history import clear_history, history_is_visible, visible_threads
 from contextlib import aclosing
+import re
 from uuid import UUID
 from app.infrastructure.ai.speech_task import tutor_audio, tutor_audio_frames
 from app.infrastructure.persistence.models import PlanDraft
@@ -89,7 +90,7 @@ def companion_message_image(
     except ValueError:
         raise HTTPException(404, "companion image not found") from None
     message = db.get(CompanionMessage, message_id)
-    if message is None or message.ward_id != principal.user_id or message.author_type != "ward":
+    if message is None or message.ward_id != principal.user_id:
         raise HTTPException(404, "companion image not found")
     if not history_is_visible(db, principal.user_id, message.thread_id):
         raise HTTPException(404, "companion image not found")
@@ -99,7 +100,11 @@ def companion_message_image(
     key = refs[index]
     suffix = key.rsplit(".", 1)[-1].lower() if isinstance(key, str) else ""
     media_types = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}
-    if not _valid_companion_attachment_key(principal.user_id, key) or suffix not in media_types:
+    valid = message.author_type == "ward" and _valid_companion_attachment_key(principal.user_id, key)
+    if message.author_type == "companion" and isinstance(key, str):
+        prefix = f"ward/{principal.user_id}/search-photos/"
+        valid = key.startswith(prefix) and re.fullmatch(r"[0-9a-f]{64}\.jpg", key[len(prefix):]) is not None
+    if not valid or suffix not in media_types:
         raise HTTPException(404, "companion image not found")
     if not storage.exists(key):
         raise HTTPException(404, "companion image not found")

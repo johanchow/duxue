@@ -115,6 +115,7 @@ class RunInvocation(BaseModel):
 class WorkflowOutcome(BaseModel):
     """Validated workflow result; it contains no ORM objects or raw prompts."""
 
+    reviewed_photo_keys: list[str] = Field(default_factory=list, exclude=True)
     run_status: RunStatus
     outcome_type: Literal["response", "waiting", "completed", "failure", "cancelled", "escalation"] | None = None
     response: dict[str, Any] | None = None

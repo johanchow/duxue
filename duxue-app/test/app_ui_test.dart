@@ -1823,6 +1823,31 @@ void main() {
     expect(find.byKey(const ValueKey('sent-chat-image-0')), findsOneWidget);
   });
 
+  testWidgets('agent photo is loaded from its message and shows the source', (tester) async {
+    FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform({});
+    final api = _WardHomeApi()..currentTranscriptOverride = {
+      'thread_id': 'thread-1', 'thread_version': 2,
+      'messages': [{
+        'id': 'reply', 'author_type': 'companion', 'content': '看看代表们的座位。',
+        'attachment_refs': ['ward/ward-1/search-photos/photo.jpg'],
+        'interaction_ref': {'kind': 'text_visual', 'parts': [
+          {'type': 'visual', 'visual': {'kind': 'web_photo', 'alt': '代表会议',
+            'source_title': '会议照片', 'source': 'https://www.apec.org/example'}}
+        ]}
+      }]
+    };
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiProvider.overrideWithValue(api)],
+      child: const MaterialApp(home: WardDayPage(wardId: 'ward-1')),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('说出你的任何想法、问题、安排'));
+    await tester.pumpAndSettle();
+    expect(api.imageCalls, ['reply:0']);
+    expect(find.textContaining('https://www.apec.org/example'), findsOneWidget);
+    expect(tester.widget<Image>(find.byKey(const ValueKey('sent-chat-image-0'))).width, greaterThan(72));
+  });
+
   testWidgets('reloaded historical images open at the tapped page',
       (tester) async {
     FlutterSecureStoragePlatform.instance =
@@ -2603,12 +2628,9 @@ void main() {
     expect(api.turns.single.content, source);
     expect(api.lastDisplay, display);
     expect(api.replySpeechRequests, ['reply']);
-    expect(find.text('查看原话'), findsOneWidget);
-    await tester.tap(find.text('查看原话'));
-    await tester.pumpAndSettle();
-    expect(find.text(source), findsOneWidget);
-    await tester.tap(find.text('关闭'));
-    await tester.pumpAndSettle();
+    expect(find.text(display), findsOneWidget);
+    expect(find.text(source), findsNothing);
+    expect(find.text('查看原话'), findsNothing);
     await tester.widget<VoiceComposer>(find.byType(VoiceComposer)).onBeforeRecording!();
     api.pendingSpeech!.complete(Uint8List.fromList([1]));
     await tester.pumpAndSettle();
