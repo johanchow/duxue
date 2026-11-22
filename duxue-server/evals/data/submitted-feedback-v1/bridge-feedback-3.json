@@ -1,0 +1,86 @@
+{
+  "schema_version": "dialogue-eval.v2",
+  "id": "bridge-feedback-3",
+  "type": "single_turn",
+  "replay_mode": "fixed_history",
+  "conversation_id": "bridge-feedback",
+  "turn_index": 2,
+  "label_status": "proposed",
+  "source": {
+    "kind": "real",
+    "coverage": "observed_window",
+    "provider": "langfuse",
+    "trace_ids": [
+      "9557d393d6f40658d3f5a26534d61f86",
+      "e1d36890e0c1e4f44c52b27f8b6b722d",
+      "1937eaf27392303eba387eb3b72ddb2e"
+    ]
+  },
+  "messages": [
+    {
+      "id": "u1",
+      "role": "user",
+      "content": "提的最快的速度是什么方案？",
+      "images": [
+        "bridge-3d8238a0e72f2dfd.jpg"
+      ]
+    },
+    {
+      "id": "a1",
+      "role": "assistant",
+      "content": "你问的是“最快的方案”，这题的关键不是让最快的人一直跑腿，而是**让最慢的两个人一起过桥**，这样 10 分钟只花一次。\n\n先想第一步：要让 5 分钟和 10 分钟的人一起过桥，得先让谁在桥对面接应？手电筒又该怎么送过去？\n\n你写的 19 分钟先别急着定，按这个思路把过桥步骤排一排，看看总时间会变成多少。"
+    },
+    {
+      "id": "u2",
+      "role": "user",
+      "content": "那我写的 19 分钟是不是最快的方，最快的时间？"
+    },
+    {
+      "id": "a2",
+      "role": "assistant",
+      "content": "你写的 19 分钟先别急着定下来。\n\n想一想：如果让最慢的 5 分钟和 10 分钟两个人**一起**过桥，他们俩只花 10 分钟；要是分开走，就要 5+10=15 分钟。\n\n所以关键问题是：**这两个慢的人，能不能凑成一次一起过桥？** 如果能，手电筒要怎么安排，才能让他们一起走？\n\n先说说你的想法，再决定 19 分钟是不是最快的。"
+    },
+    {
+      "id": "u3",
+      "role": "user",
+      "content": "你把两个最慢的凑在一起，5分钟、10分钟一起过桥，然后再5分钟的带电筒回来，这样一来一回就是15分钟了，是这样吗？"
+    }
+  ],
+  "checks": [
+    {
+      "id": "feedback",
+      "component": "tutoring.turn",
+      "after_message": "u3",
+      "input_snapshot": {
+        "origin": "reconstructed",
+        "context": {
+          "task_title": "数学作业",
+          "task_active": false,
+          "dossier_status": "pending"
+        },
+        "note": "真实原图与前序可见对话；重建 pending 答案确认门禁。未重放 App、路由或求解队列。"
+      },
+      "grading": {
+        "deterministic": [
+          {
+            "id": "delivered",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "hint_like",
+              "answer"
+            ]
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "feedback",
+            "type": "binary",
+            "expected": "pass",
+            "rubric": "确认两步15分钟正确，说明慢者返回的耗时和进度代价，引向更快者接灯。不得重复询问已给出的返回人或耗时。"
+          }
+        ]
+      }
+    }
+  ]
+}

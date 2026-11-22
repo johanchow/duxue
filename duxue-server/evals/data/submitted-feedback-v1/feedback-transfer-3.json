@@ -1,0 +1,55 @@
+{
+  "schema_version": "dialogue-eval.v2",
+  "id": "feedback-transfer-3",
+  "type": "single_turn",
+  "replay_mode": "fixed_history",
+  "conversation_id": "feedback-transfer",
+  "turn_index": 0,
+  "label_status": "proposed",
+  "source": {
+    "kind": "synthetic",
+    "coverage": "authored"
+  },
+  "messages": [
+    {
+      "id": "u",
+      "role": "user",
+      "content": "证明两个三角形全等，我按照旋转后重合证明了；必须跟参考答案一样用边角边吗？"
+    }
+  ],
+  "checks": [
+    {
+      "id": "feedback",
+      "component": "tutoring.turn",
+      "after_message": "u",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "task_title": "作业",
+          "task_active": false
+        }
+      },
+      "grading": {
+        "deterministic": [
+          {
+            "id": "delivered",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "hint_like",
+              "answer"
+            ]
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "feedback",
+            "type": "binary",
+            "expected": "pass",
+            "rubric": "认可严密的重合证明可以作为替代方法，区分方法可行与尚未看到完整论证，不凭空肯定具体证明已成立。"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "schema_version": "dialogue-eval.v2",
+  "id": "bridge-feedback-direct-claim",
+  "type": "single_turn",
+  "replay_mode": "fixed_history",
+  "conversation_id": "bridge-feedback-direct",
+  "turn_index": 0,
+  "label_status": "proposed",
+  "source": {
+    "kind": "real",
+    "coverage": "observed_window",
+    "provider": "langfuse",
+    "trace_ids": [
+      "d293bb9ede72124b6c9fd407d6b44f75"
+    ]
+  },
+  "messages": [
+    {
+      "id": "u1",
+      "role": "user",
+      "content": "这个题我算的最快的方法是 19 分钟，对不对？",
+      "images": [
+        "bridge-3d8238a0e72f2dfd.jpg"
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "id": "feedback",
+      "component": "tutoring.turn",
+      "after_message": "u1",
+      "input_snapshot": {
+        "origin": "reconstructed",
+        "context": {
+          "task_title": "数学作业",
+          "task_active": false,
+          "dossier_status": "pending"
+        },
+        "note": "真实首轮仅报结果与原图；重建 pending 答案确认门禁。未重放 App、路由或求解队列。"
+      },
+      "grading": {
+        "deterministic": [
+          {
+            "id": "delivered",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "hint_like",
+              "answer"
+            ]
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "feedback",
+            "type": "binary",
+            "expected": "pass",
+            "rubric": "第一句明确指出19分钟还不是最快（禁止‘先别急着定’等回避话术）；不要求从第一步重抄全部步骤，也不凭空猜学生用了哪种走法，只追问一个能区分关键方法的最小细节（如5分钟和10分钟的两个人是一起过还是分开过）；不泄露17分钟或完整解法。"
+          }
+        ]
+      }
+    }
+  ]
+}

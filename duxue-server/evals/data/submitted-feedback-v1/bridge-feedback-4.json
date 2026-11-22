@@ -1,0 +1,103 @@
+{
+  "schema_version": "dialogue-eval.v2",
+  "id": "bridge-feedback-4",
+  "type": "single_turn",
+  "replay_mode": "fixed_history",
+  "conversation_id": "bridge-feedback",
+  "turn_index": 3,
+  "label_status": "proposed",
+  "source": {
+    "kind": "real",
+    "coverage": "observed_window",
+    "provider": "langfuse",
+    "trace_ids": [
+      "9557d393d6f40658d3f5a26534d61f86",
+      "e1d36890e0c1e4f44c52b27f8b6b722d",
+      "1937eaf27392303eba387eb3b72ddb2e",
+      "042a1333665cb7731d042b0f015d08ea"
+    ]
+  },
+  "messages": [
+    {
+      "id": "u1",
+      "role": "user",
+      "content": "提的最快的速度是什么方案？",
+      "images": [
+        "bridge-3d8238a0e72f2dfd.jpg"
+      ]
+    },
+    {
+      "id": "a1",
+      "role": "assistant",
+      "content": "你问的是“最快的方案”，这题的关键不是让最快的人一直跑腿，而是**让最慢的两个人一起过桥**，这样 10 分钟只花一次。\n\n先想第一步：要让 5 分钟和 10 分钟的人一起过桥，得先让谁在桥对面接应？手电筒又该怎么送过去？\n\n你写的 19 分钟先别急着定，按这个思路把过桥步骤排一排，看看总时间会变成多少。"
+    },
+    {
+      "id": "u2",
+      "role": "user",
+      "content": "那我写的 19 分钟是不是最快的方，最快的时间？"
+    },
+    {
+      "id": "a2",
+      "role": "assistant",
+      "content": "你写的 19 分钟先别急着定下来。\n\n想一想：如果让最慢的 5 分钟和 10 分钟两个人**一起**过桥，他们俩只花 10 分钟；要是分开走，就要 5+10=15 分钟。\n\n所以关键问题是：**这两个慢的人，能不能凑成一次一起过桥？** 如果能，手电筒要怎么安排，才能让他们一起走？\n\n先说说你的想法，再决定 19 分钟是不是最快的。"
+    },
+    {
+      "id": "u3",
+      "role": "user",
+      "content": "你把两个最慢的凑在一起，5分钟、10分钟一起过桥，然后再5分钟的带电筒回来，这样一来一回就是15分钟了，是这样吗？"
+    },
+    {
+      "id": "a3",
+      "role": "assistant",
+      "content": "你让 5 分钟和 10 分钟一起过桥，这个方向是对的——这样 10 分钟只算一次。不过你算的“一来一回 15 分钟”里，回来的是谁？他回来要花几分钟？再看看：如果让 5 分钟的人回来，他回来时，1 分钟和 2 分钟的人是不是还留在对岸？"
+    },
+    {
+      "id": "u4",
+      "role": "user",
+      "content": "或者你能不能画图画出最快的方案出来，让我理解。"
+    }
+  ],
+  "checks": [
+    {
+      "id": "feedback",
+      "component": "tutoring.turn",
+      "after_message": "u4",
+      "input_snapshot": {
+        "origin": "reconstructed",
+        "context": {
+          "task_title": "数学作业",
+          "task_active": false,
+          "dossier_status": "pending"
+        },
+        "note": "真实原图与前序可见对话；重建 pending 答案确认门禁。未重放 App、路由或求解队列。"
+      },
+      "grading": {
+        "deterministic": [
+          {
+            "id": "delivered",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "hint_like",
+              "answer"
+            ]
+          },
+          {
+            "id": "diagram",
+            "field": "visual_present",
+            "op": "eq",
+            "expected": true
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "feedback",
+            "type": "binary",
+            "expected": "pass",
+            "rubric": "实际画出准确的局部方案图，读图提示围绕返回人选。正文、对象位置与灯的位置须与所示时刻一致，不泄露完整最优解。"
+          }
+        ]
+      }
+    }
+  ]
+}
