@@ -17,9 +17,8 @@ def run(model, judge):
     )
 
 
-@pytest.mark.parametrize('need', ['requested', 'helpful'])
-def test_semantic_visual_need_triggers_redraw_even_without_tex(need):
-    judge = StaticVisualLeakJudge(result={'leaks': False, 'visual_need': need})
+def test_requested_visual_triggers_redraw_even_without_tex():
+    judge = StaticVisualLeakJudge(result={'leaks': False, 'visual_need': 'requested'})
     model = StaticTutorModel(tutor_raw(), tutor_raw(visual=SEGMENT))
     result = run(model, judge)
     assert len(model.calls) == 2
@@ -27,9 +26,10 @@ def test_semantic_visual_need_triggers_redraw_even_without_tex(need):
     assert len(judge.visual_texts) == 1
 
 
-def test_no_visual_need_does_not_force_a_diagram():
+@pytest.mark.parametrize('need', ['not_needed', 'helpful'])
+def test_no_visual_need_does_not_force_a_diagram(need):
     model = StaticTutorModel(tutor_raw())
-    result = run(model, StaticVisualLeakJudge(result={'leaks': False, 'visual_need': 'not_needed'}))
+    result = run(model, StaticVisualLeakJudge(result={'leaks': False, 'visual_need': need}))
     assert len(model.calls) == 1
     assert result.vetting.failure is None
 
