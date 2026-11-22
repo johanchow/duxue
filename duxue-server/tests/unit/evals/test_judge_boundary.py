@@ -162,6 +162,8 @@ def test_common_cli_dispatches_to_the_generic_judge_runner(monkeypatch):
         main(
             [
                 "run-judges",
+                "--config-snapshot",
+                "tests/fixtures/admin-release.json",
                 "--batch",
                 "answer-feedback-v1",
                 "--case",

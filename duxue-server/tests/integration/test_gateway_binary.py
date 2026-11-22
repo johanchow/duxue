@@ -97,6 +97,14 @@ def test_live_gateway_binary_and_restart(tmp_path):
         "VLM_API_KEY": "smoke-only",
         "REDIS_URL": "redis://127.0.0.1:6379/0",
         "OTEL_SDK_DISABLED": "true",
+        # Pytest pins snapshot mode for in-process tests. This child is a business
+        # API and must use Admin mode; a closed port keeps startup offline.
+        "APP_ENV": "development",
+        "AGENT_CONFIG_SOURCE": "admin",
+        "AGENT_CONFIG_CHANNEL": "release",
+        "AGENT_CONFIG_SOURCE_URL": "http://127.0.0.1:1",
+        "AGENT_ADMIN_INTERNAL_TOKEN": "smoke-only-admin-token-0123456789",
+        "AGENT_CONFIG_CACHE": str(tmp_path / "admin-cache.json"),
         "GATEWAY_CREDENTIALS_JSON": json.dumps(
             [
                 {
@@ -161,7 +169,11 @@ def test_live_gateway_binary_and_restart(tmp_path):
                 pass
             time.sleep(0.05)
         else:
-            pytest.fail("isolated API failed to start")
+            api_log.flush()
+            detail = (tmp_path / "api.log").read_text(errors="replace")[-4000:]
+            pytest.fail(
+                f"isolated API failed to start (exit={api.poll()})\n{detail}"
+            )
         check = subprocess.run(
             [binary, "config-check", "-config", str(config)],
             env=env,
