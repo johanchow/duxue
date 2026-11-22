@@ -38,9 +38,12 @@ class TutorToolbox:
         self.web_search = LearningSearch()
         self.math_engine = math_engine
         self.math_verification = None
+        self.worksheet_verification = None
         self.image_inspector = image_inspector
         self.authorized_images: dict[str, str] = {}
         self.inspected_crops: list[dict] = []
+        self.crop_attempts = 0
+        self.coverage_rechecked = False
         self.db = db
         self.tutoring_session_id = tutoring_session_id
         self.problem = problem
@@ -109,23 +112,24 @@ class TutorToolbox:
         from app.application.workflows.math_verification import MathVerification
         self.authorized_images = {image_ref(url): url for url in images if url}
         self.inspected_crops = []
+        self.crop_attempts = 0
+        self.coverage_rechecked = False
         allowed_tools = set(load_definitions().units["tutoring.turn"].tools)
         enabled = bool({"tutoring.math", "tutoring.science"} & allowed_tools)
-        if not enabled:
-            self.math_verification = None
-            return
-        self.math_verification = MathVerification(self.math_engine, {
+        self.worksheet_verification = MathVerification(self.math_engine, {
             "turn_id": envelope.get("turn_id"), "run_id": envelope.get("run_id"),
             "problem_ref": getattr(self.problem, "id", None),
             "instruction_digest": hashlib.sha256(instruction.encode()).hexdigest(),
-        }, set(self.authorized_images))
+        }, set(self.authorized_images)) if enabled or self.math_engine is not None else None
+        self.math_verification = self.worksheet_verification if enabled else None
 
     def _inspect_image(self, args: dict) -> dict:
         from app.application.ports.image_inspection import InspectImageRequest
         from app.infrastructure.media.pillow_crop import PillowImageInspector
 
-        if len(self.inspected_crops) >= 4:
+        if self.crop_attempts >= 2:
             return {"status": "tool_error", "detail": "crop_limit_exceeded"}
+        self.crop_attempts += 1
         req = InspectImageRequest.model_validate(args)
         inspector = self.image_inspector or PillowImageInspector()
         res = inspector.inspect(req, authorized_images=self.authorized_images)

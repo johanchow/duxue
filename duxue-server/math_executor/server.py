@@ -27,7 +27,7 @@ def failure(code):
 
 
 def compute(request, *, timeout=TIMEOUT, worker=WORKER):
-    payload = json.dumps(request).encode()
+    payload = json.dumps(request, ensure_ascii=False).encode()
     if len(payload) > MAX_WIRE:
         return failure("resource_limit")
     # No business environment, working directory, shell, or inherited file descriptors.

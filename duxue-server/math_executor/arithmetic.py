@@ -80,3 +80,30 @@ def arithmetic_equal(expression: str, submitted: str) -> bool:
     except (InvalidOperation, ValueError):
         target = arithmetic_eval(submitted)
     return arithmetic_eval(expression) == target
+
+
+# Bounded wire unit; a worksheet can contain any number of these batches.
+WORKSHEET_BATCH_SIZE = 25
+
+
+def check_arithmetic_batch(pairs):
+    if not isinstance(pairs, list) or not 0 < len(pairs) <= WORKSHEET_BATCH_SIZE:
+        return {"status": "error", "error_code": "resource_limit"}
+    results = []
+    for pair in pairs:
+        if not (isinstance(pair, list) and len(pair) == 2
+                and isinstance(pair[0], str) and 0 < len(pair[0]) <= 120
+                and isinstance(pair[1], str) and 0 < len(pair[1]) <= 300):
+            results.append("invalid_input")
+            continue
+        try:
+            expression, answer = pair
+            # Written arithmetic may start each continuation line with "=".
+            # Check every transcribed equality so a later correction cannot hide a wrong step.
+            steps = answer.strip().removeprefix("=").split("=")
+            original = arithmetic_eval(expression.strip())
+            values = [arithmetic_eval(step.strip()) for step in steps]
+            results.append("equal" if all(value == original for value in values) else "not_equal")
+        except (ValueError, ArithmeticError, RecursionError):
+            results.append("invalid_input")
+    return {"results": results}

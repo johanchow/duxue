@@ -65,6 +65,8 @@ def fallback_text(failure: str | None, leak_reason: str | None = None) -> str:
     A judge outage must use the technical fallback even if an earlier attempt
     carried a teaching-boundary reason.
     """
+    if failure == "worksheet_unavailable":
+        return "这次没能完成算式复核，暂时无法判断这些题是否做对。请稍后再试。"
     if failure == "photo_unavailable":
         return "这次没找到可以核实并展示的合适照片。"
     if failure == "visual_unavailable":

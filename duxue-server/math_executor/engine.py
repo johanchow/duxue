@@ -805,4 +805,9 @@ if __name__ == "__main__":
     import sys
 
     request = json.loads(sys.stdin.buffer.read(16385))
-    print(json.dumps(execute(request)))
+    if isinstance(request, dict) and set(request) == {"worksheet_arithmetic"}:
+        from math_executor.arithmetic import check_arithmetic_batch
+
+        print(json.dumps(check_arithmetic_batch(request["worksheet_arithmetic"])))
+    else:
+        print(json.dumps(execute(request)))

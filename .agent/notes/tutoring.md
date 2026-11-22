@@ -300,3 +300,5 @@
 - IQS 文搜图返回第三方原图，下载和图审必须针对同一份像素；网页和图片字段不同。配置与交付见[答疑表达设计](../../docs/technical/domain-tutoring-presentation.md#联网资料与真实照片)。
 
 - 联网照片回归须经过实际 Workflow dispatcher 并从对话消息读取附件。公开结果序列化会排除已审照片的私有存储键，校验公开契约后须将原类型化结果传给 Coordinator 持久化。
+
+- 2026-11-22 整页算术核验从探索工具预算中独立，批处理、转写范围与覆盖规则见[数学引擎设计](../../docs/technical/tutoring-math.md)。本地 API 与 worker 各自装配引擎；仅设置 worker 环境不会恢复图片批改。原图回放发现两处易漏边界：脱式作答可能以多个等号分行；出口肯定门禁需要识别已通过独立视觉审核的逐题证据。测试 API 原图（30 题）最终回复与审核见[验收 trace](https://us.cloud.langfuse.com/project/cmvfvorj601l6ad0jhvajth4c/traces/0338e35f57d548354127bc6189591bb5)。

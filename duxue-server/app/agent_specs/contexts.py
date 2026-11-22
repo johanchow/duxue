@@ -31,7 +31,7 @@ def tutor_turn(*, envelope, instruction, recent_utterances=None, current_images=
         payload["image_review_rule"] = (
             "仅识题、讲解或给提示且未判断学生作答时，"
             "必须返回 image_review.conclusion=not_checking、questions=[]，"
-            "不要把识别出的题干或未作答题目填进 questions。content 写本轮实际回复。"
+            "不要把识别出的题干或未作答题目填进 questions。content 写本轮实际回复。整页批改先整图直读，已清楚读出的纯算式优先紧凑转写为 arithmetic_rows={图片ref:[[题目位置,原式,手写答案],...]}，其他题型和读不清的题放在 questions，两处不要重复。区分印刷题干与铅笔作答，不能用计算出的期望值补全字迹。有密集、缺口、截断或易混字迹时才用 inspect_image 核对相应局部，每轮最多两次。脱式计算的作答可写成以等号相连的各步算式。expected_count 仅在原图有明确计数依据时填写，不能猜数量。未确认全部题区或读不清时必须 coverage=partial，清楚的行仍逐项提交。"
         )
         report_schema = ImageReview.model_json_schema()
         definitions = report_schema.pop('$defs', {})
@@ -42,6 +42,8 @@ def tutor_turn(*, envelope, instruction, recent_utterances=None, current_images=
                            "turn": {"type": "object"}, "content": {"type": "string", "minLength": 1, "maxLength": 1200}},
             "additionalProperties": True,
         }
+    if clean_envelope.get("image_review_phase") == "response":
+        payload["grading_reply_rule"] = "直接回答学生的检查请求。若部分核验，只反馈已核验范围和未能核验的具体位置；保留字迹不明的不确定性。仅核验最终数值时只评价最终作答；只有转写并核验了中间各步时才评价计算过程。"
     from app.agent_specs.definitions import load_definitions
     from app.agent_specs.web_search import TOOL
     if TOOL in load_definitions().units["tutoring.turn"].tools:
