@@ -70,7 +70,9 @@ ENV_FILE=.env.prod docker compose -f docker-compose.yml -f docker-compose.math.y
 
 GitHub Actions 的构建与部署配置见仓库根目录的 [部署说明](../docs/deployment.md)。Server 相关改动合并至 `main` 后，镜像会推送至 GitHub Container Registry（GHCR），再在生产机执行迁移并重启服务。
 
-本地完整栈则额外叠加 `docker-compose.local.yml`：
+在本机直接运行 Uvicorn 做 Ward 答疑联调时，异步求解由使用同一份 `.env` 的独立 worker 消费。在调试 Mac 的 `duxue-server` 运行 `MATH_ENGINE_MODE=subprocess .venv/bin/celery -A app.workers.celery_tasks worker -Q solving --pool=solo -n solving-test@%h -l info`。启动后会消费现存队列。排查单个 pending 档案时，先对照 `problem_dossiers.id`、Redis 消息中的 dossier ID 及 Celery 的 `inspect active_queues`；建档的租约时间无法证明 worker 已经取走任务。
+
+本地 Compose 使用相同的测试 PostgreSQL 和调试 Redis 隧道，连接要求见[调试环境配置](../docs/deployment.md#本地调试共用-ecs-redis)。启动命令如下。
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.local.yml --profile tools run --rm migrate

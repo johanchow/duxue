@@ -1,11 +1,11 @@
 """Celery application for bounded, idempotent infrastructure jobs."""
 
-from celery import Celery
+from app.workers.redis_config import create_celery_app
 
 from app.bootstrap.settings import settings
 
 
-celery_app = Celery("duxue", broker=settings.redis_url, backend=settings.redis_url)
+celery_app = create_celery_app(settings)
 celery_app.conf.update(
     task_serializer="json",
     result_serializer="json",

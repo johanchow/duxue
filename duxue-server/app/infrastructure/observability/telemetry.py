@@ -231,11 +231,11 @@ def _observe_celery_queue(_options):
     try:
         import redis
 
-        from .config import settings
+        from app.bootstrap.settings import settings
         client = redis.Redis.from_url(settings.redis_url, socket_connect_timeout=1, socket_timeout=1)
         # Celery's default Redis transport queue key is `celery`; a custom
         # queue still has full task traces, while this gauge remains absent.
-        return [metrics.Observation(client.llen("celery"), {"celery.queue": "celery"})]
+        return [metrics.Observation(client.llen(settings.redis_key_prefix + "celery"), {"celery.queue": "celery"})]
     except Exception:
         return []
 

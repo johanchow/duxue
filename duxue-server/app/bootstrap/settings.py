@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import os
-from urllib.parse import quote
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 from dotenv import load_dotenv
 
@@ -151,5 +151,42 @@ class Settings:
                 credentials = ""
             object.__setattr__(self, "redis_url", f"{self.redis_scheme}://{credentials}{self.redis_host}:{self.redis_port}/{self.redis_db}")
 
+        redis = urlsplit(self.redis_url)
+        postgres = urlsplit(self.database_url)
+        database = unquote(postgres.path.lstrip("/"))
+        if database == "duxue-prod" and (
+            self.app_env != "production" or redis.path not in {"", "/", "/0"} or "db" in parse_qs(redis.query)
+        ):
+            raise ConfigurationError("Production PostgreSQL requires APP_ENV=production and Redis /0")
+
+        shared_debug = database == "duxue-test" or redis.username == "duxue_test"
+        if shared_debug and not (
+            self.app_env == "test"
+            and postgres.scheme.startswith("postgresql")
+            and database == "duxue-test"
+            and "dbname" not in parse_qs(postgres.query)
+            and redis.scheme in {"redis", "rediss"}
+            and redis.username == "duxue_test"
+            and redis.path == "/1"
+            and not redis.query
+        ):
+            raise ConfigurationError("Shared debug Redis requires APP_ENV=test, duxue-test PostgreSQL and duxue_test on Redis /1")
+        if shared_debug and any(
+            os.getenv(key) not in {None, "", self.redis_url}
+            for key in ("CELERY_BROKER_URL", "CELERY_RESULT_BACKEND", "CELERY_BROKER_READ_URL", "CELERY_BROKER_WRITE_URL")
+        ):
+            raise ConfigurationError("Shared debug Celery endpoints must match the validated Redis URL")
+
+    @property
+    def redis_key_prefix(self) -> str:
+        return "duxue:test:" if urlsplit(self.redis_url).username == "duxue_test" else ""
+
 
 settings = Settings()
+if (
+    _ENV_FILE.name == ".env"
+    and _ENV_FILE.is_file()
+    and settings.app_env == "production"
+    and urlsplit(settings.database_url).path == "/duxue-prod"
+):
+    raise ConfigurationError("Refusing production connections from local .env; select .env.prod explicitly")
