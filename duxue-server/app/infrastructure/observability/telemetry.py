@@ -869,8 +869,9 @@ def model_call_span(*, operation: str, model: str, agent_type: str | None = None
                     definition_digest=definition_digest,
                     component_version=component_version,
                 )
-            for key in ("first_token_ms", "first_content_ms"):
-                if key in result:
+            for key in ("first_token_ms", "first_content_ms", "http_attempts", "response_headers_ms",
+                        "remaining_budget_ms", "read_timeout_seconds"):
+                if result.get(key) is not None:
                     span.set_attribute(f"llm.{key}", result[key])
                     if model_event is not None:
                         model_event[key] = result[key]

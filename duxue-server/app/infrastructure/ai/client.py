@@ -18,6 +18,37 @@ from app.infrastructure.ai.errors import ModelTimeBudgetExceeded
 _model_deadline: ContextVar[float | None] = ContextVar("model_deadline", default=None)
 
 
+_transport: ContextVar[tuple[dict, float] | None] = ContextVar("model_transport", default=None)
+
+
+@contextmanager
+def observe_transport(observation: dict):
+    token = _transport.set((observation, monotonic()))
+    try:
+        yield
+    finally:
+        _transport.reset(token)
+
+
+def _request_started(request: httpx.Request) -> None:
+    active = _transport.get()
+    if active is None:
+        return
+    observation, _ = active
+    observation["http_attempts"] = observation.get("http_attempts", 0) + 1
+    observation["read_timeout_seconds"] = request.extensions.get("timeout", {}).get("read")
+    deadline = _model_deadline.get()
+    if deadline is not None:
+        observation["remaining_budget_ms"] = max(0, round((deadline - monotonic()) * 1000))
+
+
+def _headers_received(response: httpx.Response) -> None:
+    active = _transport.get()
+    if active is not None:
+        observation, started = active
+        observation["response_headers_ms"] = round((monotonic() - started) * 1000)
+
+
 @contextmanager
 def model_time_budget(seconds: float):
     token = _model_deadline.set(monotonic() + seconds)
@@ -39,7 +70,9 @@ def remaining_model_time() -> float | None:
 
 def dashscope_client(*, timeout: float | None = None) -> OpenAI:
     remaining = remaining_model_time()
-    kwargs: dict = {"http_client": httpx.Client(trust_env=False)}
+    kwargs: dict = {"http_client": httpx.Client(trust_env=False, event_hooks={
+        "request": [_request_started], "response": [_headers_received],
+    })}
     if remaining is not None:
         timeout = min(timeout or remaining, remaining)
         kwargs["max_retries"] = 0
