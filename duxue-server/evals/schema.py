@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
 
 from evals.grading import Grading
 
@@ -47,6 +47,14 @@ class Context(Strict):
     task_active: bool = False
     tutoring_intent: str | None = None
     focus_agent_type: str | None = None
+    dossier_status: Literal["pending"] | None = None
+
+    @model_serializer(mode="wrap")
+    def serialize_context(self, handler):
+        data = handler(self)
+        if self.dossier_status is None:
+            data.pop("dossier_status", None)  # Preserve hashes of previously recorded contexts.
+        return data
 
 
 class EvalCase(Strict):

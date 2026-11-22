@@ -417,7 +417,7 @@ Then  只记录，回答照常展示，不触发 fallback
 产品规则唯一归属[陪伴PRD](../product/prd-companion.md#13-本期目标)。本地配置升级使用 `python -m scripts.upgrade_visual_bundle INPUT.json OUTPUT.json`，从Admin显式导出生成未发布草稿，保留源摘要；部署前须在Admin调试发布。升级只增加严格的可选Judge协议扩展，不改变旧发布包兼容指纹，不静默改生产配置。
 
 - 导师提示词主动生成与卡点匹配的 `visual`；独立文字Judge同时返回 `visual_need=requested|helpful|not_needed|uncertain` 、`visual_adequate:boolean` 与 `visual_evidence:string`；三字段须同时声明且必填。Judge读取当前请求、学生证据及完整候选图形结构，不靠关键词扫描语义。缺图、图文不符、空间题只给文字步骤卡均不满足视觉交付。
-- `requested/helpful` 且无可用图时，沿用有界补图流程（主模型一次、配置备用模型最多一次），预加载绘图规范。新候选重新通过结构、文字答案保护与图形答案保护；允许恰当原生图或SVG。保留旧TeX竖式专用补图兼容。
+- `helpful` 且正文已可独立理解、首稿没有图时可直接交付文字。学生要求图或正文依赖图时判为 `requested`；候选图与正文冲突时须修正相应内容。必需的图缺失时，沿用有界补图流程（主模型一次、配置备用模型最多一次），预加载绘图规范。新候选重新通过结构、文字答案保护与图形答案保护；允许恰当原生图或SVG。保留旧TeX竖式专用补图兼容。
 - 补图失败同时清除出口许可并返回 `visual_unavailable` 对应的示意图不可用提示，不将纯文字结果记成已完成画图。简单事实或不需要图的轮次不强制配图；安全与澄清流程保持原有边界。模型声明需要图不放宽任何答案保护。
 - 图形内容由现有 `text_visual` 信封交给Android `VisualBlock` 渲染；调试从已连接App的真实语音完成回调注入文字，再核对服务端交付与设备截图，不将此视为麦克风/ASR验收。
 

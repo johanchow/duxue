@@ -430,23 +430,22 @@ class ApiClient {
     String? voiceDisplayText,
     Map<String, dynamic>? structuredCommand,
     List<String> attachmentKeys = const [],
-  }) async =>
-      Map<String, dynamic>.from((await dio.post('/companion/turn',
-              data: {
-                'content': content,
-                'thread_id': threadId,
-                'expected_thread_version': expectedThreadVersion,
-                if (routeHint != null) 'route_hint': routeHint,
-                if (voiceDisplayText != null) 'voice_display_text': voiceDisplayText,
-                if (tutoringIntent != null) 'tutoring_intent': tutoringIntent,
-                if (structuredCommand != null)
-                  'structured_command': structuredCommand,
-                'attachment_keys': attachmentKeys,
-              },
-              // A planning turn with an image runs several model calls and
-              // exceeds the 20s default before the HTTP response is written.
-              options: Options(extra: {'conversation_turn': ConversationTurn.current}, receiveTimeout: const Duration(seconds: 90))))
-          .data);
+    void Function(String)? onStage,
+  }) => _postReplyTurn(
+        '/companion/turn',
+        {
+          'content': content,
+          'thread_id': threadId,
+          'expected_thread_version': expectedThreadVersion,
+          if (routeHint != null) 'route_hint': routeHint,
+          if (voiceDisplayText != null) 'voice_display_text': voiceDisplayText,
+          if (tutoringIntent != null) 'tutoring_intent': tutoringIntent,
+          if (structuredCommand != null) 'structured_command': structuredCommand,
+          'attachment_keys': attachmentKeys,
+        },
+        receiveTimeout: const Duration(seconds: 90),
+        onStage: onStage,
+      );
 
   Future<Map<String, dynamic>> guardianExperienceTurn({
     required String content,
@@ -454,22 +453,37 @@ class ApiClient {
     List<String> attachmentKeys = const [],
     String mode = 'student_guide',
     void Function(String)? onStage,
-  }) async {
-    final stream = mode == 'guardian_explain' && onStage != null;
-    late final Response response;
-    try {
-      response = await dio.post('/guardian/experience/turn',
-        data: {
+  }) => _postReplyTurn(
+        '/guardian/experience/turn',
+        {
           'content': content,
           'state_token': stateToken,
           'attachment_keys': attachmentKeys,
           'mode': mode,
         },
+        receiveTimeout: const Duration(seconds: 120),
+        onStage: onStage,
+      );
+
+  Future<Map<String, dynamic>> _postReplyTurn(
+    String path,
+    Map<String, dynamic> data, {
+    required Duration receiveTimeout,
+    required void Function(String)? onStage,
+  }) async {
+    final stream = onStage != null;
+    late final Response response;
+    try {
+      response = await dio.post(
+        path,
+        data: data,
         options: Options(
-            extra: {'conversation_turn': ConversationTurn.current},
-            headers: stream ? {'Accept': 'text/event-stream'} : null,
-            responseType: stream ? ResponseType.stream : ResponseType.json,
-            receiveTimeout: const Duration(seconds: 120)));
+          extra: {'conversation_turn': ConversationTurn.current},
+          headers: stream ? {'Accept': 'text/event-stream'} : null,
+          responseType: stream ? ResponseType.stream : ResponseType.json,
+          receiveTimeout: receiveTimeout,
+        ),
+      );
     } on DioException catch (error) {
       final body = error.response?.data;
       if (body is ResponseBody &&
@@ -503,7 +517,7 @@ class ApiClient {
                   statusCode: error['status'] as int, data: {'detail': error['detail']}));
       }
     }
-    throw const FormatException('Incomplete mentor event stream');
+    throw const FormatException('Incomplete reply event stream');
   }
 
   Future<String> uploadGuardianExperienceImage(

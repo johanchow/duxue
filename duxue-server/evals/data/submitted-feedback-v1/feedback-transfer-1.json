@@ -1,0 +1,55 @@
+{
+  "schema_version": "dialogue-eval.v2",
+  "id": "feedback-transfer-1",
+  "type": "single_turn",
+  "replay_mode": "fixed_history",
+  "conversation_id": "feedback-transfer",
+  "turn_index": 0,
+  "label_status": "proposed",
+  "source": {
+    "kind": "synthetic",
+    "coverage": "authored"
+  },
+  "messages": [
+    {
+      "id": "u",
+      "role": "user",
+      "content": "The boy go to school every day. 我觉得 every day 表示习惯，所以要用一般现在时，我这句对吗？"
+    }
+  ],
+  "checks": [
+    {
+      "id": "feedback",
+      "component": "tutoring.turn",
+      "after_message": "u",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "task_title": "作业",
+          "task_active": false
+        }
+      },
+      "grading": {
+        "deterministic": [
+          {
+            "id": "delivered",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "hint_like",
+              "answer"
+            ]
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "feedback",
+            "type": "binary",
+            "expected": "pass",
+            "rubric": "明确肯定时态选择，指出第三人称单数主谓一致，聚焦动词变化，不让学生重选时态。"
+          }
+        ]
+      }
+    }
+  ]
+}

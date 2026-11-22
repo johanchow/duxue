@@ -795,6 +795,18 @@ And 不呈现空选择题或 pronunciation_lesson
 场景核查须允许明确挑战/提醒动作作为答疑中的短暂插曲，不要求结束原题；单纯估时与提交解题步骤仍留在答疑。自然语言挑战确认按钮紧跟最新对话，不能放在全部历史之前。真实模型边界冒烟可运行 `cd duxue-server && .venv/bin/python -m scripts.check_reminder_sprint_models`，仅使用固定样例，不写数据库。
 
 
+## 对话回复阶段
+
+Ward 的 `POST /companion/turn` 和 Guardian 的 `POST /guardian/experience/turn` 支持 `Accept: text/event-stream`，普通 JSON 调用兼容。事件使用 `type` 和 `value`。导出阶段取自实际执行边界。
+
+| 路径 | `stage` 允许值 |
+| --- | --- |
+| Ward | `route` 理解请求、`plan` 整理学习安排、`reflect` 梳理学习回顾、`draft` 准备答疑提示、`check` 核对提示、`revise` 调整提示、`recheck` 重新核对 |
+| Guardian 学生视角 | `draft`、`check`、`revise`、`recheck` |
+| Guardian 导师视角 | `read` 识别题面、`solve` 推导思路、`explain` 整理讲解 |
+
+只投递阶段名，相邻重复阶段合并。实际发生重试时投递对应阶段。正文、交互和下一轮 `state_token` 随校验后的唯一 `result` 交付。流内失败以 `error` 携带状态码和 `detail`，断流在 App 显示重试。Ward 流使用独立数据库会话处理原命令，传输断开不触发业务取消。阶段不进入消息账本。
+
 ## Guardian 问答体验（2026-11-17 验收，2026-11-18 扩展双视角）
 
 ### Admin 导师解析直出链路（方案 A）
@@ -805,8 +817,11 @@ And 不呈现空选择题或 pronunciation_lesson
 
 该候选可分别使用 `--low-effort-trial` 或 `--crop-trial` 生成。前者仅在带图、无历史的 Guardian T1 主求解请求上发送 `reasoning_effort=low`，保留思考并省略该调用的 `thinking_budget`；其他路线沿用其模型配置。后者允许读题模型在完成转写时一并返回局部图位置，由已有 inspect_image 工具在本次授权的原图上裁切。同次主求解可同时看原图与切片，独立复读和备用路线仍使用各自证据。两项均须单独验收。
 
-Guardian App 的导师请求可向原 POST 接口声明 `Accept: text/event-stream`。服务端按实际节点发送 `stage`（read、solve、explain），完成原有解析、重试和交付校验后发送一次 `result`；流内失败以 `error` 携带状态码与原有 detail，流意外中断进入客户端重试界面。学生视角和普通 JSON 请求沿用原协议。阶段事件仅含阶段名；正文与下一轮 state_token 仅随最终结果交付。
+`--distance-evidence` 生成距离端点核验候选。物理题转写后，读图器把需要代数距离关系的小问绑定到引用的图、原图选区和印出的距离符号。服务端复用 `inspect_image` 裁切本轮授权的原图，局部读图只接收对应切片。服务端绑定裁图回执，逐图检查符号和小问覆盖。取错区域可重新定位一次，格式错误可复用同一切片修复一次。单纯数值读数进入普通求解。
 
+主备求解复用确认端点推导出的相邻距离或中点速度关系，交付时由服务端填入同一证据生成的公式。局部取证失败时先交付其余小问和已确认的公式，只有目标局部确实模糊或残缺时才提示补拍对应图。`--distance-low-effort` 在同一候选上额外对 Guardian T1 主求解启用 `reasoning_effort=low`，供独立比较质量和延迟。
+
+回复进度见[对话回复阶段](#对话回复阶段)。
 
 Admin 展示准备、蓝图、讲解、交付四个节点，点击蓝图可查看[求解流程](domain-problem-solving.md)。从已有单节点直出草稿运行 `scripts/upgrade_guardian_mentor_review.py SOURCE OUTPUT --parent`，只更新父图，前提是草稿包含分阶段蓝图。通过 Admin 的 `config:import-upgrade` 导入后校验、调试、发布。已有单节点及历史分段审核快照按原摘要加载，成人 API 继续原直出兼容路径。
 

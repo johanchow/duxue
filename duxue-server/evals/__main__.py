@@ -626,25 +626,40 @@ def historical_main(argv: list[str] | None = None) -> int:
 
     for name in ("run", "run-judges", "run-conversations", "run-episodes"):
         sub.choices[name].add_argument(
-            "--config-snapshot", help="Admin导出的完整固定快照，不在线跟随发布"
+            "--config-channel",
+            choices=("working-draft", "release"),
+            default=None,
+            help="从 Admin 拉取并冻结的配置渠道（默认读取 AGENT_CONFIG_CHANNEL，未设时为 working-draft）",
+        )
+        sub.choices[name].add_argument(
+            "--config-snapshot",
+            default=None,
+            help="仅限单元测试或纯离线复现的本地快照文件；日常评测默认直接从 Admin 拉取",
         )
     args = parser.parse_args(argv)
     if args.command in {"run", "run-judges", "run-conversations", "run-episodes"}:
         # Explicit offline selection before any application/model imports.
-        os.environ["AGENT_CONFIG_SOURCE"] = "snapshot"
         if args.config_snapshot:
+            os.environ["AGENT_CONFIG_SOURCE"] = "snapshot"
             os.environ["AGENT_CONFIG_SNAPSHOT"] = str(
                 Path(args.config_snapshot).resolve()
             )
-        from app.agent_specs.configuration import read_snapshot, select_offline_snapshot
+        else:
+            os.environ["AGENT_CONFIG_SOURCE"] = "admin"
+        from app.agent_specs.configuration import (
+            load_evaluation_snapshot,
+            select_offline_snapshot,
+        )
         from app.agent_specs.definitions import use_definitions
         from app.bootstrap import (
             settings as _settings_module,  # noqa: F401 - load deployment credentials
         )
-
         from evals.configuration import _record
 
-        record = read_snapshot()
+        record = load_evaluation_snapshot(
+            snapshot_file=args.config_snapshot,
+            channel=args.config_channel,
+        )
         snapshot = select_offline_snapshot(record)
         token = _record.set(record)
         try:

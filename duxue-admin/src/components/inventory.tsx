@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Background,
   BaseEdge,
@@ -22,13 +22,16 @@ import {
   tutoringHierarchy,
   isTutoringAttempt,
 } from '../lib/tutoring-hierarchy';
-import { actionLogic, gateLogic } from '../lib/workflow-code';
+import { actionLogic, edgeConditionDetail, gateLogic } from '../lib/workflow-code';
 import { componentTypes } from '../lib/component-types';
 import { filterAgents } from '../lib/agent-filter';
 import {
   nodeExecutions,
   edgeExecutions,
-  childExecution,
+  executionChildren,
+  executionForCall,
+  nodeVisits,
+  type ExecutionCall,
 } from '../lib/execution-inspector';
 import { IconArrowRight, IconCode, IconSearch, IconWorkflow } from './icons';
 
@@ -585,13 +588,27 @@ export function WorkflowActionDetail({
         </p>
         {hierarchy && isTutoringAttempt(flow, node, hierarchy) && (
           <>
-            <h3>本次尝试</h3>
+            <h3>本次尝试内部管道</h3>
             <ol>
               <li>
-                启发式答疑生成 · <code>{hierarchy.attempt.ref}</code>
+                启发式答疑生成 ·{' '}
+                <a
+                  href={workflowDetailHref(
+                    'tutoring',
+                    hierarchy.attempt,
+                    catalog.definitions?.[hierarchy.attempt.ref],
+                    catalog.source_draft?.id,
+                    catalog.source_release?.id,
+                  )}
+                >
+                  <code>{hierarchy.attempt.ref}</code>
+                </a>
               </li>
               <li>
-                取得可审核的候选后进入出口审核 ·{' '}
+                协议与工具预算检查（工具预算、候选 JSON 契约、配图结构）
+              </li>
+              <li>
+                取得可审核的候选后进入出口并行审核 ·{' '}
                 <a
                   href={workflowDetailHref(
                     'tutoring',
@@ -601,7 +618,7 @@ export function WorkflowActionDetail({
                     catalog.source_release?.id,
                   )}
                 >
-                  查看审核流程
+                  查看审核流程（{hierarchy.review.ref}）
                 </a>
               </li>
             </ol>
@@ -625,10 +642,20 @@ export function WorkflowActionDetail({
                   : edge.to === 'END'
                     ? '结束'
                     : edge.to;
+                const condition = edgeConditionDetail(
+                  flow.id,
+                  edge.condition_id,
+                );
                 return (
                   <li key={index}>
-                    {title}
-                    {edge.condition_id ? (
+                    <strong>{title}</strong>
+                    {condition ? (
+                      <>
+                        {' '}
+                        · {condition.label}（<code>{edge.condition_id}</code>）：
+                        {condition.summary}
+                      </>
+                    ) : edge.condition_id ? (
                       <>
                         {' '}
                         · <code>{edge.condition_id}</code>
@@ -651,6 +678,76 @@ export function WorkflowActionDetail({
   );
 }
 
+function ReplayVisit({
+  event,
+  events,
+  workflows,
+  activeEvent,
+  openCall,
+  expanded,
+}: {
+  event: Json;
+  events: Json[];
+  workflows: Record<string, Json>;
+  activeEvent: Json | null;
+  openCall: (call: ExecutionCall) => void;
+  expanded: boolean;
+}) {
+  const children = executionChildren(events, workflows, event);
+  const { input, output, ...details } = event;
+  return (
+    <details open={expanded || activeEvent?.id === event.id}>
+      <summary>
+        #{event.id} ·{' '}
+        {event.kind === 'model' ? '模型调用' : event.node_id || event.kind}
+        {event.model ? ` · ${event.model}` : ''} · {event.status} ·{' '}
+        {event.duration_ms == null ? '耗时未记录' : `${event.duration_ms} ms`}
+      </summary>
+      {children.map((child) =>
+        child.type === 'workflow' ? (
+          <button
+            key={child.event.id}
+            type="button"
+            className="secondary btn-sm"
+            onClick={() => openCall(child)}
+          >
+            查看子流程 {child.workflowId} · #{child.event.id}
+          </button>
+        ) : (
+          <ReplayVisit
+            key={child.event.id}
+            event={child.event}
+            events={events}
+            workflows={workflows}
+            activeEvent={activeEvent}
+            openCall={openCall}
+            expanded={
+              child.event.kind === 'model' ||
+              (!!event.node_id && child.event.node_id === event.node_id)
+            }
+          />
+        ),
+      )}
+      {input !== undefined && (
+        <>
+          <h4>输入</h4>
+          <pre>{typeof input === 'string' ? input : pretty(input)}</pre>
+        </>
+      )}
+      {output !== undefined && (
+        <>
+          <h4>输出</h4>
+          <pre>{typeof output === 'string' ? output : pretty(output)}</pre>
+        </>
+      )}
+      <details>
+        <summary>事件与状态</summary>
+        <pre>{pretty(details)}</pre>
+      </details>
+    </details>
+  );
+}
+
 export function WorkflowExplorer({
   catalog,
   initialWorkflow,
@@ -666,15 +763,23 @@ export function WorkflowExplorer({
   draftId?: string;
   navigate: (url: string) => void;
 }) {
-  const [calls, setCalls] = useState<{ flow: string; event: Json }[]>([]);
+  const [calls, setCalls] = useState<ExecutionCall[]>([]);
+  const inspector = useRef<HTMLDivElement>(null);
   const call = calls.at(-1);
-  const workflowId = call?.flow || initialWorkflow;
+  const workflowId = call?.workflowId || initialWorkflow;
   const replay =
     allEvents.length > 0 || catalog.source === 'execution-snapshot';
-  const execution = call ? childExecution(allEvents, call.event.id) : allEvents;
-  function openCall(flow: string, event: Json) {
+  const execution = call ? executionForCall(allEvents, call) : allEvents;
+  function openCall(call: ExecutionCall) {
     setSelection(null);
-    setCalls([...calls, { flow, event }]);
+    setCalls((previous) => [...previous, call]);
+  }
+  function inspectNode(node: Json) {
+    setSelection({ kind: 'Node', config: node, reference: node.ref });
+    if (replay)
+      requestAnimationFrame(() =>
+        inspector.current?.scrollIntoView({ block: 'start' }),
+      );
   }
   const [selection, setSelection] = useState<{
     kind: string;
@@ -683,11 +788,9 @@ export function WorkflowExplorer({
   } | null>(null);
   const [direction, setDirection] = useState<'LR' | 'TB'>('LR');
   const [showWhole, setShowWhole] = useState(false);
+  const [showRelationships, setShowRelationships] = useState(Boolean(replay));
   const flow = catalog.workflows?.[workflowId];
-  const hierarchy = useMemo(
-    () => tutoringHierarchy(catalog.workflows),
-    [catalog.workflows],
-  );
+  const hierarchy = tutoringHierarchy(catalog.workflows);
   const detailHref = (node?: Json) =>
     workflowDetailHref(
       workflowId,
@@ -709,9 +812,17 @@ export function WorkflowExplorer({
               ]),
             ),
             direction,
+            { showRelationships: replay ? true : showRelationships },
           )
-        : { nodes: [], edges: [] },
-    [flow, catalog.definitions, catalog.components, direction],
+        : { nodes: [], edges: [], relationshipCount: 0 },
+    [
+      flow,
+      catalog.definitions,
+      catalog.components,
+      direction,
+      replay,
+      showRelationships,
+    ],
   );
   useEffect(() => {
     if (!activeEvent || !flow || activeEvent.workflow_id !== workflowId) return;
@@ -791,7 +902,7 @@ export function WorkflowExplorer({
   });
   const selectionEvents = selection
     ? selection.kind === 'Node'
-      ? nodeExecutions(execution, workflowId, selection.config)
+      ? nodeVisits(execution, workflowId, selection.config)
       : selection.kind === 'Edge'
         ? edgeExecutions(execution, workflowId, selection.config)
         : []
@@ -818,8 +929,8 @@ export function WorkflowExplorer({
               Workflow 流程图 <span className="badge">只读</span>
             </h2>
             <p className="compact-meta">
-              {flow.id} · {flow.nodes.length} 个 Node ·{' '}
-              {flow.edges.length} 条 Edge · 入口 {flow.entry}
+              {flow.id} · {flow.nodes.length} 个 Node · {flow.edges.length} 条
+              Edge · 入口 {flow.entry}
             </p>
           </div>
           <div className="page-actions">
@@ -833,10 +944,94 @@ export function WorkflowExplorer({
           </div>
         </div>
         <p className="muted">
-          {execution.length
-            ? '点击节点查看本次执行记录。'
+          {replay
+            ? '点击节点查看输入、输出和本次调用的子流程。'
             : '点击带箭头的节点打开详情，点击连线查看分支配置。'}
         </p>
+        {!replay && hierarchy && workflowId === hierarchy.loop.ref && (
+          <div
+            className="notice"
+            role="region"
+            aria-label="单次尝试内部管道"
+            style={{ marginBottom: 12 }}
+          >
+            <div style={{ marginBottom: 8 }}>
+              <strong>单次尝试内部管道</strong>
+              <span className="muted" style={{ marginLeft: 8 }}>
+                下方 6 个尝试节点（主模型首答 / 修复 / 备用模型 / 重绘 / 补图）每次执行时均在内部依次调用：
+              </span>
+            </div>
+            <div
+              style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                gap: 8,
+              }}
+            >
+              <button
+                type="button"
+                className="secondary btn-sm"
+                onClick={() =>
+                  navigate(
+                    workflowDetailHref(
+                      'tutoring',
+                      hierarchy.attempt,
+                      catalog.definitions?.[hierarchy.attempt.ref],
+                      draftId || catalog.source_draft?.id,
+                      catalog.source_release?.id,
+                    )!,
+                  )
+                }
+              >
+                Agent · 启发式答疑（{hierarchy.attempt.ref}）
+                <IconArrowRight size={14} />
+              </button>
+              <span className="muted" aria-hidden="true">
+                →
+              </span>
+              <button
+                type="button"
+                className="secondary btn-sm"
+                onClick={() =>
+                  navigate(
+                    workflowDetailHref(
+                      'tutoring',
+                      hierarchy.exit,
+                      undefined,
+                      draftId || catalog.source_draft?.id,
+                      catalog.source_release?.id,
+                    )!,
+                  )
+                }
+              >
+                Action · 协议与候选审核编排（{hierarchy.exit.id}）
+                <IconArrowRight size={14} />
+              </button>
+              <span className="muted" aria-hidden="true">
+                →
+              </span>
+              <button
+                type="button"
+                className="secondary btn-sm"
+                onClick={() =>
+                  navigate(
+                    workflowDetailHref(
+                      'tutoring',
+                      hierarchy.review,
+                      undefined,
+                      draftId || catalog.source_draft?.id,
+                      catalog.source_release?.id,
+                    )!,
+                  )
+                }
+              >
+                Workflow · 出口并行审核（{hierarchy.review.ref}）
+                <IconArrowRight size={14} />
+              </button>
+            </div>
+          </div>
+        )}
         <div className="workflow-toolbar">
           <div className="workflow-legend" aria-label="流程图图例">
             <span className="legend-agent">Agent</span>
@@ -845,13 +1040,26 @@ export function WorkflowExplorer({
             {flow.nodes.some((n: Json) => n.kind === 'workflow') && (
               <span className="legend-workflow">Workflow · 子流程</span>
             )}
-            <span className="legend-parent">虚线 · 归属</span>
+            {(replay || showRelationships) && graph.relationshipCount > 0 && (
+              <span className="legend-parent">虚线 · 归属</span>
+            )}
           </div>
           <div
             className="workflow-directions"
             role="group"
             aria-label="布局方向"
           >
+            {!replay && graph.relationshipCount > 0 && (
+              <button
+                className="secondary"
+                aria-pressed={showRelationships}
+                onClick={() => setShowRelationships(!showRelationships)}
+              >
+                {showRelationships
+                  ? `隐藏内部归属组件 (${graph.relationshipCount})`
+                  : `显示内部归属组件 (${graph.relationshipCount})`}
+              </button>
+            )}
             <button
               className="secondary"
               aria-pressed={direction === 'LR'}
@@ -870,7 +1078,7 @@ export function WorkflowExplorer({
         </div>
         <div className="workflow-canvas" aria-label={`${workflowId} 流程图`}>
           <ReactFlow
-            key={`${workflowId}:${direction}`}
+            key={`${workflowId}:${direction}:${replay ? 'replay' : showRelationships ? 'all' : 'control'}`}
             nodes={nodes}
             edges={edges}
             edgeTypes={edgeTypes}
@@ -884,8 +1092,8 @@ export function WorkflowExplorer({
                         n.className?.includes('execution-visited') ||
                         n.className?.includes('execution-failed'),
                     ),
-                    padding: 0.4,
-                    minZoom: 0.5,
+                    padding: 0.15,
+                    minZoom: 0.1,
                     maxZoom: 1,
                   }
                 : { padding: 0.1, minZoom: 0.65, maxZoom: 1 }
@@ -907,8 +1115,16 @@ export function WorkflowExplorer({
                 catalog.workflows[config.ref]
               ) {
                 const events = nodeExecutions(execution, workflowId, config);
-                if (events.length === 1) {
-                  openCall(config.ref, events[0]);
+                const children =
+                  events.length === 1
+                    ? executionChildren(execution, catalog.workflows, events[0])
+                    : [];
+                const child = children.length === 1 ? children[0] : null;
+                if (
+                  child?.type === 'workflow' &&
+                  child.workflowId === config.ref
+                ) {
+                  openCall(child);
                   return;
                 }
               }
@@ -916,11 +1132,7 @@ export function WorkflowExplorer({
                 navigate(href);
                 return;
               }
-              setSelection({
-                kind: 'Node',
-                config: config || { id: node.id, kind: 'boundary' },
-                reference: config?.ref,
-              });
+              inspectNode(config || { id: node.id, kind: 'boundary' });
             }}
             onEdgeClick={(_, edge) =>
               setSelection({
@@ -934,13 +1146,46 @@ export function WorkflowExplorer({
             <Controls showInteractive={false} position="bottom-right" />
           </ReactFlow>
         </div>
-        <div className="graph-inspector" aria-live="polite">
+        <div className="graph-inspector" aria-live="polite" ref={inspector}>
           {selection ? (
             <>
-              <h3>{selection.kind} 配置</h3>
-              <pre data-testid="selection-config">
-                {pretty(selection.config)}
-              </pre>
+              {replay && (
+                <div aria-label="选中对象执行数据">
+                  <h3>
+                    本次执行数据 · {selection.config?.id || selection.kind}
+                  </h3>
+                  {selectionEvents.length ? (
+                    selectionEvents.map((event) => (
+                      <ReplayVisit
+                        key={event.id}
+                        event={event}
+                        events={execution}
+                        workflows={catalog.workflows}
+                        activeEvent={activeEvent}
+                        openCall={openCall}
+                        expanded
+                      />
+                    ))
+                  ) : (
+                    <p>本次没有该对象的执行记录。</p>
+                  )}
+                </div>
+              )}
+              {replay ? (
+                <details>
+                  <summary>{selection.kind} 配置</summary>
+                  <pre data-testid="selection-config">
+                    {pretty(selection.config)}
+                  </pre>
+                </details>
+              ) : (
+                <>
+                  <h3>{selection.kind} 配置</h3>
+                  <pre data-testid="selection-config">
+                    {pretty(selection.config)}
+                  </pre>
+                </>
+              )}
               {selection.kind === 'Node' &&
                 selection.config.kind === 'action' && (
                   <div className="page-actions">
@@ -955,79 +1200,6 @@ export function WorkflowExplorer({
                     </button>
                   </div>
                 )}
-              {execution.length > 0 && (
-                <div aria-label="选中对象执行数据">
-                  <h3>本次执行数据</h3>
-                  {selectionEvents.length ? (
-                    selectionEvents.map((event) => (
-                      <details key={event.id} open>
-                        <summary>
-                          执行 #{event.id} · {event.status} ·{' '}
-                          {event.duration_ms == null
-                            ? '耗时未记录'
-                            : `${event.duration_ms} ms`}
-                        </summary>
-                        {selection.config.kind === 'workflow' &&
-                          catalog.workflows[selection.config.ref] && (
-                            <button
-                              className="secondary"
-                              onClick={() =>
-                                openCall(selection.config.ref, event)
-                              }
-                            >
-                              查看此次子流程执行
-                            </button>
-                          )}
-                        {hierarchy &&
-                          isTutoringAttempt(
-                            flow,
-                            selection.config,
-                            hierarchy,
-                          ) &&
-                          childExecution(execution, event.id)
-                            .filter(
-                              (child) =>
-                                child.workflow_id === 'tutoring' &&
-                                ((child.node_id === hierarchy.attempt.id &&
-                                  child.kind === 'model') ||
-                                  (child.node_id === hierarchy.exit.id &&
-                                    child.kind !== 'edge') ||
-                                  (child.node_id === hierarchy.review.id &&
-                                    child.kind === 'workflow')),
-                            )
-                            .map((child) =>
-                              child.node_id === hierarchy.review.id ? (
-                                <button
-                                  className="secondary"
-                                  key={child.id}
-                                  onClick={() =>
-                                    openCall(hierarchy.review.ref, child)
-                                  }
-                                >
-                                  查看此次审核流程
-                                </button>
-                              ) : (
-                                <p key={child.id}>
-                                  {child.kind === 'model'
-                                    ? '答疑模型调用'
-                                    : '出口审核（含子步骤）'}{' '}
-                                  ·{' '}
-                                  {child.duration_ms == null
-                                    ? '耗时未记录'
-                                    : `${child.duration_ms} ms`}
-                                </p>
-                              ),
-                            )}
-                        <pre>{pretty(event)}</pre>
-                      </details>
-                    ))
-                  ) : (
-                    <p>
-                      本次没有该对象的执行记录。未经过的分支不会生成输入输出。
-                    </p>
-                  )}
-                </div>
-              )}
               {reference && (
                 <>
                   <div className="section-head inspector-head">
@@ -1061,7 +1233,11 @@ export function WorkflowExplorer({
               )}
             </>
           ) : (
-            <p>选择图中的 Node 或 Edge，查看原始配置与节点引用的组件定义。</p>
+            <p>
+              {replay
+                ? '选择图中的节点或连线，查看本次回放数据。'
+                : '选择图中的 Node 或 Edge，查看原始配置与节点引用的组件定义。'}
+            </p>
           )}
         </div>
         <details>
@@ -1072,13 +1248,7 @@ export function WorkflowExplorer({
               <button
                 className="secondary"
                 key={node.id}
-                onClick={() =>
-                  setSelection({
-                    kind: 'Node',
-                    config: node,
-                    reference: node.ref,
-                  })
-                }
+                onClick={() => inspectNode(node)}
               >
                 {node.id}
               </button>

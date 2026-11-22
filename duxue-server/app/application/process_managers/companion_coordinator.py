@@ -5,6 +5,10 @@ import json
 from time import perf_counter
 from uuid import uuid4
 
+from fastapi import HTTPException
+from sqlalchemy.orm import Session
+from sqlalchemy.orm.exc import StaleDataError
+
 from app.agent_specs.catalog import load_catalog
 from app.agent_specs.release_runtime import configured_call
 from app.application.commands.companion_history import history_is_visible, lock_history
@@ -48,9 +52,6 @@ from app.infrastructure.persistence.models import (
 from app.infrastructure.persistence.workflow_dispatcher import (
     SqlAlchemyWorkflowDispatcher,
 )
-from fastapi import HTTPException
-from sqlalchemy.orm import Session
-from sqlalchemy.orm.exc import StaleDataError
 
 _ACTIVE_STATUSES = ("active", "waiting_for_ward", "paused")
 _RESUMABLE_STATUSES = ("waiting_for_ward", "paused", "failed", "timed_out")
@@ -347,7 +348,7 @@ class CompanionCoordinator:
             turn["structured_command"] = None
             visible_content = f"选择：{matching[0]['label']}"
         focus_run = self._focus_run(thread)
-        from app.agent_specs.runtime import execute_workflow
+        from app.agent_specs.runtime import execute_workflow, notify_node_started
 
         def classify(state):
             state["proposal"] = None
@@ -391,6 +392,7 @@ class CompanionCoordinator:
             )
 
         with agent_step_span("route", "intent_route") as route_span:
+            notify_node_started("companion.route")
             set_observation_payload(route_span, input={
                 "content": content, "route_hint": route_hint,
                 "focus_agent_type": getattr(focus_run, "agent_type", None),
@@ -523,6 +525,7 @@ class CompanionCoordinator:
         try:
             with agent_workflow_span(agent_type=run.agent_type, run_id=run.id, thread_id=thread.id) as workflow_span:
                 set_observation_payload(workflow_span, input=invocation.model_dump(mode="json"))
+                notify_node_started(f"companion.{run.agent_type}")
                 outcome = self.dispatcher.invoke(invocation)
                 workflow_span.set_attribute("agent.run_status", outcome.run_status)
                 workflow_span.set_attribute("agent.outcome_type", outcome.outcome_type or "unknown")

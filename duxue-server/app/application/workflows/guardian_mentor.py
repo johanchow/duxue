@@ -539,6 +539,29 @@ def _mentor_answer(guardian_id, candidate, verified_solution, safety):
     return answer
 
 
+def _render_distance_formula(content: str, slot: str, latex: str) -> str:
+    delimiters = (("$$", "$$"), (r"\[", r"\]"), (r"\(", r"\)"), ("$", "$"))
+    segments = []
+    while slot in content:
+        before, _, content = content.partition(slot)
+        wrapped = any(before.endswith(start) and content.startswith(end) for start, end in delimiters)
+        segments.extend((before, latex if wrapped else f"${latex}$"))
+    return "".join([*segments, content])
+
+
+def _distance_summary(verified_solution: VerifiedSolution, evidence: dict, unresolved: list[dict]) -> list[str]:
+    from app.contexts.problem_solving.domain.distance_evidence import part_key
+
+    formulas = evidence.get("formulas", [])
+    excluded = {part_key(row["part"]) for row in [*formulas, *unresolved]}
+    lines = [f"- {row['part']}：${row['latex']}$" for row in formulas]
+    lines.extend(
+        f"- {part}：{value}" for part, value in verified_solution.final_answers.items()
+        if part_key(part).isdecimal() and part_key(part) not in excluded
+    )
+    return lines
+
+
 def explain_for_guardian(
     *,
     guardian_id: str,
@@ -553,7 +576,9 @@ def explain_for_guardian(
     model_settings=None,
 ) -> dict:
     """Process Manager executing one stateless Guardian mentor-explanation turn."""
+    from app.agent_specs.blueprint_steps import EXTRACT
     from app.agent_specs.catalog import load_catalog
+    from app.agent_specs.definitions import load_definitions
     from app.agent_specs.runtime import execute_workflow
 
     catalog = load_catalog()
@@ -601,28 +626,71 @@ def explain_for_guardian(
             child is not None and bool(valid_images) and not clean_window
             and any(edge.condition == "mentor_language" for edge in child.edges)
         )
-        solver = (
-            QwenProblemSolverGateway(model_settings, guardian_request=content)
-            if scoped else QwenProblemSolverGateway(model_settings)
-        )
+        extractor = load_definitions().units.get(EXTRACT)
+        distance_enabled = bool(valid_images and extractor and extractor.models[0].guardian_distance_evidence)
+        solver_options = {}
+        if scoped:
+            solver_options["guardian_request"] = content
+        if distance_enabled:
+            solver_options["guardian_distance_evidence"] = True
+        solver = QwenProblemSolverGateway(model_settings, **solver_options)
         verified_solution = _solve_for_mentor(
             content=question, images=valid_images, solver=solver,
             bank_lookup=bank_lookup, workflow_spec=child, allow_language_direct=scoped,
         )
-        return {"status": verified_solution.status if verified_solution else "unavailable"}
+        return {
+            "status": verified_solution.status if verified_solution else "unavailable",
+            **({"distance_evidence": verified_solution.stem.distance_evidence}
+               if verified_solution and verified_solution.stem.distance_evidence else {}),
+        }
 
     def explain(state):
         nonlocal attempts, gateway, repair_error, candidate
         attempts += 1
+        evidence = verified_solution.stem.distance_evidence if verified_solution else None
+        unresolved = evidence.get("unresolved_parts", []) if evidence else []
+        if unresolved:
+            pending = "、".join(dict.fromkeys(row["part"] for row in unresolved))
+            blocked_figures = list(dict.fromkeys(
+                row["figure"] for row in unresolved if row["reason"] == "image_unclear" and row.get("figure")
+            ))
+            lines = _distance_summary(verified_solution, evidence, unresolved)
+            notice = f"这些小问的图上标注尚未核对：{pending}。"
+            if blocked_figures:
+                notice += f"请补拍{'、'.join(blocked_figures)}，让标注线两端和点名清楚可见。"
+            if lines:
+                candidate = MentorExplainCandidate(act="explain", content="\n".join([*lines, "", notice]))
+            elif blocked_figures:
+                candidate = MentorExplainCandidate(act="clarify", content=notice)
+            else:
+                state["branch"] = "deliver"
+                return {"attempt": attempts, "branch": "deliver", "reason": "distance_evidence_unavailable"}
+            state["branch"] = "deliver"
+            return {"attempt": attempts, "branch": "deliver", "reason": "distance_partial_delivery"}
         if gateway is None:
             gateway = QwenMentorExplainGateway(model_settings)
         prior_error, repair_error = repair_error, None
+        started = time.monotonic()
         try:
             raw = gateway.explain(
                 content=content, verified_solution=verified_solution,
                 recent_utterances=prepared.window, current_images=prepared.images, repair_error=prior_error,
             )
             candidate = MentorExplainCandidate.model_validate(raw)
+            if (evidence and evidence["status"] == "unclear" and candidate.act == "clarify"
+                    and not verified_solution.stem.needs_student_confirmation):
+                candidate = None
+            if evidence and evidence["status"] == "read" and candidate.act in {"explain", "answer"}:
+                formulas = evidence["formulas"]
+                missing = [row["slot"] for row in formulas if row["slot"] not in candidate.content]
+                if missing:
+                    repair_error = "只修正受影响小问的公式占位。下列标记各原样保留一次：" + "、".join(missing)
+                    candidate = None
+                else:
+                    rendered = candidate.content
+                    for row in formulas:
+                        rendered = _render_distance_formula(rendered, row["slot"], row["latex"])
+                    candidate = candidate.model_copy(update={"content": rendered})
         except ValidationError as err:
             repair_error = f"JSON schema validation failed: {err.errors(include_input=False)[:3]}"
         except ModelGatewayError as err:
@@ -632,7 +700,15 @@ def explain_for_guardian(
                     "请精简推导与排版，控制在 3500 字内并确保 JSON 严格完整闭合；"
                     "多小问题优先保证已确定的小问完整交付。"
                 )
-        state["branch"] = "retry" if repair_error and attempts < attempt_limit else "deliver"
+        has_formulas = bool(evidence and evidence.get("formulas"))
+        retry = bool(repair_error and attempts < attempt_limit)
+        if retry and has_formulas:
+            remaining = remaining_model_time()
+            retry = remaining is None or remaining > time.monotonic() - started
+        state["branch"] = "retry" if retry else "deliver"
+        if candidate is None and (repair_error or prior_error) and has_formulas and not retry:
+            summary = "\n".join(_distance_summary(verified_solution, evidence, []))
+            candidate = MentorExplainCandidate(act="explain", content=f"当前可交付的公式与小问答案：\n{summary}\n完整推导暂未完成。")
         return {"attempt": attempts, "branch": state["branch"]}
 
     def finish(state):

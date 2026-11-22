@@ -2,12 +2,10 @@
 
 import time
 
-from evals.local import solve
+from evals import solve
 
 
-def execute(
-    entry, record, backend, assets, solver_spec, sample_index=0, solve_call=None
-):
+def execute(entry, record, backend, assets, sample_index=0):
     from evals.episode_runner import run_episode
     from evals.graders import failures, grade_result
     from evals.grading import unavailable
@@ -35,16 +33,12 @@ def execute(
             latency_ms = None
             llm_calls: list[dict] = []
             try:
+                solver = solve.identity()
                 with capture_llm_calls() as captured:
-                    content = (solve_call or solve.complete)(case, solver_spec, images)
+                    obs = solve.execute(case.student_said, images)
                 llm_calls = list(captured)
-                if not isinstance(content, str) or not content.strip():
-                    raise ValueError("empty_solution")
-                obs = Observation(
-                    "answer", content=content, delivered_content=content, tool_calls=[]
-                )
                 evidence = _evidence(case, obs)
-                evidence["execution_target"] = "solve"
+                evidence.update(execution_target="solve", solver=solver)
                 pairs = list(zip(case.images, images))
 
                 def judge(rule):

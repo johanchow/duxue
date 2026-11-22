@@ -309,3 +309,12 @@ def test_report_lists_shape_and_diagram_metrics_without_gating_on_them():
         results,
     )
     assert "-- visual" in text and "-- shape" in text
+
+
+def test_pending_dossier_replay_preserves_confirmation_gate():
+    from evals.runner import run_sample
+
+    case = _case(context={"dossier_status": "pending"})
+    tutor = StaticTutorModel(GOOD)
+    run_sample(case, Backends(tutor_model=tutor, leak_judge=StaticLeakJudge()), [], [])
+    assert tutor.calls[0]["envelope"]["_dossier_gate"]["allows_verdict_assertion"] is False

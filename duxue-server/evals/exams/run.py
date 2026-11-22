@@ -39,7 +39,18 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--data", type=Path, required=True)
     p.add_argument("--out", type=Path, required=True)
-    p.add_argument("--snapshot", type=Path, required=True)
+    p.add_argument(
+        "--config-channel",
+        choices=("working-draft", "release"),
+        default=None,
+        help="Admin configuration channel to record for this run (default: AGENT_CONFIG_CHANNEL or working-draft)",
+    )
+    p.add_argument(
+        "--snapshot",
+        type=Path,
+        default=None,
+        help="Optional local snapshot JSON (unit tests / offline replay only)",
+    )
     p.add_argument("--base", required=True, type=local_url)
     p.add_argument("--subject", action="append", choices=sorted(SOURCES))
     p.add_argument("--smoke", action="store_true")
@@ -54,8 +65,16 @@ def main():
         httpx.Client(base_url=args.base, timeout=300) as client,
     ):
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if args.snapshot is not None:
+            config_digest = digest(args.snapshot)
+        else:
+            from app.agent_specs.configuration import fetch_admin_snapshot
+
+            admin_snapshot = fetch_admin_snapshot(channel=args.config_channel)
+            config_digest = admin_snapshot["digest"]
+            write(args.out / "config-snapshot.json", admin_snapshot)
         meta = {
-            "config": digest(args.snapshot),
+            "config": config_digest,
             "protocol": PROMPT,
             "base": args.base,
             "papers": {

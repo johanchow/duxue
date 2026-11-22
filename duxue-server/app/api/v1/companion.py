@@ -1,4 +1,5 @@
 from app.api.deps import expose_turn_trace
+from app.api.reply_events import GUIDE_STAGES, stream_reply
 from .common import *
 from app.api.schemas import CompanionHistoryClearRequest
 from app.application.commands.companion_history import clear_history, history_is_visible, visible_threads
@@ -294,46 +295,56 @@ def clear_companion_history(
 
 
 @router.post("/companion/turn", dependencies=[Depends(expose_turn_trace)])
-def companion_turn(body: CompanionTurnRequest, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
-    """Create or continue exactly one controlled companion domain Run.
+def companion_turn(
+    body: CompanionTurnRequest, request: Request, response: Response,
+    principal: Principal = Depends(current_ward), db: Session = Depends(get_db),
+):
+    """Create or continue exactly one controlled companion domain Run."""
+    def invoke(db):
+        try:
+            _companion_attachments(principal.user_id, body.attachment_keys)
+            result = CompanionCoordinator(db).handle(
+                ward_id=principal.user_id,
+                content=body.content,
+                voice_display_text=body.voice_display_text,
+                thread_id=body.thread_id,
+                expected_thread_version=body.expected_thread_version,
+                route_hint=body.route_hint,
+                command_id=body.command_id,
+                planning_items=body.planning_items,
+                planning_confirm=body.planning_confirm,
+                study_session_id=body.study_session_id,
+                tutoring_directive=body.tutoring_directive,
+                tutoring_intent=body.tutoring_intent,
+                review_date=body.review_date,
+                review_feeling=body.review_feeling,
+                review_reflection=body.review_reflection,
+                attachment_keys=body.attachment_keys,
+                structured_command=body.structured_command.model_dump() if body.structured_command else None,
+            )
+            return result.model_dump()
+        except HTTPException as error:
+            record_companion_rejection(
+                code=_rejection_code(error), status_code=error.status_code,
+                has_thread=body.thread_id is not None,
+                has_structured_command=body.structured_command is not None,
+            )
+            db.rollback()
+            raise
+        except Exception:
+            db.rollback()
+            raise
 
-    This foundation endpoint intentionally returns routing/context metadata only;
-    the selected domain workflow will own Ward-facing streaming output.
-    """
-    try:
-        _companion_attachments(principal.user_id, body.attachment_keys)
-        result = CompanionCoordinator(db).handle(
-            ward_id=principal.user_id,
-            content=body.content,
-            voice_display_text=body.voice_display_text,
-            thread_id=body.thread_id,
-            expected_thread_version=body.expected_thread_version,
-            route_hint=body.route_hint,
-            command_id=body.command_id,
-            planning_items=body.planning_items,
-            planning_confirm=body.planning_confirm,
-            study_session_id=body.study_session_id,
-            tutoring_directive=body.tutoring_directive,
-            tutoring_intent=body.tutoring_intent,
-            review_date=body.review_date,
-            review_feeling=body.review_feeling,
-            review_reflection=body.review_reflection,
-            attachment_keys=body.attachment_keys,
-            structured_command=body.structured_command.model_dump() if body.structured_command else None,
-        )
-        return result.model_dump()
-    except HTTPException as error:
-        record_companion_rejection(
-            code=_rejection_code(error), status_code=error.status_code,
-            has_thread=body.thread_id is not None,
-            has_structured_command=body.structured_command is not None,
-        )
-        db.rollback()
-        raise
-    except Exception:
-        db.rollback()
-        raise
+    if "text/event-stream" in request.headers.get("accept", ""):
+        bind = db.get_bind()
+        db.close()
 
+        def invoke_stream():
+            with Session(bind, expire_on_commit=False) as worker_db:
+                return invoke(worker_db)
+
+        return stream_reply(invoke_stream, response, stages=GUIDE_STAGES, error_code="companion_error")
+    return invoke(db)
 
 @router.get("/companion/planning/drafts/{draft_id}")
 def companion_plan_draft(draft_id: str, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):

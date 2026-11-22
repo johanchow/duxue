@@ -57,40 +57,79 @@ def test_oss_materializer_never_uses_langfuse_media(tmp_path, monkeypatch):
         materialize_assets(client, item, tmp_path)
 
 
-def test_execution_dispatches_solve_without_tutoring_or_local_grading(
-    tmp_path, monkeypatch
+@pytest.mark.parametrize("backup_available", [True, False])
+def test_hosted_solve_runs_production_verification_and_backup(
+    tmp_path, monkeypatch, backup_available
 ):
+    from app.agent_specs.admin_bundle import compile_bundle
+    from app.agent_specs.definitions import use_definitions
+    from app.agent_specs.execution_trace import Recorder
+    from app.application.ports import problem_solving
+    from app.infrastructure.math_engine.adapter import SubprocessMathEngineAdapter
     from evals.platform import execution
+    from scripts.upgrade_blueprint_steps import upgrade
+    from scripts.upgrade_math_bundle import upgrade as add_blueprint
+    from tests.unit.problem_solving.test_blueprint_steps import (
+        _contradicted_math_route,
+        _good_math_route,
+    )
 
+    baseline = json.loads(Path("tests/fixtures/admin-release.json").read_text())
+    catalog = compile_bundle(upgrade(add_blueprint(baseline, gaokao=True))["bundle"]).catalog
     row = next(
         r
         for r in project(ROOT)
-        if r["input"]["execution_target"] == "solve" and not r["input"]["assets"]
+        if r["input"]["record"]["id"] == "omni-math-025"
     )
+    original = row["input"]["record"]["messages"][0]["content"]
+    rule = row["expected_output"]["checks"]["check-1"]
+    rule["reference_response"] = "reference-only-marker"
     item = Obj(**row)
+    trace = Recorder()
     calls = []
-    monkeypatch.setattr(
-        execution,
-        "solve_turn",
-        lambda case, backend, assets: (
-            {"outcome": "answer", "tool_calls": []},
-            {"response": {"message": "solution"}},
-            1,
-            None,
-        ),
-    )
+
+    class Solver:
+        def __init__(self, *, math_engine):
+            assert isinstance(math_engine, SubprocessMathEngineAdapter)
+
+        def extract_stem(self, *, text, images, independent_reread):
+            assert text == original and images == [] and not independent_reread
+            return {"tier": "T1", "raw_text": text, "subproblems": ["(1)"]}
+
+        def solve_route(self, *, stem, route_hint, feedback=None, **kwargs):
+            assert "reference-only-marker" not in stem.raw_text
+            if route_hint == "T1":
+                return _contradicted_math_route()
+            assert route_hint == "T1_backup" and feedback["contradictions"]
+            return _good_math_route() if backup_available else None
+
+    monkeypatch.setenv("MATH_ENGINE_MODE", "subprocess")
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setattr(problem_solving, "QwenProblemSolverGateway", Solver)
     monkeypatch.setattr(
         execution, "turn", lambda *a: pytest.fail("Ward tutor used for internal solve")
     )
 
     class Scorer:
         def evaluate(self, **kw):
+            assert kw["execution_error"] is None, kw["execution_error"]
             calls.append(kw)
-            return {"status": "pass", "check_id": kw["check_id"]}
+            status = "pass" if kw["observed"]["outcome"] == "answer" else "fail"
+            return {"status": status, "check_id": kw["check_id"]}
 
-    result = execution.execute_item(None, item, Scorer(), {"tutoring.turn": None})
-    assert result["status"] == "pass"
-    assert calls[0]["evidence"]["response"]["message"] == "solution"
+    with use_definitions(catalog), trace.capture():
+        result = execution.execute_item(None, item, Scorer(), {"tutoring.turn": None})
+    assert result["status"] == ("pass" if backup_available else "fail")
+    assert [e["node_id"] for e in trace.events if e["kind"] == "gate"] == [
+        "tutoring-blueprint.select",
+        "tutoring-blueprint.verify",
+        "tutoring-blueprint.verify_backup",
+    ]
+    evidence = calls[0]["evidence"]
+    assert evidence["solver"]["workflow_id"] == "tutoring-blueprint"
+    assert calls[0]["spec"]["reference_response"] == "reference-only-marker"
+    projection = json.loads(evidence["response"]["message"])
+    assert projection["candidate_final_answers"] == ({"(1)": "2*x"} if backup_available else {})
 
 
 def test_signed_images_replace_data_uris_in_runtime_and_evidence(tmp_path, monkeypatch):

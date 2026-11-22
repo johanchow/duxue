@@ -30,6 +30,7 @@ export function WorkflowExecution({
   const ids = Object.keys(catalog?.workflows || {});
   const activeEvent =
     replayIndex !== null && events[replayIndex] ? events[replayIndex] : null;
+  const recordedEntry = events.find((event) => ids.includes(event.workflow_id));
   const visibleEvents =
     replayIndex !== null ? events.slice(0, replayIndex + 1) : events;
   const active =
@@ -37,7 +38,7 @@ export function WorkflowExecution({
       ? activeEvent.workflow_id
       : ids.includes(flow)
         ? flow
-        : ids[0];
+        : recordedEntry?.workflow_id || ids[0];
   useEffect(() => {
     setReplayIndex(null);
     setPlaying(false);

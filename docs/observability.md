@@ -195,6 +195,8 @@ App 端所有 HTTP 请求通过 dio Interceptor 统一注入 `traceparent` Heade
 
 ### 服务端 workflow 与模型耗时
 
+模型调用额外记录实际 HTTP 尝试数 `llm.http_attempts`、请求使用的读超时秒数 `llm.read_timeout_seconds`、从调用到最近一次响应头的毫秒数 `llm.response_headers_ms`；存在整轮预算时记录最近一次发送时的 `llm.remaining_budget_ms`。非流式响应只提供响应头与完成时刻。
+
 服务端启用 OTel 后，FastAPI 入站与 HTTPX 出站请求由已有插桩采集。HTTP 客户端 span 的结束时刻可能早于流式响应正文读完，模型总耗时应看包住消费和校验的 `llm.request`。结构化模型流从发起 SDK 请求开始计时，`llm.first_token_ms` 是收到首个非空推理或正文片段的时间，`llm.first_content_ms` 是首个非空正文片段的时间。只收到整包响应时，两项均缺省。两项含网络及提供方等待，均非用户端首字时间。
 
 离线重放在请求外层使用 `Recorder.capture()`，结束或捕获超时后保存 `recording.timings()`。平台评测的检查点结果通过 `timings` 返回该摘要。每个已计时的执行事件保留开始时间、单调时钟耗时、状态和父子 ID，模型事件另有终止原因、token 量及可观测的首片段时间。重复执行有独立事件 ID；父节点耗时包含子节点，并发分支可能重叠。摘要按字段白名单导出，不含题图、提示词、推理片段或回答正文。此本地路径独立于 OTel 导出；未采集的历史运行无法补算首片段耗时。

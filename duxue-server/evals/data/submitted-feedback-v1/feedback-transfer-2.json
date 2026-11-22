@@ -1,0 +1,55 @@
+{
+  "schema_version": "dialogue-eval.v2",
+  "id": "feedback-transfer-2",
+  "type": "single_turn",
+  "replay_mode": "fixed_history",
+  "conversation_id": "feedback-transfer",
+  "turn_index": 0,
+  "label_status": "proposed",
+  "source": {
+    "kind": "synthetic",
+    "coverage": "authored"
+  },
+  "messages": [
+    {
+      "id": "u",
+      "role": "user",
+      "content": "题目让解释“雨后空气清新”里的“清新”。我写“空气新鲜，让人感觉舒服”。这样解释合适吗？"
+    }
+  ],
+  "checks": [
+    {
+      "id": "feedback",
+      "component": "tutoring.turn",
+      "after_message": "u",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "task_title": "作业",
+          "task_active": false
+        }
+      },
+      "grading": {
+        "deterministic": [
+          {
+            "id": "delivered",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "hint_like",
+              "answer"
+            ]
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "feedback",
+            "type": "binary",
+            "expected": "pass",
+            "rubric": "确认该语境下释义合适，不额外设置无关问题。"
+          }
+        ]
+      }
+    }
+  ]
+}

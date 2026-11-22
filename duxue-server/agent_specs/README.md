@@ -21,8 +21,8 @@
 | `AGENT_CONFIG_SOURCE_URL` | 私有发布接口前缀，例如`http://duxue-admin:3000/api/internal` |
 | `AGENT_ADMIN_INTERNAL_TOKEN` | 与Admin一致、至少32字符的内部密钥 |
 | `AGENT_CONFIG_CACHE` | 最后成功发布的持久缓存路径，正式Docker挂载`/app/var/admin` |
-| `AGENT_CONFIG_SOURCE=snapshot` | 离线诊断或评测固定使用显式导出的配置，不轮询Admin |
-| `AGENT_CONFIG_SNAPSHOT` | 完整导出文件路径，默认Server下`var/admin/release.json`，Git忽略 |
+| `AGENT_CONFIG_SOURCE=snapshot` | 仅用于单元测试或纯离线无网复现；日常本地联调与本地离线评测一律直连 Admin |
+| `AGENT_CONFIG_SNAPSHOT` | 仅在 `snapshot` 模式下使用的本地快照路径，Git 忽略 |
 
 离线快照必须含`id/digest/bundle`，并验证完整性、代码契约和摘要；缺失/错误时明确拒绝，不从仓库补值。生产验证环境为prod，缓存与在线来源都不能混入测试环境或草稿。Admin暂时不可用时继续使用已验证缓存；无缓存时AI调用返回配置未就绪。每轮应用调用固定一次快照，发布/回滚只影响后续调用。API与Celery子进程分别维护加载状态。
 
@@ -34,16 +34,19 @@
 
 ## 离线评测
 
-离线评测按[Admin快照导入导出说明](../../duxue-admin/README.md#配置快照导入导出)固定一份导出，用命令参数传递给评测进程。
+离线评测默认直接通过 Admin 内部接口（`AGENT_CONFIG_SOURCE_URL` + `AGENT_ADMIN_INTERNAL_TOKEN`）一次性拉取配置并冻结到当次运行，不再要求先导出本地 JSON 文件；评测结束时将本次冻结的快照写入输出目录的只读 `config-snapshot.json` 作为审计留痕。
 
 ```bash
 cd duxue-server
-.venv/bin/python -m evals validate
-.venv/bin/python -m evals run --component companion.intent --samples 1 \
-  --config-snapshot var/admin/release.json
+# 默认读取 AGENT_CONFIG_CHANNEL（未设时为 working-draft）
+.venv/bin/python -m evals run --case omni-politics-008
+# 显式指定测试发布版
+.venv/bin/python -m evals run --config-channel release --case omni-politics-008
+# 本地数据集离线评测同样默认直连 Admin
+.venv/bin/python -m evals.local run --config-channel working-draft --out var/evals/local-check --preflight-only
 ```
 
-四种真实评测命令都支持`--config-snapshot`；入口在导入模型前固定来源，同一进程所有线程使用同一包，结果记录发布/草稿身份和完整digest。`validate/export/compare`数据集操作不要求Agent配置或在线Admin；评测数据、标注继续由Git维护。
+`evals`（托管评测）、`evals.local`（本地文件评测）和 `evals.exams.run` 均支持 `--config-channel working-draft|release`；入口在导入模型前从 Admin 拉取一次并冻结，同一进程所有线程使用同一不可变快照，`manifest.json` 记录 `config_source`、`config_id`、`config_revision` 和完整 `config_digest`。`--config-snapshot` 仅保留给单元测试或纯离线无网复现。`validate/export/compare` 数据集操作不要求 Agent 配置或在线 Admin；评测数据、标注继续由 Git 维护。
 
 ## 单测与部署验证
 

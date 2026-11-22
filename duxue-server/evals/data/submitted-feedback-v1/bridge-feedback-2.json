@@ -1,0 +1,75 @@
+{
+  "schema_version": "dialogue-eval.v2",
+  "id": "bridge-feedback-2",
+  "type": "single_turn",
+  "replay_mode": "fixed_history",
+  "conversation_id": "bridge-feedback",
+  "turn_index": 1,
+  "label_status": "proposed",
+  "source": {
+    "kind": "real",
+    "coverage": "observed_window",
+    "provider": "langfuse",
+    "trace_ids": [
+      "9557d393d6f40658d3f5a26534d61f86",
+      "e1d36890e0c1e4f44c52b27f8b6b722d"
+    ]
+  },
+  "messages": [
+    {
+      "id": "u1",
+      "role": "user",
+      "content": "提的最快的速度是什么方案？",
+      "images": [
+        "bridge-3d8238a0e72f2dfd.jpg"
+      ]
+    },
+    {
+      "id": "a1",
+      "role": "assistant",
+      "content": "你问的是“最快的方案”，这题的关键不是让最快的人一直跑腿，而是**让最慢的两个人一起过桥**，这样 10 分钟只花一次。\n\n先想第一步：要让 5 分钟和 10 分钟的人一起过桥，得先让谁在桥对面接应？手电筒又该怎么送过去？\n\n你写的 19 分钟先别急着定，按这个思路把过桥步骤排一排，看看总时间会变成多少。"
+    },
+    {
+      "id": "u2",
+      "role": "user",
+      "content": "那我写的 19 分钟是不是最快的方，最快的时间？"
+    }
+  ],
+  "checks": [
+    {
+      "id": "feedback",
+      "component": "tutoring.turn",
+      "after_message": "u2",
+      "input_snapshot": {
+        "origin": "reconstructed",
+        "context": {
+          "task_title": "数学作业",
+          "task_active": false,
+          "dossier_status": "pending"
+        },
+        "note": "真实原图与前序可见对话；重建 pending 答案确认门禁。未重放 App、路由或求解队列。"
+      },
+      "grading": {
+        "deterministic": [
+          {
+            "id": "delivered",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "hint_like",
+              "answer"
+            ]
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "feedback",
+            "type": "binary",
+            "expected": "pass",
+            "rubric": "明确回答19分钟非最短，不要求先重述思路，不虚构学生选择的路线，不泄露最短时间。"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -48,6 +48,16 @@ def test_adult_without_children_uses_checked_tutoring_without_any_business_write
     assert {table.name: db.execute(table.select()).all() for table in Base.metadata.sorted_tables} == before
 
 
+def test_student_experience_streams_tutoring_stages_before_final_reply(client, adult, model):
+    response = client.post(f"{BASE}/turn", headers={**adult[1], "Accept": "text/event-stream"},
+                           json={"content": "比较3/4与2/3，给我提示"})
+    assert response.headers["content-type"].startswith("text/event-stream")
+    events = [json.loads(line.removeprefix("data: ")) for line in response.text.splitlines() if line]
+    assert events[:-1] == [{"type": "stage", "value": value} for value in ("draft", "check")]
+    assert events[-1]["type"] == "result"
+    assert events[-1]["value"]["content"] == "先想想怎样把分母变成相同的数？"
+
+
 def test_multi_turn_keeps_protection_and_only_the_signed_adult_window(client, adult, model):
     first = client.post(f"{BASE}/turn", headers=adult[1], json={"content": "比较3/4与2/3"}).json()
     model[0].complete.return_value["turn"]["relation"] = "same"

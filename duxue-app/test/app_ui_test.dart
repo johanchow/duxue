@@ -176,6 +176,7 @@ class _WardHomeApi extends ApiClient {
     String? voiceDisplayText,
     Map<String, dynamic>? structuredCommand,
     List<String> attachmentKeys = const [],
+    void Function(String)? onStage,
   }) async {
     submittedThreads.add(threadId);
     lastStructuredCommand = structuredCommand;
@@ -2470,6 +2471,10 @@ void main() {
         .widget<VoiceComposer>(find.byType(VoiceComposer))
         .onVoiceFinal('旧问题');
     await tester.pump();
+    expect(find.text('正在准备回复…'), findsNothing);
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(find.text('正在准备回复…'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
     await _wardMenu(tester, '清空历史对话');
     await tester.pump();
     await tester.tap(find.text('清空并重新开始'));
@@ -2483,8 +2488,79 @@ void main() {
     await send;
     expect(await const TokenStorage().companionThreadId, isNull);
     expect(find.text('迟到的旧回答'), findsNothing);
+    expect(find.text('正在准备回复…'), findsNothing);
     expect(tester.widget<VoiceComposer>(find.byType(VoiceComposer)).enabled,
         isTrue);
+  });
+
+  testWidgets('Ward reply preserves the scroll while reading history',
+      (tester) async {
+    FlutterSecureStoragePlatform.instance =
+        TestFlutterSecureStoragePlatform({});
+    final pending = Completer<Map<String, dynamic>>();
+    final messages = [
+      for (var i = 1; i <= 18; i++)
+        {
+          'id': 'history-$i',
+          'thread_id': 'thread-1',
+          'thread_version': i,
+          'author_type': 'companion',
+          'content': i < 12
+              ? '历史回复 $i'
+              : List.filled(8, '这是一条带有多段正文的历史回复 $i。').join('\n\n'),
+        },
+    ];
+    final api = _WardHomeApi()
+      ..delayedTurn = pending
+      ..currentTranscriptOverride = {
+        'thread_id': 'thread-1',
+        'thread_version': 18,
+        'messages': messages,
+      };
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiProvider.overrideWithValue(api)],
+      child: const MaterialApp(home: WardDayPage(wardId: 'ward-1')),
+    ));
+    await tester.pumpAndSettle();
+    final send = tester
+        .widget<VoiceComposer>(find.byType(VoiceComposer))
+        .onVoiceFinal('还有一题');
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 250));
+    await tester.pumpAndSettle();
+
+    final chat = find.byKey(const Key('companion-chat-list'));
+    final progress = find.text('正在准备回复…');
+    expect(progress, findsOneWidget);
+    expect(tester.getRect(chat).contains(tester.getCenter(progress)), isTrue);
+    final scroll = tester.widget<ListView>(chat).controller!;
+    expect(scroll.position.maxScrollExtent, greaterThan(200));
+    scroll.jumpTo(60);
+    await tester.pump();
+    expect(scroll.offset, 60);
+
+    api.threadTranscriptOverrides['thread-1:latest'] = {
+      'thread_id': 'thread-1',
+      'thread_version': 20,
+      'messages': [
+        ...messages,
+        {
+          'id': 'reply',
+          'thread_id': 'thread-1',
+          'thread_version': 20,
+          'author_type': 'companion',
+          'content': '新的回复',
+        },
+      ],
+    };
+    pending.complete({
+      'thread_id': 'thread-1',
+      'thread_version': 20,
+      'interaction': {'kind': 'text'},
+    });
+    await tester.pumpAndSettle();
+    await send;
+    expect(scroll.offset, 60);
   });
 
   testWidgets(

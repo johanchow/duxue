@@ -8,9 +8,10 @@
 **Admin 数据库是 Workflow、Agent、Gate 和 Tool 可编辑配置的唯一事实源。** 流程节点、条件边、Prompt、模型参数和工具绑定都在当前工作草稿 `agent_drafts.bundle` 中修改。发布时固化为 `agent_releases.bundle`，各环境通过 `agent_environments.release_id` 选择生效版本。包内的 `workflows/<id>.json`、`agents/<id>.json` 等名称是逻辑路径。
 
 - **改配置**：从 Admin 读取当前草稿和 revision，基于该版本保存增量，再从 Admin 回读并核对变更。修改本地 JSON 不能交付流程或 Agent 配置。
-- **本地联调**：本机 App 后端通过 Admin 接口读取测试工作草稿。验收时将实际服务加载的草稿 ID、revision 和摘要与 Admin 回读结果对齐。
-- **更新单测基线**：仓库内的业务配置 JSON 副本仅作测试夹具。需要让单测覆盖新版配置时，先在 Admin 保存并校验，再按指定版本导出到本地，核对来源和摘要后更新夹具。专门验证旧版本兼容性的夹具继续固定在原版本。
-- **其他 JSON 产物**：离线回放和备份可使用 Admin 导出，发布服务可使用自动生成的已验证发布缓存。这些文件均为派生物，不作为配置编辑入口。代码维护的 Schema 和处理器契约另见[服务端目录说明](../../duxue-server/agent_specs/README.md#代码保留的内容)。
+- **本地联调、隔离调试与本地离线评测**：一律直接通过 Admin 内部接口读取配置（`working-draft` 或 `release`）。本机联调自动轮询测试工作草稿；本地离线评测在启动时一次性从 Admin 拉取所选渠道（`--config-channel working-draft|release`）并冻结到当次评测进程，不再依赖本地 `--config-snapshot` JSON 文件作为输入源。验收时将实际加载的 draft/release ID、revision 和摘要与 Admin 回读结果对齐。
+- **本地 JSON 的唯一合法用途**：仓库内与测试中的业务配置 JSON 副本**仅用于单元测试**（夹具）；单次离线评测结束后输出目录中落盘的 `config-snapshot.json` 仅为当次运行的**只读审计留痕**，不作为配置编辑或日常评测输入入口。需要让单测覆盖新版配置时，先在 Admin 保存并校验，再按指定版本导出更新夹具；专门验证旧版本兼容性的夹具继续固定在原版本。
+- **运行缓存与代码契约**：发布服务可使用自动生成的已验证发布缓存（`AGENT_CONFIG_CACHE`），该文件为运行派生物，不作为编辑入口。代码维护的 Schema 和处理器契约另见[服务端目录说明](../../duxue-server/agent_specs/README.md#代码保留的内容)。
+- **Prompt 通用性原则**：Agent 与 Gate 的 Prompt 尽量编写通用规则与方法边界，严禁为修补个别评测用例或线上单题而添加具体题目、具体字词或单题特例；遇到局部失误时，应先抽象为跨题型/跨学科的通用原则，再用离线评测验证泛化效果。
 
 ## 一、目标与边界
 

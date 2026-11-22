@@ -1,0 +1,64 @@
+{
+  "schema_version": "dialogue-eval.v2",
+  "id": "bridge-feedback-1",
+  "type": "single_turn",
+  "replay_mode": "fixed_history",
+  "conversation_id": "bridge-feedback",
+  "turn_index": 0,
+  "label_status": "proposed",
+  "source": {
+    "kind": "real",
+    "coverage": "observed_window",
+    "provider": "langfuse",
+    "trace_ids": [
+      "9557d393d6f40658d3f5a26534d61f86"
+    ]
+  },
+  "messages": [
+    {
+      "id": "u1",
+      "role": "user",
+      "content": "提的最快的速度是什么方案？",
+      "images": [
+        "bridge-3d8238a0e72f2dfd.jpg"
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "id": "feedback",
+      "component": "tutoring.turn",
+      "after_message": "u1",
+      "input_snapshot": {
+        "origin": "reconstructed",
+        "context": {
+          "task_title": "数学作业",
+          "task_active": false,
+          "dossier_status": "pending"
+        },
+        "note": "真实原图与前序可见对话；重建 pending 答案确认门禁。未重放 App、路由或求解队列。"
+      },
+      "grading": {
+        "deterministic": [
+          {
+            "id": "delivered",
+            "field": "outcome",
+            "op": "in",
+            "expected": [
+              "hint_like",
+              "answer"
+            ]
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "feedback",
+            "type": "binary",
+            "expected": "pass",
+            "rubric": "识别纸上19分钟，明确指出作为最短时间仍可缩短；给一个可用的优化方向，不代做完整路线或报出最优值。"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -132,3 +132,22 @@
 - 2026-11-21 导师三个慢例用原 R13 快照、本地空题库、三路并发各复测一次。回执在 `duxue-server/var/evals/mentor-three-timing-bGSrw1/`。英语 44、物理 16、英语 1 的 planner 分别用时 19.54、40.26、33.38 秒。本轮三题各三次模型调用，均交付。英语 1–10 实际求解并讲解到第 20 题。评分器漏提英语第 1 题的 C，并误将物理第 (3) 问与参考不符的公式判对。两轮长尾不同，耗时与正确率分别核对。
 
 - 2026-11-21 学生追问画图：首轮追问 ccaddd7d 的模型选择 compare 并按原样交付。第二轮 294e8e9b8c66a10263e5521b36f7fd3a 生成两版 SVG，Tempo 确认中间读取 widget_guidelines；两次 visual_schema 均 invalid。原样重放发现默认 SVG 命名空间触发全文 URL 检查，仅去掉声明后第一稿仍有 10px 字号错误，第二稿通过结构校验。丢图后正文仍引用左右图。同时间段学生 speech 接口三次服务端耗时 6.13、3.89、6.41 秒，端上实际首声时间未测。
+
+- 2026-11-22 Langfuse 五集各两例冒烟使用 `var/admin/local-test-last-good.json`（`test` generation 20，digest `07cfe5d5006772c5f214ca3b8e75dc529626014cda789f0af10a78bcae19fa4c`）。标准入口在 `eval.case_requirements` 的预检中止，0/10 执行。云端回读确认 `duxue-dashscope` 上五个语义 Evaluator 均因 `LLM_CONNECTION_AUTH_INVALID` 暂停，六条离线 Rule 仍启用，确定性 Evaluator 未被暂停。恢复需修复模型连接认证并重新激活受影响的 Evaluator。待跑用例为 `diagram-known`、`diagram-unknown`、`intent-b48b70b3-00`、`turn-pronounce-extra-00`、`turn-safety-01`、`disguised-old-answer`、`square-proactive-visual`、`omni-geography-012`、`omni-geography-014`、`omni-history-004`。
+  后续按 `blockedAt` 回查 11-16 21:42:56–21:43:05（上海时间），五个评分器的 `Execute evaluator` 观测均报模型访问被拒，原始 DashScope `Arrearage` 出现在同期业务调用。充值后的恢复经过见[答疑笔记](tutoring.md#注意)；原始拒绝见 [Langfuse Trace](https://us.cloud.langfuse.com/project/cmvfvorj601l6ad0jhvajth4c/traces/ad2e671b3ff7b1d982d2d7c0f43f2614?observation=c01b246ba24ed2d6)。本次回查的 `blockedAt` 仍是 11-16，未验证当前 DashScope 账单或实际调用。
+  用户重新激活后，回读五个评分器的 `blockedAt` 均为空。同一清单及测试快照完成 10/10，9 pass、1 fail、0 error，裁判版本未变化。唯一失败为 `square-proactive-visual` 首轮缺方阵示意图，第二轮因前置失败跳过。详见[本次结果](../../duxue-server/var/evals/langfuse-smoke-10-20261121163622362/results.json)及[配图检查点](https://us.cloud.langfuse.com/project/cmvfvorj601l6ad0jhvajth4c/traces/456b350af119749a56e9539ae8b13427?observation=6198f620c6c794b8)。
+  首轮 [执行记录](https://us.cloud.langfuse.com/project/cmvfvorj601l6ad0jhvajth4c/traces/456b350af119749a56e9539ae8b13427?observation=3f1f13db8d854932) 显示主模型理解角点重复计数，原始 `guide` 无 `visual`、未调用 `widget_guidelines`。结构检查为 `absent`，正文审核通过。本次快照的正文裁判 prompt 与输出 schema 均无 `visual_need`，实际结果为 `null`，`needs_missing_visual` 未触发。评分失败来自交付缺图。
+
+- 2026-11-22 Admin 评测详情回放修复。旧快照的子流程没有独立调用节点，原抽屉的最小缩放也会让宽图的节点落在可点击区域外。以原方阵 Trace 作本地浏览器数据验证三层导航、两次审核调用分离、Agent 与 Judge 输入输出及逐级返回。行为归 [Admin 历史执行图](../../docs/technical/design-admin.md#批次失败工作台与历史执行图2026-11-14)。
+
+- 2026-11-22 新增正方体展开图主动配图用例。先用原测试发布快照本地真实执行通过，核对实际 SVG 六个等大方格的邻接与标注，再上传 `guidance-logic` 并逐字段回读。云端复验一例六项通过，规则与配置未改。用例及云端 ID 见[评测设计](../../docs/technical/eval-offline.md#视觉交付云端用例)，证据见[本地结果](../../duxue-server/var/evals/cube-net-input.HAes68-baseline/results.json)及[托管结果](../../duxue-server/var/evals/cube-net-input.HAes68-cloud/results.json)。
+
+- 2026-11-22 用户确认删除旧方阵用例及关联历史实验条目。已删除本地 JSON，云端硬删除后按原 ID 回读为不存在，正方体用例仍 ACTIVE。
+
+- 2026-11-22 复跑 `run-086d16a0` 的 16 fail 和 1 error。17 条均回读为 ACTIVE，运行固定原 Dataset 历史时刻，逐字段确认输入、期望、元数据和状态与原批一致。使用已验证的 test generation 20 快照及当前代码，云端裁判版本沿用原批。按例采样一次，结果 15 pass、2 fail、0 error，原接口异常的语文 009 已通过。仍未达标为语文 010 的题型归类和政治 008 的重复提问。详见[复跑结果](../../duxue-server/var/evals/langfuse-recheck-086d16a0-20261122000225305/results.json)。
+  失败回查：语文 010 原题即标 `jiū`，导师首稿误把整题概括为多音字辨析，出口直接通过。政治 008 的学生完整提交了正确计算和选项；导师首稿核对正确，实际测试快照未带 `reasoned-choice.v1`，裁判同时返回 `student_answer_correct=true` 和 `choice_verdict=true`，后者触发拒绝。重算指令来自业务门禁后的第二次导师生成。规则归[已提交答案的反馈](../../docs/technical/domain-tutoring.md#已提交答案的反馈)。
+  用户更新后从 Admin 直接导出测试草稿 revision 19，并固定原用例与云端裁判版本各采样一次。政治 008 首稿准确核对已有计算和比较方向，未重写，六项通过。语文 010 首稿仍用多音字概括题型，教学正确性 4/5 过线，逐例要求 false 且裁判无具体理由。详见[复跑结果](../../duxue-server/var/evals/omni-two-after-admin-20261122003825425/run/results.json)。
+
+- 2026-11-22 复用一次 Admin 草稿拉取的 revision 20 跑五集各三条及全部 14 条 Guardian 首答。抽样排除上一轮五集和近期定向复跑用例。Guardian 的共用题组按一次真实首答、两个题号分别核分。物理 16 初评把原图标记的累计距离误当分段距离，按图复核扣去对应空并保留初评。逐例得分、快照身份、上轮对比与新实验见[本批报告](../../duxue-server/var/evals/langfuse-five-by-three-guardian-20261122-105411.fC2sK3/REPORT.md)。
+
+- Omni `solve` 本地和托管接入[生产解题回放](../../docs/technical/eval-offline.md#完整解题回放)。真跑数学 025 回读生产读题、主解和核验，答上午 8 时，独立教学正确性 4/5。两个数学锚点未生成 `verify_request`，生产核验分支为 `unknown`，按原样保留低置信候选。42 条通过无模型调用预检。[回读证据](../../duxue-server/var/evals/omni-math-025-production-20261122-134152/cloud-verification.json)。

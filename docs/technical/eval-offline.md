@@ -6,7 +6,7 @@
 
 默认 `python -m evals run` 使用下述 Langfuse 托管用例和原生评分。用户另行授权的 Omni-Edu 本地批次使用 **`python -m evals.local`**：只读取仓库文件、使用本地评分适配器，不连接 Langfuse Dataset、Evaluator、Scores，也不上传遥测。两条入口显式分开，不在云端出错时自动切换。原有托管用例不受本地批次变更影响。
 
-本地模式的用例/逐例要求唯一维护在 `duxue-server/evals/data/omni-edu-v1/`；评分执行复用既有 `evals/grading.py`、`evals/semantic.py`，模型和业务/独立裁判提示词取自固定 Admin 配置快照。内部完整解题另使用版本化的 evaluation-only `evals/local/solve-prompt.txt`，模型及参数沿用快照导师；该提示不进入生产配置或 Ward 链路。本地批次不复制在线 Evaluator 定义，也不把结果写回线上用例。
+本地模式的用例与逐例要求维护在 `duxue-server/evals/data/omni-edu-v1/`。评分执行复用 `evals/grading.py`、`evals/semantic.py`，模型和业务及独立裁判提示词取自固定 Admin 配置快照。完整解题与托管入口共用下文的[生产解题回放](#完整解题回放)。本地批次独立储存结果。
 
 下列 Langfuse 单源及原生评分规则针对**默认托管模式**，不适用于上述显式本地模式。
 
@@ -258,7 +258,15 @@ LLM 映射为 `input → input`、`output.response → output`、`output.evaluat
 
 托管输入沿用`duxue-dataset.v1`，`input.execution_target`明确`solve`或`tutoring`；期望、参考与逐例要求保留在expectedOutput，不注入模型输入。元数据保留学科、三类能力、层级审核、来源uid/commit/记录哈希、题目家族、split和本地manifest摘要。原始源记录仍留本地sources作审计。英语010原题面带答案解析的问题用`review_required=true`及`known_issues`显式标记，未静默改题或改历史分。
 
-42个`solve`任务复用evaluation-only完整解题适配器，评分只要求确定性、教学正确性和逐例要求三个原生维度；167个辅导任务复用生产答疑和适用原生维度，保持云端评分执行，不回退本地评分。托管转换器`evals.platform.omni`生成固定ID的待导入payload；完整input/expectedOutput/metadata摘要用于回读及重复迁移检查，远端人工修改或归档不能被旧包覆盖。导入后托管用例在Langfuse维护，本地包保留供审计和显式本地实验使用，不自动双向同步。
+42 个 `solve` 任务走[完整解题回放](#完整解题回放)。167 个辅导任务复用生产答疑和适用原生维度，使用 Langfuse 评分。托管转换器 `evals.platform.omni` 生成固定 ID 的待导入 payload。完整 input、expectedOutput、metadata 摘要用于回读及重复迁移检查，远端人工修改或归档不能被旧包覆盖。导入后托管用例在 Langfuse 维护，本地包供审计和显式本地实验使用。
+
+#### 完整解题回放
+
+托管和本地 `solve` 共用 `evals/solve.py`，把原题和原图交给 `execute_blueprint()`。该函数执行固定 Admin 快照里的 `tutoring-blueprint`，模型调用使用生产求解网关，数学与科学核验使用生产数学执行器。读题、主备求解、确定性核验和复杂题双路比对由 Workflow 按实际分支执行。
+
+评分读取 `VerifiedSolution.mentor_projection()` 里的候选或已核验答案、解题路线、证据和置信度。失败或没有最终答案时，交付断言未通过。其余答案按题面的完整解题标准由独立裁判评分。托管仍要求确定性、教学正确性和逐例要求三个原生维度，用例参考答案只进入评分。托管 Trace 记录实际执行的 Workflow 节点。本回放覆盖生产内部求解和核验。Ward 对话和 Guardian 最终讲解各有自己的评测入口。
+
+历史批次使用评测专用 Prompt 直接调用导师模型。对照结果时需按执行入口区分两批分数。
 
 本批17张图片仍为`input.assets`中的OSS稳定对象引用，未新增Langfuse原生媒体。托管执行器先从OSS下载验SHA256，模型请求及评分证据使用运行时生成的24小时HTTPS签名链接；签名链接和凭据不写入Dataset。过期Trace外链不会自动续签；Dataset对象引用需要执行器解析，不能当作网页长期图片缩略图。原有历史原生媒体入口继续兼容。外链形式与原生媒体的区别见[Langfuse官方说明](https://langfuse.com/docs/observability/features/multi-modality#external-media-urls)。
 
@@ -436,20 +444,20 @@ MATH_ENGINE_MODE=subprocess .venv/bin/python -m scripts.run_local_dialogues \
 
 “本地离线评测”指本地任务、回放与评分产物；真实模型仍调用 DashScope，需要网络和密钥。脚本禁用 Langfuse/OTEL，保存输入、配置、源码与输入 SHA256、逐任务结果及总结果，绝不覆盖已有批次。每项采样一次，任何检查点 fail/error/not_run 均不算整项通过。
 
-[视觉交付任务](../../duxue-server/evals/data/visual-delivery-v1/README.md)来自两次生产故障题意和真机调试脚本的合成重构，标记 `proposed/uncalibrated`。标准输入中的作业标题保持中性，不能把“主动配图”等评分目标塞入被测上下文。后续轮使用实际生成的前轮回答；不含原作业图片，因此不覆盖 OCR、原图作答审核、麦克风/ASR，也不能将 SVG 结构语义评分称为像素级视觉验收。真机渲染截图单独留证。少量开发回归通过不代表发布门槛或全量稳定性。
+[视觉交付任务](../../duxue-server/evals/data/visual-delivery-v1/README.md)使用合成输入，标记 `proposed/uncalibrated`。标准输入中的作业标题保持中性，不能把“主动配图”等评分目标塞入被测上下文。多轮任务的后续轮使用实际生成的前轮回答。任务不含原作业图片，因此不覆盖 OCR、原图作答审核、麦克风/ASR，也不能将 SVG 结构语义评分称为像素级视觉验收。真机渲染截图单独留证。少量开发回归通过不代表发布门槛或全量稳定性。
 
 ### 视觉交付云端用例
 
-2026-11-17 经用户授权，将[视觉交付任务](../../duxue-server/evals/data/visual-delivery-v1/README.md)的两项合成多轮用例同步到 [guidance-logic](https://us.cloud.langfuse.com/project/cmvfvorj601l6ad0jhvajth4c/datasets/cmwbz8jdl008sad0e3wv51oni/items)，该集由104增至106项。主维度是借图推进学生理解；正确性、保护与安全作为同项检查维度，不跨Dataset重复计数。
+视觉交付用例位于 [guidance-logic](https://us.cloud.langfuse.com/project/cmvfvorj601l6ad0jhvajth4c/datasets/cmwbz8jdl008sad0e3wv51oni/items)。主维度是借图推进学生理解；正确性、保护与安全作为同项检查维度，不跨Dataset重复计数。
 
 | case_id | Dataset item ID | 检查点 |
 |---|---|---|
-| square-proactive-visual | db1b2547-08f0-597f-9774-38eafca4629e | 主动配图、颜色区分共用角点 |
 | lamps-requested-visual | 95712fdc-fd17-5edb-a6a0-2b3afaa65a57 | 明确请求配图、双侧端点追问 |
+| cube-net-proactive-visual | e3c8a781-25aa-507a-8a6e-3a7182ddb9f1 | 主动画出展开图、引导第一步折叠 |
 
-每项两轮，`episode/generated_history`保留真实前轮回复。沿用`duxue-dataset.v1`投影，将评分要求从输入移入expectedOutput，保留图形语义rubric与两项确定性断言；使用已有六个原生评分维度。状态为ACTIVE、proposed/uncalibrated，以`metadata.batch=visual-delivery-v1`筛选。本次仅新增用例，未执行云端Experiment，未把已有本地pass写成云端分数，也未修改评分器或恢复暂停批次。云端后续编辑为托管事实源，仓库JSON保留为独立本地回归输入，不自动双向同步。
+路灯用例有两轮，`episode/generated_history`保留真实前轮回复。正方体展开图为单轮用例。沿用`duxue-dataset.v1`投影，将评分要求从输入移入expectedOutput，保留图形语义rubric与两项确定性断言，使用已有六个原生评分维度。状态为ACTIVE、proposed/uncalibrated，以`metadata.batch=visual-delivery-v1`筛选。Langfuse 为托管用例事实源；本地 JSON 用于独立本地回归，托管 runner 不依赖本地用例文件。
 
-逐字段回读验证与原104项不变审计在ignored `duxue-server/var/evals/visual-delivery-cloud-20261117/`。图形审核仍是SVG结构语义审核，非渲染像素验收。
+图形审核覆盖 SVG 结构和语义。渲染效果另行验收。
 
 ## 北京九科整卷本地评测
 
@@ -496,3 +504,7 @@ python -m evals.exams.report --data "$exam_dir"
 ```
 
 本批还对所有给出实质解析但开放题仍判零的题目执行一次原文摘取复核。再次运行 `review` 会定位这些题，将判分约束在实际交付过的原句上。遇到自动摘取遗漏，可通过 `--evidence` 指定带 `answer_sha256` 的逐文件原始行号 JSON，再运行 `report`。复核结果保留旧分与证据行号。发布的分数以最后一次证据复核为准。
+
+### 学生已提交答案的反馈回归
+
+[用例目录](../../duxue-server/evals/data/submitted-feedback-v1)保存过桥对话的四个固定历史检查点、一例只提交最优用时的独立首问，以及三个跨学科对照。过桥输入使用第一轮授权原图，附件依内容哈希命名并保存在本地受控资产目录，原图不进入 Git。四轮分别重放当时可见的历史，注入原档案 pending 时的确认门禁。使用独立本地对话回归入口时，把四轮共用的原图放在回放输入目录的 `assets/` 下。输出分别记录交付正文、图和审核结果；小样本耗时按回放组件口径统计。

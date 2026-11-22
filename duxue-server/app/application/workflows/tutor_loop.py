@@ -108,6 +108,7 @@ class Vetting:
     shape_flags: list[str] = field(default_factory=list)
     visual_need: str | None = None
     visual_feedback: str | None = None
+    confirmation_evidence_missing: bool = False
 
 
 def call_tutor_model(
@@ -413,7 +414,8 @@ def _leak_repair(vetting: Vetting) -> str:
                            "instruction": "依据本轮工具记录修正；缺证据先核算；未知只说明未核验"}, ensure_ascii=False)
     if reason in {"incorrect_confirmation", "premature_conclusion"}:
         return json.dumps({"kind": "verification_disagreement", "reason": reason,
-                           "student_answer_correct": None}, ensure_ascii=False)
+                           "student_answer_correct": None,
+                           "confirmation_evidence_missing": vetting.confirmation_evidence_missing}, ensure_ascii=False)
     if reason in {"final_answer", "complete_solution"}:
         return render_fragment("tutoring.turn", "leak_answer", prefix=render_fragment("tutoring.turn", "leak_prefix"), reason=reason)
     rejected = json.dumps(vetting.candidate.shown_text[:800], ensure_ascii=False)
@@ -569,6 +571,13 @@ def vet_candidate(
             state["needs_math_review"] = False
 
         state["needs_text_review"] = bool(verdict.needs_leak_check and reused_text_vetting is None)
+        state["joint_math_review"] = bool(
+            state["needs_math_review"] and state["needs_text_review"]
+            and not ledger.records and not candidate.math_claims and candidate.visual is None
+            and getattr(leak_judge, "supports_joint_math_review", False)
+        )
+        if state["joint_math_review"]:
+            state["needs_math_review"] = False
         state["needs_visual_review"] = bool(verdict.needs_leak_check and visual_text_init is not None)
         return GateDecision("allow", "ok")
 
@@ -615,9 +624,24 @@ def vet_candidate(
             return GateDecision("allow", "ok")
 
         record_tutor_fact_gate(outcome=fact_gate(candidate) or "short_fact_reviewed")
+        summary = effective_summary
+        if state["joint_math_review"]:
+            try:
+                context = json.loads(summary) if summary else {}
+            except ValueError:
+                context = summary
+            if not isinstance(context, dict):
+                context = {"problem": context}
+            context.update(ledger.context(candidate.math_claims))
+            context["candidate_turn"] = candidate.turn.model_dump() if candidate.turn else None
+            summary = json.dumps(context, ensure_ascii=False)
         result = _invoke_text_leak_with_retry(
-            leak_judge, candidate, task_title, effective_summary, images_list,
+            leak_judge, candidate, task_title, summary, images_list,
         )
+        if state["joint_math_review"]:
+            state["math_reviewed"] = True
+            checked = result.get("math_consistent") if isinstance(result, dict) else None
+            state["math_checked"] = checked if type(checked) is bool else None
         text_leaks, leak_reason = _text_leak_result(result)
         visual_need = None
         visual_feedback = None
@@ -640,6 +664,7 @@ def vet_candidate(
         ):
             text_leaks = True
             leak_reason = "incorrect_confirmation"
+            state["confirmation_evidence_missing"] = True
 
         # Write isolated text-branch keys (safe during parallel fan-out).
         state["text_leaks"] = text_leaks
@@ -699,7 +724,8 @@ def vet_candidate(
             visual_feedback = state.get("visual_feedback")
         if text_leaks is not False:
             reason = "leak_check_failed" if text_leaks is None else "leak_detected"
-            return Vetting(candidate, None, reason, leak_reason=state.get("leak_reason"), shape_flags=state["flags"])
+            return Vetting(candidate, None, reason, leak_reason=state.get("leak_reason"), shape_flags=state["flags"],
+                           confirmation_evidence_missing=state.get("confirmation_evidence_missing", False))
 
         visual = state["visual"]
         dropped = state["dropped"]
@@ -799,12 +825,16 @@ def run_tutor_turn(
     """主调用 + 出口检查；文字给出了答案时带 ``LEAK_REPAIR`` 重试一次，重试结果重新完整检查。
 
     生产与离线评测共用。``model_fallback`` 只按最终结果记录一次。"""
+    from app.agent_specs.runtime import notify_node_started
+
     if hasattr(tools, "begin_math"):
         tools.begin_math(envelope, instruction, list(judge_images or [
             *(url for row in window for url in row.get("image_urls", [])), *images,
         ]))
 
-    def vet(candidate: TutorTurnCandidate, *, reuse_text_vetting: Vetting | None = None) -> Vetting:
+    def vet(candidate: TutorTurnCandidate, *, checking_stage: str,
+            reuse_text_vetting: Vetting | None = None) -> Vetting:
+        notify_node_started(checking_stage)
         with agent_step_span("check", "tutoring.exit_gate") as span:
             set_observation_payload(span, input={
                 "candidate": candidate.model_dump(mode="json"), "permit": permit.as_context(),
@@ -919,8 +949,10 @@ def run_tutor_turn(
     ) -> tuple[ModelCall, Vetting | None]:
         transition("tutoring", "tutoring.model_loop" if kind == "primary" else "tutoring.exit_gate",
                    "tutoring.attempt", None if kind == "primary" else "retry")
+        checking_stage = "tutoring.exit_gate" if kind == "primary" else "tutoring.recheck"
         with agent_step_span("node", "tutoring.attempt", **{"tutor.attempt.kind": kind}) as span:
             set_observation_payload(span, input={"instruction": instruction, "window": window, "permit": permit.as_context(), "attempt_kind": kind, "repair_error": repair_error})
+            notify_node_started("tutoring.attempt" if kind == "primary" else "tutoring.revise")
             proposal = call_tutor_model(
                 current_model, envelope, instruction, window, images, tools,
                 repair_error=repair_error, preload_svg_guidelines=preload_svg_guidelines,
@@ -952,6 +984,7 @@ def run_tutor_turn(
                     if statuses and all(status in ("unavailable", "timeout", "resource_limit") for status in statuses):
                         if len(statuses) == len(evidence.questions):
                             return proposal, Vetting(candidate, None, "worksheet_unavailable")
+                    notify_node_started(checking_stage)
                     from app.application.workflows.image_review import review_problem
                     summary = json.loads(review_problem(problem_summary, candidate, list(judge_images or [])))
                     summary['image_review_phase'] = 'evidence_only'
@@ -971,6 +1004,7 @@ def run_tutor_turn(
                         return proposal, review
                     evidence._visual_review_passed = True
                     remaining = load_catalog().spec('tutoring').limits['model_calls'] - proposal.used_calls
+                    notify_node_started("tutoring.revise")
                     polished = call_tutor_model(current_model, envelope, instruction, window, images, tools,
                                                 review_evidence=evidence, call_budget=remaining)
                     proposal = ModelCall(polished.candidate, polished.failure, proposal.used_calls + polished.used_calls)
@@ -983,7 +1017,8 @@ def run_tutor_turn(
                     else:
                         return proposal, Vetting(candidate, None, INVALID_CANDIDATE)
             review = (
-                vet(proposal.candidate, reuse_text_vetting=approved_text_vetting)
+                vet(proposal.candidate, checking_stage=checking_stage,
+                    reuse_text_vetting=approved_text_vetting)
                 if proposal.candidate is not None
                 else None
             )
@@ -1046,11 +1081,14 @@ def run_tutor_turn(
         if state["vetting"] is not None:
             state["missing_repair"] = _missing_visual_repair(state["vetting"])
 
+    def visual_required(review):
+        return (review.visual_need == "requested" or review.candidate.rejected_svg
+                or (review.visual_need == "helpful" and review.candidate.visual is not None)
+                or _TEXT_DIAGRAM_TEX in review.candidate.content)
+
     def finish(state):
         call, review = state["call"], state["vetting"]
-        if review is not None and review.failure is None and review.visual is None and (
-            review.visual_need in {"requested", "helpful"} or review.candidate.rejected_svg
-        ):
+        if review is not None and review.failure is None and review.visual is None and visual_required(review):
             review = replace(review, verdict=None, failure="visual_unavailable")
         if (review and tools.web_search.image_requested and review.failure in {None, "visual_unavailable"}
                 and not isinstance(review.visual, SearchPhoto)):
@@ -1071,9 +1109,7 @@ def run_tutor_turn(
 
     def needs_missing(state):
         review = state["vetting"]
-        return not tools.web_search.image_requested and review.failure is None and review.visual is None and (
-            review.visual_need in {"requested", "helpful"} or _TEXT_DIAGRAM_TEX in review.candidate.content
-        )
+        return not tools.web_search.image_requested and review.failure is None and review.visual is None and visual_required(review)
 
     state = execute_tutoring_child(
         RETRY_NODE, initial_state={"retried": False},

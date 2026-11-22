@@ -144,9 +144,11 @@ def test_requested_case_must_exist_and_filters_are_intersections(tmp_path):
         select(tasks, SimpleNamespace(case=[tasks[0][0]["id"]], subject=["english"]))
 
 
-def test_solver_receives_only_runtime_question_not_reference(tmp_path):
+def test_solver_receives_only_runtime_question_not_reference(tmp_path, monkeypatch):
+    from evals import solve
     from evals.dialogue import TurnRecord
     from evals.local.execution import execute
+    from evals.outcome import Observation
 
     m, raw = make_data(tmp_path)
     entry = m["tasks"][0]
@@ -158,10 +160,14 @@ def test_solver_receives_only_runtime_question_not_reference(tmp_path):
     record = TurnRecord.model_validate(raw)
     seen = {}
 
-    def solve(case, spec, images):
-        seen["student"] = case.student_said
-        assert "x=4" not in case.student_said
-        return "x=4"
+    def replay(question, images):
+        seen["student"] = question
+        assert "x=4" not in question
+        assert images == []
+        return Observation("answer", delivered_content="x=4")
+
+    monkeypatch.setattr(solve, "identity", lambda: {"workflow_id": "tutoring-blueprint"})
+    monkeypatch.setattr(solve, "execute", replay)
 
     class Judge:
         def grade(self, rule, **kwargs):
@@ -177,16 +183,17 @@ def test_solver_receives_only_runtime_question_not_reference(tmp_path):
         record,
         SimpleNamespace(semantic_grader=Judge()),
         tmp_path,
-        None,
-        solve_call=solve,
     )
     assert result["status"] == "pass"
     assert seen["reference"] == "x=4"
+    assert result["checks"][0]["evidence"]["solver"]["workflow_id"] == "tutoring-blueprint"
 
 
-def test_missing_grader_result_is_error_not_pass(tmp_path):
+def test_missing_grader_result_is_error_not_pass(tmp_path, monkeypatch):
+    from evals import solve
     from evals.dialogue import TurnRecord
     from evals.local.execution import execute
+    from evals.outcome import Observation
 
     m, raw = make_data(tmp_path)
     entry = {**m["tasks"][0], "execution_target": "solve"}
@@ -195,64 +202,15 @@ def test_missing_grader_result_is_error_not_pass(tmp_path):
         def grade(self, *args, **kwargs):
             return {}
 
+    monkeypatch.setattr(solve, "identity", lambda: {"workflow_id": "tutoring-blueprint"})
+    monkeypatch.setattr(solve, "execute", lambda *a: Observation("answer", delivered_content="x=4"))
     result = execute(
         entry,
         TurnRecord.model_validate(raw),
         SimpleNamespace(semantic_grader=Judge()),
         tmp_path,
-        None,
-        solve_call=lambda *a: "x=4",
     )
     assert result["status"] == "error"
-
-
-def test_real_solution_adapter_request_excludes_all_grading_data(tmp_path, monkeypatch):
-    from app.infrastructure.ai import client
-    from evals.dialogue import TurnRecord
-    from evals.local.solve import complete
-
-    _, raw = make_data(tmp_path)
-    case = TurnRecord.model_validate(raw).to_case()
-    captured = {}
-
-    class Transport:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *args):
-            pass
-
-        @property
-        def chat(self):
-            return self
-
-        @property
-        def completions(self):
-            return self
-
-        def create(self, **kwargs):
-            captured.update(kwargs)
-            return SimpleNamespace(
-                choices=[
-                    SimpleNamespace(
-                        finish_reason="stop",
-                        message=SimpleNamespace(content='{"solution":"x=4"}'),
-                    )
-                ]
-            )
-
-    monkeypatch.setattr(client, "dashscope_client", lambda **kw: Transport())
-    spec = SimpleNamespace(
-        accepts_images=True,
-        timeout_seconds=60,
-        model="pinned-model",
-        temperature=0,
-        max_tokens=500,
-    )
-    assert complete(case, spec, []) == "x=4"
-    assert "x=4" not in json.dumps(captured)
-    assert "foreign system" not in json.dumps(captured)
-    assert captured["model"] == "pinned-model"
 
 
 def test_image_integrity_and_family_split_are_enforced(tmp_path):
@@ -314,7 +272,7 @@ def test_full_local_command_uses_no_hosted_dataset_or_evaluator(tmp_path, monkey
     )
     calls = []
 
-    def execute(entry, record, backend, assets, spec, index):
+    def execute(entry, record, backend, assets, index):
         calls.append((record.id, index))
         return {
             **entry,
@@ -431,7 +389,7 @@ def test_episode_sample_identity_is_preserved(tmp_path, monkeypatch):
     record = SimpleNamespace(
         type="episode", id="episode-test", to_episode=lambda: object()
     )
-    row = execute(manifest["tasks"][0], record, None, tmp_path, None, sample_index=2)
+    row = execute(manifest["tasks"][0], record, None, tmp_path, sample_index=2)
     assert row["checks"][0]["sample_index"] == row["sample_index"] == 2
 
 
