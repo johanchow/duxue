@@ -4,8 +4,9 @@ from __future__ import annotations
 import json
 from typing import Literal
 
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
+
 from app.agent_specs.image_refs import image_ref
-from pydantic import BaseModel, ConfigDict, Field
 
 
 class ImageReviewProtocolError(ValueError):
@@ -21,7 +22,7 @@ class ImageReviewProtocolError(ValueError):
 class Calculation(BaseModel):
     model_config = ConfigDict(extra='forbid')
     expression: str = Field(min_length=1, max_length=120)
-    submitted: str = Field(min_length=1, max_length=40)
+    submitted: str = Field(min_length=1, max_length=300)
 
     def correct(self) -> bool:
         from math_executor.arithmetic import arithmetic_equal
@@ -39,6 +40,8 @@ class QuestionReview(BaseModel):
     basis: str = Field(min_length=1, max_length=300)
     calculation: Calculation | None = None
 
+    _calculation_status: str | None = PrivateAttr(default=None)
+
     def validate_calculation(self, *, externally_verified: bool = False):
         if self.kind == 'unreadable' and self.verdict != 'uncertain':
             raise ImageReviewProtocolError('unreadable_requires_uncertainty', self.location)
@@ -55,8 +58,32 @@ class ImageReview(BaseModel):
     model_config = ConfigDict(extra='forbid')
     conclusion: Literal['all_correct', 'some_incorrect', 'uncertain', 'not_checking']
     scope: Literal['all_visible', 'specified'] = 'specified'
-    coverage: Literal['complete', 'partial']
-    questions: list[QuestionReview] = Field(max_length=80)
+    coverage: Literal['complete', 'partial'] = 'partial'
+    questions: list[QuestionReview]
+    expected_count: int | None = Field(default=None, gt=0)
+    arithmetic_rows: dict[str, list[tuple[str, str, str]]] = Field(default_factory=dict, exclude=True)
+
+    _visual_review_passed: bool = PrivateAttr(default=False)
+
+    @model_validator(mode="after")
+    def expand_transcriptions(self):
+        for ref, rows in self.arithmetic_rows.items():
+            for location, expression, submitted in rows:
+                self.questions.append(QuestionReview(
+                    image_ref=ref, location=location, kind="arithmetic", task=expression,
+                    student_answer=submitted, calculation=Calculation(expression=expression, submitted=submitted),
+                    verdict="correct", basis="待复算",
+                ))
+        self.arithmetic_rows.clear()
+        return self
+
+    def complete_coverage(self, image_refs):
+        return (
+            self.coverage == "complete"
+            and (self.expected_count is None or len(self.questions) == self.expected_count)
+            and (self.scope != "all_visible" or {q.image_ref for q in self.questions} == image_refs)
+            and all(q.kind != "unreadable" for q in self.questions)
+        )
 
     def supported_conclusion(self):
         if self.conclusion == 'not_checking' and self.questions:
@@ -132,7 +159,21 @@ def review_problem(summary: str | None, candidate, images: list[str]) -> str | N
     if not isinstance(body, dict):
         body = {'protected_problem_context': body}
     body['selected_image_refs'] = list(dict.fromkeys(image_ref(value) for value in images))
-    body['image_review'] = candidate.image_review.model_dump(mode='json') if candidate.image_review else None
+    report = candidate.image_review
+    body['image_review'] = report.model_dump(mode='json') if report else None
+    if report:
+        for row, question in zip(body['image_review']['questions'], report.questions, strict=True):
+            if question._calculation_status:
+                row["calculation_status"] = question._calculation_status
+                row.pop("basis", None)
+                if (row["calculation"]["expression"] == row["task"]
+                        and row["calculation"]["submitted"] == row["student_answer"]):
+                    row.pop("calculation")
+        body["image_review_check"] = (
+            "逐项对照原图检查漏题、抄错、手写答案错行与题目覆盖范围。calculation_status 是隔离引擎"
+            "对该行转写算式与作答的复算结果，不要求另附 math_claims 或 math_records，不重复心算。"
+            "其他题型仍核对依据。复算末值不能证明未转写的中间步骤；对正文中的过程断言须有对应步骤证据。无法确认全覆盖时只允许部分结论。"
+        )
     return json.dumps(body, ensure_ascii=False)
 
 

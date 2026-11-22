@@ -16,6 +16,10 @@ from tests.support.fakes import StaticLeakJudge, tutor_raw
 
 
 class Engine:
+    def check_arithmetic(self, pairs, timeout):
+        from math_executor.arithmetic import check_arithmetic_batch
+        return check_arithmetic_batch([list(pair) for pair in pairs])["results"]
+
     def execute(self, request):
         return MathResult.model_validate(execute(request.model_dump()))
 
@@ -186,7 +190,7 @@ def test_math_gate_catches_omitted_claims_even_for_non_work():
         assert judge.math_contexts and result.vetting.failure
 
 
-def test_image_arithmetic_uses_same_ledger_and_preserves_uncertainty():
+def test_image_arithmetic_preserves_uncertainty_without_exploratory_claims():
     from app.application.workflows.tutor_turn import TutorTurnCandidate
 
     ledger = MathVerification(Engine(), {"turn_id": "t"}, {"img_current"})
@@ -209,9 +213,9 @@ def test_image_arithmetic_uses_same_ledger_and_preserves_uncertainty():
     ledger.image_refs = {"img_" + "a" * 24}
     candidate = TutorTurnCandidate.model_validate(tutor_raw(image_review=report))
     verified = ledger.reconcile_image(candidate)
-    assert len(verified.math_claims) == 1
+    assert not verified.math_claims
     ledger.validate(verified.math_claims)
-    assert len(ledger.records) == 1
+    assert not ledger.records
     unavailable = MathVerification(None, {}, ledger.image_refs).reconcile_image(
         candidate
     )
@@ -288,7 +292,8 @@ def test_image_fraction_answer_passes_actual_candidate_pipeline():
         result = call_tutor_model(StaticTutorModel(tutor_raw(image_review=report)), {}, '检查分数', [], [pixels], tools)
         assert result.failure is None
         assert result.candidate.image_review.questions[0].verdict == 'correct'
-        assert result.candidate.math_claims[0].assertion == 'equal'
+        assert not result.candidate.math_claims
+        assert result.candidate.image_review.questions[0]._calculation_status == 'equal'
 
 
 def test_transient_unavailable_is_not_cached_and_failure_codes_are_decoupled():
