@@ -38,6 +38,8 @@ class MathVerification:
         self.image_refs = image_refs
         self.records: dict[str, dict] = {}
         self.evidence: dict[str, MathEvidence] = {}
+        self.worksheet_cache = {}
+        self.worksheet_seconds = 0.0
         self.calls = 0
         self.compute_seconds = 0.0
         self.by_request: dict[str, dict] = {}
@@ -160,57 +162,64 @@ class MathVerification:
         report = candidate.image_review
         if report is None or report.conclusion == "not_checking":
             return candidate
-        questions, claims = [], list(candidate.math_claims)
-        for question in report.questions:
+        from math_executor.arithmetic import WORKSHEET_BATCH_SIZE
+
+        keys = {}
+        for index, question in enumerate(report.questions):
+            if question.image_ref not in self.image_refs:
+                raise ValueError("unselected_math_image")
             if question.calculation is not None and question.verdict != "uncertain":
-                record = self.run(
-                    {
-                        "op": "equivalent",
-                        "args": {
-                            "left": question.calculation.expression,
-                            "right": question.calculation.submitted,
-                        },
-                        "image_ref": question.image_ref,
-                        "step_ref": question.location,
-                    }
-                )
-                assertion = record.get("verdict")
-                verdict = (
-                    "correct"
-                    if assertion == "equal"
-                    else "incorrect"
-                    if assertion == "not_equal"
-                    else "uncertain"
-                )
-                question = question.model_copy(
-                    update={
-                        "verdict": verdict,
-                        "basis": "仅核验转写原式与作答值；未证明转写、列式或中间步骤正确",
-                    }
-                )
-                if "request_id" in record:
-                    claim = MathClaim(
-                        request_id=record["request_id"],
-                        step_ref=question.location,
-                        assertion=assertion if verdict != "uncertain" else "unknown",
-                    )
-                    if claim not in claims:
-                        claims.append(claim)
-            questions.append(question)
+                keys[index] = (question.image_ref, question.location,
+                               question.calculation.expression, question.calculation.submitted)
+        pending = list(dict.fromkeys(k for k in keys.values() if k not in self.worksheet_cache))
+        results = {}
+        for start in range(0, len(pending), WORKSHEET_BATCH_SIZE):
+            chunk = pending[start:start + WORKSHEET_BATCH_SIZE]
+            remaining = 16 - self.worksheet_seconds
+            if remaining <= 0:
+                results.update(dict.fromkeys(pending[start:], "timeout"))
+                break
+            before = time.monotonic()
+            try:
+                outcomes = self.engine.check_arithmetic([key[2:] for key in chunk], remaining)
+            except Exception:  # noqa: BLE001 - a failed executor cannot authorize a grade.
+                outcomes = ["unavailable"] * len(chunk)
+            finally:
+                self.worksheet_seconds += time.monotonic() - before
+            for key, status in zip(chunk, outcomes, strict=True):
+                results[key] = status
+                if status in ("equal", "not_equal", "invalid_input"):
+                    self.worksheet_cache[key] = status
+            if all(value == "unavailable" for value in outcomes):
+                results.update(dict.fromkeys(pending[start + len(chunk):], "unavailable"))
+                break
+
+        questions = list(report.questions)
+        for index, key in keys.items():
+            status = results.get(key) or self.worksheet_cache[key]
+            verdict = {"equal": "correct", "not_equal": "incorrect"}.get(status, "uncertain")
+            question = questions[index].model_copy(update={
+                "verdict": verdict,
+                "basis": "仅核验原式与所转写的作答值" if verdict != "uncertain" else f"未完成复算（{status}）",
+            })
+            question._calculation_status = status
+            questions[index] = question
+        coverage = report.coverage
+        if not report.complete_coverage(self.image_refs) or any(q.verdict == "uncertain" for q in questions):
+            coverage = "partial"
         conclusion = (
             "some_incorrect"
             if any(q.verdict == "incorrect" for q in questions)
             else "all_correct"
             if questions
-            and report.coverage == "complete"
+            and coverage == "complete"
             and all(q.verdict == "correct" for q in questions)
             else "uncertain"
         )
         return candidate.model_copy(
             update={
-                "math_claims": claims,
                 "image_review": report.model_copy(
-                    update={"questions": questions, "conclusion": conclusion}
+                    update={"questions": questions, "conclusion": conclusion, "coverage": coverage}
                 ),
             }
         )

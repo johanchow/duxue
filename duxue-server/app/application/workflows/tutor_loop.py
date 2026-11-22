@@ -123,6 +123,7 @@ def call_tutor_model(
     """
     repair: str | None = repair_error
     ledger = getattr(tools, "math_verification", None)
+    worksheet = getattr(tools, "worksheet_verification", None) or ledger
     observations: list[dict] = ([{"tool": "math", **record} for record in ledger.records.values()]
                                 if ledger is not None else [])
     if review_evidence is not None:
@@ -137,6 +138,7 @@ def call_tutor_model(
     if preload_svg_guidelines:
         _ensure_widget_guidelines(observations)
     tool_calls = 0
+    partial_candidate: TutorTurnCandidate | None = None
     best_candidate: TutorTurnCandidate | None = None
     limits = load_catalog().spec("tutoring").limits
     max_model_calls, max_tool_calls = limits["model_calls"], limits["tool_calls"]
@@ -170,11 +172,11 @@ def call_tutor_model(
                 continue
             if best_candidate is not None:
                 return result(best_candidate)
-            return result(None, str(error))
+            return result(partial_candidate, None if partial_candidate else str(error))
         except Exception as error:  # noqa: BLE001 - provider boundary uses the safe fallback
             if best_candidate is not None:
                 return result(best_candidate)
-            return result(None, str(error))
+            return result(partial_candidate, None if partial_candidate else str(error))
         if isinstance(raw, dict) and "tool" in raw:
             name = str(raw.get("tool"))
             if tool_calls >= max_tool_calls:
@@ -199,7 +201,7 @@ def call_tutor_model(
                         candidate = candidate.model_copy(update={"visual": photo})
                     if review_evidence is not None:
                         candidate = candidate.model_copy(update={"image_review": review_evidence})
-                    elif candidate.image_review is not None and ledger is None:
+                    elif candidate.image_review is not None and worksheet is None:
                         from app.application.workflows.image_review import (
                             reconcile_calculations,
                         )
@@ -209,15 +211,15 @@ def call_tutor_model(
                     from app.application.workflows.image_review import (
                         validate_image_review,
                     )
-                    ledger = getattr(tools, "math_verification", None)
+                    if worksheet is not None and review_evidence is None:
+                        candidate = worksheet.reconcile_image(candidate)
                     if ledger is not None:
-                        candidate = ledger.reconcile_image(candidate)
                         ledger.validate(candidate.math_claims)
                     elif candidate.math_claims:
                         raise ValueError("math_evidence_unavailable")
                     validate_image_review(candidate, [
                         *(url for row in window for url in row.get("image_urls", [])), *images,
-                    ], external_calculations=ledger is not None)
+                    ], external_calculations=worksheet is not None)
                 except (ValidationError, ValueError) as error:
                     span.set_attribute("agent.check.result", "rejected")
                     error_type, field = schema_error_diagnostic(error)
@@ -241,6 +243,18 @@ def call_tutor_model(
             if repair is not None:  # Other structural errors retain one retry.
                 break
             repair = format_schema_error(error)
+            continue
+        report = candidate.image_review
+        if (review_evidence is None and report and report.conclusion != "not_checking"
+                and report.expected_count is not None and len(report.questions) != report.expected_count
+                and not getattr(tools, "coverage_rechecked", False) and used_calls + 1 < call_limit):
+            tools.coverage_rechecked = True
+            partial_candidate = candidate
+            repair = json.dumps({
+                "kind": "image_coverage_gap", "transcribed": len(report.questions),
+                "expected": report.expected_count,
+                "instruction": "逐题区核对原图数量，定位缺口后可用 inspect_image 局部补读。返回完整累计题项，仍有缺口则标 partial。",
+            }, ensure_ascii=False)
             continue
         with agent_step_span("check", "tutoring.visual_schema") as visual_span:
             set_observation_payload(visual_span, input={"visual": raw.get("visual")})
@@ -292,7 +306,7 @@ def call_tutor_model(
         return result(candidate)
     if best_candidate is not None:
         return result(best_candidate)
-    return result(None, INVALID_CANDIDATE)
+    return result(partial_candidate, None if partial_candidate else INVALID_CANDIDATE)
 
 
 def _check_visual_leak(leak_judge: LeakJudgePort, text: str, task_title, problem_summary, *, photo=None) -> bool | None:
@@ -390,6 +404,10 @@ def _text_leak_result(result: bool | dict | None) -> tuple[bool | None, str | No
 def _leak_repair(vetting: Vetting) -> str:
     """Bounded feedback for one retry. The rejected draft never reaches the child."""
     reason = vetting.leak_reason or vetting.failure or "unspecified"
+    if reason == "premature_conclusion" and vetting.candidate.image_review:
+        return json.dumps({"kind": "image_review_recheck", "instruction":
+            "核对原图题区、行位置与转写。仅对无法辨清或有缺口的局部补读；仍不能确认全覆盖时提交 partial，指出未核验位置。"},
+            ensure_ascii=False)
     if reason == "math_inconsistent":
         return json.dumps({"kind": "math_verification_failed", "reason": reason,
                            "instruction": "依据本轮工具记录修正；缺证据先核算；未知只说明未核验"}, ensure_ascii=False)
@@ -561,7 +579,7 @@ def vet_candidate(
             try:
                 if check is not None and ledger is not None:
                     math_ctx = {
-                        "problem": raw_problem_summary if raw_problem_summary is not None else problem_summary,
+                        "problem": effective_summary if candidate.image_review else (raw_problem_summary or problem_summary),
                         "candidate_turn": candidate.turn.model_dump() if candidate.turn else None,
                         **ledger.context(candidate.math_claims),
                     }
@@ -821,7 +839,7 @@ def run_tutor_turn(
                                 checked = None
                                 if check is not None:
                                     math_ctx = {
-                                        "problem": problem_summary,
+                                        "problem": _prepare_vet_problem_summary(candidate, problem_summary, images_list),
                                         "candidate_turn": candidate.turn.model_dump() if candidate.turn else None,
                                         **ledger.context(candidate.math_claims),
                                     }
@@ -857,7 +875,12 @@ def run_tutor_turn(
             dossier_gate_meta = envelope.get("_dossier_gate") if isinstance(envelope, dict) else None
             if isinstance(dossier_gate_meta, dict):
                 dossier_allows = bool(dossier_gate_meta.get("allows_verdict_assertion", False))
-                verdict_allowed = dossier_allows or has_direct_engine_verdict
+                report = candidate.image_review
+                checked_worksheet = bool(
+                    report and report._visual_review_passed and report.conclusion == "all_correct"
+                    and report.coverage == "complete" and any(q._calculation_status == "equal" for q in report.questions)
+                )
+                verdict_allowed = dossier_allows or has_direct_engine_verdict or checked_worksheet
             else:
                 verdict_allowed = True
 
@@ -925,6 +948,10 @@ def run_tutor_turn(
             evidence = candidate.image_review if candidate is not None else None
             if judge_images and evidence is not None:
                 if evidence.conclusion != "not_checking":
+                    statuses = [q._calculation_status for q in evidence.questions if q.calculation]
+                    if statuses and all(status in ("unavailable", "timeout", "resource_limit") for status in statuses):
+                        if len(statuses) == len(evidence.questions):
+                            return proposal, Vetting(candidate, None, "worksheet_unavailable")
                     from app.application.workflows.image_review import review_problem
                     summary = json.loads(review_problem(problem_summary, candidate, list(judge_images or [])))
                     summary['image_review_phase'] = 'evidence_only'
@@ -942,6 +969,7 @@ def run_tutor_turn(
                                          reason or 'premature_conclusion')
                         set_observation_payload(span, output={"phase": "image_review_evidence", "failure": review.failure, "leak_reason": review.leak_reason})
                         return proposal, review
+                    evidence._visual_review_passed = True
                     remaining = load_catalog().spec('tutoring').limits['model_calls'] - proposal.used_calls
                     polished = call_tutor_model(current_model, envelope, instruction, window, images, tools,
                                                 review_evidence=evidence, call_budget=remaining)
