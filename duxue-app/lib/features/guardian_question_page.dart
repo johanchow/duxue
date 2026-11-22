@@ -12,6 +12,7 @@ import '../providers.dart';
 import '../core/conversation_latency.dart';
 import '../shared/app_ui.dart';
 import '../shared/chat_markdown.dart';
+import '../shared/reply_progress.dart';
 import '../shared/voice_composer.dart';
 import 'pronunciation_player.dart';
 import 'visual_block.dart';
@@ -22,7 +23,8 @@ class _PerspectiveSession {
   final messages = <Map<String, dynamic>>[];
   final pictures = <_PickedPicture>[];
   String draftText = '';
-  String? stateToken, error, pendingQuestion, stage;
+  String? stateToken, error, pendingQuestion;
+  final stages = <ReplyStage>[];
   List<Uint8List> pendingPictures = const [];
   List<String>? retryKeys;
   String? retryStartToken;
@@ -39,6 +41,7 @@ class _PerspectiveSession {
     stateToken = null;
     error = null;
     pendingQuestion = null;
+    stages.clear();
     pendingPictures = const [];
     retryKeys = null;
     retryStartToken = null;
@@ -96,13 +99,28 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
     super.dispose();
   }
 
-  void _bottom() => WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && scroll.hasClients) {
-          scroll.animateTo(scroll.position.maxScrollExtent,
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeOut);
-        }
-      });
+  void _bottom({bool onlyIfNearBottom = false}) {
+    if (onlyIfNearBottom &&
+        (!scroll.hasClients || scroll.position.extentAfter > 32)) {
+      return;
+    }
+    final currentMode = mode;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          !widget.active ||
+          mode != currentMode ||
+          !scroll.hasClients) {
+        return;
+      }
+      final end = scroll.position.maxScrollExtent;
+      if (MediaQuery.disableAnimationsOf(context)) {
+        scroll.jumpTo(end);
+      } else {
+        scroll.animateTo(end,
+            duration: const Duration(milliseconds: 220), curve: Curves.easeOut);
+      }
+    });
+  }
 
   void _switchMode(String nextMode) {
     if (mode == nextMode) return;
@@ -249,9 +267,13 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
     final epoch = session.generation;
     final displayPictures = preUploadedPictures ??
         [for (final picture in session.pictures) picture.bytes];
+    final uploadsImages = preUploadedKeys == null &&
+        session.pictures.any((picture) => picture.key == null);
     setState(() {
       session.busy = true;
-      session.stage = null;
+      session.stages
+        ..clear()
+        ..add(uploadsImages ? ReplyStage.uploading : ReplyStage.preparing);
       session.error = null;
       session.pendingQuestion = content;
       session.pendingPictures = displayPictures;
@@ -276,18 +298,30 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
         }
         attachmentKeys = [for (final picture in session.pictures) picture.key!];
       }
+      if (uploadsImages) {
+        if (mode == targetMode) _bottom(onlyIfNearBottom: true);
+        setState(() => session.stages.add(ReplyStage.preparing));
+      }
       final response = await timing.request(() => api.guardianExperienceTurn(
-        content: content,
-        stateToken: useComposerDraft ? session.stateToken : startToken,
-        attachmentKeys: attachmentKeys,
-        mode: targetMode,
-        onStage: targetMode == 'guardian_explain' ? (stage) {
-          if (mounted && epoch == session.generation) {
-            setState(() => session.stage = stage);
-          }
-        } : null,
-      ));
+            content: content,
+            stateToken: useComposerDraft ? session.stateToken : startToken,
+            attachmentKeys: attachmentKeys,
+            mode: targetMode,
+            onStage: (stage) {
+              final nextStage = ReplyStage.fromWire(stage);
+              if (mounted &&
+                  epoch == session.generation &&
+                  identical(session.timing, timing) &&
+                  session.busy &&
+                  nextStage != null &&
+                  session.stages.last != nextStage) {
+                if (mode == targetMode) _bottom(onlyIfNearBottom: true);
+                setState(() => session.stages.add(nextStage));
+              }
+            },
+          ));
       if (!mounted || epoch != session.generation) return;
+      if (mode == targetMode) _bottom(onlyIfNearBottom: true);
       setState(() {
         session.messages.add({
           'role': 'user',
@@ -308,10 +342,10 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
         session.pendingPictures = const [];
       });
       timing.finish('success');
-      _bottom();
     } catch (e) {
       timing.fail(e);
       if (!mounted || epoch != session.generation) return;
+      if (mode == targetMode) _bottom(onlyIfNearBottom: true);
       final detailCode = e is DioException &&
               e.response?.data is Map &&
               (e.response!.data as Map)['detail'] is Map
@@ -473,27 +507,12 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
                     ? session.pendingPictures
                     : [for (final picture in session.pictures) picture.bytes]
               }, session.messages.length),
-            if (session.busy)
-              Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 20),
-                  child: Row(children: [
-                    const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2)),
-                    const SizedBox(width: 12),
-                    Expanded(
-                        child: Text(isMentor
-                            ? switch (session.stage) {
-                                'read' => '正在识别题面…',
-                                'solve' => '正在推导解题思路…',
-                                'explain' => '正在整理导师讲解…',
-                                _ => '正在准备解析…',
-                              }
-                            : (session.pictures.isEmpty
-                                ? '正在整理思路…'
-                                : '正在读图，整理思路…'))),
-                  ])),
+            if (session.busy && widget.active)
+              ReplyProgress(
+                key: ObjectKey(session),
+                stages: session.stages,
+                onRevealed: () => _bottom(onlyIfNearBottom: true),
+              ),
             if (session.error != null)
               Padding(
                   padding: const EdgeInsets.only(top: 12),

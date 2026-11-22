@@ -527,6 +527,8 @@ def test_planning_input_rejection_reports_shape_without_the_raw_value(caplog):
 
 
 def test_companion_turn_audits_validation_failure_without_ward_text(caplog, monkeypatch):
+    from fastapi import Request, Response
+
     from app.api.deps import Principal
     from app.api.schemas import CompanionTurnRequest
     from app.api.v1.companion import companion_turn
@@ -544,8 +546,10 @@ def test_companion_turn_audits_validation_failure_without_ward_text(caplog, monk
     with caplog.at_level("WARNING", logger="duxue.agent.audit"), pytest.raises(HTTPException):
         companion_turn(
             CompanionTurnRequest(content=uttered, thread_id="thread-1", expected_thread_version=3),
-            Principal("ward-1", "ward"),
-            db,
+            request=Request({"type": "http", "headers": []}),
+            response=Response(),
+            principal=Principal("ward-1", "ward"),
+            db=db,
         )
 
     record = next(item for item in caplog.records if item.getMessage() == "companion.turn.rejected")

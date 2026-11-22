@@ -14,8 +14,13 @@ from langgraph.graph import END, START
 from app.agent_specs.catalog import AgentSpec, executing_node
 from app.agent_specs.execution_trace import record_workflow_execution
 
-
 node_started: ContextVar[Callable[[str], None] | None] = ContextVar("node_started", default=None)
+
+
+def notify_node_started(node_id: str) -> None:
+    listener = node_started.get()
+    if listener is not None:
+        listener(node_id)
 
 
 @dataclass(frozen=True)
@@ -101,9 +106,7 @@ def execute_workflow(
         with context as event:
             token = executing_node.set((spec.id, node_id))
             try:
-                listener = node_started.get()
-                if listener is not None:
-                    listener(node_id)
+                notify_node_started(node_id)
                 result = handler(state)
             finally:
                 executing_node.reset(token)

@@ -18,6 +18,7 @@ class _Api extends ApiClient {
   final turns = <({String content, String? state, String mode, List<String> keys})>[];
   bool fail = false;
   Completer<Map<String, dynamic>>? pending;
+  void Function(String)? stageListener;
   int planReads = 0;
   @override
   Future<Map<String, dynamic>> guardianExperienceTurn(
@@ -25,7 +26,8 @@ class _Api extends ApiClient {
       String? stateToken,
       List<String> attachmentKeys = const [],
       String mode = 'student_guide', void Function(String)? onStage}) async {
-    onStage?.call('read');
+    stageListener = onStage;
+    if (mode == 'guardian_explain') onStage?.call('read');
     turns.add((content: content, state: stateToken, mode: mode, keys: attachmentKeys));
     if (fail) throw StateError('offline');
     if (pending != null) return pending!.future;
@@ -109,6 +111,91 @@ Future<void> _tab(WidgetTester tester, String label) async {
 }
 
 void main() {
+  testWidgets('mentor stages stay with their in-flight conversation',
+      (tester) async {
+    final api = _Api()..pending = Completer();
+    await _home(tester, api);
+    await _tab(tester, '问答');
+    await tester.tap(find.byKey(const ValueKey('mode-guardian_explain')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('用一道示例题'));
+    await tester.pump();
+    expect(find.text('正在识别题面…'), findsNothing);
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(find.text('正在识别题面…'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+
+    final stage = api.stageListener!;
+    stage('solve');
+    stage('solve');
+    stage('unknown');
+    await tester.pump();
+    expect(find.text('正在推导解题思路…'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('mode-student_guide')));
+    await tester.pumpAndSettle();
+    stage('explain');
+    await tester.pump();
+    expect(find.text('正在整理导师讲解…'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('mode-guardian_explain')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(find.text('正在整理导师讲解…'), findsOneWidget);
+    api.pending!.complete({'content': '导师回复'});
+    await tester.pumpAndSettle();
+    expect(find.text('正在整理导师讲解…'), findsNothing);
+    expect(find.text('导师回复'), findsOneWidget);
+  });
+
+  testWidgets('student reply failure replaces its waiting status with retry',
+      (tester) async {
+    final api = _Api()..pending = Completer();
+    await _home(tester, api);
+    await _tab(tester, '问答');
+    await tester.tap(find.text('用一道示例题'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(find.text('正在准备回复…'), findsOneWidget);
+    api.stageListener!('draft');
+    await tester.pump();
+    expect(find.text('正在整理怎么一步步讲…'), findsOneWidget);
+    api.pending!.completeError(StateError('offline'));
+    await tester.pumpAndSettle();
+    expect(find.text('正在准备回复…'), findsNothing);
+    expect(find.text('重试'), findsOneWidget);
+  });
+
+  testWidgets('a reply arriving while reading history preserves the scroll',
+      (tester) async {
+    final api = _Api()..pending = Completer();
+    await _home(tester, api);
+    await _tab(tester, '问答');
+    await tester.tap(find.text('用一道示例题'));
+    await tester.pumpAndSettle();
+    api.pending!.complete({
+      'content': List.filled(35, '这是一条历史回复。').join('\n\n'),
+    });
+    await tester.pumpAndSettle();
+    api.pending = Completer();
+    unawaited(tester.widget<VoiceComposer>(find.byType(VoiceComposer))
+        .onVoiceFinal('下一题'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+    await tester.pumpAndSettle();
+
+    final questionLists = find.descendant(
+      of: find.byType(GuardianQuestionPage),
+      matching: find.byType(ListView),
+    );
+    final scroll = tester.widget<ListView>(questionLists.first).controller!;
+    expect(scroll.position.maxScrollExtent, greaterThan(200));
+    scroll.jumpTo(60);
+    api.pending!.complete({'content': '新回复'});
+    await tester.pumpAndSettle();
+    expect(scroll.offset, 60);
+    expect(find.text('正在准备回复…'), findsNothing);
+  });
+
   testWidgets('empty modes offer the same opt-in example and no invite prompt',
       (tester) async {
     final api = _Api();
@@ -388,6 +475,7 @@ void main() {
     api.pending!.complete({'content': '迟到的导师回复', 'state_token': 'stale-mentor'});
     await tester.pumpAndSettle();
     expect(find.text('迟到的导师回复'), findsNothing);
+    expect(find.text('正在识别题面…'), findsNothing);
 
     // Switch back to 学生视角: student history and unsent draft are completely intact!
     await tester.tap(find.byKey(const ValueKey('mode-student_guide')));

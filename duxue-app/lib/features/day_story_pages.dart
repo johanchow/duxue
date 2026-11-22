@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
@@ -16,6 +17,7 @@ import '../providers.dart';
 import '../core/conversation_latency.dart';
 import '../shared/app_ui.dart';
 import '../shared/chat_markdown.dart';
+import '../shared/reply_progress.dart';
 import '../shared/voice_composer.dart';
 import 'home_task_card.dart';
 import 'guardian_report_view.dart';
@@ -182,6 +184,8 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   final rememberedImages = <String, Uint8List>{};
   final _imageLoads = <String, Future<Uint8List>>{};
   final ScrollController _chatScrollController = ScrollController();
+  final _chatTailKey = GlobalKey();
+  int _chatScrollRevision = 0;
   String? companionThreadId;
   int? companionThreadVersion;
   int? nextBeforeThreadVersion;
@@ -273,8 +277,35 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     }
   }
   bool planSending = false;
+  bool _waitingForReply = false;
+  List<ReplyStage> _replyStages = const [];
   bool clearingHistory = false;
   bool get _chatBusy => planSending || clearingHistory;
+
+  void Function(String) _startCompanionReply() {
+    final generation = _chatGeneration;
+    final stages = [ReplyStage.preparing];
+    setState(() {
+      planSending = true;
+      _waitingForReply = true;
+      _replyStages = stages;
+    });
+    return (value) {
+      final stage = ReplyStage.fromWire(value);
+      if (!mounted ||
+          generation != _chatGeneration ||
+          !planSending ||
+          !_waitingForReply ||
+          !identical(stages, _replyStages) ||
+          stage == null ||
+          stage == stages.last) {
+        return;
+      }
+      _scrollToChatBottom(onlyIfNearBottom: true);
+      setState(() => stages.add(stage));
+    };
+  }
+
   int _chatGeneration = 0;
   int _quietVersion = 0;
   ConversationTurn? _questionTiming;
@@ -976,7 +1007,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         FilledButton(
             onPressed: _chatBusy ? null : _acceptSprintProposal,
             child: const Text('开始这次挑战')),
-      if (_chatBusy)
+      if (clearingHistory)
         const Padding(
           padding: EdgeInsets.only(top: 14),
           child: Center(child: CircularProgressIndicator()),
@@ -1010,6 +1041,12 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
             padding: const EdgeInsets.only(top: 14),
             child: _pronunciationCard(item),
           ),
+      if (planSending && _waitingForReply && !clearingHistory)
+        ReplyProgress(
+          stages: _replyStages,
+          onRevealed: () => _scrollToChatBottom(onlyIfNearBottom: true),
+        ),
+      SizedBox(key: _chatTailKey, height: 1),
     ];
 
     return _HomeOverlay(
@@ -1182,7 +1219,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     });
     _scrollToChatBottom();
     await _submitPlanInput(content, pronunciation: pronunciation, display: display);
-    _scrollToChatBottom();
   }
 
   Widget _growth(BuildContext context) =>
@@ -1432,11 +1468,13 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   Future<void> _acceptSprintProposal() async {
     final action = sprintAction;
     if (action == null || _chatBusy) return;
+    final generation = _chatGeneration;
     final speechGeneration = _speechGeneration;
-    setState(() => planSending = true);
+    final onStage = _startCompanionReply();
     try {
       final result = await ref.read(apiProvider).companionTurn(
           content: '',
+          onStage: onStage,
           threadId: companionThreadId,
           expectedThreadVersion: companionThreadVersion,
           routeHint: 'planning',
@@ -1445,14 +1483,16 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
             'command': 'sprint_command',
             'payload': action['payload']
           });
-      if (!mounted) return;
+      if (!mounted || generation != _chatGeneration) return;
       sprintAction = null;
       await _applyPlanTurnResult(result, speechGeneration: speechGeneration);
       await _refreshSprint();
     } catch (error) {
-      if (mounted) showMessage(context, '请重新查看这轮挑战：${userErrorMessage(error)}');
+      if (mounted && generation == _chatGeneration) {
+        showMessage(context, '请重新查看这轮挑战：${userErrorMessage(error)}');
+      }
     } finally {
-      if (mounted) {
+      if (mounted && generation == _chatGeneration) {
         setState(() => planSending = false);
         _presentSprintNotice();
       }
@@ -2019,12 +2059,11 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     _photoCommandId = null;
     _photoLatency = null;
     final generation = _chatGeneration;
-    setState(() {
-      planSending = true;
-    });
+    final onStage = _startCompanionReply();
     try {
       final result = await timing.request(() => ref.read(apiProvider).companionTurn(
           content: text,
+          onStage: onStage,
           voiceDisplayText: display,
           threadId: companionThreadId,
           expectedThreadVersion: companionThreadVersion,
@@ -2039,6 +2078,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
       timing.fail(error);
       if (!mounted || generation != _chatGeneration) return;
       if (mounted && generation == _chatGeneration) {
+        _scrollToChatBottom(onlyIfNearBottom: true);
         setState(() {
           failedPlanText = text;
           _failedVoiceDisplay = display;
@@ -2062,10 +2102,11 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     }
     final generation = _chatGeneration;
     final speechGeneration = _speechGeneration;
-    setState(() => planSending = true);
+    final onStage = _startCompanionReply();
     try {
       final result = await ref.read(apiProvider).companionTurn(
         content: '选择：${action['label']}',
+        onStage: onStage,
         threadId: companionThreadId,
         expectedThreadVersion: companionThreadVersion,
         structuredCommand: {
@@ -2207,7 +2248,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     // actual task-pool home, not only in this transient chat card.
     await _load();
     if (!mounted || generation != _chatGeneration) return;
-    await _refreshTranscript(timing: timing);
+    await _refreshTranscript(completesReply: true, timing: timing);
     if (!mounted || !sprintForeground || !_autoRead || tab != 0 || !planChatOpen ||
         generation != _chatGeneration || speechGeneration != _speechGeneration) {
       return;
@@ -2303,10 +2344,11 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
           };
     final generation = _chatGeneration;
     final speechGeneration = _speechGeneration;
-    setState(() => planSending = true);
+    final onStage = _startCompanionReply();
     try {
       final result = await ref.read(apiProvider).companionTurn(
         content: '采用建议',
+        onStage: onStage,
         threadId: companionThreadId,
         expectedThreadVersion: companionThreadVersion,
         structuredCommand: {
@@ -2360,10 +2402,11 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
       return;
     }
     final generation = _chatGeneration;
-    setState(() => planSending = true);
+    final onStage = _startCompanionReply();
     try {
       final result = await ref.read(apiProvider).companionTurn(
           content: '确认这个计划',
+          onStage: onStage,
           threadId: companionThreadId,
           expectedThreadVersion: companionThreadVersion,
           structuredCommand: {
@@ -2403,7 +2446,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
       planDraftVersion = null;
       await _load();
       if (!mounted || generation != _chatGeneration) return;
-      await _refreshTranscript();
+      await _refreshTranscript(completesReply: true);
       if (mounted && generation == _chatGeneration) {
         showMessage(context, '今天计划已确认');
       }
@@ -2636,14 +2679,37 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     }
   }
 
-  void _scrollToChatBottom() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_chatScrollController.hasClients) return;
+  void _scrollToChatBottom({bool onlyIfNearBottom = false}) {
+    if (onlyIfNearBottom &&
+        (!_chatScrollController.hasClients ||
+            _chatScrollController.position.extentAfter > 32)) {
+      return;
+    }
+    final revision = ++_chatScrollRevision;
+    final generation = _chatGeneration;
+    var remainingFrames = 12;
+    void follow(Duration _) {
+      if (!mounted ||
+          revision != _chatScrollRevision ||
+          generation != _chatGeneration ||
+          !planChatOpen ||
+          !_chatScrollController.hasClients) {
+        return;
+      }
       final position = _chatScrollController.position;
-      if (position.maxScrollExtent > 0) {
+      if (position.userScrollDirection != ScrollDirection.idle) return;
+      if ((position.pixels - position.maxScrollExtent).abs() > 0.5) {
         _chatScrollController.jumpTo(position.maxScrollExtent);
       }
-    });
+      // A lazy list estimates its extent until the last rows are laid out.
+      // Correct from the next layout when a jump has not reached the tail.
+      if (_chatTailKey.currentContext == null && --remainingFrames > 0) {
+        WidgetsBinding.instance.addPostFrameCallback(follow);
+        WidgetsBinding.instance.ensureVisualUpdate();
+      }
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback(follow);
   }
 
   // Only auto-load on scroll after the user has scrolled away from the top
@@ -2730,7 +2796,11 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     }
   }
 
-  Future<void> _refreshTranscript({bool restoreReviewAction = true, ConversationTurn? timing}) async {
+  Future<void> _refreshTranscript({
+    bool restoreReviewAction = true,
+    bool completesReply = false,
+    ConversationTurn? timing,
+  }) async {
     final generation = _chatGeneration;
     final Map<String, dynamic> transcript;
     if (companionThreadId != null) {
@@ -2749,7 +2819,9 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
       for (final m in latestLines)
         if (m.id != null) m.id!,
     };
+    if (completesReply) _scrollToChatBottom(onlyIfNearBottom: true);
     setState(() {
+      if (completesReply) _waitingForReply = false;
       if (resolvedThreadId != null) {
         companionThreadId = resolvedThreadId;
       }

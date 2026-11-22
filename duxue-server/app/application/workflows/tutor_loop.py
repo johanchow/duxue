@@ -781,12 +781,16 @@ def run_tutor_turn(
     """主调用 + 出口检查；文字给出了答案时带 ``LEAK_REPAIR`` 重试一次，重试结果重新完整检查。
 
     生产与离线评测共用。``model_fallback`` 只按最终结果记录一次。"""
+    from app.agent_specs.runtime import notify_node_started
+
     if hasattr(tools, "begin_math"):
         tools.begin_math(envelope, instruction, list(judge_images or [
             *(url for row in window for url in row.get("image_urls", [])), *images,
         ]))
 
-    def vet(candidate: TutorTurnCandidate, *, reuse_text_vetting: Vetting | None = None) -> Vetting:
+    def vet(candidate: TutorTurnCandidate, *, checking_stage: str,
+            reuse_text_vetting: Vetting | None = None) -> Vetting:
+        notify_node_started(checking_stage)
         with agent_step_span("check", "tutoring.exit_gate") as span:
             set_observation_payload(span, input={
                 "candidate": candidate.model_dump(mode="json"), "permit": permit.as_context(),
@@ -896,8 +900,10 @@ def run_tutor_turn(
     ) -> tuple[ModelCall, Vetting | None]:
         transition("tutoring", "tutoring.model_loop" if kind == "primary" else "tutoring.exit_gate",
                    "tutoring.attempt", None if kind == "primary" else "retry")
+        checking_stage = "tutoring.exit_gate" if kind == "primary" else "tutoring.recheck"
         with agent_step_span("node", "tutoring.attempt", **{"tutor.attempt.kind": kind}) as span:
             set_observation_payload(span, input={"instruction": instruction, "window": window, "permit": permit.as_context(), "attempt_kind": kind, "repair_error": repair_error})
+            notify_node_started("tutoring.attempt" if kind == "primary" else "tutoring.revise")
             proposal = call_tutor_model(
                 current_model, envelope, instruction, window, images, tools,
                 repair_error=repair_error, preload_svg_guidelines=preload_svg_guidelines,
@@ -925,6 +931,7 @@ def run_tutor_turn(
             evidence = candidate.image_review if candidate is not None else None
             if judge_images and evidence is not None:
                 if evidence.conclusion != "not_checking":
+                    notify_node_started(checking_stage)
                     from app.application.workflows.image_review import review_problem
                     summary = json.loads(review_problem(problem_summary, candidate, list(judge_images or [])))
                     summary['image_review_phase'] = 'evidence_only'
@@ -943,6 +950,7 @@ def run_tutor_turn(
                         set_observation_payload(span, output={"phase": "image_review_evidence", "failure": review.failure, "leak_reason": review.leak_reason})
                         return proposal, review
                     remaining = load_catalog().spec('tutoring').limits['model_calls'] - proposal.used_calls
+                    notify_node_started("tutoring.revise")
                     polished = call_tutor_model(current_model, envelope, instruction, window, images, tools,
                                                 review_evidence=evidence, call_budget=remaining)
                     proposal = ModelCall(polished.candidate, polished.failure, proposal.used_calls + polished.used_calls)
@@ -955,7 +963,8 @@ def run_tutor_turn(
                     else:
                         return proposal, Vetting(candidate, None, INVALID_CANDIDATE)
             review = (
-                vet(proposal.candidate, reuse_text_vetting=approved_text_vetting)
+                vet(proposal.candidate, checking_stage=checking_stage,
+                    reuse_text_vetting=approved_text_vetting)
                 if proposal.candidate is not None
                 else None
             )
