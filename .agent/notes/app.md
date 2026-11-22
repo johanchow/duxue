@@ -27,6 +27,7 @@ Guardian 用邮箱验证码注册和登录，不保存读学密码。Ward 使用
 
 ## 注意
 
+- 2026-11-22 release 明文例外只放行 `127.0.0.1`。`<domain>` 必须写 `includeSubdomains="false"`，否则 `lintVitalRelease` 失败；`flutter analyze` 和 debug 安装不会跑这项检查。该地址是本机朗读流 `ReplyAudioSource` 的回环 HTTP，没有下级域名。
 - 2026-11-17 用户确认 Guardian 精简方案并授权真机迭代；2026-11-18用户验收并授权commit。旧 `docs/mockups/guardian-*.html` 已加过期提示，不能作为当前导航事实源。成人会话不借用 Ward 身份/Thread；短期签名状态协议归 [Companion](../../docs/technical/domain-companion.md#guardian-问答体验2026-11-17已验收)。
 - 真机发现 Android 在问答页返回会退出 App；已先红后绿补回归，改为非孩子页先返回孩子页、多孩子详情返回列表，草稿/在途问答保留。清空推进 generation，防止上传、拍照或模型迟到回复污染新一轮。发送期间输入框不重复保留已发送文字，失败恢复草稿。
 - 同轮红绿修复共享VoiceComposer销毁后ASR迟到回调触发已释放ValueNotifier；销毁先中止，反馈/错误回调检查挂载状态。Guardian离开问答卸载录音组件并停止播放，保留页面拥有的会话/草稿。
