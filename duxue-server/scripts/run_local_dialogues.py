@@ -71,7 +71,7 @@ def main():
         for _, record in records:
             row = execute({'execution_target': 'tutoring', 'subject': 'math', 'level': 'other_k12',
                            'dataset': 'guidance-logic', 'split': 'development', 'family_id': record.id},
-                          record, backend, args.data/'assets', spec)
+                          record, backend, args.data/'assets', sample_index=0)
             rows.append(row)
             write(record.id+'.result.json', row)
             print(record.id, json.dumps(row.get('status'), ensure_ascii=False), flush=True)

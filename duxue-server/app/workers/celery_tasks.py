@@ -6,7 +6,7 @@ from functools import wraps
 import os
 from time import perf_counter
 
-from celery import Celery
+from app.workers.redis_config import create_celery_app
 from celery.schedules import crontab
 
 from app.infrastructure.ai.inference import DashscopeInference
@@ -36,7 +36,7 @@ def _observed_task(func):
     return wrapped
 
 
-celery_app = Celery("duxue", broker=settings.redis_url, backend=settings.redis_url)
+celery_app = create_celery_app(settings)
 celery_app.conf.timezone = "Asia/Shanghai"
 celery_app.conf.beat_schedule = {
     "expire-study-sprints": {"task":"duxue.expire_study_sprints", "schedule":15.0},

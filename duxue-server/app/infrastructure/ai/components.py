@@ -506,6 +506,8 @@ def invoke_json_component(*, spec: ComponentSpec, user, client=None, settings_ob
     messages = [{"role": "user", "content": user if spec.accepts_images else _without_images(user)}]
     if isinstance(spec.prompt, PromptTemplate):
         messages.insert(0, {"role": "system", "content": spec.prompt.text})
+    from app.infrastructure.ai.client import observe_transport
+
     telemetry_ref: dict[str, Any] = {}
     raw_seen = ""
     started = perf_counter()
@@ -519,7 +521,7 @@ def invoke_json_component(*, spec: ComponentSpec, user, client=None, settings_ob
             thinking_budget=spec.thinking_budget,
             reasoning_effort=spec.reasoning_effort,
             input_payload=None if spec.component_id.startswith("behavior.") else messages,
-        ) as telemetry:
+        ) as telemetry, observe_transport(telemetry):
             telemetry_ref = telemetry
             completion = complete_json_chat(
                 client=client,

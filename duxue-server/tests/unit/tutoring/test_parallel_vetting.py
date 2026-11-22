@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import threading
 
+import pytest
+
 from app.agent_specs.admin_bundle import compile_bundle
 from app.agent_specs.configuration import read_snapshot
 from app.agent_specs.definitions import use_definitions
@@ -234,3 +236,33 @@ def test_widget_guidelines_not_preloaded_on_first_call_even_with_visual_delivery
         obs.get("tool") == "widget_guidelines" for obs in (model2.calls[0]["observations"] or [])
     )
     assert tutor_loop is not None
+
+
+@pytest.mark.parametrize(("math_verdict", "failure"), [
+    (True, None), (False, "math_inconsistent"), (None, "math_check_failed"),
+])
+def test_plain_turn_consumes_math_verdict_from_text_judge(math_verdict, failure):
+    import json
+
+    class JointJudge(StaticVisualLeakJudge):
+        supports_joint_math_review = True
+
+        def check_math(self, **kwargs):
+            raise AssertionError("unexpected second review")
+
+        def leaks(self, *, problem_summary, **kwargs):
+            self.calls += 1
+            assert json.loads(problem_summary)["math_review_required"]
+            return {"leaks": False, "math_consistent": math_verdict}
+
+    judge = JointJudge(result=False)
+    with use_definitions(compile_bundle(_parallel_math_bundle()).catalog):
+        tools = TutorToolbox(None, tutoring_session_id=None, problem=None, task_title=None,
+                             task_active=False, window=[], math_engine=Engine())
+        result = run_tutor_turn(StaticTutorModel(tutor_raw()), {}, "核对一步", [], [], tools,
+                                permit=PROTECTED, leak_judge=judge, task_title="作业",
+                                problem_summary="学生提交一步计算")
+    assert result.vetting.failure == failure
+    assert judge.calls >= 1
+    if failure is None:
+        assert judge.calls == 1

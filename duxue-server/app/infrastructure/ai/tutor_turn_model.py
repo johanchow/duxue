@@ -36,6 +36,13 @@ class QwenTutorTurnGateway:
 
 
 class QwenLeakJudge:
+    @property
+    def supports_joint_math_review(self) -> bool:
+        from app.agent_specs.definitions import load_definitions
+
+        unit = load_definitions().units["tutoring.leak-judge"]
+        return "[submitted-feedback.v1]" in unit.prompt.template and "math_consistent" in unit.provider_output_schema.get("properties", {})
+
     def __init__(self, settings_obj=None):
         self._settings = settings_obj  # offline evaluation only; production passes nothing
 
@@ -110,7 +117,7 @@ class QwenLeakJudge:
                 **(
                     {
                         key: payload[key]
-                        for key in ("visual_need", "visual_adequate", "visual_evidence")
+                        for key in ("visual_need", "visual_adequate", "visual_evidence", "math_consistent")
                         if key in payload
                     }
                 ),

@@ -231,11 +231,11 @@ def _observe_celery_queue(_options):
     try:
         import redis
 
-        from .config import settings
+        from app.bootstrap.settings import settings
         client = redis.Redis.from_url(settings.redis_url, socket_connect_timeout=1, socket_timeout=1)
         # Celery's default Redis transport queue key is `celery`; a custom
         # queue still has full task traces, while this gauge remains absent.
-        return [metrics.Observation(client.llen("celery"), {"celery.queue": "celery"})]
+        return [metrics.Observation(client.llen(settings.redis_key_prefix + "celery"), {"celery.queue": "celery"})]
     except Exception:
         return []
 
@@ -869,8 +869,9 @@ def model_call_span(*, operation: str, model: str, agent_type: str | None = None
                     definition_digest=definition_digest,
                     component_version=component_version,
                 )
-            for key in ("first_token_ms", "first_content_ms"):
-                if key in result:
+            for key in ("first_token_ms", "first_content_ms", "http_attempts", "response_headers_ms",
+                        "remaining_budget_ms", "read_timeout_seconds"):
+                if result.get(key) is not None:
                     span.set_attribute(f"llm.{key}", result[key])
                     if model_event is not None:
                         model_event[key] = result[key]
