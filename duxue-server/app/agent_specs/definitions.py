@@ -77,11 +77,14 @@ class ModelDefinition(BaseModel):
 
     guardian_t1_reasoning_effort: Literal["low"] | None = None
     guardian_crop_handoff: bool = False
+    guardian_distance_evidence: bool = False
 
     @model_validator(mode="after")
     def valid_thinking(self):
         if self.guardian_crop_handoff and self.component_id != "tutoring.stem-extract":
             raise ValueError("Guardian crop handoff requires the stem extractor")
+        if self.guardian_distance_evidence and self.component_id != "tutoring.stem-extract":
+            raise ValueError("Guardian distance evidence requires the stem extractor")
         if self.guardian_t1_reasoning_effort and (
             self.component_id != "tutoring.blueprint-planner" or not self.enable_thinking
         ):

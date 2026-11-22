@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 
 from sqlalchemy.orm import Session
 
-from app.application.ports.math_engine import MathEnginePort, MathInput
+from app.application.ports.math_engine import MathEnginePort, MathInput, MathSymbol
 from app.application.ports.problem_solving import (
     ProblemSolverModelPort,
     QwenProblemSolverGateway,
@@ -189,8 +190,46 @@ def _call_solve_route(
     return None
 
 
+def _distance_claim_check(engine, actual: str, expected: str, interval: str | None = None) -> str:
+    # Bind formula identifiers explicitly. The compute protocol uses names without underscores.
+    identifiers = re.compile(r"[A-Za-z][A-Za-z0-9_]*")
+    names = dict.fromkeys(identifiers.findall(expected) + identifiers.findall(actual))
+    if len(names) > 8:
+        return "unknown"
+    names = {name: f"d{i}" for i, name in enumerate(names)}
+    normalized = [
+        identifiers.sub(lambda match: names[match.group()], expr) for expr in (actual, expected)
+    ]
+    request = MathInput(
+        op="equivalent", args={"left": normalized[0], "right": normalized[1]},
+        symbols=[MathSymbol(name=name, domain="real") for name in names.values()],
+        assumptions=[f"{names[interval]}:positive"] if interval else [],
+    )
+    status = verify_milestone_anchor_detail(engine, {
+        "check_kind": "symbolic_equivalence",
+        "canonical_target": normalized[1],
+        "verify_request": request.model_dump(),
+    })["status"]
+    if status != "unknown" or not 1 <= len(names) <= 3:
+        return status
+    probe = MathInput(
+        op="search_counterexample",
+        args={
+            "relation": f"({normalized[0]}) == ({normalized[1]})",
+            "bounds": {name: [1, 4] for name in names.values()},
+        },
+        symbols=request.symbols,
+        assumptions=request.assumptions,
+    )
+    return verify_milestone_anchor_detail(engine, {
+        "check_kind": "solution_set_or_counterexample",
+        "canonical_target": normalized[1],
+        "verify_request": probe.model_dump(),
+    })["status"]
+
+
 def _parse_and_verify_route(
-    engine: MathEnginePort | None, raw: dict | None
+    engine: MathEnginePort | None, raw: dict | None, distance_evidence: dict | None = None,
 ) -> _ParsedRoute:
     if not isinstance(raw, dict):
         return _ParsedRoute()
@@ -242,9 +281,36 @@ def _parse_and_verify_route(
         for k, v in list(raw_finals.items())[:10]:
             if isinstance(v, (str, int, float)) and str(v).strip():
                 finals[str(k)[:32]] = str(v).strip()[:500]
-    uncertain = bool(raw.get("uncertain", False))
+    uncertain = bool(raw.get("uncertain", False)) or bool(
+        distance_evidence and (distance_evidence["status"] != "read" or distance_evidence.get("unresolved_parts"))
+    )
     apps_tuple = tuple(approaches)
     anchor_state = DossierConfidencePolicy.classify_anchor_verification(apps_tuple)
+    if distance_evidence and distance_evidence["status"] == "read":
+        claims = raw.get("distance_claims")
+        missing = False
+        for formula in distance_evidence["formulas"]:
+            values = claims.get(formula["slot"]) if isinstance(claims, dict) else None
+            for key, expected in formula["expected"].items():
+                actual = values.get(key) if isinstance(values, dict) else None
+                if not engine or not isinstance(actual, str) or not 0 < len(actual) <= 160:
+                    missing = True
+                    continue
+                status = _distance_claim_check(engine, actual, expected, formula.get("interval_symbol"))
+                if status == "contradicted":
+                    contradictions.append({
+                        "part": formula["part"],
+                        "reason": "distance_endpoint_mismatch",
+                        "canonical_target": expected,
+                        "engine_result": actual,
+                    })
+                elif status != "verified":
+                    missing = True
+        if contradictions:
+            anchor_state = "contradicted"
+        elif missing:
+            anchor_state = "unknown"
+        uncertain |= bool(contradictions) or missing
     return _ParsedRoute(
         approaches=apps_tuple,
         invariants=invariants,
@@ -356,11 +422,39 @@ def _reread_stem(solver, stem: StructuredStem, images) -> tuple[StructuredStem, 
         reread_raw = None
     if not isinstance(reread_raw, dict) or not str(reread_raw.get("raw_text") or "").strip():
         return replace(stem, needs_student_confirmation=True, reread_verified=False,
+                       distance_evidence={**stem.distance_evidence, "reread_reason": "reread_unavailable"}
+                       if stem.distance_evidence else None,
                        disputed_conditions=("reread_unavailable",)), True
     reread_stem = StructuredStem.from_dict(reread_raw)
+    distance = stem.distance_evidence
+    fresh_distance = reread_stem.distance_evidence
+    if distance or fresh_distance:
+        from app.contexts.problem_solving.domain.distance_evidence import (
+            endpoint_readings,
+            part_key,
+        )
+
+        if fresh_distance and fresh_distance["status"] == "read" and distance and distance["status"] == "read":
+            before, after = endpoint_readings(distance), endpoint_readings(fresh_distance)
+            conflicting = {part for part, kind in before.keys() & after.keys()
+                           if before[(part, kind)] != after[(part, kind)]}
+            if conflicting:
+                unresolved = [
+                    {"part": row["part"], "reason": "distance_endpoints_disputed"}
+                    for row in fresh_distance["formulas"] if part_key(row["part"]) in conflicting
+                ]
+                return replace(stem, needs_student_confirmation=True, reread_verified=False,
+                               distance_evidence={
+                                   "status": "unclear", "reason": "distance_endpoints_disputed",
+                                   "sources": fresh_distance["sources"], "unresolved_parts": unresolved,
+                               },
+                               disputed_conditions=("distance_endpoints_disputed",)), True
+        if not fresh_distance or (fresh_distance["status"] != "read" and distance and distance["status"] == "read"):
+            fresh_distance = distance
     agreed, disputed_reasons = compare_critical_conditions(stem, reread_stem)
     if agreed:
-        return replace(stem, reread_verified=True, needs_student_confirmation=False), False
+        return replace(stem, reread_verified=True, needs_student_confirmation=False,
+                       distance_evidence=fresh_distance), False
     return (
         replace(
             stem,
@@ -745,7 +839,10 @@ def execute_blueprint(
             hit = bank_lookup(stem=stem)
             if hit and hit.scope == "bank" and hit.status == "ready":
                 solution = VerifiedSolution.from_dossier(hit)
-        return {"tier": tier, "extracted": isinstance(raw, dict)}
+        return {
+            "tier": tier, "extracted": isinstance(raw, dict),
+            **({"distance_evidence": stem.distance_evidence} if stem.distance_evidence else {}),
+        }
 
     def choose(state):
         nonlocal reread_origin
@@ -766,7 +863,10 @@ def execute_blueprint(
     def reread(state):
         nonlocal stem, disputed
         stem, disputed = _reread_stem(solver, stem, images)
-        return {"verified": stem.reread_verified, "disputed": disputed}
+        return {
+            "verified": stem.reread_verified, "disputed": disputed,
+            **({"distance_evidence": stem.distance_evidence} if stem.distance_evidence else {}),
+        }
 
     def reread_check(state):
         nonlocal solution
@@ -826,12 +926,14 @@ def execute_blueprint(
         raw_t1 = route_outputs.get("T1")
         if isinstance(raw_t1, dict) and raw_t1.get("subject"):
             stem = replace(stem, subject=str(raw_t1["subject"])[:32])
-        parsed_t1 = _parse_and_verify_route(math_engine, raw_t1)
+        parsed_t1 = _parse_and_verify_route(math_engine, raw_t1, stem.distance_evidence)
         has_t1_candidate = isinstance(raw_t1, dict) and bool(parsed_t1.approaches or parsed_t1.final_answers)
         if not has_t1_candidate:
             branch = "backup"
         elif parsed_t1.anchor_state == "contradicted":
-            if images and not stem.reread_verified:
+            if images and not stem.reread_verified and not any(
+                issue["reason"] == "distance_endpoint_mismatch" for issue in parsed_t1.contradictions
+            ):
                 reread_origin = "verify"
                 branch = "reread"
             else:
@@ -844,7 +946,7 @@ def execute_blueprint(
     def verify_backup(state):
         nonlocal parsed_backup
         parsed_backup = _parse_and_verify_route(
-            math_engine, route_outputs.get("T1_backup")
+            math_engine, route_outputs.get("T1_backup"), stem.distance_evidence,
         )
         return GateDecision("allow", parsed_backup.anchor_state)
 
@@ -852,7 +954,9 @@ def execute_blueprint(
         nonlocal parsed_t2
         def read_branch(key):
             result = state["results"].get(steps.node_id(key))
-            return _parse_and_verify_route(math_engine, result.data.get("route") if result else None)
+            return _parse_and_verify_route(
+                math_engine, result.data.get("route") if result else None, stem.distance_evidence,
+            )
 
         p1, p2 = read_branch("primary"), read_branch("alternative")
         parsed_t2 = (p1, p2)

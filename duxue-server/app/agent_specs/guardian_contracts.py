@@ -153,6 +153,75 @@ MENTOR_FINISH = "guardian-mentor.finish"
 MENTOR_PARENT_BRANCHES = {"solve", "deliver", "retry"}
 
 
+def mentor_distance_evidence(files: dict, *, low_effort: bool = False):
+    from app.agent_specs.blueprint_steps import BACKUP, EXTRACT, PLANNER_ID, REREAD
+
+    reader_rules = (
+        "\n[guardian-distance.v2] distance_stage 存在时优先执行以下专门任务，返回 JSON，不输出 tool_request，也不重写题面。"
+        '专门任务仍保留外层 {"subject":"physics","shared_stem_summary":"",'
+        '"needs_student_confirmation":false}；locate 还须给 tier，使用 stem_tier。'
+        "在 include_distance_targets=true 的终稿以及 locate 阶段，先把 subproblems 中的设问与 "
+        "diagram_summary 中相同图号的图描述逐项对应，再在原图中确认位置并填写 distance_targets。"
+        "include_distance_targets=true 时，在终稿中给计划，服务端会裁图，无需为距离符号先请求裁图。"
+        "distance_targets 是数组，每个元素含 figure（图的原标签）、image_id（image_manifest 中的整数）、"
+        "bbox（x0、y0、x1、y1 归一化坐标，留出标注线和点名所需余量）、parts（含 part 和 kind 的数组）及 "
+        "symbols（该图实际印出的代数距离符号数组，不用点名拼造符号）。"
+        'parts 的严格结构为 [{"part":"原小问号","kind":"adjacent_spacing 或 midpoint_velocity 之一"}]，每项都是对象。'
+        "只有能写出实际印出的代数距离符号时，才为该图创建目标。逐个检查使用这同一张图的所有设问。"
+        "只要用相邻点距或疏密推断定性结论，就要列为 adjacent_spacing，包括答案本身不需要写公式的判断。"
+        "一张图可以同时支持这样的判断和符号速度计算，分别列出各自的小问号。"
+        "图上的数值和区间端点名称各按原文转写，不把它们改写成代数距离符号。没有符合条件的目标时返回空数组。"
+        "part 用原小问号。相邻点距比较或基于点距变化的判断为 adjacent_spacing。"
+        "符号中点速度为 midpoint_velocity。同图的小问归在一起，不漏掉使用同一图的其他目标小问。"
+        "有 distance_relocate 时只重新定位其中指定的小问，保留 part 和 kind。"
+        "read 阶段只看所给裁图。输出 distance_reading={status: read, labels:[{symbol,start,end}], "
+        "questions:[{part,kind,start,middle,end,interval_symbol}]}。不要返回 crop_ref、value 或其他字段。"
+        "只列图上印出的距离符号，按原意用 ASCII 表达；记录每根相关标注线的两端，区分累计距离与相邻间距。"
+        "questions 覆盖 distance_target 中每个指定小问。start、middle、end 是按时间顺序的三个计数点。"
+        "related_subproblems 是还引用了同一张图的其他设问，按键逐项检查。若需比较点距或计算符号中点速度，补入 questions。"
+        "其余设问的键填入 distance_reading.not_applicable_parts 数组。"
+        "只有 midpoint_velocity 填题面给出的时间间隔符号。adjacent_spacing 省略 interval_symbol。"
+        "如果裁图未包含目标标注线和完整端点，输出 distance_reading={status: wrong_region}。"
+        "若裁图确实包含相关区域但印刷模糊或残缺，输出 distance_reading={status: image_unclear}。"
+        "有 distance_format_errors 时，仅用同一裁图修复对应字段。"
+        "没有 distance_stage 时，按原约定转写，subproblems 用设问原文字符串数组。"
+    )
+    solver_rules = (
+        "\n[guardian-distance.v2] 当 stem.distance_evidence.status=read 时，以 figures 中逐条记录的标注端点作答。"
+        "formulas 中 expected 是由这些端点约束推导的检查目标。"
+        "在 distance_claims 按 slot 返回你实际使用的表达式，键和值的格式与 expected 一致，使用 ASCII 表达式，"
+        "不能只核对量纲或抄对元数据却在正文用另一套关系。相邻点距应分别求出；中点速度的分子应是完整跨两段的位移。"
+        "若 contradiction_feedback 指出某小问距离关系不一致，按已确认的端点仅修正相关小问。"
+        "若有 unresolved_parts，仅回答其他小问；final_answers 的键用相应的原小问号。"
+    )
+    mentor_rules = (
+        "\n[guardian-distance.v2] 如果 verified_solution.stem.distance_evidence.status=read，"
+        "对 formulas 中每个 part，在对应小问的正文中原样输出其 slot（例如 [[distance_1]]）一次。"
+        "不要加代码围栏或美元符号，不要自行改写、另写或重复这些关键公式，服务端会把原标记替换为已核对的公式。"
+        "用这些实际相邻间距说明点迹变化，每个小问只讲解一次。"
+        "收到公式占位修复指令时，只修复相应小问，保留其他已完成部分。"
+        "如果距离证据取证不可用，按常规讲解可从原题确认的内容，并明确对应结论的核验限度。"
+    )
+    for component, extra in (
+        (EXTRACT, reader_rules), (REREAD, reader_rules), (PLANNER_ID, solver_rules),
+        (BACKUP, solver_rules), (MENTOR_EXPLAIN_ID, mentor_rules),
+    ):
+        doc = files[f"agents/{component}.json"]
+        template = doc["prompt"]["template"]
+        if "\n[guardian-distance.v1]" in template:
+            template = template.split("\n[guardian-distance.v1]", 1)[0]
+        doc["prompt"]["template"] = template if "[guardian-distance.v2]" in template else template + extra
+    for component in (EXTRACT, REREAD):
+        if "tutoring.inspect_image" not in files[f"agents/{component}.json"]["tools"]:
+            raise ValueError("Guardian distance evidence requires inspect_image on both readers")
+    files[f"agents/{EXTRACT}.json"]["models"][0]["guardian_distance_evidence"] = True
+    planner = files[f"agents/{PLANNER_ID}.json"]["models"][0]
+    if low_effort:
+        planner["guardian_t1_reasoning_effort"] = "low"
+    else:
+        planner.pop("guardian_t1_reasoning_effort", None)
+
+
 def parent_workflow():
     from app.agent_specs.blueprint_steps import WORKFLOW_ID
 

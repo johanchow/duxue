@@ -817,6 +817,10 @@ Ward 的 `POST /companion/turn` 和 Guardian 的 `POST /guardian/experience/turn
 
 该候选可分别使用 `--low-effort-trial` 或 `--crop-trial` 生成。前者仅在带图、无历史的 Guardian T1 主求解请求上发送 `reasoning_effort=low`，保留思考并省略该调用的 `thinking_budget`；其他路线沿用其模型配置。后者允许读题模型在完成转写时一并返回局部图位置，由已有 inspect_image 工具在本次授权的原图上裁切。同次主求解可同时看原图与切片，独立复读和备用路线仍使用各自证据。两项均须单独验收。
 
+`--distance-evidence` 生成距离端点核验候选。物理题转写后，读图器把需要代数距离关系的小问绑定到引用的图、原图选区和印出的距离符号。服务端复用 `inspect_image` 裁切本轮授权的原图，局部读图只接收对应切片。服务端绑定裁图回执，逐图检查符号和小问覆盖。取错区域可重新定位一次，格式错误可复用同一切片修复一次。单纯数值读数进入普通求解。
+
+主备求解复用确认端点推导出的相邻距离或中点速度关系，交付时由服务端填入同一证据生成的公式。局部取证失败时先交付其余小问和已确认的公式，只有目标局部确实模糊或残缺时才提示补拍对应图。`--distance-low-effort` 在同一候选上额外对 Guardian T1 主求解启用 `reasoning_effort=low`，供独立比较质量和延迟。
+
 回复进度见[对话回复阶段](#对话回复阶段)。
 
 Admin 展示准备、蓝图、讲解、交付四个节点，点击蓝图可查看[求解流程](domain-problem-solving.md)。从已有单节点直出草稿运行 `scripts/upgrade_guardian_mentor_review.py SOURCE OUTPUT --parent`，只更新父图，前提是草稿包含分阶段蓝图。通过 Admin 的 `config:import-upgrade` 导入后校验、调试、发布。已有单节点及历史分段审核快照按原摘要加载，成人 API 继续原直出兼容路径。

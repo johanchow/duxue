@@ -37,6 +37,160 @@ def test_compiler_rejects_skipped_blueprint(releases):
         compile_bundle(bundle)
 
 
+@pytest.mark.parametrize("failure, repair", [
+    (None, None), (None, "format"), (None, "coverage"), (None, "relocate"), (None, "related"),
+    ("image_unclear", None), ("invalid_distance_read", None), ("reread_unavailable", None),
+])
+def test_guardian_distance_evidence_is_bound_to_crop_and_checked_before_delivery(
+    releases, monkeypatch, failure, repair,
+):
+    from app.agent_specs.blueprint_steps import BACKUP, EXTRACT, PLANNER_ID, REREAD
+    from app.agent_specs.image_refs import image_ref
+    from app.application.ports.image_inspection import InspectImageResult
+    from app.infrastructure.ai import components
+    from app.infrastructure.media.pillow_crop import PillowImageInspector
+
+    source = releases[1]
+    candidate = upgrade(source, distance_evidence=True)
+    low = upgrade(source, distance_low_effort=True)
+    assert candidate["digest"] == upgrade(candidate, distance_evidence=True)["digest"]
+    changed = [
+        key for key, value in candidate["bundle"]["files"].items()
+        if low["bundle"]["files"][key] != value
+    ]
+    assert changed == [f"agents/{PLANNER_ID}.json"]
+    image = "https://example.invalid/paper.png"
+    other = "https://example.invalid/other.png"
+    ref = image_ref(image)
+    other_ref = image_ref(other)
+    called = []
+    crops = []
+
+    def inspect(self, req, *, authorized_images):
+        assert authorized_images == {ref: image, other_ref: other}
+        crops.append(req)
+        return InspectImageResult(
+            status="unique", image_ref=req.image_ref, bbox=req.bbox, crop_ref=f"crop_{len(crops)}",
+            crop_data_url="data:image/png;base64,AAAA",
+        )
+
+    adjacent_labels = repair == "format"
+    start, middle, end = ("P", "Q", "R") if adjacent_labels else ("A", "B", "C")
+    first, second = ("d", "s") if adjacent_labels else ("x_1", "x_2")
+    second_start = middle if adjacent_labels else start
+    spacing = second if adjacent_labels else f"{second}-{first}"
+    full_distance = f"{first}+{second}" if adjacent_labels else second
+    wrong_distance = second if adjacent_labels else f"{first}+{second}"
+    parts = [
+        {"part": part, "kind": kind, "start": start, "middle": middle, "end": end}
+        for part, kind in [("2", "adjacent_spacing"), ("3", "midpoint_velocity")]
+    ]
+
+    def invoke(*, spec, user, **kwargs):
+        seen = spec.component_id
+        called.append(seen)
+        data = json.loads(user[0]["text"])
+        if seen in {EXTRACT, REREAD}:
+            raw = {
+                "tier": "T1", "subject": "physics", "shared_stem_summary": "确认纸带端点",
+                "subproblems": ["1", "2", "3"], "needs_student_confirmation": False,
+            }
+            if repair == "related":
+                raw["subproblems"] = ["（2）根据图甲判断相邻间距。", "（3）由图甲求中点速度。"]
+            if data.get("distance_stage") == "locate" or (seen == EXTRACT and repair != "relocate"):
+                raw["distance_targets"] = [{
+                    "figure": "图甲", "image_id": 2 if repair == "relocate" and not data.get("distance_relocate") else 1,
+                    "bbox": {"x0": 0.4, "x1": 0.9, "y0": 0.3, "y1": 0.7},
+                    "parts": [{key: row[key] for key in ("part", "kind")} for row in parts],
+                    "symbols": [first, second],
+                }]
+                if not data.get("distance_relocate"):
+                    raw["distance_targets"].append({"figure": "图乙", "image_id": 2, "symbols": ["3.59", "8.00"]})
+                if repair == "related":
+                    raw["distance_targets"][0]["parts"].pop(0)
+            elif seen == REREAD:
+                assert data["distance_target"]["figure"] == "图甲"
+                assert len([part for part in user if part["type"] == "image_url"]) == 1
+                if failure == "reread_unavailable":
+                    return Mock(unwrap=lambda: None)
+                if repair == "related":
+                    assert set(data["related_subproblems"]) == {"2"}
+                labels = [
+                    {"symbol": first, "start": start, "end": middle},
+                    {"symbol": second, "start": second_start, "end": end},
+                ]
+                if repair == "relocate" and crops[-1].image_ref == other_ref:
+                    labels = [{"symbol": "3.59", "start": "A", "end": "B"}]
+                if failure == "invalid_distance_read" or (repair == "format" and not data.get("distance_format_errors")):
+                    labels[0]["value"] = "0.10"
+                raw["distance_reading"] = {
+                    "status": "image_unclear" if failure == "image_unclear" else "read",
+                    "labels": labels,
+                    "questions": [{**parts[0], "interval_symbol": "0.10s"}, {**parts[1], "interval_symbol": "T"}],
+                }
+                if repair == "coverage" and not data.get("distance_format_errors"):
+                    raw["distance_reading"]["questions"].pop(0)
+        elif seen in {PLANNER_ID, BACKUP}:
+            evidence = data["stem"]["distance_evidence"]
+            if failure:
+                assert {row["reason"] for row in evidence["unresolved_parts"]} == {failure}
+                return Mock(unwrap=lambda: {
+                    "final_answers": {"1": "独立答案", "(2)": "不得交付"},
+                    "approaches": [{"id": "A", "name": "步骤", "milestones": [
+                        {"id": "M", "goal": "独立题目", "check_kind": "conceptual_rubric"},
+                    ]}],
+                })
+            assert evidence["sources"][0]["image_ref"] == ref
+            if seen == BACKUP:
+                assert data["contradiction_feedback"]["contradictions"][0]["part"] == "3"
+            raw = {
+                "final_answers": {"2": "左端", "3": "中点速度"},
+                "approaches": [{"id": "A", "name": "读纸带", "milestones": [
+                    {"id": "M", "goal": "比较间距", "check_kind": "conceptual_rubric"},
+                ]}],
+                "distance_claims": {
+                    "[[distance_1]]": {"first_interval": first, "second_interval": spacing},
+                    "[[distance_2]]": {
+                        "velocity": f"({wrong_distance if seen == PLANNER_ID else full_distance})/(2*T)",
+                    },
+                },
+            }
+        else:
+            evidence = data["verified_solution"]["stem"]["distance_evidence"]
+            assert evidence["formulas"][1]["expected"]["velocity"] == f"({full_distance})/(2*T)"
+            raw = {"act": "explain", "content": "（2）$$[[distance_1]]$$，左端。\n（3）[[distance_2]]。\n复核 $[[distance_2]]$。"}
+        return Mock(unwrap=lambda: raw)
+
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("MATH_ENGINE_MODE", "subprocess")
+    monkeypatch.setattr(components, "invoke_agent_component", invoke)
+    monkeypatch.setattr(PillowImageInspector, "inspect", inspect)
+    trace = Recorder()
+    with use_definitions(compile_bundle(candidate["bundle"]).catalog), trace.capture():
+        result = mentor.explain_for_guardian(
+            guardian_id=f"distance-test-{failure}-{repair}", content="请讲解纸带实验",
+            attachment_keys=[], window=[], images=[image, other], rows=[],
+        )
+    assert [crop.image_ref for crop in crops] == ([other_ref, ref] if repair == "relocate" else [ref])
+    if failure:
+        assert result["act"] == "explain"
+        assert "独立答案" in result["content"]
+        assert "不得交付" not in result["content"]
+        assert ("请补拍图甲" in result["content"]) == (failure == "image_unclear")
+        assert mentor.MENTOR_EXPLAIN_ID not in called
+    else:
+        assert result["act"] == "explain"
+        reads = {None: [REREAD], "related": [REREAD], "format": [REREAD, REREAD], "coverage": [REREAD, REREAD],
+                 "relocate": [EXTRACT, REREAD, EXTRACT, REREAD]}
+        assert called == [EXTRACT] + reads[repair] + [
+            PLANNER_ID, BACKUP, mentor.MENTOR_EXPLAIN_ID,
+        ]
+        assert f"{middle}{end}={spacing}" in result["content"]
+        assert rf"\dfrac{{{full_distance}}}{{2T}}" in result["content"]
+        assert "[[distance_" not in result["content"]
+        assert "$$$" not in result["content"]
+
+
 @pytest.mark.parametrize(("case", "calls", "act"), [
     ("ok", 1, "explain"), ("retry", 2, "explain"), ("invalid", 2, "unavailable"),
     ("transport", 1, "unavailable"), ("unsafe_output", 1, "safety"),

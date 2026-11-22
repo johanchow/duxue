@@ -11,18 +11,24 @@ from app.agent_specs.admin_bundle import compile_bundle, contract_compatibility
 from app.agent_specs.guardian_contracts import (
     MENTOR_REVIEW_ID,
     direct_mentor_workflow,
-    parent_workflow,
+    mentor_distance_evidence,
     mentor_latency_trial,
+    parent_workflow,
     simplify_mentor_review,
     stage_mentor_review,
 )
 
 
-def upgrade(record, *, simplify=False, direct=False, parent=False, latency_trial=False, low_effort_trial=False, crop_trial=False):
+def upgrade(
+    record, *, simplify=False, direct=False, parent=False, latency_trial=False,
+    low_effort_trial=False, crop_trial=False, distance_evidence=False, distance_low_effort=False,
+):
     bundle = deepcopy(record["bundle"])
     if compile_bundle(bundle).digest != record["digest"]:
         raise ValueError("source digest mismatch")
-    if latency_trial or low_effort_trial or crop_trial:
+    if distance_evidence or distance_low_effort:
+        mentor_distance_evidence(bundle["files"], low_effort=distance_low_effort)
+    elif latency_trial or low_effort_trial or crop_trial:
         mentor_latency_trial(bundle["files"])
         if crop_trial:
             bundle["files"]["agents/tutoring.stem-extract.json"]["models"][0]["guardian_crop_handoff"] = True
@@ -63,6 +69,8 @@ if __name__ == "__main__":
     modes.add_argument("--latency-trial", action="store_true", help="Build the Guardian scope and English direct-route candidate")
     modes.add_argument("--crop-trial", action="store_true", help="Try extractor-selected image crops in Guardian primary solves")
     modes.add_argument("--low-effort-trial", action="store_true", help="Request low effort only for Guardian T1 primary solves")
+    modes.add_argument("--distance-evidence", action="store_true", help="Anchor Guardian paper-tape formulas to the actual image crop")
+    modes.add_argument("--distance-low-effort", action="store_true", help="Build the same distance evidence candidate with low effort in Guardian T1")
     modes.add_argument("--parent", action="store_true", help="Link the direct mentor to its staged blueprint")
     modes.add_argument("--simplify", action="store_true")
     modes.add_argument("--direct", action="store_true")
@@ -74,6 +82,7 @@ if __name__ == "__main__":
                 simplify=args.simplify,
                 direct=args.direct,
                 parent=args.parent, latency_trial=args.latency_trial, low_effort_trial=args.low_effort_trial, crop_trial=args.crop_trial,
+                distance_evidence=args.distance_evidence, distance_low_effort=args.distance_low_effort,
             ),
             ensure_ascii=False,
         )

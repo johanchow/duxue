@@ -74,6 +74,7 @@ def _frozen(doc):
                 "thinking_budget",
                 "guardian_t1_reasoning_effort",
                 "guardian_crop_handoff",
+                "guardian_distance_evidence",
             ):
                 model.pop(key, None)
         result["prompt"].pop("template")

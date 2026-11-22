@@ -61,6 +61,7 @@ class StructuredStem:
     reread_verified: bool | None = None
     needs_student_confirmation: bool = False
     disputed_conditions: tuple[str, ...] = ()
+    distance_evidence: dict | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -72,6 +73,7 @@ class StructuredStem:
             "reread_verified": self.reread_verified,
             "needs_student_confirmation": self.needs_student_confirmation,
             "disputed_conditions": list(self.disputed_conditions),
+            **({"distance_evidence": self.distance_evidence} if self.distance_evidence else {}),
         }
 
     @classmethod
@@ -96,6 +98,7 @@ class StructuredStem:
             reread_verified=rv if isinstance(rv, bool) else None,
             needs_student_confirmation=bool(raw.get("needs_student_confirmation", False)),
             disputed_conditions=disputed,
+            distance_evidence=raw.get("distance_evidence"),
         )
 
 
