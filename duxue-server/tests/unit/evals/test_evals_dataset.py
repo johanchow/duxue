@@ -277,6 +277,8 @@ def test_run_commands_filter_to_review_batch_without_network(monkeypatch, tmp_pa
         main(
             [
                 "run",
+                "--config-snapshot",
+                "tests/fixtures/admin-release.json",
                 "--batch",
                 "seed-v1",
                 "--samples",
@@ -302,6 +304,8 @@ def test_run_commands_filter_to_review_batch_without_network(monkeypatch, tmp_pa
         main(
             [
                 "run-episodes",
+                "--config-snapshot",
+                "tests/fixtures/admin-release.json",
                 "--batch",
                 "seed-v1",
                 "--samples",
