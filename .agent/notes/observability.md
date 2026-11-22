@@ -147,3 +147,5 @@
 - 2026-11-22 复跑 `run-086d16a0` 的 16 fail 和 1 error。17 条均回读为 ACTIVE，运行固定原 Dataset 历史时刻，逐字段确认输入、期望、元数据和状态与原批一致。使用已验证的 test generation 20 快照及当前代码，云端裁判版本沿用原批。按例采样一次，结果 15 pass、2 fail、0 error，原接口异常的语文 009 已通过。仍未达标为语文 010 的题型归类和政治 008 的重复提问。详见[复跑结果](../../duxue-server/var/evals/langfuse-recheck-086d16a0-20261122000225305/results.json)。
   失败回查：语文 010 原题即标 `jiū`，导师首稿误把整题概括为多音字辨析，出口直接通过。政治 008 的学生完整提交了正确计算和选项；导师首稿核对正确，实际测试快照未带 `reasoned-choice.v1`，裁判同时返回 `student_answer_correct=true` 和 `choice_verdict=true`，后者触发拒绝。重算指令来自业务门禁后的第二次导师生成。规则归[已提交答案的反馈](../../docs/technical/domain-tutoring.md#已提交答案的反馈)。
   用户更新后从 Admin 直接导出测试草稿 revision 19，并固定原用例与云端裁判版本各采样一次。政治 008 首稿准确核对已有计算和比较方向，未重写，六项通过。语文 010 首稿仍用多音字概括题型，教学正确性 4/5 过线，逐例要求 false 且裁判无具体理由。详见[复跑结果](../../duxue-server/var/evals/omni-two-after-admin-20261122003825425/run/results.json)。
+
+- 2026-11-22 复用一次 Admin 草稿拉取的 revision 20 跑五集各三条及全部 14 条 Guardian 首答。抽样排除上一轮五集和近期定向复跑用例。Guardian 的共用题组按一次真实首答、两个题号分别核分。物理 16 初评把原图标记的累计距离误当分段距离，按图复核扣去对应空并保留初评。逐例得分、快照身份、上轮对比与新实验见[本批报告](../../duxue-server/var/evals/langfuse-five-by-three-guardian-20261122-105411.fC2sK3/REPORT.md)。

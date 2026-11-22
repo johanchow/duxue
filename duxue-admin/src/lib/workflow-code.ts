@@ -233,6 +233,128 @@ export function actionLogic(
     : undefined;
 }
 
+const edgeConditions: Record<
+  string,
+  Record<string, { label: string; summary: string }>
+> = {
+  tutoring: {
+    closing: {
+      label: '结束答疑',
+      summary: '孩子本轮明确表示结束提问或关闭当前答疑会话。',
+    },
+    open: {
+      label: '会话进行中',
+      summary: '当前答疑会话保持打开，继续检查本轮输入与状态。',
+    },
+    unsafe_input: {
+      label: '输入安全拦截',
+      summary: '本轮输入命中安全规则，不调用模型，直接返回安全提示。',
+    },
+    confirmed: {
+      label: '孩子确认理解',
+      summary: '孩子主动确认已理解当前题目，直接记录理解确认事实。',
+    },
+    question: {
+      label: '正常提问',
+      summary: '输入安全且非纯确认，进入图片鉴权与正常答疑流程。',
+    },
+    foreign_media: {
+      label: '图片归属异常',
+      summary: '附件中存在不属于当前孩子的图片 key，拒绝读取并请重拍。',
+    },
+    authorized: {
+      label: '图片已授权/无图',
+      summary: '全部附件归属校验通过，或本轮不涉及图片。',
+    },
+    ambiguous: {
+      label: '图片指代不明',
+      summary: '历史窗口中存在多张候选图片且无法确定本轮指向，先请孩子澄清。',
+    },
+    resolved: {
+      label: '图片目标已确定',
+      summary: '已唯一确定本轮目标图片（或纯文字提问），进入答疑生成。',
+    },
+    work: {
+      label: '通过 · 解题辅导',
+      summary: '输出安全与教学审核通过且属于解题推进，先更新题目进度（TutoringProblem）再交付。',
+    },
+    conversation: {
+      label: '通过 · 普通对话',
+      summary: '输出通过审核但属于寒暄/元对话，不改动题目进度，直接交付回复。',
+    },
+    failed: {
+      label: '审核未通过/耗尽',
+      summary: '候选未通过审核或重试预算耗尽，保留原题目进度并走预设兜底。',
+    },
+    unsafe_output: {
+      label: '输出安全拦截',
+      summary: '交付前输出安全扫描未通过，替换为预设安全提示且不改动题目进度。',
+    },
+    pronounce: {
+      label: '发音辅导',
+      summary: '本轮教学动作为纯发音示范，直接交付发音课卡。',
+    },
+    clarify: {
+      label: '需要澄清',
+      summary: '题面模糊或缺少必要条件，直接向孩子发出澄清问题。',
+    },
+  },
+  'tutoring-retry': {
+    no_candidate: {
+      label: '无可用候选',
+      summary: '首轮尝试未产出可审核候选，直接结束并交上层兜底。',
+    },
+    retry_leak: {
+      label: '审核拦截，修复重试',
+      summary: '候选未通过答案保护或教学审核，带反馈让主模型修复重试。',
+    },
+    candidate_without_retry: {
+      label: '首轮通过/无需文本修复',
+      summary: '首轮文本候选已过审，进入配图重绘与补图判断。',
+    },
+    same_leak_with_backup: {
+      label: '重复拦截，切备用模型',
+      summary: '主模型修复后仍触发同类拦截且已配置备用模型，切换备用模型重试。',
+    },
+    no_backup_needed: {
+      label: '无需切备用模型',
+      summary: '修复已通过或无备用模型可切，进入配图判断阶段。',
+    },
+    needs_visual_redraw: {
+      label: '配图被拒，重绘',
+      summary: '仅配图未通过答案保护被移除，要求主模型按反馈重绘配图。',
+    },
+    no_visual_redraw: {
+      label: '无需重绘配图',
+      summary: '不存在被移除的配图，继续检查是否缺少必要配图。',
+    },
+    needs_missing_visual: {
+      label: '缺少所需配图，补画',
+      summary: '文本过审但仍缺少教学所需配图（或用文字排版代图），由主模型补画。',
+    },
+    no_missing_visual: {
+      label: '配图完整/无需配图',
+      summary: '当前候选已满足交付要求，汇总返回。',
+    },
+    retry_missing_with_backup: {
+      label: '主模型补图失败，切备用',
+      summary: '主模型补图未达标且允许再试，改由备用模型补画配图。',
+    },
+    missing_attempt_done: {
+      label: '补图尝试结束',
+      summary: '主模型补图成功或无备用重试机会，汇总返回结果。',
+    },
+  },
+};
+
+export function edgeConditionDetail(
+  workflowId: string,
+  conditionId?: string,
+) {
+  if (!conditionId) return undefined;
+  return edgeConditions[workflowId]?.[conditionId];
+}
+
 export function gateLogic(definition?: {
   implementation?: unknown;
   handler_id?: string;

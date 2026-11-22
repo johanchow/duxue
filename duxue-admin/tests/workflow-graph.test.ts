@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { workflowGraph, workflowDetailHref } from '../src/lib/workflow-graph';
-import { actionLogic, gateLogic } from '../src/lib/workflow-code';
+import { actionLogic, edgeConditionDetail, gateLogic } from '../src/lib/workflow-code';
 
 const releaseSnapshot = JSON.parse(
   fs.readFileSync(
@@ -308,4 +308,63 @@ test('导师重试线连接同一讲解节点的出口与入口，分支标签�
     assert.match(String(edges[2].label), /安全|澄清/);
     assert.match(String(edges[5].label), /交付/);
   }
+});
+
+test('tutoring 主图可折叠非控制流归属子节点，并为主图和重试子图提供中文分支说明', () => {
+  const flow = {
+    id: 'tutoring',
+    nodes: [
+      { id: 'tutoring.turn', kind: 'action', handler_id: 'tutoring.turn' },
+      { id: 'tutoring.intake', kind: 'action', handler_id: 'tutoring.intake' },
+      { id: 'tutoring.model_loop', kind: 'workflow', ref: 'tutoring-retry' },
+      {
+        id: 'tutoring.attempt',
+        kind: 'agent',
+        ref: 'tutoring.turn',
+        parent: 'tutoring.model_loop',
+      },
+      {
+        id: 'tutoring.exit_gate',
+        kind: 'action',
+        handler_id: 'tutoring.exit_gate',
+        parent: 'tutoring.attempt',
+      },
+      { id: 'tutoring.output_safety', kind: 'gate', ref: 'tutoring.output_safety' },
+      { id: 'tutoring.apply_problem', kind: 'action', handler_id: 'tutoring.apply_problem' },
+      { id: 'tutoring.result', kind: 'action', handler_id: 'tutoring.result' },
+    ],
+    edges: [
+      { from: 'START', to: 'tutoring.turn' },
+      { from: 'tutoring.turn', to: 'tutoring.intake', condition_id: 'open' },
+      { from: 'tutoring.intake', to: 'tutoring.model_loop', condition_id: 'question' },
+      { from: 'tutoring.model_loop', to: 'tutoring.output_safety' },
+      { from: 'tutoring.output_safety', to: 'tutoring.apply_problem', condition_id: 'work' },
+      { from: 'tutoring.apply_problem', to: 'tutoring.result' },
+      { from: 'tutoring.result', to: 'END' },
+    ],
+  };
+  const compact = workflowGraph(flow, {}, {}, 'LR', { showRelationships: false });
+  assert.equal(compact.relationshipCount, 2);
+  assert.equal(
+    compact.edges.some((e) => e.data?.relationship),
+    false,
+  );
+  assert.equal(
+    compact.nodes.some((n) => n.id === 'tutoring.attempt' || n.id === 'tutoring.exit_gate'),
+    false,
+  );
+  assert.equal(
+    compact.edges.find(
+      (e) => (e.data?.configuration as { condition_id?: string } | undefined)?.condition_id === 'work',
+    )?.label,
+    '通过 · 解题辅导',
+  );
+  assert.match(
+    edgeConditionDetail('tutoring', 'work')?.summary || '',
+    /TutoringProblem/,
+  );
+  assert.match(
+    edgeConditionDetail('tutoring-retry', 'retry_leak')?.label || '',
+    /修复重试/,
+  );
 });

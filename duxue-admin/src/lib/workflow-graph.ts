@@ -1,6 +1,6 @@
 import dagre from '@dagrejs/dagre';
 import { MarkerType, Position, type Node, type Edge } from '@xyflow/react';
-import { actionLogic } from './workflow-code';
+import { actionLogic, edgeConditionDetail } from './workflow-code';
 
 export type Json = Record<string, any>;
 
@@ -61,7 +61,21 @@ export function workflowGraph(
   definitions: Record<string, Json> = {},
   names: Record<string, string> = {},
   direction: 'LR' | 'TB' = 'LR',
+  options?: { showRelationships?: boolean },
 ) {
+  const showRelationships = options?.showRelationships ?? true;
+  const linked = new Set(
+    flow.edges.flatMap((edge: Json) => [edge.from, edge.to]),
+  );
+  const relationshipNodes = flow.nodes.filter(
+    (node: Json) => node.parent && !linked.has(node.id),
+  );
+  const hiddenIds = new Set(
+    showRelationships ? [] : relationshipNodes.map((node: Json) => node.id),
+  );
+  const visibleFlowNodes = flow.nodes.filter(
+    (node: Json) => !hiddenIds.has(node.id),
+  );
   const nodes: Node[] = [
     {
       id: 'START',
@@ -69,7 +83,7 @@ export function workflowGraph(
       data: { title: '开始' },
       className: 'boundary-node',
     },
-    ...flow.nodes.map((node: Json) => {
+    ...visibleFlowNodes.map((node: Json) => {
       const definition = definitions[node.ref];
       const title = workflowNodeTitle(
         flow.id,
@@ -148,7 +162,9 @@ export function workflowGraph(
                 unknown: '核验未知',
               } as Record<string, string>
             )[edge.condition_id] || edge.condition_id
-          : edge.condition_id || undefined,
+          : edgeConditionDetail(flow.id, edge.condition_id)?.label ||
+            edge.condition_id ||
+            undefined,
     type: 'catalog',
     markerEnd: {
       type: MarkerType.ArrowClosed,
@@ -161,23 +177,20 @@ export function workflowGraph(
     labelStyle: { fontSize: 11 },
     style: { stroke: '#71877d', strokeWidth: 1.5 },
   }));
-  const linked = new Set(
-    flow.edges.flatMap((edge: Json) => [edge.from, edge.to]),
-  );
-  const relationships: Edge[] = flow.nodes
-    .filter((node: Json) => node.parent && !linked.has(node.id))
-    .map((node: Json) => ({
-      id: `parent-${node.id}`,
-      source: node.parent,
-      target: node.id,
-      label: '归属（非控制流）',
-      type: 'catalog',
-      data: {
-        relationship: true,
-        configuration: { parent: node.parent, child: node.id },
-      },
-      style: { stroke: '#a0aaa5', strokeDasharray: '5 5' },
-    }));
+  const relationships: Edge[] = showRelationships
+    ? relationshipNodes.map((node: Json) => ({
+        id: `parent-${node.id}`,
+        source: node.parent,
+        target: node.id,
+        label: '归属（非控制流）',
+        type: 'catalog',
+        data: {
+          relationship: true,
+          configuration: { parent: node.parent, child: node.id },
+        },
+        style: { stroke: '#a0aaa5', strokeDasharray: '5 5' },
+      }))
+    : [];
   const graph = new dagre.graphlib.Graph({ multigraph: true });
   graph.setGraph({
     rankdir: direction,
@@ -256,5 +269,9 @@ export function workflowGraph(
       },
     };
   });
-  return { nodes, edges: routedEdges };
+  return {
+    nodes,
+    edges: routedEdges,
+    relationshipCount: relationshipNodes.length,
+  };
 }
