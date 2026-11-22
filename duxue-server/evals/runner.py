@@ -235,7 +235,8 @@ def _observe_tutor(
     review = ReviewCapture(backends.leak_judge or _NeverLeaks())
     result = run_tutor_turn(
         backends.tutor_model,
-        {},
+        {"_dossier_gate": {"status": "pending", "confidence": "low", "allows_verdict_assertion": False}}
+        if context.dossier_status == "pending" else {},
         instruction,
         window,
         images,
