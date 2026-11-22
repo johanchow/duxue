@@ -6,7 +6,7 @@
 
 默认 `python -m evals run` 使用下述 Langfuse 托管用例和原生评分。用户另行授权的 Omni-Edu 本地批次使用 **`python -m evals.local`**：只读取仓库文件、使用本地评分适配器，不连接 Langfuse Dataset、Evaluator、Scores，也不上传遥测。两条入口显式分开，不在云端出错时自动切换。原有托管用例不受本地批次变更影响。
 
-本地模式的用例/逐例要求唯一维护在 `duxue-server/evals/data/omni-edu-v1/`；评分执行复用既有 `evals/grading.py`、`evals/semantic.py`，模型和业务/独立裁判提示词取自固定 Admin 配置快照。内部完整解题另使用版本化的 evaluation-only `evals/local/solve-prompt.txt`，模型及参数沿用快照导师；该提示不进入生产配置或 Ward 链路。本地批次不复制在线 Evaluator 定义，也不把结果写回线上用例。
+本地模式的用例与逐例要求维护在 `duxue-server/evals/data/omni-edu-v1/`。评分执行复用 `evals/grading.py`、`evals/semantic.py`，模型和业务及独立裁判提示词取自固定 Admin 配置快照。完整解题与托管入口共用下文的[生产解题回放](#完整解题回放)。本地批次独立储存结果。
 
 下列 Langfuse 单源及原生评分规则针对**默认托管模式**，不适用于上述显式本地模式。
 
@@ -258,7 +258,15 @@ LLM 映射为 `input → input`、`output.response → output`、`output.evaluat
 
 托管输入沿用`duxue-dataset.v1`，`input.execution_target`明确`solve`或`tutoring`；期望、参考与逐例要求保留在expectedOutput，不注入模型输入。元数据保留学科、三类能力、层级审核、来源uid/commit/记录哈希、题目家族、split和本地manifest摘要。原始源记录仍留本地sources作审计。英语010原题面带答案解析的问题用`review_required=true`及`known_issues`显式标记，未静默改题或改历史分。
 
-42个`solve`任务复用evaluation-only完整解题适配器，评分只要求确定性、教学正确性和逐例要求三个原生维度；167个辅导任务复用生产答疑和适用原生维度，保持云端评分执行，不回退本地评分。托管转换器`evals.platform.omni`生成固定ID的待导入payload；完整input/expectedOutput/metadata摘要用于回读及重复迁移检查，远端人工修改或归档不能被旧包覆盖。导入后托管用例在Langfuse维护，本地包保留供审计和显式本地实验使用，不自动双向同步。
+42 个 `solve` 任务走[完整解题回放](#完整解题回放)。167 个辅导任务复用生产答疑和适用原生维度，使用 Langfuse 评分。托管转换器 `evals.platform.omni` 生成固定 ID 的待导入 payload。完整 input、expectedOutput、metadata 摘要用于回读及重复迁移检查，远端人工修改或归档不能被旧包覆盖。导入后托管用例在 Langfuse 维护，本地包供审计和显式本地实验使用。
+
+#### 完整解题回放
+
+托管和本地 `solve` 共用 `evals/solve.py`，把原题和原图交给 `execute_blueprint()`。该函数执行固定 Admin 快照里的 `tutoring-blueprint`，模型调用使用生产求解网关，数学与科学核验使用生产数学执行器。读题、主备求解、确定性核验和复杂题双路比对由 Workflow 按实际分支执行。
+
+评分读取 `VerifiedSolution.mentor_projection()` 里的候选或已核验答案、解题路线、证据和置信度。失败或没有最终答案时，交付断言未通过。其余答案按题面的完整解题标准由独立裁判评分。托管仍要求确定性、教学正确性和逐例要求三个原生维度，用例参考答案只进入评分。托管 Trace 记录实际执行的 Workflow 节点。本回放覆盖生产内部求解和核验。Ward 对话和 Guardian 最终讲解各有自己的评测入口。
+
+历史批次使用评测专用 Prompt 直接调用导师模型。对照结果时需按执行入口区分两批分数。
 
 本批17张图片仍为`input.assets`中的OSS稳定对象引用，未新增Langfuse原生媒体。托管执行器先从OSS下载验SHA256，模型请求及评分证据使用运行时生成的24小时HTTPS签名链接；签名链接和凭据不写入Dataset。过期Trace外链不会自动续签；Dataset对象引用需要执行器解析，不能当作网页长期图片缩略图。原有历史原生媒体入口继续兼容。外链形式与原生媒体的区别见[Langfuse官方说明](https://langfuse.com/docs/observability/features/multi-modality#external-media-urls)。
 

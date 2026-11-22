@@ -76,10 +76,11 @@ def run(args, validation):
     from evals.local.dataset import load, select
     from evals.local.execution import execute
     from evals.local.report import summarize
-    from evals.local.solve import identity
+    from evals.solve import identity
 
     manifest, tasks = load(args.data)
     tasks = select(tasks, args)
+    has_solve = any(entry["execution_target"] == "solve" for entry, _ in tasks)
     if args.out.resolve().is_relative_to(args.data.resolve()):
         raise ValueError("output directory must be outside the input dataset")
     args.out.mkdir(parents=True, exist_ok=False)
@@ -135,7 +136,7 @@ def run(args, validation):
                 "validation": validation,
                 "selected_ids": [e["id"] for e, _ in tasks],
                 "samples": args.samples,
-                "solver": identity(spec),
+                "solver": identity() if has_solve else None,
                 "grader": backend.semantic_grader.metadata(),
                 "dataset_manifest": manifest,
             }
@@ -165,9 +166,7 @@ def run(args, validation):
 
             def work(entry, record, index):
                 try:
-                    return execute(
-                        entry, record, backend, assets, spec, index
-                    )
+                    return execute(entry, record, backend, assets, index)
                 except Exception as exc:  # noqa: BLE001 - isolate one failed evaluation sample
                     return {
                         **entry,

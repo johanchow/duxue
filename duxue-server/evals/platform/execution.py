@@ -126,24 +126,21 @@ def fixed_judge(backend, context, reply, assets):
     )
 
 
-def solve_turn(case, backend, assets):
-    from app.infrastructure.ai.components import COMPONENTS
+def solve_turn(case, assets):
+    from evals import solve
     from evals.graders import observations
-    from evals.local.solve import complete, identity
-    from evals.outcome import Observation
     from evals.runner import _evidence, build_input
 
     if case.snapshot_origin == "missing":
         raise ValueError("missing_input_snapshot")
     window, images = build_input(case, assets)
     images = runtime_images(case, window, images)
-    spec = COMPONENTS.get("tutoring.turn")
+    solver = solve.identity()
     start = time.perf_counter()
-    content = complete(case, spec, images)
+    obs = solve.execute(case.student_said, images)
     latency = round((time.perf_counter() - start) * 1000, 1)
-    obs = Observation("answer", content=content, delivered_content=content, tool_calls=[])
     evidence = _evidence(case, obs)
-    evidence.update(execution_target="solve", solver=identity(spec))
+    evidence.update(execution_target="solve", solver=solver)
     evidence["images"] = [{"name": n, "image": u} for n, u in zip(case.images, images)]
     return observations(obs, latency), evidence, latency, None
 
@@ -215,10 +212,11 @@ def _execute_item(client, item, scorer, backends):
                         else "tutoring.turn"
                     ]
                     if record["type"] == "single_turn":
-                        execute_turn = solve_turn if item.input.get("execution_target") == "solve" else turn
-                        observed, evidence, latency, error = execute_turn(
-                            TurnRecord.model_validate(record).to_case(), backend, assets
-                        )
+                        case = TurnRecord.model_validate(record).to_case()
+                        if item.input.get("execution_target") == "solve":
+                            observed, evidence, latency, error = solve_turn(case, assets)
+                        else:
+                            observed, evidence, latency, error = turn(case, backend, assets)
                     elif episode:
                         step = episode.turns[index]
                         said = step.student_on.get(prior_outcome, step.student_said)

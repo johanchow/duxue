@@ -150,7 +150,7 @@ def test_local_run_supplies_remote_bytes_to_image_execution(tmp_path, monkeypatc
     )
     seen = []
 
-    def execute(entry, record, backend, directory, spec, index):
+    def execute(entry, record, backend, directory, index):
         assert directory == tmp_path / "run/resolved-assets"
         for message in record.messages:
             for name in message.images:
