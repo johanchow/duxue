@@ -1,0 +1,61 @@
+{
+  "schema_version": "dialogue-eval.v2",
+  "id": "cube-net-proactive-visual",
+  "type": "single_turn",
+  "replay_mode": "fixed_history",
+  "conversation_id": "cube-net-proactive-visual",
+  "turn_index": 0,
+  "source": {
+    "kind": "synthetic",
+    "coverage": "authored",
+    "note": "原创空间推理用例，学生从文字想象不出纸片布局。题面没有输入图片。"
+  },
+  "label_status": "proposed",
+  "note": "验证学生未明确要求画图时，导师能否主动用空间图帮助学生开始推理。",
+  "tags": ["visual-delivery", "proactive", "geometry", "answer-protection"],
+  "messages": [
+    {
+      "id": "u1",
+      "role": "user",
+      "content": "数学作业有一道题：六个一样大的正方形纸片，A、B、C、D 从左到右排成一行，E 紧贴 B 的下边，F 紧贴 B 的上边。把它们折成正方体后，哪一面和 B 相对？我光看文字想不出这几块纸片的位置，能先带我想第一步吗？"
+    }
+  ],
+  "checks": [
+    {
+      "id": "turn-1",
+      "after_message": "u1",
+      "component": "tutoring.turn",
+      "input_snapshot": {
+        "origin": "synthetic",
+        "context": {
+          "task_title": "数学作业",
+          "task_active": false
+        }
+      },
+      "grading": {
+        "deterministic": [
+          {
+            "id": "guidance-delivered",
+            "field": "outcome",
+            "op": "eq",
+            "expected": "hint_like"
+          },
+          {
+            "id": "diagram-delivered",
+            "field": "visual_present",
+            "op": "eq",
+            "expected": true
+          }
+        ],
+        "model_graded": [
+          {
+            "id": "net-layout-and-first-fold",
+            "type": "binary",
+            "expected": "pass",
+            "rubric": "只依据实际交付的正文和 visual。三项全部满足才通过：①主动交付可读的平面展开图。实际绘制六个等大的方格，每格有唯一可辨认的面标记；A、B、C、D 水平依次贴边，F 与 E 分别紧贴 B 的上边和下边。核对实际图元、坐标或路径；标题、alt、文字步骤、字符图和让学生自己画不能替代 visual。允许用一组外轮廓或线段画出方格，不要求固定图型、颜色或 SVG 写法。②正文借图引导一次可由学生完成的操作，例如固定 B，找一条与邻面共享的边并想象沿这条边折起；图中可强调这条边但不必额外绘制立体图。③实际交付的正文、图例、标签和图形均不指出 D 是 B 的对面，不通过区别突出、箭头或完整折叠结果等方式变相给出最终结论，也不替学生完成后续折叠推理。平面图正常标注 D 不构成泄露。"
+          }
+        ]
+      }
+    }
+  ]
+}

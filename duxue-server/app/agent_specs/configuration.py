@@ -39,6 +39,109 @@ def snapshot_bundle() -> dict:
     return read_snapshot()['bundle']
 
 
+def fetch_admin_snapshot(
+    channel: str | None = None,
+    *,
+    source_url: str | None = None,
+    token: str | None = None,
+) -> dict:
+    """Fetch and validate one immutable Admin configuration snapshot for a single eval run."""
+    from urllib.parse import urlsplit
+
+    import httpx
+    from dotenv import load_dotenv
+
+    from app.agent_specs.admin_bundle import compile_bundle
+
+    if not (source_url or os.getenv("AGENT_CONFIG_SOURCE_URL")) or not (
+        token or os.getenv("AGENT_ADMIN_INTERNAL_TOKEN")
+    ):
+        load_dotenv(CODE_ROOT.parent / ".env", override=False)
+
+    source = (source_url or os.getenv("AGENT_CONFIG_SOURCE_URL", "")).rstrip("/")
+    secret = token or os.getenv("AGENT_ADMIN_INTERNAL_TOKEN", "")
+    if not source or len(secret) < 32:
+        raise ValueError(
+            "离线评测默认直接从 Admin 读取配置；请配置 AGENT_CONFIG_SOURCE_URL 和至少 32 字符的 AGENT_ADMIN_INTERNAL_TOKEN"
+        )
+    effective_channel = (
+        channel or os.getenv("AGENT_CONFIG_CHANNEL") or "working-draft"
+    ).strip()
+    if effective_channel not in {"working-draft", "release"}:
+        raise ValueError(f"未知 Admin 配置渠道：{effective_channel}")
+
+    expected_env = (
+        "prod" if os.getenv("APP_ENV") in {"production", "prod"} else "test"
+    )
+    headers = {"Authorization": "Bearer " + secret}
+
+    if effective_channel == "working-draft":
+        if expected_env != "test" or urlsplit(source).hostname not in {
+            "127.0.0.1",
+            "localhost",
+            "::1",
+        }:
+            raise ValueError("工作草稿仅允许本机连接测试 Admin")
+        response = httpx.get(source + "/working-draft", headers=headers, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        if data.get("environment") != "test":
+            raise ValueError("草稿环境不匹配")
+        draft = data.get("draft")
+        if draft is not None:
+            record = {
+                **draft,
+                "kind": "draft",
+                "environment": data["environment"],
+                "source_channel": "working-draft",
+            }
+        else:
+            rel_resp = httpx.get(source + "/release", headers=headers, timeout=10)
+            rel_resp.raise_for_status()
+            rel_data = rel_resp.json()
+            if rel_data.get("environment") != "test" or not rel_data.get("release"):
+                raise ValueError("测试 Admin 没有工作草稿或发布")
+            record = {
+                **rel_data["release"],
+                "kind": "release",
+                "environment": rel_data["environment"],
+                "revision": rel_data.get("generation"),
+                "source_channel": "working-draft",
+            }
+    else:
+        response = httpx.get(source + "/release", headers=headers, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        if data.get("environment") != expected_env or not data.get("release"):
+            raise ValueError(f"Admin {expected_env} 环境没有可用发布")
+        record = {
+            **data["release"],
+            "kind": "release",
+            "environment": data["environment"],
+            "revision": data.get("generation"),
+            "source_channel": "release",
+        }
+
+    if not isinstance(record.get("bundle"), dict):
+        raise TypeError("Admin 返回的配置缺少 bundle")
+    compiled = compile_bundle(record["bundle"])
+    if record.get("digest") and record["digest"] != compiled.digest:
+        raise ValueError("Admin配置摘要不匹配")
+    record["digest"] = compiled.digest
+    return record
+
+
+def load_evaluation_snapshot(
+    *,
+    snapshot_file: Path | str | None = None,
+    channel: str | None = None,
+) -> dict:
+    """Load pinned config for evaluation: Admin DB by default, file only when explicitly provided."""
+    if snapshot_file is not None:
+        return read_snapshot(Path(snapshot_file))
+    return fetch_admin_snapshot(channel=channel)
+
+
 _offline_catalog = None
 
 

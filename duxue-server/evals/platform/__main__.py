@@ -150,7 +150,10 @@ def select_items(items, *, batch=None, cases=None):
 
 
 def run(args, client, resources):
-    from app.agent_specs.configuration import read_snapshot, select_offline_snapshot
+    from app.agent_specs.configuration import (
+        load_evaluation_snapshot,
+        select_offline_snapshot,
+    )
     from app.agent_specs.definitions import use_definitions
     from evals.configuration import _record
     from evals.platform.execution import execute_item
@@ -199,7 +202,10 @@ def run(args, client, resources):
         raise ValueError("Duplicate case_id across datasets")
     if not found or requested - found:
         raise ValueError(f"No cases or missing cases: {sorted(requested - found)}")
-    snapshot = read_snapshot()
+    snapshot = load_evaluation_snapshot(
+        snapshot_file=getattr(args, "config_snapshot", None),
+        channel=getattr(args, "config_channel", None),
+    )
     definition = select_offline_snapshot(snapshot)
     write(output / "config-snapshot.json", snapshot)
     write(output / "evaluators.json", versions)
@@ -217,6 +223,14 @@ def run(args, client, resources):
         "working_tree_dirty": bool(
             subprocess.check_output(["git", "status", "--porcelain"], text=True)
         ),
+        "config_source": (
+            f"admin:{snapshot['source_channel']}"
+            if snapshot.get("source_channel")
+            else "snapshot"
+        ),
+        "config_id": snapshot.get("id"),
+        "config_kind": snapshot.get("kind"),
+        "config_revision": snapshot.get("revision"),
         "config_digest": snapshot["digest"],
         "grader_version": ",".join(
             f"{name}:v{e['version']}" for name, e in versions.items()
@@ -378,7 +392,17 @@ def main(argv=None):
     p.add_argument("--case", action="append")
     p.add_argument("--batch", action="append", help="Filter hosted items by metadata.batch")
     p.add_argument("--version")
-    p.add_argument("--config-snapshot", required=True)
+    p.add_argument(
+        "--config-channel",
+        choices=("working-draft", "release"),
+        default=None,
+        help="Admin configuration channel to fetch and freeze (default: AGENT_CONFIG_CHANNEL or working-draft)",
+    )
+    p.add_argument(
+        "--config-snapshot",
+        default=None,
+        help="Local snapshot JSON (unit tests / offline replay only; normal evals fetch directly from Admin)",
+    )
     p.add_argument("--workers", type=int, default=4)
     p.add_argument("--score-timeout", type=int, default=300)
     p.add_argument("--out")
@@ -388,8 +412,13 @@ def main(argv=None):
     if hasattr(args, "score_timeout") and args.score_timeout <= 0:
         parser.error("--score-timeout must be positive")
     if args.command == "run":
-        os.environ["AGENT_CONFIG_SOURCE"] = "snapshot"
-        os.environ["AGENT_CONFIG_SNAPSHOT"] = str(Path(args.config_snapshot).resolve())
+        if args.config_snapshot:
+            os.environ["AGENT_CONFIG_SOURCE"] = "snapshot"
+            os.environ["AGENT_CONFIG_SNAPSHOT"] = str(
+                Path(args.config_snapshot).resolve()
+            )
+        else:
+            os.environ["AGENT_CONFIG_SOURCE"] = "admin"
     client, resources = connect()
     try:
         if args.command == "run":

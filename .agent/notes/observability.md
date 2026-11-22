@@ -139,3 +139,11 @@
   首轮 [执行记录](https://us.cloud.langfuse.com/project/cmvfvorj601l6ad0jhvajth4c/traces/456b350af119749a56e9539ae8b13427?observation=3f1f13db8d854932) 显示主模型理解角点重复计数，原始 `guide` 无 `visual`、未调用 `widget_guidelines`。结构检查为 `absent`，正文审核通过。本次快照的正文裁判 prompt 与输出 schema 均无 `visual_need`，实际结果为 `null`，`needs_missing_visual` 未触发。评分失败来自交付缺图。
 
 - 2026-11-22 Admin 评测详情回放修复。旧快照的子流程没有独立调用节点，原抽屉的最小缩放也会让宽图的节点落在可点击区域外。以原方阵 Trace 作本地浏览器数据验证三层导航、两次审核调用分离、Agent 与 Judge 输入输出及逐级返回。行为归 [Admin 历史执行图](../../docs/technical/design-admin.md#批次失败工作台与历史执行图2026-11-14)。
+
+- 2026-11-22 新增正方体展开图主动配图用例。先用原测试发布快照本地真实执行通过，核对实际 SVG 六个等大方格的邻接与标注，再上传 `guidance-logic` 并逐字段回读。云端复验一例六项通过，规则与配置未改。用例及云端 ID 见[评测设计](../../docs/technical/eval-offline.md#视觉交付云端用例)，证据见[本地结果](../../duxue-server/var/evals/cube-net-input.HAes68-baseline/results.json)及[托管结果](../../duxue-server/var/evals/cube-net-input.HAes68-cloud/results.json)。
+
+- 2026-11-22 用户确认删除旧方阵用例及关联历史实验条目。已删除本地 JSON，云端硬删除后按原 ID 回读为不存在，正方体用例仍 ACTIVE。
+
+- 2026-11-22 复跑 `run-086d16a0` 的 16 fail 和 1 error。17 条均回读为 ACTIVE，运行固定原 Dataset 历史时刻，逐字段确认输入、期望、元数据和状态与原批一致。使用已验证的 test generation 20 快照及当前代码，云端裁判版本沿用原批。按例采样一次，结果 15 pass、2 fail、0 error，原接口异常的语文 009 已通过。仍未达标为语文 010 的题型归类和政治 008 的重复提问。详见[复跑结果](../../duxue-server/var/evals/langfuse-recheck-086d16a0-20261122000225305/results.json)。
+  失败回查：语文 010 原题即标 `jiū`，导师首稿误把整题概括为多音字辨析，出口直接通过。政治 008 的学生完整提交了正确计算和选项；导师首稿核对正确，实际测试快照未带 `reasoned-choice.v1`，裁判同时返回 `student_answer_correct=true` 和 `choice_verdict=true`，后者触发拒绝。重算指令来自业务门禁后的第二次导师生成。规则归[已提交答案的反馈](../../docs/technical/domain-tutoring.md#已提交答案的反馈)。
+  用户更新后从 Admin 直接导出测试草稿 revision 19，并固定原用例与云端裁判版本各采样一次。政治 008 首稿准确核对已有计算和比较方向，未重写，六项通过。语文 010 首稿仍用多音字概括题型，教学正确性 4/5 过线，逐例要求 false 且裁判无具体理由。详见[复跑结果](../../duxue-server/var/evals/omni-two-after-admin-20261122003825425/run/results.json)。

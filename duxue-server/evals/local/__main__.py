@@ -21,7 +21,18 @@ def parser():
         q = sub.add_parser(command)
         q.add_argument("--data", type=Path, default=Path("evals/data/omni-edu-v1"))
         if command == "run":
-            q.add_argument("--config-snapshot", type=Path, required=True)
+            q.add_argument(
+                "--config-channel",
+                choices=("working-draft", "release"),
+                default=None,
+                help="Admin configuration channel to fetch and freeze (default: AGENT_CONFIG_CHANNEL or working-draft)",
+            )
+            q.add_argument(
+                "--config-snapshot",
+                type=Path,
+                default=None,
+                help="Local snapshot JSON (unit tests / offline replay only; normal evals fetch directly from Admin)",
+            )
             q.add_argument("--out", type=Path, required=True)
             for key in ("dataset", "subject", "level", "case", "split"):
                 q.add_argument("--" + key, action="append")
@@ -55,7 +66,10 @@ def write(path, value):
 
 
 def run(args, validation):
-    from app.agent_specs.configuration import read_snapshot, select_offline_snapshot
+    from app.agent_specs.configuration import (
+        load_evaluation_snapshot,
+        select_offline_snapshot,
+    )
     from app.agent_specs.definitions import use_definitions
     from evals.configuration import _record
     from evals.local.assets import resolve_selected
@@ -72,7 +86,10 @@ def run(args, validation):
     assets = args.data / "assets"
     if not args.preflight_only:
         assets = resolve_selected(manifest, tasks, args.data, args.out)
-    snapshot = read_snapshot()
+    snapshot = load_evaluation_snapshot(
+        snapshot_file=getattr(args, "config_snapshot", None),
+        channel=getattr(args, "config_channel", None),
+    )
     definitions = select_offline_snapshot(snapshot)
     token = _record.set(snapshot)
     try:
@@ -106,6 +123,14 @@ def run(args, validation):
                 "mode": "local_files_local_scores",
                 "langfuse_used": False,
                 "math_engine_mode": os.environ.get("MATH_ENGINE_MODE", "socket"),
+                "config_source": (
+                    f"admin:{snapshot['source_channel']}"
+                    if snapshot.get("source_channel")
+                    else "snapshot"
+                ),
+                "config_id": snapshot.get("id"),
+                "config_kind": snapshot.get("kind"),
+                "config_revision": snapshot.get("revision"),
                 "config_digest": snapshot["digest"],
                 "validation": validation,
                 "selected_ids": [e["id"] for e, _ in tasks],
@@ -196,8 +221,11 @@ def main(argv=None):
             raise ValueError(
                 "dataset acceptance incomplete; review gaps or explicitly use --allow-incomplete"
             )
-        os.environ["AGENT_CONFIG_SOURCE"] = "snapshot"
-        os.environ["AGENT_CONFIG_SNAPSHOT"] = str(args.config_snapshot.resolve())
+        if args.config_snapshot:
+            os.environ["AGENT_CONFIG_SOURCE"] = "snapshot"
+            os.environ["AGENT_CONFIG_SNAPSHOT"] = str(args.config_snapshot.resolve())
+        else:
+            os.environ["AGENT_CONFIG_SOURCE"] = "admin"
         if args.math_engine_mode in {"socket", "subprocess"}:
             os.environ["MATH_ENGINE_MODE"] = args.math_engine_mode
         elif not os.environ.get("MATH_ENGINE_MODE") and not os.environ.get(
@@ -207,9 +235,13 @@ def main(argv=None):
             if not socket_file.exists():
                 os.environ["MATH_ENGINE_MODE"] = "subprocess"
         return run(args, validation)
-    except (ValueError, OSError, KeyError) as exc:
-        print(f"Local evaluation error: {exc}", file=sys.stderr)
-        return 2
+    except Exception as exc:
+        if isinstance(exc, (ValueError, OSError, KeyError, RuntimeError)) or type(
+            exc
+        ).__module__.startswith("httpx"):
+            print(f"Local evaluation error: {exc}", file=sys.stderr)
+            return 2
+        raise
 
 
 if __name__ == "__main__":

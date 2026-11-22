@@ -436,20 +436,20 @@ MATH_ENGINE_MODE=subprocess .venv/bin/python -m scripts.run_local_dialogues \
 
 “本地离线评测”指本地任务、回放与评分产物；真实模型仍调用 DashScope，需要网络和密钥。脚本禁用 Langfuse/OTEL，保存输入、配置、源码与输入 SHA256、逐任务结果及总结果，绝不覆盖已有批次。每项采样一次，任何检查点 fail/error/not_run 均不算整项通过。
 
-[视觉交付任务](../../duxue-server/evals/data/visual-delivery-v1/README.md)来自两次生产故障题意和真机调试脚本的合成重构，标记 `proposed/uncalibrated`。标准输入中的作业标题保持中性，不能把“主动配图”等评分目标塞入被测上下文。后续轮使用实际生成的前轮回答；不含原作业图片，因此不覆盖 OCR、原图作答审核、麦克风/ASR，也不能将 SVG 结构语义评分称为像素级视觉验收。真机渲染截图单独留证。少量开发回归通过不代表发布门槛或全量稳定性。
+[视觉交付任务](../../duxue-server/evals/data/visual-delivery-v1/README.md)使用合成输入，标记 `proposed/uncalibrated`。标准输入中的作业标题保持中性，不能把“主动配图”等评分目标塞入被测上下文。多轮任务的后续轮使用实际生成的前轮回答。任务不含原作业图片，因此不覆盖 OCR、原图作答审核、麦克风/ASR，也不能将 SVG 结构语义评分称为像素级视觉验收。真机渲染截图单独留证。少量开发回归通过不代表发布门槛或全量稳定性。
 
 ### 视觉交付云端用例
 
-2026-11-17 经用户授权，将[视觉交付任务](../../duxue-server/evals/data/visual-delivery-v1/README.md)的两项合成多轮用例同步到 [guidance-logic](https://us.cloud.langfuse.com/project/cmvfvorj601l6ad0jhvajth4c/datasets/cmwbz8jdl008sad0e3wv51oni/items)，该集由104增至106项。主维度是借图推进学生理解；正确性、保护与安全作为同项检查维度，不跨Dataset重复计数。
+视觉交付用例位于 [guidance-logic](https://us.cloud.langfuse.com/project/cmvfvorj601l6ad0jhvajth4c/datasets/cmwbz8jdl008sad0e3wv51oni/items)。主维度是借图推进学生理解；正确性、保护与安全作为同项检查维度，不跨Dataset重复计数。
 
 | case_id | Dataset item ID | 检查点 |
 |---|---|---|
-| square-proactive-visual | db1b2547-08f0-597f-9774-38eafca4629e | 主动配图、颜色区分共用角点 |
 | lamps-requested-visual | 95712fdc-fd17-5edb-a6a0-2b3afaa65a57 | 明确请求配图、双侧端点追问 |
+| cube-net-proactive-visual | e3c8a781-25aa-507a-8a6e-3a7182ddb9f1 | 主动画出展开图、引导第一步折叠 |
 
-每项两轮，`episode/generated_history`保留真实前轮回复。沿用`duxue-dataset.v1`投影，将评分要求从输入移入expectedOutput，保留图形语义rubric与两项确定性断言；使用已有六个原生评分维度。状态为ACTIVE、proposed/uncalibrated，以`metadata.batch=visual-delivery-v1`筛选。本次仅新增用例，未执行云端Experiment，未把已有本地pass写成云端分数，也未修改评分器或恢复暂停批次。云端后续编辑为托管事实源，仓库JSON保留为独立本地回归输入，不自动双向同步。
+路灯用例有两轮，`episode/generated_history`保留真实前轮回复。正方体展开图为单轮用例。沿用`duxue-dataset.v1`投影，将评分要求从输入移入expectedOutput，保留图形语义rubric与两项确定性断言，使用已有六个原生评分维度。状态为ACTIVE、proposed/uncalibrated，以`metadata.batch=visual-delivery-v1`筛选。Langfuse 为托管用例事实源；本地 JSON 用于独立本地回归，托管 runner 不依赖本地用例文件。
 
-逐字段回读验证与原104项不变审计在ignored `duxue-server/var/evals/visual-delivery-cloud-20261117/`。图形审核仍是SVG结构语义审核，非渲染像素验收。
+图形审核覆盖 SVG 结构和语义。渲染效果另行验收。
 
 ## 北京九科整卷本地评测
 
