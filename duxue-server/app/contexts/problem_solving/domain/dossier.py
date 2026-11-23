@@ -63,6 +63,10 @@ class StructuredStem:
     disputed_conditions: tuple[str, ...] = ()
     distance_evidence: dict | None = None
 
+    @classmethod
+    def from_request(cls, text: str, subject: str = "general") -> StructuredStem:
+        return cls(subject=subject, raw_text=text.strip()[:4000])
+
     def to_dict(self) -> dict:
         return {
             "subject": self.subject,

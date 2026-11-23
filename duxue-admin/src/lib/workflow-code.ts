@@ -139,7 +139,7 @@ const actions: Record<string, Record<string, CodeLogic>> = {
       summary: '返回已经准备好的答疑结果和下一步交互。',
     },
   },
-  'tutoring-retry': {
+  'tutoring.model_loop': {
     primary: {
       title: '主模型首次尝试',
       summary:
@@ -186,7 +186,7 @@ const actions: Record<string, Record<string, CodeLogic>> = {
         '返回候选及审核结果，记录本轮是否重试。仍缺少本轮所需配图时标记失败，由上层流程兜底。',
     },
   },
-  'tutoring-vet': {
+  'tutoring.review_candidate': {
     'tutoring.complete_vetting': {
       title: '汇总教学审核',
       summary:
@@ -224,12 +224,17 @@ const gates: Record<string, string> = {
     '交付前检查孩子会看到的正文和配图文字。输出不安全时走安全兜底，候选此前已经被拒时跳过这项扫描。',
 };
 
+export function workflowLogicId(id: string) {
+  if (id === 'tutoring-vet') return 'tutoring.review_candidate';
+  return id === 'tutoring-retry' ? 'tutoring.model_loop' : id;
+}
+
 export function actionLogic(
   workflowId: string,
   node: { kind?: unknown; handler_id?: string },
 ) {
   return node.kind === 'action'
-    ? actions[workflowId]?.[node.handler_id ?? '']
+    ? actions[workflowLogicId(workflowId)]?.[node.handler_id ?? '']
     : undefined;
 }
 
@@ -299,7 +304,7 @@ const edgeConditions: Record<
       summary: '题面模糊或缺少必要条件，直接向孩子发出澄清问题。',
     },
   },
-  'tutoring-retry': {
+  'tutoring.model_loop': {
     no_candidate: {
       label: '无可用候选',
       summary: '首轮尝试未产出可审核候选，直接结束并交上层兜底。',
@@ -344,6 +349,72 @@ const edgeConditions: Record<
       label: '补图尝试结束',
       summary: '主模型补图成功或无备用重试机会，汇总返回结果。',
     },
+    needs_repair: {
+      label: '可自修失败，统一修复',
+      summary: '候选触发正文泄露、数学不一致、配图泄露或缺少必要配图，进入统一修复节点合并反馈处理；执行器不可用等非自修故障不进入修复。',
+    },
+    accepted_or_terminal: {
+      label: '首轮通过/不可自修直出',
+      summary: '首轮候选已通过全部审核，或遇无可用候选/校验器不可用等终止状态，直接汇总返回或降级。',
+    },
+  },
+  'tutoring-blueprint': {
+    needs_extract: {
+      label: '首次读题',
+      summary: '尚未完成结构化提题与分级，先执行首次读题与分级。',
+    },
+    has_verified_stem: {
+      label: '已有可信题面',
+      summary: '已有结构化题面或确认版本，直接进入题库缓存与路径路由。',
+    },
+    complete: {
+      label: 'T0/题库命中直出',
+      summary: '命中题库缓存或属于 T0 常识/直答题，跳过后台求解直接汇总。',
+    },
+    worksheet_batch: {
+      label: '整页批改短路',
+      summary: '识别为整页多题基础批改误入后台，直接短路结束且不产出伪造高置信结论。',
+    },
+    mentor_language: {
+      label: '英语写作直出',
+      summary: '家长端英语作文/阅读批改模式，跳过理科求解直接汇总。',
+    },
+    reread: {
+      label: '题面存疑，独立复读',
+      summary: '原图存在模糊、涂改或核验矛盾，触发异构独立复读题面。',
+    },
+    ordinary: {
+      label: '普通题(T1)单路求解',
+      summary: 'T1 普通难度题目走单路主求解并配合确定性引擎核验。',
+    },
+    complex: {
+      label: '压轴题(T2)并发双路',
+      summary: 'T2 高难综合题并发启动主路线与异构替代路线进行双路比对。',
+    },
+    disputed: {
+      label: '复读存在分歧，降级',
+      summary: '独立复读发现关键数值/符号存在歧义，短路输出 low_confidence 等待确认。',
+    },
+    resume_select: {
+      label: '复读一致，返回路由',
+      summary: '复读确认题面一致，返回路由门禁继续分发求解。',
+    },
+    backup: {
+      label: '切异构备用求解',
+      summary: '主路线被引擎证伪或未产出有效候选，携带反例反馈切换异构备用求解。',
+    },
+    verified: {
+      label: '引擎核验通过',
+      summary: '确定性计算引擎验证全部可算锚点一致，进入汇总定级。',
+    },
+    not_applicable: {
+      label: '无可算锚点，直出',
+      summary: '题目无可计算锚点（如纯概念/证明），按单路策略定级结束。',
+    },
+    unknown: {
+      label: '引擎未能判定，直出',
+      summary: '引擎返回 unknown，按保守置信度汇总返回。',
+    },
   },
 };
 
@@ -352,7 +423,7 @@ export function edgeConditionDetail(
   conditionId?: string,
 ) {
   if (!conditionId) return undefined;
-  return edgeConditions[workflowId]?.[conditionId];
+  return edgeConditions[workflowLogicId(workflowId)]?.[conditionId];
 }
 
 export function gateLogic(definition?: {

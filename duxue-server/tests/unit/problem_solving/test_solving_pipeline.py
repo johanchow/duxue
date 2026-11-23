@@ -406,3 +406,67 @@ def test_legacy_bank_collision_requires_matching_stored_stem(db):
     repo.save(replace(dossier, status="ready", fingerprint=old_fp))
     assert repo.find_bank_ready(stem=integer) is None
     assert repo.find_bank_ready(stem=decimal).dossier_id == dossier.dossier_id
+
+
+def test_request_solve_defers_dispatch_until_commit_and_discards_on_rollback(db):
+    w1, _ = _seed_wards(db)
+    db.commit()
+    enqueued: list[str] = []
+
+    cmd = RequestSolveCommand(
+        db,
+        enqueue_fn=lambda did, _imgs=None: enqueued.append(did),
+        defer_until_commit=True,
+    )
+    rolled_back = cmd.execute(ward_id=w1.id, text="求解 x + 1 = 2", images=[])
+    assert enqueued == []  # Must NOT dispatch before commit!
+    db.rollback()
+    assert enqueued == []  # Rolled-back transaction must discard queued dispatch!
+
+    committed = cmd.execute(ward_id=w1.id, text="求解 x + 2 = 5", images=[])
+    assert committed.dossier_id != rolled_back.dossier_id
+    assert enqueued == []
+    db.commit()
+    assert enqueued == [committed.dossier_id]
+
+
+def test_execute_dossier_solve_rejects_stale_stem_version_overwrite(db):
+    w1, _ = _seed_wards(db)
+    req_cmd = RequestSolveCommand(db, enqueue_fn=lambda _did: None)
+    dossier = req_cmd.execute(ward_id=w1.id, text="原题 2x = 6", images=[])
+    db.commit()
+
+    class StemBumpingSolver:
+        def extract_stem(self, *, text: str, images: list[str], independent_reread: bool = False):
+            return {"subject": "math", "raw_text": text, "subproblems": ["(1)"]}
+
+        def solve_route(self, *, stem, images: list[str], route_hint: str, feedback=None):
+            # Simulate student confirming a corrected stem (v1 -> v2) while v1 solve was in flight!
+            ConfirmStemCommand(db, enqueue_fn=lambda _did: None).execute(
+                ward_id=w1.id,
+                dossier_id=dossier.dossier_id,
+                confirmed_text="更正后 2x = 10",
+                images=[],
+            )
+            db.commit()
+            return {
+                "subject": "math",
+                "final_answers": {"(1)": "3"},
+                "approaches": [
+                    {
+                        "id": "A1",
+                        "name": "旧题面解",
+                        "milestones": [{"id": "M1", "goal": "解 2x=6", "check_kind": "conceptual_rubric"}],
+                    }
+                ],
+            }
+
+    result = ExecuteDossierSolveCommand(
+        db, solver=StemBumpingSolver(), math_engine=SubprocessMathEngineAdapter()
+    ).execute(dossier_id=dossier.dossier_id, images=[])
+
+    # Stale v1 solve must NOT overwrite v2 confirmed stem!
+    assert result.stem.stem_version == 2
+    assert result.stem.raw_text == "更正后 2x = 10"
+    assert result.status == "pending"
+    assert result.final_answers == {}

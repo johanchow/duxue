@@ -211,7 +211,7 @@ def test_full_release_has_all_configuration_files_and_edits_all_model_agents():
     from app.agent_specs.configuration import snapshot_bundle
     from app.agent_specs.definitions import ROOT
 
-    from app.agent_specs.registrations import WORKFLOW_BINDINGS
+    from app.agent_specs.registrations import workflow_bindings
 
     bundle = snapshot_bundle()
     assert bundle["format_version"] == 3
@@ -224,7 +224,7 @@ def test_full_release_has_all_configuration_files_and_edits_all_model_agents():
     assert non_workflow_files == {
         str(path.relative_to(ROOT)) for path in ROOT.rglob("*.json")
     }
-    assert workflow_files == {f"workflows/{name}.json" for name in WORKFLOW_BINDINGS}
+    assert workflow_files == {f"workflows/{name}.json" for name in workflow_bindings(legacy=True, legacy_review=True)}
     bundle["files"]["agents/companion.intent.json"]["prompt"]["template"] += (
         "\n发布版本指令。"
     )

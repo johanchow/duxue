@@ -26,6 +26,7 @@ from app.contexts.companion.domain.intent_router import IntentRouter
 from app.infrastructure.ai.intent_classifier import ModelIntentClassifier
 from app.infrastructure.ai.scene_switch_verifier import ModelSceneSwitchVerifier
 from app.infrastructure.observability.telemetry import (
+    agent_infra_span,
     agent_step_span,
     agent_workflow_span,
     record_agent_input,
@@ -470,50 +471,48 @@ class CompanionCoordinator:
             route_span.set_attribute("agent.route_reason", decision.route_reason)
             set_observation_payload(route_span, output=decision.model_dump(mode="json"))
             record_agent_route(target=decision.target, mode=decision.mode, reason=decision.route_reason)
-        self._trace(thread=thread, run=run, decision=decision, snapshot={})
-        version = self._advance_thread(thread)
-        self._write_transcript(
-            thread=thread, command_id=command_id, author_type="ward", content=visible_content,
-            thread_version=version, run=run, turn_id=run.current_turn_id if run else None,
-            attempt=run.attempt if run else None,
-            attachment_refs=[] if choice_selected else attachment_keys,
-            interaction_ref=({"voice_display_text": voice_display_text}
-                             if voice_display_text and decision.target == "tutoring"
-                             and not structured_command and not tutoring_intent else None),
-        )
-        terminal_reply = { "clarify": _CLARIFY_REPLY, "safety": _SAFETY_REPLY }.get(decision.target)
-        intent_choice = (self._intent_choice_interaction(thread.id, command_id)
-                         if decision.target == "clarify" else None)
-        if terminal_reply is not None:
-            thread.version = version
+        with agent_infra_span("companion.pre_commit"):
+            self._trace(thread=thread, run=run, decision=decision, snapshot={})
             version = self._advance_thread(thread)
             self._write_transcript(
-                thread=thread, command_id=command_id, author_type="companion",
-                content=terminal_reply, thread_version=version,
-                interaction_ref=intent_choice,
+                thread=thread, command_id=command_id, author_type="ward", content=visible_content,
+                thread_version=version, run=run, turn_id=run.current_turn_id if run else None,
+                attempt=run.attempt if run else None,
+                attachment_refs=[] if choice_selected else attachment_keys,
+                interaction_ref=({"voice_display_text": voice_display_text}
+                                 if voice_display_text and decision.target == "tutoring"
+                                 and not structured_command and not tutoring_intent else None),
             )
-        self.db.commit()
-        if terminal_reply is not None:
-            record_agent_output(terminal_reply)
-        # The conditional SQL update deliberately bypasses the identity map;
-        # reload before the outcome transaction so its fence sees the new
-        # Thread version rather than the pre-routing snapshot.
-        self.db.expire_all()
-
-        if run is None:
-            lock_history(self.db, ward_id)
-            if not history_is_visible(self.db, ward_id, thread.id):
-                raise HTTPException(409, "conversation history has been cleared")
-            result = CoordinatorResult(thread_id=thread.id, thread_version=version, decision=decision,
-                                       interaction=intent_choice, command_id=command_id)
-            command = self.db.get(CompanionCommand, command_id)
-            command.result, command.completed_at = result.model_dump(), now()
+            terminal_reply = { "clarify": _CLARIFY_REPLY, "safety": _SAFETY_REPLY }.get(decision.target)
+            intent_choice = (self._intent_choice_interaction(thread.id, command_id)
+                             if decision.target == "clarify" else None)
+            if terminal_reply is not None:
+                thread.version = version
+                version = self._advance_thread(thread)
+                self._write_transcript(
+                    thread=thread, command_id=command_id, author_type="companion",
+                    content=terminal_reply, thread_version=version,
+                    interaction_ref=intent_choice,
+                )
+            if run is None:
+                result = CoordinatorResult(thread_id=thread.id, thread_version=version, decision=decision,
+                                           interaction=intent_choice, command_id=command_id)
+                command.result, command.completed_at = result.model_dump(), now()
+                self.db.commit()
+                if terminal_reply is not None:
+                    record_agent_output(terminal_reply)
+                record_agent_outcome(
+                    agent_type=decision.target, status="closed",
+                    duration_ms=round((perf_counter() - started) * 1000),
+                )
+                return result
             self.db.commit()
-            record_agent_outcome(
-                agent_type=decision.target, status="closed",
-                duration_ms=round((perf_counter() - started) * 1000),
-            )
-            return result
+            if terminal_reply is not None:
+                record_agent_output(terminal_reply)
+            # The conditional SQL update deliberately bypasses the identity map;
+            # reload before the outcome transaction so its fence sees the new
+            # Thread version rather than the pre-routing snapshot.
+            self.db.expire_all()
 
         if run.agent_type == "tutoring":
             turn = {**turn, "tutoring_graph_version": run.graph_version}
@@ -559,39 +558,39 @@ class CompanionCoordinator:
                 resume_action="restart",
             )
         duration_ms = round((perf_counter() - started) * 1000)
-        accepted = self.record_outcome(
-            run_id=invocation.run_id, thread_id=invocation.thread_id, ward_id=ward_id,
-            turn_id=invocation.turn_id, attempt=invocation.attempt, outcome=outcome,
-            decision=decision, duration_ms=duration_ms, command_id=command_id,
-        )
-        if not accepted:
+        with agent_infra_span("companion.record_outcome"):
+            accepted, result = self._persist_outcome(
+                run_id=invocation.run_id, thread_id=invocation.thread_id, ward_id=ward_id,
+                turn_id=invocation.turn_id, attempt=invocation.attempt, outcome=outcome,
+                decision=decision, duration_ms=duration_ms, command_id=command_id,
+                build_result=True,
+            )
+        if not accepted or result is None:
             raise HTTPException(409, "conversation changed before reply completed")
         record_agent_outcome(agent_type=run.agent_type, status=outcome.run_status, duration_ms=duration_ms)
-        lock_history(self.db, ward_id)
-        if not history_is_visible(self.db, ward_id, invocation.thread_id):
-            raise HTTPException(409, "conversation history has been cleared")
-        run = self.db.get(AgentRun, invocation.run_id)
-        thread = self.db.get(ConversationThread, invocation.thread_id)
-        result = CoordinatorResult(
-            thread_id=thread.id, thread_version=thread.version, decision=decision,
-            run_id=run.id, run_status=run.status, context=outcome.context_snapshot,
-            interaction=outcome.response or outcome.next_interaction, command_id=command_id,
-        )
-        command = self.db.get(CompanionCommand, command_id)
-        command.result, command.completed_at = result.model_dump(), now()
-        self.db.commit()
         return result
 
     def record_outcome(self, *, run_id: str, thread_id: str, ward_id: str, turn_id: str, attempt: int,
                        outcome: WorkflowOutcome, decision: RouteDecision, duration_ms: int,
                        command_id: str | None = None) -> bool:
+        accepted, _ = self._persist_outcome(
+            run_id=run_id, thread_id=thread_id, ward_id=ward_id, turn_id=turn_id,
+            attempt=attempt, outcome=outcome, decision=decision, duration_ms=duration_ms,
+            command_id=command_id, build_result=False,
+        )
+        return accepted
+
+    def _persist_outcome(self, *, run_id: str, thread_id: str, ward_id: str, turn_id: str, attempt: int,
+                         outcome: WorkflowOutcome, decision: RouteDecision, duration_ms: int,
+                         command_id: str | None = None,
+                         build_result: bool = False) -> tuple[bool, CoordinatorResult | None]:
         ward = lock_history(self.db, ward_id)
         self.db.expire_all()
         run = self.db.get(AgentRun, run_id)
         thread = self.db.get(ConversationThread, thread_id)
         if run is None or thread is None or run.ward_id != ward_id or run.thread_id != thread.id:
             self.db.rollback()
-            return False
+            return False, None
         if thread.history_generation != ward.history_generation or run.attempt != attempt or run.current_turn_id != turn_id or thread.focus_run_ref != run.run_ref:
             self.db.rollback()
             current_thread = self.db.get(ConversationThread, thread_id)
@@ -603,7 +602,7 @@ class CompanionCoordinator:
                     duration_ms=duration_ms,
                 )
                 self.db.commit()
-            return False
+            return False, None
         run.status = outcome.run_status
         run.graph_checkpoint_ref = outcome.checkpoint_ref
         run.context_refs = outcome.context_refs
@@ -666,12 +665,22 @@ class CompanionCoordinator:
                 attempt=attempt, interaction_ref=self._visible_interaction_ref(outcome),
                 attachment_refs=outcome.reviewed_photo_keys,
             )
+        result: CoordinatorResult | None = None
+        if build_result and command_id is not None:
+            result = CoordinatorResult(
+                thread_id=thread.id, thread_version=version, decision=decision,
+                run_id=run.id, run_status=run.status, context=outcome.context_snapshot,
+                interaction=outcome.response or outcome.next_interaction, command_id=command_id,
+            )
+            command = self.db.get(CompanionCommand, command_id)
+            if command is not None:
+                command.result, command.completed_at = result.model_dump(), now()
         self.db.commit()
         record_tutor_subgoal_committed()
         if visible_content is not None and command_id is not None:
             record_agent_output(visible_content)
         self.db.expire_all()
-        return True
+        return True, result
 
     def cancel(self, *, ward_id: str, run_id: str, command_id: str, expected_thread_version: int | None = None) -> CoordinatorResult:
         digest = self._digest({"operation": "cancel", "run_id": run_id, "expected_version": expected_thread_version})

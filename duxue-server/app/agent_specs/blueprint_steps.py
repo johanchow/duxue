@@ -96,7 +96,7 @@ TITLES = dict(
     verify_t2="确定性引擎核验与双路比对",
     finish="汇总核验与置信度定级",
 )
-EDGES = [
+LEGACY_EDGES = [
     ("START", "extract", None),
     ("extract", "select", None),
     ("select", "finish", "complete"),
@@ -121,9 +121,39 @@ EDGES = [
     ("verify_t2", "finish", None),
     ("finish", "END", None),
 ]
+EDGES = [
+    ("START", "extract", "needs_extract"),
+    ("START", "select", "has_verified_stem"),
+    ("extract", "select", None),
+    ("select", "finish", "complete"),
+    ("select", "finish", "worksheet_batch"),
+    ("select", "reread", "reread"),
+    ("select", "ordinary", "ordinary"),
+    ("select", "primary", "complex"),
+    ("select", "alternative", "complex"),
+    ("reread", "reread_check", None),
+    ("reread_check", "finish", "disputed"),
+    ("reread_check", "select", "resume_select"),
+    ("reread_check", "backup", "backup"),
+    ("ordinary", "verify", None),
+    ("verify", "finish", "verified"),
+    ("verify", "finish", "not_applicable"),
+    ("verify", "finish", "unknown"),
+    ("verify", "reread", "reread"),
+    ("verify", "backup", "backup"),
+    ("backup", "verify_backup", None),
+    ("verify_backup", "finish", None),
+    ("primary", "verify_t2", None),
+    ("alternative", "verify_t2", None),
+    ("verify_t2", "finish", None),
+    ("finish", "END", None),
+]
 CONDITIONS = frozenset(
     {
+        "needs_extract",
+        "has_verified_stem",
         "complete",
+        "worksheet_batch",
         "mentor_language",
         "reread",
         "ordinary",
@@ -142,7 +172,8 @@ def node_id(key):
     return key if key in {"START", "END"} else f"{WORKFLOW_ID}.{key}"
 
 
-def workflow(*, mentor_language=False):
+def workflow(*, mentor_language=False, v2_edges=True):
+    base_edges = EDGES if v2_edges else LEGACY_EDGES
     return dict(
         kind="workflow",
         id=WORKFLOW_ID,
@@ -163,7 +194,7 @@ def workflow(*, mentor_language=False):
                 "to": node_id(dst),
                 **({"condition_id": condition} if condition else {}),
             }
-            for src, dst, condition in EDGES + ([("select", "finish", "mentor_language")] if mentor_language else [])
+            for src, dst, condition in base_edges + ([("select", "finish", "mentor_language")] if mentor_language else [])
         ],
     )
 
@@ -286,7 +317,8 @@ def upgrade_files(files, *, ward_max_output_tokens=None):
         + VISION_INSPECT_GUIDANCE
         + "仅输出 JSON 对象，包含 subject、shared_stem_summary（题面、条件、数值与全部设问）、subproblems、"
         "diagram_summary、needs_student_confirmation（仅在模糊/涂改/缺条件时为 true，清晰题面为 false）、"
-        "tier（T0 概念事实、T1 普通题、T2 复杂解答/高考压轴需双路异构核验）。"
+        "tier（T0 概念事实、T1 普通题、T2 复杂解答/高考压轴需双路异构核验）、"
+        "worksheet_batch（仅当图片为整页多道基础口算/填空批改而非单道或题组推理题时为 true，其余为 false）。"
         + TOOL_TURN_GUIDANCE
     )
 

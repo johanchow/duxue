@@ -193,7 +193,16 @@ def test_prepared_worker_stem_resumes_at_selection(staged):
         )
     assert result.final_answers == {"(1)": "2*x"}
     assert result.status == "ready"
-    assert trace.events[0]["node_id"] == "tutoring-blueprint.select"
+    node_events = [e for e in trace.events if e["kind"] in {"agent", "gate", "action"}]
+    assert node_events[0]["node_id"] == "tutoring-blueprint.select"
+    assert any(
+        e["kind"] == "edge" and e.get("condition_id") == "has_verified_stem" and e.get("selected") is True
+        for e in trace.events
+    )
+    assert result.evidence["stem_version"] == 1
+    assert result.evidence["target_subproblems"] == ["(1)"]
+    assert result.evidence["coverage"] == "complete"
+    assert len(result.evidence["verified_assertions"]) == 1
 
 
 def test_reread_checks_words_and_subquestions():
@@ -619,3 +628,111 @@ def test_mentor_extract_crops_are_authorized_for_primary_only(staged, monkeypatc
         gateway.extract_stem(text="换题", images=[source])
         gateway.solve_route(stem=stem, images=[source], route_hint="T1")
     assert [crop in str(call) for call in calls] == [False, *([] if inline else [True]), True, False, False, False, False]
+
+
+def test_select_gate_handles_worksheet_batch_short_circuit_and_pre_extracted_bank_lookup(staged):
+    from app.application.commands.problem_solving import execute_blueprint
+    from app.contexts.problem_solving.domain.dossier import (
+        ProblemDossier,
+        StructuredStem,
+    )
+
+    class WorksheetSolver:
+        def __init__(self):
+            self.solve_called = False
+
+        def extract_stem(self, *, independent_reread, **kwargs):
+            return {
+                "subject": "math",
+                "tier": "T0",
+                "raw_text": "整页20道口算题",
+                "subproblems": [],
+                "needs_student_confirmation": False,
+                "worksheet_batch": True,
+            }
+
+        def solve_route(self, **kwargs):
+            self.solve_called = True
+            return _good_math_route()
+
+    ws_solver = WorksheetSolver()
+    trace = Recorder()
+    with use_definitions(staged), trace.capture():
+        res = execute_blueprint(
+            stem=StructuredStem(subject="general", raw_text="帮我批改整页口算"),
+            images=["img"],
+            solver=ws_solver,
+            math_engine=SubprocessMathEngineAdapter(),
+            question="帮我批改整页口算",
+        )
+    assert ws_solver.solve_called is False
+    assert res.status == "low_confidence"
+    assert res.evidence["skipped_reason"] == "worksheet_batch"
+    assert res.evidence["coverage"] == "skipped"
+    assert any(
+        e["kind"] == "edge" and e.get("condition_id") == "worksheet_batch" and e.get("selected") is True
+        for e in trace.events
+    )
+
+    # Pre-extracted stem (START -> select) still runs centralized bank_lookup in select Gate
+    from datetime import datetime, timezone
+
+    from app.contexts.tutoring.domain.blueprint import Approach, Milestone
+
+    cached = ProblemDossier.create_pending(
+        dossier_id="d-bank-1",
+        scope="bank",
+        owner_ward_id=None,
+        stem=StructuredStem(subject="math", raw_text="求 f(x)=x^2 导数", subproblems=("(1)",)),
+        tier="T1",
+        solver_version="test-v1",
+        now_at=datetime.now(timezone.utc),
+    ).complete_solve(
+        approaches=(
+            Approach(
+                id="A1",
+                name="求导法",
+                milestones=(Milestone(id="M1", goal="求导", check_kind="symbolic_equivalence", canonical_target="2*x"),),
+            ),
+        ),
+        invariants=(),
+        scoring_points=(),
+        final_answers={"(1)": "2*x"},
+        confidence="high",
+        tier="T1",
+        evidence={},
+    )
+
+    class NeverSolve:
+        def solve_route(self, **kwargs):
+            raise AssertionError("bank hit in select should never call solve_route")
+
+    trace2 = Recorder()
+    with use_definitions(staged), trace2.capture():
+        res2 = execute_blueprint(
+            stem=cached.stem,
+            images=[],
+            solver=NeverSolve(),
+            math_engine=SubprocessMathEngineAdapter(),
+            question=None,
+            bank_lookup=lambda *, stem: cached,
+        )
+    assert res2.status == "ready"
+    assert res2.final_answers == {"(1)": "2*x"}
+    assert [e["node_id"].split(".")[-1] for e in trace2.events if e["kind"] in {"agent", "gate", "action"}] == [
+        "select", "finish"
+    ]
+
+
+def test_legacy_12_node_blueprint_snapshot_remains_compatible():
+    from app.agent_specs import blueprint_steps as steps
+    from app.agent_specs.admin_bundle import contract_compatibility
+
+    source = json.loads(Path("tests/fixtures/admin-release.json").read_text())
+    record = upgrade(add_blueprint(source, gaokao=True))
+    # Force legacy 12-node edges (single unconditional START -> extract, no worksheet_batch)
+    record["bundle"]["files"][steps.FLOW_FILE] = steps.workflow(v2_edges=False)
+    record["bundle"]["compatibility"] = contract_compatibility(record["bundle"]["files"])
+    catalog = compile_bundle(record["bundle"]).catalog
+    with use_definitions(catalog):
+        assert load_catalog().spec(steps.WORKFLOW_ID).id == steps.WORKFLOW_ID

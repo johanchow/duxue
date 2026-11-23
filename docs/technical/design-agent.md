@@ -67,7 +67,7 @@ Workflow 文件的 `kind` 固定为 `workflow`。运行与观测区分五类执�
 | `action` | `handler_id` → 注册处理器 | 在流程内执行固定代码 |
 | `workflow` | `ref` → 同一快照的 Workflow | 调用子流程，结果返回调用方 |
 
-Tool 由模型 Agent 或 Judge 在各自的工具权限和预算内调用。节点绑定使用 `ref` 或 `handler_id` 二者之一。可选的 `parent` 描述归属；执行顺序看控制边，跨流程调用看 Workflow 节点的 `ref`。例如，答疑的 `tutoring.exit_gate` 是组织候选审核的 Action，其内部调用节点 `tutoring.review_candidate` 才引用 `tutoring-vet`；子流程的 `END` 将裁决交回调用方。
+Tool 由模型 Agent 或 Judge 在各自的工具权限和预算内调用。节点绑定使用 `ref` 或 `handler_id` 二者之一。可选的 `parent` 描述归属；执行顺序看控制边，跨流程调用看 Workflow 节点的 `ref`。例如，答疑的 `tutoring.exit_gate` 是组织候选审核的 Action，其内部调用节点 `tutoring.review_candidate` 引用同名审核子流程；子流程的 `END` 将裁决交回调用方。
 
 `edges[]` 声明 `from`、`to` 和可选 `condition_id`；条件 ID 由受控代码计算，不能写表达式。通用执行器读取节点和边、维护状态与重试预算，调用代码注册的处理器和条件函数，并按条件选择下一节点；JSON 不包含任意表达式。多个 Gate 各占一个 Workflow 节点，由边声明先后、条件分支和出口，不在 Gate 内嵌套子 Gate。`entry` 与所有出口必须可达；`required_gates[]` 的每项声明 Gate ID 和适用条件 `when`（代码注册的条件 ID），启动时与代码安全基线核对，运行时只在条件成立的路径上强制执行。
 
@@ -80,7 +80,7 @@ Tool 由模型 Agent 或 Judge 在各自的工具权限和预算内调用。节�
 | `model_calls` | 每次 `call_tutor_model` 生成尝试内的模型调用；包括返回工具请求的调用和结构修复调用 | 停止当前生成循环；已有可用候选时保留，否则进入原有失败回退 |
 | `tool_calls` | 同一次生成尝试内执行的模型工具请求；未知工具请求同样计数，预加载 SVG 规范不计入 | 后续请求不执行工具，返回 `budget_exhausted` 观察结果；仍受模型调用上限约束 |
 
-计数不会跨生成尝试累计。外层泄露修复、备用模型切换、配图修复的触发与次数由 `tutoring-retry` Workflow 条件路径控制，每个新尝试重新计数。配置只能降低代码允许的上限，不得提高；无效配置在启动时拒绝。通用执行器自身另有 32 步执行上限。模型输出 Token 上限、单次超时分别由 `models[].max_output_tokens`、`models[].timeout_ms` 表达，与这些循环次数分开。
+计数不会跨生成尝试累计。外层泄露修复、备用模型切换、配图修复的触发与次数由 `tutoring.model_loop` Workflow 条件路径控制，每个新尝试重新计数。配置只能降低代码允许的上限，不得提高；无效配置在启动时拒绝。通用执行器自身另有 32 步执行上限。模型输出 Token 上限、单次超时分别由 `models[].max_output_tokens`、`models[].timeout_ms` 表达，与这些循环次数分开。
 
 例如两个 Gate 的连线在 Workflow 中这样表达（JSON 节选，省略入口和其他节点；`END` 的成功或拒绝状态由已执行 Gate 的裁决确定）：
 
@@ -216,4 +216,4 @@ Tool 文件的 `kind` 固定为 `tool`，声明 `id`、`description`、`input_sc
 
 按项目当前 DDD 约定，Domain 是拥有业务语义、模型和规则的边界；Workflow 和 Agent 是 Application/Infrastructure 的运行角色，不是新的 Domain 或 Aggregate。Companion 只维护 Thread/Run 连续性并路由受权调用；Planning、Tutoring、Evaluation 各自裁决并写入自己的业务状态。配置目录集中的是**运行描述**，不是跨 Domain 的共享业务模型。装配器应处于应用组合层，领域模块不读取配置，也不依赖模型或工具实现。
 
-每条导出到 Langfuse 的 observation 都带可筛选 metadata：`kind`、`kind_id`、`kind_version`，并同时写到 span attribute `agent.unit.kind`、`agent.unit.id`、`agent.unit.version`。`kind` 是配置类别，取 `workflow`、`agent`、`gate`、`tool`、`action`；不在该目录中的模型调用（如摄像分析）记为 `external`，`kind_id` 用操作名。`kind_id` 是定义的稳定 ID：Agent、Gate、Tool 用文件里的 `id`，Workflow 用 Workflow `id`，代码步骤 `action` 用 Workflow 节点 ID，Admin运行时版本统一取完整发布包digest（action同样取当前快照）；显式本地开发模式才使用初始化定义的内部版本。同一条 observation 另有 `workflow_id` 与 `node_id`：节点 ID 和被引用的 Agent/Gate ID 可以不同，例如节点 `tutoring-vet.text_leak` 引用 Gate `tutoring.leak-judge`。模型 generation 再带 `component_id`，用来区分同一 Agent 的主模型和备用模型。Prompt 变量与工具结果按现有儿童数据策略脱敏；配置、图和观测统计不能替代业务审计或学习事实。
+每条导出到 Langfuse 的 observation 都带可筛选 metadata：`kind`、`kind_id`、`kind_version`，并同时写到 span attribute `agent.unit.kind`、`agent.unit.id`、`agent.unit.version`。`kind` 是配置类别，取 `workflow`、`agent`、`gate`、`tool`、`action`；不在该目录中的模型调用（如摄像分析）记为 `external`，`kind_id` 用操作名。`kind_id` 是定义的稳定 ID：Agent、Gate、Tool 用文件里的 `id`，Workflow 用 Workflow `id`，代码步骤 `action` 用 Workflow 节点 ID，Admin运行时版本统一取完整发布包digest（action同样取当前快照）；显式本地开发模式才使用初始化定义的内部版本。同一条 observation 另有 `workflow_id` 与 `node_id`：节点 ID 和被引用的 Agent/Gate ID 可以不同，例如节点 `tutoring.review_candidate.text_leak` 引用 Gate `tutoring.leak-judge`。模型 generation 再带 `component_id`，用来区分同一 Agent 的主模型和备用模型。Prompt 变量与工具结果按现有儿童数据策略脱敏；配置、图和观测统计不能替代业务审计或学习事实。

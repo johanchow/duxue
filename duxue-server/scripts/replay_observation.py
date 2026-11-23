@@ -2,7 +2,7 @@
 
 Input JSON: {ward_id, camera_id, frames:[{frame_id, received_at}], labels?:[...]}
 Source DB/OSS are read only. No source Frame, report, channel or invitation is changed.
-Usage: ENV_FILE=.env.test .venv/bin/python scripts/replay_observation.py input.json \
+Usage: ENV_FILE=.env .venv/bin/python scripts/replay_observation.py input.json \
   --config-snapshot exported.json --out private-result.json --max-windows 3
 """
 

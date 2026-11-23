@@ -27,12 +27,13 @@ from app.agent_specs.guardian_contracts import (
 from app.agent_specs.observation_contracts import FILES as OBSERVATION_FILES
 from app.agent_specs.observation_contracts import WORKFLOWS as OBSERVATION_WORKFLOWS
 from app.agent_specs.observation_contracts import contracts as observation_contracts
-from app.agent_specs.registrations import WORKFLOW_BINDINGS
+from app.agent_specs.registrations import LEGACY_LOOP, LEGACY_REVIEW, workflow_bindings
 
 # Every JSON is carried by the published artifact. Code owns the file whitelist
 # and protected contract; values are not filled from local defaults at load time.
-WORKFLOW_FILES = {f"workflows/{name}.json" for name in WORKFLOW_BINDINGS}
-BUNDLE_FILES = tuple(sorted(set(code_contract()["files"]) | WORKFLOW_FILES))
+def _bindings_for_files(files):
+    return workflow_bindings(legacy=f"workflows/{LEGACY_LOOP}.json" in files,
+                             legacy_review=f"workflows/{LEGACY_REVIEW}.json" in files)
 
 
 def digest(value) -> str:
@@ -90,6 +91,8 @@ def contract_compatibility(files: dict) -> str:
     # The envelope binds code contracts and the topology supplied by Admin.
     # Never reconstruct topology from a repository baseline. Keeping the same
     # fingerprint algorithm preserves already-published immutable artifacts.
+    bindings = _bindings_for_files(files)
+    workflow_files = {f"workflows/{name}.json" for name in bindings}
     has_obs = OBSERVATION_FILES <= set(files)
     has_gaokao = GAOKAO_FILES <= set(files)
     has_mentor = GUARDIAN_MENTOR_FILES <= set(files)
@@ -104,9 +107,9 @@ def contract_compatibility(files: dict) -> str:
                   **(staged_contracts(include_repair=f"agents/{MENTOR_REPAIR_ID}.json" in files) if f"gates/{MENTOR_REVIEW_ID}.json" in files else {}),
                   **{name: ({k: v for k, v in doc.items() if k not in {"edges", "rollout_percent"}}
                             if name == "workflows/tutoring.json" and doc.get("execution") == "turn_graph" else doc)
-                     for name, doc in files.items() if name in WORKFLOW_FILES or (has_obs and name in {f"workflows/{key}.json" for key in OBSERVATION_WORKFLOWS}) or (has_gaokao and name in {f"workflows/{key}.json" for key in GAOKAO_WORKFLOWS}) or (has_mentor and name in {f"workflows/{key}.json" for key in GUARDIAN_MENTOR_WORKFLOWS})}},
+                     for name, doc in files.items() if name in workflow_files or (has_obs and name in {f"workflows/{key}.json" for key in OBSERVATION_WORKFLOWS}) or (has_gaokao and name in {f"workflows/{key}.json" for key in GAOKAO_WORKFLOWS}) or (has_mentor and name in {f"workflows/{key}.json" for key in GUARDIAN_MENTOR_WORKFLOWS})}},
         "handlers": {key: {field: sorted(items) for field, items in value.items()}
-                     for key, value in WORKFLOW_BINDINGS.items()},
+                     for key, value in bindings.items()},
         "protocol": 3,
     })
 
@@ -121,6 +124,7 @@ class CompiledBundle:
 def compile_bundle(bundle: dict) -> CompiledBundle:
     contracts = copy.deepcopy(code_contract())
     file_names = set(bundle.get("files", {})) if isinstance(bundle, dict) else set()
+    workflow_files = {f"workflows/{name}.json" for name in _bindings_for_files(file_names)}
     has_observation = OBSERVATION_FILES <= file_names
     has_gaokao = GAOKAO_FILES <= file_names
     has_mentor = GUARDIAN_MENTOR_FILES <= file_names
@@ -159,7 +163,7 @@ def compile_bundle(bundle: dict) -> CompiledBundle:
         policy = ReminderPolicy.model_validate(bundle["files"][reminder_policy.FILE]).model_dump()
         contracts["files"].update(reminder_policy.upgraded_contracts(contracts["files"]))
     expected_files = (
-        set(BUNDLE_FILES) | set(split_files)
+        set(code_contract()["files"]) | workflow_files | set(split_files)
         | (OBSERVATION_FILES if has_observation else set())
         | (GAOKAO_FILES if has_gaokao else set())
         | (GUARDIAN_MENTOR_FILES if has_mentor else set())
@@ -189,7 +193,7 @@ def compile_bundle(bundle: dict) -> CompiledBundle:
             "version" in model for model in doc.get("models", [])
         ):
             raise ValueError("manual configuration versions are not supported")
-        if name in WORKFLOW_FILES or (has_observation and name in {f"workflows/{key}.json" for key in OBSERVATION_WORKFLOWS}) or (has_gaokao and name in {f"workflows/{key}.json" for key in GAOKAO_WORKFLOWS}) or (has_mentor and name in {f"workflows/{key}.json" for key in GUARDIAN_MENTOR_WORKFLOWS}):
+        if name in workflow_files or (has_observation and name in {f"workflows/{key}.json" for key in OBSERVATION_WORKFLOWS}) or (has_gaokao and name in {f"workflows/{key}.json" for key in GAOKAO_WORKFLOWS}) or (has_mentor and name in {f"workflows/{key}.json" for key in GUARDIAN_MENTOR_WORKFLOWS}):
             continue  # Validated by AgentCatalog against code bindings below.
         original = contracts["files"][name]
         try:

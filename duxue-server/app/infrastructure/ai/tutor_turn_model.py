@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from app.agent_specs.catalog import load_catalog
 from app.agent_specs.contexts import build_context
+from app.agent_specs.subworkflows import review_workflow_id
 from app.agent_specs.verdicts import normalize_judge
 from app.infrastructure.ai import components
 from app.infrastructure.ai.errors import ModelGatewayError
@@ -26,11 +27,16 @@ class QwenTutorTurnGateway:
         current_images: list[str | None] | None = None, repair_error: str | None = None,
         observations: list[dict] | None = None,
     ) -> dict:
+        from dataclasses import replace
+
         user = build_context("tutoring.turn", envelope=envelope, instruction=instruction,
                              observations=observations, repair_error=repair_error,
                              recent_utterances=recent_utterances, current_images=current_images)
+        spec = self._spec or components.COMPONENTS.get(self._component_id)
+        if isinstance(envelope, dict) and envelope.get("_disable_thinking") and getattr(spec, "enable_thinking", False):
+            spec = replace(spec, enable_thinking=False, thinking_budget=None)
         return components.invoke_agent_component(
-            spec=self._spec or components.COMPONENTS.get(self._component_id), user=user,
+            spec=spec, user=user,
             settings_obj=self._settings,
         ).unwrap()
 
@@ -66,14 +72,16 @@ class QwenLeakJudge:
         from contextlib import nullcontext
 
         from app.agent_specs.catalog import executing_node
-        from app.agent_specs.subworkflows import MATH_NODE, VET_MATH_NODE
+        from app.agent_specs.subworkflows import MATH_NODE
         from app.infrastructure.observability.telemetry import agent_step_span
-        review = (nullcontext() if executing_node.get() in {("tutoring", MATH_NODE), ("tutoring-vet", VET_MATH_NODE)} else
+        catalog = load_catalog()
+        review_id = review_workflow_id(catalog.specs)
+        review = (nullcontext() if executing_node.get() in {("tutoring", MATH_NODE), (review_id, f"{review_id}.math_consistency")} else
                   agent_step_span("check", "tutoring.text_leak", **{"math.review.phase": "consistency"}))
         try:
             with review:
                 payload = components.invoke_json_component(
-                    spec=load_catalog().component_by_id("tutoring-vet", "tutoring.leak-judge"),
+                    spec=catalog.component_by_id(review_id, "tutoring.leak-judge"),
                     user=user, settings_obj=self._settings,
                 )
         except ModelGatewayError:
@@ -91,9 +99,10 @@ class QwenLeakJudge:
         )
 
     def _judge(self, component_id: str, user: str | list[dict], *, with_reason: bool = False, photo_review: bool = False) -> bool | dict | None:
+        catalog = load_catalog()
         try:
             payload = components.invoke_json_component(
-                spec=load_catalog().component_by_id("tutoring-vet", component_id),
+                spec=catalog.component_by_id(review_workflow_id(catalog.specs), component_id),
                 user=user, settings_obj=self._settings,
             )
         except ModelGatewayError:

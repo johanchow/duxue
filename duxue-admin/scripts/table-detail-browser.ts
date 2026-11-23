@@ -22,6 +22,7 @@ try {
   await page.getByRole('button', { name: '登录管理台 →' }).click();
   await page.getByRole('heading', { name: 'Workflow', exact: true }).waitFor();
   const state = await (await page.request.get(origin + '/api/state')).json();
+  const reviewId = state.catalog.workflows["tutoring.review_candidate"] ? "tutoring.review_candidate" : "tutoring-vet";
   const nav = page.locator('nav');
   assert.equal(
     await nav.getByRole('button', { name: '配置工作台', exact: false }).count(),
@@ -107,10 +108,10 @@ try {
   );
   await page.getByRole('button', { name: '返回 Workflow 流程图' }).click();
   await page.waitForURL('**/workflows/tutoring');
-  await page.goto(origin + '/workflows/tutoring-vet');
+  await page.goto(origin + '/workflows/' + reviewId);
   await page.getByRole('button', { name: '适应全图' }).click();
   await page
-    .locator('.react-flow__node[data-id="tutoring-vet.authority"]')
+    .locator(`.react-flow__node[data-id="${reviewId}.authority"]`)
     .getByRole('link')
     .click();
   await page.waitForURL('**/agents/tutoring.authority');
@@ -118,9 +119,9 @@ try {
     await page.getByRole('region', { name: '执行逻辑' }).innerText(),
     /越权时拒绝候选/,
   );
-  await page.goto(origin + '/workflows/tutoring-vet');
+  await page.goto(origin + '/workflows/' + reviewId);
   await page
-    .locator('.react-flow__node[data-id="tutoring-vet.text_leak"]')
+    .locator(`.react-flow__node[data-id="${reviewId}.text_leak"]`)
     .click();
   assert(
     (await page.getByTestId('selection-config').innerText()).includes(
@@ -142,7 +143,7 @@ try {
     JSON.parse(
       await page.getByLabel('Workflow 完整配置').locator('pre').innerText(),
     ),
-    state.catalog.workflows['tutoring-vet'],
+    state.catalog.workflows[reviewId],
   );
   await page.screenshot({ path: '.local/workflow-detail.png', fullPage: true });
   await page.reload();

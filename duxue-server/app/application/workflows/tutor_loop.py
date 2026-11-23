@@ -17,7 +17,7 @@ from app.agent_specs.static_tools import static_tool_result
 from app.agent_specs.subworkflows import (
     MATH_NODE,
     RETRY_NODE,
-    VET_MATH_NODE,
+    review_workflow_id,
     VET_NODE,
     has_parallel_vet,
     math_review_step,
@@ -535,7 +535,9 @@ def vet_candidate(
     images_list = list(judge_images or [])
     effective_summary = _prepare_vet_problem_summary(candidate, problem_summary, images_list)
     visual_text_init = describe(candidate.visual) if candidate.visual is not None else None
-    parallel_topology = has_parallel_vet(load_catalog())
+    catalog = load_catalog()
+    review_id = review_workflow_id(catalog.specs)
+    parallel_topology = has_parallel_vet(catalog)
 
     def authority(state: dict) -> GateDecision:
         with agent_step_span("check", "tutoring.authority") as span:
@@ -789,8 +791,8 @@ def vet_candidate(
         VET_NODE,
         handlers={
             "tutoring.authority": authority,
-            VET_MATH_NODE: math_consistency,
-            "tutoring-vet.text_leak": text_leak,
+            f"{review_id}.math_consistency": math_consistency,
+            f"{review_id}.text_leak": text_leak,
             "tutoring.leak-judge": text_leak,
             "tutoring.visual-leak-judge": visual_leak,
             "tutoring.complete_vetting": complete,
@@ -803,7 +805,7 @@ def vet_candidate(
             "text_leaks": False,
         },
     )
-    return state["results"]["tutoring-vet.complete"]
+    return state["results"][f"{review_id}.complete"]
 
 
 @dataclass(frozen=True)
@@ -895,11 +897,20 @@ def run_tutor_turn(
                 if ledger is not None else problem_summary
             )
             actor_stage = (envelope.get("actor") or {}).get("grade_stage") if isinstance(envelope, dict) else None
-            has_direct_engine_verdict = bool(
+            # Only formal verification ops (or equivalence checks) explicitly cited in math_claims
+            # unlock final/optimality verdicts; step-level arithmetic `evaluate` records do not.
+            _FINAL_VERDICT_OPS = frozenset({"equivalent", "solve", "solve_system", "solve_inequality"})
+            has_direct_final_verdict = bool(
                 ledger is not None
-                and (
-                    candidate.math_claims
-                    or any(rec.get("status") == "ok" for rec in ledger.records.values())
+                and candidate.math_claims
+                and any(
+                    isinstance((rec := ledger.records.get(claim.request_id)), dict)
+                    and rec.get("status") == "ok"
+                    and (
+                        rec.get("op") in _FINAL_VERDICT_OPS
+                        or rec.get("checked_scope") == "equivalence"
+                    )
+                    for claim in candidate.math_claims
                 )
             )
             dossier_gate_meta = envelope.get("_dossier_gate") if isinstance(envelope, dict) else None
@@ -910,7 +921,9 @@ def run_tutor_turn(
                     report and report._visual_review_passed and report.conclusion == "all_correct"
                     and report.coverage == "complete" and any(q._calculation_status == "equal" for q in report.questions)
                 )
-                verdict_allowed = dossier_allows or has_direct_engine_verdict or checked_worksheet
+                verdict_allowed = dossier_allows or has_direct_final_verdict or checked_worksheet
+            elif isinstance(envelope, dict) and envelope.get("_enforce_confidence_gate"):
+                verdict_allowed = has_direct_final_verdict
             else:
                 verdict_allowed = True
 
@@ -1032,18 +1045,122 @@ def run_tutor_turn(
 
     from app.agent_specs.catalog import load_catalog
     from app.agent_specs.runtime import execute_tutoring_child
+    from app.agent_specs.subworkflows import call_targets
+
+    catalog = load_catalog()
+    loop_spec_id = call_targets(catalog.specs).get(RETRY_NODE)
+    loop_spec = catalog.specs.get(loop_spec_id) if loop_spec_id else None
+    is_compact_loop = bool(
+        loop_spec is not None and not any(node.handler == "visual_decision" for node in loop_spec.nodes)
+    )
 
     def primary(state):
         state["call"], state["vetting"] = attempt(model, "primary")
 
+    def _is_retryable_text_failure(review: Vetting | None) -> bool:
+        # Executor outages such as `math_check_failed` are excluded from LEAK_RETRY_REASONS.
+        return bool(review is not None and review.failure in LEAK_RETRY_REASONS)
+
     def repair(state):
         review = state["vetting"]
+        if not is_compact_loop:
+            state["original_failure"], state["original_reason"] = review.failure, review.leak_reason
+            state["retried"] = True
+            record_tutor_leak_retry(reason=review.failure)
+            proposal, checked = attempt(model, "repair", repair_error=_leak_repair(review))
+            if checked is not None:
+                state["call"], state["vetting"] = proposal, checked
+            return
+
+        # Compact 3-action loop unified repair:
+        # 1) Pure visual leak (approved text) -> lock approved act/content/turn and redraw only visual
+        if review.failure is None and needs_redraw(state):
+            proposal, checked = attempt(
+                model,
+                "visual_redraw",
+                repair_error=_visual_leak_repair(review),
+                approved_text_vetting=review,
+            )
+            if (
+                checked is not None
+                and checked.failure is None
+                and checked.visual is not None
+                and checked.candidate.act == review.candidate.act
+                and checked.candidate.content == review.candidate.content
+                and checked.candidate.turn == review.candidate.turn
+            ):
+                state["call"], state["vetting"] = proposal, checked
+            return
+
+        # 2) Pure missing visual (approved text) -> redraw with SVG guidelines
+        if review.failure is None and needs_missing(state):
+            missing_prompt = _missing_visual_repair(review)
+            proposal, checked = attempt(
+                model,
+                "missing_visual_redraw",
+                repair_error=missing_prompt,
+                preload_svg_guidelines=True,
+            )
+            fixed = bool(
+                checked is not None
+                and checked.failure is None
+                and checked.visual is not None
+                and (review.visual_need in {"requested", "helpful"} or checked.visual.kind == "svg")
+                and _TEXT_DIAGRAM_TEX not in checked.candidate.content
+            )
+            if fixed:
+                state["call"], state["vetting"] = proposal, checked
+            elif backup_model is not None:
+                proposal_b, checked_b = attempt(
+                    backup_model,
+                    "missing_visual_redraw",
+                    repair_error=missing_prompt,
+                    preload_svg_guidelines=True,
+                )
+                if (
+                    checked_b is not None
+                    and checked_b.failure is None
+                    and checked_b.visual is not None
+                    and (review.visual_need in {"requested", "helpful"} or checked_b.visual.kind == "svg")
+                    and _TEXT_DIAGRAM_TEX not in checked_b.candidate.content
+                ):
+                    state["call"], state["vetting"] = proposal_b, checked_b
+            return
+
+        # 3) Text failure (leak / math_inconsistent / confidence gate), merging missing-visual
+        # feedback when both text and visual failed on the same turn!
         state["original_failure"], state["original_reason"] = review.failure, review.leak_reason
         state["retried"] = True
         record_tutor_leak_retry(reason=review.failure)
-        proposal, checked = attempt(model, "repair", repair_error=_leak_repair(review))
+        feedback_parts = [_leak_repair(review)]
+        need_svg_hint = False
+        if not tools.web_search.image_requested and review.visual is None and visual_required(review):
+            feedback_parts.append(_missing_visual_repair(review))
+            need_svg_hint = True
+        merged_repair = "\n\n".join(part for part in feedback_parts if part)
+        proposal, checked = attempt(
+            model,
+            "repair",
+            repair_error=merged_repair,
+            preload_svg_guidelines=need_svg_hint,
+        )
         if checked is not None:
             state["call"], state["vetting"] = proposal, checked
+            # Backup model fallback only when the exact same leak reason repeats on primary repair
+            if (
+                backup_model is not None
+                and checked.leak_reason != "math_inconsistent"
+                and checked.failure == state["original_failure"] == "leak_detected"
+                and checked.leak_reason == state["original_reason"]
+            ):
+                proposal_b, checked_b = attempt(
+                    backup_model,
+                    "backup",
+                    repair_error=_leak_repair(checked),
+                    preload_svg_guidelines=need_svg_hint,
+                )
+                if checked_b is not None:
+                    state["call"], state["vetting"] = proposal_b, checked_b
 
     def backup(state):
         proposal, checked = attempt(backup_model, "backup", repair_error=_leak_repair(state["vetting"]))
@@ -1096,7 +1213,8 @@ def run_tutor_turn(
         failure = review.failure if review is not None else call.failure or INVALID_CANDIDATE
         if failure:
             record_llm_fallback(operation="tutor_turn", reason=failure)
-        return TurnResult(call, review, state["retried"])
+        state["turn_result"] = TurnResult(call, review, state["retried"])
+        return state["turn_result"]
 
     def same_leak(state):
         review = state["vetting"]
@@ -1111,6 +1229,15 @@ def run_tutor_turn(
         review = state["vetting"]
         return not tools.web_search.image_requested and review.failure is None and review.visual is None and visual_required(review)
 
+    def needs_repair(state):
+        if state["call"].candidate is None or state["vetting"] is None:
+            return False
+        return (
+            _is_retryable_text_failure(state["vetting"])
+            or needs_redraw(state)
+            or needs_missing(state)
+        )
+
     state = execute_tutoring_child(
         RETRY_NODE, initial_state={"retried": False},
         handlers={
@@ -1122,13 +1249,15 @@ def run_tutor_turn(
         },
         conditions={
             "no_candidate": lambda state: state["call"].candidate is None,
-            "retry_leak": lambda state: state["vetting"] is not None and state["vetting"].failure in LEAK_RETRY_REASONS,
-            "candidate_without_retry": lambda state: state["vetting"] is not None and state["vetting"].failure not in LEAK_RETRY_REASONS,
+            "retry_leak": lambda state: _is_retryable_text_failure(state["vetting"]),
+            "candidate_without_retry": lambda state: state["vetting"] is not None and not _is_retryable_text_failure(state["vetting"]),
             "same_leak_with_backup": same_leak, "no_backup_needed": lambda state: not same_leak(state),
             "needs_visual_redraw": needs_redraw, "no_visual_redraw": lambda state: not needs_redraw(state),
             "needs_missing_visual": needs_missing, "no_missing_visual": lambda state: not needs_missing(state),
             "retry_missing_with_backup": lambda state: not state["missing_fixed"] and backup_model is not None,
             "missing_attempt_done": lambda state: state["missing_fixed"] or backup_model is None,
+            "needs_repair": needs_repair,
+            "accepted_or_terminal": lambda state: not needs_repair(state),
         },
     )
-    return state["results"]["tutoring-retry.finish"]
+    return state["turn_result"]

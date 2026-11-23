@@ -64,8 +64,10 @@ def debug_capabilities(catalog=None):
             "eval-grading": "通过离线CLI运行完整评测；可单独调试评测裁判组件",
             "companion": "尚未接入协调器隔离调试",
             "planning": "尚未接入计划检查点隔离调试",
-            "tutoring-vet": "内部审核子流程，请在Tutoring执行记录中查看",
-            "tutoring-retry": "内部重试子流程，请在Tutoring执行记录中查看",
+            ("tutoring-vet" if catalog and "tutoring-vet" in catalog.workflow_catalog.specs
+             else "tutoring.review_candidate"): "内部审核子流程，请在Tutoring执行记录中查看",
+            ("tutoring-retry" if catalog and "tutoring-retry" in catalog.workflow_catalog.specs
+             else "tutoring.model_loop"): "内部重试子流程，请在Tutoring执行记录中查看",
         },
     }
 

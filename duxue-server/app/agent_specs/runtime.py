@@ -38,13 +38,14 @@ def execute_tutoring_child(node_id: str, **kwargs):
     """Resolve the child against the pinned catalog, including pre-subworkflow snapshots."""
     from app.agent_specs.catalog import load_catalog
     from app.agent_specs.execution_trace import recorder
-    from app.agent_specs.subworkflows import CALL_TARGETS, RETRY_NODE
+    from app.agent_specs.subworkflows import RETRY_NODE, call_targets
     from app.infrastructure.observability.telemetry import agent_step_span
 
     catalog = load_catalog()
     tutor = catalog.spec("tutoring")
     if tutor.node(RETRY_NODE).kind != "workflow":
-        return execute_workflow(catalog.spec(CALL_TARGETS[node_id]), **kwargs)
+        targets = call_targets(catalog.specs)
+        return execute_workflow(catalog.spec(targets[node_id]), **kwargs)
     node = tutor.node(node_id)
     child = catalog.spec(node.ref)
     recording = recorder()

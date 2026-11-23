@@ -175,7 +175,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   int? recordingSetupGeneration;
   int tab = 0;
   final watch = Stopwatch();
-  final planAttachments = <String>[];
+  List<String> _failedAttachmentKeys = const [];
   final stagedImages = <_StagedImage>[];
   List<Map<String, dynamic>> planDraft = [];
   List<Map<String, dynamic>> planAdviceItems = [];
@@ -1021,7 +1021,8 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
                     style: TextStyle(fontSize: 12, color: Colors.redAccent))),
             TextButton(
                 onPressed:
-                    _chatBusy ? null : () => _submitPlanInput(failedPlanText!, display: _failedVoiceDisplay),
+                    _chatBusy ? null : () => _submitPlanInput(failedPlanText!,
+                        attachmentKeys: _failedAttachmentKeys, display: _failedVoiceDisplay),
                 child: const Text('重试')),
           ]),
         ),
@@ -1110,7 +1111,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         rememberedImages.clear();
         _imageLoads.clear();
         stagedImages.clear();
-        planAttachments.clear();
+        _failedAttachmentKeys = const [];
         companionThreadId = null;
         companionThreadVersion = null;
         historyCursorThreadId = null;
@@ -1207,18 +1208,19 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
       return;
     }
     final content = text.isEmpty ? '请看这张图片。' : text;
-    final images = [
-      for (final image in stagedImages)
-        if (image.key != null) image.bytes,
-    ];
+    final attachments = stagedImages.where((image) => image.key != null).toList();
+    final images = [for (final image in attachments) image.bytes];
     _openPlanChat();
     setState(() {
       _anchorPronunciationLessons();
       _anchorPlanReview();
+      stagedImages.removeWhere((image) => image.key != null);
       planMessages.add(_ChatLine(label: '我', content: content, images: images));
     });
     _scrollToChatBottom();
-    await _submitPlanInput(content, pronunciation: pronunciation, display: display);
+    await _submitPlanInput(content,
+        attachmentKeys: [for (final image in attachments) image.key!],
+        pronunciation: pronunciation, display: display);
   }
 
   Widget _growth(BuildContext context) =>
@@ -2044,14 +2046,8 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   }
 
   Future<void> _submitPlanInput(String text,
-      {bool pronunciation = false, String? display}) async {
+      {required List<String> attachmentKeys, bool pronunciation = false, String? display}) async {
     if (_chatBusy) return;
-    planAttachments
-      ..clear()
-      ..addAll([
-        for (final image in stagedImages)
-          if (image.key != null) image.key!,
-      ]);
     final speechGeneration = _speechGeneration;
     final timing = ref.read(conversationLatencyProvider).start('ward');
     _questionTiming = timing;
@@ -2067,7 +2063,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
           voiceDisplayText: display,
           threadId: companionThreadId,
           expectedThreadVersion: companionThreadVersion,
-          attachmentKeys: List<String>.from(planAttachments),
+          attachmentKeys: attachmentKeys,
           routeHint: pronunciation ? 'tutoring' : null,
           tutoringIntent: pronunciation ? 'pronunciation' : null));
       if (!mounted || generation != _chatGeneration) return;
@@ -2081,6 +2077,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         _scrollToChatBottom(onlyIfNearBottom: true);
         setState(() {
           failedPlanText = text;
+          _failedAttachmentKeys = attachmentKeys;
           _failedVoiceDisplay = display;
         });
         showMessage(context, '暂时无法整理今天的计划，请重试');
@@ -2184,8 +2181,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         _quietVersion = quiet['ward_version'] as int;
       }
       failedPlanText = null;
-      stagedImages.clear();
-      planAttachments.clear();
+      _failedAttachmentKeys = const [];
       final rawLessons = lesson?['lessons'] ?? interaction['lessons'];
       pronunciationLessons = rawLessons is List && rawLessons.isNotEmpty
           ? [
@@ -2432,7 +2428,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
             .saveCompanionThread(companionThreadId!, companionThreadVersion!);
       }
       if (!mounted || generation != _chatGeneration) return;
-      planAttachments.clear();
       planDraft = [];
       planAdviceItems = [];
       planFeedback = null;

@@ -45,6 +45,7 @@ from app.infrastructure.ai import components
 from app.infrastructure.ai.prompts import render_fragment
 from app.infrastructure.messaging.outbox import publish_learning_fact
 from app.infrastructure.observability.telemetry import (
+    agent_infra_span,
     agent_step_span,
     record_llm_fallback,
     record_tutor_turn_result,
@@ -115,6 +116,16 @@ class TutoringWorkflow:
         self._media_cache: dict[str, tuple[list[dict], list[str | None], dict[str, str]]] = {}
         self._selected_image_refs: dict[str, list[str]] = {}
 
+    def _dossier_mode_enabled(self) -> bool:
+        if self.dossier_enqueue_fn is not None:
+            return True
+        if self._live_turn_model:
+            from app.agent_specs.definitions import load_definitions
+            from app.agent_specs.gaokao_contracts import PLANNER_ID
+
+            return PLANNER_ID in load_definitions().units
+        return False
+
     def _resolve_active_dossier(
         self,
         *,
@@ -125,11 +136,16 @@ class TutoringWorkflow:
         attachment_keys: list[str],
         tutoring_intent: str | None,
     ):
-        """Read or asynchronously schedule `ProblemDossier` with bounded first-turn wait."""
-        import time
+        """Read-only lookup of an existing `ProblemDossier` (open problem or ward/bank cache).
 
-        from app.application.commands.problem_solving import RequestSolveCommand
+        New dossiers are NEVER created or enqueued before the turn is classified and vetted;
+        deferred creation happens exclusively in `apply_work()` for verified reasoning work.
+        """
+        _ = attachment_keys
+        from app.agent_specs.image_refs import image_ref
+        from app.application.ports.problem_solving import SqlProblemDossierRepository
         from app.application.queries.problem_dossier import GetProblemDossierQuery
+        from app.contexts.problem_solving.domain.dossier import StructuredStem, image_request_fingerprint
 
         query = GetProblemDossierQuery(self.db)
         if problem_row is not None and problem_row.dossier_id:
@@ -140,51 +156,29 @@ class TutoringWorkflow:
             )
 
             if images and dossier is not None:
-                from app.agent_specs.image_refs import image_ref
-
                 if dossier.evidence.get("request_image_refs") != [image_ref(img) for img in images]:
                     # The model will decide whether this is new work or another photo of the same work.
                     return None, None
             return dossier, projection
 
-        # Only pre-lookup or pre-schedule on open-problem miss when async dossier mode is explicitly configured
-        # OR live model mode with gaokao blueprint component available; keep pronunciation/empty fast.
-        if tutoring_intent == "pronunciation" or (not content.strip() and not images):
-            return None, None
-        should_request_dossier = self.dossier_enqueue_fn is not None
-        if not should_request_dossier and self._live_turn_model:
-            from app.agent_specs.definitions import load_definitions
-            from app.agent_specs.gaokao_contracts import PLANNER_ID
-
-            should_request_dossier = PLANNER_ID in load_definitions().units
-        if not should_request_dossier or problem_row is not None:
+        if (
+            tutoring_intent == "pronunciation"
+            or (not content.strip() and not images)
+            or problem_row is not None
+            or not self._dossier_mode_enabled()
+        ):
             return None, None
 
-        enqueue_cb = self.dossier_enqueue_fn
-        if enqueue_cb is None:
-            from app.workers.solving_tasks import enqueue_solve_dossier
-
-            enqueue_cb = lambda did, _imgs=None: enqueue_solve_dossier(
-                did, attachment_keys=attachment_keys
-            )
-
-        dossier = RequestSolveCommand(self.db, enqueue_fn=enqueue_cb).execute(
-            ward_id=ward_id,
-            text=content,
-            images=images,
-        )
-        # Bounded short poll if worker might resolve T1 fast within budget
-        budget = max(0.0, self.first_turn_solve_budget_seconds)
-        if dossier.status == "pending" and budget > 0:
-            deadline = time.monotonic() + budget
-            while time.monotonic() < deadline:
-                time.sleep(min(0.15, max(0.01, deadline - time.monotonic())))
-                self.db.expire_all()
-                refreshed = query.get_for_ward(ward_id=ward_id, dossier_id=dossier.dossier_id)
-                if refreshed is not None and refreshed.status != "pending":
-                    dossier = refreshed
-                    break
-        return dossier, dossier.tutoring_projection(student_progress={})
+        repo = SqlProblemDossierRepository(self.db)
+        stem = StructuredStem.from_request(content)
+        if images:
+            fp = image_request_fingerprint(stem, [image_ref(img) for img in images])
+            cached = repo.find_image_request(ward_id=ward_id, fingerprint=fp)
+        else:
+            cached = repo.find_reusable(stem=stem, ward_id=ward_id)
+        if cached is not None and cached.status in {"ready", "low_confidence"}:
+            return cached, cached.tutoring_projection(student_progress={})
+        return None, None
 
     def _planner(self):
         if self.blueprint_planner is not None:
@@ -240,17 +234,23 @@ class TutoringWorkflow:
                 keys_by_ref[image_ref(url)] = attachment_key
                 return url
 
-            current = current_turn_images(invocation.ward_id, invocation.turn.get("attachment_keys"), read_image=read_image)
-            image_budget = 8
-            if current:
-                image_budget = 1 if any(current) and invocation.turn.get("tutoring_intent") == "compare_previous_image" else 0
-            self._media_cache[key] = (
-                load_visible_utterances(
+            with agent_infra_span("tutoring.load_media") as media_span:
+                current = current_turn_images(invocation.ward_id, invocation.turn.get("attachment_keys"), read_image=read_image)
+                image_budget = 8
+                if current:
+                    image_budget = 1 if any(current) and invocation.turn.get("tutoring_intent") == "compare_previous_image" else 0
+                window = load_visible_utterances(
                     self.db, ward_id=invocation.ward_id, thread_id=invocation.thread_id,
                     exclude_turn_id=invocation.turn_id, image_budget=image_budget, read_image=read_image,
-                ),
-                current, keys_by_ref,
-            )
+                )
+                media_span.set_attribute("media.window_count", len(window))
+                media_span.set_attribute("media.image_budget", image_budget)
+                media_span.set_attribute("media.current_images", len(current))
+                media_span.set_attribute(
+                    "media.window_images",
+                    sum(len(row.get("image_urls") or []) for row in window),
+                )
+            self._media_cache[key] = (window, current, keys_by_ref)
         return self._media_cache[key]
 
     def invoke(self, invocation: RunInvocation) -> WorkflowOutcome:
@@ -708,6 +708,20 @@ class _TutoringTurn:
             }
             if self.active_dossier.status in {"ready", "low_confidence"} and dossier_projection is not None:
                 model_envelope["problem_dossier"] = dossier_projection
+            if self.active_dossier.status == "ready":
+                # P2: Follow-up turns backed by a ready dossier (T1 medium or T2/bank high)
+                # already receive structured approaches/milestones, so run on the lightweight
+                # non-thinking tier while `_dossier_gate` still enforces strict `high`-only verdict rules.
+                model_envelope["_disable_thinking"] = True
+        elif self.owner._dossier_mode_enabled():
+            # Always enforce confidence gate on unbacked first turns (e.g. deferred text dossier creation)
+            # so mental-math final/optimality affirmations are never silently allowed.
+            model_envelope["_dossier_gate"] = {
+                "dossier_id": None,
+                "status": "absent",
+                "confidence": "low",
+                "allows_verdict_assertion": False,
+            }
         if self.problem_row is not None and (not self.problem_row.dossier_id or self.active_dossier is not None):
             if self.problem_row.internal_blueprint and "problem_dossier" not in model_envelope:
                 model_envelope["internal_blueprint"] = self.problem_row.internal_blueprint
@@ -888,19 +902,35 @@ class _TutoringTurn:
                 )
             else:
                 planned_group = prior_group_vo
-                if target_dossier_id is None and (self.owner.dossier_enqueue_fn is not None or self.owner._live_turn_model):
+                report = self.candidate.image_review
+                is_worksheet_batch_check = bool(
+                    report is not None
+                    and report.conclusion != "not_checking"
+                    and len(report.questions) >= 2
+                )
+                if (
+                    target_dossier_id is None
+                    and not is_worksheet_batch_check
+                    and self.owner._dossier_mode_enabled()
+                ):
                     from app.application.commands.problem_solving import (
                         RequestSolveCommand,
                     )
 
                     enqueue_cb = self.owner.dossier_enqueue_fn
+                    defer_until_commit = False
                     if enqueue_cb is None:
                         from app.workers.solving_tasks import enqueue_solve_dossier
 
                         enqueue_cb = lambda did, _imgs=None: enqueue_solve_dossier(
                             did, attachment_keys=self.selected_attachment_keys
                         )
-                    created_dos = RequestSolveCommand(self.owner.db, enqueue_fn=enqueue_cb).execute(
+                        defer_until_commit = True
+                    created_dos = RequestSolveCommand(
+                        self.owner.db,
+                        enqueue_fn=enqueue_cb,
+                        defer_until_commit=defer_until_commit,
+                    ).execute(
                         ward_id=self.invocation.ward_id,
                         text=self.content,
                         images=self.all_authorized_images,

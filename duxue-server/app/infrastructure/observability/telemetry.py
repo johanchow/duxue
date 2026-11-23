@@ -504,6 +504,22 @@ def trace_agent_turn(function):
 
 
 @contextmanager
+def agent_infra_span(name: str, **attributes: Any) -> Iterator[Any]:
+    """Infrastructure/persistence timing span inside an agent turn without requiring catalog registration."""
+    with trace.get_tracer("duxue.agent").start_as_current_span(
+        name,
+        attributes={
+            **_agent_context_attrs(),
+            "langfuse.observation.type": "span",
+            **_attrs(**attributes),
+        },
+        record_exception=False,
+        set_status_on_exception=False,
+    ) as span:
+        yield span
+
+
+@contextmanager
 def agent_step_span(kind: str, name: str, **attributes: Any) -> Iterator[Any]:
     """A named Agent step; callers attach reviewed input/output payloads."""
     if kind not in {"route", "node", "tool", "check"}:
