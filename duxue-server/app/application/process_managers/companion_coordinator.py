@@ -407,6 +407,8 @@ class CompanionCoordinator:
             proposal = routing["proposal"]
             if proposal is not None:
                 route_span.set_attribute("agent.initial_intent", proposal.intent)
+                route_span.set_attribute("agent.history_image_ref", proposal.history_image_ref)
+                route_span.set_attribute("agent.tutoring_thinking", proposal.thinking)
             route_span.set_attribute("agent.proposed_target", decision.target)
             route_span.set_attribute("agent.proposed_mode", decision.mode)
             set_observation_payload(route_span, output=decision.model_dump(mode="json"))
@@ -516,6 +518,14 @@ class CompanionCoordinator:
 
         if run.agent_type == "tutoring":
             turn = {**turn, "tutoring_graph_version": run.graph_version}
+            if proposal is not None and not attachment_keys:
+                if (
+                    proposal.history_image_ref == "none"
+                    and turn.get("tutoring_intent") != "compare_previous_image"
+                ):
+                    turn["history_image_ref"] = "none"
+                if proposal.thinking == "off":
+                    turn["disable_thinking"] = True
         invocation = RunInvocation(
             run_id=run.id, thread_id=thread.id, ward_id=ward_id, agent_type=run.agent_type,
             turn=turn, turn_id=run.current_turn_id, command_id=command_id, attempt=run.attempt,

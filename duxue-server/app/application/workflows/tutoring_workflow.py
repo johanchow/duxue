@@ -239,6 +239,11 @@ class TutoringWorkflow:
                 image_budget = 8
                 if current:
                     image_budget = 1 if any(current) and invocation.turn.get("tutoring_intent") == "compare_previous_image" else 0
+                elif (
+                    invocation.turn.get("history_image_ref") == "none"
+                    and invocation.turn.get("tutoring_intent") != "compare_previous_image"
+                ):
+                    image_budget = 0
                 window = load_visible_utterances(
                     self.db, ward_id=invocation.ward_id, thread_id=invocation.thread_id,
                     exclude_turn_id=invocation.turn_id, image_budget=image_budget, read_image=read_image,
@@ -722,6 +727,12 @@ class _TutoringTurn:
                 "confidence": "low",
                 "allows_verdict_assertion": False,
             }
+        if (
+            self.turn.get("disable_thinking") is True
+            and not self.all_authorized_images
+            and self.active_dossier is None
+        ):
+            model_envelope["_disable_thinking"] = True
         if self.problem_row is not None and (not self.problem_row.dossier_id or self.active_dossier is not None):
             if self.problem_row.internal_blueprint and "problem_dossier" not in model_envelope:
                 model_envelope["internal_blueprint"] = self.problem_row.internal_blueprint

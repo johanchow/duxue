@@ -11,6 +11,16 @@ from app.agent_specs.subworkflows import review_workflow_id
 from app.agent_specs.verdicts import normalize_judge
 from app.infrastructure.ai import components
 from app.infrastructure.ai.errors import ModelGatewayError
+from app.infrastructure.ai.prompts import PromptTemplate
+
+
+def _strip_image_review_section(prompt_text: str) -> str:
+    """Omit the `[image-review.v1]` protocol block on pure-text turns with zero images."""
+    if "[image-review.v1]" not in prompt_text:
+        return prompt_text
+    blocks = prompt_text.split("\n\n")
+    kept = [block for block in blocks if not block.lstrip().startswith("[image-review.v1]")]
+    return "\n\n".join(kept)
 
 
 class QwenTutorTurnGateway:
@@ -35,6 +45,11 @@ class QwenTutorTurnGateway:
         spec = self._spec or components.COMPONENTS.get(self._component_id)
         if isinstance(envelope, dict) and envelope.get("_disable_thinking") and getattr(spec, "enable_thinking", False):
             spec = replace(spec, enable_thinking=False, thinking_budget=None)
+        has_images = bool(current_images or any(row.get("image_urls") for row in (recent_utterances or [])))
+        if not has_images and isinstance(getattr(spec, "prompt", None), PromptTemplate):
+            stripped = _strip_image_review_section(spec.prompt.text)
+            if stripped != spec.prompt.text:
+                spec = replace(spec, prompt=PromptTemplate(spec.prompt.id, stripped))
         return components.invoke_agent_component(
             spec=spec, user=user,
             settings_obj=self._settings,

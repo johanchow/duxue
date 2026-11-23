@@ -87,6 +87,17 @@ def _frozen(doc):
     return result
 
 
+def _intent_hints_contracts(files: dict, base_files: dict) -> dict:
+    doc = files.get("agents/companion.intent.json")
+    props = (doc.get("output_schema") or {}).get("properties") if isinstance(doc, dict) else None
+    if not isinstance(props, dict) or not ({"history_image_ref", "thinking"} & set(props)):
+        return {}
+    upgraded = copy.deepcopy(base_files["agents/companion.intent.json"])
+    upgraded["output_schema"]["properties"]["history_image_ref"] = {"enum": ["none", "needed"]}
+    upgraded["output_schema"]["properties"]["thinking"] = {"enum": ["default", "off"]}
+    return {"agents/companion.intent.json": upgraded}
+
+
 def contract_compatibility(files: dict) -> str:
     # The envelope binds code contracts and the topology supplied by Admin.
     # Never reconstruct topology from a repository baseline. Keeping the same
@@ -99,6 +110,7 @@ def contract_compatibility(files: dict) -> str:
     reminder_contracts = reminder_policy.upgraded_contracts({**code_contract()["files"], **observation_contracts()}) if reminder_policy.FILE in files else {}
     return digest({
         "files": {**code_contract()["files"],
+                  **_intent_hints_contracts(files, code_contract()["files"]),
                   **(web_search.upgraded_contracts(code_contract()["files"]) if web_search.FILE in files else {}),
                   **(blueprint_steps.contracts(files) if f"agents/{blueprint_steps.EXTRACT}.json" in files else {}),
                   **(observation_contracts() if has_obs else {}), **reminder_contracts,
@@ -124,6 +136,8 @@ class CompiledBundle:
 def compile_bundle(bundle: dict) -> CompiledBundle:
     contracts = copy.deepcopy(code_contract())
     file_names = set(bundle.get("files", {})) if isinstance(bundle, dict) else set()
+    if isinstance(bundle, dict) and isinstance(bundle.get("files"), dict):
+        contracts["files"].update(_intent_hints_contracts(bundle["files"], contracts["files"]))
     workflow_files = {f"workflows/{name}.json" for name in _bindings_for_files(file_names)}
     has_observation = OBSERVATION_FILES <= file_names
     has_gaokao = GAOKAO_FILES <= file_names

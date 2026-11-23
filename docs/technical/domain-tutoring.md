@@ -393,7 +393,7 @@ flowchart TD
 
 本轮的答案保护不因累计卡住次数而放开。下一轮只会基于已提交的证据继续一个新的最小教学目标。具体 Run 生命周期、等待与失败状态由 [Companion](domain-companion.md) 维护；本 Context 只规定候选、出口检查和提交。
 
-> **子流程精简与按因限重试（2026-11-23）**：`tutoring.model_loop` 支持精简 3 节点拓扑（`primary → repair → finish`，完全向后兼容既有 9 节点发布快照）：`primary` 通过或遇到不可自修故障（如 `math_check_failed` 校验执行器不可用、无可用候选）走 `accepted_or_terminal` 直出 `finish`；可自修失败（正文泄露、数学不一致、配图泄露、缺少必要配图）走 `needs_repair` 进入统一 `repair`（复合失败合并正文与缺图反馈一次修复；纯配图泄露严格锁住已审 `act/content/turn` 并复用正文审核；同类正文泄露重复时在 `repair` 内按需切换 `backup_model` 兜底）。当续轮已持有 `ProblemDossier(status="ready", confidence="high")` 时，前台自动关闭 Thinking 降档提速。
+> **子流程精简与按因限重试（2026-11-23）**：`tutoring.model_loop` 支持精简 3 节点拓扑（`primary → repair → finish`，完全向后兼容既有 9 节点发布快照）：`primary` 通过或遇到不可自修故障（如 `math_check_failed` 校验执行器不可用、无可用候选）走 `accepted_or_terminal` 直出 `finish`；可自修失败（正文泄露、数学不一致、配图泄露、缺少必要配图）走 `needs_repair` 进入统一 `repair`（复合失败合并正文与缺图反馈一次修复；纯配图泄露严格锁住已审 `act/content/turn` 并复用正文审核；同类正文泄露重复时在 `repair` 内按需切换 `backup_model` 兜底）。当续轮已持有 `ProblemDossier(status="ready")` 时，或当本轮无图且 `companion.intent` 明确标注 `thinking="off"`（纯常识/概念/词义/闲聊）时，前台自动关闭 Thinking 降档提速；无图片轮次运行时自动剥离系统提示词中的 `[image-review.v1]` 段落（不影响启动期配置协议校验）。
 
 ### 4.1 模型候选与 `finish_turn`
 

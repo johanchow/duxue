@@ -60,6 +60,10 @@ def validate_output(unit: ModelUnit, payload: dict) -> None:
     elif unit_id == "companion.intent":
         if payload["intent"] not in {"planning", "tutoring", "reflection", "unclear"}:
             raise ValueError("invalid intent")
+        if "history_image_ref" in payload and payload["history_image_ref"] not in {"none", "needed"}:
+            raise ValueError("invalid history_image_ref")
+        if "thinking" in payload and payload["thinking"] not in {"default", "off"}:
+            raise ValueError("invalid thinking")
     elif unit_id == "companion.scene-switch":
         if type(payload["allow_switch"]) is not bool:
             raise ValueError("invalid switch verdict")
