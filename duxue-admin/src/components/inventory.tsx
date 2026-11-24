@@ -958,7 +958,7 @@ export function WorkflowExplorer({
             <div style={{ marginBottom: 8 }}>
               <strong>单次尝试内部管道</strong>
               <span className="muted" style={{ marginLeft: 8 }}>
-                下方 6 个尝试节点（主模型首答 / 修复 / 备用模型 / 重绘 / 补图）每次执行时均在内部依次调用：
+                每次生成或重试（<code>primary</code> / <code>repair</code>）执行时均在内部依次调用：
               </span>
             </div>
             <div

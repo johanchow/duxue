@@ -443,7 +443,7 @@ class ApiClient {
           if (structuredCommand != null) 'structured_command': structuredCommand,
           'attachment_keys': attachmentKeys,
         },
-        receiveTimeout: const Duration(seconds: 90),
+        receiveTimeout: const Duration(seconds: 150),
         onStage: onStage,
       );
 
