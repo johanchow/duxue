@@ -215,7 +215,9 @@ def test_image_arithmetic_preserves_uncertainty_without_exploratory_claims():
     verified = ledger.reconcile_image(candidate)
     assert not verified.math_claims
     ledger.validate(verified.math_claims)
-    assert not ledger.records
+    assert len(ledger.records) == 1
+    rec = next(iter(ledger.records.values()))
+    assert rec["op"] == "check_arithmetic" and rec["status"] == "ok" and rec["verdict"] == "equal"
     unavailable = MathVerification(None, {}, ledger.image_refs).reconcile_image(
         candidate
     )

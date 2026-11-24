@@ -28,11 +28,14 @@ def test_hundred_rows_run_in_four_isolated_batches_and_reuse_unchanged_transcrip
     result = ledger.reconcile_image(candidate)
     assert result.image_review.conclusion == "all_correct"
     assert engine.sizes == [25] * 4
-    assert not result.math_claims and not ledger.records and ledger.calls == 0
+    assert not result.math_claims and len(ledger.records) == 100 and ledger.calls == 0
     candidate.image_review.questions[-1].calculation.submitted = "0"
     other = ledger.reconcile_image(candidate)
     assert other.image_review.questions[-1].verdict == "incorrect"
     assert engine.sizes[-1] == 1 and len(engine.sizes) == 5
+    assert len(ledger.records) == 100
+    last_rec = next(r for r in ledger.records.values() if r["location"] == "99")
+    assert last_rec["op"] == "check_arithmetic" and last_rec["verdict"] == "not_equal"
 
 
 def test_partial_coverage_and_unknown_arithmetic_never_authorize_all_correct():
@@ -93,7 +96,9 @@ def test_missing_positions_force_partial_and_judge_sees_only_item_evidence():
     assert result.image_review.coverage == "partial"
     assert result.image_review.conclusion == "uncertain"
     evidence = json.loads(review_problem(None, result, ["test-pixels"]))
-    assert not evidence.get("math_records")
+    assert "image_review_check" not in evidence
+    assert len(ledger.records) == 30
+    assert all(r["op"] == "check_arithmetic" and r["verdict"] == "equal" for r in ledger.records.values())
     assert all(row["calculation_status"] == "equal" for row in evidence["image_review"]["questions"])
 
 
@@ -141,3 +146,68 @@ def test_reviewed_worksheet_can_confirm_without_ready_dossier():
     )
     assert result.vetting.failure is None
     assert result.call.candidate.content == "你写的得数正确。"
+
+
+def test_worksheet_batch_populates_unified_math_records_for_parallel_vet():
+    import json
+    from pathlib import Path
+
+    from app.agent_specs.admin_bundle import compile_bundle
+    from app.agent_specs.definitions import use_definitions
+    from app.agent_specs.image_refs import image_ref
+    from app.application.workflows.tutor_loop import run_tutor_turn
+    from app.application.workflows.tutor_tools import TutorToolbox
+    from app.contexts.tutoring.domain.tutor_permit import TutorPermitPolicy
+    from scripts.upgrade_math_bundle import upgrade as upgrade_math
+    from scripts.upgrade_workflow_nodes import upgrade as upgrade_parallel
+    from tests.support.fakes import StaticLeakJudge, StaticTutorModel
+
+    class CapturingJudge(StaticLeakJudge):
+        def __init__(self):
+            super().__init__(False)
+            self.math_contexts: list[dict] = []
+            self.leak_summaries: list[str] = []
+
+        def leaks(self, *, text, problem_summary=None, **kwargs):
+            self.leak_summaries.append(problem_summary or "")
+            return {"leaks": False, "answer_protected": True}
+
+        def check_math(self, *, text, context, images):
+            self.math_contexts.append(context)
+            return True
+
+    source = json.loads(Path("tests/fixtures/admin-release.json").read_text())
+    compiled = compile_bundle(upgrade_parallel(upgrade_math(source, enable=True))["bundle"])
+    pixels = "data:image/png;base64,YQ=="
+    first = tutor_raw(image_review={
+        "scope": "all_visible",
+        "coverage": "partial",
+        "questions": [],
+        "conclusion": "uncertain",
+        "arithmetic_rows": {image_ref(pixels): [["一中8", "600-20", "570"], ["一中9", "14-3", "11"]]},
+    })
+    model = StaticTutorModel(first, tutor_raw(content="一中8 的 600-20 算错了，请重算。"))
+    judge = CapturingJudge()
+    tools = TutorToolbox(
+        None, tutoring_session_id=None, problem=None, task_title="检查作业",
+        task_active=False, window=[], math_engine=SubprocessMathEngineAdapter(),
+    )
+    with use_definitions(compiled.catalog):
+        result = run_tutor_turn(
+            model, {}, "这里面题目是不是全部做对了？", [], [pixels],
+            tools, permit=TutorPermitPolicy.permit(None), leak_judge=judge,
+            task_title="检查作业", problem_summary='{"current_request":"这里面题目是不是全部做对了？"}',
+            judge_images=[pixels],
+        )
+
+    assert result.vetting.failure is None
+    assert len(judge.math_contexts) == 1
+    records = judge.math_contexts[0]["math_records"]
+    assert len(records) == 2
+    by_loc = {r["location"]: r for r in records}
+    assert by_loc["一中8"]["op"] == "check_arithmetic"
+    assert by_loc["一中8"]["verdict"] == "not_equal"
+    assert by_loc["一中9"]["verdict"] == "equal"
+    # Runtime prompt patch string is gone from all judge payloads.
+    assert all("image_review_check" not in s for s in judge.leak_summaries)
+    assert "image_review_check" not in json.dumps(judge.math_contexts[0], ensure_ascii=False)

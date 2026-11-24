@@ -169,11 +169,6 @@ def review_problem(summary: str | None, candidate, images: list[str]) -> str | N
                 if (row["calculation"]["expression"] == row["task"]
                         and row["calculation"]["submitted"] == row["student_answer"]):
                     row.pop("calculation")
-        body["image_review_check"] = (
-            "逐项对照原图检查漏题、抄错、手写答案错行与题目覆盖范围。calculation_status 是隔离引擎"
-            "对该行转写算式与作答的复算结果，不要求另附 math_claims 或 math_records，不重复心算。"
-            "其他题型仍核对依据。复算末值不能证明未转写的中间步骤；对正文中的过程断言须有对应步骤证据。无法确认全覆盖时只允许部分结论。"
-        )
     return json.dumps(body, ensure_ascii=False)
 
 

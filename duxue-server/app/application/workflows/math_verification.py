@@ -196,6 +196,7 @@ class MathVerification:
 
         questions = list(report.questions)
         for index, key in keys.items():
+            img_ref, location, expression, submitted = key
             status = results.get(key) or self.worksheet_cache[key]
             verdict = {"equal": "correct", "not_equal": "incorrect"}.get(status, "uncertain")
             question = questions[index].model_copy(update={
@@ -204,6 +205,13 @@ class MathVerification:
             })
             question._calculation_status = status
             questions[index] = question
+            self._record_worksheet_item(
+                image_ref=img_ref,
+                location=location,
+                expression=expression,
+                submitted=submitted,
+                status=status,
+            )
         coverage = report.coverage
         if not report.complete_coverage(self.image_refs) or any(q.verdict == "uncertain" for q in questions):
             coverage = "partial"
@@ -222,4 +230,61 @@ class MathVerification:
                     update={"questions": questions, "conclusion": conclusion, "coverage": coverage}
                 ),
             }
+        )
+
+    def _record_worksheet_item(
+        self,
+        *,
+        image_ref: str,
+        location: str,
+        expression: str,
+        submitted: str,
+        status: str,
+    ) -> None:
+        """Unify batch worksheet arithmetic checks into the same math_records ledger."""
+        digest = hashlib.sha256(
+            json.dumps(
+                {
+                    "source": self.source,
+                    "image_ref": image_ref,
+                    "location": location,
+                    "expression": expression,
+                    "submitted": submitted,
+                },
+                sort_keys=True,
+                ensure_ascii=False,
+            ).encode()
+        ).hexdigest()
+        request_id = f"ws_{digest[:12]}"
+        # Replace any stale worksheet record for the same (image_ref, location).
+        for existing_id in [
+            rid
+            for rid, rec in self.records.items()
+            if rec.get("op") == "check_arithmetic"
+            and rec.get("image_ref") == image_ref
+            and rec.get("location") == location
+            and rid != request_id
+        ]:
+            self.records.pop(existing_id, None)
+            self.evidence.pop(existing_id, None)
+        is_verified = status in ("equal", "not_equal")
+        self.records[request_id] = {
+            "request_id": request_id,
+            "op": "check_arithmetic",
+            "image_ref": image_ref,
+            "location": location,
+            "expression": expression,
+            "submitted": submitted,
+            "status": "ok" if is_verified else "unknown",
+            **({"verdict": status} if is_verified else {"error_code": status}),
+        }
+        self.evidence[request_id] = MathEvidence(
+            request_id=request_id,
+            input_digest=digest,
+            status="ok" if is_verified else "unknown",
+            verdict=status if is_verified else None,
+            checked_scope="equivalence" if is_verified else None,
+            conditions=(),
+            step_ref=location,
+            result=None,
         )
