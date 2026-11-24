@@ -151,3 +151,5 @@
 - 2026-11-22 复用一次 Admin 草稿拉取的 revision 20 跑五集各三条及全部 14 条 Guardian 首答。抽样排除上一轮五集和近期定向复跑用例。Guardian 的共用题组按一次真实首答、两个题号分别核分。物理 16 初评把原图标记的累计距离误当分段距离，按图复核扣去对应空并保留初评。逐例得分、快照身份、上轮对比与新实验见[本批报告](../../duxue-server/var/evals/langfuse-five-by-three-guardian-20261122-105411.fC2sK3/REPORT.md)。
 
 - Omni `solve` 本地和托管接入[生产解题回放](../../docs/technical/eval-offline.md#完整解题回放)。真跑数学 025 回读生产读题、主解和核验，答上午 8 时，独立教学正确性 4/5。两个数学锚点未生成 `verify_request`，生产核验分支为 `unknown`，按原样保留低置信候选。42 条通过无模型调用预检。[回读证据](../../duxue-server/var/evals/omni-math-025-production-20261122-134152/cloud-verification.json)。
+
+- 2026-11-24 修复 `companion.record_outcome` 成为当前子 span 时根 `agent.turn` 丢失已提交回复的问题。轮次上下文持有根 span，退出时恢复，回复仍在事务提交后采集。复用答疑续轮、计划切换及澄清的集成测试验证根输出。回放契约见[可观测性方案](../../docs/observability.md)。

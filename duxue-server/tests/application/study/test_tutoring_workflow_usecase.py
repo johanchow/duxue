@@ -518,8 +518,11 @@ def test_the_window_reaches_the_model_and_history_is_authorized(db):
         run_id=uid(), thread_id=thread.id, ward_id=ward.id, agent_type="tutoring",
         turn={"content": "他们都是什么意思", "tutoring_directive": "ask"},
     ))
-    assert "diamond beach" in model.calls[0]["recent_utterances"][0]["text"]
-    assert "diamond beach" in model.calls[0]["instruction"]  # 授权历史候选
+    call = model.calls[0]
+    assert [(row["author"], row["text"]) for row in call["recent_utterances"]] == [
+        ("companion", "1. diamond beach\n2. kling beach"),
+    ]
+    assert "diamond beach" not in call["instruction"]
     assert "你说的是上面列出的哪一句？" in outcome.next_interaction["content"]
     assert db.query(StudySession).count() == 0
 
