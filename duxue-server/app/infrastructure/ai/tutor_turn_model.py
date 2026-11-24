@@ -5,11 +5,63 @@
 
 from __future__ import annotations
 
+import json
+from dataclasses import replace
+
 from app.agent_specs.catalog import load_catalog
 from app.agent_specs.contexts import build_context
+from app.agent_specs.subworkflows import review_workflow_id
 from app.agent_specs.verdicts import normalize_judge
 from app.infrastructure.ai import components
 from app.infrastructure.ai.errors import ModelGatewayError
+from app.infrastructure.ai.prompts import PromptTemplate, compose_system_prompt
+
+
+def _strip_image_review_section(prompt_text: str) -> str:
+    """Omit the `[image-review.v1]` protocol block on pure-text turns with zero images."""
+    if "[image-review.v1]" not in prompt_text:
+        return prompt_text
+    blocks = prompt_text.split("\n\n")
+    kept = [block for block in blocks if not block.lstrip().startswith("[image-review.v1]")]
+    return "\n\n".join(kept)
+
+
+def _leak_judge_fragment_names(
+    *,
+    images: list[str] | None = None,
+    problem_summary: str | None = None,
+    context: dict | None = None,
+    force_math: bool = False,
+) -> tuple[str, ...]:
+    """Select optional scenario fragments for `tutoring.leak-judge` in deterministic tail order."""
+    parsed: dict | None = context if isinstance(context, dict) else None
+    if parsed is None and isinstance(problem_summary, str):
+        text = problem_summary.strip()
+        if text.startswith("{"):
+            try:
+                loaded = json.loads(text)
+                if isinstance(loaded, dict):
+                    parsed = loaded
+            except ValueError:
+                parsed = None
+    names: list[str] = []
+    if force_math or (parsed is not None and parsed.get("math_review_required") is True):
+        names.append("math_review")
+    if images:
+        names.append("image_review")
+    candidate_visual = parsed.get("candidate_visual") if parsed is not None else None
+    if candidate_visual:
+        names.append("visual_svg_geometry")
+        if isinstance(candidate_visual, dict) and candidate_visual.get("kind") == "web_photo":
+            names.append("web_photo")
+    return tuple(names)
+
+
+def _with_system_fragments(spec, unit_id: str, fragment_names: tuple[str, ...]):
+    if not fragment_names or not isinstance(getattr(spec, "prompt", None), PromptTemplate):
+        return spec
+    composed = compose_system_prompt(spec.prompt, unit_id, fragment_names)
+    return replace(spec, prompt=composed) if composed is not spec.prompt else spec
 
 
 class QwenTutorTurnGateway:
@@ -29,8 +81,18 @@ class QwenTutorTurnGateway:
         user = build_context("tutoring.turn", envelope=envelope, instruction=instruction,
                              observations=observations, repair_error=repair_error,
                              recent_utterances=recent_utterances, current_images=current_images)
+        spec = self._spec or components.COMPONENTS.get(self._component_id)
+        if isinstance(envelope, dict) and envelope.get("_disable_thinking") and getattr(spec, "enable_thinking", False):
+            spec = replace(spec, enable_thinking=False, thinking_budget=None)
+        has_images = bool(current_images or any(row.get("image_urls") for row in (recent_utterances or [])))
+        if has_images:
+            spec = _with_system_fragments(spec, "tutoring.turn", ("image_review",))
+        elif isinstance(getattr(spec, "prompt", None), PromptTemplate):
+            stripped = _strip_image_review_section(spec.prompt.text)
+            if stripped != spec.prompt.text:
+                spec = replace(spec, prompt=PromptTemplate(spec.prompt.id, stripped))
         return components.invoke_agent_component(
-            spec=self._spec or components.COMPONENTS.get(self._component_id), user=user,
+            spec=spec, user=user,
             settings_obj=self._settings,
         ).unwrap()
 
@@ -55,25 +117,38 @@ class QwenLeakJudge:
         # compact text request used by offline evaluation and ordinary turns.
         user = build_context("tutoring.leak-judge", text=text, task_title=task_title,
                              problem_summary=problem_summary, images=images)
+        fragment_names = _leak_judge_fragment_names(
+            images=images, problem_summary=problem_summary,
+        )
         return self._judge(
             "tutoring.leak-judge", user, with_reason=True,
+            system_fragments=fragment_names,
         )
 
     def check_math(self, *, text: str, context: dict, images: list[str]) -> bool | None:
-        import json
         user = build_context("tutoring.leak-judge", text=text, task_title=None,
                              problem_summary=json.dumps(context, ensure_ascii=False), images=images)
         from contextlib import nullcontext
 
         from app.agent_specs.catalog import executing_node
-        from app.agent_specs.subworkflows import MATH_NODE, VET_MATH_NODE
+        from app.agent_specs.subworkflows import MATH_NODE
         from app.infrastructure.observability.telemetry import agent_step_span
-        review = (nullcontext() if executing_node.get() in {("tutoring", MATH_NODE), ("tutoring-vet", VET_MATH_NODE)} else
+        catalog = load_catalog()
+        review_id = review_workflow_id(catalog.specs)
+        review = (nullcontext() if executing_node.get() in {("tutoring", MATH_NODE), (review_id, f"{review_id}.math_consistency")} else
                   agent_step_span("check", "tutoring.text_leak", **{"math.review.phase": "consistency"}))
+        fragment_names = _leak_judge_fragment_names(
+            images=images, context=context, force_math=True,
+        )
+        spec = _with_system_fragments(
+            catalog.component_by_id(review_id, "tutoring.leak-judge"),
+            "tutoring.leak-judge",
+            fragment_names,
+        )
         try:
             with review:
                 payload = components.invoke_json_component(
-                    spec=load_catalog().component_by_id("tutoring-vet", "tutoring.leak-judge"),
+                    spec=spec,
                     user=user, settings_obj=self._settings,
                 )
         except ModelGatewayError:
@@ -90,10 +165,20 @@ class QwenLeakJudge:
             photo_review=image is not None,
         )
 
-    def _judge(self, component_id: str, user: str | list[dict], *, with_reason: bool = False, photo_review: bool = False) -> bool | dict | None:
+    def _judge(
+        self, component_id: str, user: str | list[dict], *,
+        with_reason: bool = False, photo_review: bool = False,
+        system_fragments: tuple[str, ...] = (),
+    ) -> bool | dict | None:
+        catalog = load_catalog()
+        spec = _with_system_fragments(
+            catalog.component_by_id(review_workflow_id(catalog.specs), component_id),
+            component_id,
+            system_fragments,
+        )
         try:
             payload = components.invoke_json_component(
-                spec=load_catalog().component_by_id("tutoring-vet", component_id),
+                spec=spec,
                 user=user, settings_obj=self._settings,
             )
         except ModelGatewayError:

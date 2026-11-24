@@ -35,6 +35,7 @@ _PHONE = re.compile(r"(?<!\d)1\d{10}(?!\d)")
 _thread_id: ContextVar[str | None] = ContextVar("duxue_thread_id", default=None)
 _run_id: ContextVar[str | None] = ContextVar("duxue_run_id", default=None)
 _agent_parent_span: ContextVar[Any] = ContextVar("duxue_agent_parent_span", default=None)
+_agent_turn_span: ContextVar[trace.Span | None] = ContextVar("duxue_agent_turn_span", default=None)
 _pending_subgoal: ContextVar[dict[str, Any] | None] = ContextVar("duxue_pending_subgoal", default=None)
 _PLANNING_STAGES = frozenset({
     "checkpointer_connect", "checkpointer_setup", "context_build", "plan_intake",
@@ -479,9 +480,11 @@ def agent_turn_span() -> Iterator[None]:
             recording = Recorder() if current is None and turn_span.is_recording() and _langfuse_enabled() else None
             from contextlib import nullcontext
             with recording.capture() if recording else nullcontext():
+                turn_token = _agent_turn_span.set(turn_span)
                 try:
                     yield
                 finally:
+                    _agent_turn_span.reset(turn_token)
                     if recording and recording.events:
                         with trace.get_tracer("duxue.agent").start_as_current_span(
                             "agent.execution", attributes={"langfuse.observation.type": "span", **_agent_context_attrs()},
@@ -501,6 +504,22 @@ def trace_agent_turn(function):
         with agent_turn_span():
             return function(*args, **kwargs)
     return wrapped
+
+
+@contextmanager
+def agent_infra_span(name: str, **attributes: Any) -> Iterator[Any]:
+    """Infrastructure/persistence timing span inside an agent turn without requiring catalog registration."""
+    with trace.get_tracer("duxue.agent").start_as_current_span(
+        name,
+        attributes={
+            **_agent_context_attrs(),
+            "langfuse.observation.type": "span",
+            **_attrs(**attributes),
+        },
+        record_exception=False,
+        set_status_on_exception=False,
+    ) as span:
+        yield span
 
 
 @contextmanager
@@ -592,9 +611,9 @@ def record_agent_input(*, agent_type: str, run_id: str | None, thread_id: str | 
 
 
 def record_agent_output(content: str) -> None:
-    """Attach the reply shown to the Ward to the current Companion turn."""
-    span = trace.get_current_span()
-    if span.is_recording() and getattr(span, "name", None) == "agent.turn":
+    """Attach the shown reply to the Companion turn even inside a child span."""
+    span = _agent_turn_span.get()
+    if span is not None and span.is_recording():
         set_observation_payload(span, output=content)
     _audit_logger.info("agent.turn.output", extra={"telemetry": {
         **_attrs(**{"agent.thread_id": _thread_id.get(), "agent.run_id": _run_id.get()}),

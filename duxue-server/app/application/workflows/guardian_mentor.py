@@ -443,6 +443,8 @@ def _solve_for_mentor(
 
     extracted = solver.extract_stem(text=content, images=images, independent_reread=False)
     if isinstance(extracted, dict):
+        if not images and content.strip():
+            extracted = {**extracted, "raw_text": content.strip()}
         if extracted.get("tier") == "T0" and not extracted.get("needs_student_confirmation"):
             return VerifiedSolution(
                 stem=StructuredStem.from_dict(extracted),

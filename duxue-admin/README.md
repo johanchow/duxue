@@ -93,6 +93,8 @@ npm run config:export -- ../duxue-server/var/admin/candidate.json --draft
 
 `npx tsx scripts/config-snapshot-smoke.ts`在测试管理库临时schema验证空库无默认值、CLI导入导出、页面快照下载及禁止覆盖，需本地执行器已启动，不发布或修改原环境指针。
 
+候选回复审核子流程使用 `duxue-server/scripts/rename_candidate_review.py <source> <output>` 迁移；答疑生成子流程改名使用 `duxue-server/scripts/rename_model_loop.py <source> <output>` 升级已导出的完整快照，再用 `npm run config:import-upgrade -- <output>` 写入草稿。先部署支持新旧标识的执行器及业务运行时，再发布新配置。
+
 数学工具契约升级使用 `config:import-upgrade`（写草稿，不发布）；来源并发校验与完整顺序见[数学执行器部署](../docs/deployment.md#数学执行器与配置升级)。
 
 ## Evaluation

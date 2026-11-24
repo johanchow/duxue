@@ -3,6 +3,8 @@
 from graphlib import TopologicalSorter
 from uuid import UUID
 
+from app.agent_specs.registrations import LEGACY_LOOP, MODEL_LOOP
+
 # Node id, accepted input facts, possible output facts. Disjoint input sets keep a
 # denied candidate away from any handler that could display or persist its text.
 PORTS = {
@@ -32,7 +34,7 @@ PORTS = {
 
 SPECIAL_BINDINGS = {
     "image_target": ("agent", "tutoring.image-target"),
-    "model_loop": ("workflow", "tutoring-retry"),
+    "model_loop": ("workflow", MODEL_LOOP),
     "output_safety": ("gate", "tutoring.output_safety"),
 }
 
@@ -47,6 +49,8 @@ def validate_paths(spec):
         key = f"tutoring.{name}"
         node = nodes.get(key)
         expected = SPECIAL_BINDINGS.get(name, ("action", key))
+        if name == "model_loop" and node and node.ref == LEGACY_LOOP:
+            expected = ("workflow", LEGACY_LOOP)
         if name == "model_loop" and node and node.kind == "action":
             # Historical releases use the same operation with an action binding.
             expected = ("action", key)

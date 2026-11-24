@@ -235,10 +235,11 @@ erDiagram
 
 | Tutoring 行为 | 允许条件 |
 |---|---|
-| 确认学生"这一步/结果是对的" | 档案 `ready` 且相关里程碑锚点已核验；或本轮引擎直接核验学生算式 |
+| 确认学生"这一步局部算式对/错" | 档案 `ready` 且相关锚点已核验；或本轮数学引擎返回任意 `status="ok"` 局部计算记录 |
+| 确认学生"整题最终答案/最优性是对的" | 档案 `ready` 且 `allows_verdict_assertion()`；或整页批改视觉+计算全部通过；或 `candidate.math_claims` 显式引用了验证性算子（`equivalent`/`solve`/`solve_system`/`solve_inequality` 或 `checked_scope="equivalence"`）且 `status="ok"`。局部算式 `evaluate`（如算出某条路径和 `19`）**不得**解锁整题终值/最优性肯定 |
 | 断言学生"这一步错了" | 同上；`unknown` 不能判错（沿用 tutoring-math 不变量） |
 | 基于路线给下一步提示 | 档案 `ready` 或 `low_confidence`；后者须避免断言结论 |
-| 档案 `pending` / `failed` | 只做不依赖正确解的引导，与当前无档案行为一致 |
+| 无档案 / `pending` / `failed` | 档案模式下始终显式挂载 `_dossier_gate(status="absent", allows_verdict_assertion=False)`，绝不因缺省绕过门禁 |
 
 门禁只能收紧既有答案保护，不能放宽。选择题、判断题的逐项确认政策仍以 [Tutoring 出口检查](domain-tutoring.md#42-出口检查) 为准。
 
@@ -314,12 +315,16 @@ erDiagram
 
 ## 八、现状与实现进度
 
-已落地实现（2026-11-17）：
+已落地实现（2026-11-17 ~ 2026-11-23）：
 
 1. **锚点真实等价验证**：`verify_milestone_anchor` 对非 `equivalence` 操作强制将引擎输出与 `canonical_target` 做确定性比对，杜绝“非空即 `verified`”。
 2. **`ProblemSolving` 领域与持久化（迁移 `37`）**：已落地 `ProblemDossier` 聚合根、结构化骨架指纹、`DossierConfidencePolicy`、`problem_dossiers` 表、`tutoring_problems.dossier_id` / `milestone_progress` 以及 Ward 数据擦除联动（`scope="ward"` 硬隔离）。
-3. **独立 `solving` 队列与 T1/T2 异构双路共识**：已落地 `app/workers/solving_tasks.py`、`solving-worker` Compose 服务、`RequestSolve` / `ConfirmStem` / `ExecuteDossierSolve` / `GetProblemDossier`，以及 `TutoringWorkflow` 首轮短预算非阻塞等待（默认 `2.5s`）与次轮无缝接管。
-4. **代码级置信度门禁与防误杀边界**：已在 `tutor_loop.py` 出口强制拦截无直接引擎核验的低置信度/未就绪正误断言，且仅在 `ready + high` 置信度下向 `leak-judge` 提供 `verified_final_answers`（不传中间里程碑）。
+3. **提交后可靠投递 + `stem_version` 防旧覆盖 + 统一后置精准建档**：
+   - `RequestSolveCommand` 与 `ConfirmStemCommand` 在真实异步投递路径通过 SQLAlchemy `after_commit` 钩子投递 `solving` 队列（回滚时清空），避免 Worker 抢跑读空；`ExecuteDossierSolveCommand` 写回前按 `expected_stem_version` 重新校验，拒绝旧题面求解结果覆盖已确认的新版本。
+   - `TutoringWorkflow._resolve_active_dossier()` 改为纯只读查询（已有 `problem_row.dossier_id` 或只读查 `ward`/`bank` 缓存）；新题建档统一收口至 `apply_work()`，仅在通过出口审核且为单题/题组推理题（排除纯常识、闲聊及整页多题基础批改）时建档入队。
+4. **代码级置信度门禁与防误杀边界**：无档案首轮显式挂载 `_dossier_gate(status="absent")`，并将局部步骤算式核验与整题终值/最优性肯定权限拆分；仅在 `ready + high` 置信度下向 `leak-judge` 提供 `verified_final_answers`（不传中间里程碑）。
+5. **`ready + high` 续轮前台算力降档**：续轮命中 `ready + high` 档案时，前台 `QwenTutorTurnGateway` 自动关闭 Thinking 提速（内部控制标记在上下文组装阶段剥离，不透传给模型，且平滑兼容旧配置快照）。
+6. **`tutoring-blueprint` 拓扑补边与证据扩展（保 12 节点兼容旧快照）**：`START` 两条出边改为互斥条件（`needs_extract` / `has_verified_stem`），将 `bank_lookup`、T0 短路与整页批改误入短路（`select → finish [worksheet_batch]`）统一收口到 `select` Gate，`finish` 补充输出 `stem_version`、`target_subproblems`、`verified_assertions` 与 `coverage`。可用 `scripts/upgrade_tutoring_reliability.py` 一键生成包含新版 `tutoring-blueprint` 与精简 3 节点 `tutoring.model_loop` 的 Admin 升级包。
 
 待后续按需演进：
 - 真实模型离线评测对导师 Thinking 预算下调的对照验证（§七 假设 1~3）；

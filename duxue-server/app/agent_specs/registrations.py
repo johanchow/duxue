@@ -1,5 +1,11 @@
 """Code-owned IDs accepted by the application composition layer."""
 
+MODEL_LOOP = "tutoring.model_loop"
+REVIEW = "tutoring.review_candidate"
+LEGACY_REVIEW = "tutoring-vet"
+LEGACY_LOOP = "tutoring-retry"
+
+
 WORKFLOW_BINDINGS = {'eval-grading': {'conditions': set(), 'handlers': set()}, 'companion': {'conditions': {'direct', 'cross_scene'}, 'handlers': {'decide'}},
  'planning': {'conditions': {'finish', 'review'},
               'handlers': {'planning.checkpointer_connect',
@@ -27,7 +33,7 @@ WORKFLOW_BINDINGS = {'eval-grading': {'conditions': set(), 'handlers': set()}, '
                            'tutoring.model_loop',
                            'tutoring.result',
                            'tutoring.turn'}},
- 'tutoring-retry': {'conditions': {'candidate_without_retry',
+ MODEL_LOOP: {'conditions': {'candidate_without_retry',
                                    'missing_attempt_done',
                                    'needs_missing_visual',
                                    'needs_visual_redraw',
@@ -47,7 +53,7 @@ WORKFLOW_BINDINGS = {'eval-grading': {'conditions': set(), 'handlers': set()}, '
                                  'repair',
                                  'visual_decision',
                                  'visual_redraw'}},
- 'tutoring-vet': {'conditions': {'always',
+ REVIEW: {'conditions': {'always',
                                  'authority_allowed_needs_leak_check',
                                  'authority_allowed_no_leak_check',
                                  'authority_denied',
@@ -57,3 +63,17 @@ WORKFLOW_BINDINGS = {'eval-grading': {'conditions': set(), 'handlers': set()}, '
                                  'text_allowed_with_visual',
                                  'text_denied'},
                   'handlers': {'tutoring.complete_vetting'}}}
+
+
+def workflow_bindings(legacy: bool, legacy_review: bool):
+    if not legacy and not legacy_review:
+        return WORKFLOW_BINDINGS
+    aliases = {}
+    if legacy:
+        aliases[MODEL_LOOP] = LEGACY_LOOP
+    if legacy_review:
+        aliases[REVIEW] = LEGACY_REVIEW
+    return {
+        aliases.get(key, key): binding
+        for key, binding in WORKFLOW_BINDINGS.items()
+    }

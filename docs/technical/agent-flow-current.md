@@ -140,72 +140,6 @@ flowchart TD
 
 工具：无。
 
-## tutoring-retry · v1
-
-```mermaid
-flowchart TD
-  tutoring_retry_START([START])
-  tutoring_retry_END([END])
-  tutoring_retry_primary[tutoring-retry.primary]
-  tutoring_retry_repair[tutoring-retry.repair]
-  tutoring_retry_backup[tutoring-retry.backup]
-  tutoring_retry_visual_decision[tutoring-retry.visual_decision]
-  tutoring_retry_visual_redraw[tutoring-retry.visual_redraw]
-  tutoring_retry_missing_decision[tutoring-retry.missing_decision]
-  tutoring_retry_missing_primary[tutoring-retry.missing_primary]
-  tutoring_retry_missing_backup[tutoring-retry.missing_backup]
-  tutoring_retry_finish[tutoring-retry.finish]
-  tutoring_retry_START --> tutoring_retry_primary
-  tutoring_retry_primary -->|no_candidate| tutoring_retry_finish
-  tutoring_retry_primary -->|retry_leak| tutoring_retry_repair
-  tutoring_retry_primary -->|candidate_without_retry| tutoring_retry_visual_decision
-  tutoring_retry_repair -->|same_leak_with_backup| tutoring_retry_backup
-  tutoring_retry_repair -->|no_backup_needed| tutoring_retry_visual_decision
-  tutoring_retry_backup --> tutoring_retry_visual_decision
-  tutoring_retry_visual_decision -->|needs_visual_redraw| tutoring_retry_visual_redraw
-  tutoring_retry_visual_decision -->|no_visual_redraw| tutoring_retry_missing_decision
-  tutoring_retry_visual_redraw --> tutoring_retry_missing_decision
-  tutoring_retry_missing_decision -->|needs_missing_visual| tutoring_retry_missing_primary
-  tutoring_retry_missing_decision -->|no_missing_visual| tutoring_retry_finish
-  tutoring_retry_missing_primary -->|retry_missing_with_backup| tutoring_retry_missing_backup
-  tutoring_retry_missing_primary -->|missing_attempt_done| tutoring_retry_finish
-  tutoring_retry_missing_backup --> tutoring_retry_finish
-  tutoring_retry_finish --> tutoring_retry_END
-```
-
-| 组件 | 模型 | Prompt |
-| --- | --- | --- |
-
-工具：无。
-
-## tutoring-vet · v1
-
-```mermaid
-flowchart TD
-  tutoring_vet_START([START])
-  tutoring_vet_END([END])
-  tutoring_vet_authority{tutoring-vet.authority}
-  tutoring_vet_text_leak{tutoring-vet.text_leak}
-  tutoring_vet_visual_leak{tutoring-vet.visual_leak}
-  tutoring_vet_complete[tutoring-vet.complete]
-  tutoring_vet_START --> tutoring_vet_authority
-  tutoring_vet_authority -->|authority_denied| tutoring_vet_complete
-  tutoring_vet_authority -->|authority_allowed_needs_leak_check| tutoring_vet_text_leak
-  tutoring_vet_authority -->|authority_allowed_no_leak_check| tutoring_vet_complete
-  tutoring_vet_text_leak -->|text_denied| tutoring_vet_complete
-  tutoring_vet_text_leak -->|text_allowed_with_visual| tutoring_vet_visual_leak
-  tutoring_vet_text_leak -->|text_allowed_no_visual| tutoring_vet_complete
-  tutoring_vet_visual_leak --> tutoring_vet_complete
-  tutoring_vet_complete --> tutoring_vet_END
-```
-
-| 组件 | 模型 | Prompt |
-| --- | --- | --- |
-| `tutoring.leak-judge@v11` | `qwen3.8-flash` | `tutoring.leak-judge.system.v10` |
-| `tutoring.visual-leak-judge@v6` | `qwen-plus` | `tutoring.visual-leak-judge.system.v6` |
-
-工具：无。
-
 ## tutoring · v1
 
 ```mermaid
@@ -251,5 +185,71 @@ flowchart TD
 | `tutoring.turn-backup@v4` | `qwen3.8-flash` | `tutoring.turn.system.v20` |
 
 工具：`tutoring.get_attempt_summary`, `tutoring.get_task_context`, `tutoring.lookup_history`, `tutoring.widget_guidelines`。
+
+## tutoring.model_loop · v1
+
+```mermaid
+flowchart TD
+  tutoring_model_loop_START([START])
+  tutoring_model_loop_END([END])
+  tutoring_model_loop_primary[tutoring.model_loop.primary]
+  tutoring_model_loop_repair[tutoring.model_loop.repair]
+  tutoring_model_loop_backup[tutoring.model_loop.backup]
+  tutoring_model_loop_visual_decision[tutoring.model_loop.visual_decision]
+  tutoring_model_loop_visual_redraw[tutoring.model_loop.visual_redraw]
+  tutoring_model_loop_missing_decision[tutoring.model_loop.missing_decision]
+  tutoring_model_loop_missing_primary[tutoring.model_loop.missing_primary]
+  tutoring_model_loop_missing_backup[tutoring.model_loop.missing_backup]
+  tutoring_model_loop_finish[tutoring.model_loop.finish]
+  tutoring_model_loop_START --> tutoring_model_loop_primary
+  tutoring_model_loop_primary -->|no_candidate| tutoring_model_loop_finish
+  tutoring_model_loop_primary -->|retry_leak| tutoring_model_loop_repair
+  tutoring_model_loop_primary -->|candidate_without_retry| tutoring_model_loop_visual_decision
+  tutoring_model_loop_repair -->|same_leak_with_backup| tutoring_model_loop_backup
+  tutoring_model_loop_repair -->|no_backup_needed| tutoring_model_loop_visual_decision
+  tutoring_model_loop_backup --> tutoring_model_loop_visual_decision
+  tutoring_model_loop_visual_decision -->|needs_visual_redraw| tutoring_model_loop_visual_redraw
+  tutoring_model_loop_visual_decision -->|no_visual_redraw| tutoring_model_loop_missing_decision
+  tutoring_model_loop_visual_redraw --> tutoring_model_loop_missing_decision
+  tutoring_model_loop_missing_decision -->|needs_missing_visual| tutoring_model_loop_missing_primary
+  tutoring_model_loop_missing_decision -->|no_missing_visual| tutoring_model_loop_finish
+  tutoring_model_loop_missing_primary -->|retry_missing_with_backup| tutoring_model_loop_missing_backup
+  tutoring_model_loop_missing_primary -->|missing_attempt_done| tutoring_model_loop_finish
+  tutoring_model_loop_missing_backup --> tutoring_model_loop_finish
+  tutoring_model_loop_finish --> tutoring_model_loop_END
+```
+
+| 组件 | 模型 | Prompt |
+| --- | --- | --- |
+
+工具：无。
+
+## tutoring.review_candidate · v1
+
+```mermaid
+flowchart TD
+  tutoring_review_candidate_START([START])
+  tutoring_review_candidate_END([END])
+  tutoring_review_candidate_authority{tutoring.review_candidate.authority}
+  tutoring_review_candidate_text_leak{tutoring.review_candidate.text_leak}
+  tutoring_review_candidate_visual_leak{tutoring.review_candidate.visual_leak}
+  tutoring_review_candidate_complete[tutoring.review_candidate.complete]
+  tutoring_review_candidate_START --> tutoring_review_candidate_authority
+  tutoring_review_candidate_authority -->|authority_denied| tutoring_review_candidate_complete
+  tutoring_review_candidate_authority -->|authority_allowed_needs_leak_check| tutoring_review_candidate_text_leak
+  tutoring_review_candidate_authority -->|authority_allowed_no_leak_check| tutoring_review_candidate_complete
+  tutoring_review_candidate_text_leak -->|text_denied| tutoring_review_candidate_complete
+  tutoring_review_candidate_text_leak -->|text_allowed_with_visual| tutoring_review_candidate_visual_leak
+  tutoring_review_candidate_text_leak -->|text_allowed_no_visual| tutoring_review_candidate_complete
+  tutoring_review_candidate_visual_leak --> tutoring_review_candidate_complete
+  tutoring_review_candidate_complete --> tutoring_review_candidate_END
+```
+
+| 组件 | 模型 | Prompt |
+| --- | --- | --- |
+| `tutoring.leak-judge@v11` | `qwen3.8-flash` | `tutoring.leak-judge.system.v10` |
+| `tutoring.visual-leak-judge@v6` | `qwen-plus` | `tutoring.visual-leak-judge.system.v6` |
+
+工具：无。
 
 具体 Prompt 正文：`cd duxue-server && .venv/bin/python -m app.agent_specs show <agent>`。

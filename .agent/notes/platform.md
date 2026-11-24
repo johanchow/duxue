@@ -201,3 +201,11 @@
 - 2026-11-22 优化 `duxue-admin` 答疑流程图纯展示层（不改动服务端契约与配置摘要）：`tutoring` 主图默认折叠非控制流 `parent` 虚线归属节点并提供一键切换开关；`tutoring-retry` 子图页面上方增加可点击「单次尝试内部管道」卡片条（直达 `tutoring.turn`、`tutoring.exit_gate` 和 `tutoring-vet`）；补齐 `tutoring` 与 `tutoring-retry` 全部分支 `condition_id` 的中文标签与触发条件说明。`workflow-graph.test.ts` 20/20、`typecheck` 与 `next build` 全通过。
 
 - 2026-11-22 本地调试与 ECS 正式服务共用标准 Redis，测试账号、逻辑库、Kombu 和结果前缀、SSH 隧道与旧队列处理见[部署记录](../../docs/deployment.md#本地调试共用-ecs-redis)。实测 `PSUBSCRIBE` 需要准确授权订阅模式；仅凭认证 PING 无法验收 worker。
+
+- 2026-11-23 答疑生成子流程统一为 `tutoring.model_loop`，父节点按同名 ref 进入。改名涉及完整配置文件清单、固定发布的运行绑定及 trace 节点前缀；历史发布仍按自身标识加载。测试 Admin 以 R14 为基线导入工作草稿 revision 2，迁移方法见[配置快照导入导出](../../duxue-admin/README.md#配置快照导入导出)。
+
+- 2026-11-23 候选回复审核的父节点、子 workflow 及其门禁节点前缀统一使用 `tutoring.review_candidate`。测试 Admin 草稿 revision 3 已验证运行时就绪，并实测从 `tutoring.model_loop` 跳转到同一草稿的审核图；历史发布按固定快照解析原标识。迁移入口见[配置快照导入导出](../../duxue-admin/README.md#配置快照导入导出)。
+
+- Workflow 设计对照以同一份 Admin 快照的节点 ID、显示名、kind、ref / handler_id 为基线；生成、审核和工具等内部步骤另列，避免被误读成新增 Agent。此次对照使用测试草稿 revision 3。
+
+- 2026-11-23 测试草稿 revision 4 的 Blueprint 有 25 条协议边，R14 有 23 条。若只报草稿目录不可用，应将同一快照分别交给在跑的 8011 和当前源码校验，再核对进程启动时间；本次旧执行器拒绝新边，加载兼容代码后两份快照均通过，浏览器实测草稿目录与两个流程页可读。

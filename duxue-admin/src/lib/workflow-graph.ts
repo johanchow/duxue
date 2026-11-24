@@ -1,6 +1,6 @@
 import dagre from '@dagrejs/dagre';
 import { MarkerType, Position, type Node, type Edge } from '@xyflow/react';
-import { actionLogic, edgeConditionDetail } from './workflow-code';
+import { actionLogic, edgeConditionDetail, workflowLogicId } from './workflow-code';
 
 export type Json = Record<string, any>;
 
@@ -34,11 +34,7 @@ export function workflowDetailHref(
   }
   if (node?.kind === 'action')
     return `/workflows/${encodeURIComponent(workflowId)}/nodes/${encodeURIComponent(node.id)}${snapshot}`;
-  if (
-    node?.ref &&
-    (node.kind === 'agent' ||
-      (node.kind === 'gate' && definition?.implementation === 'code'))
-  )
+  if (node?.ref && (node.kind === 'agent' || node.kind === 'gate'))
     return `/agents/${encodeURIComponent(node.ref)}${query}`;
 }
 
@@ -132,7 +128,7 @@ export function workflowGraph(
               ineligible: '未达条件，结束本次观察',
             } as Record<string, string>
           )[edge.condition_id] || edge.condition_id
-        : flow.id === 'tutoring-vet' && edge.condition_id
+        : workflowLogicId(flow.id) === 'tutoring.review_candidate' && edge.condition_id
           ? (
               {
                 authority_denied: '权限拒绝',

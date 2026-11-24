@@ -25,16 +25,13 @@ def external_assets(refs):
         _external_urls.reset(token)
 
 
-def runtime_images(case, window, images):
-    urls = _external_urls.get()
-    if not urls:
-        return images
-    for message, original in zip(window, case.history[-len(window):] if window else []):
-        message["image_urls"] = [
-            urls.get(name, url)
-            for name, url in zip(original.images, message.get("image_urls", []))
-        ]
-    return [urls.get(name, url) for name, url in zip(case.images, images)]
+def evidence_images(names, urls):
+    """Use external HTTPS signed URLs in Langfuse evidence while runtime keeps local data URIs."""
+    signed = _external_urls.get() or {}
+    return [
+        {"name": name, "image": signed.get(name, url)}
+        for name, url in zip(names, urls)
+    ]
 
 
 def materialize_assets(client, item, directory):
@@ -72,7 +69,6 @@ def turn(case, backend, assets, permit=None):
     if case.snapshot_origin == "missing":
         raise ValueError("missing_input_snapshot")
     window, images = build_input(case, assets)
-    images = runtime_images(case, window, images)
     start = time.perf_counter()
     obs = (
         _observe_intent(case, backend, window, images)
@@ -83,14 +79,12 @@ def turn(case, backend, assets, permit=None):
     evidence = _evidence(case, obs)
     if permit is not None:
         evidence["input_snapshot"]["permit"] = asdict(permit)
-    # OSS images use external HTTPS URLs in model calls and evaluator evidence.
-    evidence["images"] = [
-        {"name": n, "image": url}
-        for n, url in zip(
-            [n for row in case.history for n in row.images] + case.images,
-            [url for row in window for url in row.get("image_urls", [])] + list(images),
-        )
-    ]
+    # Runtime uses local base64 data URIs (matching production task_intake._data_url so
+    # PillowImageInspector / inspect_image works); evaluator evidence keeps OSS HTTPS URLs.
+    evidence["images"] = evidence_images(
+        [n for row in case.history for n in row.images] + case.images,
+        [url for row in window for url in row.get("image_urls", [])] + list(images),
+    )
     return observations(obs, latency), evidence, latency, obs.error
 
 
@@ -134,14 +128,13 @@ def solve_turn(case, assets):
     if case.snapshot_origin == "missing":
         raise ValueError("missing_input_snapshot")
     window, images = build_input(case, assets)
-    images = runtime_images(case, window, images)
     solver = solve.identity()
     start = time.perf_counter()
     obs = solve.execute(case.student_said, images)
     latency = round((time.perf_counter() - start) * 1000, 1)
     evidence = _evidence(case, obs)
     evidence.update(execution_target="solve", solver=solver)
-    evidence["images"] = [{"name": n, "image": u} for n, u in zip(case.images, images)]
+    evidence["images"] = evidence_images(case.images, images)
     return observations(obs, latency), evidence, latency, None
 
 

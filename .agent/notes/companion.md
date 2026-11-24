@@ -30,6 +30,8 @@ Ward 可见对话是 Companion 的 append-only 账本，统一走 `/companion/tu
 
 ## 注意
 
+- Ward 拍照提问曾在等回复时同时显示待发缩略图和消息里的原图。发送时在同一次界面更新中把本次照片从输入区移入气泡，发送失败时用该消息保存的附件引用重试。回归测试须覆盖回复尚未返回的时段。
+
 - 2026-11-22 Ward 和 Guardian 共用[回复阶段协议](../../docs/technical/domain-companion.md#对话回复阶段)。导师节点进度可沿用图执行器监听。学生启发的起草和核对边界在 `run_tutor_turn` 内，历史执行快照的节点名称可不同，需在实际调用边界发阶段。流中的 Ward 命令使用工作线程自持的数据库会话，避免依赖鉴权会话的生命周期。
 
 - 场景核查修不了无 focus 的第一次误分。核查不可用时会挡住一次真实切换。
@@ -46,3 +48,5 @@ Ward 可见对话是 Companion 的 append-only 账本，统一走 `/companion/tu
 - 2026-11-21 答疑主图按发布边执行。灰度绑定既有 Run 的 graph_version，回放由执行器记录；改边回归须从真实入口验证可选数据读取和审核访问。设计见[答疑主图的执行与切换](../../docs/technical/domain-tutoring.md#13-答疑主图的执行与切换)。测试环境已验证发布、并发重放与回滚；物理手机接口和安卓模拟器界面证据见[验收清单](../specs/tutoring-json-execution.md)。
 
 - 2026-11-21 Ward 语音输入与答疑朗读已实现，待真实童声和听感验收。原生润色可能吞掉孩子改口；导师、逐字引用及发音目标必须消费原始转写，整理稿仅用于学生气泡。两路 ASR 的计量及正文点读授权见[服务端设计](../../docs/technical/design-server.md#ward-实时转写与正式答复朗读)，播放器打断与指标见[端侧设计](../../docs/technical/design-app.md#3-提问转写与答疑朗读)。
+
+- 2026-11-23 排查 trace `8003fa21614623ceda33dba0ca9e9344`（纯文字科普提问“说说美国的国家体制有什么特殊的地方？”）：`IntentProposal` 新增可选闭集字段 `history_image_ref`（`none | needed`，默认 `needed`）与 `thinking`（`default | off`，默认 `default`），`admin_bundle._intent_hints_contracts` 保持对旧 Admin 发布快照的兼容。仅当无本轮新图且无 `compare_previous_image` 时透传给 `TutoringWorkflow`，避免历史图片在纯文字续聊中重复触发 OSS 拉图与 `tutoring.image-target` 多模态调用。本地测试夹具 `companion.intent.json` 保持未改；已通过 `duxue-server/scripts/upgrade_companion_intent_hints.py` 与 `npm run config:import-upgrade` 写入 `duxue-admin-test` 工作草稿并回读核对（`draft_id=d152ad53-5086-43ca-8e7c-002316801a55`，`revision 10 -> 11 -> 12`，`revision 12` 移除历史 `reflection`/`planning` 冗余说明并补充 3 个紧凑正反示例，Prompt 长度由 `1650` 缩至 `816` 字符，digest `5ad2582b49ce44d7eb86b2e15f008bda163df2a96d13bb7278a9596ee0d5d126`，仅变更 `agents/companion.intent.json`，未发布生产）。

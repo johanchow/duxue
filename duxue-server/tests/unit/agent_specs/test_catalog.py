@@ -123,6 +123,16 @@ def test_literal_agent_trace_steps_are_declared():
 
 
 def test_generated_workflow_document_matches_definitions():
-    catalog = load_catalog()
+    from scripts.rename_candidate_review import rename_files as rename_review
+    from scripts.rename_model_loop import rename_files
+
+    docs = {"workflows/" + name: doc for name, doc in _snapshot_workflows().items()}
+    rename_files(docs)
+    rename_review(docs)
+    from app.agent_specs.catalog import AgentSpec
+
+    specs = [AgentSpec.model_validate(doc) for _, doc in sorted(docs.items())]
+    catalog = AgentCatalog({spec.id: spec.model_copy(update={"version": "v1"}) for spec in specs},
+                           load_catalog().directory)
     target = Path(__file__).resolve().parents[4] / "docs" / "technical" / "agent-flow-current.md"
     assert target.read_text() == render_mermaid(catalog)

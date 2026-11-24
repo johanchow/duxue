@@ -70,8 +70,12 @@ duxue/                          # 项目根目录
 
 ### 服务端（duxue-server）
 
+在 `duxue-server/` 内开工先读 [`duxue-server/AGENTS.md`](duxue-server/AGENTS.md)：流程与可编辑配置以 [Agent 设计](docs/technical/design-agent.md) 为准，并标明代码契约、领域设计和验收各自的归属。
+
 | 文档 | 路径 | 内容摘要 |
 |------|------|---------|
+| 服务端 Agent 导航 | [`duxue-server/AGENTS.md`](duxue-server/AGENTS.md) | 服务端改动该读哪份设计、配置与代码的边界、测试和联调验收 |
+| Agent 与 Workflow 配置 | [`docs/technical/design-agent.md`](docs/technical/design-agent.md) | Workflow / Agent / Gate / Tool 契约；Admin 是可编辑配置的唯一事实源 |
 | 服务端详细设计 (No-Tenant) | [`docs/technical/design-server.md`](docs/technical/design-server.md) | 分层实现、无租户模型与直连绑定、数据库 ER 图、会话即时分析与伴学记忆引擎 |
 | 陪伴编排 Domain 设计 | [`docs/technical/domain-companion.md`](docs/technical/domain-companion.md) | 统一入口路由、Thread/Run、Handoff、通用 Runtime 与受控写回协议 |
 | 计划与任务 Domain 设计 | [`docs/technical/domain-planning.md`](docs/technical/domain-planning.md) | 轻量任务与顺序、可选估时/起点、安排确认与执行事实分离、后台完整模型与按需投影 |

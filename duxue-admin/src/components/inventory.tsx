@@ -608,7 +608,7 @@ export function WorkflowActionDetail({
                 协议与工具预算检查（工具预算、候选 JSON 契约、配图结构）
               </li>
               <li>
-                取得可审核的候选后进入出口并行审核 ·{' '}
+                取得可审核的候选后进入{hierarchy.review.display_name || '候选回复审核'} ·{' '}
                 <a
                   href={workflowDetailHref(
                     'tutoring',
@@ -1026,7 +1026,7 @@ export function WorkflowExplorer({
                   )
                 }
               >
-                Workflow · 出口并行审核（{hierarchy.review.ref}）
+                Workflow · {hierarchy.review.display_name || '候选回复审核'}（{hierarchy.review.ref}）
                 <IconArrowRight size={14} />
               </button>
             </div>

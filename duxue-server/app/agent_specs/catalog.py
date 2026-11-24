@@ -16,7 +16,12 @@ from app.agent_specs.definitions import load_definitions
 from app.agent_specs.gaokao_contracts import WORKFLOWS as GAOKAO_WORKFLOWS
 from app.agent_specs.guardian_contracts import WORKFLOWS as GUARDIAN_MENTOR_WORKFLOWS
 from app.agent_specs.observation_contracts import WORKFLOWS as OBSERVATION_WORKFLOWS
-from app.agent_specs.registrations import WORKFLOW_BINDINGS
+from app.agent_specs.registrations import (
+    LEGACY_LOOP,
+    LEGACY_REVIEW,
+    REVIEW,
+    workflow_bindings,
+)
 from app.infrastructure.ai.components import COMPONENTS, ComponentSpec
 
 _REQUIRED_CHECKS = {
@@ -26,12 +31,10 @@ _REQUIRED_CHECKS = {
         "tutoring.visual",
     },
 }
-_REQUIRED_GATES = {
-    "tutoring-vet": {
-        ("tutoring.authority", "always"),
-        ("tutoring.leak-judge", "requires_text_leak"),
-        ("tutoring.visual-leak-judge", "requires_visual_leak"),
-    },
+_REVIEW_GATES = {
+    ("tutoring.authority", "always"),
+    ("tutoring.leak-judge", "requires_text_leak"),
+    ("tutoring.visual-leak-judge", "requires_visual_leak"),
 }
 _CONDITIONS = {
     "authority_denied", "authority_allowed_needs_leak_check", "authority_allowed_no_leak_check",
@@ -121,7 +124,7 @@ class AgentSpec(BaseModel):
                 raise ValueError(f"{self.id}: unknown edge target {edge.target}")
             if edge.via and edge.via not in nodes:
                 raise ValueError(f"{self.id}: unknown edge router {edge.via}")
-            if self.id == "tutoring-vet" and edge.condition and edge.condition not in _CONDITIONS:
+            if self.id in (REVIEW, LEGACY_REVIEW) and edge.condition and edge.condition not in _CONDITIONS:
                 raise ValueError(f"{self.id}: unknown condition {edge.condition}")
         if not any(edge.source == "START" and edge.target == self.entry for edge in self.edges):
             raise ValueError(f"{self.id}: START must enter {self.entry}")
@@ -152,9 +155,9 @@ class AgentSpec(BaseModel):
         for check in self.required_checks:
             if check not in nodes or not nodes[check].required:
                 raise ValueError(f"{self.id}: missing required check {check}")
-        if self.id in _REQUIRED_GATES:
+        if self.id in (REVIEW, LEGACY_REVIEW):
             declared = {(item.get("ref"), item.get("when")) for item in self.required_gates}
-            if declared != _REQUIRED_GATES[self.id]:
+            if declared != _REVIEW_GATES:
                 raise ValueError(f"{self.id}: required Gate baseline differs")
             for item in self.required_gates:
                 if item["when"] not in _CONDITIONS or not any(
@@ -224,14 +227,18 @@ class AgentCatalog:
         from graphlib import TopologicalSorter
 
         from app.agent_specs.subworkflows import (
-            CALL_TARGETS,
+            COMPACT_LOOP_CONDITIONS,
             MATH_NODE,
             PARALLEL_VET_CONDITIONS,
             RETRY_NODE,
-            VET_MATH_NODE,
             VET_NODE,
+            call_targets,
+            review_workflow_id,
         )
 
+        bindings_for_release = workflow_bindings(legacy=LEGACY_LOOP in specs, legacy_review=LEGACY_REVIEW in specs)
+        review_id = review_workflow_id(specs)
+        math_node = review_id + ".math_consistency"
         calls = {key: {node.ref for node in spec.nodes if node.kind == "workflow"}
                  for key, spec in specs.items()}
         if set().union(*calls.values()) - specs.keys():
@@ -253,7 +260,10 @@ class AgentCatalog:
             from app.agent_specs import blueprint_steps
             staged = spec.id in GAOKAO_WORKFLOWS and blueprint_steps.EXTRACT in load_definitions().units
             if staged:
-                expected = blueprint_steps.workflow(mentor_language=any(e.condition == "mentor_language" for e in spec.edges))
+                expected = blueprint_steps.workflow(
+                    mentor_language=any(e.condition == "mentor_language" for e in spec.edges),
+                    v2_edges=any(e.condition == "has_verified_stem" for e in spec.edges),
+                )
                 actual = spec.model_dump(by_alias=True, exclude_defaults=True)
                 if any(actual[key] != expected[key] for key in ("entry", "nodes", "edges")):
                     raise ValueError("blueprint required protocol nodes or branches changed")
@@ -280,7 +290,7 @@ class AgentCatalog:
             registration = (
                 {'conditions': {'eligible','ineligible'} if spec.id == 'behavior-observation' else set(), 'handlers':set()}
                 if spec.id in OBSERVATION_WORKFLOWS or spec.id in GAOKAO_WORKFLOWS or spec.id in GUARDIAN_MENTOR_WORKFLOWS
-                else WORKFLOW_BINDINGS[spec.id]
+                else bindings_for_release[spec.id]
             )
             if staged:
                 registration = {"handlers": {blueprint_steps.FINISH}, "conditions": set(blueprint_steps.CONDITIONS)}
@@ -297,10 +307,10 @@ class AgentCatalog:
             conditions.update(gate["when"] for gate in spec.required_gates)
             if calls[spec.id] and not mentor_parent:
                 bindings = {node.id: node.ref for node in spec.nodes if node.kind == "workflow"}
-                if spec.id != "tutoring" or bindings != CALL_TARGETS:
+                if spec.id != "tutoring" or bindings != call_targets(specs):
                     raise ValueError("unknown subworkflow binding")
-                vet_spec = specs["tutoring-vet"]
-                vet_is_parallel = any(n.id == VET_MATH_NODE for n in vet_spec.nodes)
+                vet_spec = specs[review_id]
+                vet_is_parallel = any(n.id == math_node for n in vet_spec.nodes)
                 math = next((n for n in spec.nodes if n.id == MATH_NODE), None)
                 if vet_is_parallel:
                     if (
@@ -323,10 +333,15 @@ class AgentCatalog:
                         raise ValueError("invalid tutoring review topology")
                     registration = {"handlers": registration["handlers"],
                                     "conditions": registration["conditions"] | {"math_allowed"}}
-            if spec.id == "tutoring-vet" and any(n.id == VET_MATH_NODE for n in spec.nodes):
+            if spec.id == review_id and any(n.id == math_node for n in spec.nodes):
                 registration = {
                     "handlers": registration["handlers"],
                     "conditions": registration["conditions"] | set(PARALLEL_VET_CONDITIONS),
+                }
+            if spec.id in {LEGACY_LOOP, RETRY_NODE} and any(e.condition in COMPACT_LOOP_CONDITIONS for e in spec.edges):
+                registration = {
+                    "handlers": registration["handlers"],
+                    "conditions": registration["conditions"] | set(COMPACT_LOOP_CONDITIONS),
                 }
             if spec.execution:
                 from app.agent_specs.tutoring_paths import PORTS
@@ -354,7 +369,7 @@ class AgentCatalog:
                 for component_id in _node_components(node):
                     COMPONENTS.get(component_id)
                     referenced.add(component_id)
-                    if (node.id == MATH_NODE and calls[spec.id]) or node.id == VET_MATH_NODE:
+                    if (node.id == MATH_NODE and calls[spec.id]) or node.id == math_node:
                         continue  # Shared Judge; default identity belongs to the text review.
                     if staged and (
                         (node.ref == "tutoring.blueprint-planner" and node.id == blueprint_steps.node_id("primary"))
@@ -432,7 +447,7 @@ class AgentCatalog:
             if path.stem != spec.id or spec.id in specs:
                 raise ValueError(f"invalid agent file {path.name}")
             specs[spec.id] = spec
-        expected = set(WORKFLOW_BINDINGS)
+        expected = set(workflow_bindings(legacy=LEGACY_LOOP in specs, legacy_review=LEGACY_REVIEW in specs))
         if "behavior.visible-activity" in load_definitions().units:
             expected |= set(OBSERVATION_WORKFLOWS)
         if "tutoring.blueprint-planner" in load_definitions().units:
@@ -540,7 +555,7 @@ def render_mermaid(catalog: AgentCatalog) -> str:
     ]
     for spec in catalog.specs.values():
         lines.extend([f"## {spec.id} · {spec.version}", "", "```mermaid", "flowchart TD"])
-        safe_id = spec.id.replace("-", "_")
+        safe_id = spec.id.replace("-", "_").replace(".", "_")
         names = {node.id: f"{safe_id}_{node.id.split('.')[-1]}" for node in spec.nodes}
         names.update({"START": f"{safe_id}_START", "END": f"{safe_id}_END"})
         lines.append(f'  {names["START"]}([START])')

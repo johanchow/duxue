@@ -8,6 +8,8 @@ from pydantic import BaseModel, Field
 AgentType = Literal["planning", "tutoring", "reflection"]
 RouteTarget = Literal["planning", "tutoring", "reflection", "clarify", "safety"]
 IntentLabel = Literal["planning", "tutoring", "reflection", "unclear"]
+HistoryImageRef = Literal["none", "needed"]
+TutoringThinkingMode = Literal["default", "off"]
 RunStatus = Literal[
     "active", "waiting_for_ward", "paused", "closed", "escalated",
     "failed", "timed_out", "cancelled",
@@ -18,6 +20,8 @@ class IntentProposal(BaseModel):
     """Untrusted semantic candidate. Code accepts only this closed label set."""
 
     intent: IntentLabel
+    history_image_ref: HistoryImageRef = "needed"
+    thinking: TutoringThinkingMode = "default"
 
 
 class IntentClassifier(Protocol):

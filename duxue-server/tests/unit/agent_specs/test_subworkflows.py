@@ -95,3 +95,49 @@ def test_math_rejection_takes_precedence_in_parallel_vet_workflow(source):
     assert judge.math_contexts and judge.calls == 2
     assert any(e.get("node_id") == VET_MATH_NODE for e in recording.events)
     assert any(e.get("node_id") == VET_NODE for e in recording.events)
+
+
+def test_rename_model_loop_preserves_old_release_and_executes_new_trace(source):
+    from scripts.rename_model_loop import upgrade as rename
+
+    old = upgrade(source)
+    migrated = rename(old)
+    assert rename(migrated)["digest"] == migrated["digest"]
+    assert compile_bundle(old["bundle"]).digest == old["digest"]
+    files = migrated["bundle"]["files"]
+    assert "workflows/tutoring-retry.json" not in files
+    compiled = compile_bundle(migrated["bundle"])
+    graph = compiled.catalog.workflow_catalog
+    assert graph.spec("tutoring").node(RETRY_NODE).ref == RETRY_NODE
+    assert graph.spec(RETRY_NODE).entry == RETRY_NODE + ".primary"
+    trace = Recorder()
+    with use_definitions(compiled.catalog), trace.capture():
+        result, _ = _run(StaticTutorModel(LEAKY, HINT), LeaksWhen("等于 4"))
+    assert result.vetting.failure is None
+    assert any(e.get("node_id") == RETRY_NODE + ".repair" for e in trace.events)
+
+
+def test_named_candidate_review_runs_and_preserves_required_gates(source):
+    from scripts.rename_candidate_review import upgrade as rename_review
+    from scripts.rename_model_loop import upgrade as rename_loop
+
+    old = rename_loop(upgrade(source))
+    new = rename_review(old)
+    assert compile_bundle(old["bundle"]).digest == old["digest"]
+    assert rename_review(new)["digest"] == new["digest"]
+    files = new["bundle"]["files"]
+    assert "workflows/tutoring-vet.json" not in files
+    compiled = compile_bundle(new["bundle"])
+    graph = compiled.catalog.workflow_catalog
+    assert graph.spec("tutoring").node(VET_NODE).ref == VET_NODE
+    recording = Recorder()
+    with use_definitions(compiled.catalog), recording.capture():
+        result, _ = _run(StaticTutorModel(LEAKY, HINT), LeaksWhen("等于 4"))
+    assert result.vetting.failure is None
+    assert any(e.get("workflow_id") == VET_NODE and
+               e.get("node_id") == VET_NODE + ".text_leak" for e in recording.events)
+    assert graph.component_by_id(VET_NODE, "tutoring.leak-judge").component_id == "tutoring.leak-judge"
+    files[f"workflows/{VET_NODE}.json"]["required_gates"] = []
+    new["bundle"]["compatibility"] = contract_compatibility(files)
+    with pytest.raises(ValueError, match="required Gate baseline"):
+        compile_bundle(new["bundle"])

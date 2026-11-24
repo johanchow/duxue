@@ -209,7 +209,7 @@ docker compose --env-file .env.prod --env-file images.env -f docker-compose.yml 
 | 正式 | `duxue-prod` | ECS 私网 `duxue-redis:6379/0` | 既有队列与结果键 |
 | 本地调试 | `duxue-test` | SSH 隧道至同一实例，账号 `duxue_test`，逻辑库 `1` | `duxue:test:` 前缀，任务结果保留 1 小时 |
 
-- 本机服务从私有 `duxue-server/.env` 读取 `APP_ENV=test`、测试 PostgreSQL 连接和 Redis 分项配置。留空 `REDIS_URL`，设置 `REDIS_SCHEME=redis`、`REDIS_HOST=127.0.0.1`、`REDIS_PORT=16379`、`REDIS_DB=1`、`REDIS_USERNAME=duxue_test` 和该账号的密码。使用 `.env.test` 的回放脚本采用相同连接。Compose 本地覆盖将 Redis 主机改为 `host.docker.internal`，API、两个 worker、Beat 和迁移进程使用同一测试库。
+- 本机服务从私有 `duxue-server/.env` 读取 `APP_ENV=test`、测试 PostgreSQL 连接和 Redis 分项配置。留空 `REDIS_URL`，设置 `REDIS_SCHEME=redis`、`REDIS_HOST=127.0.0.1`、`REDIS_PORT=16379`、`REDIS_DB=1`、`REDIS_USERNAME=duxue_test` 和该账号的密码。本机观察回放也使用这份 `.env`。Compose 本地覆盖将 Redis 主机改为 `host.docker.internal`，API、两个 worker、Beat 和迁移进程使用同一测试库。
 - 当前调试 Mac 的 LaunchAgent `org.duxue.debug-redis-tunnel` 在登录时启动 SSH 并在断线后重连。本机监听 `127.0.0.1:16379`。专用 SSH key 只用于转发，服务器授权行限定目标为 Redis 容器的私网 IP 与 6379 端口。若 ECS 重建 Redis 容器导致 IP 变化，同步更新授权行的 `permitopen` 和本机 LaunchAgent 的 `-L` 目标，再重新加载隧道。
 - 测试 Redis ACL 的键模式为 `~duxue:test:*`，频道为 `&duxue:test:*`。Kombu 的模式订阅还需显式允许 `&duxue:test:/1.celeryev/worker.*` 和 `&duxue:test:/1.celery.pidbox`。账号使用命令白名单，整库清理、枚举全库键和管理命令均未授权。账号规则已同时写入运行中实例与挂载的私有 `redis.conf`。新增直接使用 Redis 的业务键时应带上 `settings.redis_key_prefix`。
 - 验收时先让调试求解 worker 离线，通过本地 API 提交新题，核对 `/1` 中的 `duxue:test:solving` 队列和测试库中的 pending 档案。启动调试 worker 后，对照同一 task ID 验证领取、结果回写、结果 TTL 和档案的最终状态。测试账号读取无前缀键应被拒绝。可用管理员 `ACL DRYRUN` 验证整库清理被拒绝。

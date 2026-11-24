@@ -528,10 +528,10 @@ class QwenProblemSolverGateway(ProblemSolverModelPort):
                 "mode": "independent_stem_reread" if independent_reread else "stem_extract",
                 "problem_text": text,
                 "extraction_instructions": (
-                    "独立按原文转写完整题面、关键条件和全部设问；保留限定词、数值、符号与角标，无需求解。"
+                    "独立按原文转写完整题面、关键条件、全部选项（如 A/B/C/D 原文）和全部设问；保留限定词、数值、符号与角标，无需求解。"
                     "输出 subject、shared_stem_summary、subproblems、needs_student_confirmation。"
                     if independent_reread
-                    else "本轮只转写与分类，无需求解。输出 subject、shared_stem_summary（完整转写题面、数值及设问）、"
+                    else "本轮只转写与分类，无需求解。输出 subject、shared_stem_summary（完整转写题面、数值、全部选项 A/B/C/D 原文及设问，严禁省略选择题选项）、"
                     "subproblems、diagram_summary、needs_student_confirmation，approaches 固定为空数组。"
                     "纯概念、发音或事实查询标为 tier=T0，普通题标为 T1，确需多条独立推导核验的复杂题标为 T2。"
                 ),
@@ -551,6 +551,11 @@ class QwenProblemSolverGateway(ProblemSolverModelPort):
             if isinstance(scope, str) and scope.strip() and scope in self._guardian_request:
                 self._target_scope = scope
             guardian_fields = {"guardian_task": raw.get("guardian_task"), "target_scope": self._target_scope}
+        raw_text = (
+            text.strip()
+            if (not images and not independent_reread and text.strip())
+            else str(raw.get("shared_stem_summary") or raw.get("raw_text") or ("" if independent_reread else text))
+        )
         return {
             **guardian_fields,
             **({"distance_evidence": raw["distance_evidence"]}
@@ -558,7 +563,7 @@ class QwenProblemSolverGateway(ProblemSolverModelPort):
             "tier": raw.get("tier"),
             "needs_student_confirmation": raw.get("needs_student_confirmation") is True,
             "subject": str(raw.get("subject") or "general"),
-            "raw_text": str(raw.get("shared_stem_summary") or raw.get("raw_text") or ("" if independent_reread else text)),
+            "raw_text": raw_text,
             "subproblems": list(raw.get("subproblems") or []),
             "diagram_summary": str(raw.get("diagram_summary") or ""),
         }

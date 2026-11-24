@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 
+from sqlalchemy import event
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from app.application.ports.math_engine import MathEnginePort, MathInput, MathSymbol
 from app.application.ports.problem_solving import (
@@ -45,6 +49,38 @@ def _default_enqueue(dossier_id: str, images: list[str] | None = None) -> None:
     enqueue_solve_dossier(dossier_id, images=images or [])
 
 
+_AFTER_COMMIT_KEY = "_problem_solving_after_commit_queue"
+_AFTER_COMMIT_REGISTERED = "_problem_solving_after_commit_registered"
+
+
+def schedule_after_commit(db: Session, dedupe_key: str, callback: Callable[[], None]) -> None:
+    """Defer external queue dispatch until the surrounding DB transaction commits.
+
+    Prevents the classic `flush -> enqueue -> worker sees not_found` race condition
+    and guarantees rolled-back transactions never leak Celery tasks.
+    """
+    queue: dict[str, Callable[[], None]] = db.info.setdefault(_AFTER_COMMIT_KEY, {})
+    queue[dedupe_key] = callback
+    if not db.info.get(_AFTER_COMMIT_REGISTERED):
+        db.info[_AFTER_COMMIT_REGISTERED] = True
+
+        def _flush_on_commit(session: Session) -> None:
+            pending = session.info.pop(_AFTER_COMMIT_KEY, None)
+            if not pending:
+                return
+            for key, fn in list(pending.items()):
+                try:
+                    fn()
+                except Exception:
+                    logger.warning("problem_solving after_commit dispatch failed for %s", key, exc_info=True)
+
+        def _clear_on_rollback(session: Session) -> None:
+            session.info.pop(_AFTER_COMMIT_KEY, None)
+
+        event.listen(db, "after_commit", _flush_on_commit)
+        event.listen(db, "after_rollback", _clear_on_rollback)
+
+
 class RequestSolveCommand:
     """Idempotent request to obtain or schedule a `ward`-scoped `ProblemDossier`."""
 
@@ -54,18 +90,31 @@ class RequestSolveCommand:
         *,
         enqueue_fn: Callable[..., None] | None = None,
         solver_version: str = "dossier.v1",
+        defer_until_commit: bool | None = None,
     ):
         self.db = db
         self.repo = SqlProblemDossierRepository(db)
         self.enqueue_fn = enqueue_fn
         self.solver_version = solver_version
+        # Default to after-commit delivery whenever dispatching to real Celery (`enqueue_fn is None`).
+        self.defer_until_commit = (enqueue_fn is None) if defer_until_commit is None else defer_until_commit
 
-    def _dispatch(self, dossier_id: str, images: list[str]) -> None:
+    def _invoke_enqueue(self, dossier_id: str, images: list[str]) -> None:
         fn = self.enqueue_fn or _default_enqueue
         try:
             fn(dossier_id, images)
         except TypeError:
             fn(dossier_id)
+
+    def _dispatch(self, dossier_id: str, images: list[str]) -> None:
+        if self.defer_until_commit and self.db.in_transaction():
+            schedule_after_commit(
+                self.db,
+                f"solve:{dossier_id}",
+                lambda did=dossier_id, imgs=list(images): self._invoke_enqueue(did, imgs),
+            )
+            return
+        self._invoke_enqueue(dossier_id, images)
 
     def execute(
         self,
@@ -80,7 +129,7 @@ class RequestSolveCommand:
 
         imgs = [img for img in (images or []) if isinstance(img, str) and img]
         refs = [image_ref(img) for img in imgs]
-        stem = StructuredStem(subject=subject, raw_text=text.strip()[:4000])
+        stem = StructuredStem.from_request(text, subject)
         current_time = now()
         if refs:
             fingerprint = image_request_fingerprint(stem, refs)
@@ -119,10 +168,24 @@ class RequestSolveCommand:
 class ConfirmStemCommand:
     """Student confirms or corrects ambiguous stem conditions -> bumps stem_version and re-solves."""
 
-    def __init__(self, db: Session, *, enqueue_fn: Callable[..., None] | None = None):
+    def __init__(
+        self,
+        db: Session,
+        *,
+        enqueue_fn: Callable[..., None] | None = None,
+        defer_until_commit: bool | None = None,
+    ):
         self.db = db
         self.repo = SqlProblemDossierRepository(db)
         self.enqueue_fn = enqueue_fn
+        self.defer_until_commit = (enqueue_fn is None) if defer_until_commit is None else defer_until_commit
+
+    def _invoke_enqueue(self, dossier_id: str, images: list[str]) -> None:
+        fn = self.enqueue_fn or _default_enqueue
+        try:
+            fn(dossier_id, images)
+        except TypeError:
+            fn(dossier_id)
 
     def execute(
         self,
@@ -139,11 +202,15 @@ class ConfirmStemCommand:
             raise PermissionError("unauthorized_dossier_mutation")
         updated = dossier.confirm_stem(confirmed_text, now_at=now())
         saved = self.repo.save(updated)
-        fn = self.enqueue_fn or _default_enqueue
-        try:
-            fn(saved.dossier_id, list(images or []))
-        except TypeError:
-            fn(saved.dossier_id)
+        imgs = list(images or [])
+        if self.defer_until_commit and self.db.in_transaction():
+            schedule_after_commit(
+                self.db,
+                f"solve:{saved.dossier_id}:v{saved.stem.stem_version}",
+                lambda did=saved.dossier_id, payload_imgs=imgs: self._invoke_enqueue(did, payload_imgs),
+            )
+        else:
+            self._invoke_enqueue(saved.dossier_id, imgs)
         return saved
 
 
@@ -809,20 +876,30 @@ def execute_blueprint(
     parsed_backup: _ParsedRoute | None = None
     parsed_t2: tuple[_ParsedRoute, _ParsedRoute] | None = None
 
+    spec = workflow_spec or load_catalog().spec(steps.WORKFLOW_ID)
+    has_v2_start_edges = any(
+        edge.source == "START" and edge.condition == "has_verified_stem" for edge in spec.edges
+    )
+    has_worksheet_edge = any(
+        edge.source == steps.node_id("select") and edge.condition == "worksheet_batch"
+        for edge in spec.edges
+    )
+
     def extract(state):
         nonlocal stem, tier, solution
         raw = solver.extract_stem(
             text=question, images=images, independent_reread=False
         )
         if isinstance(raw, dict):
+            if not images and question and question.strip():
+                raw = {**raw, "raw_text": question.strip()}
             stem = StructuredStem.from_dict(raw)
             tier = raw.get("tier") or "T1"
-            if tier == "T0" and not raw.get("needs_student_confirmation"):
-                solution = VerifiedSolution(
-                    stem=stem, tier="T0", status="ready", confidence="medium"
-                )
+            if raw.get("is_worksheet_batch") or raw.get("worksheet_batch"):
+                state["worksheet_batch"] = True
         else:
             tier = "T1"
+        state["extracted_ok"] = isinstance(raw, dict)
         if allow_language_direct and isinstance(raw, dict) and raw.get("target_scope"):
             state["target_scope"] = raw["target_scope"]
         language_direct = (
@@ -835,28 +912,51 @@ def execute_blueprint(
             # A compact passage locator is not a bank fingerprint or verified answer.
             state["mentor_language"] = True
             solution = VerifiedSolution(stem=stem, tier="T1", status="low_confidence", confidence="low")
-        if solution is None and bank_lookup and not stem.needs_student_confirmation and (not images or isinstance(raw, dict)):
-            hit = bank_lookup(stem=stem)
-            if hit and hit.scope == "bank" and hit.status == "ready":
-                solution = VerifiedSolution.from_dossier(hit)
         return {
             "tier": tier, "extracted": isinstance(raw, dict),
             **({"distance_evidence": stem.distance_evidence} if stem.distance_evidence else {}),
         }
 
     def choose(state):
-        nonlocal reread_origin
+        nonlocal reread_origin, solution
         if state.get("mentor_language"):
             branch = "mentor_language"
-        elif solution is not None:
-            branch = "complete"
-        elif images and stem.needs_student_confirmation and not stem.reread_verified:
-            reread_origin = "select"
-            branch = "reread"
-        elif tier == "T2":
-            branch = "complex"
+        elif state.get("worksheet_batch"):
+            solution = VerifiedSolution(
+                stem=stem,
+                tier="T0",
+                status="low_confidence",
+                confidence="low",
+                evidence={"skipped_reason": "worksheet_batch", "short_circuited": True},
+            )
+            branch = "worksheet_batch" if has_worksheet_edge else "complete"
         else:
-            branch = "ordinary"
+            # Centralize T0 short-circuit and bank cache lookup in `select` so both
+            # `START -> extract -> select` and `START -> select` (pre-extracted stem)
+            # share identical gating behavior.
+            if solution is None and tier == "T0" and not stem.needs_student_confirmation:
+                solution = VerifiedSolution(
+                    stem=stem, tier="T0", status="ready", confidence="medium"
+                )
+            if (
+                solution is None
+                and bank_lookup
+                and not stem.needs_student_confirmation
+                and (not images or state.get("extracted_ok", question is None))
+            ):
+                hit = bank_lookup(stem=stem)
+                if hit and hit.scope == "bank" and hit.status == "ready":
+                    solution = VerifiedSolution.from_dossier(hit)
+
+            if solution is not None:
+                branch = "complete"
+            elif images and stem.needs_student_confirmation and not stem.reread_verified:
+                reread_origin = "select"
+                branch = "reread"
+            elif tier == "T2":
+                branch = "complex"
+            else:
+                branch = "ordinary"
         state["branch"] = branch
         return GateDecision("allow", branch)
 
@@ -1000,14 +1100,55 @@ def execute_blueprint(
                 )
         if state.get("target_scope"):
             solution = replace(solution, evidence={**solution.evidence, "target_scope": state["target_scope"]})
+        verified_assertions = [
+            {"id": m.id, "canonical_target": m.canonical_target, "verification_status": m.verification_status}
+            for a in solution.approaches
+            for m in a.milestones
+            if m.verification_status == "verified"
+        ]
+        target_subproblems = list(solution.stem.subproblems)
+        if solution.evidence.get("short_circuited") and solution.status != "ready":
+            coverage = "skipped"
+        elif not target_subproblems:
+            coverage = "complete" if solution.final_answers else "none"
+        else:
+            answered = set(solution.final_answers.keys())
+            if all(sp in answered for sp in target_subproblems):
+                coverage = "complete"
+            elif answered:
+                coverage = "partial"
+            else:
+                coverage = "none"
+        solution = replace(
+            solution,
+            evidence={
+                **solution.evidence,
+                "stem_version": solution.stem.stem_version,
+                "target_subproblems": target_subproblems,
+                "verified_assertions": verified_assertions,
+                "coverage": coverage,
+            },
+        )
         return {
             "tier": solution.tier,
             "status": solution.status,
             "confidence": solution.confidence,
+            "stem_version": solution.stem.stem_version,
+            "target_subproblems": target_subproblems,
+            "verified_assertions": verified_assertions,
+            "coverage": coverage,
         }
 
+    start_branch = "has_verified_stem" if question is None else "needs_extract"
+    conditions = {
+        branch: (lambda state, expected=branch: state.get("branch") == expected)
+        for branch in steps.CONDITIONS
+    }
+    conditions["needs_extract"] = lambda state: state.get("start_branch") == "needs_extract"
+    conditions["has_verified_stem"] = lambda state: state.get("start_branch") == "has_verified_stem"
+
     execute_workflow(
-        workflow_spec or load_catalog().spec(steps.WORKFLOW_ID),
+        spec,
         handlers={
             steps.EXTRACT: extract,
             steps.ROUTE: choose,
@@ -1020,11 +1161,9 @@ def execute_blueprint(
             steps.VERIFY_T2: verify_t2,
             steps.FINISH: finish,
         },
-        conditions={
-            branch: (lambda state, expected=branch: state.get("branch") == expected)
-            for branch in steps.CONDITIONS
-        },
-        entry_node=steps.node_id("select") if question is None else None,
+        conditions=conditions,
+        initial_state={"start_branch": start_branch},
+        entry_node=None if has_v2_start_edges else (steps.node_id("select") if question is None else None),
         parallel_runner=collect_solve_routes,
     )
     return solution
@@ -1054,6 +1193,7 @@ class ExecuteDossierSolveCommand:
             raise ValueError("dossier_not_found")
         if dossier.status == "ready":
             return dossier
+        expected_stem_version = dossier.stem.stem_version
 
         needs_initial_extract = bool(
             images
@@ -1070,11 +1210,29 @@ class ExecuteDossierSolveCommand:
             initial_tier=dossier.tier,
             question=dossier.stem.raw_text if needs_initial_extract else None,
         )
+
+        # Reload before writing back: reject stale results if stem_version advanced during solve,
+        # and stay idempotent if a concurrent worker already settled the same version.
+        self.db.expire_all()
+        latest = self.repo.get(dossier_id)
+        if latest is None:
+            raise ValueError("dossier_not_found")
+        if latest.stem.stem_version != expected_stem_version:
+            logger.info(
+                "skipping stale dossier solve writeback for %s: solved_v=%s current_v=%s",
+                dossier_id,
+                expected_stem_version,
+                latest.stem.stem_version,
+            )
+            return latest
+        if latest.status == "ready":
+            return latest
+
         if solution.status == "failed":
-            failed = dossier.mark_failed(reason=solution.failure_reason or "solve_failed")
+            failed = latest.mark_failed(reason=solution.failure_reason or "solve_failed")
             return self.repo.save(failed)
 
-        settled = dossier.complete_solve(
+        settled = latest.complete_solve(
             approaches=solution.approaches,
             invariants=solution.invariants,
             scoring_points=solution.scoring_points,

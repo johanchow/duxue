@@ -11,11 +11,11 @@ from app.agent_specs.admin_bundle import compile_bundle, contract_compatibility
 from app.agent_specs.subworkflows import upgrade_files
 
 
-def upgrade(record):
+def upgrade(record, *, transform=upgrade_files):
     bundle = deepcopy(record["bundle"])
     if compile_bundle(bundle).digest != record["digest"]:
         raise ValueError("source digest mismatch")
-    upgrade_files(bundle["files"])
+    transform(bundle["files"])
     bundle["compatibility"] = contract_compatibility(bundle["files"])
     return {
         **record,

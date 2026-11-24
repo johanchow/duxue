@@ -1767,7 +1767,8 @@ void main() {
       (tester) async {
     FlutterSecureStoragePlatform.instance =
         TestFlutterSecureStoragePlatform({});
-    final api = _WardHomeApi();
+    final pending = Completer<Map<String, dynamic>>();
+    final api = _WardHomeApi()..delayedTurn = pending;
     await tester.pumpWidget(ProviderScope(
       overrides: [apiProvider.overrideWithValue(api)],
       child: MaterialApp(
@@ -1785,7 +1786,7 @@ void main() {
     expect(api.turns, isEmpty);
 
     await tester.tap(find.byTooltip('发送'));
-    await tester.pumpAndSettle();
+    await tester.pump();
 
     expect(api.turns, hasLength(1));
     expect(api.turns.single.content, '请看这张图片。');
@@ -1793,6 +1794,29 @@ void main() {
     expect(find.byKey(const Key('staged-image-strip')), findsNothing);
     expect(find.byKey(const ValueKey('sent-chat-image-0')), findsOneWidget);
     expect(find.text('请看这张图片。'), findsNothing);
+
+    pending.completeError(StateError('offline'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('staged-image-strip')), findsNothing);
+    api.delayedTurn = null;
+    // Only the successful retry appears in the server transcript.
+    api.threadTranscriptOverrides['thread-1:latest'] = {
+      'thread_id': 'thread-1',
+      'thread_version': 2,
+      'messages': [
+        {
+          'author_type': 'ward',
+          'content': api.turns.single.content,
+          'attachment_refs': api.turns.single.attachmentKeys,
+        },
+      ],
+    };
+    await tester.tap(find.text('重试'));
+    await tester.pumpAndSettle();
+    expect(api.turns, hasLength(2));
+    expect(api.turns.last.attachmentKeys, api.turns.first.attachmentKeys);
+    expect(find.byKey(const ValueKey('sent-chat-image-0')), findsOneWidget);
+    expect(find.text('这条消息暂未送达。'), findsNothing);
   });
 
   testWidgets('chat image opens full screen and returns to the same bubble',

@@ -19,15 +19,21 @@ const snapshotWorkflows: Array<[string, any]> = Object.entries(
     ([name]) => name.startsWith('workflows/') && name.endsWith('.json'),
   )
   .map(([name, doc]) => [path.basename(name), doc]);
-test('code gates and workflow actions have shareable details with the same draft', () => {
+test('gates and workflow actions have shareable details with the same draft', () => {
   const gate = { kind: 'gate', ref: 'tutoring.authority' };
+  const judgeGate = { kind: 'gate', ref: 'tutoring.leak-judge' };
   assert.equal(
     workflowDetailHref('tutoring-vet', gate, { implementation: 'code' }),
     '/agents/tutoring.authority',
   );
   assert.equal(
-    workflowDetailHref('tutoring-vet', gate, { implementation: 'judge' }),
-    undefined,
+    workflowDetailHref(
+      'tutoring.review_candidate',
+      judgeGate,
+      { implementation: 'judge' },
+      'draft/id',
+    ),
+    '/agents/tutoring.leak-judge?draft=draft%2Fid',
   );
   assert.equal(
     workflowDetailHref(
@@ -205,8 +211,9 @@ test('workflow cards prefer the snapshot name, then the inventory name, and keep
   );
   assert.equal(
     workflowDetailHref('tutoring', { kind: 'gate', ref: 'review' }),
-    undefined,
+    '/agents/review',
   );
+  assert.equal(workflowDetailHref('tutoring', { kind: 'gate' }), undefined);
   assert.equal(workflowDetailHref('tutoring', { kind: 'agent' }), undefined);
 });
 
@@ -214,9 +221,11 @@ test('子流程卡片打开同一草稿或发布版本', () => {
   const node = {
     id: 'tutoring.model_loop',
     kind: 'workflow',
-    ref: 'tutoring-retry',
-    display_name: '生成与重试',
+    ref: 'tutoring.model_loop',
+    display_name: '答复生成与重试',
   };
+  assert.ok(actionLogic(node.ref, { kind: 'action', handler_id: 'primary' })?.summary);
+  assert.ok(edgeConditionDetail(node.ref, 'retry_leak')?.label);
   const graph = workflowGraph({ id: 'tutoring', nodes: [node], edges: [] });
   assert.equal(
     graph.nodes.find((n) => n.id === node.id)?.data.typeLabel,
@@ -224,11 +233,11 @@ test('子流程卡片打开同一草稿或发布版本', () => {
   );
   assert.equal(
     workflowDetailHref('tutoring', node, undefined, 'draft/a', 'r1'),
-    '/workflows/tutoring-retry?draft=draft%2Fa',
+    '/workflows/tutoring.model_loop?draft=draft%2Fa',
   );
   assert.equal(
     workflowDetailHref('tutoring', node, undefined, undefined, 'r1'),
-    '/workflows/tutoring-retry?release=r1',
+    '/workflows/tutoring.model_loop?release=r1',
   );
 });
 
@@ -367,4 +376,25 @@ test('tutoring 主图可折叠非控制流归属子节点，并为主图和重�
     edgeConditionDetail('tutoring-retry', 'retry_leak')?.label || '',
     /修复重试/,
   );
+});
+
+test('候选回复审核使用同名草稿路由并保留审核边说明', () => {
+  const id = 'tutoring.review_candidate';
+  assert.equal(workflowDetailHref('tutoring', { kind: 'workflow', ref: id }, undefined, 'draft-2'),
+    '/workflows/tutoring.review_candidate?draft=draft-2');
+  const graph = workflowGraph({
+    id,
+    nodes: [{ id: id + '.authority', kind: 'gate', ref: 'tutoring.authority' }],
+    edges: [{ from: id + '.authority', to: 'END', condition_id: 'authority_denied' }],
+  });
+  assert.equal(graph.edges[0].label, '权限拒绝');
+  assert.ok(actionLogic(id, { kind: 'action', handler_id: 'tutoring.complete_vetting' })?.summary);
+});
+
+test('精简版 tutoring.model_loop 与新版 tutoring-blueprint 展示新增边标签', () => {
+  assert.equal(edgeConditionDetail('tutoring.model_loop', 'needs_repair')?.label, '可自修失败，统一修复');
+  assert.equal(edgeConditionDetail('tutoring.model_loop', 'accepted_or_terminal')?.label, '首轮通过/不可自修直出');
+  assert.equal(edgeConditionDetail('tutoring-blueprint', 'needs_extract')?.label, '首次读题');
+  assert.equal(edgeConditionDetail('tutoring-blueprint', 'has_verified_stem')?.label, '已有可信题面');
+  assert.equal(edgeConditionDetail('tutoring-blueprint', 'worksheet_batch')?.label, '整页批改短路');
 });

@@ -193,7 +193,16 @@ def test_prepared_worker_stem_resumes_at_selection(staged):
         )
     assert result.final_answers == {"(1)": "2*x"}
     assert result.status == "ready"
-    assert trace.events[0]["node_id"] == "tutoring-blueprint.select"
+    node_events = [e for e in trace.events if e["kind"] in {"agent", "gate", "action"}]
+    assert node_events[0]["node_id"] == "tutoring-blueprint.select"
+    assert any(
+        e["kind"] == "edge" and e.get("condition_id") == "has_verified_stem" and e.get("selected") is True
+        for e in trace.events
+    )
+    assert result.evidence["stem_version"] == 1
+    assert result.evidence["target_subproblems"] == ["(1)"]
+    assert result.evidence["coverage"] == "complete"
+    assert len(result.evidence["verified_assertions"]) == 1
 
 
 def test_reread_checks_words_and_subquestions():
@@ -346,6 +355,8 @@ def test_upgraded_solver_and_mentor_budgets_and_discipline_prompts():
         assert "纸带" in prompt
 
     assert "inspect_image" in files[f"agents/{EXTRACT}.json"]["prompt"]["template"]
+    assert "选项" in files[f"agents/{EXTRACT}.json"]["prompt"]["template"]
+    assert "臆测" in files[f"agents/{PLANNER_ID}.json"]["prompt"]["template"]
 
     files[f"agents/{MENTOR_EXPLAIN_ID}.json"] = provision_mentor_explain(
         model="qwen3.5-plus", enable_thinking=True, thinking_budget=4096
@@ -619,3 +630,206 @@ def test_mentor_extract_crops_are_authorized_for_primary_only(staged, monkeypatc
         gateway.extract_stem(text="换题", images=[source])
         gateway.solve_route(stem=stem, images=[source], route_hint="T1")
     assert [crop in str(call) for call in calls] == [False, *([] if inline else [True]), True, False, False, False, False]
+
+
+def test_select_gate_handles_worksheet_batch_short_circuit_and_pre_extracted_bank_lookup(staged):
+    from app.application.commands.problem_solving import execute_blueprint
+    from app.contexts.problem_solving.domain.dossier import (
+        ProblemDossier,
+        StructuredStem,
+    )
+
+    class WorksheetSolver:
+        def __init__(self):
+            self.solve_called = False
+
+        def extract_stem(self, *, independent_reread, **kwargs):
+            return {
+                "subject": "math",
+                "tier": "T0",
+                "raw_text": "整页20道口算题",
+                "subproblems": [],
+                "needs_student_confirmation": False,
+                "worksheet_batch": True,
+            }
+
+        def solve_route(self, **kwargs):
+            self.solve_called = True
+            return _good_math_route()
+
+    ws_solver = WorksheetSolver()
+    trace = Recorder()
+    with use_definitions(staged), trace.capture():
+        res = execute_blueprint(
+            stem=StructuredStem(subject="general", raw_text="帮我批改整页口算"),
+            images=["img"],
+            solver=ws_solver,
+            math_engine=SubprocessMathEngineAdapter(),
+            question="帮我批改整页口算",
+        )
+    assert ws_solver.solve_called is False
+    assert res.status == "low_confidence"
+    assert res.evidence["skipped_reason"] == "worksheet_batch"
+    assert res.evidence["coverage"] == "skipped"
+    assert any(
+        e["kind"] == "edge" and e.get("condition_id") == "worksheet_batch" and e.get("selected") is True
+        for e in trace.events
+    )
+
+    # Pre-extracted stem (START -> select) still runs centralized bank_lookup in select Gate
+    from datetime import datetime, timezone
+
+    from app.contexts.tutoring.domain.blueprint import Approach, Milestone
+
+    cached = ProblemDossier.create_pending(
+        dossier_id="d-bank-1",
+        scope="bank",
+        owner_ward_id=None,
+        stem=StructuredStem(subject="math", raw_text="求 f(x)=x^2 导数", subproblems=("(1)",)),
+        tier="T1",
+        solver_version="test-v1",
+        now_at=datetime.now(timezone.utc),
+    ).complete_solve(
+        approaches=(
+            Approach(
+                id="A1",
+                name="求导法",
+                milestones=(Milestone(id="M1", goal="求导", check_kind="symbolic_equivalence", canonical_target="2*x"),),
+            ),
+        ),
+        invariants=(),
+        scoring_points=(),
+        final_answers={"(1)": "2*x"},
+        confidence="high",
+        tier="T1",
+        evidence={},
+    )
+
+    class NeverSolve:
+        def solve_route(self, **kwargs):
+            raise AssertionError("bank hit in select should never call solve_route")
+
+    trace2 = Recorder()
+    with use_definitions(staged), trace2.capture():
+        res2 = execute_blueprint(
+            stem=cached.stem,
+            images=[],
+            solver=NeverSolve(),
+            math_engine=SubprocessMathEngineAdapter(),
+            question=None,
+            bank_lookup=lambda *, stem: cached,
+        )
+    assert res2.status == "ready"
+    assert res2.final_answers == {"(1)": "2*x"}
+    assert [e["node_id"].split(".")[-1] for e in trace2.events if e["kind"] in {"agent", "gate", "action"}] == [
+        "select", "finish"
+    ]
+
+
+def test_legacy_12_node_blueprint_snapshot_remains_compatible():
+    from app.agent_specs import blueprint_steps as steps
+    from app.agent_specs.admin_bundle import contract_compatibility
+
+    source = json.loads(Path("tests/fixtures/admin-release.json").read_text())
+    record = upgrade(add_blueprint(source, gaokao=True))
+    # Force legacy 12-node edges (single unconditional START -> extract, no worksheet_batch)
+    record["bundle"]["files"][steps.FLOW_FILE] = steps.workflow(v2_edges=False)
+    record["bundle"]["compatibility"] = contract_compatibility(record["bundle"]["files"])
+    catalog = compile_bundle(record["bundle"]).catalog
+    with use_definitions(catalog):
+        assert load_catalog().spec(steps.WORKFLOW_ID).id == steps.WORKFLOW_ID
+
+
+def test_text_only_extract_preserves_original_options_while_image_uses_transcription(staged, monkeypatch):
+    from app.application.commands.problem_solving import execute_blueprint
+    from app.application.ports.problem_solving import QwenProblemSolverGateway
+    from app.contexts.problem_solving.domain.dossier import StructuredStem
+
+    full_mcq = (
+        "哺乳动物成熟红细胞的细胞膜含有丰富的水通道蛋白，硝酸银（AgNO3）可使水通道蛋白失去活性。"
+        "下列叙述错误的是（　　）\n"
+        "A. 经AgNO3处理的红细胞在低渗蔗糖溶液中会膨胀\n"
+        "B. 经AgNO3处理的红细胞在高渗蔗糖溶液中不会变小\n"
+        "C. 未经AgNO3处理的红细胞在低渗蔗糖溶液中会迅速膨胀\n"
+        "D. 未经AgNO3处理的红细胞在高渗蔗糖溶液中会迅速变小"
+    )
+    truncated_summary = (
+        "哺乳动物成熟红细胞的细胞膜含有丰富的水通道蛋白，硝酸银（AgNO3）可使水通道蛋白失去活性。"
+        "下列叙述错误的是（　　）"
+    )
+
+    # 1. Gateway adapter: pure-text extract_stem must not overwrite raw_text with a truncated summary.
+    gateway = QwenProblemSolverGateway()
+    monkeypatch.setattr(
+        gateway,
+        "_invoke",
+        lambda payload, images, **kwargs: {
+            "subject": "biology",
+            "shared_stem_summary": truncated_summary,
+            "subproblems": [],
+            "diagram_summary": "无图",
+            "needs_student_confirmation": False,
+            "tier": "T1",
+        },
+    )
+    with use_definitions(staged):
+        text_extracted = gateway.extract_stem(text=full_mcq, images=[])
+        img_extracted = gateway.extract_stem(
+            text="帮我解这道选择题", images=["data:image/png;base64,YQ=="]
+        )
+
+    assert text_extracted is not None
+    assert text_extracted["subject"] == "biology"
+    assert text_extracted["raw_text"] == full_mcq
+    assert "B. 经AgNO3处理的红细胞在高渗蔗糖溶液中不会变小" in text_extracted["raw_text"]
+
+    assert img_extracted is not None
+    assert img_extracted["raw_text"] == truncated_summary
+
+    # 2. Workflow orchestration: execute_blueprint passes full original text (with A-D) to solve_route.
+    seen_stems: list[str] = []
+
+    class TruncatingSolver:
+        def extract_stem(self, *, text, images, independent_reread=False):
+            return {
+                "subject": "biology",
+                "raw_text": truncated_summary,
+                "subproblems": [],
+                "needs_student_confirmation": False,
+                "tier": "T1",
+            }
+
+        def solve_route(self, *, stem, images, route_hint, feedback=None):
+            seen_stems.append(stem.raw_text)
+            return {
+                "subject": "biology",
+                "final_answers": {"main": "B"},
+                "approaches": [
+                    {
+                        "id": "A1",
+                        "name": "逐项分析",
+                        "milestones": [
+                            {
+                                "id": "M1",
+                                "goal": "核对选项 B",
+                                "check_kind": "conceptual_rubric",
+                                "canonical_target": "B 错误",
+                            }
+                        ],
+                    }
+                ],
+            }
+
+    with use_definitions(staged):
+        result = execute_blueprint(
+            stem=StructuredStem(subject="general", raw_text=full_mcq),
+            question=full_mcq,
+            images=[],
+            solver=TruncatingSolver(),
+            math_engine=None,
+        )
+
+    assert result.stem.subject == "biology"
+    assert result.stem.raw_text == full_mcq
+    assert seen_stems == [full_mcq]
+    assert result.final_answers == {"main": "B"}

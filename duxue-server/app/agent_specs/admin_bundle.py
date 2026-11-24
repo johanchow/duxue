@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.agent_specs import blueprint_steps, reminder_policy, web_search
-from app.contexts.behavior_analysis.domain.reminder_rules import ReminderPolicy
 from app.agent_specs.configuration import code_contract
 from app.agent_specs.definitions import DefinitionCatalog
 from app.agent_specs.gaokao_contracts import FILES as GAOKAO_FILES
@@ -19,7 +18,12 @@ from app.agent_specs.gaokao_contracts import TOOL_AUTHORITY_ADDITIONS as GAOKAO_
 from app.agent_specs.gaokao_contracts import WORKFLOWS as GAOKAO_WORKFLOWS
 from app.agent_specs.gaokao_contracts import frozen_contracts as gaokao_contracts
 from app.agent_specs.guardian_contracts import FILES as GUARDIAN_MENTOR_FILES
-from app.agent_specs.guardian_contracts import MENTOR_EXPLAIN_ID, MENTOR_REPAIR_ID, MENTOR_REVIEW_ID, staged_contracts
+from app.agent_specs.guardian_contracts import (
+    MENTOR_EXPLAIN_ID,
+    MENTOR_REPAIR_ID,
+    MENTOR_REVIEW_ID,
+    staged_contracts,
+)
 from app.agent_specs.guardian_contracts import WORKFLOWS as GUARDIAN_MENTOR_WORKFLOWS
 from app.agent_specs.guardian_contracts import (
     bundle_contracts as guardian_mentor_contracts,
@@ -27,12 +31,15 @@ from app.agent_specs.guardian_contracts import (
 from app.agent_specs.observation_contracts import FILES as OBSERVATION_FILES
 from app.agent_specs.observation_contracts import WORKFLOWS as OBSERVATION_WORKFLOWS
 from app.agent_specs.observation_contracts import contracts as observation_contracts
-from app.agent_specs.registrations import WORKFLOW_BINDINGS
+from app.agent_specs.registrations import LEGACY_LOOP, LEGACY_REVIEW, workflow_bindings
+from app.contexts.behavior_analysis.domain.reminder_rules import ReminderPolicy
+
 
 # Every JSON is carried by the published artifact. Code owns the file whitelist
 # and protected contract; values are not filled from local defaults at load time.
-WORKFLOW_FILES = {f"workflows/{name}.json" for name in WORKFLOW_BINDINGS}
-BUNDLE_FILES = tuple(sorted(set(code_contract()["files"]) | WORKFLOW_FILES))
+def _bindings_for_files(files):
+    return workflow_bindings(legacy=f"workflows/{LEGACY_LOOP}.json" in files,
+                             legacy_review=f"workflows/{LEGACY_REVIEW}.json" in files)
 
 
 def digest(value) -> str:
@@ -86,17 +93,71 @@ def _frozen(doc):
     return result
 
 
+def _intent_hints_contracts(files: dict, base_files: dict) -> dict:
+    doc = files.get("agents/companion.intent.json")
+    props = (doc.get("output_schema") or {}).get("properties") if isinstance(doc, dict) else None
+    if not isinstance(props, dict) or not ({"history_image_ref", "thinking"} & set(props)):
+        return {}
+    upgraded = copy.deepcopy(base_files["agents/companion.intent.json"])
+    upgraded["output_schema"]["properties"]["history_image_ref"] = {"enum": ["none", "needed"]}
+    upgraded["output_schema"]["properties"]["thinking"] = {"enum": ["default", "off"]}
+    return {"agents/companion.intent.json": upgraded}
+
+
+_OPTIONAL_SYSTEM_FRAGMENTS: dict[str, tuple[str, ...]] = {
+    "gates/tutoring.leak-judge.json": (
+        "math_review",
+        "image_review",
+        "visual_svg_geometry",
+        "web_photo",
+    ),
+    "agents/tutoring.turn.json": ("image_review",),
+}
+
+
+def _system_fragment_contracts(files: dict, base_files: dict) -> dict:
+    overrides: dict = {}
+    for filename, allowed in _OPTIONAL_SYSTEM_FRAGMENTS.items():
+        doc = files.get(filename)
+        base = base_files.get(filename)
+        if not isinstance(doc, dict) or not isinstance(base, dict):
+            continue
+        frags = (doc.get("prompt") or {}).get("fragments")
+        if not isinstance(frags, dict):
+            continue
+        present = [name for name in allowed if name in frags]
+        if not present:
+            continue
+        upgraded = copy.deepcopy(base)
+        target_frags = upgraded["prompt"].setdefault("fragments", {})
+        unit_id = upgraded["id"]
+        for name in present:
+            target_frags[name] = {
+                "id": f"{unit_id}.fragment.{name}",
+                "variables": {},
+            }
+        overrides[filename] = upgraded
+    return overrides
+
+
 def contract_compatibility(files: dict) -> str:
     # The envelope binds code contracts and the topology supplied by Admin.
     # Never reconstruct topology from a repository baseline. Keeping the same
     # fingerprint algorithm preserves already-published immutable artifacts.
+    bindings = _bindings_for_files(files)
+    workflow_files = {f"workflows/{name}.json" for name in bindings}
     has_obs = OBSERVATION_FILES <= set(files)
     has_gaokao = GAOKAO_FILES <= set(files)
     has_mentor = GUARDIAN_MENTOR_FILES <= set(files)
+    base_with_extensions = {
+        **code_contract()["files"],
+        **_intent_hints_contracts(files, code_contract()["files"]),
+        **(web_search.upgraded_contracts(code_contract()["files"]) if web_search.FILE in files else {}),
+    }
+    base_with_extensions.update(_system_fragment_contracts(files, base_with_extensions))
     reminder_contracts = reminder_policy.upgraded_contracts({**code_contract()["files"], **observation_contracts()}) if reminder_policy.FILE in files else {}
     return digest({
-        "files": {**code_contract()["files"],
-                  **(web_search.upgraded_contracts(code_contract()["files"]) if web_search.FILE in files else {}),
+        "files": {**base_with_extensions,
                   **(blueprint_steps.contracts(files) if f"agents/{blueprint_steps.EXTRACT}.json" in files else {}),
                   **(observation_contracts() if has_obs else {}), **reminder_contracts,
                   **(gaokao_contracts() if has_gaokao else {}),
@@ -104,9 +165,9 @@ def contract_compatibility(files: dict) -> str:
                   **(staged_contracts(include_repair=f"agents/{MENTOR_REPAIR_ID}.json" in files) if f"gates/{MENTOR_REVIEW_ID}.json" in files else {}),
                   **{name: ({k: v for k, v in doc.items() if k not in {"edges", "rollout_percent"}}
                             if name == "workflows/tutoring.json" and doc.get("execution") == "turn_graph" else doc)
-                     for name, doc in files.items() if name in WORKFLOW_FILES or (has_obs and name in {f"workflows/{key}.json" for key in OBSERVATION_WORKFLOWS}) or (has_gaokao and name in {f"workflows/{key}.json" for key in GAOKAO_WORKFLOWS}) or (has_mentor and name in {f"workflows/{key}.json" for key in GUARDIAN_MENTOR_WORKFLOWS})}},
+                     for name, doc in files.items() if name in workflow_files or (has_obs and name in {f"workflows/{key}.json" for key in OBSERVATION_WORKFLOWS}) or (has_gaokao and name in {f"workflows/{key}.json" for key in GAOKAO_WORKFLOWS}) or (has_mentor and name in {f"workflows/{key}.json" for key in GUARDIAN_MENTOR_WORKFLOWS})}},
         "handlers": {key: {field: sorted(items) for field, items in value.items()}
-                     for key, value in WORKFLOW_BINDINGS.items()},
+                     for key, value in bindings.items()},
         "protocol": 3,
     })
 
@@ -121,6 +182,9 @@ class CompiledBundle:
 def compile_bundle(bundle: dict) -> CompiledBundle:
     contracts = copy.deepcopy(code_contract())
     file_names = set(bundle.get("files", {})) if isinstance(bundle, dict) else set()
+    if isinstance(bundle, dict) and isinstance(bundle.get("files"), dict):
+        contracts["files"].update(_intent_hints_contracts(bundle["files"], contracts["files"]))
+    workflow_files = {f"workflows/{name}.json" for name in _bindings_for_files(file_names)}
     has_observation = OBSERVATION_FILES <= file_names
     has_gaokao = GAOKAO_FILES <= file_names
     has_mentor = GUARDIAN_MENTOR_FILES <= file_names
@@ -134,6 +198,8 @@ def compile_bundle(bundle: dict) -> CompiledBundle:
     if web_search.FILE in file_names:
         contracts["files"].update(web_search.upgraded_contracts(contracts["files"]))
         contracts["tool_authority"]["tutoring.turn"].append(web_search.TOOL)
+    if isinstance(bundle, dict) and isinstance(bundle.get("files"), dict):
+        contracts["files"].update(_system_fragment_contracts(bundle["files"], contracts["files"]))
     if has_observation:
         contracts["files"].update(observation_contracts())
         contracts["tool_authority"].update({doc["id"]: [] for doc in observation_contracts().values()})
@@ -159,7 +225,7 @@ def compile_bundle(bundle: dict) -> CompiledBundle:
         policy = ReminderPolicy.model_validate(bundle["files"][reminder_policy.FILE]).model_dump()
         contracts["files"].update(reminder_policy.upgraded_contracts(contracts["files"]))
     expected_files = (
-        set(BUNDLE_FILES) | set(split_files)
+        set(code_contract()["files"]) | workflow_files | set(split_files)
         | (OBSERVATION_FILES if has_observation else set())
         | (GAOKAO_FILES if has_gaokao else set())
         | (GUARDIAN_MENTOR_FILES if has_mentor else set())
@@ -189,7 +255,7 @@ def compile_bundle(bundle: dict) -> CompiledBundle:
             "version" in model for model in doc.get("models", [])
         ):
             raise ValueError("manual configuration versions are not supported")
-        if name in WORKFLOW_FILES or (has_observation and name in {f"workflows/{key}.json" for key in OBSERVATION_WORKFLOWS}) or (has_gaokao and name in {f"workflows/{key}.json" for key in GAOKAO_WORKFLOWS}) or (has_mentor and name in {f"workflows/{key}.json" for key in GUARDIAN_MENTOR_WORKFLOWS}):
+        if name in workflow_files or (has_observation and name in {f"workflows/{key}.json" for key in OBSERVATION_WORKFLOWS}) or (has_gaokao and name in {f"workflows/{key}.json" for key in GAOKAO_WORKFLOWS}) or (has_mentor and name in {f"workflows/{key}.json" for key in GUARDIAN_MENTOR_WORKFLOWS}):
             continue  # Validated by AgentCatalog against code bindings below.
         original = contracts["files"][name]
         try:
@@ -217,9 +283,16 @@ def compile_bundle(bundle: dict) -> CompiledBundle:
         raise ValueError(f"leak-judge schema missing required text review fields: {missing}")
     if "tutoring.math" in bundle["files"]["agents/tutoring.turn.json"]["tools"]:
         for name in ("agents/tutoring.turn.json", "gates/tutoring.leak-judge.json"):
-            if "[math.v1]" not in bundle["files"][name]["prompt"]["template"]:
+            prompt_obj = bundle["files"][name]["prompt"]
+            full_prompt = "\n".join(
+                [prompt_obj["template"], *(f["template"] for f in prompt_obj.get("fragments", {}).values())]
+            )
+            if "[math.v1]" not in full_prompt:
                 raise ValueError("math tool requires matching tutor and judge protocol")
-        if "math_consistent" not in judge_doc["prompt"]["template"] or "math_consistent" not in judge_props:
+        judge_full_prompt = "\n".join(
+            [judge_doc["prompt"]["template"], *(f["template"] for f in judge_doc["prompt"].get("fragments", {}).values())]
+        )
+        if "math_consistent" not in judge_full_prompt or "math_consistent" not in judge_props:
             raise ValueError("math tool requires leak-judge prompt and schema to declare math_consistent")
     bundle_id = digest(bundle)
     with tempfile.TemporaryDirectory(prefix="duxue-config-") as directory:

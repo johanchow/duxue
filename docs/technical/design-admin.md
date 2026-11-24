@@ -117,7 +117,7 @@ Agent详情的目标固定为当前组件，不提供跨Agent选择；有主备�
 | review-aspects | 复用`propose_review_aspects`；孩子的原话总结 |
 | sprint-intake | 复用`preview_spoken_sprint`；当前挑战描述 |
 
-Tutoring/Reflection的读写在独立SQLite内存库中执行，测试身份和初始数据由隔离进程生成，不使用真实Ward/会话ID，不连接业务库读写；拟写入的消息/题目/学习事实可在结果查看，结束后回滚销毁，不投递Outbox。已有文字历史通过测试媒体适配器注入，当前不支持上传图片。代码Agent`tutoring.session-turn`、`reflection.session-turn`分别调用其自身的上述实现。Companion协调器、Planning检查点暂未接入独立隔离适配器，UI说明不可用；内部`tutoring-vet`/`tutoring-retry`随完整Tutoring执行并记录，不伪装成另一个独立业务入口。
+Tutoring/Reflection的读写在独立SQLite内存库中执行，测试身份和初始数据由隔离进程生成，不使用真实Ward/会话ID，不连接业务库读写；拟写入的消息/题目/学习事实可在结果查看，结束后回滚销毁，不投递Outbox。已有文字历史通过测试媒体适配器注入，当前不支持上传图片。代码Agent`tutoring.session-turn`、`reflection.session-turn`分别调用其自身的上述实现。Companion协调器、Planning检查点暂未接入独立隔离适配器，UI说明不可用；内部`tutoring.review_candidate`/`tutoring.model_loop`随完整Tutoring执行并记录，不伪装成另一个独立业务入口。
 
 调试上下文使用代码所有的受限Schema，不执行任意表达式。能力目录从Python返回，UI按实际能力展示入口。完整包草稿页可集中选择对象，但组件详情没有对象选择器。
 

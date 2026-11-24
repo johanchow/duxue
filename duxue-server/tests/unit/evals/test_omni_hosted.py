@@ -132,15 +132,24 @@ def test_hosted_solve_runs_production_verification_and_backup(
     assert projection["candidate_final_answers"] == ({"(1)": "2*x"} if backup_available else {})
 
 
-def test_signed_images_replace_data_uris_in_runtime_and_evidence(tmp_path, monkeypatch):
+def test_runtime_keeps_data_uris_for_crop_while_evidence_uses_signed_urls(tmp_path, monkeypatch):
+    import io
+
+    from PIL import Image
+
+    from app.agent_specs.image_refs import image_ref
+    from app.application.ports.image_inspection import CropBox, InspectImageRequest
+    from app.infrastructure.media.pillow_crop import PillowImageInspector
     from evals import runner
     from evals.dialogue import TurnRecord
     from evals.local import assets
     from evals.outcome import Observation
     from evals.platform import execution
-    from tests.unit.evals.test_oss_assets import DATA, NAME, REF
+    from tests.unit.evals.test_oss_assets import NAME, REF
 
-    (tmp_path / NAME).write_bytes(DATA)
+    buf = io.BytesIO()
+    Image.new("RGB", (64, 64), color=(255, 255, 255)).save(buf, format="PNG")
+    (tmp_path / NAME).write_bytes(buf.getvalue())
     # A genuine case, adapted only to the isolated image fixture.
     row = next(
         r
@@ -155,7 +164,17 @@ def test_signed_images_replace_data_uris_in_runtime_and_evidence(tmp_path, monke
     monkeypatch.setattr(assets, "signed_urls", lambda refs: {NAME: url})
 
     def observe(case, backend, window, images, **kw):
-        assert images == [url]
+        assert len(images) == 1 and images[0].startswith("data:image/png;base64,")
+        ref = image_ref(images[0])
+        cropped = PillowImageInspector().inspect(
+            InspectImageRequest(
+                image_ref=ref,
+                bbox=CropBox(x0=0.1, y0=0.1, x1=0.9, y1=0.9),
+                label="test-crop",
+            ),
+            authorized_images={ref: images[0]},
+        )
+        assert cropped.status == "unique" and cropped.crop_data_url
         return Observation(
             "hint_like", content="hint", delivered_content="hint", tool_calls=[]
         )

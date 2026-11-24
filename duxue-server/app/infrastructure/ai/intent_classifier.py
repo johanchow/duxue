@@ -25,7 +25,13 @@ def parse_intent_payload(raw: str) -> IntentProposal:
     intent = data.get("intent") if isinstance(data, dict) else None
     if intent not in _LABELS:
         return IntentProposal(intent="unclear")
-    return IntentProposal(intent=intent)  # type: ignore[arg-type]
+    history_image_ref = "none" if data.get("history_image_ref") == "none" else "needed"
+    thinking = "off" if data.get("thinking") == "off" else "default"
+    return IntentProposal(
+        intent=intent,  # type: ignore[arg-type]
+        history_image_ref=history_image_ref,
+        thinking=thinking,
+    )
 
 
 def complete_intent(

@@ -419,16 +419,16 @@ class Verdict:
 
 
 def build_tutor_instruction(
-    *, content: str, permit: TutorPermit, history_candidates: list[dict], tutoring_intent: str | None,
-    self_review_aspects: list[dict] | None = None,
+    *, content: str, permit: TutorPermit, history_candidates: list[dict] | None = None,
+    tutoring_intent: str | None, self_review_aspects: list[dict] | None = None,
 ) -> str:
     """The per-turn instruction JSON. Shared by the workflow and the offline evaluation."""
     from app.infrastructure.ai.prompts import render_fragment
 
+    _ = history_candidates  # Kept for signature compatibility; recent_utterances carries the verbatim window.
     return json.dumps({
         "student_said": content,
         "permit": permit.as_context(),
-        "history_candidates": history_candidates,
         "expected_act": "pronounce" if tutoring_intent == "pronunciation" else None,
         **({"ward_confirmed_self_review": self_review_aspects,
             "self_review_rule": render_fragment("tutoring.turn", "self_review")}
