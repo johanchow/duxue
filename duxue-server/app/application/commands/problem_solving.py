@@ -891,6 +891,8 @@ def execute_blueprint(
             text=question, images=images, independent_reread=False
         )
         if isinstance(raw, dict):
+            if not images and question and question.strip():
+                raw = {**raw, "raw_text": question.strip()}
             stem = StructuredStem.from_dict(raw)
             tier = raw.get("tier") or "T1"
             if raw.get("is_worksheet_batch") or raw.get("worksheet_batch"):

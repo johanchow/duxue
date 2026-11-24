@@ -32,7 +32,7 @@ SOLVER_THINKING_BUDGET = 2560
 _LEGACY_SOLVER_DISCIPLINE_MARKER = "[solver-discipline.v1]"
 SOLVER_DISCIPLINE_RULES = (
     "\n[solver-discipline.v2] 审题与作答铁律：\n"
-    "1. 单选题唯选与方向反推：单选题必须且只能给出唯一最优选项，严禁同时选出两个或多个选项（如 AB、BC）；若初步推导出 ≥2 个选项成立，必须立刻判定至少有一个前置方向性规律用反了（如波的折射弯曲方向、光路可逆性、左手/右手定则、楞次定律方向），强制重核方向性规律并排除干扰项，只选唯一 1 项。\n"
+    "1. 单选题唯选与方向反推：单选题必须且只能给出唯一最优选项，严禁同时选出两个或多个选项（如 AB、BC）；若初步推导出 ≥2 个选项成立，必须立刻判定至少有一个前置方向性规律用反了（如波的折射弯曲方向、光路可逆性、左手/右手定则、楞次定律方向），强制重核方向性规律并排除干扰项，只选唯一 1 项。选择题若题面缺少选项内容，严禁凭记忆臆测或编造不存在的选项。\n"
     "2. 禁止轻率判无解：严禁轻易输出「无正确选项」「题目有误」；若初步推导四项均不符，必须将其视为读图、方向、正负号或隐含条件出错的强信号，强制重审原图坐标轴、箭头方向、回路连接与题干条件后再下结论。\n"
     "3. 整页题界隔离：若图片包含多道题，仅转写与解答用户明确指定的目标题号，严禁混入或顺带解答同页其他邻题。\n"
     "4. 实验精密读图与截断重裁：遇到螺旋测微器、游标卡尺、电表表盘、纸带点迹、电路图、光路图、坐标曲线等精细读图时，必须先调用 inspect_image（返回 {\"tool_request\": {\"name\": \"inspect_image\", \"args\": {\"image_ref\": \"img_...\", \"bbox\": {\"x0\": 0.1, \"y0\": 0.2, \"x1\": 0.6, \"y1\": 0.7}, \"label\": \"...\"}}}，bbox 为 [0.0, 1.0] 归一化坐标）局部放大后再读数；若收到切片后发现主尺零刻度、下方距离标注、端点或接线柱被裁掉，严禁盲猜，必须立刻扩大 bbox 再次调用 inspect_image 重新放大；纸带题必须先显式写出从左到右相邻计数点间距的变化趋势（增大或减小），再结合加速/减速运动判断纸带哪一端连接小车。\n"
@@ -315,7 +315,7 @@ def upgrade_files(files, *, ward_max_output_tokens=None):
     extract_doc["prompt"]["template"] = (
         "首次读题与分级。从原题与图片逐项转写，不解题；"
         + VISION_INSPECT_GUIDANCE
-        + "仅输出 JSON 对象，包含 subject、shared_stem_summary（题面、条件、数值与全部设问）、subproblems、"
+        + "仅输出 JSON 对象，包含 subject、shared_stem_summary（完整转写题面、条件、数值、全部选项 A/B/C/D 原文及全部设问，严禁省略选择题选项）、subproblems、"
         "diagram_summary、needs_student_confirmation（仅在模糊/涂改/缺条件时为 true，清晰题面为 false）、"
         "tier（T0 概念事实、T1 普通题、T2 复杂解答/高考压轴需双路异构核验）、"
         "worksheet_batch（仅当图片为整页多道基础口算/填空批改而非单道或题组推理题时为 true，其余为 false）。"
@@ -332,7 +332,7 @@ def upgrade_files(files, *, ward_max_output_tokens=None):
     reread_doc["prompt"]["template"] = (
         "按需独立复读题面。独立核对原图中的关键数值、符号、角标与全部设问，不解题、不猜测模糊字符；"
         + VISION_INSPECT_GUIDANCE
-        + "仅输出 JSON 对象，包含 subject、shared_stem_summary（关键数值、符号与全部设问）、subproblems、"
+        + "仅输出 JSON 对象，包含 subject、shared_stem_summary（关键数值、符号、全部选项原文与全部设问）、subproblems、"
         "needs_student_confirmation（若存在看不清或涂改则为 true）。"
         + TOOL_TURN_GUIDANCE
     )
