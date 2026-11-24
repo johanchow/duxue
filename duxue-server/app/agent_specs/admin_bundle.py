@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.agent_specs import blueprint_steps, reminder_policy, web_search
-from app.contexts.behavior_analysis.domain.reminder_rules import ReminderPolicy
 from app.agent_specs.configuration import code_contract
 from app.agent_specs.definitions import DefinitionCatalog
 from app.agent_specs.gaokao_contracts import FILES as GAOKAO_FILES
@@ -19,7 +18,12 @@ from app.agent_specs.gaokao_contracts import TOOL_AUTHORITY_ADDITIONS as GAOKAO_
 from app.agent_specs.gaokao_contracts import WORKFLOWS as GAOKAO_WORKFLOWS
 from app.agent_specs.gaokao_contracts import frozen_contracts as gaokao_contracts
 from app.agent_specs.guardian_contracts import FILES as GUARDIAN_MENTOR_FILES
-from app.agent_specs.guardian_contracts import MENTOR_EXPLAIN_ID, MENTOR_REPAIR_ID, MENTOR_REVIEW_ID, staged_contracts
+from app.agent_specs.guardian_contracts import (
+    MENTOR_EXPLAIN_ID,
+    MENTOR_REPAIR_ID,
+    MENTOR_REVIEW_ID,
+    staged_contracts,
+)
 from app.agent_specs.guardian_contracts import WORKFLOWS as GUARDIAN_MENTOR_WORKFLOWS
 from app.agent_specs.guardian_contracts import (
     bundle_contracts as guardian_mentor_contracts,
@@ -28,6 +32,8 @@ from app.agent_specs.observation_contracts import FILES as OBSERVATION_FILES
 from app.agent_specs.observation_contracts import WORKFLOWS as OBSERVATION_WORKFLOWS
 from app.agent_specs.observation_contracts import contracts as observation_contracts
 from app.agent_specs.registrations import LEGACY_LOOP, LEGACY_REVIEW, workflow_bindings
+from app.contexts.behavior_analysis.domain.reminder_rules import ReminderPolicy
+
 
 # Every JSON is carried by the published artifact. Code owns the file whitelist
 # and protected contract; values are not filled from local defaults at load time.
@@ -98,6 +104,42 @@ def _intent_hints_contracts(files: dict, base_files: dict) -> dict:
     return {"agents/companion.intent.json": upgraded}
 
 
+_OPTIONAL_SYSTEM_FRAGMENTS: dict[str, tuple[str, ...]] = {
+    "gates/tutoring.leak-judge.json": (
+        "math_review",
+        "image_review",
+        "visual_svg_geometry",
+        "web_photo",
+    ),
+    "agents/tutoring.turn.json": ("image_review",),
+}
+
+
+def _system_fragment_contracts(files: dict, base_files: dict) -> dict:
+    overrides: dict = {}
+    for filename, allowed in _OPTIONAL_SYSTEM_FRAGMENTS.items():
+        doc = files.get(filename)
+        base = base_files.get(filename)
+        if not isinstance(doc, dict) or not isinstance(base, dict):
+            continue
+        frags = (doc.get("prompt") or {}).get("fragments")
+        if not isinstance(frags, dict):
+            continue
+        present = [name for name in allowed if name in frags]
+        if not present:
+            continue
+        upgraded = copy.deepcopy(base)
+        target_frags = upgraded["prompt"].setdefault("fragments", {})
+        unit_id = upgraded["id"]
+        for name in present:
+            target_frags[name] = {
+                "id": f"{unit_id}.fragment.{name}",
+                "variables": {},
+            }
+        overrides[filename] = upgraded
+    return overrides
+
+
 def contract_compatibility(files: dict) -> str:
     # The envelope binds code contracts and the topology supplied by Admin.
     # Never reconstruct topology from a repository baseline. Keeping the same
@@ -107,11 +149,15 @@ def contract_compatibility(files: dict) -> str:
     has_obs = OBSERVATION_FILES <= set(files)
     has_gaokao = GAOKAO_FILES <= set(files)
     has_mentor = GUARDIAN_MENTOR_FILES <= set(files)
+    base_with_extensions = {
+        **code_contract()["files"],
+        **_intent_hints_contracts(files, code_contract()["files"]),
+        **(web_search.upgraded_contracts(code_contract()["files"]) if web_search.FILE in files else {}),
+    }
+    base_with_extensions.update(_system_fragment_contracts(files, base_with_extensions))
     reminder_contracts = reminder_policy.upgraded_contracts({**code_contract()["files"], **observation_contracts()}) if reminder_policy.FILE in files else {}
     return digest({
-        "files": {**code_contract()["files"],
-                  **_intent_hints_contracts(files, code_contract()["files"]),
-                  **(web_search.upgraded_contracts(code_contract()["files"]) if web_search.FILE in files else {}),
+        "files": {**base_with_extensions,
                   **(blueprint_steps.contracts(files) if f"agents/{blueprint_steps.EXTRACT}.json" in files else {}),
                   **(observation_contracts() if has_obs else {}), **reminder_contracts,
                   **(gaokao_contracts() if has_gaokao else {}),
@@ -152,6 +198,8 @@ def compile_bundle(bundle: dict) -> CompiledBundle:
     if web_search.FILE in file_names:
         contracts["files"].update(web_search.upgraded_contracts(contracts["files"]))
         contracts["tool_authority"]["tutoring.turn"].append(web_search.TOOL)
+    if isinstance(bundle, dict) and isinstance(bundle.get("files"), dict):
+        contracts["files"].update(_system_fragment_contracts(bundle["files"], contracts["files"]))
     if has_observation:
         contracts["files"].update(observation_contracts())
         contracts["tool_authority"].update({doc["id"]: [] for doc in observation_contracts().values()})
@@ -235,9 +283,16 @@ def compile_bundle(bundle: dict) -> CompiledBundle:
         raise ValueError(f"leak-judge schema missing required text review fields: {missing}")
     if "tutoring.math" in bundle["files"]["agents/tutoring.turn.json"]["tools"]:
         for name in ("agents/tutoring.turn.json", "gates/tutoring.leak-judge.json"):
-            if "[math.v1]" not in bundle["files"][name]["prompt"]["template"]:
+            prompt_obj = bundle["files"][name]["prompt"]
+            full_prompt = "\n".join(
+                [prompt_obj["template"], *(f["template"] for f in prompt_obj.get("fragments", {}).values())]
+            )
+            if "[math.v1]" not in full_prompt:
                 raise ValueError("math tool requires matching tutor and judge protocol")
-        if "math_consistent" not in judge_doc["prompt"]["template"] or "math_consistent" not in judge_props:
+        judge_full_prompt = "\n".join(
+            [judge_doc["prompt"]["template"], *(f["template"] for f in judge_doc["prompt"].get("fragments", {}).values())]
+        )
+        if "math_consistent" not in judge_full_prompt or "math_consistent" not in judge_props:
             raise ValueError("math tool requires leak-judge prompt and schema to declare math_consistent")
     bundle_id = digest(bundle)
     with tempfile.TemporaryDirectory(prefix="duxue-config-") as directory:

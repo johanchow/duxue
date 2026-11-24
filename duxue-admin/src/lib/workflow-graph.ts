@@ -34,11 +34,7 @@ export function workflowDetailHref(
   }
   if (node?.kind === 'action')
     return `/workflows/${encodeURIComponent(workflowId)}/nodes/${encodeURIComponent(node.id)}${snapshot}`;
-  if (
-    node?.ref &&
-    (node.kind === 'agent' ||
-      (node.kind === 'gate' && definition?.implementation === 'code'))
-  )
+  if (node?.ref && (node.kind === 'agent' || node.kind === 'gate'))
     return `/agents/${encodeURIComponent(node.ref)}${query}`;
 }
 

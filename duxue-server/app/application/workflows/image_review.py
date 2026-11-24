@@ -181,6 +181,9 @@ def require_configuration(bundle: dict) -> None:
     """Deployment capability handshake; the marker is a protocol ID, not semantics."""
     for filename in ('agents/tutoring.turn.json', 'agents/tutoring.image-target.json',
                      'gates/tutoring.leak-judge.json'):
-        prompt = bundle['files'][filename]['prompt']['template']
-        if '[image-review.v1]' not in prompt:
+        prompt_obj = bundle['files'][filename]['prompt']
+        full_prompt = '\n'.join(
+            [prompt_obj['template'], *(f['template'] for f in prompt_obj.get('fragments', {}).values())]
+        )
+        if '[image-review.v1]' not in full_prompt:
             raise ValueError(f'{filename}: Admin发布尚未声明image-review.v1，先发布已验证的配置再部署，保留当前服务')

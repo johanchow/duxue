@@ -324,3 +324,71 @@ def test_admin_bundle_compiles_both_legacy_and_upgraded_companion_intent():
     props = upgraded["bundle"]["files"]["agents/companion.intent.json"]["output_schema"]["properties"]
     assert props["history_image_ref"] == {"enum": ["none", "needed"]}
     assert props["thinking"] == {"enum": ["default", "off"]}
+
+
+def test_leak_judge_fragment_names_selects_scenarios_in_stable_order():
+    from app.infrastructure.ai.tutor_turn_model import _leak_judge_fragment_names
+
+    assert _leak_judge_fragment_names(images=None, problem_summary='{"current_request": "抽样方法"}') == ()
+    assert _leak_judge_fragment_names(
+        images=None,
+        problem_summary='{"math_review_required": true, "candidate_visual": {"kind": "svg"}}',
+    ) == ("math_review", "visual_svg_geometry")
+    assert _leak_judge_fragment_names(
+        images=["data:image/jpeg;base64,AAA"],
+        context={"candidate_visual": {"kind": "web_photo"}},
+        force_math=True,
+    ) == ("math_review", "image_review", "visual_svg_geometry", "web_photo")
+
+
+def test_compose_system_prompt_preserves_prefix_and_handles_missing_fragments():
+    import json
+    from copy import deepcopy
+
+    from app.agent_specs.admin_bundle import compile_bundle
+    from app.agent_specs.configuration import snapshot_path
+    from app.agent_specs.definitions import use_definitions
+    from app.application.workflows.image_review import require_configuration
+    from app.infrastructure.ai.prompts import compose_system_prompt
+
+    record = json.loads(snapshot_path().read_text(encoding="utf-8"))
+    bundle = deepcopy(record["bundle"])
+    lj = bundle["files"]["gates/tutoring.leak-judge.json"]
+    lj["prompt"]["template"] = "核心常驻规则\n[submitted-feedback.v1]"
+    lj["prompt"]["fragments"] = {
+        "math_review": {
+            "id": "tutoring.leak-judge.fragment.math_review",
+            "template": "[math.v1] 数学一致 math_consistent 规则",
+            "variables": {},
+        },
+        "image_review": {
+            "id": "tutoring.leak-judge.fragment.image_review",
+            "template": "[image-review.v1] 图片核验规则",
+            "variables": {},
+        },
+    }
+    turn_doc = bundle["files"]["agents/tutoring.turn.json"]
+    turn_doc["prompt"]["template"] = turn_doc["prompt"]["template"].replace("[image-review.v1]", "")
+    turn_doc["prompt"].setdefault("fragments", {})["image_review"] = {
+        "id": "tutoring.turn.fragment.image_review",
+        "template": "[image-review.v1] 导师图片核验规则",
+        "variables": {},
+    }
+    bundle["files"]["agents/tutoring.image-target.json"]["prompt"]["template"] += "\n[image-review.v1]"
+    from app.agent_specs.admin_bundle import contract_compatibility
+
+    bundle["compatibility"] = contract_compatibility(bundle["files"])
+
+    # Both compile_bundle and require_configuration accept markers declared in fragments
+    compiled = compile_bundle(bundle)
+    require_configuration(bundle)
+
+    with use_definitions(compiled.catalog):
+        base = PromptTemplate("tutoring.leak-judge.system", "核心常驻规则")
+        assert compose_system_prompt(base, "tutoring.leak-judge", ()) is base
+        assert compose_system_prompt(base, "tutoring.leak-judge", ("nonexistent",)) is base
+        composed = compose_system_prompt(
+            base, "tutoring.leak-judge", ("math_review", "image_review", "nonexistent")
+        )
+        assert composed.text.startswith("核心常驻规则\n\n[math.v1]")
+        assert "[image-review.v1] 图片核验规则" in composed.text

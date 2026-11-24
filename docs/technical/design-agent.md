@@ -170,7 +170,7 @@ Context Builder 负责**取哪些数据以及能否读取**；`prompt.variables.
 }
 ```
 
-代码通过 `render_fragment(unit_id, name, **context)` 选择并渲染片段，条件与顺序仍由既有代码决定。片段没有 `when`、表达式、数据库访问或自行变更消息角色的能力。变量必须完整且类型一致，使用一次替换；插入的学生原话、错误或草稿不会再次当模板执行。片段只填入原有的用户内容位置，不增加模型调用。答疑修复、图片核验、自述使用规则以及Planning历史窗口指令已迁入所属Agent；授权、截断、修复触发和必经审核仍留在代码。
+代码通过 `render_fragment(unit_id, name, **context)` 选择并渲染用户侧片段，或通过 `compose_system_prompt(spec_prompt, unit_id, fragment_names)` 将无变量的具名静态场景片段按固定顺序追加到系统提示词末尾（保留主 `prompt.template` 常驻前缀以复用供应商 Prefix Cache），条件与顺序仍由既有代码决定。片段没有 `when`、表达式、数据库访问或自行变更消息角色的能力。变量必须完整且类型一致，使用一次替换；插入的学生原话、错误或草稿不会再次当模板执行。答疑修复、图片核验、数学/视觉场景审校、自述使用规则以及Planning历史窗口指令均归属所属Agent/Gate 的 `prompt.fragments`；授权、截断、修复触发和必经审核仍留在代码。
 
 主模板与片段分别进入版本化Prompt摘要锁。组件的 `definition_digest` 另覆盖完整Agent/Gate定义及其引用的Tool定义（含静态正文），不包含儿童数据。CLI `show` 展开片段和工具内容；模型span导出 `ai.definition_digest` 及Langfuse同名metadata，离线评测输出相应摘要。仅修改片段或Tool时也须提升所属定义版本；主Prompt正文未变时保留其ID，不能仅凭主模板摘要判断完整配置相同。
 

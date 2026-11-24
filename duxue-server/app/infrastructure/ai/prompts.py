@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from functools import lru_cache
-
 import hashlib
 import json
 import re
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from functools import lru_cache
 
 from app.agent_specs.definitions import load_definitions
 
@@ -83,3 +82,34 @@ def render_fragment(unit_id: str, name: str, **context) -> str:
     """Code selects a named instruction; inserted data is never templated again."""
     fragment = load_definitions().units[unit_id].prompt.fragments[name]
     return DynamicPrompt(fragment.id, fragment.template, fragment.variables).render(context)
+
+
+def compose_system_prompt(
+    spec_prompt: PromptTemplate,
+    unit_id: str,
+    fragment_names: Sequence[str],
+) -> PromptTemplate:
+    """Append selected static fragments from `unit.prompt.fragments` to the tail of a system prompt.
+
+    Preserves the base `prompt.template` prefix for KV prefix cache reuse. Unknown or absent
+    fragment names are skipped so older snapshots with inline sections remain compatible.
+    """
+    if not fragment_names:
+        return spec_prompt
+    unit = load_definitions().units.get(unit_id)
+    if unit is None or not unit.prompt.fragments:
+        return spec_prompt
+    extras: list[str] = []
+    for name in fragment_names:
+        fragment = unit.prompt.fragments.get(name)
+        if fragment is None:
+            continue
+        rendered = DynamicPrompt(fragment.id, fragment.template, fragment.variables).render({})
+        if rendered.strip():
+            extras.append(rendered.strip())
+    if not extras:
+        return spec_prompt
+    return PromptTemplate(
+        spec_prompt.id,
+        spec_prompt.text.rstrip() + "\n\n" + "\n\n".join(extras),
+    )

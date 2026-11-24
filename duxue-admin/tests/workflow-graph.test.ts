@@ -19,15 +19,21 @@ const snapshotWorkflows: Array<[string, any]> = Object.entries(
     ([name]) => name.startsWith('workflows/') && name.endsWith('.json'),
   )
   .map(([name, doc]) => [path.basename(name), doc]);
-test('code gates and workflow actions have shareable details with the same draft', () => {
+test('gates and workflow actions have shareable details with the same draft', () => {
   const gate = { kind: 'gate', ref: 'tutoring.authority' };
+  const judgeGate = { kind: 'gate', ref: 'tutoring.leak-judge' };
   assert.equal(
     workflowDetailHref('tutoring-vet', gate, { implementation: 'code' }),
     '/agents/tutoring.authority',
   );
   assert.equal(
-    workflowDetailHref('tutoring-vet', gate, { implementation: 'judge' }),
-    undefined,
+    workflowDetailHref(
+      'tutoring.review_candidate',
+      judgeGate,
+      { implementation: 'judge' },
+      'draft/id',
+    ),
+    '/agents/tutoring.leak-judge?draft=draft%2Fid',
   );
   assert.equal(
     workflowDetailHref(
@@ -205,8 +211,9 @@ test('workflow cards prefer the snapshot name, then the inventory name, and keep
   );
   assert.equal(
     workflowDetailHref('tutoring', { kind: 'gate', ref: 'review' }),
-    undefined,
+    '/agents/review',
   );
+  assert.equal(workflowDetailHref('tutoring', { kind: 'gate' }), undefined);
   assert.equal(workflowDetailHref('tutoring', { kind: 'agent' }), undefined);
 });
 
