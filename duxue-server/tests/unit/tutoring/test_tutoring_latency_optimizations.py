@@ -15,7 +15,12 @@ from app.agent_specs.contracts import validate_output
 from app.agent_specs.definitions import load_definitions
 from app.application.ports.companion import IntentProposal, RunInvocation
 from app.application.workflows.tutoring_workflow import TutoringWorkflow
-from app.infrastructure.ai.components import ComponentSpec
+from app.infrastructure.ai.components import (
+    ComponentSpec,
+)
+from app.infrastructure.ai.components import (
+    invoke_json_component as _REAL_INVOKE_JSON_COMPONENT,
+)
 from app.infrastructure.ai.intent_classifier import parse_intent_payload
 from app.infrastructure.ai.prompts import PromptTemplate
 from app.infrastructure.ai.tutor_turn_model import (
@@ -301,7 +306,7 @@ def test_tutoring_workflow_disables_thinking_only_on_text_turns_without_images()
     run_case(disable_thinking=False, has_image=False)
 
     assert captured_envelopes[0].get("_disable_thinking") is True
-    assert captured_envelopes[1].get("_disable_thinking") is None
+    assert captured_envelopes[1].get("_disable_thinking") is True
     assert captured_envelopes[2].get("_disable_thinking") is None
 
 
@@ -392,3 +397,62 @@ def test_compose_system_prompt_preserves_prefix_and_handles_missing_fragments():
         )
         assert composed.text.startswith("核心常驻规则\n\n[math.v1]")
         assert "[image-review.v1] 图片核验规则" in composed.text
+
+
+def test_pure_text_tutor_turn_drops_spurious_image_review_while_image_turn_validates(monkeypatch):
+    import json
+    from types import SimpleNamespace
+
+    from app.infrastructure.ai import components
+    from app.infrastructure.ai.components import ChatCompletionResult
+    from app.infrastructure.ai.errors import ModelGatewayError
+    from app.infrastructure.ai.tutor_turn_model import QwenTutorTurnGateway
+
+    bad_payload = json.dumps(
+        {
+            "act": "guide",
+            "content": "你的判断和依据都对。",
+            "turn": {"type": "work", "relation": "new", "student_move": "attempt"},
+            "image_review": {
+                "conclusion": "not_checking",
+                "scope": "阅读理解选择题",
+                "coverage": "已核对学生的原文引用与推理",
+                "questions": [],
+            },
+        },
+        ensure_ascii=False,
+    )
+
+    monkeypatch.setattr(components, "invoke_json_component", _REAL_INVOKE_JSON_COMPONENT)
+    monkeypatch.setattr("app.infrastructure.ai.client.dashscope_client", lambda **kw: object())
+    monkeypatch.setattr(
+        components,
+        "complete_json_chat",
+        lambda **kw: ChatCompletionResult(raw=bad_payload, raw_wire=bad_payload, finish_reason="stop", stream_completed=True),
+    )
+    settings_stub = SimpleNamespace(
+        agent_model_enabled=True,
+        dashscope_api_key="test-key",
+        agent_model_timeout_seconds=10,
+        ai_model_overrides="",
+    )
+    gw = QwenTutorTurnGateway(settings_obj=settings_stub)
+
+    # Pure-text turn: spurious `image_review` is stripped before schema validation
+    result = gw.complete(
+        envelope={"subject": "english"},
+        instruction="请检查学生的阅读理解推理",
+        recent_utterances=[],
+        current_images=[],
+    )
+    assert result["act"] == "guide"
+    assert "image_review" not in result
+
+    # Image turn: invalid `image_review` enum must still fail contract validation
+    with pytest.raises(ModelGatewayError):
+        gw.complete(
+            envelope={"subject": "english"},
+            instruction="请看图检查",
+            recent_utterances=[],
+            current_images=["data:image/jpeg;base64,AAAA"],
+        )

@@ -119,3 +119,6 @@ Guardian 用邮箱验证码注册和登录，不保存读学密码。Ward 使用
 - Guardian 问答引导精简见 [用户 PRD §7.2](../../docs/product/prd-user.md#72-家长问答体验)。同题体验沿用签名主题令牌。示例入口在语音输入状态且无待发照片时显示，以免覆盖键盘草稿或混入自选题图。
 
 - 2026-11-22 [对话回复进度](../../docs/technical/design-app.md#对话回复进度)真机反馈：占位线和单一等待文案加重了空等感，改为有阶段才加行。Android USB 联调还复现了长图文历史上的定位问题，惰性列表的一次 `maxScrollExtent` 跳转停在旧回复，阶段虽已到达却落在视口外。使用真实末尾锚点校正后，在 2211133C 上验证 Ward 的理解、整理、核对依次出现，随后交付带图回复。Flutter 全量 195 项通过，静态分析无问题，服务端 1477 项通过、4 项跳过。调试包走 USB 本地服务，同轮获用户授权提交。
+
+- 2026-11-24 排查本地“这条消息暂未送达”：Ward `_submitPlanInput` 对请求及 `_applyPlanTurnResult` 的任意异常统一设置 `failedPlanText`，所以文案不能证明请求未到服务端；SSE error 或流缺 result 也触发。当前检查时 ADB 无设备，无法关联手机原异常。8021 历史日志有 PostgreSQL 连接异常，但未与用户报告轮次对齐，不能认定为此次根因。
+- 2026-11-24 真机调试排查：停用 Ward 首页 `SupportCompanionPanel` 挂载以消除未完成功能每 15 秒的 `POST /companion/support-channels` 409 轮询，并将 `ApiClient.companionTurn` 的 `receiveTimeout` 由 90s 放宽至 150s。Flutter `analyze`、`observation_ui_test`（3/3）及 `app_ui_test`（75/75）全绿。

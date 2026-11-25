@@ -25,7 +25,6 @@ import 'sprint_card.dart';
 import 'chat_image_viewer.dart';
 import 'pronunciation_player.dart';
 import 'start_cue_card.dart';
-import 'support_companion_panel.dart';
 import 'visual_block.dart';
 import 'task_status_dialogs.dart';
 
@@ -414,10 +413,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   Widget build(BuildContext context) {
     return Scaffold(
       body: Stack(fit: StackFit.expand, children: [
-        SupportCompanionPanel(
-            key: ValueKey(widget.wardId),
-            wardId: widget.wardId,
-            quietVersion: _quietVersion),
         SafeArea(child: switch (tab) {
           0 => _home(context),
           1 => _growth(context),

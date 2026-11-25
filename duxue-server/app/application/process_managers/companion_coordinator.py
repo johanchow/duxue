@@ -518,9 +518,10 @@ class CompanionCoordinator:
 
         if run.agent_type == "tutoring":
             turn = {**turn, "tutoring_graph_version": run.graph_version}
-            if proposal is not None and not attachment_keys:
+            if proposal is not None:
                 if (
-                    proposal.history_image_ref == "none"
+                    not attachment_keys
+                    and proposal.history_image_ref == "none"
                     and turn.get("tutoring_intent") != "compare_previous_image"
                 ):
                     turn["history_image_ref"] = "none"
