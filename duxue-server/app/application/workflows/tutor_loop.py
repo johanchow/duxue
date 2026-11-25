@@ -1203,9 +1203,15 @@ def run_tutor_turn(
                 or (review.visual_need == "helpful" and review.candidate.visual is not None)
                 or _TEXT_DIAGRAM_TEX in review.candidate.content)
 
+    def strict_visual_required(review):
+        return (
+            review.visual_need == "requested"
+            or _TEXT_DIAGRAM_TEX in review.candidate.content
+        )
+
     def finish(state):
         call, review = state["call"], state["vetting"]
-        if review is not None and review.failure is None and review.visual is None and visual_required(review):
+        if review is not None and review.failure is None and review.visual is None and strict_visual_required(review):
             review = replace(review, verdict=None, failure="visual_unavailable")
         if (review and tools.web_search.image_requested and review.failure in {None, "visual_unavailable"}
                 and not isinstance(review.visual, SearchPhoto)):

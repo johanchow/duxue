@@ -535,11 +535,19 @@ def invoke_json_component(*, spec: ComponentSpec, user, client=None, settings_ob
                 telemetry=telemetry,
             )
             raw_seen = completion.raw_wire or completion.raw
+            has_user_images = isinstance(user, list) and any(
+                isinstance(part, dict) and part.get("type") == "image_url" for part in user
+            )
             try:
+                def _validate(data):
+                    if unit.id == "tutoring.turn" and not has_user_images and isinstance(data, dict):
+                        data.pop("image_review", None)
+                    return validate_output(unit, data)
+
                 payload, outcome, abrupt_detail = validate_json_completion(
                     completion,
                     unit_id=unit.id,
-                    validate_payload=lambda data: validate_output(unit, data),
+                    validate_payload=_validate,
                 )
             except _CompletionClassifiedError as error:
                 telemetry["outcome"] = error.outcome

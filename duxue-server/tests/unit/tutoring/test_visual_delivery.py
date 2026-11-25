@@ -93,8 +93,9 @@ def test_visual_extension_requires_all_three_facts(field):
         compile_bundle(updated['bundle'])
 
 
-def test_unrepairable_svg_cannot_deliver_text_pointing_to_a_missing_picture():
+def test_unrepairable_svg_drops_bad_visual_and_delivers_approved_text_when_unrequested():
     draft = tutor_raw(content="看下图的箭头。", visual={"kind": "svg", "alt": "箭头", "svg": "<svg/>"})
     result = run(StaticTutorModel(draft, draft), StaticVisualLeakJudge(result={"leaks": False}))
-    assert result.vetting.failure == "visual_unavailable"
-    assert result.vetting.verdict is None
+    assert result.vetting.visual is None
+    assert result.vetting.failure is None
+    assert result.vetting.verdict is not None

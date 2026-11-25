@@ -729,7 +729,6 @@ class _TutoringTurn:
             }
         if (
             self.turn.get("disable_thinking") is True
-            and not self.all_authorized_images
             and self.active_dossier is None
         ):
             model_envelope["_disable_thinking"] = True
