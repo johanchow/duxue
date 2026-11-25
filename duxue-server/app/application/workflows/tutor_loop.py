@@ -7,6 +7,8 @@ fallback 与线上完全同源，不另抄一份规则。
 from __future__ import annotations
 
 import json
+import os
+import time
 from dataclasses import dataclass, field, replace
 
 from pydantic import ValidationError
@@ -405,7 +407,11 @@ def _text_leak_result(result: bool | dict | None) -> tuple[bool | None, str | No
 def _leak_repair(vetting: Vetting) -> str:
     """Bounded feedback for one retry. The rejected draft never reaches the child."""
     reason = vetting.leak_reason or vetting.failure or "unspecified"
-    if reason == "premature_conclusion" and vetting.candidate.image_review:
+    image_review = getattr(vetting.candidate, "image_review", None)
+    is_evidence_placeholder = bool(
+        image_review and vetting.candidate.shown_text.strip() == "待核验"
+    )
+    if (reason == "premature_conclusion" and image_review) or is_evidence_placeholder:
         return json.dumps({"kind": "image_review_recheck", "instruction":
             "核对原图题区、行位置与转写。仅对无法辨清或有缺口的局部补读；仍不能确认全覆盖时提交 partial，指出未核验位置。"},
             ensure_ascii=False)
@@ -829,6 +835,15 @@ def run_tutor_turn(
     生产与离线评测共用。``model_fallback`` 只按最终结果记录一次。"""
     from app.agent_specs.runtime import notify_node_started
 
+    turn_started = time.monotonic()
+    try:
+        turn_deadline_seconds = float(os.getenv("TUTOR_TURN_DEADLINE_SECONDS", "55"))
+    except ValueError:
+        turn_deadline_seconds = 55.0
+
+    def _within_deadline() -> bool:
+        return turn_deadline_seconds <= 0 or (time.monotonic() - turn_started) < turn_deadline_seconds
+
     if hasattr(tools, "begin_math"):
         tools.begin_math(envelope, instruction, list(judge_images or [
             *(url for row in window for url in row.get("image_urls", [])), *images,
@@ -966,8 +981,16 @@ def run_tutor_turn(
         with agent_step_span("node", "tutoring.attempt", **{"tutor.attempt.kind": kind}) as span:
             set_observation_payload(span, input={"instruction": instruction, "window": window, "permit": permit.as_context(), "attempt_kind": kind, "repair_error": repair_error})
             notify_node_started("tutoring.attempt" if kind == "primary" else "tutoring.revise")
+            attempt_envelope = dict(envelope) if isinstance(envelope, dict) else envelope
+            if isinstance(attempt_envelope, dict):
+                if preload_svg_guidelines:
+                    attempt_envelope["_preload_svg_guidelines"] = True
+                if kind == "repair" and not attempt_envelope.get("_disable_thinking"):
+                    attempt_envelope["_thinking_budget"] = min(
+                        int(attempt_envelope.get("_thinking_budget") or 512), 512,
+                    )
             proposal = call_tutor_model(
-                current_model, envelope, instruction, window, images, tools,
+                current_model, attempt_envelope, instruction, window, images, tools,
                 repair_error=repair_error, preload_svg_guidelines=preload_svg_guidelines,
             )
             if proposal.candidate is not None:
@@ -1008,6 +1031,9 @@ def run_tutor_turn(
                         evidence_result = _check_text_leak(leak_judge, '', task_title,
                                                           json.dumps(summary, ensure_ascii=False), list(judge_images or []), phase='evidence')
                         rejected, reason = _text_leak_result(evidence_result)
+                        if rejected is True and reason in {"choice_verdict", "final_answer", "complete_solution"}:
+                            # Defensive guard: empty reply in evidence_only cannot leak reply text.
+                            rejected, reason = False, None
                     except Exception:  # noqa: BLE001 - unverified evidence never becomes a reply
                         rejected, reason = None, None
                     if rejected is not False:
@@ -1149,6 +1175,7 @@ def run_tutor_turn(
             # Backup model fallback only when the exact same leak reason repeats on primary repair
             if (
                 backup_model is not None
+                and _within_deadline()
                 and checked.leak_reason != "math_inconsistent"
                 and checked.failure == state["original_failure"] == "leak_detected"
                 and checked.leak_reason == state["original_reason"]
@@ -1224,7 +1251,7 @@ def run_tutor_turn(
 
     def same_leak(state):
         review = state["vetting"]
-        return (backup_model is not None and review.leak_reason != "math_inconsistent" and review.failure == state["original_failure"] == "leak_detected"
+        return (backup_model is not None and _within_deadline() and review.leak_reason != "math_inconsistent" and review.failure == state["original_failure"] == "leak_detected"
                 and review.leak_reason == state["original_reason"])
 
     def needs_redraw(state):

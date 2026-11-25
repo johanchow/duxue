@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from dataclasses import replace
 
 from app.agent_specs.catalog import load_catalog
 from app.agent_specs.contexts import build_context
@@ -12,6 +13,14 @@ from app.infrastructure.ai import components
 from app.infrastructure.ai.errors import ModelGatewayError
 
 _LABELS = {"planning", "tutoring", "reflection", "unclear"}
+_VISION_INTENT_PREFIXES = ("qwen3.", "qwen-vl", "qwen2.5-vl", "deepseek-v4")
+
+
+def _supports_vision_model(model_name: str | None) -> bool:
+    name = (model_name or "").strip().lower()
+    return bool(name) and (
+        "vl" in name or any(name.startswith(prefix) for prefix in _VISION_INTENT_PREFIXES)
+    )
 def parse_intent_payload(raw: str) -> IntentProposal:
     text = (raw or "").strip()
     if text.startswith("```"):
@@ -42,8 +51,15 @@ def complete_intent(
         "companion.intent", content=content, focus_agent_type=focus_agent_type,
         recent_utterances=recent_utterances, current_images=current_images,
     )
+    resolved_spec = spec or load_catalog().component("companion", "intent_route")
+    if (
+        current_images
+        and not getattr(resolved_spec, "accepts_images", False)
+        and _supports_vision_model(getattr(resolved_spec, "model", None))
+    ):
+        resolved_spec = replace(resolved_spec, accepts_images=True)
     payload = components.invoke_agent_component(
-        spec=spec or load_catalog().component("companion", "intent_route"), user=user, settings_obj=settings_obj,
+        spec=resolved_spec, user=user, settings_obj=settings_obj,
     ).unwrap()
     return json.dumps(payload, ensure_ascii=False)
 
