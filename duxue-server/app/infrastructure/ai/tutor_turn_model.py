@@ -17,13 +17,46 @@ from app.infrastructure.ai.errors import ModelGatewayError
 from app.infrastructure.ai.prompts import PromptTemplate, compose_system_prompt
 
 
-def _strip_image_review_section(prompt_text: str) -> str:
-    """Omit the `[image-review.v1]` protocol block on pure-text turns with zero images."""
-    if "[image-review.v1]" not in prompt_text:
+def _strip_prompt_section(prompt_text: str, marker: str) -> str:
+    """Omit a tagged top-level block separated by blank lines when not applicable."""
+    if marker not in prompt_text:
         return prompt_text
     blocks = prompt_text.split("\n\n")
-    kept = [block for block in blocks if not block.lstrip().startswith("[image-review.v1]")]
+    kept = [block for block in blocks if not block.lstrip().startswith(marker)]
     return "\n\n".join(kept)
+
+
+def _strip_image_review_section(prompt_text: str) -> str:
+    """Omit the `[image-review.v1]` protocol block on pure-text turns with zero images."""
+    return _strip_prompt_section(prompt_text, "[image-review.v1]")
+
+
+def _tutor_turn_fragment_names(
+    envelope: dict | None,
+    *,
+    has_images: bool,
+    observations: list[dict] | None = None,
+) -> tuple[str, ...]:
+    """Select optional scenario fragments for `tutoring.turn` in deterministic tail order."""
+    env = envelope if isinstance(envelope, dict) else {}
+    actor = env.get("actor") if isinstance(env.get("actor"), dict) else {}
+    grade_stage = actor.get("grade_stage")
+    names: list[str] = []
+    if (
+        grade_stage in {"high", "senior"}
+        or env.get("problem_dossier")
+        or env.get("internal_blueprint")
+    ):
+        names.append("gaokao_blueprint")
+    has_svg_guidelines = bool(
+        env.get("_preload_svg_guidelines")
+        or any(isinstance(obs, dict) and obs.get("tool") == "widget_guidelines" for obs in (observations or []))
+    )
+    if has_svg_guidelines:
+        names.append("visual_delivery_detail")
+    if has_images and env.get("image_review_phase") != "response":
+        names.append("image_review")
+    return tuple(names)
 
 
 def _leak_judge_fragment_names(
@@ -82,15 +115,38 @@ class QwenTutorTurnGateway:
                              observations=observations, repair_error=repair_error,
                              recent_utterances=recent_utterances, current_images=current_images)
         spec = self._spec or components.COMPONENTS.get(self._component_id)
-        if isinstance(envelope, dict) and envelope.get("_disable_thinking") and getattr(spec, "enable_thinking", False):
-            spec = replace(spec, enable_thinking=False, thinking_budget=None)
+        if isinstance(envelope, dict) and getattr(spec, "enable_thinking", False):
+            if envelope.get("_disable_thinking"):
+                spec = replace(spec, enable_thinking=False, thinking_budget=None)
+            elif isinstance(envelope.get("_thinking_budget"), int) and envelope["_thinking_budget"] > 0:
+                requested_budget = envelope["_thinking_budget"]
+                effective_budget = (
+                    min(spec.thinking_budget, requested_budget)
+                    if isinstance(spec.thinking_budget, int) and spec.thinking_budget > 0
+                    else requested_budget
+                )
+                spec = replace(spec, thinking_budget=effective_budget)
         has_images = bool(current_images or any(row.get("image_urls") for row in (recent_utterances or [])))
-        if has_images:
-            spec = _with_system_fragments(spec, "tutoring.turn", ("image_review",))
-        elif isinstance(getattr(spec, "prompt", None), PromptTemplate):
-            stripped = _strip_image_review_section(spec.prompt.text)
-            if stripped != spec.prompt.text:
-                spec = replace(spec, prompt=PromptTemplate(spec.prompt.id, stripped))
+        env = envelope if isinstance(envelope, dict) else {}
+        actor = env.get("actor") if isinstance(env.get("actor"), dict) else {}
+        grade_stage = actor.get("grade_stage")
+        if isinstance(getattr(spec, "prompt", None), PromptTemplate):
+            prompt_text = spec.prompt.text
+            if not has_images or env.get("image_review_phase") == "response":
+                prompt_text = _strip_image_review_section(prompt_text)
+            if (
+                grade_stage == "primary"
+                and not env.get("problem_dossier")
+                and not env.get("internal_blueprint")
+            ):
+                prompt_text = _strip_prompt_section(prompt_text, "[gaokao-blueprint-science.v1]")
+            if prompt_text != spec.prompt.text:
+                spec = replace(spec, prompt=PromptTemplate(spec.prompt.id, prompt_text))
+        fragment_names = _tutor_turn_fragment_names(
+            env, has_images=has_images, observations=observations,
+        )
+        if fragment_names:
+            spec = _with_system_fragments(spec, "tutoring.turn", fragment_names)
         return components.invoke_agent_component(
             spec=spec, user=user,
             settings_obj=self._settings,
@@ -120,9 +176,17 @@ class QwenLeakJudge:
         fragment_names = _leak_judge_fragment_names(
             images=images, problem_summary=problem_summary,
         )
+        phase = "response"
+        if not (text or "").strip() and isinstance(problem_summary, str):
+            try:
+                parsed_summary = json.loads(problem_summary)
+                if isinstance(parsed_summary, dict) and parsed_summary.get("image_review_phase") == "evidence_only":
+                    phase = "evidence"
+            except ValueError:
+                pass
         return self._judge(
             "tutoring.leak-judge", user, with_reason=True,
-            system_fragments=fragment_names,
+            system_fragments=fragment_names, phase=phase,
         )
 
     def check_math(self, *, text: str, context: dict, images: list[str]) -> bool | None:
@@ -168,7 +232,7 @@ class QwenLeakJudge:
     def _judge(
         self, component_id: str, user: str | list[dict], *,
         with_reason: bool = False, photo_review: bool = False,
-        system_fragments: tuple[str, ...] = (),
+        system_fragments: tuple[str, ...] = (), phase: str = "response",
     ) -> bool | dict | None:
         catalog = load_catalog()
         spec = _with_system_fragments(
@@ -190,7 +254,7 @@ class QwenLeakJudge:
                 return None
             if any(review.get(key) is not True for key in PHOTO_CHECKS):
                 return True
-        verdict = normalize_judge(component_id, payload)
+        verdict = normalize_judge(component_id, payload, phase=phase)
         if verdict.verdict == "unknown":
             return None
         value = verdict.verdict == "deny"

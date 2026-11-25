@@ -7,11 +7,26 @@ from __future__ import annotations
 
 import json
 
-from app.infrastructure.ai.utterance_window import image_parts, user_content
+from app.infrastructure.ai.utterance_window import image_parts, user_content, window_text
 
 
 def intent(*, content, focus_agent_type, recent_utterances=None, current_images=None):
-    return user_content({"content": content, "focus_agent_type": focus_agent_type}, recent_utterances, current_images)
+    """Build lightweight intent context: text-only history + current-turn images only.
+
+    History utterances keep their ``image_ids`` markers so the router can still decide
+    ``history_image_ref``, without attaching historical image bytes on every turn.
+    """
+    window = list(recent_utterances or [])
+    images = list(current_images or [])
+    rows, current_ids = window_text(window, len(images))
+    body: dict = {
+        "content": content,
+        "focus_agent_type": focus_agent_type,
+        "recent_utterances": rows,
+    }
+    if current_ids:
+        body["current_image_ids"] = current_ids
+    return [{"type": "text", "text": json.dumps(body, ensure_ascii=False)}, *image_parts([], images)]
 
 
 def scene_switch(*, content, current_agent_type, proposed_agent_type, recent_utterances, current_images):
@@ -24,6 +39,8 @@ def tutor_turn(*, envelope, instruction, recent_utterances=None, current_images=
     clean_envelope = dict(envelope)
     clean_envelope.pop("_dossier_gate", None)
     clean_envelope.pop("_disable_thinking", None)
+    clean_envelope.pop("_thinking_budget", None)
+    clean_envelope.pop("_preload_svg_guidelines", None)
     clean_envelope.pop("_enforce_confidence_gate", None)
     inspected_crops = clean_envelope.pop("inspected_crops", None) or []
     payload = {"contract": "tutor-turn.v4", "instruction": instruction, "context": clean_envelope}

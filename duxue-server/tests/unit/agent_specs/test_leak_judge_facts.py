@@ -63,3 +63,24 @@ def test_non_protected_practice_still_rejects_unverified_affirmation():
     ))
     assert result.verdict == 'deny'
     assert result.reason_code == 'incorrect_confirmation'
+
+
+def test_evidence_phase_ignores_reply_leak_flags_and_enforces_premature_conclusion():
+    # In evidence_only phase, reply is empty (""): spurious choice_verdict / new_final_answer
+    # from the judge must not reject the evidence report.
+    allowed = normalize_judge(
+        'tutoring.leak-judge',
+        facts(choice_verdict=True, new_final_answer=True, complete_solution=True, premature_conclusion=False),
+        phase='evidence',
+    )
+    assert allowed.verdict == 'allow'
+    assert allowed.reason_code == 'none'
+
+    # Factual report defects (premature_conclusion=True) still reject in evidence phase.
+    denied = normalize_judge(
+        'tutoring.leak-judge',
+        facts(premature_conclusion=True),
+        phase='evidence',
+    )
+    assert denied.verdict == 'deny'
+    assert denied.reason_code == 'premature_conclusion'

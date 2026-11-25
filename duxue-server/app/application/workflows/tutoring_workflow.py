@@ -732,6 +732,13 @@ class _TutoringTurn:
             and self.active_dossier is None
         ):
             model_envelope["_disable_thinking"] = True
+        elif (
+            not model_envelope.get("_disable_thinking")
+            and self.active_dossier is None
+            and isinstance(model_envelope.get("actor"), dict)
+            and model_envelope["actor"].get("grade_stage") == "primary"
+        ):
+            model_envelope["_thinking_budget"] = 1024
         if self.problem_row is not None and (not self.problem_row.dossier_id or self.active_dossier is not None):
             if self.problem_row.internal_blueprint and "problem_dossier" not in model_envelope:
                 model_envelope["internal_blueprint"] = self.problem_row.internal_blueprint
@@ -745,10 +752,15 @@ class _TutoringTurn:
             and self.active_dossier.final_answers
             else None
         )
+        judge_utterances = (
+            []
+            if self.images and self.turn.get("history_image_ref") == "none"
+            else self.window
+        )
         result = self.owner._run_model(
             model_envelope, instruction, self.window, self.images, tools, permit=self.permit, task_title=self.task_title,
             problem_summary=judge_problem_summary(
-                self.owner._recent_problem_summaries(self.tutor), self.content, recent_utterances=self.window,
+                self.owner._recent_problem_summaries(self.tutor), self.content, recent_utterances=judge_utterances,
                 verified_final_answers=high_conf_finals,
             ),
             judge_images=self.all_authorized_images,

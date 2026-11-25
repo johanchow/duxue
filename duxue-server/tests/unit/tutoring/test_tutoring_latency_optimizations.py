@@ -456,3 +456,145 @@ def test_pure_text_tutor_turn_drops_spurious_image_review_while_image_turn_valid
             recent_utterances=[],
             current_images=["data:image/jpeg;base64,AAAA"],
         )
+
+
+def test_intent_context_sends_only_current_images_and_keeps_history_image_ids():
+    import json
+    from app.agent_specs.contexts import intent as build_intent_context
+
+    parts = build_intent_context(
+        content="这一面的多选题为什么错了？",
+        focus_agent_type="tutoring",
+        recent_utterances=[
+            {"author": "ward", "text": "穷奇呢？", "image_urls": ["data:image/jpeg;base64,OLD1"]},
+            {"author": "ward", "text": "九尾狐吗？", "image_urls": ["data:image/jpeg;base64,OLD2"]},
+        ],
+        current_images=["data:image/jpeg;base64,NEW1"],
+    )
+    image_parts_sent = [p for p in parts if p.get("type") == "image_url"]
+    assert len(image_parts_sent) == 1
+    assert image_parts_sent[0]["image_url"]["url"] == "data:image/jpeg;base64,NEW1"
+
+    body = json.loads(parts[0]["text"])
+    assert body["recent_utterances"][0]["image_ids"] == [1]
+    assert body["recent_utterances"][1]["image_ids"] == [2]
+    assert body["current_image_ids"] == [3]
+
+
+def test_tutor_turn_gateway_strips_gaokao_for_primary_and_applies_thinking_budget(monkeypatch):
+    prompt = (
+        "[visual-delivery.v1]\n视觉规则"
+        "\n\n[gaokao-blueprint-science.v1]\n高考理科蓝图规则"
+        "\n\n[image-review.v1]\n图片批改规则"
+        "\n\n你是读学的陪学老师。"
+    )
+    base_spec = ComponentSpec(
+        component_id="tutoring.turn",
+        version="v1",
+        operation="tutor_turn",
+        agent_label="tutoring",
+        risk_tier="protected",
+        model="deepseek-v4.1-flash-1017",
+        prompt=PromptTemplate("tutoring.turn.system.test", prompt),
+        input_contract="tutor-turn.v4",
+        output_contract="tutor-turn-candidate.v4",
+        max_tokens=1200,
+        temperature=0.2,
+        enable_thinking=True,
+        thinking_budget=2048,
+    )
+    captured: list[ComponentSpec] = []
+
+    def fake_invoke(*, spec, user, settings_obj=None):
+        captured.append(spec)
+        return SimpleNamespace(
+            unwrap=lambda: {
+                "act": "guide",
+                "content": "我们一起看课文第一段。",
+                "turn": {"type": "work", "relation": "new"},
+            }
+        )
+
+    monkeypatch.setattr("app.infrastructure.ai.components.invoke_agent_component", fake_invoke)
+    gw = QwenTutorTurnGateway(spec=base_spec)
+
+    # Primary student without dossier: strips [gaokao-blueprint-science.v1] and applies _thinking_budget
+    gw.complete(
+        envelope={"actor": {"grade_stage": "primary"}, "_thinking_budget": 1024},
+        instruction="多选题为什么错了？",
+        recent_utterances=[],
+        current_images=["data:image/jpeg;base64,AAAA"],
+    )
+    assert len(captured) == 1
+    assert captured[0].enable_thinking is True
+    assert captured[0].thinking_budget == 1024
+    assert "[gaokao-blueprint-science.v1]" not in captured[0].prompt.text
+    assert "[image-review.v1]" in captured[0].prompt.text
+
+    # High-school student keeps [gaokao-blueprint-science.v1] and full thinking_budget
+    gw.complete(
+        envelope={"actor": {"grade_stage": "high"}},
+        instruction="求导数",
+        recent_utterances=[],
+        current_images=["data:image/jpeg;base64,BBBB"],
+    )
+    assert len(captured) == 2
+    assert captured[1].thinking_budget == 2048
+    assert "[gaokao-blueprint-science.v1]" in captured[1].prompt.text
+
+
+def test_leak_repair_never_echoes_placeholder_draft():
+    import json
+    from app.application.workflows.image_review import ImageReview
+    from app.application.workflows.tutor_loop import Vetting, _leak_repair
+    from app.application.workflows.tutor_turn import TutorTurnCandidate
+
+    candidate = TutorTurnCandidate.model_validate({
+        "act": "guide",
+        "content": "待核验",
+        "turn": {"type": "work", "relation": "new", "student_move": "request_hint", "depth": "reasoning"},
+        "image_review": ImageReview(conclusion="uncertain", scope="specified", coverage="partial", questions=[]),
+    })
+    vetting = Vetting(candidate, None, "leak_detected", "choice_verdict")
+    feedback = _leak_repair(vetting)
+    parsed = json.loads(feedback)
+    assert parsed["kind"] == "image_review_recheck"
+    assert "待核验" not in feedback
+
+
+def test_complete_intent_enables_vision_for_multimodal_model_with_current_images(monkeypatch):
+    from app.infrastructure.ai.intent_classifier import complete_intent
+
+    captured_specs: list[ComponentSpec] = []
+
+    def fake_invoke(*, spec, user, settings_obj=None):
+        captured_specs.append(spec)
+        return SimpleNamespace(unwrap=lambda: {"intent": "tutoring", "history_image_ref": "none", "thinking": "off"})
+
+    monkeypatch.setattr("app.infrastructure.ai.components.invoke_agent_component", fake_invoke)
+
+    vision_spec = ComponentSpec(
+        component_id="companion.intent", version="v1", operation="intent_proposal",
+        agent_label="planning", risk_tier="standard", model="qwen3.8-flash",
+        prompt=PromptTemplate("companion.intent.test", "router"),
+        input_contract="intent-input.v1", output_contract="intent-proposal.v1",
+        max_tokens=90, temperature=0.0, accepts_images=False,
+    )
+    complete_intent(
+        content="多选题为什么错了？", focus_agent_type="tutoring",
+        recent_utterances=[], current_images=["data:image/jpeg;base64,NEW1"], spec=vision_spec,
+    )
+    assert captured_specs[-1].accepts_images is True
+
+    text_only_spec = ComponentSpec(
+        component_id="companion.intent", version="v1", operation="intent_proposal",
+        agent_label="planning", risk_tier="standard", model="qwen-flash",
+        prompt=PromptTemplate("companion.intent.test", "router"),
+        input_contract="intent-input.v1", output_contract="intent-proposal.v1",
+        max_tokens=90, temperature=0.0, accepts_images=False,
+    )
+    complete_intent(
+        content="多选题为什么错了？", focus_agent_type="tutoring",
+        recent_utterances=[], current_images=["data:image/jpeg;base64,NEW1"], spec=text_only_spec,
+    )
+    assert captured_specs[-1].accepts_images is False

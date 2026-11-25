@@ -12,7 +12,7 @@ class GateVerdict(BaseModel):
     reason_code: str
 
 
-def normalize_judge(unit_id: str, payload: dict | None) -> GateVerdict:
+def normalize_judge(unit_id: str, payload: dict | None, *, phase: str = "response") -> GateVerdict:
     if payload is None:
         return GateVerdict(verdict="unknown", reason_code="judge_unavailable")
     if unit_id == "companion.scene-switch":
@@ -28,6 +28,11 @@ def normalize_judge(unit_id: str, payload: dict | None) -> GateVerdict:
         schema = load_definitions().units[unit_id].provider_output_schema
         if not Draft202012Validator(schema).is_valid(payload):
             return GateVerdict(verdict="unknown", reason_code="invalid_judge_output")
+        if phase == "evidence":
+            # In evidence_only phase, reply is empty (""): only image-review factual
+            # reliability (premature_conclusion) applies; reply-level leak flags are ignored.
+            reason = "premature_conclusion" if payload["premature_conclusion"] else "none"
+            return GateVerdict(verdict="allow" if reason == "none" else "deny", reason_code=reason)
         if not payload["answer_protected"] and any(payload[key] for key in (
             "new_final_answer", "complete_solution",
             "choice_verdict", "premature_conclusion",
