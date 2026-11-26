@@ -2,7 +2,7 @@
 
 > 状态：讨论稿 · 版本：v3.3（目标设计；契约升为 `tutor-turn.v4`，由 v3.0 的 `domain-study.md` 拆出，实现迁移进度与兼容边界见 [§1.2](#12-现状与迁移边界)）
 >
-> 范围：启发式答疑、发音辅导、任务进行中的题外提问回任务提醒、过程事实、一次 Ward 输入内的 `TutoringTurnLoop`，以及待实现的异步视频回答（见 [视频回答专题](tutoring-video-answer.md)）。
+> 范围：启发式答疑、发音辅导、任务进行中的题外提问回任务提醒、过程事实、一次 Ward 输入内的 `TutoringTurnLoop`，以及待实现的异步视频回答（见 [视频回答专题](tutoring-video-answer.md)）与导师视角深度课件（见 [导师深度课件专题](topic-mentor-courseware.md)）。
 >
 > 关联：[系统 Context Map](ddd-overview.md) · [Study 学习执行](domain-study.md) · [Companion 编排](domain-companion.md) · [Memory Context](domain-memory.md) · [Planning](domain-planning.md) · [Server 物理设计](design-server.md) · [陪伴 PRD](../product/prd-companion.md)
 
