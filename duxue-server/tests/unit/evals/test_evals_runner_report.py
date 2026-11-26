@@ -318,3 +318,16 @@ def test_pending_dossier_replay_preserves_confirmation_gate():
     tutor = StaticTutorModel(GOOD)
     run_sample(case, Backends(tutor_model=tutor, leak_judge=StaticLeakJudge()), [], [])
     assert tutor.calls[0]["envelope"]["_dossier_gate"]["allows_verdict_assertion"] is False
+
+
+@pytest.mark.parametrize("stage", ["primary", "middle", "high"])
+def test_replay_preserves_recorded_effort_and_grade_stage(stage):
+    from evals.runner import run_sample
+
+    case = _case(context={'dossier_status': 'pending', 'thinking_effort': 'medium', 'grade_stage': stage})
+    tutor = StaticTutorModel(GOOD)
+    run_sample(case, Backends(tutor_model=tutor, leak_judge=StaticLeakJudge()), [], [])
+    envelope = tutor.calls[0]['envelope']
+    assert envelope['_thinking_effort'] == 'medium'
+    assert envelope['actor']['grade_stage'] == stage
+    assert envelope['_dossier_gate']['allows_verdict_assertion'] is False

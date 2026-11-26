@@ -19,10 +19,10 @@ from app.agent_specs.static_tools import static_tool_result
 from app.agent_specs.subworkflows import (
     MATH_NODE,
     RETRY_NODE,
-    review_workflow_id,
     VET_NODE,
     has_parallel_vet,
     math_review_step,
+    review_workflow_id,
 )
 from app.application.workflows.tutor_shape import lint_shape
 from app.application.workflows.tutor_tools import (
@@ -142,19 +142,18 @@ def _verdict_assertion_allowed(
             for claim in math_claims
         )
     )
+    checked_worksheet = bool(
+        image_review
+        and image_review._visual_review_passed
+        and image_review.conclusion != "not_checking"
+        and any(q.verdict in {"correct", "incorrect"} for q in image_review.questions)
+    )
     dossier_gate_meta = envelope.get("_dossier_gate") if isinstance(envelope, dict) else None
     if isinstance(dossier_gate_meta, dict):
         dossier_allows = bool(dossier_gate_meta.get("allows_verdict_assertion", False))
-        checked_worksheet = bool(
-            image_review
-            and image_review._visual_review_passed
-            and image_review.conclusion == "all_correct"
-            and image_review.coverage == "complete"
-            and any(q._calculation_status == "equal" for q in image_review.questions)
-        )
         return dossier_allows or has_direct_final_verdict or checked_worksheet
     if isinstance(envelope, dict) and envelope.get("_enforce_confidence_gate"):
-        return has_direct_final_verdict
+        return has_direct_final_verdict or checked_worksheet
     return True
 
 
@@ -166,6 +165,15 @@ def _response_image_review_observation(envelope: dict | None, review_evidence, l
         return {
             "kind": "verified_image_review",
             "verdict_assertion_allowed": True,
+            "verified_question_refs": [
+                {"image_ref": q.image_ref, "location": q.location}
+                for q in review_evidence.questions
+                if review_evidence._visual_review_passed and q.verdict in {"correct", "incorrect"}
+            ],
+            "response_constraint": (
+                "仅按报告逐题反馈已核验的结论；uncertain/unreadable及未覆盖题不得确认对错。"
+                "部分核验应保留已核验反馈并具体请求补图，不得概括全对；不得新增报告之外的结论。"
+            ),
             "image_review": payload,
         }
     for row, question in zip(payload.get("questions") or [], review_evidence.questions, strict=True):
@@ -738,9 +746,9 @@ def vet_candidate(
                 visual_feedback = result["visual_evidence"][:500]
             if result.get("visual_adequate") is False and visual_need in {"requested", "helpful"}:
                 visual_not_helpful = True
-        # Code-enforced confidence gate (§4.4): when neither a ready verified dossier nor
-        # direct deterministic engine verification exists on this turn, affirming the student's
-        # reasoning answer by pure LLM mental math is strictly denied!
+        # Code-enforced confidence gate (§4.4): an approved image report grants only
+        # its reviewed item verdicts; otherwise require dossier/tool verification.
+        # The independent Judge still checks every visible affirmation against that scope.
         if (
             text_leaks is False
             and not verdict_assertion_allowed

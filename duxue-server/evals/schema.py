@@ -48,12 +48,17 @@ class Context(Strict):
     tutoring_intent: str | None = None
     focus_agent_type: str | None = None
     dossier_status: Literal["pending"] | None = None
+    grade_stage: Literal["primary", "middle", "high"] | None = None
+    thinking_effort: Literal["off", "low", "medium", "high"] | None = None
 
     @model_serializer(mode="wrap")
     def serialize_context(self, handler):
         data = handler(self)
         if self.dossier_status is None:
             data.pop("dossier_status", None)  # Preserve hashes of previously recorded contexts.
+        for name in ("grade_stage", "thinking_effort"):
+            if getattr(self, name) is None:
+                data.pop(name, None)
         return data
 
 

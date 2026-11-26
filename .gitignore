@@ -29,6 +29,12 @@ www.duxuelai.xyz_nginx
 .metadata
 .cursor/mcp.json
 .codex/config.toml
+/.agents/
+
+# Local worksheet photos used for debugging; keep private originals outside Git.
+/image.png
+/image-2.png
+/image-3.png
 
 # Offline gateway provisioning outputs contain credentials.
 **/gateway.env

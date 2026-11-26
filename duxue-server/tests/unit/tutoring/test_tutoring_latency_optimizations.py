@@ -737,7 +737,7 @@ def test_response_image_review_observation_sanitizes_when_verdict_assertion_disa
             ),
         ],
     )
-    evidence._visual_review_passed = True
+    evidence._visual_review_passed = False
 
     obs = _response_image_review_observation(
         {"_dossier_gate": {"dossier_id": None, "status": "absent", "confidence": "low", "allows_verdict_assertion": False}},
