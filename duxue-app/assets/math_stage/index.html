@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline'; connect-src 'none'; img-src 'self' data:; object-src 'none'; form-action 'none';" />
+<title>Duxue MathStage Runtime (P0-1)</title>
+<style>
+  :root {
+    --bg: #0c1222;
+    --panel: #111827;
+    --text: #f8fafc;
+    --muted: #94a3b8;
+    --base: #38bdf8;
+    --auxiliary: #34d399;
+    --focus: #fbbf24;
+    --result: #fb7185;
+    --grid: rgba(148, 163, 184, 0.16);
+  }
+  body.light {
+    --bg: #f8fafc;
+    --panel: #ffffff;
+    --text: #0f172a;
+    --muted: #64748b;
+    --base: #0284c7;
+    --auxiliary: #059669;
+    --focus: #d97706;
+    --result: #e11d48;
+    --grid: rgba(15, 23, 42, 0.10);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; }
+  #root { width: 100%; height: 100%; display: flex; flex-direction: column; }
+  #canvasWrap { flex: 1; position: relative; min-height: 220px; }
+  canvas { width: 100%; height: 100%; display: block; touch-action: none; }
+  #hud {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 8px 12px; background: var(--panel); border-top: 1px solid var(--grid); font-size: 12px;
+  }
+  .btn {
+    border: 1px solid var(--grid); background: transparent; color: var(--text);
+    padding: 4px 10px; border-radius: 8px; font-size: 12px; cursor: pointer;
+  }
+  #sliderWrap { display: none; align-items: center; gap: 6px; }
+  input[type=range] { width: 110px; accent-color: var(--auxiliary); }
+</style>
+</head>
+<body>
+<div id="root">
+  <div id="canvasWrap"><canvas id="cv"></canvas></div>
+  <div id="hud">
+    <span id="hint" style="color:var(--muted);">预置数理舞台已就绪</span>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <label id="sliderWrap"><span>展开</span><input id="paramSlider" type="range" min="0" max="1" step="0.01" value="0" /></label>
+      <button class="btn" id="resetBtn">重置视角</button>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  "use strict";
+  const PROTOCOL_VERSION = "1.0";
+  const cv = document.getElementById("cv");
+  const ctx = cv.getContext("2d");
+  const hintEl = document.getElementById("hint");
+  const sliderWrap = document.getElementById("sliderWrap");
+  const paramSlider = document.getElementById("paramSlider");
+
+  let state = {
+    coursewareId: "",
+    versionNo: 0,
+    stageInstanceId: "stage-1",
+    stepId: "",
+    spec: null,
+    rotX: 0.45,
+    rotY: -0.65,
+    paramT: 0,
+    dragX: null,
+    dragY: null,
+    movingPointX: 2.33
+  };
+
+  function postToHost(type, payload) {
+    const msg = JSON.stringify({
+      protocol_version: PROTOCOL_VERSION,
+      courseware_id: state.coursewareId,
+      version_no: state.versionNo,
+      stage_instance_id: state.stageInstanceId,
+      type: type,
+      payload: payload || {}
+    });
+    if (window.DuxueBridge && typeof window.DuxueBridge.postMessage === "function") {
+      window.DuxueBridge.postMessage(msg);
+    } else if (window.parent && window.parent !== window) {
+      window.parent.postMessage(msg, "*");
+    }
+  }
+
+  function colors() {
+    const cs = getComputedStyle(document.body);
+    return {
+      bg: cs.getPropertyValue("--bg").trim(),
+      text: cs.getPropertyValue("--text").trim(),
+      muted: cs.getPropertyValue("--muted").trim(),
+      base: cs.getPropertyValue("--base").trim(),
+      auxiliary: cs.getPropertyValue("--auxiliary").trim(),
+      focus: cs.getPropertyValue("--focus").trim(),
+      result: cs.getPropertyValue("--result").trim(),
+      grid: cs.getPropertyValue("--grid").trim()
+    };
+  }
+
+  function resize() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const rect = cv.parentElement.getBoundingClientRect();
+    cv.width = Math.max(1, Math.floor(rect.width * dpr));
+    cv.height = Math.max(1, Math.floor(rect.height * dpr));
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    render();
+  }
+
+  function drawCoordPlane2D(payload, W, H, C) {
+    const ox = W * 0.18, oy = H * 0.65, scale = Math.min(W, H) / 9;
+    const tx = x => ox + x * scale;
+    const ty = y => oy - y * scale;
+
+    ctx.strokeStyle = C.grid; ctx.lineWidth = 1;
+    for (let x = -2; x <= 8; x++) {
+      ctx.beginPath(); ctx.moveTo(tx(x), 12); ctx.lineTo(tx(x), H - 12); ctx.stroke();
+    }
+    for (let y = -4; y <= 6; y++) {
+      ctx.beginPath(); ctx.moveTo(12, ty(y)); ctx.lineTo(W - 12, ty(y)); ctx.stroke();
+    }
+    ctx.strokeStyle = C.base; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(12, oy); ctx.lineTo(W - 12, oy); ctx.stroke();
+    ctx.strokeStyle = C.muted; ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.moveTo(ox, H - 12); ctx.lineTo(ox, 12); ctx.stroke();
+
+    const pts = Array.isArray(payload.points) ? payload.points : [{ id: "A", x: 1, y: 2 }, { id: "B", x: 5, y: 4 }];
+    const segs = Array.isArray(payload.segments) ? payload.segments : [];
+    for (const s of segs) {
+      const p1 = pts.find(p => p.id === s.from), p2 = pts.find(p => p.id === s.to);
+      if (!p1 || !p2) continue;
+      ctx.save();
+      ctx.strokeStyle = C[s.role] || C.auxiliary;
+      ctx.lineWidth = s.role === "result" ? 3 : 2.2;
+      if (s.dashed) ctx.setLineDash([5, 4]);
+      ctx.beginPath(); ctx.moveTo(tx(p1.x), ty(p1.y)); ctx.lineTo(tx(p2.x), ty(p2.y)); ctx.stroke();
+      ctx.restore();
+    }
+    // Optional interactive movable point on x-axis
+    if (payload.movable_x) {
+      const px = state.movingPointX;
+      ctx.strokeStyle = C.focus; ctx.lineWidth = 2.4;
+      for (const p of pts.slice(0, 2)) {
+        ctx.beginPath(); ctx.moveTo(tx(p.x), ty(p.y)); ctx.lineTo(tx(px), ty(0)); ctx.stroke();
+      }
+      ctx.fillStyle = C.result;
+      ctx.beginPath(); ctx.arc(tx(px), ty(0), 6, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = C.text; ctx.font = "bold 12px sans-serif";
+      ctx.fillText("P(" + px.toFixed(2) + ",0)", tx(px) - 24, ty(0) + 18);
+    }
+    for (const p of pts) {
+      ctx.fillStyle = C[p.role] || C.base;
+      ctx.beginPath(); ctx.arc(tx(p.x), ty(p.y), 5.5, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = C.text; ctx.font = "bold 12px sans-serif";
+      ctx.fillText(p.label || (p.id + "(" + p.x + "," + p.y + ")"), tx(p.x) + 8, ty(p.y) - 6);
+    }
+    hintEl.textContent = payload.movable_x ? "左右拖动 P 点观察路径变化" : "平面坐标系预置组件";
+    sliderWrap.style.display = "none";
+  }
+
+  function drawGeometry2D(payload, W, H, C) {
+    const cx = W / 2, cy = H / 2, s = Math.min(W, H) * 0.32;
+    const pts = Array.isArray(payload.points) && payload.points.length
+      ? payload.points
+      : [{ id: "A", x: -0.8, y: -0.5 }, { id: "B", x: 0.9, y: -0.5 }, { id: "C", x: 0.1, y: 0.8 }];
+    const px = x => cx + x * s, py = y => cy - y * s;
+    const edges = Array.isArray(payload.edges) && payload.edges.length
+      ? payload.edges
+      : [{ from: "A", to: "B" }, { from: "B", to: "C" }, { from: "C", to: "A" }];
+
+    for (const e of edges) {
+      const a = pts.find(p => p.id === e.from), b = pts.find(p => p.id === e.to);
+      if (!a || !b) continue;
+      ctx.save();
+      ctx.strokeStyle = C[e.role] || C.base;
+      ctx.lineWidth = e.role === "result" ? 3 : 2.2;
+      if (e.dashed) ctx.setLineDash([6, 4]);
+      ctx.beginPath(); ctx.moveTo(px(a.x), py(a.y)); ctx.lineTo(px(b.x), py(b.y)); ctx.stroke();
+      ctx.restore();
+    }
+    for (const p of pts) {
+      ctx.fillStyle = C[p.role] || C.base;
+      ctx.beginPath(); ctx.arc(px(p.x), py(p.y), 5.5, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = C.text; ctx.font = "bold 13px sans-serif";
+      ctx.fillText(p.label || p.id, px(p.x) + 8, py(p.y) - 6);
+    }
+    hintEl.textContent = "平面几何预置组件";
+    sliderWrap.style.display = "none";
+  }
+
+  function drawSolidGeometry3D(payload, W, H, C) {
+    // Pure lightweight 3D perspective engine: cube / pyramid + optional unfold + cross-section
+    const shape = payload.shape || "cube";
+    const unfold = state.paramT;
+    const cx = W / 2, cy = H / 2, scale = Math.min(W, H) * 0.28;
+    const cosY = Math.cos(state.rotY), sinY = Math.sin(state.rotY);
+    const cosX = Math.cos(state.rotX), sinX = Math.sin(state.rotX);
+
+    function proj(v) {
+      const x1 = v[0] * cosY - v[2] * sinY;
+      const z1 = v[0] * sinY + v[2] * cosY;
+      const y2 = v[1] * cosX - z1 * sinX;
+      const z2 = v[1] * sinX + z1 * cosX;
+      const d = 4.2 / (4.2 - z2);
+      return [cx + x1 * scale * d, cy - y2 * scale * d, z2];
+    }
+
+    let verts, edges, section = null;
+    if (shape === "pyramid") {
+      verts = [[-1, -0.7, -1], [1, -0.7, -1], [1, -0.7, 1], [-1, -0.7, 1], [0, 1.1, 0]];
+      edges = [[0,1],[1,2],[2,3],[3,0],[0,4],[1,4],[2,4],[3,4]];
+      section = [0, 2, 4];
+    } else {
+      // Cube with smooth right-face unfold around x=1 hinge when unfold > 0
+      const ang = unfold * (Math.PI / 2);
+      const ux = 1 + Math.sin(ang) * 2;
+      const uzBack = -1 + (1 - Math.cos(ang)) * 0;
+      const rightBack = [1 + 2 * Math.sin(ang), -1, -1 + 2 * (1 - Math.cos(ang))];
+      const rightTopBack = [1 + 2 * Math.sin(ang), 1, -1 + 2 * (1 - Math.cos(ang))];
+      verts = [
+        [-1,-1,-1],[1,-1,-1],[1,1,-1],[-1,1,-1],
+        [-1,-1,1],[1,-1,1],[1,1,1],[-1,1,1]
+      ];
+      if (unfold > 0.01) {
+        // Rotate front face around right-front edge (x=1,z=1) outward
+        const rot = (p) => {
+          const dx = p[0] - 1, dz = p[2] - 1;
+          return [1 + dx * Math.cos(ang) - dz * Math.sin(ang), p[1], 1 + dx * Math.sin(ang) + dz * Math.cos(ang)];
+        };
+        verts[4] = rot(verts[4]);
+        verts[7] = rot(verts[7]);
+      }
+      edges = [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
+      section = [0, 1, 6, 7];
+    }
+
+    const p2 = verts.map(proj);
+    // Optional translucent highlight section
+    if (payload.highlight_section !== false && section) {
+      ctx.fillStyle = "rgba(52, 211, 153, 0.18)";
+      ctx.beginPath();
+      section.forEach((idx, i) => {
+        if (i === 0) ctx.moveTo(p2[idx][0], p2[idx][1]);
+        else ctx.lineTo(p2[idx][0], p2[idx][1]);
+      });
+      ctx.closePath(); ctx.fill();
+    }
+
+    // Draw edges with depth-based dashed occlusion cue
+    for (const [i, j] of edges) {
+      const avgZ = (p2[i][2] + p2[j][2]) / 2;
+      ctx.save();
+      ctx.strokeStyle = avgZ < -0.35 ? C.muted : C.base;
+      ctx.lineWidth = avgZ < -0.35 ? 1.5 : 2.3;
+      if (avgZ < -0.35) ctx.setLineDash([5, 4]);
+      ctx.beginPath(); ctx.moveTo(p2[i][0], p2[i][1]); ctx.lineTo(p2[j][0], p2[j][1]); ctx.stroke();
+      ctx.restore();
+    }
+
+    // Shortest path diagonal highlight if requested
+    if (payload.show_diagonal !== false) {
+      const a = p2[0], b = p2[shape === "pyramid" ? 4 : 6];
+      ctx.strokeStyle = C.result; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+    }
+
+    const labels = ["A","B","C","D","A'","B'","C'","D'"];
+    p2.forEach((pt, idx) => {
+      ctx.fillStyle = C.base;
+      ctx.beginPath(); ctx.arc(pt[0], pt[1], 4, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = C.text; ctx.font = "bold 11px sans-serif";
+      ctx.fillText(labels[idx] || "", pt[0] + 6, pt[1] - 4);
+    });
+
+    hintEl.textContent = "单指拖转 3D 立体几何";
+    sliderWrap.style.display = shape === "cube" ? "flex" : "none";
+  }
+
+  function render() {
+    try {
+      const W = cv.clientWidth || 320, H = cv.clientHeight || 240;
+      const C = colors();
+      ctx.clearRect(0, 0, W, H);
+      ctx.fillStyle = C.bg;
+      ctx.fillRect(0, 0, W, H);
+      if (!state.spec || state.spec.kind !== "component_scene") return;
+      const p = state.spec.payload || {};
+      if (p.component === "coord_plane_2d") drawCoordPlane2D(p, W, H, C);
+      else if (p.component === "geometry_2d") drawGeometry2D(p, W, H, C);
+      else if (p.component === "solid_geometry_3d") drawSolidGeometry3D(p, W, H, C);
+      else throw new Error("unsupported_component:" + p.component);
+    } catch (err) {
+      postToHost("STAGE_ERROR", { step_id: state.stepId, message: String(err && err.message || err) });
+    }
+  }
+
+  function onPointerDown(e) {
+    const pt = e.touches ? e.touches[0] : e;
+    state.dragX = pt.clientX; state.dragY = pt.clientY;
+  }
+  function onPointerMove(e) {
+    if (state.dragX === null) return;
+    const pt = e.touches ? e.touches[0] : e;
+    const dx = pt.clientX - state.dragX, dy = pt.clientY - state.dragY;
+    state.dragX = pt.clientX; state.dragY = pt.clientY;
+    if (state.spec && state.spec.payload && state.spec.payload.component === "solid_geometry_3d") {
+      state.rotY += dx * 0.012;
+      state.rotX = Math.max(-1.2, Math.min(1.2, state.rotX + dy * 0.012));
+      render();
+    } else if (state.spec && state.spec.payload && state.spec.payload.movable_x) {
+      state.movingPointX = Math.max(0.1, Math.min(5.9, state.movingPointX + dx * 0.02));
+      render();
+    }
+  }
+  function onPointerUp() { state.dragX = null; state.dragY = null; }
+
+  cv.addEventListener("mousedown", onPointerDown);
+  window.addEventListener("mousemove", onPointerMove);
+  window.addEventListener("mouseup", onPointerUp);
+  cv.addEventListener("touchstart", onPointerDown, { passive: true });
+  window.addEventListener("touchmove", onPointerMove, { passive: true });
+  window.addEventListener("touchend", onPointerUp);
+
+  paramSlider.addEventListener("input", e => {
+    state.paramT = parseFloat(e.target.value) || 0;
+    render();
+  });
+  document.getElementById("resetBtn").addEventListener("click", () => {
+    state.rotX = 0.45; state.rotY = -0.65; state.paramT = 0; paramSlider.value = "0";
+    render();
+  });
+
+  window.duxueReceiveHostMessage = function (raw) {
+    try {
+      const msg = typeof raw === "string" ? JSON.parse(raw) : raw;
+      if (msg.type === "LOAD_VERSION" || msg.type === "SEEK_STEP") {
+        if (msg.courseware_id) state.coursewareId = msg.courseware_id;
+        if (msg.version_no) state.versionNo = msg.version_no;
+        if (msg.stage_instance_id) state.stageInstanceId = msg.stage_instance_id;
+        const pl = msg.payload || {};
+        if (pl.theme === "light") document.body.classList.add("light");
+        else if (pl.theme === "dark") document.body.classList.remove("light");
+        state.stepId = pl.step_id || state.stepId;
+        state.spec = pl.visual_spec || null;
+        render();
+        postToHost("STAGE_READY", { step_id: state.stepId });
+      }
+    } catch (err) {
+      postToHost("STAGE_ERROR", { step_id: state.stepId, message: String(err && err.message || err) });
+    }
+  };
+
+  window.onerror = function (message) {
+    postToHost("STAGE_ERROR", { step_id: state.stepId, message: String(message) });
+    return true;
+  };
+  setInterval(() => postToHost("HEARTBEAT", { ts: Date.now() }), 5000);
+  window.addEventListener("resize", resize);
+  resize();
+})();
+</script>
+</body>
+</html>

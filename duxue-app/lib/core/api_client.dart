@@ -733,5 +733,82 @@ class ApiClient {
           String wardId, DateTime day) async =>
       Map<String, dynamic>.from(
           (await dio.get('/wards/$wardId/guardian-story/${_day(day)}')).data);
+
+  Future<Map<String, dynamic>> createMentorCourseware({
+    required String commandId,
+    required String promptText,
+    List<String> attachmentKeys = const [],
+    String? targetGradeHint,
+  }) async =>
+      Map<String, dynamic>.from(
+        (await dio.post('/guardian/courseware', data: {
+          'command_id': commandId,
+          'prompt_text': promptText,
+          'attachment_keys': attachmentKeys,
+          if (targetGradeHint != null) 'target_grade_hint': targetGradeHint,
+          'media_profile': 'interactive',
+        }))
+            .data as Map,
+      );
+
+  Future<Map<String, dynamic>> getMentorCourseware(String coursewareId) async =>
+      Map<String, dynamic>.from(
+        (await dio.get('/guardian/courseware/$coursewareId')).data as Map,
+      );
+
+  Future<Map<String, dynamic>> getMentorCoursewareStatus(
+          String coursewareId) async =>
+      Map<String, dynamic>.from(
+        (await dio.get('/guardian/courseware/$coursewareId/status')).data
+            as Map,
+      );
+
+  Future<Map<String, dynamic>> requestMentorCoursewareRevision({
+    required String coursewareId,
+    required String commandId,
+    required String instruction,
+    required int baseVersionNo,
+    required int expectedStateRevision,
+    String? targetStepId,
+    bool allowUnverifiedOverride = false,
+  }) async =>
+      Map<String, dynamic>.from(
+        (await dio.post('/guardian/courseware/$coursewareId/revisions', data: {
+          'command_id': commandId,
+          'instruction': instruction,
+          'base_version_no': baseVersionNo,
+          'expected_state_revision': expectedStateRevision,
+          if (targetStepId != null) 'target_step_id': targetStepId,
+          'allow_unverified_override': allowUnverifiedOverride,
+        }))
+            .data as Map,
+      );
+
+  Future<Map<String, dynamic>> undoMentorCourseware({
+    required String coursewareId,
+    required String commandId,
+    required int expectedStateRevision,
+  }) async =>
+      Map<String, dynamic>.from(
+        (await dio.post('/guardian/courseware/$coursewareId/undo', data: {
+          'command_id': commandId,
+          'expected_state_revision': expectedStateRevision,
+        }))
+            .data as Map,
+      );
+
+  Future<Map<String, dynamic>> redoMentorCourseware({
+    required String coursewareId,
+    required String commandId,
+    required int expectedStateRevision,
+  }) async =>
+      Map<String, dynamic>.from(
+        (await dio.post('/guardian/courseware/$coursewareId/redo', data: {
+          'command_id': commandId,
+          'expected_state_revision': expectedStateRevision,
+        }))
+            .data as Map,
+      );
+
   String _day(DateTime value) => value.toIso8601String().substring(0, 10);
 }

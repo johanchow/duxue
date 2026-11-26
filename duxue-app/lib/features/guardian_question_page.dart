@@ -14,6 +14,7 @@ import '../shared/app_ui.dart';
 import '../shared/chat_markdown.dart';
 import '../shared/reply_progress.dart';
 import '../shared/voice_composer.dart';
+import 'guardian_courseware/guardian_courseware_page.dart';
 import 'pronunciation_player.dart';
 import 'visual_block.dart';
 
@@ -70,7 +71,7 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
     _studentMode: _PerspectiveSession(),
     _mentorMode: _PerspectiveSession(),
   };
-  String mode = _studentMode;
+  String mode = _mentorMode;
   bool keyboard = false;
   SpeechPlayback? _playback;
   SpeechPlayback get playback => _playback ??= DeviceSpeechPlayback();
@@ -330,7 +331,12 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
           'pictures': displayPictures,
           'attachment_keys': attachmentKeys,
         });
-        session.messages.add({'role': 'assistant', ...response});
+        session.messages.add({
+          'role': 'assistant',
+          'source_prompt': content,
+          'source_keys': attachmentKeys,
+          ...response,
+        });
         session.stateToken = response['state_token'] as String?;
         if (useComposerDraft) {
           session.pictures.clear();
@@ -716,6 +722,29 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
                         playback: playback,
                         loadSpeech:
                             ref.read(apiProvider).guardianExperienceSpeech)),
+              if (!mine &&
+                  mode == _mentorMode &&
+                  message['recommend_courseware'] == true)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: FilledButton.tonalIcon(
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => GuardianCoursewarePage(
+                            promptText:
+                                (message['source_prompt'] as String?) ?? text,
+                            attachmentKeys:
+                                ((message['source_keys'] as List?) ?? const [])
+                                    .cast<String>(),
+                          ),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.auto_awesome, size: 16),
+                    label: const Text('生成深度课件'),
+                  ),
+                ),
             ])));
   }
 }

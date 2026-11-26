@@ -756,4 +756,8 @@ def explain_for_guardian(
     answer["state_token"] = seal(guardian_id, MENTOR_PURPOSE, {
         "window": next_rows, "origin": origin, "pinned_topic": origin is not None,
     })
+    tier = getattr(verified_solution, "tier", None) if verified_solution is not None else None
+    answer["recommend_courseware"] = bool(
+        answer.get("act") == "explain" and tier != "T0"
+    )
     return answer

@@ -38,6 +38,7 @@ class _Api extends ApiClient {
         'content': '【考点与题眼】通分找最小公倍数 12。\n【完整破题思路】9/12 > 8/12，故 3/4 > 2/3。',
         'state_token': 'mentor-state-${turns.length}',
         'verification': {'status': 'ready', 'confidence': 'high'},
+        'recommend_courseware': true,
       };
     }
     return {
@@ -215,22 +216,23 @@ void main() {
 
     await tester.tap(example);
     await tester.pumpAndSettle();
-    final studentTurn = api.turns.single;
-    expect(studentTurn.mode, 'student_guide');
+    final mentorTurn = api.turns.single;
+    expect(mentorTurn.mode, 'guardian_explain');
     expect(example, findsNothing);
-    expect(find.text('看这道题的完整讲解'), findsOneWidget);
+    expect(find.text('生成深度课件'), findsOneWidget);
     expect(find.text('让孩子也试试'), findsNothing);
 
-    await tester.tap(mentorMode);
+    await tester.tap(studentMode);
     await tester.pumpAndSettle();
     expect(example, findsOneWidget);
     expect(find.text('看分数比较讲题教案'), findsNothing);
     expect(api.turns, hasLength(1));
     await tester.tap(example);
     await tester.pumpAndSettle();
-    expect(api.turns.last.mode, 'guardian_explain');
-    expect(api.turns.last.content, studentTurn.content);
+    expect(api.turns.last.mode, 'student_guide');
+    expect(api.turns.last.content, mentorTurn.content);
     expect(example, findsNothing);
+    expect(find.text('看这道题的完整讲解'), findsOneWidget);
     expect(find.text('让孩子也试试'), findsNothing);
   });
 
@@ -257,6 +259,8 @@ void main() {
     final api = _Api();
     await _home(tester, api);
     await _tab(tester, '问答');
+    await tester.tap(find.byKey(const ValueKey('mode-student_guide')));
+    await tester.pumpAndSettle();
     expect(find.byType(VoiceComposer), findsOneWidget);
     await tester
         .widget<VoiceComposer>(find.byType(VoiceComposer))
@@ -402,7 +406,9 @@ void main() {
     await _home(tester, api);
     await _tab(tester, '问答');
 
-    // 1. Default is student_guide
+    // 1. Switch to student_guide (default is now guardian_explain)
+    await tester.tap(find.byKey(const ValueKey('mode-student_guide')));
+    await tester.pumpAndSettle();
     await tester
         .widget<VoiceComposer>(find.byType(VoiceComposer))
         .onVoiceFinal('比较 3/4 和 2/3');
@@ -450,6 +456,8 @@ void main() {
     await _tab(tester, '问答');
 
     // Send one message in student视角 and type an unsent draft
+    await tester.tap(find.byKey(const ValueKey('mode-student_guide')));
+    await tester.pumpAndSettle();
     await tester
         .widget<VoiceComposer>(find.byType(VoiceComposer))
         .onVoiceFinal('第一题');

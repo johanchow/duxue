@@ -56,12 +56,12 @@ status: draft
    - 使用 3 道代表题（平面几何最值/函数动点、立体几何截面展开、语文/简单题反例）在本地联调环境跑通端到端生成、对话局部修订与 Undo/Redo，并在 Android 真机实测包体增量、首帧耗时、3D 旋转流畅度与无外网请求。
 
 ## 实现清单（完成度，做完一项把 [ ] 改成 [x]）
-- [ ] **Step 1**：服务端 `MentorCourseware` 领域模型、值对象与 `CoursewareInvariantPolicy` / `CoursewareVersionPolicy` + 领域单测全绿
-- [ ] **Step 2**：服务端 Application Ports / Commands / Queries + Redis 4h TTL CAS 仓储 + 并发/ABA 单测全绿
-- [ ] **Step 3**：服务端 `MentorCoursewareOrchestrator` + `ProblemSolving` ACL + Admin 组件契约（DeepSeek/Qwen Director & Judge + `component_scene` 校验）+ 编排单测全绿
-- [ ] **Step 4**：服务端 `/guardian/courseware/*` API 与 `guardian_mentor` 难度分流推荐标记 + 接口测试全绿
-- [ ] **Step 5**：客户端离线 `assets/math_stage/` 运行时与首批 3 类预置 `component_scene`（2D 坐标动点、平面几何、3D 多面体）构建与本地验证
-- [ ] **Step 6**：客户端 `GuardianQuestionPage` 默认导师视角 + `GuardianCoursewarePage`（折叠概览、Web 舞台宿主、静态降级、单步修订、Undo/Redo）+ Flutter 测试全绿
+- [x] **Step 1**：服务端 `MentorCourseware` 领域模型、值对象与 `CoursewareInvariantPolicy` / `CoursewareVersionPolicy` + 领域单测全绿
+- [x] **Step 2**：服务端 Application Ports / Commands / Queries + Redis 4h TTL CAS 仓储 + 并发/ABA 单测全绿
+- [x] **Step 3**：服务端 `MentorCoursewareOrchestrator` + `ProblemSolving` ACL + Admin 组件契约（DeepSeek/Qwen Director & Judge + `component_scene` 校验）+ 编排单测全绿
+- [x] **Step 4**：服务端 `/guardian/courseware/*` API 与 `guardian_mentor` 难度分流推荐标记 + 接口测试全绿
+- [x] **Step 5**：客户端离线 `assets/math_stage/` 运行时与首批 3 类预置 `component_scene`（2D 坐标动点、平面几何、3D 多面体）构建与本地验证
+- [x] **Step 6**：客户端 `GuardianQuestionPage` 默认导师视角 + `GuardianCoursewarePage`（折叠概览、Web 舞台宿主、静态降级、单步修订、Undo/Redo）+ Flutter 测试全绿
 - [ ] **Step 7**：Android 真机端到端联调验收（3 类代表题 + 对话修订 + Undo/Redo + 包体/性能实测记录）
 
 ## 备注
