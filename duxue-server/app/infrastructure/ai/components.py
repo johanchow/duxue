@@ -65,6 +65,7 @@ class ComponentSpec:
     enable_thinking: bool = False
     thinking_budget: int | None = None
     reasoning_effort: str | None = None
+    thinking_effort: Literal["off", "low", "medium", "high"] | None = None
 
     @property
     def overridable(self) -> bool:
@@ -250,6 +251,7 @@ def complete_json_chat(
     enable_thinking: bool = False,
     thinking_budget: int | None = None,
     reasoning_effort: str | None = None,
+    thinking_effort: Literal["off", "low", "medium", "high"] | None = None,
     telemetry: dict[str, Any] | None = None,
 ) -> ChatCompletionResult:
     """Execute one structured JSON chat completion.
@@ -261,6 +263,19 @@ def complete_json_chat(
     ``reasoning_content`` is intentionally discarded so chain-of-thought text never
     enters Ward-visible output or production trace payloads.
     """
+    from app.infrastructure.ai.thinking_policy import resolve_provider_thinking
+
+    resolved_thinking = resolve_provider_thinking(
+        model,
+        effort=thinking_effort,
+        enable_thinking=enable_thinking,
+        thinking_budget=thinking_budget,
+        reasoning_effort=reasoning_effort,
+    )
+    enable_thinking = resolved_thinking.enable_thinking
+    thinking_budget = resolved_thinking.thinking_budget
+    reasoning_effort = resolved_thinking.reasoning_effort
+
     if client is None:
         from app.infrastructure.ai.client import dashscope_client
 
@@ -274,6 +289,7 @@ def complete_json_chat(
                 enable_thinking=enable_thinking,
                 thinking_budget=thinking_budget,
                 reasoning_effort=reasoning_effort,
+                thinking_effort=None,
                 telemetry=telemetry,
             )
 
@@ -507,6 +523,15 @@ def invoke_json_component(*, spec: ComponentSpec, user, client=None, settings_ob
     if isinstance(spec.prompt, PromptTemplate):
         messages.insert(0, {"role": "system", "content": spec.prompt.text})
     from app.infrastructure.ai.client import observe_transport
+    from app.infrastructure.ai.thinking_policy import resolve_provider_thinking
+
+    resolved_thinking = resolve_provider_thinking(
+        model,
+        effort=spec.thinking_effort,
+        enable_thinking=spec.enable_thinking,
+        thinking_budget=spec.thinking_budget,
+        reasoning_effort=spec.reasoning_effort,
+    )
 
     telemetry_ref: dict[str, Any] = {}
     raw_seen = ""
@@ -517,9 +542,9 @@ def invoke_json_component(*, spec: ComponentSpec, user, client=None, settings_ob
             component_id=spec.component_id, component_version=spec.version,
             prompt_id=spec.prompt.id, model_source=model_source,
             definition_digest=spec.definition_digest,
-            enable_thinking=spec.enable_thinking,
-            thinking_budget=spec.thinking_budget,
-            reasoning_effort=spec.reasoning_effort,
+            enable_thinking=resolved_thinking.enable_thinking,
+            thinking_budget=resolved_thinking.thinking_budget,
+            reasoning_effort=resolved_thinking.reasoning_effort,
             input_payload=None if spec.component_id.startswith("behavior.") else messages,
         ) as telemetry, observe_transport(telemetry):
             telemetry_ref = telemetry
@@ -529,9 +554,9 @@ def invoke_json_component(*, spec: ComponentSpec, user, client=None, settings_ob
                 messages=messages,
                 temperature=spec.temperature,
                 max_tokens=spec.max_tokens,
-                enable_thinking=spec.enable_thinking,
-                thinking_budget=spec.thinking_budget,
-                reasoning_effort=spec.reasoning_effort,
+                enable_thinking=resolved_thinking.enable_thinking,
+                thinking_budget=resolved_thinking.thinking_budget,
+                reasoning_effort=resolved_thinking.reasoning_effort,
                 telemetry=telemetry,
             )
             raw_seen = completion.raw_wire or completion.raw

@@ -9,7 +9,7 @@ AgentType = Literal["planning", "tutoring", "reflection"]
 RouteTarget = Literal["planning", "tutoring", "reflection", "clarify", "safety"]
 IntentLabel = Literal["planning", "tutoring", "reflection", "unclear"]
 HistoryImageRef = Literal["none", "needed"]
-TutoringThinkingMode = Literal["default", "off"]
+ThinkingEffort = Literal["off", "low", "medium", "high"]
 RunStatus = Literal[
     "active", "waiting_for_ward", "paused", "closed", "escalated",
     "failed", "timed_out", "cancelled",
@@ -21,7 +21,7 @@ class IntentProposal(BaseModel):
 
     intent: IntentLabel
     history_image_ref: HistoryImageRef = "needed"
-    thinking: TutoringThinkingMode = "default"
+    thinking_effort: ThinkingEffort = "medium"
 
 
 class IntentClassifier(Protocol):

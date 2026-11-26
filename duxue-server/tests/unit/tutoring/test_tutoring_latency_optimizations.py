@@ -32,21 +32,35 @@ from app.infrastructure.ai.tutor_turn_model import (
 def test_parse_intent_payload_defaults_and_optional_hints():
     legacy = parse_intent_payload('{"intent": "tutoring"}')
     assert legacy == IntentProposal(
-        intent="tutoring", history_image_ref="needed", thinking="default"
+        intent="tutoring", history_image_ref="needed", thinking_effort="medium"
     )
 
     optimized = parse_intent_payload(
-        '{"intent": "tutoring", "history_image_ref": "none", "thinking": "off"}'
+        '{"intent": "tutoring", "history_image_ref": "none", "thinking_effort": "off"}'
     )
     assert optimized == IntentProposal(
-        intent="tutoring", history_image_ref="none", thinking="off"
+        intent="tutoring", history_image_ref="none", thinking_effort="off"
     )
 
+    for level in ("off", "low", "medium", "high"):
+        parsed = parse_intent_payload(
+            f'{{"intent": "tutoring", "history_image_ref": "none", "thinking_effort": "{level}"}}'
+        )
+        assert parsed.thinking_effort == level
+
+    # Backward compatibility with legacy `thinking` field
+    assert parse_intent_payload(
+        '{"intent": "tutoring", "history_image_ref": "none", "thinking": "off"}'
+    ) == IntentProposal(intent="tutoring", history_image_ref="none", thinking_effort="off")
+    assert parse_intent_payload(
+        '{"intent": "tutoring", "thinking": "default"}'
+    ) == IntentProposal(intent="tutoring", history_image_ref="needed", thinking_effort="medium")
+
     unknown = parse_intent_payload(
-        '{"intent": "tutoring", "history_image_ref": "maybe", "thinking": "fast"}'
+        '{"intent": "tutoring", "history_image_ref": "maybe", "thinking_effort": "fast"}'
     )
     assert unknown == IntentProposal(
-        intent="tutoring", history_image_ref="needed", thinking="default"
+        intent="tutoring", history_image_ref="needed", thinking_effort="medium"
     )
 
 
@@ -59,21 +73,22 @@ def test_companion_intent_contract_accepts_legacy_and_hints():
     # Legacy fixture schema (intent only) still validates
     validate_output(unit, {"intent": "tutoring"})
 
-    # Upgraded Admin schema with optional history_image_ref & thinking
+    # Upgraded Admin schema with optional history_image_ref & thinking_effort
     upgraded_schema = deepcopy(unit.output_schema)
     upgraded_schema["properties"]["history_image_ref"] = {"enum": ["none", "needed"]}
-    upgraded_schema["properties"]["thinking"] = {"enum": ["default", "off"]}
+    upgraded_schema["properties"]["thinking_effort"] = {"enum": ["off", "low", "medium", "high"]}
     upgraded_unit = unit.model_copy(update={"output_schema": upgraded_schema})
 
     validate_output(upgraded_unit, {"intent": "tutoring"})
-    validate_output(
-        upgraded_unit,
-        {"intent": "tutoring", "history_image_ref": "none", "thinking": "off"},
-    )
+    for level in ("off", "low", "medium", "high"):
+        validate_output(
+            upgraded_unit,
+            {"intent": "tutoring", "history_image_ref": "none", "thinking_effort": level},
+        )
     with pytest.raises((ValidationError, ValueError)):
         validate_output(upgraded_unit, {"intent": "tutoring", "history_image_ref": "invalid"})
     with pytest.raises((ValidationError, ValueError)):
-        validate_output(upgraded_unit, {"intent": "tutoring", "thinking": "invalid"})
+        validate_output(upgraded_unit, {"intent": "tutoring", "thinking_effort": "invalid"})
 
 
 def test_strip_image_review_section_only_removes_image_review_block():
@@ -328,7 +343,8 @@ def test_admin_bundle_compiles_both_legacy_and_upgraded_companion_intent():
     assert upgraded_compiled.digest == upgraded["digest"]
     props = upgraded["bundle"]["files"]["agents/companion.intent.json"]["output_schema"]["properties"]
     assert props["history_image_ref"] == {"enum": ["none", "needed"]}
-    assert props["thinking"] == {"enum": ["default", "off"]}
+    assert props["thinking_effort"] == {"enum": ["off", "low", "medium", "high"]}
+    assert "thinking" not in props
 
 
 def test_leak_judge_fragment_names_selects_scenarios_in_stable_order():
@@ -518,7 +534,7 @@ def test_tutor_turn_gateway_strips_gaokao_for_primary_and_applies_thinking_budge
     monkeypatch.setattr("app.infrastructure.ai.components.invoke_agent_component", fake_invoke)
     gw = QwenTutorTurnGateway(spec=base_spec)
 
-    # Primary student without dossier: strips [gaokao-blueprint-science.v1] and applies _thinking_budget
+    # Primary student without dossier: strips [gaokao-blueprint-science.v1] and maps DeepSeek budget to low effort
     gw.complete(
         envelope={"actor": {"grade_stage": "primary"}, "_thinking_budget": 1024},
         instruction="多选题为什么错了？",
@@ -527,7 +543,8 @@ def test_tutor_turn_gateway_strips_gaokao_for_primary_and_applies_thinking_budge
     )
     assert len(captured) == 1
     assert captured[0].enable_thinking is True
-    assert captured[0].thinking_budget == 1024
+    assert captured[0].reasoning_effort == "low"
+    assert captured[0].thinking_budget is None
     assert "[gaokao-blueprint-science.v1]" not in captured[0].prompt.text
     assert "[image-review.v1]" in captured[0].prompt.text
 
@@ -598,3 +615,266 @@ def test_complete_intent_enables_vision_for_multimodal_model_with_current_images
         recent_utterances=[], current_images=["data:image/jpeg;base64,NEW1"], spec=text_only_spec,
     )
     assert captured_specs[-1].accepts_images is False
+
+
+def test_unified_thinking_policy_maps_deepseek_and_qwen():
+    from app.infrastructure.ai.thinking_policy import (
+        cap_thinking_effort,
+        resolve_provider_thinking,
+    )
+
+    # DeepSeek: off -> disabled, low/medium -> reasoning_effort="low" (no thinking_budget), high -> "high"
+    ds_off = resolve_provider_thinking("deepseek-v4.1-flash-1017", effort="off", enable_thinking=True, thinking_budget=2048)
+    assert ds_off.enable_thinking is False
+    assert ds_off.reasoning_effort is None
+    assert ds_off.thinking_budget is None
+
+    for effort in ("low", "medium"):
+        ds = resolve_provider_thinking("deepseek-v4.1-flash-1017", effort=effort, enable_thinking=True, thinking_budget=2048)
+        assert ds.enable_thinking is True
+        assert ds.reasoning_effort == "low"
+        assert ds.thinking_budget is None
+
+    ds_high = resolve_provider_thinking("deepseek-v4.1-flash-1017", effort="high", enable_thinking=True)
+    assert ds_high.enable_thinking is True
+    assert ds_high.reasoning_effort == "high"
+    assert ds_high.thinking_budget is None
+
+    # Qwen: off -> disabled, low -> <=1024, medium -> <=2560, high -> component budget / 8192
+    qw_low = resolve_provider_thinking("qwen3.8-max", effort="low", enable_thinking=True, thinking_budget=4096)
+    assert qw_low.enable_thinking is True
+    assert qw_low.thinking_budget == 1024
+    assert qw_low.reasoning_effort is None
+
+    qw_med = resolve_provider_thinking("qwen3.8-max", effort="medium", enable_thinking=True, thinking_budget=4096)
+    assert qw_med.thinking_budget == 2560
+
+    qw_high = resolve_provider_thinking("qwen3.8-max", effort="high", enable_thinking=True, thinking_budget=4096)
+    assert qw_high.thinking_budget == 4096
+
+    assert cap_thinking_effort("off", "low") == "off"
+    assert cap_thinking_effort("medium", "low") == "low"
+    assert cap_thinking_effort("high", "low") == "low"
+
+
+def test_thinking_effort_high_caps_sync_turn_and_gates_blueprint():
+    from app.application.ports.companion import ContextEnvelope
+    from app.application.workflows.image_target import ImageTarget, PreparedImages
+    from app.application.workflows.tutoring_workflow import _TutoringTurn
+    from app.contexts.tutoring.domain.tutor_permit import TutorPermitPolicy
+
+    captured_envelopes: list[dict] = []
+
+    class CapturingWorkflow(TutoringWorkflow):
+        def _resolve_active_dossier(self, **kwargs):
+            return None, None
+
+        def _dossier_mode_enabled(self) -> bool:
+            return False
+
+        def _run_model(self, envelope, instruction, window, images, tools, **checks):
+            captured_envelopes.append(dict(envelope))
+
+    wf = CapturingWorkflow(db=SimpleNamespace())
+    base_envelope = ContextEnvelope(
+        run={"run_id": "r1", "agent_type": "tutoring"},
+        actor={"ward_id": "w1", "role": "ward"},
+        objective={"agent_type": "tutoring"},
+        session={},
+    )
+
+    for effort in ("off", "low", "medium", "high"):
+        inv = RunInvocation(
+            run_id="r1",
+            thread_id="t1",
+            ward_id="w1",
+            agent_type="tutoring",
+            turn={"content": "求导数", "thinking_effort": effort},
+        )
+        turn = _TutoringTurn(wf, inv)
+        turn.turn = inv.turn
+        turn.content = inv.turn["content"]
+        turn.envelope = base_envelope
+        turn.tutor = None
+        turn.problem_row = None
+        turn.task_title = None
+        turn.task_active = False
+        turn.permit = TutorPermitPolicy.permit(None)
+        turn.keys_by_ref = {}
+        turn.prepared = PreparedImages(target=ImageTarget(()), window=[], images=[])
+        turn.generate()
+
+    assert [e.get("_thinking_effort") for e in captured_envelopes] == ["off", "low", "medium", "medium"]
+    assert captured_envelopes[0].get("_disable_thinking") is True
+
+
+def test_response_image_review_observation_sanitizes_when_verdict_assertion_disallowed():
+    from app.application.workflows.image_review import ImageReview, QuestionReview
+    from app.application.workflows.tutor_loop import _response_image_review_observation
+
+    evidence = ImageReview(
+        conclusion="uncertain",
+        scope="all_visible",
+        coverage="partial",
+        questions=[
+            QuestionReview(
+                image_ref="img_e98862f7b04bdf388c17bcd2",
+                kind="other",
+                location="一4",
+                task="求长方形长和宽",
+                student_answer="长4厘米宽3厘米",
+                verdict="correct",
+                basis="目测",
+            ),
+            QuestionReview(
+                image_ref="img_e98862f7b04bdf388c17bcd2",
+                kind="unreadable",
+                location="一3",
+                task="七巧板填空",
+                student_answer=None,
+                verdict="uncertain",
+                basis="模糊",
+            ),
+        ],
+    )
+    evidence._visual_review_passed = True
+
+    obs = _response_image_review_observation(
+        {"_dossier_gate": {"dossier_id": None, "status": "absent", "confidence": "low", "allows_verdict_assertion": False}},
+        evidence,
+    )
+    assert obs["verdict_assertion_allowed"] is False
+    assert "禁止" in obs["response_constraint"]
+    assert obs["image_review"]["questions"][0]["verdict"] == "unverified"
+    assert obs["image_review"]["questions"][1]["verdict"] == "uncertain"
+    # Original evidence object remains intact for schema validation
+    assert evidence.questions[0].verdict == "correct"
+
+
+def test_tutoring_workflow_does_not_duplicate_image_review_fragment_in_user_instruction():
+    from app.application.ports.companion import ContextEnvelope
+    from app.application.workflows.image_target import ImageTarget, PreparedImages
+    from app.application.workflows.tutoring_workflow import _TutoringTurn
+    from app.contexts.tutoring.domain.tutor_permit import TutorPermitPolicy
+
+    captured_instructions: list[str] = []
+
+    class CapturingWorkflow(TutoringWorkflow):
+        def _resolve_active_dossier(self, **kwargs):
+            return None, None
+
+        def _dossier_mode_enabled(self) -> bool:
+            return False
+
+        def _run_model(self, envelope, instruction, window, images, tools, **checks):
+            captured_instructions.append(instruction)
+
+    wf = CapturingWorkflow(db=SimpleNamespace())
+    inv = RunInvocation(
+        run_id="r1", thread_id="t1", ward_id="w1", agent_type="tutoring",
+        turn={"content": "有没有全部做对？"},
+    )
+    turn = _TutoringTurn(wf, inv)
+    turn.turn = inv.turn
+    turn.content = inv.turn["content"]
+    turn.envelope = ContextEnvelope(
+        run={"run_id": "r1", "agent_type": "tutoring"},
+        actor={"ward_id": "w1", "role": "ward"},
+        objective={"agent_type": "tutoring"},
+        session={},
+    )
+    turn.tutor = None
+    turn.problem_row = None
+    turn.task_title = None
+    turn.task_active = False
+    turn.permit = TutorPermitPolicy.permit(None)
+    turn.keys_by_ref = {}
+    turn.prepared = PreparedImages(
+        target=ImageTarget((1,)),
+        window=[],
+        images=["data:image/jpeg;base64,AAAA"],
+    )
+    turn.generate()
+    assert len(captured_instructions) == 1
+    assert "[image-review.v1]" not in captured_instructions[0]
+
+
+def test_tutor_turn_fragment_names_selects_all_scenarios_deterministically():
+    from app.infrastructure.ai.tutor_turn_model import _tutor_turn_fragment_names
+
+    # Pure-text off turn: skips choice_and_submitted, image_review, gaokao, visual_delivery_detail
+    assert _tutor_turn_fragment_names(
+        {"_thinking_effort": "off", "actor": {"grade_stage": "primary"}},
+        has_images=False,
+    ) == ()
+
+    # Image evidence turn with web_search + SVG guidelines + high school
+    assert _tutor_turn_fragment_names(
+        {
+            "actor": {"grade_stage": "high"},
+            "tools": [{"name": "web_search"}],
+            "objective": {"tutoring_intent": "pronunciation"},
+            "_preload_svg_guidelines": True,
+        },
+        has_images=True,
+    ) == (
+        "gaokao_blueprint",
+        "choice_and_submitted",
+        "learning_search",
+        "pronounce_rules",
+        "visual_delivery_detail",
+        "image_review",
+    )
+
+    # Image response phase: keeps choice_and_submitted, drops image_review
+    assert _tutor_turn_fragment_names(
+        {"image_review_phase": "response", "actor": {"grade_stage": "primary"}},
+        has_images=True,
+    ) == ("choice_and_submitted",)
+
+
+def test_upgrade_tutoring_turn_fragments_splits_and_compiles_cleanly():
+    import json
+    from copy import deepcopy
+
+    from app.agent_specs.admin_bundle import compile_bundle, contract_compatibility
+    from app.agent_specs.configuration import snapshot_path
+    from app.agent_specs.definitions import use_definitions
+    from app.infrastructure.ai.prompts import PromptTemplate, compose_system_prompt
+    from scripts.upgrade_tutoring_turn_fragments import split_tutoring_turn_template, upgrade
+
+    sample_template = (
+        "[visual-delivery.v1]\n主动视觉规则内容。\n\n"
+        "你是读学的陪学老师，面对一名学生。\n\n"
+        "最高优先级的阶段约定：有目标图片时先核验。\n"
+        "[learning-search.v1]\n联网搜索规则。\n"
+        "[choice-guidance.v1]\n选择题引导规则。\n\n"
+        "[reasoned-choice.v1]\n有据作答规则。\n\n"
+        "[submitted-feedback.v4]\n已提交反馈规则。\n\n"
+        "[image-review.v1]\n图片核验协议规则。"
+    )
+    core, frags = split_tutoring_turn_template(sample_template)
+    assert core == "你是读学的陪学老师，面对一名学生。"
+    assert set(frags) == {"visual_delivery_detail", "image_review", "learning_search", "choice_and_submitted"}
+    assert "[image-review.v1]" in frags["image_review"]
+    assert "最高优先级的阶段约定" in frags["image_review"]
+
+    record = json.loads(snapshot_path().read_text(encoding="utf-8"))
+    prep = deepcopy(record)
+    prep["bundle"]["files"]["agents/tutoring.turn.json"]["prompt"]["template"] = sample_template
+    prep["bundle"]["files"]["agents/tutoring.image-target.json"]["prompt"]["template"] += "\n[image-review.v1]"
+    prep["bundle"]["files"]["gates/tutoring.leak-judge.json"]["prompt"]["template"] += "\n[image-review.v1]"
+    prep["bundle"]["compatibility"] = contract_compatibility(prep["bundle"]["files"])
+    prep["digest"] = compile_bundle(prep["bundle"]).digest
+
+    upgraded = upgrade(prep)
+    compiled = compile_bundle(upgraded["bundle"])
+    assert compiled.digest == upgraded["digest"]
+    turn_frags = upgraded["bundle"]["files"]["agents/tutoring.turn.json"]["prompt"]["fragments"]
+    assert set(frags) <= set(turn_frags)
+
+    # Deduplication guard: if marker already exists in base template, compose_system_prompt does not duplicate it
+    with use_definitions(compiled.catalog):
+        base_with_marker = PromptTemplate("tutoring.turn.system", "核心\n\n[image-review.v1]\n已有")
+        composed = compose_system_prompt(base_with_marker, "tutoring.turn", ("image_review",))
+        assert composed.text.count("[image-review.v1]") == 1

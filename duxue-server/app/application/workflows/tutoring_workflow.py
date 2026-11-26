@@ -685,10 +685,8 @@ class _TutoringTurn:
         )
         if any(row.get("shown_visual_kind") for row in self.window):
             instruction += "\n参考历史中实际展示的 shown_visual_kind。学生要求换成更直观的图时，选择能表现原理的图形，避免重复已有表格。"
-        if self.prepared.target.ids:
-            instruction += render_fragment("tutoring.turn", "image_review")
-            if self.turn.get("tutoring_intent") == "compare_previous_image":
-                instruction += render_fragment("tutoring.turn", "image_compare")
+        if self.prepared.target.ids and self.turn.get("tutoring_intent") == "compare_previous_image":
+            instruction += render_fragment("tutoring.turn", "image_compare")
         tools = TutorToolbox(
             self.owner.db, tutoring_session_id=self.tutor.id if self.tutor else None, problem=self.problem_row,
             task_title=self.task_title, task_active=self.task_active, window=self.window, math_engine=self.owner.math_engine,
@@ -718,6 +716,7 @@ class _TutoringTurn:
                 # already receive structured approaches/milestones, so run on the lightweight
                 # non-thinking tier while `_dossier_gate` still enforces strict `high`-only verdict rules.
                 model_envelope["_disable_thinking"] = True
+                model_envelope["_thinking_effort"] = "off"
         elif self.owner._dossier_mode_enabled():
             # Always enforce confidence gate on unbacked first turns (e.g. deferred text dossier creation)
             # so mental-math final/optimality affirmations are never silently allowed.
@@ -727,18 +726,26 @@ class _TutoringTurn:
                 "confidence": "low",
                 "allows_verdict_assertion": False,
             }
-        if (
-            self.turn.get("disable_thinking") is True
-            and self.active_dossier is None
-        ):
-            model_envelope["_disable_thinking"] = True
-        elif (
-            not model_envelope.get("_disable_thinking")
-            and self.active_dossier is None
-            and isinstance(model_envelope.get("actor"), dict)
-            and model_envelope["actor"].get("grade_stage") == "primary"
-        ):
-            model_envelope["_thinking_budget"] = 1024
+        raw_intent_effort = self.turn.get("thinking_effort")
+        if raw_intent_effort not in {"off", "low", "medium", "high"}:
+            raw_intent_effort = "off" if self.turn.get("disable_thinking") is True else None
+        if self.active_dossier is None:
+            if raw_intent_effort == "off":
+                model_envelope["_disable_thinking"] = True
+                model_envelope["_thinking_effort"] = "off"
+            elif raw_intent_effort == "high":
+                # High-effort problems route to async blueprint solving; keep the synchronous
+                # first-turn reply on medium effort so interactive latency stays bounded.
+                model_envelope["_thinking_effort"] = "medium"
+            elif raw_intent_effort in {"low", "medium"}:
+                model_envelope["_thinking_effort"] = raw_intent_effort
+            elif (
+                not model_envelope.get("_disable_thinking")
+                and isinstance(model_envelope.get("actor"), dict)
+                and model_envelope["actor"].get("grade_stage") == "primary"
+            ):
+                model_envelope["_thinking_effort"] = "low"
+                model_envelope["_thinking_budget"] = 1024
         if self.problem_row is not None and (not self.problem_row.dossier_id or self.active_dossier is not None):
             if self.problem_row.internal_blueprint and "problem_dossier" not in model_envelope:
                 model_envelope["internal_blueprint"] = self.problem_row.internal_blueprint
@@ -930,9 +937,16 @@ class _TutoringTurn:
                     and report.conclusion != "not_checking"
                     and len(report.questions) >= 2
                 )
+                intent_effort = self.turn.get("thinking_effort")
+                blueprint_requested = (
+                    intent_effort == "high"
+                    if intent_effort in {"off", "low", "medium", "high"}
+                    else True
+                )
                 if (
                     target_dossier_id is None
                     and not is_worksheet_batch_check
+                    and blueprint_requested
                     and self.owner._dossier_mode_enabled()
                 ):
                     from app.application.commands.problem_solving import (

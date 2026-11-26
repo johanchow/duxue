@@ -25,13 +25,17 @@ _CONCISE_INTENT_PROMPT = (
     "2. history_image_ref（仅本轮无 current_image_ids 且 recent_utterances 含历史图片时判断）：\n"
     "   - \"none\"：本轮是独立于历史图片的纯文字提问（知识科普、概念解释、词义/发音、新文字题、闲聊），与历史照片无关。\n"
     "   - \"needed\"：本轮指代、追问或纠正历史照片（如“再看那张图”“不是同一张”“上一张第2题”“这个对不对”等依赖旧图才能看懂的省略指代）。\n"
-    "3. thinking（仅 intent=\"tutoring\" 且本轮无新图时判断）：\n"
-    "   - \"off\"：常识科普、概念/原理解释、历史地理人物、词义翻译、发音、闲聊等无需复杂多步推导的问题。\n"
-    "   - \"default\"：需要看图、做作业题、数学计算、理科推导、证明、逻辑推理、批改核验，或拿不准的情况。\n"
+    "3. thinking_effort（intent=\"tutoring\" 时判断，可结合本轮新图内容）：\n"
+    "   - \"off\"：常识科普、概念/原理解释、历史地理人物、词义翻译、发音、闲聊、识图认字、语文阅读理解/字词句等无需数理推导的问题。\n"
+    "   - \"low\"：小学算术/基础作业引导、简单一步计算或常规追问。\n"
+    "   - \"medium\"：常规多步数理推导、整页作业批改核验，或拿不准的情况。\n"
+    "   - \"high\"：高中/高考级综合大题、复杂几何证明、多步函数/导数/解析几何/物理化学综合推导（将触发深度解题蓝图）。\n"
     "示例：\n"
-    "- 历史有数学作业图，本轮问「英伟达公司为什么这么厉害？」→ {\"intent\":\"tutoring\",\"history_image_ref\":\"none\",\"thinking\":\"off\"}\n"
-    "- 历史有数学作业图，本轮问「你刚才看的是上一张，看新发的那张第2题」→ {\"intent\":\"tutoring\",\"history_image_ref\":\"needed\",\"thinking\":\"default\"}\n"
-    "- 历史有数学作业图，本轮问「鸡兔同笼共35个头94只脚，鸡兔各几只？」→ {\"intent\":\"tutoring\",\"history_image_ref\":\"none\",\"thinking\":\"default\"}"
+    "- 历史有数学作业图，本轮问「英伟达公司为什么这么厉害？」→ {\"intent\":\"tutoring\",\"history_image_ref\":\"none\",\"thinking_effort\":\"off\"}\n"
+    "- 本轮发语文阅读题图问「多选题为什么错了？」→ {\"intent\":\"tutoring\",\"history_image_ref\":\"none\",\"thinking_effort\":\"off\"}\n"
+    "- 本轮发小学作业页问「有没有全部做对？」→ {\"intent\":\"tutoring\",\"history_image_ref\":\"none\",\"thinking_effort\":\"low\"}\n"
+    "- 历史有数学作业图，本轮问「你刚才看的是上一张，看新发的那张第2题」→ {\"intent\":\"tutoring\",\"history_image_ref\":\"needed\",\"thinking_effort\":\"medium\"}\n"
+    "- 本轮发高中导数压轴题图问「第二问怎么证明？」→ {\"intent\":\"tutoring\",\"history_image_ref\":\"none\",\"thinking_effort\":\"high\"}"
 )
 
 
@@ -49,7 +53,8 @@ def upgrade(record: dict) -> dict:
     schema = doc.get("output_schema")
     if isinstance(schema, dict) and isinstance(schema.get("properties"), dict):
         schema["properties"]["history_image_ref"] = {"enum": ["none", "needed"]}
-        schema["properties"]["thinking"] = {"enum": ["default", "off"]}
+        schema["properties"].pop("thinking", None)
+        schema["properties"]["thinking_effort"] = {"enum": ["off", "low", "medium", "high"]}
 
     prompt = doc.get("prompt")
     if isinstance(prompt, dict) and isinstance(prompt.get("template"), str):
