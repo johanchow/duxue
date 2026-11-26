@@ -81,7 +81,7 @@ duxue/                          # 项目根目录
 | 计划与任务 Domain 设计 | [`docs/technical/domain-planning.md`](docs/technical/domain-planning.md) | 轻量任务与顺序、可选估时/起点、安排确认与执行事实分离、后台完整模型与按需投影 |
 | 学习执行 Domain 设计 | [`docs/technical/domain-study.md`](docs/technical/domain-study.md) | StudySession 计时与完成、到点开始邀请 StartCue |
 | 辅导答疑 Domain 设计 | [`docs/technical/domain-tutoring.md`](docs/technical/domain-tutoring.md) | 答案状态红线、TutoringTurnLoop、发音 act、教学事实与答疑会话结算 |
-| 导师深度课件专题（目标设计） | [`docs/technical/topic-mentor-courseware.md`](docs/technical/topic-mentor-courseware.md) | 成人导师视角 `MentorCourseware` 聚合、五幕思维法与图文三联、立体几何 3D 场景协议、对话式局部修订与 Undo/Redo（未实现） |
+| 导师深度课件专题（目标设计） | [`docs/technical/topic-mentor-courseware.md`](docs/technical/topic-mentor-courseware.md) | 成人导师视角 `MentorCourseware` 聚合、灵活教学编排与图文讲解、混合 Web 绘图与隔离生成 JS、对话式局部修订与 Undo/Redo（未实现） |
 | 答疑离线评测设计 | [`docs/technical/eval-offline.md`](docs/technical/eval-offline.md) | 冒烟式离线评测、与生产同源的重放判分、数据集构造与复核、三级指标与不确定性、variant 与发布阈值 |
 | 答疑表达设计（逻辑 + 配图） | [`docs/technical/domain-tutoring-presentation.md`](docs/technical/domain-tutoring-presentation.md) | 回答形状（按 act 的结构与长度不变量）、结构化 `visual` 配图（原生渲染、门禁与红线）、提示词预算、评测与分期（草案，未实现） |
 | 评估与复盘 Domain 设计 | [`docs/technical/domain-evaluation.md`](docs/technical/domain-evaluation.md) | 即时自评、证据版本化复盘、报告与行动采纳 |

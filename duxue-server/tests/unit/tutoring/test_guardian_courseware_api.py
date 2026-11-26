@@ -202,3 +202,28 @@ def test_courseware_baseline_uses_mentor_solver_and_resolved_images(monkeypatch)
         prompt_text="最短路径", attachment_keys=(image_key,), guardian_id=owner,
     )
     assert baseline.confidence == "high" and baseline.summary_answer == "√5"
+
+
+def test_courseware_generation_uses_configured_model_client(monkeypatch):
+    from contextlib import nullcontext
+
+    from app.infrastructure.ai import mentor_courseware_adapters as adapters
+    from app.infrastructure.ai.components import ChatCompletionResult
+
+    components = []
+
+    def resolve(component):
+        components.append(component)
+        return "configured-model"
+
+    def complete(**params):
+        assert params["model"] == "configured-model"
+        return ChatCompletionResult(raw='{"steps":[{"step_id":"s1","title":"展开","action_what":"连接对角顶点"}]}')
+
+    monkeypatch.setattr(adapters, "pin_release", nullcontext)
+    monkeypatch.setattr(adapters, "model_for", resolve)
+    monkeypatch.setattr(adapters, "complete_json_chat", complete)
+    baseline = VerificationBaseline.create(confidence="high", summary_answer="√5")
+    draft = adapters.ModelDirectorAdapter().draft_initial(prompt_text="展开", baseline=baseline)
+    assert components == ["tutoring.turn"]
+    assert draft.steps[0].step_id == "s1"
