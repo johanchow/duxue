@@ -2,14 +2,15 @@
 
 import json
 
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
 from app.application.workflows import tutor_loop
 from app.application.workflows.tutor_loop import LEAK_REPAIR, run_tutor_turn
 from app.application.workflows.tutor_tools import TutorToolbox
 from app.application.workflows.tutoring_workflow import TutoringWorkflow
 from app.contexts.tutoring.domain.tutor_permit import AttemptSummary, TutorPermit
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor
-from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from tests.support.fakes import StaticLeakJudge, StaticTutorModel, tutor_raw
 
 PROTECTED = TutorPermit(True, AttemptSummary())
@@ -252,3 +253,40 @@ def test_transient_judge_failure_recovers_in_place_without_retrying_tutor_model(
     assert not result.leak_retried
     assert result.vetting.failure is None
     assert fallbacks == []
+
+
+def test_primary_invalid_candidate_falls_back_to_backup_model_and_vets_it(monkeypatch):
+    from app.infrastructure.ai.components import ModelGatewayError
+
+    class BrokenJsonModel:
+        def __init__(self):
+            self.calls = 0
+
+        def complete(self, **kwargs):
+            self.calls += 1
+            raise ModelGatewayError("invalid_model_candidate")
+
+    primary = BrokenJsonModel()
+    backup = StaticTutorModel(HINT)
+    judge = LeaksWhen("等于 4")
+    result, fallbacks = _run(primary, judge, monkeypatch, backup_model=backup)
+    assert primary.calls == 2
+    assert len(backup.calls) == 1
+    assert result.vetting is not None and result.vetting.failure is None
+    assert result.call.candidate.content == HINT["content"]
+    assert result.call.used_calls == 3
+    assert fallbacks == []
+
+
+def test_primary_invalid_candidate_backup_cannot_bypass_leak_judge(monkeypatch):
+    from app.infrastructure.ai.components import ModelGatewayError
+
+    class BrokenJsonModel:
+        def complete(self, **kwargs):
+            raise ModelGatewayError("invalid_model_candidate")
+
+    backup = StaticTutorModel(LEAKY)
+    result, fallbacks = _run(BrokenJsonModel(), LeaksWhen("等于 4"), monkeypatch, backup_model=backup)
+    assert len(backup.calls) >= 1
+    assert result.vetting is not None and result.vetting.failure == "leak_detected"
+    assert fallbacks == ["leak_detected"]

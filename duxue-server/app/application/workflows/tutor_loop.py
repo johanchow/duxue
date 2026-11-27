@@ -746,19 +746,8 @@ def vet_candidate(
                 visual_feedback = result["visual_evidence"][:500]
             if result.get("visual_adequate") is False and visual_need in {"requested", "helpful"}:
                 visual_not_helpful = True
-        # Code-enforced confidence gate (§4.4): an approved image report grants only
-        # its reviewed item verdicts; otherwise require dossier/tool verification.
-        # The independent Judge still checks every visible affirmation against that scope.
-        if (
-            text_leaks is False
-            and not verdict_assertion_allowed
-            and isinstance(result, dict)
-            and result.get("affirms_student_answer") is True
-            and (result.get("answer_protected") is not False)
-        ):
-            text_leaks = True
-            leak_reason = "incorrect_confirmation"
-            state["confirmation_evidence_missing"] = True
+        # Missing dossier/tool evidence informs generation; it is not an
+        # independent semantic violation overriding an explicit Judge allow.
 
         # Write isolated text-branch keys (safe during parallel fan-out).
         state["text_leaks"] = text_leaks
@@ -1059,9 +1048,6 @@ def run_tutor_turn(
                         attempt_envelope["_thinking_effort"] = cap_thinking_effort(current_effort, "low")  # type: ignore[arg-type]
                     else:
                         attempt_envelope["_thinking_effort"] = "low"
-                    attempt_envelope["_thinking_budget"] = min(
-                        int(attempt_envelope.get("_thinking_budget") or 512), 512,
-                    )
             proposal = call_tutor_model(
                 current_model, attempt_envelope, instruction, window, images, tools,
                 repair_error=repair_error, preload_svg_guidelines=preload_svg_guidelines,
@@ -1154,7 +1140,28 @@ def run_tutor_turn(
     )
 
     def primary(state):
-        state["call"], state["vetting"] = attempt(model, "primary")
+        proposal, review = attempt(model, "primary")
+        if (
+            proposal.candidate is None
+            and proposal.failure == INVALID_CANDIDATE
+            and backup_model is not None
+            and _within_deadline()
+        ):
+            backup_proposal, backup_review = attempt(backup_model, "primary_backup")
+            if backup_proposal.candidate is not None:
+                proposal = ModelCall(
+                    backup_proposal.candidate,
+                    backup_proposal.failure,
+                    proposal.used_calls + backup_proposal.used_calls,
+                )
+                review = backup_review
+            else:
+                proposal = ModelCall(
+                    None,
+                    backup_proposal.failure or proposal.failure,
+                    proposal.used_calls + backup_proposal.used_calls,
+                )
+        state["call"], state["vetting"] = proposal, review
 
     def _is_retryable_text_failure(review: Vetting | None) -> bool:
         # Executor outages such as `math_check_failed` are excluded from LEAK_RETRY_REASONS.

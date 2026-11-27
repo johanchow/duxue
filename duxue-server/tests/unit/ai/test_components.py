@@ -388,6 +388,7 @@ def test_thinking_mode_streams_chunks_hides_cot_and_records_reasoning_tokens(mon
     spec = replace(
         COMPONENTS.get("companion.intent"),
         enable_thinking=True,
+        thinking_effort=None,  # Exercise historical provider controls at the gateway boundary.
         thinking_budget=2048,
     )
     client = StreamingClient()
@@ -410,6 +411,7 @@ def test_thinking_mode_streams_chunks_hides_cot_and_records_reasoning_tokens(mon
     assert generation.attributes["llm.stream_completed"] is True
     assert generation.attributes["llm.outcome"] == "ok"
     assert generation.attributes["llm.enable_thinking"] is True
+    assert generation.attributes["llm.thinking_effort"] == "medium"
     assert generation.attributes["llm.thinking_budget"] == 2048
     assert generation.attributes["llm.tokens_answer"] == 13
     assert generation.attributes["llm.tokens_reasoning"] == 42
@@ -427,8 +429,8 @@ def test_completion_evidence_enforces_termination_and_separates_failure_kinds():
 
     from app.infrastructure.ai.components import capture_llm_calls
 
-    thinking_intent = replace(COMPONENTS.get("companion.intent"), enable_thinking=True)
-    tutor_spec = replace(COMPONENTS.get("tutoring.turn"), enable_thinking=True)
+    thinking_intent = replace(COMPONENTS.get("companion.intent"), thinking_effort="low")
+    tutor_spec = replace(COMPONENTS.get("tutoring.turn"), thinking_effort="low")
 
     # 1. length: budget exhausted -> never delivered, classified as length_truncated
     class LengthStream:
@@ -496,7 +498,7 @@ def test_completion_evidence_enforces_termination_and_separates_failure_kinds():
             )
         )
 
-    with capture_llm_calls() as calls:
+    with components.capture_llm_calls() as calls:
         with pytest.raises(ModelGatewayError, match="model_transport_error"):
             invoke_json_component(
                 spec=thinking_intent,
@@ -521,7 +523,7 @@ def test_completion_evidence_enforces_termination_and_separates_failure_kinds():
     class ErrorStream:
         chat = SimpleNamespace(completions=SimpleNamespace(create=lambda **_kw: broken_iter()))
 
-    with capture_llm_calls() as calls:
+    with components.capture_llm_calls() as calls:
         with pytest.raises(ModelGatewayError, match="model_transport_error"):
             invoke_json_component(
                 spec=thinking_intent,
@@ -535,7 +537,7 @@ def test_completion_evidence_enforces_termination_and_separates_failure_kinds():
     assert calls[0]["error_type"] == "RuntimeError"
 
     # 4. stop + invalid JSON vs stop + contract error
-    with capture_llm_calls() as calls:
+    with components.capture_llm_calls() as calls:
         with pytest.raises(ModelGatewayError, match="invalid_model_candidate"):
             invoke_json_component(
                 spec=COMPONENTS.get("companion.intent"),
@@ -555,7 +557,7 @@ def test_completion_evidence_enforces_termination_and_separates_failure_kinds():
     # 5. stop + valid JSON + structured-decoding whitespace gap (pure wire syntax, no punctuation guessing)
     gap_raw = '{"act":"guide","content":"不过题目问的是"   \n   ,"turn":{"type":"work","relation":"new"}}'
     normal_raw = '{"act":"guide","content":"先看第一句","turn":{"type":"work","relation":"new"}}'
-    with capture_llm_calls() as calls:
+    with components.capture_llm_calls() as calls:
         invoke_json_component(
             spec=tutor_spec,
             user="孩子的原话",
@@ -602,3 +604,88 @@ def test_stream_timing_ignores_metadata_and_survives_interruption(monkeypatch):
     components.complete_json_chat(client=_Client("{}"), model="test", messages=[], temperature=0,
                                   max_tokens=10, telemetry=usage)
     assert "first_token_ms" not in usage and "first_content_ms" not in usage
+
+
+def test_thinking_tutor_json_parse_error_repairs_via_text_only_model():
+    from dataclasses import replace
+
+    tutor_spec = replace(COMPONENTS.get("tutoring.turn"), thinking_effort="low")
+    broken_raw = '{"act":"guide","content":"先看"第一题"","turn":{"type":"work","relation":"new"}}'
+    fixed_raw = '{"act":"guide","content":"先看「第一题」","turn":{"type":"work","relation":"new"}}'
+    recorded_kwargs: list[dict] = []
+
+    def create(**kwargs):
+        recorded_kwargs.append(kwargs)
+        if len(recorded_kwargs) == 1:
+            return iter([
+                SimpleNamespace(
+                    id="req-primary-1",
+                    choices=[SimpleNamespace(finish_reason="stop", delta=SimpleNamespace(content=broken_raw))],
+                    usage=SimpleNamespace(prompt_tokens=100, completion_tokens=20),
+                )
+            ])
+        return SimpleNamespace(
+            id="req-repair-1",
+            choices=[SimpleNamespace(finish_reason="stop", message=SimpleNamespace(content=fixed_raw))],
+            usage=SimpleNamespace(prompt_tokens=80, completion_tokens=20),
+        )
+
+    client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    user_with_image = [
+        {"type": "text", "text": "帮我看看第 1 题"},
+        {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,YQ=="}},
+    ]
+    with components.capture_llm_calls() as calls:
+        payload = invoke_json_component(
+            spec=tutor_spec,
+            user=user_with_image,
+            client=client,
+            settings_obj=_settings(),
+        )
+
+    assert payload["act"] == "guide"
+    assert payload["content"] == "先看「第一题」"
+    assert len(recorded_kwargs) == 2
+    repair_call = recorded_kwargs[1]
+    assert repair_call["model"] == COMPONENTS.get("tutoring.turn-backup").model
+    assert repair_call["response_format"] == {"type": "json_object"}
+    assert repair_call["temperature"] == 0
+    assert "image_url" not in repr(repair_call["messages"])
+    assert calls[0]["outcome"] == "ok"
+    assert calls[0]["abrupt_detail"] == "json_syntax_repaired"
+
+
+def test_json_parse_error_records_preview_when_repair_fails():
+    from dataclasses import replace
+
+    tutor_spec = replace(COMPONENTS.get("tutoring.turn"), thinking_effort="low")
+    broken_raw = '{"act":"guide","content":"bad \\escape'
+
+    def create(**kwargs):
+        if kwargs.get("stream"):
+            return iter([
+                SimpleNamespace(
+                    id="req-primary-bad",
+                    choices=[SimpleNamespace(finish_reason="stop", delta=SimpleNamespace(content=broken_raw))],
+                    usage=SimpleNamespace(prompt_tokens=50, completion_tokens=10),
+                )
+            ])
+        return SimpleNamespace(
+            id="req-repair-bad",
+            choices=[SimpleNamespace(finish_reason="stop", message=SimpleNamespace(content="{still broken"))],
+            usage=SimpleNamespace(prompt_tokens=40, completion_tokens=5),
+        )
+
+    client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    with components.capture_llm_calls() as calls:
+        with pytest.raises(ModelGatewayError, match="invalid_model_candidate"):
+            invoke_json_component(
+                spec=tutor_spec,
+                user="孩子的原话",
+                client=client,
+                settings_obj=_settings(),
+            )
+    assert len(calls) == 1
+    assert calls[0]["outcome"] == "json_parse_error"
+    assert "JSONDecodeError" in (calls[0]["abrupt_detail"] or "")
+    assert "preview=" in (calls[0]["abrupt_detail"] or "")
