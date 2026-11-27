@@ -6,9 +6,9 @@
 >
 > 范围：面向成人导师视角（Guardian / Coach 的 `guardian_explain`）的深度可修订课件——将 `ProblemSolving` 的客观核验结果转化为「按题与学情灵活组织教学 + 图文强绑定 + 可选立体几何 3D / 动态微课」结构化课件，支持对话式局部修订（纠正、修改、删减、补充）与毫秒级 Undo / Redo。
 >
-> 关联：[DDD 系统总览](ddd-overview.md) · [Tutoring 主域](domain-tutoring.md) · [ProblemSolving](domain-problem-solving.md) · [Companion · 家长问答体验](domain-companion.md#guardian-问答体验2026-11-17-验收2026-11-18-扩展双视角) · [答疑表达设计](domain-tutoring-presentation.md) · [用户 PRD §7.2](../product/prd-user.md#72-家长问答体验)
+> 关联：[DDD 系统总览](ddd-overview.md) · [Tutoring 主域](domain-tutoring.md) · [ProblemSolving](domain-problem-solving.md) · [Companion · 家长问答体验](topic-edu-agent.md#14-对话载体与交互协议) · [答疑表达设计](domain-tutoring.md#九答疑表达结构化配图与联网检索契约) · [用户 PRD §7.2](../product/prd-user.md#72-家长问答体验)
 
-本文是 [domain-tutoring.md](domain-tutoring.md) 的专题扩展，**不新增 Domain**。全系统 Domain Inventory 与 Domain Map 唯一归属 [ddd-overview.md](ddd-overview.md)；客观解题、多路共识与确定性算子核验唯一归属 [domain-problem-solving.md](domain-problem-solving.md) 与 [tutoring-math.md](tutoring-math.md)；现有成人无状态直出体验协议归属 [domain-companion.md](domain-companion.md)。
+本文是 [domain-tutoring.md](domain-tutoring.md) 的专题扩展，**不新增 Domain**。全系统 Domain Inventory 与 Domain Map 唯一归属 [ddd-overview.md](ddd-overview.md)；客观解题、多路共识与确定性算子核验唯一归属 [domain-problem-solving.md](domain-problem-solving.md) 与 [tutoring-math.md](tutoring-math.md)；现有成人无状态直出体验协议归属 [topic-edu-agent.md](topic-edu-agent.md#14-对话载体与交互协议)。
 
 ---
 
@@ -411,7 +411,7 @@ erDiagram
 
 ## 七、端侧渲染架构：离线 Web 数理舞台（Duxue MathStage Runtime）
 
-> **已确认路线**：通用 Web 绘图环境 + 预置常用组件 + 模型生成特殊演示代码。仅适用于成人 `MentorCourseware`；学生端规则仍由[答疑表达设计](domain-tutoring-presentation.md)维护。场景协议约束教学内容与版本管理，不要求提前枚举全部教学动作，不承诺覆盖所有教育场景。
+> **已确认路线**：通用 Web 绘图环境 + 预置常用组件 + 模型生成特殊演示代码。仅适用于成人 `MentorCourseware`；学生端规则仍由[答疑表达设计](domain-tutoring.md#九答疑表达结构化配图与联网检索契约)维护。场景协议约束教学内容与版本管理，不要求提前枚举全部教学动作，不承诺覆盖所有教育场景。
 
 ### 7.1 分工与表达范围
 

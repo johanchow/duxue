@@ -95,7 +95,7 @@
 
 ### 4.2 作业启发答疑（红线与教学方法论）
 
-作为教育通用 Agent 在 Ward 作业场景下的强护栏技能，严格遵循以下原则与方法论（技术契约见 [Tutoring Domain](../technical/domain-tutoring.md) 与 [答疑表达设计](../technical/domain-tutoring-presentation.md)）：
+作为教育通用 Agent 在 Ward 作业场景下的强护栏技能，严格遵循以下原则与方法论（技术契约见 [Tutoring Domain](../technical/domain-tutoring.md)）：
 
 1. **教学优先，技术服务于教学**：设计回答、引导与配图时，先回答“一位好老师面对这个孩子、这道题会怎么讲”，技术只在安全不变量（答案保护、内容安全、端侧稳定）上有否决权，不因技术限制悄悄降级教学方案。
 2. **苏格拉底小步启发与卡点诊断**：

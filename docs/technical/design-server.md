@@ -44,8 +44,8 @@ duxue-server/
 
 | Context | 业务与 Workflow 的唯一设计 | 本文负责的物理映射 |
 |---|---|---|
-| Companion Orchestration | [domain-companion.md](domain-companion.md) | Thread/Run、Checkpoint/Trace、入口 API/SSE |
-| Planning & Scheduling | [domain-planning.md](domain-planning.md) | Task、PlanDraft、DailySchedule、确认事务 |
+| Companion Orchestration | [topic-edu-agent.md](topic-edu-agent.md#14-对话载体与交互协议) | Thread/Run、Checkpoint/Trace、入口 API/SSE |
+| Planning & Scheduling | [domain-study.md](domain-study.md) | Task、PlanDraft、DailySchedule、确认事务 |
 | Study | [domain-study.md](domain-study.md) | StudySession、StartCue |
 | Tutoring | [domain-tutoring.md](domain-tutoring.md) | TutoringSession、ProblemRecord、消息、运行时存储 |
 | Evaluation & Reflection | [domain-evaluation.md](domain-evaluation.md) | SelfReview、报告、投影与 Worker |
@@ -59,7 +59,7 @@ duxue-server/
 
 本节描述当前服务端的物理 Schema；字段、主键、唯一约束和表名以已发布的
 SQLAlchemy 模型与 Alembic 迁移为准。
-`user_wards.history_generation` 与 `conversation_threads.history_generation` 均为非空整数、默认 0，由迁移 `20261030_30` 增加；清空命令复用 `companion_commands`，`thread_id` 为空。历史可见性与并发契约见 [Companion 清空历史](domain-companion.md#清空历史与会话边界)。
+`user_wards.history_generation` 与 `conversation_threads.history_generation` 均为非空整数、默认 0，由迁移 `20261030_30` 增加；清空命令复用 `companion_commands`，`thread_id` 为空。历史可见性与并发契约见 [Companion 清空历史](topic-edu-agent.md#14-对话载体与交互协议)。
 各 Context 的业务含义、不变量和生命周期不在本节
 重复，分别由对应的 `domain-*.md` 维护。
 
@@ -1003,7 +1003,7 @@ duxue-server/tests/
 
 ## 轻量任务与专注挑战物理映射（2026-11-03，迁移32）
 
-产品事实源：[计划 PRD](../product/prd-schedule.md)；领域契约：[Planning](domain-planning.md)、[Study Sprint](domain-study.md#24-sprint主动专注挑战已实现待验收)。本轮实现待验收，未对开发/生产库自动执行迁移。
+产品事实源：[计划 PRD](../product/prd-schedule.md)；领域契约：[Planning](domain-study.md)、[Study Sprint](domain-study.md#24-sprint主动专注挑战已实现待验收)。本轮实现待验收，未对开发/生产库自动执行迁移。
 
 | 表 / 字段 | 物理契约 |
 |---|---|
@@ -1031,7 +1031,7 @@ Query 由 `app/application/queries/tutoring_evidence.py` 承接，鉴权由 Guar
 
 ### Task约定提醒增量（2026-11-04）
 
-Task可空列`end_reminder_mode: varchar(20)`由迁移`20261104_34`加入；历史默认NULL，不补造提醒授权。规则与持久化边界唯一归属[Planning约定提醒](domain-planning.md#约定到时提醒2026-11-04本轮待验收)。测试库已从33升级至34并完成本轮回归；生产库尚未执行此迁移，后台通知等现场验收边界见进行中spec。
+Task可空列`end_reminder_mode: varchar(20)`由迁移`20261104_34`加入；历史默认NULL，不补造提醒授权。规则与持久化边界唯一归属[Planning约定提醒](domain-study.md)。测试库已从33升级至34并完成本轮回归；生产库尚未执行此迁移，后台通知等现场验收边界见进行中spec。
 
 
 ## 近实时观察物理映射（2026-11-12，迁移35）

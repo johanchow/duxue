@@ -61,6 +61,14 @@ flowchart LR
 | `ArtifactType` | 产物形态枚举：`interactive_courseware`、`grading_report`、`lesson_pack`、`creative_work` | 无类型任意 HTML/JSON 堆砌 |
 | `FocusBoundaryState` | Ward 当前是否处于专注态（进行中 Sprint 或存在未完成受保护作业题）的只读快照 | 强制锁屏或禁止使用的硬封禁状态 |
 
+### 1.4 对话载体与交互协议
+
+随着 `planning` / `reflection` 退场，原 `Companion Orchestration` 收缩为极薄的 **`Conversation`（Supporting）**，**不再承担多场景 Handoff**，仅维护双端通用的三项基础契约：
+
+1. **Thread / Run / Turn 层级**：一个账号/视角维护连续的 `ConversationThread`；每次用户输入启动有界 `AgentRun`（记录执行阶段、工具预算与可取消状态）；单个 `Turn` 产出回复消息与可选 `EduArtifact` 引用。
+2. **清空可见历史边界**：用户触发清空对话时，服务端原子递增 `history_generation`，仅重置前端可见列表与下一轮模型短期上下文窗口，**绝不删除**既有 `Tutoring` 教学事实、已保存 `EduArtifact` 资产或 `Memory` 长期画像；迟到的旧 `AgentRun` 回调按 `history_generation` 丢弃，不污染新对话。
+3. **关闭词汇表交互信封**：模型只返回业务语义候选（正文、`visual`、发音原文、产物补丁），**严禁模型直接发明前端 UI `kind` 或按钮**；由 Application 层统一投影为关闭词汇表信封（`text`、`text_visual`、`pronounce`、`artifact_card`、`focus_guard_prompt`、`help_offer`），旧客户端对未知 `kind` 优雅降级为纯文本。
+
 ---
 
 ## 二、`ArtifactWorkspace` Domain Model（承接并泛化 `MentorCourseware`）

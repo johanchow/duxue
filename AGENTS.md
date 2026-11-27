@@ -76,14 +76,11 @@ duxue/                          # 项目根目录
 | 服务端 Agent 导航 | [`duxue-server/AGENTS.md`](duxue-server/AGENTS.md) | 服务端改动该读哪份设计、配置与代码的边界、测试和联调验收 |
 | Agent 与 Workflow 配置 | [`docs/technical/design-agent.md`](docs/technical/design-agent.md) | Workflow / Agent / Gate / Tool 契约；Admin 是可编辑配置的唯一事实源 |
 | 服务端详细设计 (No-Tenant) | [`docs/technical/design-server.md`](docs/technical/design-server.md) | 分层实现、无租户模型与直连绑定、数据库 ER 图、会话即时分析与伴学记忆引擎 |
-| 陪伴编排 Domain 设计 | [`docs/technical/domain-companion.md`](docs/technical/domain-companion.md) | 统一入口路由、Thread/Run、Handoff、通用 Runtime 与受控写回协议 |
-| 计划与任务 Domain 设计 | [`docs/technical/domain-planning.md`](docs/technical/domain-planning.md) | 轻量任务与顺序、可选估时/起点、安排确认与执行事实分离、后台完整模型与按需投影 |
-| 学习执行 Domain 设计 | [`docs/technical/domain-study.md`](docs/technical/domain-study.md) | StudySession 计时与完成、到点开始邀请 StartCue |
-| 辅导答疑 Domain 设计 | [`docs/technical/domain-tutoring.md`](docs/technical/domain-tutoring.md) | 答案状态红线、TutoringTurnLoop、发音 act、教学事实与答疑会话结算 |
-| 教育通用 Agent 技术架构（目标演进） | [`docs/technical/topic-edu-agent.md`](docs/technical/topic-edu-agent.md) | `ArtifactWorkspace`（`EduArtifact` 泛化 `MentorCourseware`）+ `EduAgentOrchestrator` + `RolePolicy` + Skills/Gates + 受权只读学情与 `planning`/`reflection` 退场路线 |
-| 导师深度课件专题 | [`docs/technical/topic-mentor-courseware.md`](docs/technical/topic-mentor-courseware.md) | 成人导师视角 `MentorCourseware` 聚合、灵活教学编排与图文讲解、混合 Web 绘图与隔离生成 JS、局部修订与 Undo/Redo；临时课件已有 P0-1 实现，主动保存与「我的课件」已接入测试库 |
+| 学习执行 Domain 设计 | [`docs/technical/domain-study.md`](docs/technical/domain-study.md) | StudySession 计时与完成、Sprint 主动专注挑战、`GetWardFocusState` 与 `HelpOffer` |
+| 辅导答疑 Domain 设计 | [`docs/technical/domain-tutoring.md`](docs/technical/domain-tutoring.md) | Ward 作业强护栏：答案状态红线、TutoringTurnLoop、发音 act、表达与结构化 `visual` 配图、联网检索及解题凭证 |
+| 教育通用 Agent 技术架构（目标演进） | [`docs/technical/topic-edu-agent.md`](docs/technical/topic-edu-agent.md) | `Conversation` 对话载体 + `EduAgentOrchestrator` + `RolePolicy` + `ArtifactWorkspace`（`EduArtifact` 泛化 `MentorCourseware`）+ Skills/Gates 与受权只读学情 |
+| 导师深度课件专题 | [`docs/technical/topic-mentor-courseware.md`](docs/technical/topic-mentor-courseware.md) | 已合入基线与 `MathStage` 离线 Web 绘图/隔离运行唯一事实源（聚合将泛化为 `EduArtifact`） |
 | 答疑离线评测设计 | [`docs/technical/eval-offline.md`](docs/technical/eval-offline.md) | 冒烟式离线评测、与生产同源的重放判分、数据集构造与复核、三级指标与不确定性、variant 与发布阈值 |
-| 答疑表达设计（逻辑 + 配图） | [`docs/technical/domain-tutoring-presentation.md`](docs/technical/domain-tutoring-presentation.md) | 回答形状（按 act 的结构与长度不变量）、结构化 `visual` 配图（原生渲染、门禁与红线）、提示词预算、评测与分期（草案，未实现） |
 | 评估与复盘 Domain 设计 | [`docs/technical/domain-evaluation.md`](docs/technical/domain-evaluation.md) | 即时自评、证据版本化复盘、报告与行动采纳 |
 | 孩子理解与记忆 Domain 设计 | [`docs/technical/domain-memory.md`](docs/technical/domain-memory.md) | 事实事件账本、Signal/Claim、三层记忆与表映射、更新/衰减、答疑情境记忆与数据删除边界 |
 | VLM 分析指南 | [`duxue-server/docs/qwen3vl-student-behavior-guide.md`](duxue-server/docs/qwen3vl-student-behavior-guide.md) | Qwen3-VL 行为分析 Prompt 设计与字段定义 |

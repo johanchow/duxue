@@ -2,7 +2,7 @@
 
 > 状态：目标演进（`SelfReview` / `reflection` 每日自述已确定退场，待 Phase 1 清理；晚间客观汇总报告扩展见下方演进说明） · 版本：v2.2（2026-11-27）
 > 范围：晚间客观汇总报告（**作业专注 vs AI 自由探索分口径时长**、《独立解题凭证》与消费 `CreationFootprintRecorded.v1` 投影的「好奇心与创作足迹」）；原 Ward 每日结构化自述复盘与计划估时对照已确定退场。
-> 关联：[系统 Context Map](ddd-overview.md) · [教育通用 Agent 架构](topic-edu-agent.md) · [Companion 编排](domain-companion.md) · [Memory Context](domain-memory.md) · [Server 物理设计](design-server.md) · [首页与晚间汇总报告 PRD](../product/prd-user.md#71-孩子首页晚间客观汇总报告直接呈现)
+> 关联：[系统 Context Map](ddd-overview.md) · [教育通用 Agent 架构](topic-edu-agent.md) · [Companion 编排](topic-edu-agent.md#14-对话载体与交互协议) · [Memory Context](domain-memory.md) · [Server 物理设计](design-server.md) · [首页与晚间汇总报告 PRD](../product/prd-user.md#71-孩子首页晚间客观汇总报告直接呈现)
 
 ## 一、边界与统一语言
 

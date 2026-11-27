@@ -101,11 +101,11 @@ Runtime，不是 Memory & Understanding 的持久化模型。
 | 需要了解的内容 | 唯一详情文档 |
 |---|---|
 | Context Map、所有权和集成事件 | [DDD 系统级 Overview](ddd-overview.md) |
-| 陪伴入口、Thread/Run 与 Agent Runtime | [Companion Orchestration](domain-companion.md) |
+| 陪伴入口、Thread/Run 与 Agent Runtime | [Companion Orchestration](topic-edu-agent.md#14-对话载体与交互协议) |
 | Agent、Gate、Tool 与 Workflow 配置契约 | [Agent 配置设计](design-agent.md) |
 | 当前 Agent 流程图 | [自动生成流程图](agent-flow-current.md) |
 | 学习证据、Episode、Signal 与长期画像 | [Memory & Understanding](domain-memory.md) |
-| 计划、学习执行、复盘的领域规则 | [Planning](domain-planning.md) · [Study](domain-study.md) · [Tutoring](domain-tutoring.md) · [Evaluation](domain-evaluation.md) |
+| 计划、学习执行、复盘的领域规则 | [Planning](domain-study.md) · [Study](domain-study.md) · [Tutoring](domain-tutoring.md) · [Evaluation](domain-evaluation.md) |
 | 稀疏图片解释、无计划观察学段与增量证据发布 | [Behavior Analysis](domain-behavior.md)（目标设计，未实现；求助邀请和晚间报告分别归 Study / Evaluation） |
 
 ---

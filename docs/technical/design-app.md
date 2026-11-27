@@ -52,13 +52,13 @@
 
 ### Guardian 问答的技术边界
 
-成人独立体验的 API 与短期状态协议归 [Companion · Guardian 问答体验](domain-companion.md#guardian-问答体验2026-11-17-验收2026-11-18-扩展双视角)。面向导师深度数理动态课件的端侧混合 Web 数理舞台（`Duxue MathStage Runtime`，常用组件 + 隔离的生成 JS，仅限成人 `MentorCourseware` 视图）目标设计见 [导师深度课件专题 §七](topic-mentor-courseware.md#七端侧渲染架构离线-web-数理舞台duxue-mathstage-runtime)。主动保存阶段，问答页提供「我的课件」，列表与原消息按 courseware_id 打开详情，保存成功后刷新列表；切换账号清除旧列表和详情缓存。产品行为见 [用户 PRD §7.2](../product/prd-user.md#72-家长问答体验)。客户端 `GuardianQuestionPage` 复用 `VoiceComposer`、Markdown/LaTeX、`VisualBlock` 和发音卡，不保存 Ward Thread，不借用学生登录身份。页面在内存中维护严格隔离的双视角会话状态（`student_guide` 默认学生分步启发、`guardian_explain` 导师完整解析），各自独立保存消息、待发照片、未发送文字草稿、签名 `stateToken` 与本地 `generation`；在学生视角收到有效启发回复后，同题讲解入口将原题文本与已上传成人照片引用带入导师视角展开完整思路，不污染原学生视角 `stateToken`。切换视角或底部导航均保留两套本轮内存状态；离开问答停止播放并卸载录音控件；销毁后的迟到ASR回调被忽略，退出/重启不恢复历史。
+成人独立体验的 API 与短期状态协议归 [Companion · Guardian 问答体验](topic-edu-agent.md#14-对话载体与交互协议)。面向导师深度数理动态课件的端侧混合 Web 数理舞台（`Duxue MathStage Runtime`，常用组件 + 隔离的生成 JS，仅限成人 `MentorCourseware` 视图）目标设计见 [导师深度课件专题 §七](topic-mentor-courseware.md#七端侧渲染架构离线-web-数理舞台duxue-mathstage-runtime)。主动保存阶段，问答页提供「我的课件」，列表与原消息按 courseware_id 打开详情，保存成功后刷新列表；切换账号清除旧列表和详情缓存。产品行为见 [用户 PRD §7.2](../product/prd-user.md#72-家长问答体验)。客户端 `GuardianQuestionPage` 复用 `VoiceComposer`、Markdown/LaTeX、`VisualBlock` 和发音卡，不保存 Ward Thread，不借用学生登录身份。页面在内存中维护严格隔离的双视角会话状态（`student_guide` 默认学生分步启发、`guardian_explain` 导师完整解析），各自独立保存消息、待发照片、未发送文字草稿、签名 `stateToken` 与本地 `generation`；在学生视角收到有效启发回复后，同题讲解入口将原题文本与已上传成人照片引用带入导师视角展开完整思路，不污染原学生视角 `stateToken`。切换视角或底部导航均保留两套本轮内存状态；离开问答停止播放并卸载录音控件；销毁后的迟到ASR回调被忽略，退出/重启不恢复历史。
 
 ### 对话回复进度
 
 Ward 的 Companion 请求与 Guardian 两种视角复用 Flutter `ReplyProgress`。等待超过 250 毫秒时，在对话末尾靠左展示已到达的最近三条状态。每次新增真实阶段从底行进入，已有状态上移并逐渐淡出，长等待时当前状态轻微呼吸。行数随已到达状态增加。开启减少动态效果时只显示当前静态状态，读屏仅播报当前状态。
 
-Ward 文字、语音、图片和交互动作以及 Guardian 两种视角均订阅[回复阶段协议](domain-companion.md#对话回复阶段)。App 将阶段名映射为短文案。Ward 图片在发送前上传，Guardian 在本轮实际上传时显示相应状态。Guardian 两种视角各自保存当前进度。收到回复、失败或清空时移除进度。Ward 的长对话使用末尾锚点校正惰性列表估算的滚动范围，用户已经离开末尾时保持滚动位置。
+Ward 文字、语音、图片和交互动作以及 Guardian 两种视角均订阅[回复阶段协议](topic-edu-agent.md#14-对话载体与交互协议)。App 将阶段名映射为短文案。Ward 图片在发送前上传，Guardian 在本轮实际上传时显示相应状态。Guardian 两种视角各自保存当前进度。收到回复、失败或清空时移除进度。Ward 的长对话使用末尾锚点校正惰性列表估算的滚动范围，用户已经离开末尾时保持滚动位置。
 
 失败保留文字与已上传图片供重试，成功才追加一组对话。重新开始仅推进当前激活视角的本地 `generation` 并清空该视角，拍照/上传/回答的迟到结果均不能写回新一轮或串入另一视角；过期状态（409）需显式重新开始，频控超限（429）提示稍后再试或切回学生视角。输入/图片请求期间禁用当前视角重复发送，正文与照片走成人专属接口。无记录的孩子页由真实空态条件提供体验/绑定入口，不将加载失败伪装成空记录。
 
@@ -201,18 +201,18 @@ FUNCTION routerRedirectGuard(authState, targetPath):
 ```
 
 #### 1.1 答疑配图 `VisualBlock`
-- **来源**：交互 `kind=text_visual` 的 `visual` part（见 [Companion 交互协议](domain-companion.md#52-companion-interaction-protocol)）；采用两层渲染架构，不引入 WebView 或可执行脚本。
+- **来源**：交互 `kind=text_visual` 的 `visual` part（见 [Companion 交互协议](topic-edu-agent.md#14-对话载体与交互协议)）；采用两层渲染架构，不引入 WebView 或可执行脚本。
 - **图型**：第一层为 Flutter 原生结构化图 `steps`、`compare`、`segment`（线段图）、`number_line`（数轴）；第二层为 `flutter_svg` 渲染的受限静态矢量图 `svg`（固定 `viewBox="0 0 680 H"`，渲染前由 `materializeSvgTheme` 将语义色板与 `var(--color-*)` 摊平为当前明暗主题色值），均位于 `lib/features/visual_block.dart`；窄屏、深色、系统字号放大可用。
 - **不信任输入**：先解析成纯 Dart 数据并复核预算（节点数、文字长度、未知量不带数值、SVG 禁止 `<script>`/`<foreignObject>`/`<style>`/外链/事件属性）；未知 `kind`、结构或预算不对就**整张不画**，文字照常展示，不报错、不弹窗。旧客户端遇到 `text_visual` 按协议降级为 `text`。
 - **无障碍**：`Semantics` 标签为 `alt`，`steps` 另按顺序线性化朗读，`svg` 附加图内 `<text>` 顺序拼接文本供读屏。原生 SVG 渲染前将路径端点的 marker 按切线方向展开为普通图形，支持轨道和旋转箭头。
 - **生命周期**：通过检查的 `visual` 随该轮 `CompanionMessage.interaction_ref` 写入消息 journal，在对应历史气泡内持久展示（进入新一轮对话或重新打开对话列表不会消失），但不会注入后续轮次传给大模型的对话上下文。
 - **与流式的关系**：图随已校验的完整交互一次性出现，包括使用[对话回复阶段](#对话回复进度)的请求。
 
-对话框右上角提供清空入口，交互与提示文案见 [教育通用 Agent PRD §4.2](../product/prd-edu-agent.md#42-作业启发答疑红线与教学方法论)，异步请求及本地 Thread 写入边界见 [Companion 清空历史](domain-companion.md#清空历史与会话边界)。
+对话框右上角提供清空入口，交互与提示文案见 [教育通用 Agent PRD §4.2](../product/prd-edu-agent.md#42-作业启发答疑红线与教学方法论)，异步请求及本地 Thread 写入边界见 [Companion 清空历史](topic-edu-agent.md#14-对话载体与交互协议)。
 
 #### 1.2 历史对话图片查看
 - Ward 消息的 `attachment_refs` 保留图片顺序；聊天列表只为进入视口的气泡读取图片，缩略图按 72 逻辑像素解码，全屏查看时按原始上传字节解码。
-- 点击气泡图片打开黑底查看页，可双指缩放、拖动及左右切换同一条消息的图片；返回后保留聊天列表位置。图片字节在当前页面内缓存，重启后从受控消息附件接口重新读取；授权边界见 [Companion transcript journal](domain-companion.md#51-ward-facing-transcript-journal)。
+- 点击气泡图片打开黑底查看页，可双指缩放、拖动及左右切换同一条消息的图片；返回后保留聊天列表位置。图片字节在当前页面内缓存，重启后从受控消息附件接口重新读取；授权边界见 [Companion transcript journal](topic-edu-agent.md#14-对话载体与交互协议)。
 
 #### 2. 正文 Markdown + LaTeX 混排渲染机制（`ChatMarkdownBody`）
 - **双轨渲染与解析管线**：位于 `lib/shared/chat_markdown.dart`，基于纯 Dart `package:markdown` AST 与 `flutter_math_fork`（`Math.tex`）原生渲染正文与公式，无需引入 WebView；
