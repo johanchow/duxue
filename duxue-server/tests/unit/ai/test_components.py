@@ -689,3 +689,34 @@ def test_json_parse_error_records_preview_when_repair_fails():
     assert calls[0]["outcome"] == "json_parse_error"
     assert "JSONDecodeError" in (calls[0]["abrupt_detail"] or "")
     assert "preview=" in (calls[0]["abrupt_detail"] or "")
+
+
+def test_thinking_json_object_sent_only_for_capable_model_family():
+    from dataclasses import replace
+
+    valid_raw = '{"act":"guide","content":"先看第一题","turn":{"type":"work","relation":"new"}}'
+    recorded: list[dict] = []
+
+    def create(**kwargs):
+        recorded.append(kwargs)
+        return iter([
+            SimpleNamespace(
+                id="req-cap",
+                choices=[SimpleNamespace(finish_reason="stop", delta=SimpleNamespace(content=valid_raw))],
+                usage=SimpleNamespace(prompt_tokens=20, completion_tokens=10),
+            )
+        ])
+
+    client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+
+    deepseek_spec = replace(COMPONENTS.get("tutoring.turn"), model="deepseek-v4.1-flash-1017", thinking_effort="low")
+    invoke_json_component(spec=deepseek_spec, user="孩子的原话", client=client, settings_obj=_settings())
+
+    qwen_spec = replace(COMPONENTS.get("tutoring.turn"), model="qwen3.8-max", thinking_effort="low")
+    invoke_json_component(spec=qwen_spec, user="孩子的原话", client=client, settings_obj=_settings())
+
+    assert len(recorded) == 2
+    assert recorded[0]["response_format"] == {"type": "json_object"}
+    assert recorded[0]["extra_body"] == {"enable_thinking": True, "reasoning_effort": "low"}
+    assert "response_format" not in recorded[1]
+    assert recorded[1]["extra_body"] == {"enable_thinking": True, "thinking_budget": 1024}

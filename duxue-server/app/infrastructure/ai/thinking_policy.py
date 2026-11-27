@@ -43,6 +43,7 @@ class ProviderThinkingParams:
     reasoning_effort: str | None = None
     thinking_budget: int | None = None
     effective_effort: ThinkingEffort = "off"
+    supports_json_object_with_thinking: bool = False
 
 
 def normalize_thinking_effort(
@@ -70,6 +71,19 @@ def is_deepseek_model(model: str | None) -> bool:
     return "deepseek" in (model or "").strip().lower()
 
 
+def supports_json_object_with_thinking(model: str | None) -> bool:
+    """Whether ``model`` supports ``response_format={"type": "json_object"}`` when thinking is enabled.
+
+    Verified on DashScope OpenAI-compatible API:
+    - DeepSeek family (``deepseek-*``): supports ``enable_thinking=True`` + ``reasoning_effort``
+      together with ``response_format={"type": "json_object"}`` (including streaming, straight
+      quotes, LaTeX, and multimodal inputs).
+    - Qwen hybrid-thinking family (default): kept ``False`` to avoid historical constrained-decoding
+      whitespace-gap truncation and HTTP 400 ``InternalError.Algo.InvalidParameter`` aborts.
+    """
+    return is_deepseek_model(model)
+
+
 def _min_positive(*values: int | None) -> int | None:
     positives = [v for v in values if isinstance(v, int) and v > 0]
     return min(positives) if positives else None
@@ -85,6 +99,7 @@ def resolve_provider_thinking(
 ) -> ProviderThinkingParams:
     """Translate abstract ``effort`` (or legacy flags) into model-family API parameters."""
     deepseek = is_deepseek_model(model)
+    json_with_thinking = supports_json_object_with_thinking(model)
 
     if effort is not None:
         if effort == "off":
@@ -93,6 +108,7 @@ def resolve_provider_thinking(
                 reasoning_effort=None,
                 thinking_budget=None,
                 effective_effort="off",
+                supports_json_object_with_thinking=json_with_thinking,
             )
         if deepseek:
             ds_effort = "high" if effort == "high" else "low"
@@ -101,6 +117,7 @@ def resolve_provider_thinking(
                 reasoning_effort=ds_effort,
                 thinking_budget=None,
                 effective_effort=effort,
+                supports_json_object_with_thinking=json_with_thinking,
             )
         target_budget = _QWEN_EFFORT_BUDGETS[effort]
         effective_budget = (
@@ -113,6 +130,7 @@ def resolve_provider_thinking(
             reasoning_effort=None,
             thinking_budget=effective_budget,
             effective_effort=effort,
+            supports_json_object_with_thinking=json_with_thinking,
         )
 
     # Legacy path (no explicit effort): keep enable_thinking=False as off,
@@ -123,6 +141,7 @@ def resolve_provider_thinking(
             reasoning_effort=None,
             thinking_budget=None,
             effective_effort="off",
+            supports_json_object_with_thinking=json_with_thinking,
         )
 
     if deepseek:
@@ -133,6 +152,7 @@ def resolve_provider_thinking(
                 reasoning_effort=reasoning_effort,
                 thinking_budget=None,
                 effective_effort=inferred,
+                supports_json_object_with_thinking=json_with_thinking,
             )
         if isinstance(thinking_budget, int) and 0 < thinking_budget <= 2560:
             return ProviderThinkingParams(
@@ -140,12 +160,14 @@ def resolve_provider_thinking(
                 reasoning_effort="low",
                 thinking_budget=None,
                 effective_effort="low" if thinking_budget <= 1024 else "medium",
+                supports_json_object_with_thinking=json_with_thinking,
             )
         return ProviderThinkingParams(
             enable_thinking=True,
             reasoning_effort="high",
             thinking_budget=None,
             effective_effort="high",
+            supports_json_object_with_thinking=json_with_thinking,
         )
 
     inferred_qwen: ThinkingEffort = (
@@ -160,4 +182,5 @@ def resolve_provider_thinking(
         reasoning_effort=reasoning_effort,
         thinking_budget=thinking_budget,
         effective_effort=inferred_qwen,
+        supports_json_object_with_thinking=json_with_thinking,
     )

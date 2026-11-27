@@ -262,10 +262,11 @@ def complete_json_chat(
 ) -> ChatCompletionResult:
     """Execute one structured JSON chat completion.
 
-    DashScope hybrid/thinking models require streaming when ``enable_thinking=True``,
-    and must NOT enable ``response_format={"type": "json_object"}`` together with
-    ``enable_thinking=True`` (which triggers constrained-decoding quote truncation
-    and HTTP 400 ``InternalError.Algo.InvalidParameter`` aborts).
+    DashScope hybrid/thinking models require streaming when ``enable_thinking=True``.
+    Whether ``response_format={"type": "json_object"}`` is sent alongside thinking is
+    governed per model family by ``resolved_thinking.supports_json_object_with_thinking``
+    (enabled for verified DeepSeek models; disabled for Qwen hybrid-thinking models to
+    avoid constrained-decoding quote truncation and HTTP 400 aborts).
     ``reasoning_content`` is intentionally discarded so chain-of-thought text never
     enters Ward-visible output or production trace payloads.
     """
@@ -344,16 +345,19 @@ def complete_json_chat(
         extra_body["reasoning_effort"] = reasoning_effort
     if thinking_budget is not None:
         extra_body["thinking_budget"] = thinking_budget
+    request_kwargs: dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": True,
+        "stream_options": {"include_usage": True},
+        "extra_body": extra_body,
+    }
+    if resolved_thinking.supports_json_object_with_thinking:
+        request_kwargs["response_format"] = {"type": "json_object"}
     started = perf_counter()
-    response = client.chat.completions.create(
-        model=model,
-        messages=messages,
-        temperature=temperature,
-        max_tokens=max_tokens,
-        stream=True,
-        stream_options={"include_usage": True},
-        extra_body=extra_body,
-    )
+    response = client.chat.completions.create(**request_kwargs)
     if hasattr(response, "choices"):
         usage = getattr(response, "usage", None)
         choice = response.choices[0]
