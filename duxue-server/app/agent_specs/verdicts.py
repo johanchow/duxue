@@ -46,7 +46,7 @@ def normalize_judge(unit_id: str, payload: dict | None, *, phase: str = "respons
             reason = "final_answer"
         elif payload["complete_solution"]:
             reason = "complete_solution"
-        elif payload["affirms_student_answer"] and payload["student_answer_correct"] not in {True, "partial"}:
+        elif payload["affirms_student_answer"] and payload["student_answer_correct"] is False:
             reason = "incorrect_confirmation"
         elif payload["premature_conclusion"]:
             reason = "premature_conclusion"

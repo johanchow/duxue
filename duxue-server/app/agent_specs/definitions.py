@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Literal
 
 from jsonschema import Draft202012Validator
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
 
 from app.agent_specs.contexts import BUILDERS
 from app.agent_specs.results import ERROR_CODES, result_validator
@@ -72,12 +72,22 @@ class ModelDefinition(BaseModel):
     temperature: float = Field(ge=0, le=2)
     max_output_tokens: int = Field(gt=0, le=16384)
     timeout_ms: int = Field(gt=0, le=120000)
+    thinking_effort: Literal["off", "low", "medium", "high"] | None = None
+    # Accepted only for loading historical immutable releases.
     enable_thinking: bool = False
     thinking_budget: int | None = Field(default=None, gt=0, le=32768)
 
     guardian_t1_reasoning_effort: Literal["low"] | None = None
     guardian_crop_handoff: bool = False
     guardian_distance_evidence: bool = False
+
+    @model_serializer(mode="wrap")
+    def serialize_thinking(self, handler):
+        data = handler(self)
+        if self.thinking_effort is not None:
+            for key in ("enable_thinking", "thinking_budget", "guardian_t1_reasoning_effort"):
+                data.pop(key, None)
+        return data
 
     @model_validator(mode="after")
     def valid_thinking(self):
@@ -91,6 +101,10 @@ class ModelDefinition(BaseModel):
             raise ValueError("Guardian T1 effort requires a thinking blueprint planner")
         if self.thinking_budget is not None and not self.enable_thinking:
             raise ValueError(f"{self.component_id}: thinking_budget requires enable_thinking=true")
+        if self.thinking_effort is not None and (
+            {"enable_thinking", "thinking_budget", "guardian_t1_reasoning_effort"} & self.model_fields_set
+        ):
+            raise ValueError("thinking_effort cannot be combined with legacy thinking parameters")
         return self
 
 

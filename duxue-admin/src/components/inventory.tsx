@@ -481,14 +481,9 @@ export function AgentDetail({
                         <span>温度 {model.temperature}</span>
                         <span>Token 上限 {model.max_output_tokens}</span>
                         <span>超时 {model.timeout_ms}ms</span>
-                        {model.enable_thinking ? (
-                          <span>
-                            思考开启
-                            {model.thinking_budget
-                              ? ` (预算 ${model.thinking_budget})`
-                              : ''}
-                          </span>
-                        ) : null}
+                        <span>
+                          思考强度 {model.thinking_effort ?? '历史配置'}
+                        </span>
                       </div>
                     </div>
                   ))}

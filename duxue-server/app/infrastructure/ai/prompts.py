@@ -105,8 +105,17 @@ def compose_system_prompt(
         if fragment is None:
             continue
         rendered = DynamicPrompt(fragment.id, fragment.template, fragment.variables).render({})
-        if rendered.strip():
-            extras.append(rendered.strip())
+        stripped = rendered.strip()
+        if not stripped:
+            continue
+        markers = [
+            line.strip()
+            for line in stripped.splitlines()
+            if line.strip().startswith("[") and line.strip().endswith("]")
+        ]
+        if markers and any(marker in spec_prompt.text for marker in markers):
+            continue
+        extras.append(stripped)
     if not extras:
         return spec_prompt
     return PromptTemplate(

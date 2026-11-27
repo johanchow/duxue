@@ -512,8 +512,7 @@ class AgentCatalog:
                 "id": component.component_id,
                 "version": component.version,
                 "model": component.model,
-                "enable_thinking": component.enable_thinking,
-                "thinking_budget": component.thinking_budget,
+                "thinking_effort": component.thinking_effort,
                 "prompt_id": component.prompt.id,
                 "definition_digest": component.definition_digest,
                 "prompt_fragments": {

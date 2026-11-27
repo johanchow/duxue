@@ -247,8 +247,7 @@ class QwenMentorExplainGateway(MentorExplainModelPort):
                     {"role": "system", "content": DEFAULT_MENTOR_PROMPT},
                     {"role": "user", "content": user_parts},
                 ],
-                enable_thinking=base_spec.enable_thinking,
-                thinking_budget=base_spec.thinking_budget,
+                thinking_effort=base_spec.thinking_effort,
                 telemetry=telemetry,
             )
             parsed, outcome, abrupt_detail = components.validate_json_completion(

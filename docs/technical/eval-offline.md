@@ -130,6 +130,8 @@ sequenceDiagram
 
 保留原始表达、ASR、来源、覆盖范围与标签。只有窗口证据时不得声称完整线程；缺失状态标 `missing`，不能伪造观察值。外部素材的 system 和末条示范不进入生产输入，不自动作为 gold；`proposed` 不因自动通过升级为 `confirmed`。
 
+单轮回放的显式 Context 可记录 `grade_stage` 与规范化的 `thinking_effort`，runner 将其传到生产模型循环，避免退回模型默认强度。缺失时不补造观察值；旧记录序列化不增加这两个空字段，保持历史摘要。新增原始上下文须保留 Dataset 版本和来源说明，不修改期望评分来配合业务输出。
+
 ## Dataset Item 协议
 
 ```json

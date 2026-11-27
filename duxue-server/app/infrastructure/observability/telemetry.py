@@ -812,6 +812,7 @@ def model_call_span(*, operation: str, model: str, agent_type: str | None = None
                     enable_thinking: bool | None = None,
                     thinking_budget: int | None = None,
                     reasoning_effort: str | None = None,
+                    thinking_effort: str | None = None,
                     input_payload: Any = None) -> Iterator[dict[str, Any]]:
     started = perf_counter()
     if component_id is not None:
@@ -835,6 +836,7 @@ def model_call_span(*, operation: str, model: str, agent_type: str | None = None
         "llm.enable_thinking": enable_thinking,
         "llm.thinking_budget": thinking_budget,
         "llm.reasoning_effort": reasoning_effort,
+        "llm.thinking_effort": thinking_effort,
         # These are mapping keys, not prompt/completion payloads. Langfuse
         # also exports the controlled Agent spans enclosing this generation.
         "langfuse.observation.type": "generation",
