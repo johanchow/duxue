@@ -2,7 +2,7 @@
 
 - 课件列表的标题可重命名，自动标题也会截断。列表展示题干预览，打开后直接读取当前版本完整题面，见[课件查询契约](../../docs/technical/topic-mentor-courseware.md#43-我的课件)。回归覆盖改名列表和重开后的题干。
 
-- 2026-11-27 成人主动保存已完成实现和测试库迁移，见[实施与验收记录](../specs/mentor-courseware-save.md)。首版动态组件及降级结果内嵌版本快照，保存时私有题图随聚合原子入库，避免依赖临时附件 TTL。真机冷启动已验证可重开同一课件；当前待 Gate 2。
+- 2026-11-27 成人主动保存已完成实现、测试库迁移与 spec 归档（`duxue-test` 升至 `20261127_41`，服务端 1600 passed / PG 集成 6 passed / Flutter 198 passed）。首版动态组件及降级结果内嵌版本快照，保存时私有题图随聚合原子入库，避免依赖临时附件 TTL。Android 真机冷启动已验证保存后可重开同一课件并展示 3D 步骤；作为下一阶段升级教育通用 Agent 的基线收尾。
 
 - 2026-11-27 主动保存方案已确认并写入[课件专题 §6.2](../../docs/technical/topic-mentor-courseware.md)及用户 PRD，取代下方待决策记录。ER 为目标设计，尚无迁移。
 
@@ -384,3 +384,5 @@
 - 2026-11-27 按模型能力放开百炼 DeepSeek `thinking + json_object` 实测与回归：1）百炼（`dashscope.aliyuncs.com`）直测 `deepseek-v4.1-flash-1017` 5 项（流式/非流式、中文引号+LaTeX、单次工具调用、英文直引号对抗、多模态图片输入）均支持 `enable_thinking=True + reasoning_effort="low" + response_format={"type":"json_object"}`，全部 `finish_reason="stop"`、`json_ok=true`、`wire_gap=false`；2）在 [thinking_policy.py](../../duxue-server/app/infrastructure/ai/thinking_policy.py) 新增 `supports_json_object_with_thinking`（DeepSeek 族 `True`，Qwen 族维持 `False`），[components.py](../../duxue-server/app/infrastructure/ai/components.py) 流式 thinking 分支按能力位发送 `response_format={"type":"json_object"}`，38 项单测与 Ruff 全绿；3）重跑 `worksheet-partial-three-correct-retake-20261126`（`var/evals/worksheet-partial-three-correct-retake-20261127-v3`，trace `8a2ea534a3b2a3b1f144fad312c4f7d8`）：4 次 DeepSeek 调用 **0 次 `json_parse_error`**（验证 `json_object` 治本有效），但结果 `0/1 fail`（`132.3s` 兜底），新暴露两项独立根因：① 首轮 `reasoning_effort="low"` 仍爆 `8192` reasoning tokens（`tokens_answer=0, length_truncated, 59.7s`），直接吃光 55s deadline 并耗掉 1 次预算；② 第 4 次 `revise` 调用（`3.7s`）返回合法 JSON 但报 `contract_error`（且预算用尽+超 deadline 未触发 `primary_backup`）。未提交。
 - 2026-11-27 对接建议补充：当前已使用OpenAI Python SDK的Chat Completions兼容接口，供应商为百炼；更换SDK/协议不等于更换模型能力。最新百炼结构化输出文档 https://help.aliyun.com/zh/model-studio/qwen-structured-output 明确列出deepseek-v4.1-flash-1017，且北京地域OpenAI兼容Chat Completions支持思考/非思考JSON Schema；Qwen3.7/3.8多型号同样已支持结构化输出，不能沿用旧Qwen全局禁用规则。建议在实际端点/地域先验证thinking+json_object及strict json_schema，再回放原图；Responses或直连DeepSeek作为后续对照，不因未发送参数就直接换供应商。本轮只提出建议，未实测新参数或切换端点。
 - 2026-11-27 提交统一thinking_effort及明确违规才拦截的剩余实现：配置契约、主备Agent/Gate、Admin显示编辑、逐层envelope均收口到抽象档位，保留历史发布读取兼容；已与分支现有JSON语法修复和按模型能力启用json_object两笔提交合并验证。服务端全量1585 passed / 4 skipped、3 subtests passed，Admin72测试及typecheck通过，修改Python Ruff F/E9/I和git diff检查通过。仅提交代码/迁移脚本/相关文档，未推送或发布生产；其他任务笔记与私有评测原图不混入。
+
+- 修订只读诊断：课件 826afb96… 的请求 6478008e… 在 2026-11-27 18:50（上海）进入 revision_failed 通用异常分支，实际仍 v2。相同 v2 与“2，3重复了，删掉其中一个”在当前配置下隔离内存重放成功，未写业务课件。失败原异常堆栈未取得，不能判定模型、配置或网络根因。
