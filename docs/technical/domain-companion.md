@@ -1,10 +1,12 @@
 # 读学系统 — Companion Orchestration Context & Agent Runtime Design
 
-> 状态：讨论稿 · 版本：v3.4
+> 状态：现行基线 + 向教育通用 Agent 演进中 · 版本：v3.5（2026-11-27）
+>
+> **演进边界**：随 `planning`/`reflection` 正式退场，原三分类路由（`CompanionCoordinator`）将演进为双端统一的 `EduAgentOrchestrator` + 代码级 `RolePolicy`（详见 [教育通用 Agent 技术架构](topic-edu-agent.md)）；既有 `ConversationThread`、交互信封、清空历史与 Ward 作业强护栏委派继续复用。
 >
 > 范围：统一陪伴入口、Thread/Run 连续性、Coordinator Process Manager、目标 Workflow 的受控运行契约，以及 Ward 可见的 Companion Interaction Protocol。  
 >
-> 关联：[DDD Overview](ddd-overview.md) · [Memory Context](domain-memory.md) · [Planning Context](domain-planning.md) · [Study Context](domain-study.md) · [Tutoring Context](domain-tutoring.md) · [Evaluation Context](domain-evaluation.md) · [Server 物理设计](design-server.md)
+> 关联：[DDD Overview](ddd-overview.md) · [教育通用 Agent 技术架构](topic-edu-agent.md) · [Memory Context](domain-memory.md) · [Study Context](domain-study.md) · [Tutoring Context](domain-tutoring.md) · [Evaluation Context](domain-evaluation.md) · [Server 物理设计](design-server.md)
 
 ## 一、边界、所有权与统一语言
 

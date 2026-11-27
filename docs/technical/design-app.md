@@ -1,9 +1,9 @@
 # 读学App — 端侧详细技术架构设计 (design-app.md)
 
-> 版本：v3.0  
-> 适用平台：iOS & Android (Flutter 3.x)  
+> 版本：v3.1（2026-11-27 · 对齐教育通用 Agent 双端演进）  
+> 适用平台：iOS & Android (Flutter 3.x)；`/v1/agent/*` 与 `/v1/artifacts/*` 协议同步预留未来 Web 教师工作台接入  
 > 核心技术栈：Flutter 3.x · Dart 3.x · Riverpod 2.x (CodeGen) · go_router · Dio · fl_chart · flutter_secure_storage · markdown · flutter_math_fork · flutter_svg
-> 系统定位：读学系统的统一多端用户交互界面，支持 **Ward（学生模式）** 与 **Guardian（家长模式）** 严格隔离的双角色平滑切换。
+> 系统定位：读学系统的统一客户端交互界面，支持 **Ward（学生模式：安静首页 + 可选 Sprint + 作业启发答疑/自由创作与「我的作品」）** 与 **Guardian / Teacher / Coach（成人模式：晚间客观汇总报告 + 教育通用 Agent 工作台与「我的资源库」）** 严格隔离的双角色平滑切换；原线上计划与每日自述入口退场，详见 [教育通用 Agent 架构](topic-edu-agent.md)。
 
 ---
 
@@ -208,7 +208,7 @@ FUNCTION routerRedirectGuard(authState, targetPath):
 - **生命周期**：通过检查的 `visual` 随该轮 `CompanionMessage.interaction_ref` 写入消息 journal，在对应历史气泡内持久展示（进入新一轮对话或重新打开对话列表不会消失），但不会注入后续轮次传给大模型的对话上下文。
 - **与流式的关系**：图随已校验的完整交互一次性出现，包括使用[对话回复阶段](#对话回复进度)的请求。
 
-对话框右上角提供清空入口，交互与提示文案见 [伴学 PRD §4.1.7](../product/prd-companion.md#417-清空历史对话)，异步请求及本地 Thread 写入边界见 [Companion 清空历史](domain-companion.md#清空历史与会话边界)。
+对话框右上角提供清空入口，交互与提示文案见 [教育通用 Agent PRD §4.2](../product/prd-edu-agent.md#42-作业启发答疑红线与教学方法论)，异步请求及本地 Thread 写入边界见 [Companion 清空历史](domain-companion.md#清空历史与会话边界)。
 
 #### 1.2 历史对话图片查看
 - Ward 消息的 `attachment_refs` 保留图片顺序；聊天列表只为进入视口的气泡读取图片，缩略图按 72 逻辑像素解码，全屏查看时按原始上传字节解码。
@@ -441,11 +441,11 @@ graph TD
 ## 七、全系统文档导航索引
 
 - **全系统技术架构概览**：[`docs/technical/ARCHITECTURE.md`](ARCHITECTURE.md)
+- **教育通用 Agent 与统一产物工作区技术设计**：[`docs/technical/topic-edu-agent.md`](topic-edu-agent.md)
 - **服务端详细技术设计**：[`docs/technical/design-server.md`](design-server.md)
-- **用户与首页导航 PRD**：[`docs/product/prd-user.md`](../product/prd-user.md)
-- **协商式计划 PRD**：[`docs/product/prd-schedule.md`](../product/prd-schedule.md)
-- **陪伴执行与启发答疑 PRD**：[`docs/product/prd-companion.md`](../product/prd-companion.md)
-- **结果评估与复盘引导 PRD**：[`docs/product/prd-evaluate.md`](../product/prd-evaluate.md)
+- **用户、首页与晚间汇总报告 PRD**：[`docs/product/prd-user.md`](../product/prd-user.md)
+- **教育通用 Agent PRD**：[`docs/product/prd-edu-agent.md`](../product/prd-edu-agent.md)
+- **主动专注挑战（Sprint）PRD**：[`docs/product/prd-schedule.md`](../product/prd-schedule.md)
 - **学习观察与行为采集 PRD**：[`docs/product/prd-supervise.md`](../product/prd-supervise.md)
 - **孩子理解引擎与记忆系统 PRD**：[`docs/product/prd-memory.md`](../product/prd-memory.md)
 - **摄像端接入与操作手册**：[`docs/camera-setup-guide.md`](../camera-setup-guide.md)

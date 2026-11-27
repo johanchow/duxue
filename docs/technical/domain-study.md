@@ -1,10 +1,10 @@
 # 读学系统 — Study Domain Design
 
-> 状态：讨论稿 · 版本：v4.0（答疑部分已拆至 [domain-tutoring.md](domain-tutoring.md)）
+> 状态：讨论稿 · 版本：v4.1（2026-11-27 · 随 `Planning` 退场收敛为轻量 `Sprint` 主动专注挑战、`HelpOffer` 与只读 `GetWardFocusState` 专注态查询，支撑教育通用 Agent 专注态软边界）
 >
-> 范围：学习执行会话（开始、暂停、完成、计时）、任务优先提醒中的到点开始邀请（`StartCue`），以及学习完成事实。
+> 范围：轻量主动专注挑战（`Sprint`）、学习执行会话与观察触发求助邀请（`HelpOffer`）；向 `EduAgentOrchestrator` 暴露只读 `GetWardFocusState` ACL。
 >
-> 关联：[系统 Context Map](ddd-overview.md) · [Tutoring 辅导答疑](domain-tutoring.md) · [Companion 编排](domain-companion.md) · [Memory Context](domain-memory.md) · [Planning](domain-planning.md) · [Server 物理设计](design-server.md) · [陪伴 PRD](../product/prd-companion.md)
+> 关联：[系统 Context Map](ddd-overview.md) · [教育通用 Agent 架构](topic-edu-agent.md) · [Tutoring 辅导答疑](domain-tutoring.md) · [Companion 编排](domain-companion.md) · [Memory Context](domain-memory.md) · [Server 物理设计](design-server.md) · [主动专注挑战 PRD](../product/prd-schedule.md)
 
 Context Map 与分层图只在 [ddd-overview.md](ddd-overview.md) 维护。答疑、`TutoringSession`、`ProblemRecord`、发音与 `TutoringTurnLoop` 只在 [domain-tutoring.md](domain-tutoring.md) 维护。Thread/Run、Harness 驱动、`WorkflowInteractionView` 和 SSE 只在 [domain-companion.md](domain-companion.md) 维护。Episode、Signal 与 Profile 只在 [domain-memory.md](domain-memory.md) 维护。物理表、留存和删除只在 [design-server.md](design-server.md) 维护。
 

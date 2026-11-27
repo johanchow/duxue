@@ -1,12 +1,12 @@
 # 读学系统 — 全系统技术架构概览
 
-> 版本 v4.0 · 2026-10-31 | 本文档为读学系统（Duxue）的**系统级技术架构概览**，涵盖系统拓扑与四端分工、主要数据流、合规与性能基线。Bounded Context 所有权由 [DDD 系统级 Overview](ddd-overview.md) 唯一维护；物理 Schema 与绑定表由 [Server 端详细技术设计](design-server.md) 唯一维护。
+> 版本 v5.0 · 2026-11-27 | 本文档为读学系统（Duxue）的**系统级技术架构概览**，涵盖系统拓扑与端侧分工、主要数据流、合规与性能基线。Bounded Context 所有权由 [DDD 系统级 Overview](ddd-overview.md) 唯一维护；教育通用 Agent 与统一产物工作区演进设计见 [教育通用 Agent 技术架构](topic-edu-agent.md)；物理 Schema 与绑定表由 [Server 端详细技术设计](design-server.md) 唯一维护。
 
 ---
 
 ## 一、系统定位与四端组成
 
-读学系统是一款基于 AI 视觉行为分析与大模型启发式伴学的智能成长平台。全系统遵循**“用户简单、方案简单、智能自动化”**三大设计原则，由以下四端协同构成：
+读学系统是一款面向 K–12 的 **AI 伴学与教育生产力平台**，遵循**“用户简单、方案简单、智能自动化”**三大设计原则，围绕**L0 桌面静默感知 + 双端统一教育通用 Agent（Role Policy 差异化）+ 晚间客观汇总交付**演进（旧版 `Planning` 线上计划与 `Reflection` 每日自述已确定退场）：
 
 ```text
 标准网络摄像头（每工位一个，局域网快照 / RTSP）
@@ -15,17 +15,17 @@
     ├─ JPEG 预签名直传 → OSS
     └─ 绑定 / 帧元数据 / 心跳 → 读学服务端
 
-读学 App（Ward / Guardian，Coach 演进） ─ REST/SSE → 读学服务端
-内部运营后台 ─ HTTPS → 读学服务端
-读学服务端：FastAPI + PostgreSQL + Redis + Celery + OSS + AI
+读学 App（Ward / Guardian / Teacher·Coach）& 未来 Web 教师工作台 ─ REST/SSE → 读学服务端
+内部运营后台（Admin） ─ HTTPS → 读学服务端
+读学服务端：FastAPI + PostgreSQL + Redis + Celery + OSS + AI（ProblemSolving / EduAgent / MathStage）
 ```
 
 | 端 / 模块 | 实现位置 | 职责与关键设计 |
 |---|---|---|
 | **读学Eye：摄像头与共享采集网关** | 标准摄像头 + Go `duxue-gateway/` | 局域网采图、持久缓存、OSS 直传；配置与验收唯一维护于 [采集设计](design-gateway.md) |
-| **读学App** | `duxue-app/` | Ward 按需答疑、可选计划与自由总结；Guardian 查看设备健康和晚间报告，Coach 工作台按产品路线演进 |
-| **Server** | `duxue-server/` | 接入鉴权、行为分析、启发答疑、客观报告与记忆底座 |
-| **Admin** | `duxue-admin/`（待建设） | 内部运维、算法验证和数据治理工具 |
+| **读学App（及未来 Web 工作台）** | `duxue-app/` | Ward 安静首页、可选 Sprint 与教育通用 Agent（作业启发答疑 + 自由画图/故事探索与「我的作品」）；Guardian / Teacher / Coach 查看晚间汇总报告并使用成人教育通用 Agent 工作台（批改诊断、动态课件、备课与自验出题、「我的资源库」）；协议终端无关，预留 Web 工作台同源接入 |
+| **Server** | `duxue-server/` | 接入鉴权、L0 行为分析、统一教育通用 Agent 编排（`EduAgentOrchestrator` + `RolePolicy`）、`ProblemSolving` 确定性核验内核、`ArtifactWorkspace` 多形态版本化产物、晚间客观报告与记忆底座 |
+| **Admin** | `duxue-admin/` | Workflow / Agent / Skill / Gate / Tool 唯一可编辑配置源、离线评测聚合与隔离调试，见 [管理台设计](design-admin.md) |
 
 > Go采集网关与云端新接口已实现；真实摄像头/OSS长时间现场验收待完成。现有 OSS/Frame 基础设施可复用；家庭验证采用人工配置摄像头与 Ward、统一网关认证，新接口协议见 [采集设计](design-gateway.md)。机构批量管理与无计划自动会话还原需分别实现和验收。产品文档与接入手册已同步采集路线。
 
@@ -188,12 +188,13 @@ async def verify_ward_access(
 
 ## 八、系统文档导航索引
 
-- **产品架构与业务模块地图**：[`docs/product/ARCHITECTURE.md`](../product/ARCHITECTURE.md)
-- **协商式计划 PRD**：[`docs/product/prd-schedule.md`](../product/prd-schedule.md)
-- **伴学执行与启发答疑 PRD**：[`docs/product/prd-companion.md`](../product/prd-companion.md)
-- **结果评估与复盘引导 PRD**：[`docs/product/prd-evaluate.md`](../product/prd-evaluate.md)
+- **产品架构与四大目标**：[`docs/product/ARCHITECTURE.md`](../product/ARCHITECTURE.md)
+- **教育通用 Agent PRD（含 Ward 作业启发方法论与成人工作台）**：[`docs/product/prd-edu-agent.md`](../product/prd-edu-agent.md)
+- **用户、首页与晚间客观汇总报告 PRD**：[`docs/product/prd-user.md`](../product/prd-user.md)
+- **主动专注挑战（Sprint）PRD**：[`docs/product/prd-schedule.md`](../product/prd-schedule.md)
 - **学习观察与行为采集 PRD**：[`docs/product/prd-supervise.md`](../product/prd-supervise.md)
 - **孩子理解引擎与记忆系统 PRD**：[`docs/product/prd-memory.md`](../product/prd-memory.md)
+- **教育通用 Agent 与统一产物工作区技术设计**：[`docs/technical/topic-edu-agent.md`](topic-edu-agent.md)
 - **服务端详细技术设计**：[`docs/technical/design-server.md`](design-server.md)
 - **App端详细技术设计**：[`docs/technical/design-app.md`](design-app.md)
 - **标准摄像头与采集网关详细技术设计**：[`docs/technical/design-gateway.md`](design-gateway.md)

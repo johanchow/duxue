@@ -56,14 +56,13 @@ duxue/                          # 项目根目录
 
 | 文档 | 路径 | 内容摘要 |
 |------|------|---------|
-| 产品架构（模块地图 + 领域路由） | [`docs/product/ARCHITECTURE.md`](docs/product/ARCHITECTURE.md) | 三大核心目标（专注提效/引导思考/解放家长时间）、弱约束三层架构（L0/L1/L2）、To C 家庭与 To B2C 晚托机构双轨定位及可度量核心交付物 |
-| 用户与首页导航 PRD | [`docs/product/prd-user.md`](docs/product/prd-user.md) | 角色选择、登录、家庭与 B2C 伴学师共管绑定、Ward 默认对话流+可选专注挑战+底部唯一 `VoiceComposer` 首页、Guardian/Coach 实况单与解题凭证中心 |
-| 轻量计划与任务 PRD | [`docs/product/prd-schedule.md`](docs/product/prd-schedule.md) | L2 可选增强、普通计划按需提示、无常驻当前/下一项、主动限时专注挑战（Sprint）与任务完成分离 |
-| 陪伴执行与 AI 启发答疑 PRD | [`docs/product/prd-companion.md`](docs/product/prd-companion.md) | 零门槛随时提问、答案保护红线与独立裁判、分步启发配图/发音、对话内微验证产出《独立解题凭证》 |
-| 结果评估、原话总结与晚间交付 PRD | [`docs/product/prd-evaluate.md`](docs/product/prd-evaluate.md) | Guardian/Coach 端必达交付（《伴学闭环实况单》+《独立解题凭证》）、Ward 自由语音/文字原话总结（六维逐字溯源、不写 Memory） |
+| 产品架构（模块地图 + 领域路由） | [`docs/product/ARCHITECTURE.md`](docs/product/ARCHITECTURE.md) | 四大核心目标（G1专注/G2独立思考与探索/G3解放家长/G4赋能教师）、L0 静默感知 + 双端统一教育通用 Agent + 晚间客观汇总交付（`planning`/`reflection` 已退场） |
+| 用户、首页与晚间汇总报告 PRD | [`docs/product/prd-user.md`](docs/product/prd-user.md) | 角色选择、登录、共管绑定、Ward 安静首页+统一 Agent+可选 Sprint、成人端晚间分口径汇总报告（含解题凭证与创作足迹）与教育 Agent 工作台 |
+| 主动专注挑战（Sprint）PRD | [`docs/product/prd-schedule.md`](docs/product/prd-schedule.md) | 原线上计划与任务池已退场；保留 Ward 端自愿开启的轻量限时专注挑战（Sprint）及与专注态软边界的联动 |
+| 教育通用 Agent PRD | [`docs/product/prd-edu-agent.md`](docs/product/prd-edu-agent.md) | 双端统一教育通用 Agent + Role Policy（教师/伴学师/家长批改·课件·备课自验出题 + 学生作业启发方法论与自由画图故事探索） |
 | 学习观察与行为采集 PRD | [`docs/product/prd-supervise.md`](docs/product/prd-supervise.md) | L0 零操作感知底座、标准摄像头与共享网关、稀疏帧直传 OSS、持久队列补传、健康心跳与 45° 机位隐私防护 |
-| 孩子理解引擎与记忆系统 PRD | [`docs/product/prd-memory.md`](docs/product/prd-memory.md) | 纯后端智能底座、只收客观事实（严格隔离主观自述）、三层记忆架构与时间衰减演进 |
-| 用户核心价值与故事 | [`docs/product/user-story.md`](docs/product/user-story.md) | 三方角色 JTBD、L0/L1 零线上计划全纸质作业闭环故事、L2 自主排期故事与 B2C 晚托班 1对15 赋能故事 |
+| 孩子理解引擎与记忆系统 PRD | [`docs/product/prd-memory.md`](docs/product/prd-memory.md) | 纯后端智能底座、只收客观事实与独立兴趣信号、时间衰减演进、成人工作台显式受权只读边界 |
+| 用户核心价值与故事 | [`docs/product/user-story.md`](docs/product/user-story.md) | 四类角色（学生/家长/教师/伴学师）JTBD 与核心旅程 |
 | 摄像设备接入与操作手册 | [`docs/camera-setup-guide.md`](docs/camera-setup-guide.md) | 标准摄像头采购、机位指引、家庭单机实验步骤与验收 |
 | 全系统技术架构概览 | [`docs/technical/ARCHITECTURE.md`](docs/technical/ARCHITECTURE.md) | 四端分工、领域模型（限界上下文）、会话即时分析管线、Guardian-Ward 绑定与权限模型 |
 | 可观测性方案 | [`docs/observability.md`](docs/observability.md) | 三端日志/链路/指标统一方案，Grafana + Loki + Tempo |
@@ -81,6 +80,7 @@ duxue/                          # 项目根目录
 | 计划与任务 Domain 设计 | [`docs/technical/domain-planning.md`](docs/technical/domain-planning.md) | 轻量任务与顺序、可选估时/起点、安排确认与执行事实分离、后台完整模型与按需投影 |
 | 学习执行 Domain 设计 | [`docs/technical/domain-study.md`](docs/technical/domain-study.md) | StudySession 计时与完成、到点开始邀请 StartCue |
 | 辅导答疑 Domain 设计 | [`docs/technical/domain-tutoring.md`](docs/technical/domain-tutoring.md) | 答案状态红线、TutoringTurnLoop、发音 act、教学事实与答疑会话结算 |
+| 教育通用 Agent 技术架构（目标演进） | [`docs/technical/topic-edu-agent.md`](docs/technical/topic-edu-agent.md) | `ArtifactWorkspace`（`EduArtifact` 泛化 `MentorCourseware`）+ `EduAgentOrchestrator` + `RolePolicy` + Skills/Gates + 受权只读学情与 `planning`/`reflection` 退场路线 |
 | 导师深度课件专题 | [`docs/technical/topic-mentor-courseware.md`](docs/technical/topic-mentor-courseware.md) | 成人导师视角 `MentorCourseware` 聚合、灵活教学编排与图文讲解、混合 Web 绘图与隔离生成 JS、局部修订与 Undo/Redo；临时课件已有 P0-1 实现，主动保存与「我的课件」已接入测试库 |
 | 答疑离线评测设计 | [`docs/technical/eval-offline.md`](docs/technical/eval-offline.md) | 冒烟式离线评测、与生产同源的重放判分、数据集构造与复核、三级指标与不确定性、variant 与发布阈值 |
 | 答疑表达设计（逻辑 + 配图） | [`docs/technical/domain-tutoring-presentation.md`](docs/technical/domain-tutoring-presentation.md) | 回答形状（按 act 的结构与长度不变量）、结构化 `visual` 配图（原生渲染、门禁与红线）、提示词预算、评测与分期（草案，未实现） |

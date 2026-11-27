@@ -4,7 +4,7 @@
 >
 > 范围：启发式答疑、发音辅导、任务进行中的题外提问回任务提醒、过程事实、一次 Ward 输入内的 `TutoringTurnLoop`，以及待实现的异步视频回答（见 [视频回答专题](tutoring-video-answer.md)）与导师视角深度课件（见 [导师深度课件专题](topic-mentor-courseware.md)）。
 >
-> 关联：[系统 Context Map](ddd-overview.md) · [Study 学习执行](domain-study.md) · [Companion 编排](domain-companion.md) · [Memory Context](domain-memory.md) · [Planning](domain-planning.md) · [Server 物理设计](design-server.md) · [陪伴 PRD](../product/prd-companion.md)
+> 关联：[系统 Context Map](ddd-overview.md) · [教育通用 Agent 架构](topic-edu-agent.md) · [Study 学习执行](domain-study.md) · [Companion 编排](domain-companion.md) · [Memory Context](domain-memory.md) · [Server 物理设计](design-server.md) · [教育通用 Agent PRD §4.2](../product/prd-edu-agent.md#42-作业启发答疑红线与教学方法论)
 
 Context Map 与分层图只在 [ddd-overview.md](ddd-overview.md) 维护。`StudySession`、`StartCue` 与学习计时只在 [domain-study.md](domain-study.md) 维护。Thread/Run、Harness 驱动、`WorkflowInteractionView` 和 SSE 只在 [domain-companion.md](domain-companion.md) 维护。Episode、Signal 与 Profile 只在 [domain-memory.md](domain-memory.md) 维护。物理表、留存和删除只在 [design-server.md](design-server.md) 维护。
 
@@ -25,7 +25,7 @@ Context Map 与分层图只在 [ddd-overview.md](ddd-overview.md) 维护。`Stud
 
 ## 设计原则：教学优先
 
-产品层原则见 [陪伴 PRD §1.2 第 7 条](../product/prd-companion.md)，这里只写对技术设计的约束：
+产品层原则见 [教育通用 Agent PRD §4.2](../product/prd-edu-agent.md#42-作业启发答疑红线与教学方法论)，这里只写对技术设计的约束：
 
 1. 设计答疑能力时，文档先写“好老师会怎么做”，再写“当前技术能做到的部分”和“差距”。差距要显式记录，不能被技术方案悄悄吞掉。
 2. 代码只对**安全不变量**行使否决权：作业答案保护、内容安全、孩子端稳定。要否决一个教学做法，必须指出触发的是哪条不变量。

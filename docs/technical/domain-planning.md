@@ -1,9 +1,9 @@
 # 读学系统 — Planning Domain Design（轻量计划与任务）
 
-> 状态：实现待验收（v2.2 · 普通计划按需提示，挑战执行归 Study）
-> 更新日期：2026-11-03
-> 范围：Task、PlanDraft、DailySchedule；实际执行归 Study。
-> 关联：[产品规则与验收](../product/prd-schedule.md) · [Context Map](ddd-overview.md) · [Companion](domain-companion.md) · [Study](domain-study.md) · [Behavior](domain-behavior.md) · [物理设计](design-server.md)
+> 状态：**退场中（Retiring · 2026-11-27）** — 线上计划与任务池已确定正式退场，本文仅保留至 Phase 1 代码与路由清理完毕后移除；主动专注挑战（Sprint）保留于 [Study 领域](domain-study.md) 与 [主动专注挑战 PRD](../product/prd-schedule.md)。
+> 更新日期：2026-11-27
+> 范围：原 Task、PlanDraft、DailySchedule（不再新增功能或上下游依赖）。
+> 关联：[教育通用 Agent 架构](topic-edu-agent.md) · [Context Map](ddd-overview.md) · [Study](domain-study.md) · [物理设计](design-server.md)
 
 ## 一、边界与不变量
 

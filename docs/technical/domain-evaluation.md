@@ -1,8 +1,8 @@
-# 读学系统 — Evaluation & Reflection Bounded Context
+# 读学系统 — Evaluation Bounded Context（晚间客观汇总交付）
 
-> 状态：目标设计（现有差异见 §七） · 版本：v2.1
-> 范围：Ward 今日总结、主客观证据对照、版本化复盘；当前阶段不生成或采纳“专注锦囊”。
-> 关联：[系统 Context Map](ddd-overview.md) · [Companion 编排](domain-companion.md) · [Memory Context](domain-memory.md) · [Server 物理设计](design-server.md) · [复盘 PRD](../product/prd-evaluate.md)
+> 状态：目标演进（`SelfReview` / `reflection` 每日自述已确定退场，待 Phase 1 清理；晚间客观汇总报告扩展见下方演进说明） · 版本：v2.2（2026-11-27）
+> 范围：晚间客观汇总报告（**作业专注 vs AI 自由探索分口径时长**、《独立解题凭证》与消费 `CreationFootprintRecorded.v1` 投影的「好奇心与创作足迹」）；原 Ward 每日结构化自述复盘与计划估时对照已确定退场。
+> 关联：[系统 Context Map](ddd-overview.md) · [教育通用 Agent 架构](topic-edu-agent.md) · [Companion 编排](domain-companion.md) · [Memory Context](domain-memory.md) · [Server 物理设计](design-server.md) · [首页与晚间汇总报告 PRD](../product/prd-user.md#71-孩子首页晚间客观汇总报告直接呈现)
 
 ## 一、边界与统一语言
 
@@ -192,7 +192,7 @@ sequenceDiagram
 
 当前实现已增加 `self_review_versions`、`self_review_aspects`、自由表达候选整理与 Ward 确认/修订接口；App 支持语音或文字表达、查看原话引用并修改候选条目。复盘提示从当天答疑题目和任务用时生成开放式问题，不代替 Ward 作归因。`GetRecentSelfReviews` 仅返回当前确认版本，在同任务的答疑、计划请求中按需使用；旧 `feeling/reflection` 路径暂留兼容，但不再新投递 `self_review.submitted`。历史记录不猜测六维，旧 Memory 事实按原有审计/删除规则处理。报告证据版本化仍是后续工作，不能将本次自述版本视为客观报告版本。
 
-本次退役 `focus_kits`：先移除 REST/Companion 创建与采纳路径及客户端建议字段，再用前向迁移删除表。旧记录不迁成 Ward 的下次意向；如需留档，迁移前由运维导出。降级只恢复空表结构，不恢复数据。旧 `focus_kit.adopted` 事实保留在历史账本供审计/删除，今后不再生产。旧版 [复盘 PRD](../product/prd-evaluate.md) 和 [Server 物理设计](design-server.md) 的锦囊段落是待同步的历史规划，以本文当前阶段范围为准。
+本次退役 `focus_kits`：先移除 REST/Companion 创建与采纳路径及客户端建议字段，再用前向迁移删除表。旧记录不迁成 Ward 的下次意向；如需留档，迁移前由运维导出。降级只恢复空表结构，不恢复数据。旧 `focus_kit.adopted` 事实保留在历史账本供审计/删除，今后不再生产。旧版 [首页与晚间汇总报告 PRD](../product/prd-user.md#71-孩子首页晚间客观汇总报告直接呈现) 和 [Server 物理设计](design-server.md) 的锦囊段落是待同步的历史规划，以本文当前阶段范围为准。
 
 ## 八、验收场景
 

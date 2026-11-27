@@ -1,6 +1,6 @@
 # 读学系统 — Tutoring 专题：导师视角深度课件与对话式修订
 
-> 状态：P0-1 临时课件已有实现，Android 首版生成已验证，交互与修订真机验收待完成。主动保存已在测试业务库和 Android 调试版联调。生成 JS、有声微课和导出为后续目标。版本 v1.4 · 2026-11-27
+> 状态：P0-1 临时课件与主动保存已合入 `main` 基线；本聚合（`MentorCourseware`）将在后续演进中平滑泛化为 `ArtifactWorkspace` 下的 `interactive_courseware` 产物形态（见 [教育通用 Agent 技术架构](topic-edu-agent.md)），本文继续作为 `MathStage` 离线 Web 渲染与安全隔离协议的唯一事实源。版本 v1.5 · 2026-11-27
 >
 > 方法：[domain-driven-design skill](../../.cursor/skills/domain-driven-design/SKILL.md)
 >
