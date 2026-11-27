@@ -70,15 +70,14 @@ def upgrade(record):
         ]
         if GEOMETRY_MARKER not in fragment["template"]:
             fragment["template"] += "\n\n" + rule
-    # Spatial verification needs bounded reasoning; legacy test releases disabled it.
+    # Tutor depth is routed by intent; independent leak checks need no thinking.
     for name in ("agents/tutoring.turn.json", "gates/tutoring.leak-judge.json"):
         primary = result["bundle"]["files"][name]["models"][0]
-        primary["enable_thinking"] = True
+        primary.pop("enable_thinking", None)
+        primary.pop("thinking_budget", None)
+        primary["thinking_effort"] = "off" if name.startswith("gates/") else "medium"
         if name.startswith("gates/"):
-            primary["thinking_budget"] = 1024
             primary["max_output_tokens"] = max(primary["max_output_tokens"], 2048)
-        else:
-            primary["thinking_budget"] = None  # DeepSeek effort is mapped centrally.
     result["digest"] = compile_bundle(result["bundle"]).digest
     return result
 

@@ -251,7 +251,7 @@ class QwenProblemSolverGateway(ProblemSolverModelPort):
         ):
             effort = unit_def.models[0].guardian_t1_reasoning_effort
             if effort:
-                spec = replace(spec, reasoning_effort=effort, thinking_budget=None)
+                spec = replace(spec, thinking_effort=effort)
         allowed_tools = {
             tool_id.split(".", 1)[1]
             for tool_id in (getattr(unit_def, "tools", ()) or ())

@@ -145,7 +145,10 @@ class TutoringWorkflow:
         from app.agent_specs.image_refs import image_ref
         from app.application.ports.problem_solving import SqlProblemDossierRepository
         from app.application.queries.problem_dossier import GetProblemDossierQuery
-        from app.contexts.problem_solving.domain.dossier import StructuredStem, image_request_fingerprint
+        from app.contexts.problem_solving.domain.dossier import (
+            StructuredStem,
+            image_request_fingerprint,
+        )
 
         query = GetProblemDossierQuery(self.db)
         if problem_row is not None and problem_row.dossier_id:
@@ -714,12 +717,10 @@ class _TutoringTurn:
             if self.active_dossier.status == "ready":
                 # P2: Follow-up turns backed by a ready dossier (T1 medium or T2/bank high)
                 # already receive structured approaches/milestones, so run on the lightweight
-                # non-thinking tier while `_dossier_gate` still enforces strict `high`-only verdict rules.
-                model_envelope["_disable_thinking"] = True
+                # non-thinking tier; dossier evidence still scopes the generation instructions.
                 model_envelope["_thinking_effort"] = "off"
         elif self.owner._dossier_mode_enabled():
-            # Always enforce confidence gate on unbacked first turns (e.g. deferred text dossier creation)
-            # so mental-math final/optimality affirmations are never silently allowed.
+            # Expose missing evidence to generation; independent Judge decides violations.
             model_envelope["_dossier_gate"] = {
                 "dossier_id": None,
                 "status": "absent",
@@ -731,7 +732,6 @@ class _TutoringTurn:
             raw_intent_effort = "off" if self.turn.get("disable_thinking") is True else None
         if self.active_dossier is None:
             if raw_intent_effort == "off":
-                model_envelope["_disable_thinking"] = True
                 model_envelope["_thinking_effort"] = "off"
             elif raw_intent_effort == "high":
                 # High-effort problems route to async blueprint solving; keep the synchronous
@@ -745,7 +745,6 @@ class _TutoringTurn:
                 and model_envelope["actor"].get("grade_stage") == "primary"
             ):
                 model_envelope["_thinking_effort"] = "low"
-                model_envelope["_thinking_budget"] = 1024
         if self.problem_row is not None and (not self.problem_row.dossier_id or self.active_dossier is not None):
             if self.problem_row.internal_blueprint and "problem_dossier" not in model_envelope:
                 model_envelope["internal_blueprint"] = self.problem_row.internal_blueprint

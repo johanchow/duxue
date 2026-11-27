@@ -345,5 +345,10 @@ def test_low_effort_is_scoped_to_guardian_t1_primary(releases, monkeypatch):
             QwenProblemSolverGateway(guardian_request=guardian).solve_route(
                 stem=StructuredStem("physics", "题面"), images=[], route_hint=hint,
             )
-    assert [spec.reasoning_effort for spec in specs] == ["low", None, None, None]
-    assert specs[0].enable_thinking and specs[0].thinking_budget is None
+        from app.infrastructure.ai.components import COMPONENTS
+        expected = [COMPONENTS.get(spec.component_id).thinking_effort for spec in specs]
+    expected[0] = "low"
+    assert [spec.thinking_effort for spec in specs] == expected
+    from app.infrastructure.ai.thinking_policy import resolve_provider_thinking
+    params = resolve_provider_thinking(specs[0].model, effort=specs[0].thinking_effort)
+    assert params.enable_thinking and params.effective_effort == "low"

@@ -77,6 +77,7 @@ def _frozen(doc):
                 "temperature",
                 "max_output_tokens",
                 "timeout_ms",
+                "thinking_effort",
                 "enable_thinking",
                 "thinking_budget",
                 "guardian_t1_reasoning_effort",

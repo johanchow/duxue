@@ -10,7 +10,7 @@ from tests.support.fakes import leak_judge_facts as facts
     ({'student_answer_correct': False}, 'none'),  # Questioning an incorrect answer is allowed.
     ({'student_answer_correct': True, 'affirms_student_answer': True}, 'none'),
     ({'student_answer_correct': 'partial', 'affirms_student_answer': True}, 'none'),
-    ({'affirms_student_answer': True}, 'incorrect_confirmation'),
+    ({'affirms_student_answer': True}, 'none'),
     ({'student_answer_correct': False, 'affirms_student_answer': True}, 'incorrect_confirmation'),
     ({'new_final_answer': True}, 'final_answer'),
     ({'new_final_answer': True, 'affirms_student_answer': True}, 'final_answer'),

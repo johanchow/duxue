@@ -320,9 +320,9 @@ def test_tutoring_workflow_disables_thinking_only_on_text_turns_without_images()
     run_case(disable_thinking=True, has_image=True)
     run_case(disable_thinking=False, has_image=False)
 
-    assert captured_envelopes[0].get("_disable_thinking") is True
-    assert captured_envelopes[1].get("_disable_thinking") is True
-    assert captured_envelopes[2].get("_disable_thinking") is None
+    assert captured_envelopes[0].get("_thinking_effort") == "off"
+    assert captured_envelopes[1].get("_thinking_effort") == "off"
+    assert captured_envelopes[2].get("_thinking_effort") != "off"
 
 
 def test_admin_bundle_compiles_both_legacy_and_upgraded_companion_intent():
@@ -476,6 +476,7 @@ def test_pure_text_tutor_turn_drops_spurious_image_review_while_image_turn_valid
 
 def test_intent_context_sends_only_current_images_and_keeps_history_image_ids():
     import json
+
     from app.agent_specs.contexts import intent as build_intent_context
 
     parts = build_intent_context(
@@ -497,7 +498,7 @@ def test_intent_context_sends_only_current_images_and_keeps_history_image_ids():
     assert body["current_image_ids"] == [3]
 
 
-def test_tutor_turn_gateway_strips_gaokao_for_primary_and_applies_thinking_budget(monkeypatch):
+def test_tutor_turn_gateway_strips_gaokao_for_primary_and_forwards_abstract_effort(monkeypatch):
     prompt = (
         "[visual-delivery.v1]\n视觉规则"
         "\n\n[gaokao-blueprint-science.v1]\n高考理科蓝图规则"
@@ -536,14 +537,14 @@ def test_tutor_turn_gateway_strips_gaokao_for_primary_and_applies_thinking_budge
 
     # Primary student without dossier: strips [gaokao-blueprint-science.v1] and maps DeepSeek budget to low effort
     gw.complete(
-        envelope={"actor": {"grade_stage": "primary"}, "_thinking_budget": 1024},
+        envelope={"actor": {"grade_stage": "primary"}, "_thinking_effort": "low"},
         instruction="多选题为什么错了？",
         recent_utterances=[],
         current_images=["data:image/jpeg;base64,AAAA"],
     )
     assert len(captured) == 1
-    assert captured[0].enable_thinking is True
-    assert captured[0].reasoning_effort == "low"
+    assert captured[0].thinking_effort == "low"
+    assert captured[0].reasoning_effort is None
     assert captured[0].thinking_budget is None
     assert "[gaokao-blueprint-science.v1]" not in captured[0].prompt.text
     assert "[image-review.v1]" in captured[0].prompt.text
@@ -562,6 +563,7 @@ def test_tutor_turn_gateway_strips_gaokao_for_primary_and_applies_thinking_budge
 
 def test_leak_repair_never_echoes_placeholder_draft():
     import json
+
     from app.application.workflows.image_review import ImageReview
     from app.application.workflows.tutor_loop import Vetting, _leak_repair
     from app.application.workflows.tutor_turn import TutorTurnCandidate
@@ -705,7 +707,7 @@ def test_thinking_effort_high_caps_sync_turn_and_gates_blueprint():
         turn.generate()
 
     assert [e.get("_thinking_effort") for e in captured_envelopes] == ["off", "low", "medium", "medium"]
-    assert captured_envelopes[0].get("_disable_thinking") is True
+    assert captured_envelopes[0].get("_thinking_effort") == "off"
 
 
 def test_response_image_review_observation_sanitizes_when_verdict_assertion_disallowed():
@@ -841,7 +843,10 @@ def test_upgrade_tutoring_turn_fragments_splits_and_compiles_cleanly():
     from app.agent_specs.configuration import snapshot_path
     from app.agent_specs.definitions import use_definitions
     from app.infrastructure.ai.prompts import PromptTemplate, compose_system_prompt
-    from scripts.upgrade_tutoring_turn_fragments import split_tutoring_turn_template, upgrade
+    from scripts.upgrade_tutoring_turn_fragments import (
+        split_tutoring_turn_template,
+        upgrade,
+    )
 
     sample_template = (
         "[visual-delivery.v1]\n主动视觉规则内容。\n\n"

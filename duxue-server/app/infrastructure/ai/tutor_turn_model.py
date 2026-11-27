@@ -134,61 +134,15 @@ class QwenTutorTurnGateway:
                              observations=observations, repair_error=repair_error,
                              recent_utterances=recent_utterances, current_images=current_images)
         spec = self._spec or components.COMPONENTS.get(self._component_id)
-        if isinstance(envelope, dict) and getattr(spec, "enable_thinking", False):
-            from app.infrastructure.ai.thinking_policy import (
-                VALID_THINKING_EFFORTS,
-                resolve_provider_thinking,
-            )
+        if isinstance(envelope, dict):
+            from app.infrastructure.ai.thinking_policy import VALID_THINKING_EFFORTS
 
             requested_effort = envelope.get("_thinking_effort")
-            if envelope.get("_disable_thinking") or requested_effort == "off":
-                spec = replace(
-                    spec,
-                    enable_thinking=False,
-                    thinking_budget=None,
-                    reasoning_effort=None,
-                    thinking_effort="off",
-                )
-            elif isinstance(requested_effort, str) and requested_effort in VALID_THINKING_EFFORTS:
-                budget_cap = envelope.get("_thinking_budget")
-                effective_budget = (
-                    min(spec.thinking_budget, budget_cap)
-                    if isinstance(spec.thinking_budget, int) and spec.thinking_budget > 0 and isinstance(budget_cap, int) and budget_cap > 0
-                    else (budget_cap if isinstance(budget_cap, int) and budget_cap > 0 else spec.thinking_budget)
-                )
-                resolved = resolve_provider_thinking(
-                    spec.model,
-                    effort=requested_effort,  # type: ignore[arg-type]
-                    enable_thinking=spec.enable_thinking,
-                    thinking_budget=effective_budget,
-                    reasoning_effort=spec.reasoning_effort,
-                )
-                spec = replace(
-                    spec,
-                    enable_thinking=resolved.enable_thinking,
-                    thinking_budget=resolved.thinking_budget,
-                    reasoning_effort=resolved.reasoning_effort,
-                    thinking_effort=requested_effort,  # type: ignore[arg-type]
-                )
-            elif isinstance(envelope.get("_thinking_budget"), int) and envelope["_thinking_budget"] > 0:
-                requested_budget = envelope["_thinking_budget"]
-                effective_budget = (
-                    min(spec.thinking_budget, requested_budget)
-                    if isinstance(spec.thinking_budget, int) and spec.thinking_budget > 0
-                    else requested_budget
-                )
-                resolved = resolve_provider_thinking(
-                    spec.model,
-                    enable_thinking=spec.enable_thinking,
-                    thinking_budget=effective_budget,
-                    reasoning_effort=spec.reasoning_effort,
-                )
-                spec = replace(
-                    spec,
-                    enable_thinking=resolved.enable_thinking,
-                    thinking_budget=resolved.thinking_budget,
-                    reasoning_effort=resolved.reasoning_effort,
-                )
+            if envelope.get("_disable_thinking"):
+                requested_effort = "off"  # Historical envelopes only.
+            if isinstance(requested_effort, str) and requested_effort in VALID_THINKING_EFFORTS:
+                spec = replace(spec, thinking_effort=requested_effort,
+                               enable_thinking=False, thinking_budget=None, reasoning_effort=None)
         has_images = bool(current_images or any(row.get("image_urls") for row in (recent_utterances or [])))
         env = envelope if isinstance(envelope, dict) else {}
         actor = env.get("actor") if isinstance(env.get("actor"), dict) else {}
