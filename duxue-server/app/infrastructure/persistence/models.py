@@ -1024,3 +1024,5 @@ class GuardianReportInbox(Base):
     guardian_id: Mapped[str] = mapped_column(ForeignKey('user_guardians.id'), primary_key=True)
     report_id: Mapped[str] = mapped_column(ForeignKey('reflection_reports.id'), primary_key=True)
     version: Mapped[int] = mapped_column(Integer)
+
+from app.infrastructure.persistence import courseware_tables as _courseware_tables  # noqa: E402,F401

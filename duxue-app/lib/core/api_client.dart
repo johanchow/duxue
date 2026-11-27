@@ -751,6 +751,29 @@ class ApiClient {
             .data as Map,
       );
 
+  Future<Map<String, dynamic>> listSavedCourseware([String? cursor]) async =>
+      Map<String,dynamic>.from((await dio.get('/guardian/courseware',queryParameters: {
+        'saved': true, if(cursor != null) 'cursor': cursor,
+      })).data as Map);
+
+  Future<List<String>> savedCoursewarePhotos(String id) async =>
+      List<String>.from((await dio.get('/guardian/courseware/$id/photos')).data['photos'] as List);
+
+  Future<void> changeSavedCourseware(String id, String action, int revision, {String? title}) async {
+    final path = '/guardian/courseware/$id';
+    final body = {'command_id': '$action-${DateTime.now().microsecondsSinceEpoch}',
+      'expected_state_revision':revision, if(title != null) 'title':title};
+    if(action=='save') {
+      await dio.post('$path/save',data:body);
+    } else if(action=='rename') {
+      await dio.patch(path,data:body);
+    } else if(action=='delete') {
+      await dio.delete(path,data:body);
+    } else {
+      throw ArgumentError.value(action);
+    }
+  }
+
   Future<Map<String, dynamic>> getMentorCourseware(String coursewareId) async =>
       Map<String, dynamic>.from(
         (await dio.get('/guardian/courseware/$coursewareId')).data as Map,
@@ -769,7 +792,6 @@ class ApiClient {
     required String instruction,
     required int baseVersionNo,
     required int expectedStateRevision,
-    String? targetStepId,
     bool allowUnverifiedOverride = false,
   }) async =>
       Map<String, dynamic>.from(
@@ -778,7 +800,6 @@ class ApiClient {
           'instruction': instruction,
           'base_version_no': baseVersionNo,
           'expected_state_revision': expectedStateRevision,
-          if (targetStepId != null) 'target_step_id': targetStepId,
           'allow_unverified_override': allowUnverifiedOverride,
         }))
             .data as Map,

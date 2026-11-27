@@ -1,6 +1,6 @@
 # 读学系统 — Tutoring 专题：导师视角深度课件与对话式修订
 
-> 状态：目标设计（**未实现**；P0 / P1 / P2 分期见 [§九](#九分期演进与兼容边界)） · 版本：v1.3 · 2026-11-26
+> 状态：P0-1 临时课件已有实现，Android 首版生成已验证，交互与修订真机验收待完成。主动保存已在测试业务库和 Android 调试版联调。生成 JS、有声微课和导出为后续目标。版本 v1.4 · 2026-11-27
 >
 > 方法：[domain-driven-design skill](../../.cursor/skills/domain-driven-design/SKILL.md)
 >
@@ -40,7 +40,7 @@
 
 | 术语 | 本专题中的含义 | 明确不是 |
 | :--- | :--- | :--- |
-| `MentorCourseware` | 一次成人导师深度讲解请求拥有的可版本化课件聚合根 | `ProblemDossier`、`TutoringSession`、单条聊天消息 |
+| `MentorCourseware` | 由成人账号拥有的可版本化课件聚合根，负责制作与保留两种生命周期 | `ProblemDossier`、`TutoringSession`、单条聊天消息 |
 | `VerificationBaseline` | 来自 `ProblemSolving` 的只读客观核验快照（题面、已验证路线、锚点、置信度） | 可由教学模型自由改写的草稿 |
 | `CoursewareVersion` | 不可变的课件完整版本快照（`v1, v2, ...`），支持 Undo / Redo 指针切换 | 原地覆写的草稿表 |
 | `CoursewareStep` | 课件内带稳定 `step_id` 的最小可寻址教学单元，承载讲解、思考依据及按需配图 | 固定句式模板或无依据的操作流水账 |
@@ -55,7 +55,7 @@
 ### 2.1 Aggregate Map
 
 - **图示位置**：下述 Mermaid（本专题内维护；全系统 Domain Map 见 [ddd-overview.md](ddd-overview.md#三ddd-domain-map)）。
-- **写聚合与边界**：本专题新增 `MentorCourseware`（成人导师深度课件，未实现），与学生 `TutoringSession` 隔离；其他能力的聚合清单由各自设计维护。
+- **写聚合与边界**：本专题新增 `MentorCourseware`（成人导师深度课件），与学生 `TutoringSession` 隔离；其他能力的聚合清单由各自设计维护。
 - **一致性关系**：成人课件与学生会话不共享事务，不直接持有对方对象引用；`MentorCourseware` 仅通过只读值对象 `VerificationBaseline`（携带可选 `dossier_ref`）消费 `ProblemSolving` 的核验结果。
 
 ```mermaid
@@ -97,6 +97,11 @@ classDiagram
         +courseware_id: UUID
         +guardian_id: UUID
         +status: drafting | ready | failed
+        +retention_status: temporary | saved | deleted | expired
+        +save()
+        +rename(title)
+        +delete()
+        +expire(now)
         +cursor: int
         +state_revision: int
         +active_revision_id: UUID?
@@ -151,6 +156,16 @@ stateDiagram-v2
 
 > 说明：`ready` 态发起修订时，聚合保持 `ready`（通过 `active_revision_id` 防止并发修订冲突），当前已发布版本始终可读、可 Undo/Redo；修订失败时仅释放匹配任务的 `active_revision_id` 并返回失败提示，不破坏既有版本。修订槽位固定记录 `base_version_no` 与创建后的 `state_revision`；**若用户在途修订尚未完成时主动执行 Undo/Redo，聚合在推进 `state_revision` 的同时立即清空 `active_revision_id`（废弃旧在途任务），允许用户马上基于目标版本发起新修订**。迟到任务发布时原子比较槽位、基础版本及状态修订号，任一变化均拒绝激活迟到结果（`revision_base_changed`），不截断历史或移动指针。
 
+**保留状态**独立于制作状态。创建时为 temporary，关闭页面只停止查看。保存保持同一 ID、当前 cursor、整条可撤销/重做的版本链和各版核验基线。保存后发布新版本、移动 cursor 均自动持久化。deleted 和 expired 为终态，拒绝迟到的写入。
+
+```mermaid
+stateDiagram-v2
+    [*] --> temporary
+    temporary --> saved: SaveMentorCourseware
+    temporary --> expired: ExpireTemporaryCourseware
+    saved --> deleted: DeleteMentorCourseware
+```
+
 ### 2.6 Domain Services
 
 1. **`CoursewareInvariantPolicy`**（无状态）
@@ -182,6 +197,12 @@ stateDiagram-v2
 | Guardian 发起对话修订 | `POST /guardian/courseware/{id}/revisions` | `RequestCoursewareRevision` | `MentorCourseware.begin_revision()` | `CoursewareRevisionRequested` | 投递局部修订任务给 `MentorCoursewareOrchestrator` | 本地短事务；幂等键 `courseware_id + command_id`；已有在途修订返回 `409` |
 | Guardian 点击 Undo / Redo | `POST /guardian/courseware/{id}/{undo\|redo}` | `UndoCoursewareVersion` / `RedoCoursewareVersion` | `CoursewareVersionPolicy` + `undo()` / `redo()` | `CoursewareCursorMoved` | 无（同步返回最新视图） | 强一致本地短事务；**零模型调用**；越界返回 `409` |
 | 编排有界重试耗尽 | Infrastructure Worker Adapter | `FailCoursewareProduction` | `MentorCourseware.mark_failed()` | `CoursewareProductionFailed` | 附带纯文本降级解析引用（如有） | 本地短事务；幂等键 `courseware_id + revision_id` |
+| 成人点击保存 | POST /guardian/courseware/{id}/save | SaveMentorCourseware | save | MentorCoursewareSaved | 本人列表立即可读 | ready、无在途修订且未到期，素材确认后提交 |
+| 成人修改标题 | PATCH /guardian/courseware/{id} | RenameMentorCourseware | rename | MentorCoursewareRenamed | 更新列表 | 仅 saved，标题去空白后 1–80 字 |
+| 成人确认删除 | DELETE /guardian/courseware/{id} | DeleteMentorCourseware | delete | MentorCoursewareDeleted | 事务内删除课件与素材副本 | 仅 saved，作废在途任务 |
+| 清理器检查截止时间 | Infrastructure Scheduler | ExpireTemporaryCourseware | expire | TemporaryCoursewareExpired | 级联清理 | 仅到期 temporary，重复扫描无副作用 |
+
+以上成人写请求由 Application 校验所有者，携带 command_id 和 expected_state_revision。同键同载重试返回既有结果，同键异载或版本冲突返回 409。保存同一课件只产生一个列表项，已保存时重复保存无需新建版本。删除完成或目标已不存在时返回 204。状态、修订号与写入结果同事务提交，列表直接读取主表。
 
 ### 3.2 核心 Command Cards
 
@@ -208,7 +229,7 @@ class RequestCoursewareRevisionInput(BaseModel):
     instruction: str = Field(min_length=1, max_length=1200)
     base_version_no: int                       # 本次修改依据的已发布版本
     expected_state_revision: int               # 客户端读到的聚合修订号
-    target_step_id: str | None = None           # 可选显式点选锚点；缺省由编排器按自然语言定位
+    target_step_id: str | None = None           # 旧客户端兼容字段；当前 App 仅发自然语言修改要求
     allow_unverified_override: bool = False     # 仅在引擎提示分歧后二次确认时允许置 True
 ```
 - **授权与前置**：校验 `courseware.guardian_id == guardian_id`、`status == "ready"`、当前无活跃 `active_revision_id`、输入安全审核通过。
@@ -311,9 +332,17 @@ sequenceDiagram
 
 ---
 
+### 4.3 我的课件
+
+ListSavedMentorCoursewares 从 PostgreSQL 按登录成人及 saved 状态查询，以 updated_at、courseware_id 倒序稳定分页。返回 items（ID、标题、question_text、学科、可选私有缩略图、更新时间）。question_text 取当前版本题干，旧快照缺少该字段时读取创建时的提问。详情用当前版本 verification_summary.stem_text 排在结论之前。列表同时返回分页游标 next_cursor。保存或删除成功后的下一次查询立即可见结果。详情沿用 §4.1，增加 title、retention_status、saved_at、updated_at、expires_at。打开列表项直接读取同一 ID，无需聊天令牌或再次求解。
+
 ## 五、Interface Contracts
 
 ```text
+GET    /guardian/courseware?saved=true&cursor=… → ListSavedMentorCoursewares
+POST   /guardian/courseware/{id}/save           → SaveMentorCourseware (200 + View)
+PATCH  /guardian/courseware/{id}                → RenameMentorCourseware (200 + View)
+DELETE /guardian/courseware/{id}                → DeleteMentorCourseware (204)
 POST /guardian/courseware                       → CreateMentorCourseware (202 Accepted)
 GET  /guardian/courseware/{id}                  → GetMentorCoursewareView (200 OK)
 GET  /guardian/courseware/{id}/status           → GetCoursewareProductionStatus (200 OK)
@@ -337,12 +366,40 @@ POST /guardian/courseware/{id}/redo             → RedoCoursewareVersion (200 O
 | `PedagogicalDirectorPort` | `AdminModelDirectorAdapter` | OpenAI-compatible LLM API | Admin 组件 `tutoring.mentor-director`（版本化 Prompt + Schema） | 单次 45s，结构错误最多重试 1 次 | 失败触发 `FailCoursewareProduction`，回退直出文本解析 |
 | `PedagogicalJudgePort` | `AdminModelPedagogicalJudgeAdapter` | 异构 LLM API（严禁与 Director 同型号） | Admin 组件 `tutoring.mentor-pedagogical-judge` | 单次 25s，审稿打回最多重修 1 次 | Judge 不可用时记录观测告警；安全审核不可用仍 fail-closed |
 | `CoursewareMediaRenderPort` | `HybridMathStageAdapter`（P0）+ `AudioTimelineAdapter`（P1）+ `HeadlessExportAdapter`（P2） | P0: 常用组件 Schema/引用校验；生成 JS 必须经静态检查、隔离 Headless 预运行与代表帧审查，具体边界见 §7.4；P1: 独立 TTS 与时间轴；P2: 同源 Web 舞台导出 | 锁定本地依赖和 runtime 版本；预运行进程无业务凭证且禁网；产物存成人私有 OSS | 预运行有独立进程墙钟/内存预算，超时由外部终止；模型修复最多一次；预算随真机原型校准 | 组件不支持可转特殊 JS；代码检查/预运行失败先有界修复，仍失败使用已审核静态图文；该步不标为动态可用 |
-| `MentorCoursewareRepository` | P0: `RedisCoursewareRepository`（4h TTL）<br/>P1: `PgCoursewareRepository` | Redis / PostgreSQL | 复用服务端连接池配置 | 读写超时 2s，乐观锁版本校验 | 过期返回 `404 courseware_expired`，提示重新生成 |
+| `MentorCoursewareRepository` | PostgreSQL，旧临时课件在原 TTL 内兼容读取 | 一个聚合一个仓储端口 | 复用服务端连接池 | 短事务与 state_revision 乐观锁 | 到期返回 404，数据库不可用时返回可重试错误 |
 
-### 6.2 Persistence & Entity-Relationship 边界
+### 6.2 持久化与 ER 图（主动保存）
 
-- **P0 阶段（无数据库表）**：沿用 [domain-companion.md](domain-companion.md#guardian-问答体验2026-11-17-验收2026-11-18-扩展双视角) 的成人无持久化边界——`MentorCourseware` 及其不可变版本栈保存在 Redis（4 小时 TTL，退出或过期自动清理），媒体大对象（音频/渲染片段）存私有 OSS 临时前缀并随生命周期清理。**因此 P0 不新增 PostgreSQL 表，不提供虚构 ER 图，也不涉及数据库迁移。**
-- **P1 阶段（面向 To B2C Coach 沉淀复用课件时）**：新增 `mentor_coursewares` 与 `mentor_courseware_versions` 表（仅以 `guardian_id` 索引，无任何学生域外键），届时补齐正式 ER 图、Alembic 迁移与回滚方案，Domain 与 Application 层零改动。
+以下两张 Tutoring 表共同承载一个 MentorCourseware 聚合。Guardian / Coach 以认证成人 ID 标识所有者。列表直接读取主表。
+
+```mermaid
+erDiagram
+    mentor_coursewares ||--o{ mentor_courseware_versions : owns
+    mentor_coursewares {
+        uuid courseware_id PK
+        uuid guardian_id
+        string title
+        string command_id
+        string retention_status
+        int state_revision
+        timestamp expires_at
+        timestamp updated_at
+        json payload
+        json photos
+    }
+    mentor_courseware_versions {
+        uuid courseware_id PK, FK
+        int version_no PK
+        json payload
+    }
+```
+
+主表保存已确认题面、目标小问、所需题图引用及聚合控制状态（含活跃修订、版本链顺序与下一版本号）。每个不可变版本随附其核验快照、步骤、动态资源清单、runtime 版本及已审核静态降级引用。版本通过复合主键唯一。按 (guardian_id, updated_at, courseware_id) 为 saved 建列表索引，按 expires_at 为 temporary 建清理索引。无学生外键、聊天记录表或单独的课件库表。
+
+- **写入与到期**：该阶段 PostgreSQL 统一承载临时和已保存课件。临时课件创建及成功修改后保留 4 小时，读取不续期。所有读写检查截止时间，不依赖清理器准时运行。保存事务清空 expires_at，设置 saved_at、标题（默认取题面摘要）并推进修订号。
+- **保存顺序**：首版组件、步骤和静态降级内容均已内嵌版本快照。保存时在事务外读取课件关联的私有题图并生成缩略图，再按未过期、所有者鉴权及预期修订号写入。原图副本随保存状态在一个数据库事务提交。素材不可读或并发冲突时保留原状态。图片只在详情单独鉴权读取，列表只取缩略图。后续音视频等大对象仍按 §七单独设计。
+- **后续版本与清理**：版本行以 version_no 为键，仅写新增版本并移除被截断的分支。各版核验快照由其 baseline_hash 引用主表 payload 中的基线。原图由主表 photos 专有，删除主表同时移除副本并级联删除版本。过期读取立即失效，后台定期物理清理。
+- **迁移**：先执行增量 Alembic 建表、索引，核查业务 PostgreSQL，再切换新建课件的仓储。旧临时实例按 ID 走旧入口至 TTL 到期，不自动导入个人列表，旧入口提示重新生成后可保存。回滚先关闭新保存入口，保留数据库和已保存详情读取能力，禁止以删表回滚用户资产。
 
 ### 6.3 Async Delivery、Security & Observability
 
@@ -404,7 +461,6 @@ Flutter 保持导航、版本控制、图文正文、静态降级和 `VoiceCompo
 | Flutter → 舞台 | `LOAD_VERSION` | 加载指定版本与本地依赖；仅在舞台健康且完成资源清理时热切换，否则重建 |
 | Flutter → 舞台 | `SEEK_STEP` / `SYNC_AUDIO_MS` | 以明确步骤、时间、参数恢复画面；P1 音频为课件自己的主时钟 |
 | 舞台 → Flutter | `STAGE_READY` / `STEP_CHANGED` | 首帧或当前步骤状态，不能改变课件版本/核验事实 |
-| 可信舞台 → Flutter | `REQUEST_STEP_REVISION` | 选定 step_id 提示宿主输入框；实际修改由成人操作和鉴权 API 发起 |
 | 舞台 → Flutter | `STAGE_ERROR` / `HEARTBEAT` | 错误与活性线索；心跳缺失由宿主外部计时器处理，不依赖生成 JS 的异常处理 |
 
 ### 7.4 执行边界、审核与恢复
@@ -479,6 +535,13 @@ Then 不产生任何学生域（TutoringSession / ProblemRecord）写入，也�
 
 ---
 
+主动保存阶段还须验收以下场景。
+
+1. 创建未保存课件后列表为空。主动保存后重启、重新登录或清空对话，从列表打开同一 ID，原题、动态演示和当前版本完整。其他账号无法列出或直接访问。
+2. 临时题图到期后仍可打开已保存的图文和动态素材。旧 runtime 不兼容时能读静态图文。
+3. 素材复制失败不显示已保存。保存回执丢失后重试只出现一条。保存与修订或到期清理竞争时只接受满足前置条件的提交。
+4. 已保存课件修订、Undo/Redo 后重开恢复当前指针，失败修订保留旧版。重命名后列表立即更新。删除后迟到任务无法恢复课件。
+
 ## 九、分期演进、评测度量与兼容边界
 
 ### 9.1 入口触发与分期演进
@@ -489,8 +552,9 @@ Then 不产生任何学生域（TutoringSession / ProblemRecord）写入，也�
 | 期别 | 核心交付 | 复用与新增 |
 | :--- | :--- | :--- |
 | **P0-1（第一刀 · 聚合 + 预置组件 + 修订/Undo）** | `MentorCourseware` 聚合 + `Orchestrator` + `PedagogicalDirector` + `PedagogicalJudge` + 离线 Web 舞台底座 + 首批预置常用组件（`component_scene`：平面坐标系/函数动点、平面几何、3D 常见多面体截面/展开）+ 静态图文降级 + 对话式局部修订 + Undo/Redo（Redis 4h 临时态）；**先以 Android 真机完成首轮渲染验收** | 复用 `ProblemSolving`、`VoiceComposer`；新增 Flutter 课件页与预置组件 Web runtime；暂不开放模型生成 JS |
+| **P0 主动保存** | 成人私有保存、我的课件、重开、重命名和删除 | 存储与迁移见 §6.2，可独立于生成 JS 交付 |
 | **P0-2（第二刀 · 生成 JS + 隔离预运行 + 故障原型）** | 开放模型生成特殊演示 JS（`math_stage_script`）+ 服务端无凭证禁网 Headless 预运行与代表帧审查 + Android/iOS 死循环/过量内存/WebGL 丢失故障恢复原型验收后灰度 | 仅在通过故障原型验收的设备范围启用代码路径；同步补齐 iOS 真机验收 |
-| **P1（有声动态微课 + Coach 持久化）** | 叠加逐 Beat TTS 音轨与毫秒级时间轴（由课件自己的音频主时钟驱动同一套 Web 数理舞台）；开放 PostgreSQL 持久化供伴学师复用 | 仅扩展 `CoursewareMediaRenderPort`（TTS 适配器）与 `MentorCoursewareRepository`（PostgreSQL 适配器） |
+| **P1（有声动态微课）** | 叠加逐 Beat TTS 音轨与毫秒级时间轴（由课件自己的音频主时钟驱动同一套 Web 数理舞台） | 仅扩展 `CoursewareMediaRenderPort`（TTS 适配器） |
 | **P2（同源 MP4 分享导出）** | 服务端 Headless Chromium 加载同一套 `MathStage Runtime` + P1 音轨导出标准 MP4，支持家长/机构一键转发分享 | 共用锁定 runtime 与 render 契约，另验收导出性能和跨环境视觉差异 |
 
 ### 9.2 评测度量体系与起步基准集

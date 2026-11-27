@@ -1,5 +1,15 @@
 # 答疑
 
+- 课件列表的标题可重命名，自动标题也会截断。列表展示题干预览，打开后直接读取当前版本完整题面，见[课件查询契约](../../docs/technical/topic-mentor-courseware.md#43-我的课件)。回归覆盖改名列表和重开后的题干。
+
+- 2026-11-27 成人主动保存已完成实现和测试库迁移，见[实施与验收记录](../specs/mentor-courseware-save.md)。首版动态组件及降级结果内嵌版本快照，保存时私有题图随聚合原子入库，避免依赖临时附件 TTL。真机冷启动已验证可重开同一课件；当前待 Gate 2。
+
+- 2026-11-27 主动保存方案已确认并写入[课件专题 §6.2](../../docs/technical/topic-mentor-courseware.md)及用户 PRD，取代下方待决策记录。ER 为目标设计，尚无迁移。
+
+- 2026-11-27 按 `.cursor/skills/domain-driven-design` 审阅课件主动保存的文档更新范围（仅方案说明，未实施）：用户方向为临时对话与显式保存课件分离；保存/重命名/删除归现有 MentorCourseware，列表归 Query，不另建课件库 Domain/聚合。后续应在专题补独立保留生命周期、保存成功与素材可靠保留的一致性、并发保存/删除及迟到任务、ER/迁移/恢复和验收；PRD 维护用户行为，Companion/App 仅补边界与链接。存储权威归属、保存时是否允许在途修订等细节仍为建议，不视为已确认设计。
+
+- 2026-11-27 导师课件功能闭环审阅（仅分析，未批准变更）：[专题设计](../../docs/technical/topic-mentor-courseware.md) §6.2 的 P0 临时资源定位与可复用备课产物存在取舍，保存、历史入口及离开后恢复需先明确。代码返回课件页时只停止轮询，不立即删除服务端资源；课件 ID 未回传聊天入口，再次点击会新建，Redis 在写入后续期 4h，内存回退还受进程生命周期影响，不能把“找不到”统一解释为退出即删除。建议评审同时覆盖生成中离开/失败重试、原题与学段承接、追问与修订区分、版本保留/上限、删除与素材生命周期、持久化后的旧 runtime 兼容。以上为待决策建议，不改变既有分期；本轮未改业务代码或运行行为测试。
+
 事实源：[domain-tutoring](../../docs/technical/domain-tutoring.md)、[表达](../../docs/technical/domain-tutoring-presentation.md) §十四、[离线评测](../../docs/technical/eval-offline.md)。视频讲解见 [tutoring-video-answer](../../docs/technical/tutoring-video-answer.md)，未实现。
 
 ## 目标

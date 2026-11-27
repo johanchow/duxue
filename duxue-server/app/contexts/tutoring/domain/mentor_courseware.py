@@ -465,6 +465,9 @@ class MentorCourseware:
         degraded_text: str | None = None,
         processed_command_ids: dict[str, dict[str, Any]] | None = None,
         created_at: str | None = None,
+        retention_status: str = "temporary",
+        title: str = "",
+        saved_at: str | None = None,
     ) -> None:
         self.courseware_id = courseware_id
         self.guardian_id = guardian_id
@@ -482,6 +485,10 @@ class MentorCourseware:
         self.failure_reason = failure_reason
         self.degraded_text = degraded_text
         self.processed_command_ids: dict[str, dict[str, Any]] = dict(processed_command_ids or {})
+        self.retention_status = retention_status
+        self.title = title
+        self.thumbnail = None
+        self.saved_at = saved_at
         self.created_at = created_at or datetime.now(timezone.utc).isoformat()
         self.domain_events: list[DomainEvent] = []
 
@@ -751,6 +758,24 @@ class MentorCourseware:
             )
         )
 
+    def change_retention(self, action: str, title: str, expected_revision: int) -> None:
+        if expected_revision != self.state_revision:
+            raise CoursewareConflictError("revision_base_changed", "课件已更新，请刷新")
+        if action == "save" and self.retention_status == "temporary":
+            if self.status != "ready" or self.active_revision:
+                raise CoursewareConflictError("courseware_busy", "请等待课件制作完成")
+            self.title = (self.current_baseline.stem_text if self.current_baseline else "")[:80] or self.prompt_text[:80] or "导师课件"
+            self.saved_at = datetime.now(timezone.utc).isoformat()
+            self.retention_status = "saved"
+        elif action == "rename" and self.retention_status == "saved" and 0 < len(title.strip()) <= 80:
+            self.title = title.strip()
+        elif action == "delete" and self.retention_status == "saved":
+            self.retention_status = "deleted"
+            self.active_revision = None
+        else:
+            raise CoursewareConflictError("invalid_retention_change", "当前课件无法执行此操作")
+        self.state_revision += 1
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "courseware_id": str(self.courseware_id),
@@ -770,6 +795,11 @@ class MentorCourseware:
             "degraded_text": self.degraded_text,
             "processed_command_ids": self.processed_command_ids,
             "created_at": self.created_at,
+            "title": self.title,
+            "thumbnail": self.thumbnail,
+            "subject": self.current_baseline.subject if self.current_baseline else None,
+            "retention_status": self.retention_status,
+            "saved_at": self.saved_at,
         }
 
     @classmethod
@@ -779,7 +809,7 @@ class MentorCourseware:
             for k, v in (raw.get("baselines") or {}).items()
         }
         active_raw = raw.get("active_revision")
-        return cls(
+        result = cls(
             courseware_id=UUID(str(raw["courseware_id"])),
             guardian_id=UUID(str(raw["guardian_id"])),
             prompt_text=str(raw.get("prompt_text") or ""),
@@ -796,5 +826,8 @@ class MentorCourseware:
             failure_reason=raw.get("failure_reason"),
             degraded_text=raw.get("degraded_text"),
             processed_command_ids=dict(raw.get("processed_command_ids") or {}),
-            created_at=raw.get("created_at"),
+            created_at=raw.get("created_at"), title=raw.get("title", ""),
+            saved_at=raw.get("saved_at"), retention_status=raw.get("retention_status", "temporary"),
         )
+        result.thumbnail = raw.get("thumbnail")
+        return result

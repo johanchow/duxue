@@ -5,6 +5,8 @@ Strictly isolated from Ward threads, TutoringSession, and Memory facts.
 
 from __future__ import annotations
 
+import base64
+from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -45,7 +47,10 @@ from app.infrastructure.storage.object_storage import storage
 router = APIRouter(prefix="/guardian/courseware", tags=["guardian-courseware"])
 
 _safety = LocalSafetyScreening()
-_repo, _status_store = build_default_courseware_stores()
+from app.infrastructure.persistence.pg_courseware import PgCoursewareRepository
+
+_legacy_repo, _status_store = build_default_courseware_stores()
+_repo = PgCoursewareRepository(legacy=_legacy_repo)
 _commands = MentorCoursewareCommandService(_repo)
 _queries = MentorCoursewareQueryService(_repo, _status_store)
 _orchestrator = MentorCoursewareOrchestrator(
@@ -143,6 +148,74 @@ def create_courseware(
         "status": res.status,
         "state_revision": res.state_revision,
     }
+
+
+class LibraryMutation(CursorMoveRequest):
+    title: str = Field(default="", max_length=80)
+
+
+@router.get("")
+def list_saved(principal: Annotated[Principal, Depends(current_guardian)], cursor: str | None = None):
+    try:
+        before = None
+        if cursor:
+            stamp, cid = cursor.split("|")
+            before = datetime.fromisoformat(stamp), UUID(cid)
+    except ValueError:
+        raise HTTPException(422, "分页位置无效") from None
+    return _queries.list_saved(UUID(principal.user_id), before)
+
+
+def _load_photos(keys):
+    from io import BytesIO
+
+    from PIL import Image
+    photos = []
+    thumbnail = None
+    for key in keys:
+        data = storage.read_limited(key, 12 * 1024 * 1024)
+        if not photos:
+            with Image.open(BytesIO(data)) as image:
+                image.thumbnail((96, 96))
+                output = BytesIO()
+                image.convert("RGB").save(output, "JPEG", quality=72)
+                thumbnail = base64.b64encode(output.getvalue()).decode("ascii")
+        photos.append(base64.b64encode(data).decode("ascii"))
+    return photos, thumbnail
+
+
+def change_library(action, cid, body, principal):
+    owner = UUID(principal.user_id)
+    try:
+        _commands.change_library(owner, cid, action, body.command_id, body.title, body.expected_state_revision, _load_photos)
+        if action != "delete":
+            return _queries.get_view(courseware_id=cid, guardian_id=owner)
+    except OSError:
+        raise HTTPException(503, {"code": "courseware_asset_unavailable", "message": "暂时无法读取题图，请重试"}) from None
+    except CoursewareDomainError as exc:
+        if action == "delete" and isinstance(exc, CoursewareNotFoundError):
+            return
+        raise _translate_error(exc) from exc
+
+
+@router.post("/{courseware_id}/save")
+def save_courseware(courseware_id: UUID, body: LibraryMutation, principal: Annotated[Principal, Depends(current_guardian)]):
+    return change_library("save", courseware_id, body, principal)
+
+
+@router.patch("/{courseware_id}")
+def rename_courseware(courseware_id: UUID, body: LibraryMutation, principal: Annotated[Principal, Depends(current_guardian)]):
+    return change_library("rename", courseware_id, body, principal)
+
+
+@router.delete("/{courseware_id}", status_code=204)
+def delete_courseware(courseware_id: UUID, body: LibraryMutation, principal: Annotated[Principal, Depends(current_guardian)]):
+    change_library("delete", courseware_id, body, principal)
+
+
+@router.get("/{courseware_id}/photos")
+def get_saved_photos(courseware_id: UUID, principal: Annotated[Principal, Depends(current_guardian)]):
+    return {"photos": _queries.get_saved_photos(UUID(principal.user_id), courseware_id)}
 
 
 @router.get("/{courseware_id}")

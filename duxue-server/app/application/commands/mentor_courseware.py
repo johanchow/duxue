@@ -89,6 +89,24 @@ class MentorCoursewareCommandService:
             raise CoursewareForbiddenError()
         return cw
 
+    def expire_temporary(self):
+        return self._repo.expire_temporary()
+
+    def change_library(self, owner, cid, action, command_id, title, expected_revision, load_photos):
+        cw = self._load_owned(cid, owner)
+        signature = {"action": action, "title": title, "expected": expected_revision}
+        prior = cw.processed_command_ids.get(command_id)
+        if prior and prior != signature:
+            raise CoursewareConflictError("idempotency_payload_mismatch", "请求编号已使用")
+        if prior or (action == "save" and cw.retention_status == "saved"):
+            return
+        cw.change_retention(action, title, expected_revision)
+        cw.processed_command_ids[command_id] = signature
+        photos = None
+        if action == "save":
+            photos, cw.thumbnail = load_photos(cw.attachment_keys)
+        self._repo.save_cas(cw, expected_state_revision=expected_revision, photos=photos)
+
     def create(self, cmd: CreateMentorCoursewareInput) -> CreateMentorCoursewareResult:
         existing = self._repo.get_by_create_command(cmd.guardian_id, cmd.command_id)
         if existing is not None:
@@ -110,7 +128,9 @@ class MentorCoursewareCommandService:
             attachment_keys=cmd.attachment_keys,
             target_grade_hint=cmd.target_grade_hint,
         )
-        self._repo.create(cw, command_id=cmd.command_id)
+        winner = self._repo.create(cw, command_id=cmd.command_id)
+        if winner:
+            return CreateMentorCoursewareResult(winner.courseware_id, winner.state_revision, winner.status, True)
         return CreateMentorCoursewareResult(
             courseware_id=cw.courseware_id,
             state_revision=cw.state_revision,

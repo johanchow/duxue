@@ -82,8 +82,8 @@ class _ApiJudge(PedagogicalJudgePort):
         return PedagogicalJudgeResult(passed=True)
 
 
-def _make_client(active_guardian: list[UUID]):
-    repo = InMemoryCoursewareRepository()
+def _make_client(active_guardian: list[UUID], repo=None):
+    repo = repo or InMemoryCoursewareRepository()
     status_store = InMemoryProductionStatusStore()
     cmds = MentorCoursewareCommandService(repo)
     queries = MentorCoursewareQueryService(repo, status_store)
@@ -227,3 +227,57 @@ def test_courseware_generation_uses_configured_model_client(monkeypatch):
     draft = adapters.ModelDirectorAdapter().draft_initial(prompt_text="展开", baseline=baseline)
     assert components == ["tutoring.turn"]
     assert draft.steps[0].step_id == "s1"
+
+
+def test_saved_courseware_survives_reopen_and_is_owner_private(monkeypatch):
+    from sqlalchemy import create_engine
+    from sqlalchemy.pool import StaticPool
+
+    from app.infrastructure.persistence.courseware_tables import coursewares, versions
+    from app.infrastructure.persistence.pg_courseware import PgCoursewareRepository
+    engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
+    coursewares.create(engine)
+    versions.create(engine)
+    repo = PgCoursewareRepository(engine)
+    monkeypatch.setattr(gc_api, "_repo", repo)
+    monkeypatch.setattr(gc_api, "_commands", MentorCoursewareCommandService(repo))
+    monkeypatch.setattr(gc_api, "_queries", MentorCoursewareQueryService(repo, InMemoryProductionStatusStore()))
+    owner = uuid4()
+    active = [owner]
+    client = _make_client(active, repo)
+    base = "/guardian/courseware"
+    cid = client.post(base, json={"command_id":"initial", "prompt_text":"测试原题"}).json()["courseware_id"]
+    path = f"{base}/{cid}"
+    assert client.get(base).json()["items"] == []
+    view = client.get(path).json()
+    save = {"command_id":"save", "expected_state_revision":view["state_revision"]}
+    saved = client.post(path+"/save", json=save).json()
+    assert saved["retention_status"] == "saved"
+    assert saved["current_version"] == view["current_version"]
+    assert client.post(path+"/save", json=save).json() == saved
+    active[0] = uuid4()
+    assert client.get(base).json()["items"] == []
+    assert client.patch(path,json=dict(save,title="越权")).status_code == 403
+    active[0] = owner
+    assert client.get(base).json()["items"][0]["courseware_id"] == cid
+    renamed = client.patch(path,json={"command_id":"rename","title":"备课","expected_state_revision":saved["state_revision"]}).json()
+    assert renamed["title"] == "备课"
+    assert client.get(base).json()["items"][0]["question_text"] == "测试原题"
+    assert client.request("DELETE",path,json={"command_id":"delete","expected_state_revision":renamed["state_revision"]}).status_code == 204
+    assert client.get(base).json()["items"] == []
+    assert client.get(path).status_code == 404
+
+
+def test_saved_photo_snapshot_is_independent_of_original(monkeypatch):
+    import base64
+    from io import BytesIO
+
+    from PIL import Image
+    data = BytesIO()
+    Image.new("RGB", (180, 100)).save(data, "PNG")
+    objects = {"question.png": data.getvalue()}
+    monkeypatch.setattr(gc_api.storage, "read_limited", lambda key, limit: objects[key])
+    photos, thumb = gc_api._load_photos(["question.png"])
+    objects.clear()
+    assert base64.b64decode(photos[0]) == data.getvalue()
+    assert Image.open(BytesIO(base64.b64decode(thumb))).size == (96, 53)

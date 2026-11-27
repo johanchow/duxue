@@ -122,3 +122,9 @@ Guardian 用邮箱验证码注册和登录，不保存读学密码。Ward 使用
 
 - 2026-11-24 排查本地“这条消息暂未送达”：Ward `_submitPlanInput` 对请求及 `_applyPlanTurnResult` 的任意异常统一设置 `failedPlanText`，所以文案不能证明请求未到服务端；SSE error 或流缺 result 也触发。当前检查时 ADB 无设备，无法关联手机原异常。8021 历史日志有 PostgreSQL 连接异常，但未与用户报告轮次对齐，不能认定为此次根因。
 - 2026-11-24 真机调试排查：停用 Ward 首页 `SupportCompanionPanel` 挂载以消除未完成功能每 15 秒的 `POST /companion/support-channels` 409 轮询，并将 `ApiClient.companionTurn` 的 `receiveTimeout` 由 90s 放宽至 150s。Flutter `analyze`、`observation_ui_test`（3/3）及 `app_ui_test`（75/75）全绿。
+
+- 导师课件详情只在临时课件显示有效期与保存按钮，保存后整行收起，让题目直接接在标题栏下。
+
+- 课件步骤仅用于阅读和演示。用户从底部输入框直接描述修改要求，App 已移除步骤点选与绑定。
+
+- 2026-11-27 导师课件页落地第一刀变更感知与自适应双栏布局（`GuardianCoursewarePage` + `courseware_revision_diff.dart`）：`<860px` 保持竖屏单列，`>=860px` 自动切换左主内容+右 360px 修订侧边栏（含本轮修订记录）；修订生效时通过前后版本 `step_id`/`content_hash` 及语义区块比对展示变更回执条（摘要、新增/更新/移除胶囊、定位到改动处、一键撤销）、自动展开并滚动到首个变动步骤、加卡片左色条与区块微标，并补齐加载原话回显、`low_confidence` 诚实提示与后台修订失败提示条。`flutter analyze` 无问题，全量 202 项通过（含新增 4 项单测/组件测试）。

@@ -26,6 +26,15 @@ class MentorCoursewareQueryService:
         self._repo = repo
         self._status_store = status_store
 
+    def list_saved(self, guardian_id, before=None):
+        rows = self._repo.list_saved(guardian_id, before, 31)
+        page = rows[:30]
+        return {"items": page, "next_cursor": (
+            f"{page[-1]['updated_at'].isoformat()}|{page[-1]['courseware_id']}" if len(rows) > 30 else None)}
+
+    def get_saved_photos(self, guardian_id, courseware_id):
+        return self._repo.saved_photos(guardian_id, courseware_id)
+
     def get_view(self, *, courseware_id: UUID, guardian_id: UUID) -> dict[str, Any]:
         cw = self._repo.get(courseware_id)
         if cw is None:
@@ -76,6 +85,11 @@ class MentorCoursewareQueryService:
         return {
             "courseware_id": str(cw.courseware_id),
             "status": cw.status,
+            "title": cw.title,
+            "retention_status": cw.retention_status,
+            "saved_at": cw.saved_at,
+            "updated_at": getattr(cw, "updated_at", None),
+            "expires_at": getattr(cw, "expires_at", None),
             "state_revision": cw.state_revision,
             "verification_summary": verification_summary,
             "current_version": current_version_dto,

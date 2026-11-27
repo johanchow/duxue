@@ -15,6 +15,7 @@ import '../shared/chat_markdown.dart';
 import '../shared/reply_progress.dart';
 import '../shared/voice_composer.dart';
 import 'guardian_courseware/guardian_courseware_page.dart';
+import 'guardian_courseware/library_page.dart';
 import 'pronunciation_player.dart';
 import 'visual_block.dart';
 
@@ -468,6 +469,8 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
                 ),
               ),
             ),
+            IconButton(tooltip:'我的课件',icon:const Icon(Icons.folder_outlined),
+              onPressed:()=>Navigator.of(context).push(MaterialPageRoute<void>(builder:(_)=>const CoursewareLibraryPage()))),
             if (session.messages.isNotEmpty ||
                 session.busy ||
                 session.error != null)
@@ -732,6 +735,8 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
                       Navigator.of(context).push(
                         MaterialPageRoute<void>(
                           builder: (_) => GuardianCoursewarePage(
+                            initialCoursewareId: message['courseware_id'] as String?,
+                            onCreated: (id) { if(mounted) setState(()=>message['courseware_id']=id); },
                             promptText:
                                 (message['source_prompt'] as String?) ?? text,
                             attachmentKeys:
@@ -742,7 +747,7 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
                       );
                     },
                     icon: const Icon(Icons.auto_awesome, size: 16),
-                    label: const Text('生成深度课件'),
+                    label: Text(message['courseware_id']==null?'生成深度课件':'打开深度课件'),
                   ),
                 ),
             ])));
