@@ -208,7 +208,7 @@ FUNCTION routerRedirectGuard(authState, targetPath):
 - **生命周期**：通过检查的 `visual` 随该轮 `CompanionMessage.interaction_ref` 写入消息 journal，在对应历史气泡内持久展示（进入新一轮对话或重新打开对话列表不会消失），但不会注入后续轮次传给大模型的对话上下文。
 - **与流式的关系**：图随已校验的完整交互一次性出现，包括使用[对话回复阶段](#对话回复进度)的请求。
 
-对话框右上角提供清空入口，交互与提示文案见 [教育通用 Agent PRD §4.2](../product/prd-edu-agent.md#42-作业启发答疑红线与教学方法论)，异步请求及本地 Thread 写入边界见 [Companion 清空历史](topic-edu-agent.md#14-对话载体与交互协议)。
+对话框右上角提供多对话管理入口（「新建对话 / 历史对话」，默认进入最近活跃的 1 个对话，按需新建、切换与删除，切换 `thread_id` 时丢弃旧对话迟到响应防串台），交互规则见 [用户 PRD §6.1 / §7.2](../product/prd-user.md#61-默认主界面)，线程隔离与防绕过边界见 [教育通用 Agent 架构 §1.4](topic-edu-agent.md#14-对话载体与交互协议)。
 
 #### 1.2 历史对话图片查看
 - Ward 消息的 `attachment_refs` 保留图片顺序；聊天列表只为进入视口的气泡读取图片，缩略图按 72 逻辑像素解码，全屏查看时按原始上传字节解码。

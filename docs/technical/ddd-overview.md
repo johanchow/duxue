@@ -30,7 +30,7 @@
 | 7 | Behavior Analysis | Supporting | ObservationWindow、ObservationDay、物理活动与被动学段；不判断主观感受、作业完成或掌握 | Device Query → 本域；`ObservationRevisionPublished.v1` + Query ACL → Study/Evaluation |
 | 8 | Evaluation | Core | 晚间客观汇总报告（分口径时长：作业专注 vs 自由探索、独立解题凭证、好奇心与创作足迹）；原 Ward `SelfReview` 自述已退场；不反写画像 | Behavior/Study/Tutoring/ArtifactWorkspace → 本域；授权报告 Query → Guardian/Coach 与成人工作台（只读） |
 | 9 | Memory & Understanding | Core | LearningEvidence、EpisodicMemory、`Interest Signal`（含自由创作足迹）与长期客观画像；不拥有 Runtime Working Memory；严禁成人工作台隐式写回 | 已确认客观事实与兴趣信号 → 本域；`MemoryBundle` Query ACL → Tutoring/Evaluation 及显式受权成人工作台（严格只读） |
-| 10 | Conversation（原 Companion） | Supporting | 极薄双端对话载体：`ConversationThread`、`AgentRun`、清空可见历史（`history_generation`）与关闭词汇表交互信封；Application 层由 `EduAgentOrchestrator` + `RolePolicy` 编排；不拥有业务聚合或教学规则 | Identity/Study/Memory/Evaluation 只读 ACL；委派 Tutoring / ArtifactWorkspace / ProblemSolving |
+| 10 | Conversation（原 Companion） | Supporting | 极薄双端多对话载体：`ConversationThread`（按 `owner_id + owner_role` 支持 `1:N` 多对话，默认 1 个、按需新建/切换/删除）、`AgentRun`、`history_generation` 与关闭词汇表交互信封；Application 层由 `EduAgentOrchestrator` + `RolePolicy` 编排；不拥有 `EduArtifact`、`TutoringSession` 或业务教学规则 | Identity/Study/Memory/Evaluation 只读 ACL；委派 Tutoring / ArtifactWorkspace / ProblemSolving |
 
 `EduAgentOrchestrator` 是 Application 的 Process Manager，不是额外 Domain 或 Aggregate Root。Working Memory 属于运行态上下文。`LearningFactRecorded.v1` 与 `CreationFootprintRecorded.v1` 是 Published Language。
 

@@ -63,11 +63,12 @@ flowchart LR
 
 ### 1.4 对话载体与交互协议
 
-随着 `planning` / `reflection` 退场，原 `Companion Orchestration` 收缩为极薄的 **`Conversation`（Supporting）**，**不再承担多场景 Handoff**，仅维护双端通用的三项基础契约：
+随着 `planning` / `reflection` 退场与双端创作/多任务场景引入，原 `Companion Orchestration` 收缩为极薄的 **`Conversation`（Supporting）**，**不再承担多场景 Handoff**，维护双端通用的四项基础契约：
 
-1. **Thread / Run / Turn 层级**：一个账号/视角维护连续的 `ConversationThread`；每次用户输入启动有界 `AgentRun`（记录执行阶段、工具预算与可取消状态）；单个 `Turn` 产出回复消息与可选 `EduArtifact` 引用。
-2. **清空可见历史边界**：用户触发清空对话时，服务端原子递增 `history_generation`，仅重置前端可见列表与下一轮模型短期上下文窗口，**绝不删除**既有 `Tutoring` 教学事实、已保存 `EduArtifact` 资产或 `Memory` 长期画像；迟到的旧 `AgentRun` 回调按 `history_generation` 丢弃，不污染新对话。
-3. **关闭词汇表交互信封**：模型只返回业务语义候选（正文、`visual`、发音原文、产物补丁），**严禁模型直接发明前端 UI `kind` 或按钮**；由 Application 层统一投影为关闭词汇表信封（`text`、`text_visual`、`pronounce`、`artifact_card`、`focus_guard_prompt`、`help_offer`），旧客户端对未知 `kind` 优雅降级为纯文本。
+1. **多对话 Thread / Run / Turn 层级（`1:N`）**：每个账号按 `owner_id + owner_role` 可拥有多条 `ConversationThread`（**默认续接最近活跃的 1 条，按需新建、切换、重命名与删除**）；每条线程独立维护 `title`、可选成人只读 `context_ward_id`、短期消息窗口与 `AgentRun`；单个 `Turn` 产出回复消息与可选 `EduArtifact` 引用。
+2. **产物与对话松耦合**：`EduArtifact` 仅通过只读 `source_thread_id` 关联来源对话；切换或删除对话**绝不删除**已保存的 `EduArtifact` 资产，从「我的资源库 / 我的作品」重开产物亦可直接发起修订。
+3. **删除 / 清理与防绕过边界**：删除单条对话或清空可见历史（`history_generation` 递增）仅重置对应线程的可见列表与模型短期上下文，**绝不删除**既有 `Tutoring` 教学事实、`EduArtifact` 资产或 `Memory` 长期画像；迟到的旧 `AgentRun` 回调按 `thread_id + history_generation` 丢弃。**Ward 端新建/切换对话不重置正在进行的 `Sprint` 专注态，同一作业题在新对话重发仍按题目指纹与答案保护状态机独立审查。**
+4. **关闭词汇表交互信封**：模型只返回业务语义候选（正文、`visual`、发音原文、产物补丁），**严禁模型直接发明前端 UI `kind` 或按钮**；由 Application 层统一投影为关闭词汇表信封（`text`、`text_visual`、`pronounce`、`artifact_card`、`focus_guard_prompt`、`help_offer`），旧客户端对未知 `kind` 优雅降级为纯文本。
 
 ---
 
@@ -244,8 +245,15 @@ sequenceDiagram
 所有接口保持**终端无关、资源化设计**，同时服务 `duxue-app`（手机/平板）与未来 Web 工作台：
 
 ```text
+# 多对话线程管理（默认 1 个活跃对话，按需新建/切换多个）
+GET    /v1/conversations                    → ListConversationThreads（按 owner_id + owner_role 倒序分页）
+POST   /v1/conversations                    → CreateConversationThread（可选 title、成人只读 context_ward_id）
+GET    /v1/conversations/{thread_id}/messages → GetConversationMessages（消息与产物引用分页）
+PATCH  /v1/conversations/{thread_id}        → UpdateConversationThread（重命名 / 切换成人只读 context_ward_id）
+DELETE /v1/conversations/{thread_id}        → DeleteConversationThread（隐藏/软删，不删已保存产物与学习事实）
+
 # 统一 Agent 对话与执行流（支持 SSE 进度推送）
-POST   /v1/agent/turns                      → StartAgentRun（携带 role 鉴权、attachments、可选 context_ward_id）
+POST   /v1/agent/turns                      → StartAgentRun（携带可选 thread_id、attachments、可选 context_ward_id；缺省 thread_id 自动续接默认对话或新建）
 GET    /v1/agent/runs/{run_id}/events       → SSE 订阅规划步骤、工具进度与最终结果
 POST   /v1/agent/runs/{run_id}/cancel       → 取消在途长任务
 

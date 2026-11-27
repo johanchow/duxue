@@ -206,7 +206,7 @@ LLM 映射为 `input → input`、`output.response → output`、`output.evaluat
 
 ## Omni-Edu 本地文件评测
 
-本批修复后的全量结果、执行中断恢复口径及未通过项复核见[2026-11-16评测记录](eval-omni-2026-11-16.md)。
+本批修复后的全量结果、执行中断恢复口径及未通过项复核见历史归档（2026-11-16 评测记录已归档至 git 历史）。
 
 ### 数据与审核口径
 
@@ -283,7 +283,7 @@ MATH_ENGINE_MODE=subprocess .venv/bin/python -m evals run \
 
 可叠加`--dataset`或`--case`筛选，`--batch`同字段多值为并集，跨字段为交集。此处subprocess用于非生产本机评测；模型和数学工具授权仍由快照决定。
 
-迁移已完成209项云端逐条摘要/协议回读、原有13项不变、17图字节校验和临时HTTPS读取验证；迁移审计在`var/evals/omni-langfuse-migration-20261116/`的plan/receipt/verification及remote导出中。迁移本身没有运行模型、修改Evaluator/Rule或上传本地历史成绩。后续实际托管评测及评分版本调整见[运行记录](eval-omni-langfuse-2026-11-16.md)。
+迁移已完成209项云端逐条摘要/协议回读、原有13项不变、17图字节校验和临时HTTPS读取验证；迁移审计在`var/evals/omni-langfuse-migration-20261116/`的plan/receipt/verification及remote导出中。迁移本身没有运行模型、修改Evaluator/Rule或上传本地历史成绩。后续实际托管评测及评分版本调整以 Langfuse 运行记录与 git 历史为准。
 
 **已发现的视觉评分限制**：导师模型收到了OSS图片，但核对云端原生裁判实际调用发现，当前证据中的签名URL仍是序列化文本，没有形成图像内容块。17个OSS图文任务须单列`needs_image_evidence`；保留原始分数，不能据此声称完成视觉质量验收，也不回退本地裁判或自动上传Langfuse原生媒体。当前教学政策的自动评分仍未经人工校准。
 
