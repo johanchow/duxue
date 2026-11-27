@@ -5,6 +5,7 @@ import subprocess
 import sys
 
 import pytest
+
 from app.agent_specs.admin_bundle import compile_bundle, contract_compatibility
 from app.agent_specs.configuration import CODE_ROOT, read_snapshot, snapshot_bundle
 from app.agent_specs.release_runtime import ReleaseRuntime
@@ -282,8 +283,9 @@ def test_eager_workflow_validation_keeps_existing_authorized_tool_subset_editabl
 
 def test_image_review_output_budget_can_fit_a_full_page_without_becoming_unbounded():
     import pytest
-    from app.agent_specs.definitions import ModelDefinition
     from pydantic import ValidationError
+
+    from app.agent_specs.definitions import ModelDefinition
     values = dict(name='model', component_id='tutoring.turn', timeout_ms=120000,
                   temperature=0, max_output_tokens=8192)
     assert ModelDefinition.model_validate(values).max_output_tokens == 8192
@@ -294,8 +296,9 @@ def test_image_review_output_budget_can_fit_a_full_page_without_becoming_unbound
 def test_thinking_model_parameters_compile_without_breaking_compatibility():
     import copy
 
-    from app.agent_specs.definitions import ModelDefinition
     from pydantic import ValidationError
+
+    from app.agent_specs.definitions import ModelDefinition
 
     base = dict(
         name='qwen3.8-max',
@@ -336,6 +339,7 @@ def test_online_source_rejects_files_and_production_working_draft(monkeypatch):
 
 def test_local_preview_reads_revisions_from_admin_only(tmp_path, monkeypatch):
     import httpx
+
     from app.agent_specs.release_runtime import WorkingDraftRuntime
     bundle = snapshot_bundle()
     draft = {"id": "draft", "revision": 15, "bundle": bundle}
@@ -360,3 +364,19 @@ def test_local_preview_reads_revisions_from_admin_only(tmp_path, monkeypatch):
     data["environment"] = "prod"
     preview.tick()
     assert preview.current is None
+
+
+def test_working_draft_logs_configuration_validation_reason(tmp_path, monkeypatch, caplog):
+    import httpx
+
+    from app.agent_specs.release_runtime import WorkingDraftRuntime
+
+    def invalid_response(*args, **kwargs):
+        raise ValueError('code compatibility mismatch')
+
+    monkeypatch.setattr(httpx, 'get', invalid_response)
+    runtime = WorkingDraftRuntime('http://localhost/api/internal', 'unused', tmp_path / 'unused.json')
+    runtime.tick()
+    assert runtime.current is None
+    assert runtime.last_error == 'ValueError'
+    assert 'code compatibility mismatch' in caplog.text
