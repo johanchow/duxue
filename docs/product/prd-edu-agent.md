@@ -2,7 +2,7 @@
 
 > 状态：目标设计（评审稿 v1.0 · 2026-11-27）  
 > 适用范围：`duxue-app`（Guardian / Coach / Ward 双端）及未来 Web 教师/伴学师工作台  
-> 关联文档：[产品架构](ARCHITECTURE.md) · [用户与首页导航 PRD](prd-user.md) · [教育通用 Agent 技术架构设计](../technical/topic-edu-agent.md) · [导师深度课件专题（既有基线）](../technical/topic-mentor-courseware.md)
+> 关联文档：[产品架构](ARCHITECTURE.md) · [用户与首页导航 PRD](prd-user.md) · [教育通用 Agent 技术架构设计](../technical/domain-conversation.md) · [导师深度课件专题（既有基线）](../technical/domain-artifact-workspace.md)
 
 ---
 

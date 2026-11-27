@@ -1,7 +1,7 @@
 # 读学系统 — 离线评测
 
 > 更新：2026-11-27。本文维护评测架构、职责边界、执行及结果协议。教学规则见 [Tutoring Domain](domain-tutoring.md)，页面、鉴权与指标口径见 [Admin 设计](design-admin.md#evaluation--langfuse)。
-> **教育通用 Agent 评测演进规划**（见 [topic-edu-agent.md §5.3](topic-edu-agent.md#53-安全治理与可观测性)）：后续沿用本评测底座新增四类 Langfuse Dataset 基准——① 整页批改准确率与存疑诚实率、② 变式出题自解自验通过率、③ Ward 自由创作 vs 作业代写边界对抗集、④ Ward 专注态软守护回归集。
+> **教育通用 Agent 评测演进规划**（见 [topic-edu-agent.md §5.3](domain-conversation.md#53-安全防绕过与可观测性)）：后续沿用本评测底座新增四类 Langfuse Dataset 基准——① 整页批改准确率与存疑诚实率、② 变式出题自解自验通过率、③ Ward 自由创作 vs 作业代写边界对抗集、④ Ward 专注态软守护回归集。
 
 ## 执行模式
 

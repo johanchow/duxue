@@ -264,7 +264,7 @@ erDiagram
 受权 Query 与无持久化求解复用：
 - `GetProblemDossier(ward_id, dossier_id)`：校验 `scope == "bank"` 或 `owner_ward_id == ward_id` 后返回辅导只读投影（路线、里程碑、锚点、采分点、置信度，合并传入的该学生个人 `milestone_progress`），不含原始求解草稿；`TutoringProblem` 仅存 `dossier_id` 与该学生自己的 `milestone_progress`。
 - `GetProblemDossier.find_bank_ready(stem)`：按新旧指纹定位候选，用存储的题面重新计算新版指纹比对，只读查询 `scope == "bank"` 且 `status == "ready"` 的全局公共题库档案，绝不读取任何 `scope == "ward"` 的学生私有档案。
-- `solve_and_verify_problem(...) -> VerifiedSolution`：抽离在数据库事务外运行的纯求解与核验内核（T1 单路锚点核验 $\rightarrow$ 按 `DossierConfidencePolicy` 升 T2 双路异构共识与图片复读），由持久化 `ExecuteDossierSolveCommand` 与无数据库写入的 [Guardian 导师视角解析](topic-edu-agent.md#14-对话载体与交互协议) 同源复用。
+- `solve_and_verify_problem(...) -> VerifiedSolution`：抽离在数据库事务外运行的纯求解与核验内核（T1 单路锚点核验 $\rightarrow$ 按 `DossierConfidencePolicy` 升 T2 双路异构共识与图片复读），由持久化 `ExecuteDossierSolveCommand` 与无数据库写入的 [Guardian 导师视角解析](domain-conversation.md) 同源复用。
 
 ### 5.2 题组
 

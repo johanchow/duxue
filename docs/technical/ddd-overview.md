@@ -11,7 +11,7 @@
 | 全系统领域清单、所有权、Domain Map、跨域契约目录 | 本文 |
 | 领域语言、Aggregate Root、Command、Query、接口、局部 ER 与目标映射 | 各 domain / topic 文档；采集域见 design-gateway |
 | 当前物理 Schema、已发布索引/迁移、运行拓扑 | [design-server](design-server.md)、[技术架构](ARCHITECTURE.md) |
-| 通用 Agent 编排、RolePolicy、对话载体与模型配置契约 | [教育通用 Agent 架构](topic-edu-agent.md)、[design-agent](design-agent.md) |
+| 通用 Agent 编排、RolePolicy、对话载体与模型配置契约 | [Conversation Domain](domain-conversation.md)、[design-agent](design-agent.md) |
 
 目标 ER 不是已迁移 Schema；实施时须同步物理事实源。**模型、Agent Loop、Skill、Tool、Worker、数据库表、UI 页面都不自动成为 Domain**；通用 Agent 编排（`EduAgentOrchestrator`）属于 Application 层 Process Manager。
 
@@ -77,7 +77,7 @@ flowchart LR
 | 契约 / 状态 | 发布者 / 本地事实 | 消费者 → 本地意图 | 幂等 / 乱序 / 契约详情 |
 |---|---|---|---|
 | `LearningFactRecorded.v1` / 既有 | 采集、答疑中有独立用途的客观事实 | Memory → `IngestLearningFact` | `source_type + source_id + event_type + source_version`；见 Memory |
-| `CreationFootprintRecorded.v1` / 目标 | ArtifactWorkspace / Ward 自由探索与创作保存或结算 | Evaluation → `RecordCreationFootprint`；Memory → `IngestInterestSignal` | `artifact_id + version_no`；**严禁混入作业专注时长与客观学业掌握度**；见 [topic-edu-agent](topic-edu-agent.md) |
+| `CreationFootprintRecorded.v1` / 目标 | ArtifactWorkspace / Ward 自由探索与创作保存或结算 | Evaluation → `RecordCreationFootprint`；Memory → `IngestInterestSignal` | `artifact_id + version_no`；**严禁混入作业专注时长与客观学业掌握度**；见 [ArtifactWorkspace](domain-artifact-workspace.md) |
 | `ObservationRevisionPublished.v1` / 目标 | Behavior / `ObservationRevisionPublished` | Study → `ConsiderHelpOffer`；Evaluation → `PublishEveningReport` | `day_id + revision`，各域独立 inbox；见 [Behavior §五](domain-behavior.md#五内部接口与消息协议) |
 | `HelpOfferReady.v1` / 目标 | Study / `HelpOfferReadied` | Conversation → `PresentHelpOffer` | `offer_id + version`；过期丢弃、不抢答疑回复权；见 [Study §九](domain-study.md#九观察触发的求助邀请目标扩展) |
 | `HelpOfferPresented.v1` / 目标 | Conversation / 前台呈现已确认 | Study → `MarkHelpOfferPresented` | `receipt_id`；见 Study §九 |
@@ -125,8 +125,8 @@ API 不操作 ORM；Domain 不调用模型、数据库、队列。Query 是只�
 | Study | [domain-study](domain-study.md) | 已有会话/StartCue/Sprint；`GetWardFocusState` 与 `HelpOffer` 为目标扩展 |
 | ProblemSolving | [domain-problem-solving](domain-problem-solving.md) | 代码已实现（迁移 37），统一服务答疑、批改核验、课件基线与出题自验 |
 | Tutoring | [domain-tutoring](domain-tutoring.md) | Ward 作业受保护教学、配图/表达与微验证；作为通用 Agent 强护栏 Skill 保留复用 |
-| ArtifactWorkspace | [topic-edu-agent](topic-edu-agent.md) · [topic-mentor-courseware](topic-mentor-courseware.md) | `MentorCourseware`（P0-1 与主动保存已合入 `main`）将平滑泛化为多形态 `EduArtifact` |
+| ArtifactWorkspace | [domain-artifact-workspace](domain-artifact-workspace.md) | `EduArtifact` 多形态产物（泛化既有 `MentorCourseware` 基线）、版本链、Patch 修订、保存与 `MathStage` 隔离渲染 |
 | Evaluation | [domain-evaluation](domain-evaluation.md) | `SelfReview` 退场；聚焦晚间分口径汇总报告、解题凭证与创作足迹 |
 | Memory & Understanding | [domain-memory](domain-memory.md) | 客观证据账本、Episode/Signal/Profile；新增自由创作 `Interest Signal` 与成人受权只读 |
-| Conversation（原 Companion） | [topic-edu-agent](topic-edu-agent.md) | 极薄对话载体（Thread/Run/清空历史/交互信封）+ Application 层 `EduAgentOrchestrator` 与 `RolePolicy` |
+| Conversation（原 Companion） | [domain-conversation](domain-conversation.md) | `1:N` 多对话载体（`ConversationThread` / `AgentRun` / 交互信封）+ Application 层 `EduAgentOrchestrator` 与代码级 `RolePolicy` |
 | Identity & Relationship | [design-server](design-server.md) | 沿用既有身份/关系/授权，演进支持 `teacher` 角色独立使用工作台 |

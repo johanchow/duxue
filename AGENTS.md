@@ -78,8 +78,8 @@ duxue/                          # 项目根目录
 | 服务端详细设计 (No-Tenant) | [`docs/technical/design-server.md`](docs/technical/design-server.md) | 分层实现、无租户模型与直连绑定、数据库 ER 图、会话即时分析与伴学记忆引擎 |
 | 学习执行 Domain 设计 | [`docs/technical/domain-study.md`](docs/technical/domain-study.md) | StudySession 计时与完成、Sprint 主动专注挑战、`GetWardFocusState` 与 `HelpOffer` |
 | 辅导答疑 Domain 设计 | [`docs/technical/domain-tutoring.md`](docs/technical/domain-tutoring.md) | Ward 作业强护栏：答案状态红线、TutoringTurnLoop、发音 act、表达与结构化 `visual` 配图、联网检索及解题凭证 |
-| 教育通用 Agent 技术架构（目标演进） | [`docs/technical/topic-edu-agent.md`](docs/technical/topic-edu-agent.md) | `Conversation` 对话载体 + `EduAgentOrchestrator` + `RolePolicy` + `ArtifactWorkspace`（`EduArtifact` 泛化 `MentorCourseware`）+ Skills/Gates 与受权只读学情 |
-| 导师深度课件专题 | [`docs/technical/topic-mentor-courseware.md`](docs/technical/topic-mentor-courseware.md) | 已合入基线与 `MathStage` 离线 Web 绘图/隔离运行唯一事实源（聚合将泛化为 `EduArtifact`） |
+| Conversation 与通用 Agent 编排设计 | [`docs/technical/domain-conversation.md`](docs/technical/domain-conversation.md) | `1:N` 多对话 `ConversationThread`、`EduAgentOrchestrator`、代码级 `RolePolicy`、Skills/Tools 四层归属与受权只读学情 |
+| ArtifactWorkspace Domain 设计 | [`docs/technical/domain-artifact-workspace.md`](docs/technical/domain-artifact-workspace.md) | `EduArtifact` 多形态可修订产物（泛化既有 `MentorCourseware` 基线）、不可变版本链、核验诚实红线、保存与 `MathStage` 隔离渲染 |
 | 答疑离线评测设计 | [`docs/technical/eval-offline.md`](docs/technical/eval-offline.md) | 冒烟式离线评测、与生产同源的重放判分、数据集构造与复核、三级指标与不确定性、variant 与发布阈值 |
 | 评估与复盘 Domain 设计 | [`docs/technical/domain-evaluation.md`](docs/technical/domain-evaluation.md) | 即时自评、证据版本化复盘、报告与行动采纳 |
 | 孩子理解与记忆 Domain 设计 | [`docs/technical/domain-memory.md`](docs/technical/domain-memory.md) | 事实事件账本、Signal/Claim、三层记忆与表映射、更新/衰减、答疑情境记忆与数据删除边界 |

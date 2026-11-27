@@ -44,7 +44,7 @@ duxue-server/
 
 | Context | 业务与 Workflow 的唯一设计 | 本文负责的物理映射 |
 |---|---|---|
-| Companion Orchestration | [topic-edu-agent.md](topic-edu-agent.md#14-对话载体与交互协议) | Thread/Run、Checkpoint/Trace、入口 API/SSE |
+| Companion Orchestration | [topic-edu-agent.md](domain-conversation.md) | Thread/Run、Checkpoint/Trace、入口 API/SSE |
 | Planning & Scheduling | [domain-study.md](domain-study.md) | Task、PlanDraft、DailySchedule、确认事务 |
 | Study | [domain-study.md](domain-study.md) | StudySession、StartCue |
 | Tutoring | [domain-tutoring.md](domain-tutoring.md) | TutoringSession、ProblemRecord、消息、运行时存储 |
@@ -59,7 +59,7 @@ duxue-server/
 
 本节描述当前服务端的物理 Schema；字段、主键、唯一约束和表名以已发布的
 SQLAlchemy 模型与 Alembic 迁移为准。
-`user_wards.history_generation` 与 `conversation_threads.history_generation` 均为非空整数、默认 0，由迁移 `20261030_30` 增加；清空命令复用 `companion_commands`，`thread_id` 为空。历史可见性与并发契约见 [Companion 清空历史](topic-edu-agent.md#14-对话载体与交互协议)。
+`user_wards.history_generation` 与 `conversation_threads.history_generation` 均为非空整数、默认 0，由迁移 `20261030_30` 增加；清空命令复用 `companion_commands`，`thread_id` 为空。历史可见性与并发契约见 [Companion 清空历史](domain-conversation.md)。
 各 Context 的业务含义、不变量和生命周期不在本节
 重复，分别由对应的 `domain-*.md` 维护。
 

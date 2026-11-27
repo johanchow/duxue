@@ -1,8 +1,8 @@
 # Agent 与 Workflow 配置设计
 
 > 状态：配置与运行适配迁移已实现；领域 Port 通过解包适配保持原调用协议。配置入口见[目录说明](../../duxue-server/agent_specs/README.md)，当前运行图见[现状流程图](agent-flow-current.md)。
-> **教育通用 Agent 演进衔接**：演进至双端统一教育通用 Agent（[topic-edu-agent.md](topic-edu-agent.md)）时，新增 `EduSkill` / `Tool` 的 Prompt、JSON Schema、模型槽位与调用预算继续唯一归属 Admin 快照配置；`RolePolicy` 的角色工具白名单与安全/防泄题/防代写硬红线由服务端代码强制锁定，不可通过 Admin 配置放宽。
-> 关联：[项目 DDD 约定](../../.cursor/skills/domain-driven-design/SKILL.md) · [教育通用 Agent 架构](topic-edu-agent.md) · [Companion 编排](topic-edu-agent.md#14-对话载体与交互协议) · [当前模型组件注册表](../../duxue-server/app/infrastructure/ai/components.py)
+> **教育通用 Agent 演进衔接**：演进至双端统一教育通用 Agent（[topic-edu-agent.md](domain-conversation.md)）时，新增 `EduSkill` / `Tool` 的 Prompt、JSON Schema、模型槽位与调用预算继续唯一归属 Admin 快照配置；`RolePolicy` 的角色工具白名单与安全/防泄题/防代写硬红线由服务端代码强制锁定，不可通过 Admin 配置放宽。
+> 关联：[项目 DDD 约定](../../.cursor/skills/domain-driven-design/SKILL.md) · [教育通用 Agent 架构](domain-conversation.md) · [Companion 编排](domain-conversation.md) · [当前模型组件注册表](../../duxue-server/app/infrastructure/ai/components.py)
 
 ## 配置铁律
 

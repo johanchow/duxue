@@ -96,7 +96,7 @@
 | 模块 | 归属 | 层级 | 说明 | 对应文档 |
 | :--- | :--- | :--- | :--- | :--- |
 | **桌面稀疏抓拍与离线补传** | 读学Eye | **L0 零操作底座** | 稀疏采图直传 OSS + 网关持久队列 + 健康状态 | [`prd-supervise.md`](prd-supervise.md) / [`design-gateway.md`](../technical/design-gateway.md) |
-| **双端统一教育通用 Agent 与产物工作区** | Guardian / Coach / Ward | **核心智能层** | Goal-Driven 编排 + Role Policy + 批改/动态课件/备课出题/自由创作 + 局部修订与资产库 | [`prd-edu-agent.md`](prd-edu-agent.md) / [`topic-edu-agent.md`](../technical/topic-edu-agent.md) |
+| **双端统一教育通用 Agent 与产物工作区** | Guardian / Coach / Ward | **核心智能层** | Goal-Driven 编排 + Role Policy + 批改/动态课件/备课出题/自由创作 + 局部修订与资产库 | [`prd-edu-agent.md`](prd-edu-agent.md) / [`topic-edu-agent.md`](../technical/domain-conversation.md) |
 | **作业启发答疑与答案保护** | Ward（强护栏 Skill） | **L1 核心红线** | 答案保护状态机 + 独立泄露裁判 + 主动配图/发音 + 对话内微验证《独立解题凭证》 | [`prd-edu-agent.md §4.2`](prd-edu-agent.md#42-作业启发答疑红线与教学方法论) / [`domain-tutoring.md`](../technical/domain-tutoring.md) |
 | **主动专注挑战（Sprint）** | Ward | **轻量可选** | 口述只读确认、明确开启倒计时、触发专注态软守护；到时不等于作业完成 | [`prd-schedule.md`](prd-schedule.md) / [`domain-study.md`](../technical/domain-study.md) |
 | **晚间客观汇总报告、解题凭证与创作足迹** | Guardian / Coach | **L0/L1 必达交付** | 作业专注 vs 自由探索分口径时长 + 独立解题凭证 + 好奇心与创作足迹（产品口径收口于首页 PRD） | [`prd-user.md §7.1`](prd-user.md#71-孩子首页晚间客观汇总报告直接呈现) / [`domain-evaluation.md`](../technical/domain-evaluation.md) |
@@ -148,7 +148,7 @@ graph TB
 
 | 能力域 | 产品规格（PRD） | 领域技术契约（事实源） | 当前状态与演进说明 |
 | :--- | :--- | :--- | :--- |
-| **教育通用 Agent 与产物工作区** | [`prd-edu-agent.md`](prd-edu-agent.md) | [`topic-edu-agent.md`](../technical/topic-edu-agent.md)<br/>[`topic-mentor-courseware.md`](../technical/topic-mentor-courseware.md) | **目标演进设计已确认**；导师动态课件 P0-1 与主动保存基线已合入 `main`，后续平滑泛化为 `EduArtifact` 与双端通用 Agent |
+| **教育通用 Agent 与产物工作区** | [`prd-edu-agent.md`](prd-edu-agent.md) | [`topic-edu-agent.md`](../technical/domain-conversation.md)<br/>[`topic-mentor-courseware.md`](../technical/domain-artifact-workspace.md) | **目标演进设计已确认**；导师动态课件 P0-1 与主动保存基线已合入 `main`，后续平滑泛化为 `EduArtifact` 与双端通用 Agent |
 | **用户、身份与双端首页** | [`prd-user.md`](prd-user.md) | [`design-app.md`](../technical/design-app.md) | **身份、共管、安静首页与 Sprint 已落地**；将随 Phase 1/2/3 移除旧作业菜单并升级工作台与「我的资源库/作品」 |
 | **作业启发答疑与答案保护** | [`prd-edu-agent.md §4.2`](prd-edu-agent.md#42-作业启发答疑红线与教学方法论) | [`domain-tutoring.md`](../technical/domain-tutoring.md)<br/>[`domain-problem-solving.md`](../technical/domain-problem-solving.md)<br/>[`eval-offline.md`](../technical/eval-offline.md) | **主链路已落地**，原 `prd-companion.md` 核心方法论已并入 `prd-edu-agent.md §4.2`，作为 Ward 作业强护栏 Skill 保留复用 |
 | **主动专注挑战（Sprint）** | [`prd-schedule.md`](prd-schedule.md) | [`domain-study.md`](../technical/domain-study.md) | **原 `Planning` 线上计划与任务池已退场**；仅保留轻量主动 Sprint 与 `HelpOffer` |

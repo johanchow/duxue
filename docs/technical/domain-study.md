@@ -4,9 +4,9 @@
 >
 > 范围：轻量主动专注挑战（`Sprint`）、学习执行会话与观察触发求助邀请（`HelpOffer`）；向 `EduAgentOrchestrator` 暴露只读 `GetWardFocusState` ACL。
 >
-> 关联：[系统 Context Map](ddd-overview.md) · [教育通用 Agent 架构](topic-edu-agent.md) · [Tutoring 辅导答疑](domain-tutoring.md) · [Companion 编排](topic-edu-agent.md#14-对话载体与交互协议) · [Memory Context](domain-memory.md) · [Server 物理设计](design-server.md) · [主动专注挑战 PRD](../product/prd-schedule.md)
+> 关联：[系统 Context Map](ddd-overview.md) · [教育通用 Agent 架构](domain-conversation.md) · [Tutoring 辅导答疑](domain-tutoring.md) · [Companion 编排](domain-conversation.md) · [Memory Context](domain-memory.md) · [Server 物理设计](design-server.md) · [主动专注挑战 PRD](../product/prd-schedule.md)
 
-Context Map 与分层图只在 [ddd-overview.md](ddd-overview.md) 维护。答疑、`TutoringSession`、`ProblemRecord`、发音与 `TutoringTurnLoop` 只在 [domain-tutoring.md](domain-tutoring.md) 维护。Thread/Run、Harness 驱动、`WorkflowInteractionView` 和 SSE 只在 [topic-edu-agent.md](topic-edu-agent.md#14-对话载体与交互协议) 维护。Episode、Signal 与 Profile 只在 [domain-memory.md](domain-memory.md) 维护。物理表、留存和删除只在 [design-server.md](design-server.md) 维护。
+Context Map 与分层图只在 [ddd-overview.md](ddd-overview.md) 维护。答疑、`TutoringSession`、`ProblemRecord`、发音与 `TutoringTurnLoop` 只在 [domain-tutoring.md](domain-tutoring.md) 维护。Thread/Run、Harness 驱动、`WorkflowInteractionView` 和 SSE 只在 [topic-edu-agent.md](domain-conversation.md) 维护。Episode、Signal 与 Profile 只在 [domain-memory.md](domain-memory.md) 维护。物理表、留存和删除只在 [design-server.md](design-server.md) 维护。
 
 ## 一、边界与语言
 
@@ -321,7 +321,7 @@ Study 消费已有的 `PlanConfirmed.v1`。除准备可执行计划外，`Expire
 
 `SceneWindow` 是对 Behavior Analysis 的受权查询，不是 Integration Event。`SceneObservationPort` 把缺席译成本 Context 的 `no_observation`。已确认的 `start_at`、`end_at` 与任务标题来自 Planning 的受权查询；Study 不保存日程正文作为第二事实源。标题只进入文案调用。`MemoryBundle` 同样只进入文案调用。
 
-卡片的 `kind` 为 `start_cue`，`object_ref` 指向 `GetStartCue`。动作命令为 `start_due_task`、`continue_current`、`pause_current_and_start_due`、`snooze_once`。这些必须先登记在 [Companion Interaction Protocol](topic-edu-agent.md#14-对话载体与交互协议)，Study 不私自增加 `kind`。Companion 在当前 Run 仍有回复权时排队，答疑轮次结束后再呈现。送达以 `start_cue_id + version` 去重。
+卡片的 `kind` 为 `start_cue`，`object_ref` 指向 `GetStartCue`。动作命令为 `start_due_task`、`continue_current`、`pause_current_and_start_due`、`snooze_once`。这些必须先登记在 [Companion Interaction Protocol](domain-conversation.md)，Study 不私自增加 `kind`。Companion 在当前 Run 仍有回复权时排队，答疑轮次结束后再呈现。送达以 `start_cue_id + version` 去重。
 
 `StartCue` 不发布 `LearningFactRecorded.v1`。一次未开始不进入 Memory。
 
@@ -581,4 +581,4 @@ Companion 的 `support-channel`（目标协议）补齐实际触达：
 - 当前后台与进程关闭时的送达状态见[提醒方案](observation-reminder-policy.md#6-已实现的入口与验证边界)。
 - 邀请在有效期内无人回应即过期；孩子继续学习、忽略或暂不需要均不追加催促。接受只改变本次邀请，之后是否恢复可观察活动供实验统计，不能直接宣称“已提升专注”或“难题已解决”。
 
-通道 API、呈现回执及动作协议由 [Companion](topic-edu-agent.md#14-对话载体与交互协议) 唯一维护。交付约束：**无在线可运行 App/出声通道，只能保证记录和晚间报告，不能保证即时递梯子。** 正式验收必须覆盖纸质作业中不看屏幕、音频开关、前后台切换、断线重连与播放失败；shadow 阶段只验证拟触发，不冒充已完成干预。
+通道 API、呈现回执及动作协议由 [Companion](domain-conversation.md) 唯一维护。交付约束：**无在线可运行 App/出声通道，只能保证记录和晚间报告，不能保证即时递梯子。** 正式验收必须覆盖纸质作业中不看屏幕、音频开关、前后台切换、断线重连与播放失败；shadow 阶段只验证拟触发，不冒充已完成干预。

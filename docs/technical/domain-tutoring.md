@@ -2,11 +2,11 @@
 
 > 状态：讨论稿 · 版本：v3.3（目标设计；契约升为 `tutor-turn.v4`，由 v3.0 的 `domain-study.md` 拆出，实现迁移进度与兼容边界见 [§1.2](#12-现状与迁移边界)）
 >
-> 范围：启发式答疑、发音辅导、任务进行中的题外提问回任务提醒、过程事实、一次 Ward 输入内的 `TutoringTurnLoop`，以及待实现的异步视频回答（见 [视频回答专题](tutoring-video-answer.md)）与导师视角深度课件（见 [导师深度课件专题](topic-mentor-courseware.md)）。
+> 范围：启发式答疑、发音辅导、任务进行中的题外提问回任务提醒、过程事实、一次 Ward 输入内的 `TutoringTurnLoop`，以及待实现的异步视频回答（见 [视频回答专题](tutoring-video-answer.md)）与导师视角深度课件（见 [导师深度课件专题](domain-artifact-workspace.md)）。
 >
-> 关联：[系统 Context Map](ddd-overview.md) · [教育通用 Agent 架构](topic-edu-agent.md) · [Study 学习执行](domain-study.md) · [Companion 编排](topic-edu-agent.md#14-对话载体与交互协议) · [Memory Context](domain-memory.md) · [Server 物理设计](design-server.md) · [教育通用 Agent PRD §4.2](../product/prd-edu-agent.md#42-作业启发答疑红线与教学方法论)
+> 关联：[系统 Context Map](ddd-overview.md) · [教育通用 Agent 架构](domain-conversation.md) · [Study 学习执行](domain-study.md) · [Companion 编排](domain-conversation.md) · [Memory Context](domain-memory.md) · [Server 物理设计](design-server.md) · [教育通用 Agent PRD §4.2](../product/prd-edu-agent.md#42-作业启发答疑红线与教学方法论)
 
-Context Map 与分层图只在 [ddd-overview.md](ddd-overview.md) 维护。`StudySession`、`StartCue` 与学习计时只在 [domain-study.md](domain-study.md) 维护。Thread/Run、Harness 驱动、`WorkflowInteractionView` 和 SSE 只在 [topic-edu-agent.md](topic-edu-agent.md#14-对话载体与交互协议) 维护。Episode、Signal 与 Profile 只在 [domain-memory.md](domain-memory.md) 维护。物理表、留存和删除只在 [design-server.md](design-server.md) 维护。
+Context Map 与分层图只在 [ddd-overview.md](ddd-overview.md) 维护。`StudySession`、`StartCue` 与学习计时只在 [domain-study.md](domain-study.md) 维护。Thread/Run、Harness 驱动、`WorkflowInteractionView` 和 SSE 只在 [topic-edu-agent.md](domain-conversation.md) 维护。Episode、Signal 与 Profile 只在 [domain-memory.md](domain-memory.md) 维护。物理表、留存和删除只在 [design-server.md](design-server.md) 维护。
 
 > 数学工具核验扩展（代码已实现，待环境验收与真实模型评测）：见 [数学核验设计](tutoring-math.md)，定义本领域内的计算端口、证据协议和提交边界。
 
@@ -61,7 +61,7 @@ Context Map 与分层图只在 [ddd-overview.md](ddd-overview.md) 维护。`Stud
 | `TutoringTurnLoop` | 一次 Ward 输入内由 LLM 驱动、代码守住入口与出口的有界循环 | 跨回合的教学状态机，也不是第二个 Agent |
 | `PronunciationGuidance` | 已确认原文的易读发音提示和少量重音、连读、弱读、音变或语调说明 | 解题提示、跟读评分、音频文件、学习事实 |
 
-非目标：Tutoring 不私自发明交互 `kind`；当前已实现答疑不含视频媒体，异步视频回答为待实现扩展，见 [视频回答专题](tutoring-video-answer.md)。本期不做通用数学验证器、离线评测或 A/B 实验平台，也不做作文共创画布、实时监工、一键拍照搜题、跟读录音或发音评分。同一对话的已授权图片先按 [Companion 图片目标规则](topic-edu-agent.md#14-对话载体与交互协议)解析，只有选定的目标图进入答疑主调用和泄露检查。到点邀请由 [Study](domain-study.md) 拥有，不属于本 Context。无任务问答与任务进行中的题外提问见 [§2.1](#21-tutoringsession)。
+非目标：Tutoring 不私自发明交互 `kind`；当前已实现答疑不含视频媒体，异步视频回答为待实现扩展，见 [视频回答专题](tutoring-video-answer.md)。本期不做通用数学验证器、离线评测或 A/B 实验平台，也不做作文共创画布、实时监工、一键拍照搜题、跟读录音或发音评分。同一对话的已授权图片先按 [Companion 图片目标规则](domain-conversation.md)解析，只有选定的目标图进入答疑主调用和泄露检查。到点邀请由 [Study](domain-study.md) 拥有，不属于本 Context。无任务问答与任务进行中的题外提问见 [§2.1](#21-tutoringsession)。
 
 ### 1.1 控制模型
 
@@ -75,7 +75,7 @@ Context Map 与分层图只在 [ddd-overview.md](ddd-overview.md) 维护。`Stud
 | 三道教学出口检查与独立输出安全审核，不通过则回退固定话术 | 要不要调只读工具 |
 | 写事实、推进 `ProblemRecord`、补回任务提醒、投影发音卡 | 措辞、语气、长度 |
 
-Companion 只把本轮场景定成 `tutoring`（见 [意图路由](topic-edu-agent.md#14-对话载体与交互协议)）。进入答疑之后不再有单独的 `TutoringIntent`、`QuestionShape` 或 `HistoryMatch` 分类调用：它们是主调用返回里的字段，历史通过只读工具 `lookup_history` 按需取。一轮的完整流程见 [§四](#四tutoringturnloop)。
+Companion 只把本轮场景定成 `tutoring`（见 [意图路由](domain-conversation.md)）。进入答疑之后不再有单独的 `TutoringIntent`、`QuestionShape` 或 `HistoryMatch` 分类调用：它们是主调用返回里的字段，历史通过只读工具 `lookup_history` 按需取。一轮的完整流程见 [§四](#四tutoringturnloop)。
 
 已验证的界面动作 `tutoring_intent=pronunciation`（「读出发音」）只给本轮上下文加一条「期望动作 `pronounce`」的提示，不跳过模型，也不选择另一条路径。开放文本不靠关键词或正则解释。明显风险由本地预检拦截；语义风险由独立的输入/输出安全审核端口裁决，主模型的 `act=safety` 只可收紧、不能成为唯一依据。主调用失败、非法 JSON 或提供者关闭时，不猜测、不反问，回退固定话术并记录 `model_fallback`。
 
@@ -389,9 +389,9 @@ flowchart TD
     classDef gate fill:#ffedd5,stroke:#c2410c,color:#0f172a
 ```
 
-读取走 Query，模型与工具走 Infrastructure，题目状态走 Domain Service，写入走 Use Case 和 Aggregate Root。消息窗口、checkpoint 摘要和 `MemoryBundle` 是 Query 的返回值，不是图上的对象。图片目标解析和授权规则以 [Companion 窗口规则](topic-edu-agent.md#14-对话载体与交互协议) 为准。
+读取走 Query，模型与工具走 Infrastructure，题目状态走 Domain Service，写入走 Use Case 和 Aggregate Root。消息窗口、checkpoint 摘要和 `MemoryBundle` 是 Query 的返回值，不是图上的对象。图片目标解析和授权规则以 [Companion 窗口规则](domain-conversation.md) 为准。
 
-本轮的答案保护不因累计卡住次数而放开。下一轮只会基于已提交的证据继续一个新的最小教学目标。具体 Run 生命周期、等待与失败状态由 [Companion](topic-edu-agent.md#14-对话载体与交互协议) 维护；本 Context 只规定候选、出口检查和提交。
+本轮的答案保护不因累计卡住次数而放开。下一轮只会基于已提交的证据继续一个新的最小教学目标。具体 Run 生命周期、等待与失败状态由 [Companion](domain-conversation.md) 维护；本 Context 只规定候选、出口检查和提交。
 
 > **子流程精简与按因限重试（2026-11-23）**：`tutoring.model_loop` 支持精简 3 节点拓扑（`primary → repair → finish`，完全向后兼容既有 9 节点发布快照）：`primary` 通过或遇到不可自修故障（如 `math_check_failed` 校验执行器不可用、无可用候选）走 `accepted_or_terminal` 直出 `finish`；可自修失败（正文泄露、数学不一致、配图泄露、缺少必要配图）走 `needs_repair` 进入统一 `repair`（复合失败合并正文与缺图反馈一次修复；纯配图泄露严格锁住已审 `act/content/turn` 并复用正文审核；同类正文泄露重复时在 `repair` 内按需切换 `backup_model` 兜底）。当续轮已持有 `ProblemDossier(status="ready")` 时，或当本轮无图且 `companion.intent` 明确标注 `thinking="off"`（纯常识/概念/词义/闲聊）时，前台自动关闭 Thinking 降档提速；无图片轮次运行时自动剥离系统提示词中的 `[image-review.v1]` 段落（不影响启动期配置协议校验）。
 
@@ -449,7 +449,7 @@ class TutorTurnCandidate(BaseModel):
 | `redirect` | `text`，并带回任务动作 |
 | `pronounce` | `pronunciation_lesson` |
 
-`kind` 和动作必须能投影为 [Companion Interaction Protocol](topic-edu-agent.md#14-对话载体与交互协议) 的 `WorkflowInteractionView`。图片只接受已授权 `media_ref`，由 Application 附加。视频和正文中的任意 URL 不成为可播放或可跳转媒体。
+`kind` 和动作必须能投影为 [Companion Interaction Protocol](domain-conversation.md) 的 `WorkflowInteractionView`。图片只接受已授权 `media_ref`，由 Application 附加。视频和正文中的任意 URL 不成为可播放或可跳转媒体。
 
 Application 在本轮不是作业成果、且 `StudySessionQuery` 返回活动任务时，投影必须包含回任务动作，并核对正文有提醒句，没有就补上规定句子；`act=redirect` 的正文本身就是带回任务，不再补句。该动作的 `command` 须登记在 `companion-interaction.v1` 后才能启用；Tutoring 不私自增加 `kind`。回任务不关闭 `StudySession` 或 `TutoringSession`。
 
