@@ -52,7 +52,7 @@
 
 ### Guardian 问答的技术边界
 
-成人独立体验的 API 与短期状态协议归 [Companion · Guardian 问答体验](domain-companion.md#guardian-问答体验2026-11-17-验收2026-11-18-扩展双视角)。客户端 `GuardianQuestionPage` 复用 `VoiceComposer`、Markdown/LaTeX、`VisualBlock` 和发音卡，不保存 Ward Thread，不借用学生登录身份。页面在内存中维护严格隔离的双视角会话状态（`student_guide` 默认学生分步启发、`guardian_explain` 导师完整解析），各自独立保存消息、待发照片、未发送文字草稿、签名 `stateToken` 与本地 `generation`；在学生视角收到有效启发回复后，同题讲解入口将原题文本与已上传成人照片引用带入导师视角展开完整思路，不污染原学生视角 `stateToken`。切换视角或底部导航均保留两套本轮内存状态；离开问答停止播放并卸载录音控件；销毁后的迟到ASR回调被忽略，退出/重启不恢复历史。
+成人独立体验的 API 与短期状态协议归 [Companion · Guardian 问答体验](domain-companion.md#guardian-问答体验2026-11-17-验收2026-11-18-扩展双视角)。面向导师深度数理动态课件的端侧混合 Web 数理舞台（`Duxue MathStage Runtime`，常用组件 + 隔离的生成 JS，仅限成人 `MentorCourseware` 视图）目标设计见 [导师深度课件专题 §七](topic-mentor-courseware.md#七端侧渲染架构离线-web-数理舞台duxue-mathstage-runtime)。主动保存阶段，问答页提供「我的课件」，列表与原消息按 courseware_id 打开详情，保存成功后刷新列表；切换账号清除旧列表和详情缓存。产品行为见 [用户 PRD §7.2](../product/prd-user.md#72-家长问答体验)。客户端 `GuardianQuestionPage` 复用 `VoiceComposer`、Markdown/LaTeX、`VisualBlock` 和发音卡，不保存 Ward Thread，不借用学生登录身份。页面在内存中维护严格隔离的双视角会话状态（`student_guide` 默认学生分步启发、`guardian_explain` 导师完整解析），各自独立保存消息、待发照片、未发送文字草稿、签名 `stateToken` 与本地 `generation`；在学生视角收到有效启发回复后，同题讲解入口将原题文本与已上传成人照片引用带入导师视角展开完整思路，不污染原学生视角 `stateToken`。切换视角或底部导航均保留两套本轮内存状态；离开问答停止播放并卸载录音控件；销毁后的迟到ASR回调被忽略，退出/重启不恢复历史。
 
 ### 对话回复进度
 

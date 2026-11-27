@@ -39,6 +39,7 @@ def _observed_task(func):
 celery_app = create_celery_app(settings)
 celery_app.conf.timezone = "Asia/Shanghai"
 celery_app.conf.beat_schedule = {
+    "expire-temporary-coursewares": {"task": "duxue.expire_temporary_coursewares", "schedule": 300.0},
     "expire-study-sprints": {"task":"duxue.expire_study_sprints", "schedule":15.0},
     "cleanup-gateway-orphans": {"task": "duxue.cleanup_gateway_uploads", "schedule": crontab(minute=15)},
     "submit-daily-batches": {"task": "duxue.submit_daily_batches", "schedule": crontab(hour=settings.batch_submit_hour, minute=0)},
@@ -257,3 +258,11 @@ celery_app.conf.task_routes = {
     **(celery_app.conf.task_routes or {}),
     SOLVE_TASK_NAME: {"queue": SOLVING_QUEUE},
 }
+
+
+@celery_app.task(name="duxue.expire_temporary_coursewares")
+@_observed_task
+def expire_temporary_coursewares():
+    from app.infrastructure.persistence.pg_courseware import PgCoursewareRepository
+    from app.application.commands.mentor_courseware import MentorCoursewareCommandService
+    return MentorCoursewareCommandService(PgCoursewareRepository()).expire_temporary()

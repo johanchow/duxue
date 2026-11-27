@@ -129,7 +129,7 @@ API 不操作 ORM；Domain 不调用模型、数据库、队列。Query 是只�
 | Planning | [domain-planning](domain-planning.md) | 轻量计划与任务、按需展示、安排确认与执行事实边界（本轮实现待验收） |
 | Study | [domain-study](domain-study.md) | 已有会话/StartCue；Sprint 本轮实现待验收，HelpOffer 为目标扩展 |
 | ProblemSolving | [domain-problem-solving](domain-problem-solving.md) | 代码已实现（迁移 37），待线上 `solving` worker 部署与真实模型分层评测校准 |
-| Tutoring | [domain-tutoring](domain-tutoring.md) | 启发、答案保护、教学事实；[视频专题](tutoring-video-answer.md)另行演进 |
+| Tutoring | [domain-tutoring](domain-tutoring.md) | 启发、答案保护、教学事实；[视频专题](tutoring-video-answer.md)与[导师深度课件专题](topic-mentor-courseware.md)另行演进，成人课件保存归 MentorCourseware 聚合 |
 | Evaluation & Reflection | [domain-evaluation](domain-evaluation.md) | 已有自述；零输入版本化客观报告为目标扩展 |
 | Memory & Understanding | [domain-memory](domain-memory.md) | 客观证据账本、Episode/Signal/Profile |
 | Companion Orchestration | [domain-companion](domain-companion.md) | 入口连续性与交互协议；help_offer kind 未实现 |
