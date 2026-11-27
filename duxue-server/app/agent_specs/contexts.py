@@ -7,7 +7,11 @@ from __future__ import annotations
 
 import json
 
-from app.infrastructure.ai.utterance_window import image_parts, user_content, window_text
+from app.infrastructure.ai.utterance_window import (
+    image_parts,
+    user_content,
+    window_text,
+)
 
 
 def intent(*, content, focus_agent_type, recent_utterances=None, current_images=None):
@@ -40,6 +44,7 @@ def tutor_turn(*, envelope, instruction, recent_utterances=None, current_images=
     clean_envelope.pop("_dossier_gate", None)
     clean_envelope.pop("_disable_thinking", None)
     clean_envelope.pop("_thinking_budget", None)
+    clean_envelope.pop("_thinking_effort", None)
     clean_envelope.pop("_preload_svg_guidelines", None)
     clean_envelope.pop("_enforce_confidence_gate", None)
     inspected_crops = clean_envelope.pop("inspected_crops", None) or []
@@ -68,6 +73,13 @@ def tutor_turn(*, envelope, instruction, recent_utterances=None, current_images=
     if TOOL in load_definitions().units["tutoring.turn"].tools:
         tool = load_definitions().tools[TOOL]
         payload["optional_search_tool"] = {"tool": "web_search", "args_schema": tool.input_schema}
+    inspection_tool = "tutoring.inspect_image"
+    if (has_images and clean_envelope.get("image_review_phase") != "response"
+            and inspection_tool in load_definitions().units["tutoring.turn"].tools):
+        payload["optional_inspect_image_tool"] = {
+            "tool": "inspect_image",
+            "args_schema": load_definitions().tools[inspection_tool].input_schema,
+        }
     if observations:
         payload["observations"] = observations
     if repair_error:

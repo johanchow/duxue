@@ -9,11 +9,10 @@ from __future__ import annotations
 
 import base64
 import copy
-from dataclasses import asdict
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field, replace
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -28,9 +27,8 @@ from app.contexts.tutoring.domain.tutor_permit import (
 )
 from app.infrastructure.ai.errors import ModelGatewayError
 from app.infrastructure.ai.intent_classifier import ModelIntentClassifier
-
 from evals.dataset import ASSETS_DIR
-from evals.graders import grade_result, failures
+from evals.graders import failures, grade_result
 from evals.grading import GradingResult, unavailable
 from evals.outcome import Observation, classify
 from evals.schema import EvalCase
@@ -233,10 +231,17 @@ def _observe_tutor(
         window=window,
     )
     review = ReviewCapture(backends.leak_judge or _NeverLeaks())
+    envelope = (
+        {"_dossier_gate": {"status": "pending", "confidence": "low", "allows_verdict_assertion": False}}
+        if context.dossier_status == "pending" else {}
+    )
+    if context.grade_stage is not None:
+        envelope["actor"] = {"role": "ward", "grade_stage": context.grade_stage}
+    if context.thinking_effort is not None:
+        envelope["_thinking_effort"] = context.thinking_effort
     result = run_tutor_turn(
         backends.tutor_model,
-        {"_dossier_gate": {"status": "pending", "confidence": "low", "allows_verdict_assertion": False}}
-        if context.dossier_status == "pending" else {},
+        envelope,
         instruction,
         window,
         images,

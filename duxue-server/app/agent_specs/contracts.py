@@ -62,6 +62,8 @@ def validate_output(unit: ModelUnit, payload: dict) -> None:
             raise ValueError("invalid intent")
         if "history_image_ref" in payload and payload["history_image_ref"] not in {"none", "needed"}:
             raise ValueError("invalid history_image_ref")
+        if "thinking_effort" in payload and payload["thinking_effort"] not in {"off", "low", "medium", "high"}:
+            raise ValueError("invalid thinking_effort")
         if "thinking" in payload and payload["thinking"] not in {"default", "off"}:
             raise ValueError("invalid thinking")
     elif unit_id == "companion.scene-switch":

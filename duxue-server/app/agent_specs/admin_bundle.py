@@ -77,6 +77,7 @@ def _frozen(doc):
                 "temperature",
                 "max_output_tokens",
                 "timeout_ms",
+                "thinking_effort",
                 "enable_thinking",
                 "thinking_budget",
                 "guardian_t1_reasoning_effort",
@@ -96,11 +97,15 @@ def _frozen(doc):
 def _intent_hints_contracts(files: dict, base_files: dict) -> dict:
     doc = files.get("agents/companion.intent.json")
     props = (doc.get("output_schema") or {}).get("properties") if isinstance(doc, dict) else None
-    if not isinstance(props, dict) or not ({"history_image_ref", "thinking"} & set(props)):
+    if not isinstance(props, dict) or not ({"history_image_ref", "thinking", "thinking_effort"} & set(props)):
         return {}
     upgraded = copy.deepcopy(base_files["agents/companion.intent.json"])
-    upgraded["output_schema"]["properties"]["history_image_ref"] = {"enum": ["none", "needed"]}
-    upgraded["output_schema"]["properties"]["thinking"] = {"enum": ["default", "off"]}
+    if "history_image_ref" in props:
+        upgraded["output_schema"]["properties"]["history_image_ref"] = {"enum": ["none", "needed"]}
+    if "thinking_effort" in props:
+        upgraded["output_schema"]["properties"]["thinking_effort"] = {"enum": ["off", "low", "medium", "high"]}
+    if "thinking" in props:
+        upgraded["output_schema"]["properties"]["thinking"] = {"enum": ["default", "off"]}
     return {"agents/companion.intent.json": upgraded}
 
 
@@ -111,7 +116,14 @@ _OPTIONAL_SYSTEM_FRAGMENTS: dict[str, tuple[str, ...]] = {
         "visual_svg_geometry",
         "web_photo",
     ),
-    "agents/tutoring.turn.json": ("image_review",),
+    "agents/tutoring.turn.json": (
+        "image_review",
+        "gaokao_blueprint",
+        "visual_delivery_detail",
+        "choice_and_submitted",
+        "learning_search",
+        "pronounce_rules",
+    ),
 }
 
 

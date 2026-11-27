@@ -11,6 +11,7 @@ from app.agent_specs.contexts import build_context
 from app.application.ports.companion import IntentProposal
 from app.infrastructure.ai import components
 from app.infrastructure.ai.errors import ModelGatewayError
+from app.infrastructure.ai.thinking_policy import normalize_thinking_effort
 
 _LABELS = {"planning", "tutoring", "reflection", "unclear"}
 _VISION_INTENT_PREFIXES = ("qwen3.", "qwen-vl", "qwen2.5-vl", "deepseek-v4")
@@ -35,11 +36,15 @@ def parse_intent_payload(raw: str) -> IntentProposal:
     if intent not in _LABELS:
         return IntentProposal(intent="unclear")
     history_image_ref = "none" if data.get("history_image_ref") == "none" else "needed"
-    thinking = "off" if data.get("thinking") == "off" else "default"
+    thinking_effort = normalize_thinking_effort(
+        data.get("thinking_effort"),
+        legacy_thinking=data.get("thinking"),
+        default="medium",
+    )
     return IntentProposal(
         intent=intent,  # type: ignore[arg-type]
         history_image_ref=history_image_ref,
-        thinking=thinking,
+        thinking_effort=thinking_effort,
     )
 
 

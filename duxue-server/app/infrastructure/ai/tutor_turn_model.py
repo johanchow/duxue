@@ -48,6 +48,25 @@ def _tutor_turn_fragment_names(
         or env.get("internal_blueprint")
     ):
         names.append("gaokao_blueprint")
+    is_off_pure_text = bool(
+        not has_images
+        and (env.get("_disable_thinking") or env.get("_thinking_effort") == "off")
+        and not env.get("problem_dossier")
+        and not env.get("internal_blueprint")
+    )
+    if not is_off_pure_text:
+        names.append("choice_and_submitted")
+    tools = env.get("tools")
+    has_web_search = isinstance(tools, list) and any(
+        (isinstance(t, dict) and t.get("name") in {"web_search", "tutoring.web_search"})
+        or t in {"web_search", "tutoring.web_search"}
+        for t in tools
+    )
+    if has_web_search:
+        names.append("learning_search")
+    objective = env.get("objective") if isinstance(env.get("objective"), dict) else {}
+    if objective.get("tutoring_intent") == "pronunciation" or env.get("tutoring_intent") == "pronunciation":
+        names.append("pronounce_rules")
     has_svg_guidelines = bool(
         env.get("_preload_svg_guidelines")
         or any(isinstance(obs, dict) and obs.get("tool") == "widget_guidelines" for obs in (observations or []))
@@ -115,17 +134,15 @@ class QwenTutorTurnGateway:
                              observations=observations, repair_error=repair_error,
                              recent_utterances=recent_utterances, current_images=current_images)
         spec = self._spec or components.COMPONENTS.get(self._component_id)
-        if isinstance(envelope, dict) and getattr(spec, "enable_thinking", False):
+        if isinstance(envelope, dict):
+            from app.infrastructure.ai.thinking_policy import VALID_THINKING_EFFORTS
+
+            requested_effort = envelope.get("_thinking_effort")
             if envelope.get("_disable_thinking"):
-                spec = replace(spec, enable_thinking=False, thinking_budget=None)
-            elif isinstance(envelope.get("_thinking_budget"), int) and envelope["_thinking_budget"] > 0:
-                requested_budget = envelope["_thinking_budget"]
-                effective_budget = (
-                    min(spec.thinking_budget, requested_budget)
-                    if isinstance(spec.thinking_budget, int) and spec.thinking_budget > 0
-                    else requested_budget
-                )
-                spec = replace(spec, thinking_budget=effective_budget)
+                requested_effort = "off"  # Historical envelopes only.
+            if isinstance(requested_effort, str) and requested_effort in VALID_THINKING_EFFORTS:
+                spec = replace(spec, thinking_effort=requested_effort,
+                               enable_thinking=False, thinking_budget=None, reasoning_effort=None)
         has_images = bool(current_images or any(row.get("image_urls") for row in (recent_utterances or [])))
         env = envelope if isinstance(envelope, dict) else {}
         actor = env.get("actor") if isinstance(env.get("actor"), dict) else {}
@@ -145,6 +162,13 @@ class QwenTutorTurnGateway:
         fragment_names = _tutor_turn_fragment_names(
             env, has_images=has_images, observations=observations,
         )
+        if (
+            fragment_names
+            and isinstance(getattr(spec, "prompt", None), PromptTemplate)
+            and "[image-review.v1]" in spec.prompt.text
+            and "image_review" in fragment_names
+        ):
+            fragment_names = tuple(name for name in fragment_names if name != "image_review")
         if fragment_names:
             spec = _with_system_fragments(spec, "tutoring.turn", fragment_names)
         return components.invoke_agent_component(

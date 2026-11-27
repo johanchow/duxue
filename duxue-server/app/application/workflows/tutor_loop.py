@@ -19,10 +19,10 @@ from app.agent_specs.static_tools import static_tool_result
 from app.agent_specs.subworkflows import (
     MATH_NODE,
     RETRY_NODE,
-    review_workflow_id,
     VET_NODE,
     has_parallel_vet,
     math_review_step,
+    review_workflow_id,
 )
 from app.application.workflows.tutor_shape import lint_shape
 from app.application.workflows.tutor_tools import (
@@ -113,6 +113,81 @@ class Vetting:
     confirmation_evidence_missing: bool = False
 
 
+_FINAL_VERDICT_OPS = frozenset({"equivalent", "solve", "solve_system", "solve_inequality"})
+_UNVERIFIED_IMAGE_RESPONSE_CONSTRAINT = (
+    "本轮缺少允许直接确认答案对错的核验依据（非完整算术复算且无高置信度解题蓝图）。"
+    "禁止在回复中肯定或确认任何受保护作业题“做对了/正确/✅”；"
+    "若有看不清的题目请温和说明并请学生重拍清晰局部，或挑选一道能看清的题引导孩子说出解题思路一起核对。"
+)
+
+
+def _verdict_assertion_allowed(
+    envelope: dict | None,
+    *,
+    math_claims=None,
+    image_review=None,
+    ledger=None,
+) -> bool:
+    """Shared code-enforced check for whether affirming a protected student answer is allowed."""
+    has_direct_final_verdict = bool(
+        ledger is not None
+        and math_claims
+        and any(
+            isinstance((rec := ledger.records.get(claim.request_id)), dict)
+            and rec.get("status") == "ok"
+            and (
+                rec.get("op") in _FINAL_VERDICT_OPS
+                or rec.get("checked_scope") == "equivalence"
+            )
+            for claim in math_claims
+        )
+    )
+    checked_worksheet = bool(
+        image_review
+        and image_review._visual_review_passed
+        and image_review.conclusion != "not_checking"
+        and any(q.verdict in {"correct", "incorrect"} for q in image_review.questions)
+    )
+    dossier_gate_meta = envelope.get("_dossier_gate") if isinstance(envelope, dict) else None
+    if isinstance(dossier_gate_meta, dict):
+        dossier_allows = bool(dossier_gate_meta.get("allows_verdict_assertion", False))
+        return dossier_allows or has_direct_final_verdict or checked_worksheet
+    if isinstance(envelope, dict) and envelope.get("_enforce_confidence_gate"):
+        return has_direct_final_verdict or checked_worksheet
+    return True
+
+
+def _response_image_review_observation(envelope: dict | None, review_evidence, ledger=None) -> dict:
+    """Build the response-phase image review observation aligned with verdict-assertion authority."""
+    payload = review_evidence.model_dump(mode="json")
+    verdict_allowed = _verdict_assertion_allowed(envelope, image_review=review_evidence, ledger=ledger)
+    if verdict_allowed:
+        return {
+            "kind": "verified_image_review",
+            "verdict_assertion_allowed": True,
+            "verified_question_refs": [
+                {"image_ref": q.image_ref, "location": q.location}
+                for q in review_evidence.questions
+                if review_evidence._visual_review_passed and q.verdict in {"correct", "incorrect"}
+            ],
+            "response_constraint": (
+                "仅按报告逐题反馈已核验的结论；uncertain/unreadable及未覆盖题不得确认对错。"
+                "部分核验应保留已核验反馈并具体请求补图，不得概括全对；不得新增报告之外的结论。"
+            ),
+            "image_review": payload,
+        }
+    for row, question in zip(payload.get("questions") or [], review_evidence.questions, strict=True):
+        if row.get("verdict") == "correct" and question._calculation_status != "equal":
+            row["verdict"] = "unverified"
+            row["basis"] = "未经过独立工具核验，不得直接确认对错"
+    return {
+        "kind": "verified_image_review",
+        "verdict_assertion_allowed": False,
+        "response_constraint": _UNVERIFIED_IMAGE_RESPONSE_CONSTRAINT,
+        "image_review": payload,
+    }
+
+
 def call_tutor_model(
     model: TutorModelPort, envelope: dict, instruction: str, window: list[dict],
     images: list, tools: TutorToolbox, *, repair_error: str | None = None,
@@ -130,8 +205,19 @@ def call_tutor_model(
     observations: list[dict] = ([{"tool": "math", **record} for record in ledger.records.values()]
                                 if ledger is not None else [])
     if review_evidence is not None:
-        observations.append({"kind": "verified_image_review", "image_review": review_evidence.model_dump(mode="json")})
+        from app.infrastructure.ai.thinking_policy import (
+            VALID_THINKING_EFFORTS,
+            cap_thinking_effort,
+        )
+
+        observations.append(_response_image_review_observation(envelope, review_evidence, ledger=ledger))
         envelope = {**envelope, "image_review_phase": "response"}
+        if not envelope.get("_disable_thinking"):
+            current_effort = envelope.get("_thinking_effort")
+            if isinstance(current_effort, str) and current_effort in VALID_THINKING_EFFORTS:
+                envelope["_thinking_effort"] = cap_thinking_effort(current_effort, "low")  # type: ignore[arg-type]
+            else:
+                envelope["_thinking_effort"] = "low"
         try:
             source, _ = json.JSONDecoder().raw_decode(instruction)
             instruction = json.dumps({key: source[key] for key in ('student_said', 'permit', 'expected_act') if key in source}, ensure_ascii=False)
@@ -660,19 +746,8 @@ def vet_candidate(
                 visual_feedback = result["visual_evidence"][:500]
             if result.get("visual_adequate") is False and visual_need in {"requested", "helpful"}:
                 visual_not_helpful = True
-        # Code-enforced confidence gate (§4.4): when neither a ready verified dossier nor
-        # direct deterministic engine verification exists on this turn, affirming the student's
-        # reasoning answer by pure LLM mental math is strictly denied!
-        if (
-            text_leaks is False
-            and not verdict_assertion_allowed
-            and isinstance(result, dict)
-            and result.get("affirms_student_answer") is True
-            and (result.get("answer_protected") is not False)
-        ):
-            text_leaks = True
-            leak_reason = "incorrect_confirmation"
-            state["confirmation_evidence_missing"] = True
+        # Missing dossier/tool evidence informs generation; it is not an
+        # independent semantic violation overriding an explicit Judge allow.
 
         # Write isolated text-branch keys (safe during parallel fan-out).
         state["text_leaks"] = text_leaks
@@ -912,35 +987,12 @@ def run_tutor_turn(
                 if ledger is not None else problem_summary
             )
             actor_stage = (envelope.get("actor") or {}).get("grade_stage") if isinstance(envelope, dict) else None
-            # Only formal verification ops (or equivalence checks) explicitly cited in math_claims
-            # unlock final/optimality verdicts; step-level arithmetic `evaluate` records do not.
-            _FINAL_VERDICT_OPS = frozenset({"equivalent", "solve", "solve_system", "solve_inequality"})
-            has_direct_final_verdict = bool(
-                ledger is not None
-                and candidate.math_claims
-                and any(
-                    isinstance((rec := ledger.records.get(claim.request_id)), dict)
-                    and rec.get("status") == "ok"
-                    and (
-                        rec.get("op") in _FINAL_VERDICT_OPS
-                        or rec.get("checked_scope") == "equivalence"
-                    )
-                    for claim in candidate.math_claims
-                )
+            verdict_allowed = _verdict_assertion_allowed(
+                envelope if isinstance(envelope, dict) else None,
+                math_claims=candidate.math_claims,
+                image_review=candidate.image_review,
+                ledger=ledger,
             )
-            dossier_gate_meta = envelope.get("_dossier_gate") if isinstance(envelope, dict) else None
-            if isinstance(dossier_gate_meta, dict):
-                dossier_allows = bool(dossier_gate_meta.get("allows_verdict_assertion", False))
-                report = candidate.image_review
-                checked_worksheet = bool(
-                    report and report._visual_review_passed and report.conclusion == "all_correct"
-                    and report.coverage == "complete" and any(q._calculation_status == "equal" for q in report.questions)
-                )
-                verdict_allowed = dossier_allows or has_direct_final_verdict or checked_worksheet
-            elif isinstance(envelope, dict) and envelope.get("_enforce_confidence_gate"):
-                verdict_allowed = has_direct_final_verdict
-            else:
-                verdict_allowed = True
 
             result = vet_candidate(
                 candidate, permit=permit, leak_judge=leak_judge,
@@ -986,9 +1038,16 @@ def run_tutor_turn(
                 if preload_svg_guidelines:
                     attempt_envelope["_preload_svg_guidelines"] = True
                 if kind == "repair" and not attempt_envelope.get("_disable_thinking"):
-                    attempt_envelope["_thinking_budget"] = min(
-                        int(attempt_envelope.get("_thinking_budget") or 512), 512,
+                    from app.infrastructure.ai.thinking_policy import (
+                        VALID_THINKING_EFFORTS,
+                        cap_thinking_effort,
                     )
+
+                    current_effort = attempt_envelope.get("_thinking_effort")
+                    if isinstance(current_effort, str) and current_effort in VALID_THINKING_EFFORTS:
+                        attempt_envelope["_thinking_effort"] = cap_thinking_effort(current_effort, "low")  # type: ignore[arg-type]
+                    else:
+                        attempt_envelope["_thinking_effort"] = "low"
             proposal = call_tutor_model(
                 current_model, attempt_envelope, instruction, window, images, tools,
                 repair_error=repair_error, preload_svg_guidelines=preload_svg_guidelines,
@@ -1081,7 +1140,28 @@ def run_tutor_turn(
     )
 
     def primary(state):
-        state["call"], state["vetting"] = attempt(model, "primary")
+        proposal, review = attempt(model, "primary")
+        if (
+            proposal.candidate is None
+            and proposal.failure == INVALID_CANDIDATE
+            and backup_model is not None
+            and _within_deadline()
+        ):
+            backup_proposal, backup_review = attempt(backup_model, "primary_backup")
+            if backup_proposal.candidate is not None:
+                proposal = ModelCall(
+                    backup_proposal.candidate,
+                    backup_proposal.failure,
+                    proposal.used_calls + backup_proposal.used_calls,
+                )
+                review = backup_review
+            else:
+                proposal = ModelCall(
+                    None,
+                    backup_proposal.failure or proposal.failure,
+                    proposal.used_calls + backup_proposal.used_calls,
+                )
+        state["call"], state["vetting"] = proposal, review
 
     def _is_retryable_text_failure(review: Vetting | None) -> bool:
         # Executor outages such as `math_check_failed` are excluded from LEAK_RETRY_REASONS.

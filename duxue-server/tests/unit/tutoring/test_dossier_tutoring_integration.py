@@ -200,7 +200,7 @@ def test_first_turn_nonblocking_when_dossier_pending_then_second_turn_adopts_rea
     assert prob.milestone_progress == {"M1": "completed"}
 
 
-def test_confidence_code_gate_blocks_unverified_verdict_assertion_when_dossier_low_or_pending(db):
+def test_pending_dossier_does_not_override_independent_judge_allow(db):
     ward = _seed_ward(db)
     # Create a pending/low-confidence dossier (no background worker run yet, and tutor did NOT call math tool)
     tutor_model = RecordingTutorModel(
@@ -271,9 +271,9 @@ def test_confidence_code_gate_blocks_unverified_verdict_assertion_when_dossier_l
             turn={"content": "复杂的超越方程 ln x + x = 8，我算出来是 7 对不对？"},
         )
     )
-    # First reply was blocked by the §4.4 code confidence gate and repaired into Socratic self-check!
-    assert "代回原方程" in out.next_interaction["content"]
-    assert "完全正确" not in out.next_interaction["content"]
+    # Missing dossier evidence cannot turn a Judge allow into an explicit violation.
+    assert "完全正确" in out.next_interaction["content"]
+    assert len(tutor_model.envelopes) == 1
 
 
 def test_step_evaluate_math_tool_does_not_unlock_optimality_affirmation_on_unbacked_first_turn(db):
@@ -334,8 +334,8 @@ def test_step_evaluate_math_tool_does_not_unlock_optimality_affirmation_on_unbac
         def leaks(self, *, text, task_title, problem_summary, images=None):
             self.calls += 1
             return {
-                "leaks": False,
-                "reason": "none",
+                "leaks": self.calls == 1,
+                "reason": "premature_conclusion" if self.calls == 1 else "none",
                 "answer_protected": True,
                 "affirms_student_answer": self.calls == 1,
             }
@@ -561,7 +561,8 @@ def test_p2_ready_medium_dossier_disables_thinking_without_unlocking_verdict_gat
     )
     assert len(tutor_model.envelopes) == 1
     env = tutor_model.envelopes[0]
-    assert env.get("_disable_thinking") is True
+    assert env.get("_thinking_effort") == "off"
+    assert "_disable_thinking" not in env
     assert env.get("_dossier_gate", {}).get("allows_verdict_assertion") is False
 
 

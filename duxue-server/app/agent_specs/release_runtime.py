@@ -180,7 +180,10 @@ class WorkingDraftRuntime(ReleaseRuntime):
         except (httpx.HTTPError, KeyError, ValueError) as error:
             self.last_error = type(error).__name__
             self.current = None
-            logging.getLogger(__name__).warning("Admin working draft unavailable: %s", self.last_error)
+            logging.getLogger(__name__).warning(
+                "Admin working draft unavailable: %s%s", self.last_error,
+                f": {str(error)[:200]}" if isinstance(error, ValueError) else "",
+            )
 
 
 class AgentConfigurationUnavailable(RuntimeError):

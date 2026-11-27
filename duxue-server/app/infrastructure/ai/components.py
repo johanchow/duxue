@@ -65,6 +65,7 @@ class ComponentSpec:
     enable_thinking: bool = False
     thinking_budget: int | None = None
     reasoning_effort: str | None = None
+    thinking_effort: Literal["off", "low", "medium", "high"] | None = None
 
     @property
     def overridable(self) -> bool:
@@ -86,13 +87,19 @@ class ComponentRegistry:
         definitions = load_definitions()
         unit, index = definitions.component(component_id)
         model = unit.models[index]
+        from app.infrastructure.ai.thinking_policy import resolve_provider_thinking
+
+        effort = model.thinking_effort or resolve_provider_thinking(
+            model.name, enable_thinking=model.enable_thinking,
+            thinking_budget=model.thinking_budget,
+        ).effective_effort
         return ComponentSpec(
             component_id, model.version or unit.version, model.operation or unit.operation,
             unit.agent_label, unit.risk_tier, model.name, PROMPTS[unit.prompt.id],
             unit.input_contract, unit.output_contract, model.max_output_tokens,
             model.temperature, unit.accepts_images, model.timeout_ms // 1000,
             unit.requires_agent_switch, definitions.definition_digest(component_id),
-            model.enable_thinking, model.thinking_budget,
+            thinking_effort=effort,
         )
 
     def all(self) -> tuple[ComponentSpec, ...]:
@@ -250,17 +257,32 @@ def complete_json_chat(
     enable_thinking: bool = False,
     thinking_budget: int | None = None,
     reasoning_effort: str | None = None,
+    thinking_effort: Literal["off", "low", "medium", "high"] | None = None,
     telemetry: dict[str, Any] | None = None,
 ) -> ChatCompletionResult:
     """Execute one structured JSON chat completion.
 
-    DashScope hybrid/thinking models require streaming when ``enable_thinking=True``,
-    and must NOT enable ``response_format={"type": "json_object"}`` together with
-    ``enable_thinking=True`` (which triggers constrained-decoding quote truncation
-    and HTTP 400 ``InternalError.Algo.InvalidParameter`` aborts).
+    DashScope hybrid/thinking models require streaming when ``enable_thinking=True``.
+    Whether ``response_format={"type": "json_object"}`` is sent alongside thinking is
+    governed per model family by ``resolved_thinking.supports_json_object_with_thinking``
+    (enabled for verified DeepSeek models; disabled for Qwen hybrid-thinking models to
+    avoid constrained-decoding quote truncation and HTTP 400 aborts).
     ``reasoning_content`` is intentionally discarded so chain-of-thought text never
     enters Ward-visible output or production trace payloads.
     """
+    from app.infrastructure.ai.thinking_policy import resolve_provider_thinking
+
+    resolved_thinking = resolve_provider_thinking(
+        model,
+        effort=thinking_effort,
+        enable_thinking=enable_thinking,
+        thinking_budget=thinking_budget,
+        reasoning_effort=reasoning_effort,
+    )
+    enable_thinking = resolved_thinking.enable_thinking
+    thinking_budget = resolved_thinking.thinking_budget
+    reasoning_effort = resolved_thinking.reasoning_effort
+
     if client is None:
         from app.infrastructure.ai.client import dashscope_client
 
@@ -274,6 +296,7 @@ def complete_json_chat(
                 enable_thinking=enable_thinking,
                 thinking_budget=thinking_budget,
                 reasoning_effort=reasoning_effort,
+                thinking_effort=None,
                 telemetry=telemetry,
             )
 
@@ -322,16 +345,19 @@ def complete_json_chat(
         extra_body["reasoning_effort"] = reasoning_effort
     if thinking_budget is not None:
         extra_body["thinking_budget"] = thinking_budget
+    request_kwargs: dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": True,
+        "stream_options": {"include_usage": True},
+        "extra_body": extra_body,
+    }
+    if resolved_thinking.supports_json_object_with_thinking:
+        request_kwargs["response_format"] = {"type": "json_object"}
     started = perf_counter()
-    response = client.chat.completions.create(
-        model=model,
-        messages=messages,
-        temperature=temperature,
-        max_tokens=max_tokens,
-        stream=True,
-        stream_options={"include_usage": True},
-        extra_body=extra_body,
-    )
+    response = client.chat.completions.create(**request_kwargs)
     if hasattr(response, "choices"):
         usage = getattr(response, "usage", None)
         choice = response.choices[0]
@@ -447,7 +473,9 @@ def validate_json_completion(
         payload = json.loads(completion.raw, object_pairs_hook=review_json_object if simple_review else None)
     except ValueError as error:
         raise _CompletionClassifiedError(
-            "json_parse_error", "invalid_model_candidate"
+            "json_parse_error",
+            "invalid_model_candidate",
+            detail=f"{type(error).__name__}: {error}",
         ) from error
     if simple_review:
         payload = normalize_review_shape(payload)
@@ -475,11 +503,86 @@ def validate_json_completion(
     return payload, outcome, detail
 
 
+_JSON_SYNTAX_REPAIR_SYSTEM_PROMPT = (
+    "你是严格的 JSON 语法修复器。给定一段因语法错误（例如未转义双引号、LaTeX 反斜杠、"
+    "多余逗号、缺少括号或前后夹杂非 JSON 文本）导致无法被 JSON 解析器解析的原始输出，"
+    "请仅修复其 JSON 语法，使其成为严格合法的单个 JSON 对象。\n"
+    "硬性规则：\n"
+    "1. 严禁修改、增删、改写或捏造任何语义事实、数字、结论、字段名或字段结构；\n"
+    "2. 仅输出修复后的合法 JSON 对象，不要添加任何解释或 Markdown 代码块。"
+)
+
+
+def _preview_raw(text: str, *, limit: int = 280) -> str:
+    compact = " ".join(text.split())
+    if len(compact) <= limit:
+        return compact
+    return f"{compact[:limit]}..."
+
+
+def _resolve_json_repair_model(runtime_settings) -> tuple[str, str]:
+    try:
+        backup_spec = COMPONENTS.get("tutoring.turn-backup")
+        return resolve_model(backup_spec, getattr(runtime_settings, "ai_model_overrides", ""))
+    except Exception:  # noqa: BLE001
+        return "qwen3.8-flash", "default"
+
+
+def _try_repair_json_syntax(
+    *,
+    raw: str,
+    json_error: str | None,
+    client,
+    runtime_settings,
+) -> ChatCompletionResult | None:
+    """Attempt a fast text-only JSON syntax repair without altering semantic facts."""
+    repair_model, model_source = _resolve_json_repair_model(runtime_settings)
+    user_content = f"JSON 解析错误：{json_error or 'invalid JSON'}\n\n待修复原始输出：\n{raw}"
+    repair_messages = [
+        {"role": "system", "content": _JSON_SYNTAX_REPAIR_SYSTEM_PROMPT},
+        {"role": "user", "content": user_content},
+    ]
+    from app.infrastructure.ai.client import observe_transport
+
+    try:
+        with model_call_span(
+            operation="json_syntax_repair",
+            model=repair_model,
+            agent_type="json_syntax_repair",
+            component_id=None,
+            prompt_id="json_syntax_repair.v1",
+            model_source=model_source,
+            enable_thinking=False,
+            input_payload=repair_messages,
+        ) as repair_telemetry, observe_transport(repair_telemetry):
+            repaired = complete_json_chat(
+                client=client,
+                model=repair_model,
+                messages=repair_messages,
+                temperature=0,
+                max_tokens=max(1024, min(4096, len(raw) * 2)),
+                enable_thinking=False,
+                thinking_budget=None,
+                reasoning_effort=None,
+                telemetry=repair_telemetry,
+            )
+            repair_telemetry["outcome"] = "ok" if repaired.finish_reason == "stop" else "non_stop_finish"
+            return repaired
+    except Exception as exc:  # noqa: BLE001 - syntax repair is best-effort
+        logging.getLogger(__name__).warning(
+            "json syntax repair failed: %s model=%s",
+            type(exc).__name__,
+            repair_model,
+        )
+        return None
+
+
 class _CompletionClassifiedError(Exception):
-    def __init__(self, outcome: CompletionOutcome, gateway_code: str):
+    def __init__(self, outcome: CompletionOutcome, gateway_code: str, detail: str | None = None):
         super().__init__(outcome)
         self.outcome = outcome
         self.gateway_code = gateway_code
+        self.detail = detail
 
 
 def invoke_json_component(*, spec: ComponentSpec, user, client=None, settings_obj=None) -> dict:
@@ -507,6 +610,15 @@ def invoke_json_component(*, spec: ComponentSpec, user, client=None, settings_ob
     if isinstance(spec.prompt, PromptTemplate):
         messages.insert(0, {"role": "system", "content": spec.prompt.text})
     from app.infrastructure.ai.client import observe_transport
+    from app.infrastructure.ai.thinking_policy import resolve_provider_thinking
+
+    resolved_thinking = resolve_provider_thinking(
+        model,
+        effort=spec.thinking_effort,
+        enable_thinking=spec.enable_thinking,
+        thinking_budget=spec.thinking_budget,
+        reasoning_effort=spec.reasoning_effort,
+    )
 
     telemetry_ref: dict[str, Any] = {}
     raw_seen = ""
@@ -517,9 +629,10 @@ def invoke_json_component(*, spec: ComponentSpec, user, client=None, settings_ob
             component_id=spec.component_id, component_version=spec.version,
             prompt_id=spec.prompt.id, model_source=model_source,
             definition_digest=spec.definition_digest,
-            enable_thinking=spec.enable_thinking,
-            thinking_budget=spec.thinking_budget,
-            reasoning_effort=spec.reasoning_effort,
+            enable_thinking=resolved_thinking.enable_thinking,
+            thinking_budget=resolved_thinking.thinking_budget,
+            reasoning_effort=resolved_thinking.reasoning_effort,
+            thinking_effort=resolved_thinking.effective_effort,
             input_payload=None if spec.component_id.startswith("behavior.") else messages,
         ) as telemetry, observe_transport(telemetry):
             telemetry_ref = telemetry
@@ -529,15 +642,16 @@ def invoke_json_component(*, spec: ComponentSpec, user, client=None, settings_ob
                 messages=messages,
                 temperature=spec.temperature,
                 max_tokens=spec.max_tokens,
-                enable_thinking=spec.enable_thinking,
-                thinking_budget=spec.thinking_budget,
-                reasoning_effort=spec.reasoning_effort,
+                enable_thinking=resolved_thinking.enable_thinking,
+                thinking_budget=resolved_thinking.thinking_budget,
+                reasoning_effort=resolved_thinking.reasoning_effort,
                 telemetry=telemetry,
             )
             raw_seen = completion.raw_wire or completion.raw
             has_user_images = isinstance(user, list) and any(
                 isinstance(part, dict) and part.get("type") == "image_url" for part in user
             )
+            raw = completion.raw
             try:
                 def _validate(data):
                     if unit.id == "tutoring.turn" and not has_user_images and isinstance(data, dict):
@@ -550,11 +664,37 @@ def invoke_json_component(*, spec: ComponentSpec, user, client=None, settings_ob
                     validate_payload=_validate,
                 )
             except _CompletionClassifiedError as error:
-                telemetry["outcome"] = error.outcome
-                raise
+                repaired_ok = False
+                if (
+                    error.outcome == "json_parse_error"
+                    and unit.id == "tutoring.turn"
+                    and resolved_thinking.enable_thinking
+                    and completion.finish_reason == "stop"
+                    and "{" in completion.raw
+                ):
+                    repaired = _try_repair_json_syntax(
+                        raw=completion.raw,
+                        json_error=error.detail,
+                        client=client,
+                        runtime_settings=runtime_settings,
+                    )
+                    if repaired is not None:
+                        try:
+                            payload, outcome, _ = validate_json_completion(
+                                repaired,
+                                unit_id=unit.id,
+                                validate_payload=_validate,
+                            )
+                            abrupt_detail = "json_syntax_repaired"
+                            raw = repaired.raw
+                            repaired_ok = True
+                        except _CompletionClassifiedError:
+                            repaired_ok = False
+                if not repaired_ok:
+                    telemetry["outcome"] = error.outcome
+                    raise
             telemetry["outcome"] = outcome
             telemetry["abrupt_detail"] = abrupt_detail
-            raw = completion.raw
             record_model_response(
                 agent_type=spec.agent_label,
                 model=model,
@@ -594,7 +734,13 @@ def invoke_json_component(*, spec: ComponentSpec, user, client=None, settings_ob
                 }
             )
     except _CompletionClassifiedError as error:
+        rejection_detail: str | None = None
+        if error.outcome == "json_parse_error" and not spec.component_id.startswith("behavior."):
+            parts = [p for p in (error.detail, f"preview={_preview_raw(raw_seen)}" if raw_seen else None) if p]
+            rejection_detail = " | ".join(parts) if parts else None
         telemetry_ref["outcome"] = error.outcome
+        if rejection_detail is not None:
+            telemetry_ref["abrupt_detail"] = rejection_detail
         record_model_rejection(
             agent_type=spec.agent_label,
             model=model,
@@ -629,16 +775,17 @@ def invoke_json_component(*, spec: ComponentSpec, user, client=None, settings_ob
                 "tokens_answer": telemetry_ref.get("tokens_answer"),
                 "tokens_reasoning": telemetry_ref.get("tokens_reasoning"),
                 "outcome": error.outcome,
-                "abrupt_detail": None,
+                "abrupt_detail": rejection_detail,
             }
         )
         logging.getLogger(__name__).warning(
-            "model completion rejected: outcome=%s finish_reason=%s stream_completed=%s request_id=%s component=%s",
+            "model completion rejected: outcome=%s finish_reason=%s stream_completed=%s request_id=%s component=%s detail=%s",
             error.outcome,
             telemetry_ref.get("finish_reason"),
             telemetry_ref.get("stream_completed"),
             telemetry_ref.get("provider_request_id"),
             spec.component_id,
+            rejection_detail,
         )
         raise ModelGatewayError(error.gateway_code) from error
     except (ModelGatewayError, ModelTimeBudgetExceeded):
