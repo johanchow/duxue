@@ -21,8 +21,6 @@ from app.infrastructure.persistence.models import (
     OutboxEvent,
     CompanionMessage,
     Sprint,
-    TutoringProblem,
-    TutoringSession,
     now,
 )
 
@@ -59,20 +57,9 @@ def focus_reminder(db, invocation):
         .filter_by(ward_id=invocation.ward_id, status="active")
         .first()
     )
-    problem = (
-        db.query(TutoringProblem.id)
-        .join(TutoringSession)
-        .filter(
-            TutoringSession.ward_id == invocation.ward_id,
-            TutoringSession.status == "active",
-            TutoringProblem.status == "open",
-        )
-        .order_by(TutoringProblem.created_at.desc())
-        .first()
-    )
-    if not (sprint or problem):
+    if not sprint:
         return None
-    focus_id = (sprint or problem)[0]
+    focus_id = sprint[0]
     previous = (
         db.query(CompanionMessage)
         .filter_by(thread_id=invocation.thread_id, author_type="companion")
@@ -81,10 +68,9 @@ def focus_reminder(db, invocation):
     )
     if previous and (previous.interaction_ref or {}).get("focus_id") == focus_id:
         return None
-    text = "你还有一个专注挑战在进行。" if sprint else "刚才的问题还可以接着想。"
     return {
         "kind": "creative_focus_reminder",
-        "content": text + "想先画绘本也可以，告诉我你想画的故事吧。",
+        "content": "你还有一个专注挑战在进行。想先画绘本也可以，告诉我你想画的故事吧。",
         "focus_id": focus_id,
     }
 
@@ -164,7 +150,7 @@ def apply(db, work, action, pages=None):
     else:
         raise HTTPException(409, "version operation unavailable")
     work.revision += 1
-    if work.saved:
+    if work.saved and action in ("save", "revise"):
         db.add(
             OutboxEvent(
                 aggregate_type="EduArtifact",
@@ -181,6 +167,29 @@ def apply(db, work, action, pages=None):
         )
     db.flush()
     return view(db, work)
+
+
+def rename_saved(db, work, title: str):
+    if not work.saved:
+        raise HTTPException(409, "save work before renaming")
+    cleaned = title.strip()
+    if not cleaned or len(cleaned) > 80:
+        raise HTTPException(422, "title must be 1 to 80 characters")
+    work.title = cleaned
+    work.revision += 1
+    db.flush()
+    return view(db, work)
+
+
+def delete_saved(db, work):
+    if not work.saved:
+        raise HTTPException(409, "only saved work can be deleted")
+    for table in (CreativeWorkCommand, CreativeWorkVersion):
+        db.query(table).filter(table.work_id == work.id).delete(
+            synchronize_session=False
+        )
+    db.delete(work)
+    db.flush()
 
 
 def temporary_cutoff():

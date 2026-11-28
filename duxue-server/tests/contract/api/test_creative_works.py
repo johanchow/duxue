@@ -224,3 +224,60 @@ def test_clear_revokes_temporary_story_access(client, db):
     assert client.get(path, headers=headers).is_success
     assert client.post(f"/v1/conversations/{thread.id}/clear", headers=headers).is_success
     assert client.get(path, headers=headers).status_code == 404
+
+
+def test_saved_work_rename_delete_and_undo_no_duplicate_outbox(client, db):
+    from app.infrastructure.persistence.models import ConversationThread
+
+    ward = create_ward(db)
+    thread = ConversationThread(ward_id=ward.id)
+    db.add(thread)
+    db.flush()
+    interaction = {"candidate": story("第一页", "第二页").model_dump()}
+    creative_works.persist_candidate(db, thread, interaction)
+    db.commit()
+    token = create_access_token(user_id=ward.id, role="ward", ward_session_version=1)
+    headers = {"Authorization": "Bearer " + token}
+    path = "/v1/creative-works/" + interaction["artifact_id"]
+
+    # Save emits 1 footprint event
+    saved = client.post(
+        path + "/commands",
+        headers=headers,
+        json={"action": "save", "expected_revision": 1, "command_id": "save-1"},
+    )
+    assert saved.is_success
+    assert db.query(OutboxEvent).filter_by(event_type="CreationFootprintRecorded.v1").count() == 1
+
+    # Rename works on saved work
+    renamed = client.patch(path, headers=headers, json={"title": "我的月亮船"})
+    assert renamed.is_success and renamed.json()["title"] == "我的月亮船"
+
+    # Idempotent delete on work and conversation
+    assert client.delete(path, headers=headers).status_code == 204
+    assert client.delete(path, headers=headers).status_code == 204
+    assert client.get(path, headers=headers).status_code == 404
+    assert client.delete(f"/v1/conversations/{thread.id}", headers=headers).status_code == 204
+    assert client.delete(f"/v1/conversations/{thread.id}", headers=headers).status_code == 204
+
+
+def test_focus_reminder_only_triggers_for_active_sprint(db):
+    from types import SimpleNamespace
+    from app.infrastructure.persistence.models import (
+        ConversationThread,
+        StudySession,
+        TutoringProblem,
+        TutoringSession,
+    )
+
+    ward = create_ward(db)
+    thread = ConversationThread(ward_id=ward.id)
+    study = StudySession(ward_id=ward.id, status="active")
+    db.add_all([thread, study])
+    db.flush()
+    sess = TutoringSession(ward_id=ward.id, study_session_id=study.id, status="active")
+    db.add(sess)
+    db.flush()
+    db.add(TutoringProblem(tutoring_session_id=sess.id, status="open", summary="1+1"))
+    db.flush()
+    assert creative_works.focus_reminder(db, SimpleNamespace(ward_id=ward.id, thread_id=thread.id)) is None

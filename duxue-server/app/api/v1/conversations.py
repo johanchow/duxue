@@ -54,12 +54,30 @@ def view(row):
 
 @router.get("")
 def threads(
-    actor: Principal = Depends(current_guardian_or_ward), db: Session = Depends(get_db)
+    limit: int = 50,
+    cursor: str | None = None,
+    actor: Principal = Depends(current_guardian_or_ward),
+    db: Session = Depends(get_db),
 ):
-    rows = owned(db, actor).order_by(
+    page_size = max(1, min(limit, 100))
+    query = owned(db, actor).order_by(
         ConversationThread.updated_at.desc(), ConversationThread.id.desc()
     )
-    return {"items": [view(row) for row in rows]}
+    if cursor:
+        anchor = owned(db, actor).filter(ConversationThread.id == cursor).one_or_none()
+        if anchor is not None:
+            query = query.filter(
+                or_(
+                    ConversationThread.updated_at < anchor.updated_at,
+                    (ConversationThread.updated_at == anchor.updated_at)
+                    & (ConversationThread.id < anchor.id),
+                )
+            )
+    rows = query.limit(page_size + 1).all()
+    has_more = len(rows) > page_size
+    page = rows[:page_size]
+    next_cursor = page[-1].id if has_more else None
+    return {"items": [view(row) for row in page], "next_cursor": next_cursor}
 
 
 @router.post("", status_code=201)
@@ -98,7 +116,17 @@ def remove(
     actor: Principal = Depends(current_guardian_or_ward),
     db: Session = Depends(get_db),
 ):
-    row = thread_for(db, actor, thread_id, lock=True)
+    if actor.role == "ward":
+        lock_history(db, actor.user_id)
+    row = (
+        owned(db, actor)
+        .filter(ConversationThread.id == str(thread_id))
+        .with_for_update()
+        .populate_existing()
+        .one_or_none()
+    )
+    if row is None:
+        return Response(status_code=204)
     row.deleted = True
     row.focus_run_ref = None
     row.version += 1

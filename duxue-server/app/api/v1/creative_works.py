@@ -4,7 +4,7 @@ import hashlib
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -82,6 +82,42 @@ def details(
     db: Session = Depends(get_db),
 ):
     return works.view(db, owned(db, actor, work_id))
+
+
+class RenameWork(BaseModel):
+    title: str = Field(min_length=1, max_length=80)
+
+
+@router.patch("/{work_id}")
+def rename_work(
+    work_id: UUID,
+    body: RenameWork,
+    actor: Principal = Depends(current_ward),
+    db: Session = Depends(get_db),
+):
+    work = owned(db, actor, work_id, lock=True)
+    result = works.rename_saved(db, work, body.title)
+    db.commit()
+    return result
+
+
+@router.delete("/{work_id}", status_code=204)
+def delete_work(
+    work_id: UUID,
+    actor: Principal = Depends(current_ward),
+    db: Session = Depends(get_db),
+):
+    row = (
+        db.query(CreativeWork)
+        .filter_by(id=str(work_id), ward_id=actor.user_id)
+        .with_for_update()
+        .one_or_none()
+    )
+    if row is None:
+        return Response(status_code=204)
+    works.delete_saved(db, row)
+    db.commit()
+    return Response(status_code=204)
 
 
 @router.post("/{work_id}/commands")
