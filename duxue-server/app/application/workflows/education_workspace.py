@@ -135,8 +135,62 @@ def verified_blocks(items):
     )
 
 
+def summarize_document(doc: Document) -> dict:
+    if doc.kind == "grading_report":
+        items = [b for b in doc.blocks if b.get("kind") == "grading_item"]
+        wrong = [b for b in items if b.get("status") == "incorrect"]
+        review = [b for b in items if b.get("needs_manual_review")]
+        correct = [b for b in items if b.get("status") == "correct"]
+        return {
+            "kind": "grading_report",
+            "title": doc.title,
+            "total_items": len(items),
+            "correct_count": len(correct),
+            "wrong_count": len(wrong),
+            "needs_manual_review_count": len(review),
+            "wrong_items": [
+                {
+                    "label": b.get("label", ""),
+                    "page": b.get("page"),
+                    "stem": str(b.get("stem") or "")[:300],
+                    "student_answer": str(b.get("student_answer") or "")[:120],
+                    "reference_answers": b.get("reference_answers") or {},
+                    "explanation": str(b.get("explanation") or "")[:240],
+                }
+                for b in wrong[:10]
+            ],
+            "review_items": [
+                {
+                    "label": b.get("label", ""),
+                    "page": b.get("page"),
+                    "explanation": str(b.get("explanation") or "")[:200],
+                }
+                for b in review[:5]
+            ],
+        }
+    variants = [b for b in doc.blocks if b.get("kind") == "variant_question"]
+    verified = [b for b in variants if b.get("status") == "verified"]
+    review = [b for b in variants if b.get("needs_manual_review")]
+    return {
+        "kind": doc.kind,
+        "title": doc.title,
+        "variant_count": len(variants),
+        "verified_count": len(verified),
+        "needs_manual_review_count": len(review),
+    }
+
+
 @configured_call
-def choose_skill(*, content, keys, previous, role, tool_results=None):
+def choose_skill(
+    *,
+    content,
+    keys,
+    previous,
+    role,
+    tool_results=None,
+    completed_steps=None,
+    remaining_skill_budget=None,
+):
     from app.application.agent.role_policy import evaluate_role_policy
     from app.application.tools.core_tools import build_default_registries
 
@@ -144,17 +198,21 @@ def choose_skill(*, content, keys, previous, role, tool_results=None):
         return SkillChoice(skill="edu.homework_tutoring")
     _, skills = build_default_registries()
     catalog = skills.visible_catalog(evaluate_role_policy(role=role))
-    choice = proposal(
-        "edu.skill-planner",
-        {
-            "message": content,
-            "page_count": len(keys),
-            "previous": previous or {},
-            "skills": catalog,
-            "tool_results": tool_results or [],
-            "general_tools": ["web.search"] if len(tool_results or []) < 2 else [],
-        },
-    )
+    payload = {
+        "message": content,
+        "page_count": len(keys),
+        "previous": previous or {},
+        "skills": catalog,
+        "tool_results": tool_results or [],
+        "general_tools": ["web.search"] if len(tool_results or []) < 2 else [],
+    }
+    if completed_steps is not None:
+        payload["completed_steps"] = completed_steps
+    if remaining_skill_budget is not None:
+        payload["remaining_skill_budget"] = remaining_skill_budget
+    choice = proposal("edu.skill-planner", payload)
+    if choice.action == "finish":
+        return choice
     if choice.skill != "general" and choice.skill not in {
         item["id"] for item in catalog
     }:

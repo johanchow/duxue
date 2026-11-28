@@ -37,6 +37,7 @@ class AgentRunRecord:
     thread_id: str | None
     status: Literal["running", "completed", "cancelled", "failed"] = "running"
     active_skill_id: str | None = None
+    loaded_skills: list[str] = field(default_factory=list)
     planned_steps: list[str] = field(default_factory=list)
     events: list[dict[str, Any]] = field(default_factory=list)
     result: dict[str, Any] | None = None
@@ -95,6 +96,7 @@ class OrchestratorStep:
     content: str = ""
     interaction_kind: str = "text"
     artifact_id: str | None = None
+    artifacts: tuple[dict[str, Any], ...] = ()
 
 
 PlannerFn = Callable[
@@ -113,6 +115,8 @@ class AgentRunOutcome:
     registered_gates: frozenset[str]
     tool_results: tuple[ToolResult, ...]
     artifact_id: str | None = None
+    loaded_skills: tuple[str, ...] = ()
+    artifacts: tuple[dict[str, Any], ...] = ()
 
 
 class EduAgentOrchestrator:
@@ -152,6 +156,7 @@ class EduAgentOrchestrator:
         active_tools: set[str] = set(policy.base_tools)
         registered_gates: set[str] = set(policy.mandatory_gates)
         active_skill: SkillSpec | None = None
+        loaded_skills: list[str] = []
         tool_results: list[ToolResult] = []
         visible_skills = self.skill_registry.visible_catalog(policy)
 
@@ -180,6 +185,7 @@ class EduAgentOrchestrator:
                         active_skill_id=active_skill.id if active_skill else None,
                         registered_gates=frozenset(registered_gates),
                         tool_results=tuple(tool_results),
+                        loaded_skills=tuple(loaded_skills),
                     )
 
                 step = planner(
@@ -190,6 +196,7 @@ class EduAgentOrchestrator:
                         "role": policy.role,
                         "visible_skills": visible_skills,
                         "active_skill": active_skill.model_dump() if active_skill else None,
+                        "loaded_skills": list(loaded_skills),
                         "active_tools": sorted(active_tools),
                         "tool_results": [
                             {"tool_id": r.tool_id, "status": r.status, "data": r.data, "error_code": r.error_code}
@@ -221,9 +228,12 @@ class EduAgentOrchestrator:
                     ))
                     active_skill = skill
                     record.active_skill_id = skill.id
+                    if skill.id not in loaded_skills:
+                        loaded_skills.append(skill.id)
+                    record.loaded_skills = list(loaded_skills)
                     unlocked = set(skill.tools) & policy.all_permitted_tools
                     active_tools = set(policy.base_tools) | unlocked
-                    registered_gates = set(policy.mandatory_gates) | set(skill.required_gates)
+                    registered_gates |= set(skill.required_gates)
                     set_observation_payload(
                         skill_span,
                         output={
@@ -254,8 +264,16 @@ class EduAgentOrchestrator:
                 if phase and not self.gates.allows(registered_gates, phase=phase, candidate=step):
                     record.status = "failed"
                     self.run_store.push_event(record.run_id, {"event": "failed", "reason": "gate_denied"})
-                    return AgentRunOutcome(record.run_id, "failed", "本轮核验未通过。", "text",
-                        active_skill.id if active_skill else None, frozenset(registered_gates), tuple(tool_results))
+                    return AgentRunOutcome(
+                        record.run_id,
+                        "failed",
+                        "本轮核验未通过。",
+                        "text",
+                        active_skill.id if active_skill else None,
+                        frozenset(registered_gates),
+                        tuple(tool_results),
+                        loaded_skills=tuple(loaded_skills),
+                    )
 
                 if step.action == "call_tool" and step.tool_id:
                     res = self.executor.execute(
@@ -277,6 +295,7 @@ class EduAgentOrchestrator:
                             run_id=record.run_id, status="failed", content="工具暂不可用，请稍后重试。",
                             interaction_kind="text", active_skill_id=active_skill.id if active_skill else None,
                             registered_gates=frozenset(registered_gates), tool_results=tuple(tool_results),
+                            loaded_skills=tuple(loaded_skills),
                         )
                     continue
 
@@ -291,12 +310,16 @@ class EduAgentOrchestrator:
                         registered_gates=frozenset(registered_gates),
                         tool_results=tuple(tool_results),
                         artifact_id=step.artifact_id,
+                        loaded_skills=tuple(loaded_skills),
+                        artifacts=step.artifacts,
                     )
                     record.result = {
                         "content": outcome.content,
                         "interaction_kind": outcome.interaction_kind,
                         "active_skill_id": outcome.active_skill_id,
+                        "loaded_skills": list(outcome.loaded_skills),
                         "artifact_id": outcome.artifact_id,
+                        "artifacts": list(outcome.artifacts),
                     }
                     self.run_store.push_event(
                         record.run_id,
@@ -307,6 +330,7 @@ class EduAgentOrchestrator:
                         output={
                             "status": "completed",
                             "active_skill_id": outcome.active_skill_id,
+                            "loaded_skills": list(outcome.loaded_skills),
                             "tool_count": len(tool_results),
                         },
                     )
@@ -325,4 +349,5 @@ class EduAgentOrchestrator:
                 active_skill_id=active_skill.id if active_skill else None,
                 registered_gates=frozenset(registered_gates),
                 tool_results=tuple(tool_results),
+                loaded_skills=tuple(loaded_skills),
             )

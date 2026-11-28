@@ -1,0 +1,25 @@
+{
+  "id": "problem_solving.solve_and_verify",
+  "kind": "tool",
+  "owner_domain": "problem_solving",
+  "description": "调用多路求解与确定性核验内核，用于单题求解、批改核验与出题自验。",
+  "access": "read",
+  "allowed_roles": [
+    "teacher",
+    "coach",
+    "guardian"
+  ],
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "prompt": {
+        "type": "string"
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object"
+  },
+  "timeout_ms": 60000,
+  "handler_id": "problem_solving.solve_and_verify"
+}

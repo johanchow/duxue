@@ -1,0 +1,50 @@
+{
+  "id": "web.search",
+  "kind": "tool",
+  "owner_domain": "infrastructure",
+  "description": "只读联网检索学习资料与真实照片。",
+  "access": "read",
+  "allowed_roles": [
+    "teacher",
+    "coach",
+    "guardian",
+    "ward"
+  ],
+  "input_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "query",
+      "mode",
+      "learning_purpose"
+    ],
+    "properties": {
+      "query": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "learning_purpose": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 180
+      },
+      "mode": {
+        "enum": [
+          "web",
+          "image"
+        ]
+      },
+      "count": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object"
+  },
+  "timeout_ms": 8000,
+  "handler_id": "web.search"
+}

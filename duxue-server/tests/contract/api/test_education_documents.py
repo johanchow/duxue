@@ -303,3 +303,219 @@ def test_late_gate_approval_cannot_authorize_a_write():
         assert not gate.allows({"late"}, phase="write", candidate=None)
     finally:
         release.set()
+
+
+def test_adult_composite_turn_delivers_multiple_artifacts_and_courseware(
+    client, db, monkeypatch
+):
+    from app.agent_specs.education_workspace import SkillChoice
+
+    adult = create_guardian(db)
+    db.commit()
+    headers = {
+        "Authorization": "Bearer "
+        + create_access_token(user_id=adult.id, role="guardian")
+    }
+    thread = client.post("/v1/conversations", headers=headers, json={}).json()[
+        "thread_id"
+    ]
+    keys = [media_prefix(adult.id) + "page1.png"]
+    planner_calls = []
+    lesson_inputs = []
+
+    def choose(**kwargs):
+        completed = kwargs.get("completed_steps") or []
+        planner_calls.append(len(completed))
+        if len(completed) == 0:
+            return SkillChoice(
+                action="run_skill",
+                skill="edu.worksheet_grading",
+                sub_goal="逐题批改这页数学作业",
+            )
+        if len(completed) == 1:
+            assert completed[0]["skill_id"] == "edu.worksheet_grading"
+            assert completed[0]["summary"]["wrong_count"] == 1
+            return SkillChoice(
+                action="run_skill",
+                skill="edu.lesson_pack",
+                sub_goal="针对第1题错题出2道同类巩固题",
+            )
+        if len(completed) == 2:
+            assert completed[1]["skill_id"] == "edu.lesson_pack"
+            return SkillChoice(
+                action="run_skill",
+                skill="edu.interactive_courseware",
+                sub_goal="为第1题（3+4）制作动态讲题课件",
+            )
+        return SkillChoice(
+            action="finish",
+            skill="general",
+            finish_reason="all_done",
+            answer="已完成批改诊断与2道巩固题，并为你准备好错题动态课件入口。",
+        )
+
+    def proposal(unit, payload, images=None):
+        if unit == "edu.worksheet-page":
+            return Page(
+                complete=True,
+                questions=[
+                    dict(label="1", stem="3+4", student_answer="8", legible=True)
+                ],
+            )
+        if unit == "edu.answer-compare":
+            return Comparison(verdict="incorrect", explanation="3 加 4 得 7，作答为 8。")
+        assert unit == "edu.lesson-author"
+        lesson_inputs.append(payload)
+        return Lesson(
+            title="加法巩固练习",
+            teaching_notes="针对3+4计算失误设计",
+            variants=["3+4"],
+        )
+
+    monkeypatch.setattr(ws, "choose_skill", choose)
+    monkeypatch.setattr(ws, "proposal", proposal)
+    monkeypatch.setattr(ws, "verify", lambda stem: {"1": "7"} if stem == "3+4" else {})
+    monkeypatch.setattr(ws, "_image", lambda owner, key: key)
+    monkeypatch.setattr(
+        "app.api.v1.guardian_experience.storage.exists", lambda key: True
+    )
+
+    body = {
+        "thread_id": thread,
+        "command_id": "composite-1",
+        "content": "批改这页作业，出同类巩固题，并把错题做成动态课件",
+        "mode": "guardian_explain",
+        "attachment_keys": keys,
+    }
+    resp = client.post("/v1/agent/turns", json=body, headers=headers)
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    # Reached MAX_SKILLS_PER_TURN=3 after courseware; code stops without extra planner call.
+    assert planner_calls == [0, 1, 2]
+    assert len(data["artifacts"]) == 2
+    assert [a["artifact_type"] for a in data["artifacts"]] == [
+        "grading_report",
+        "lesson_pack",
+    ]
+    assert data["recommend_courseware"] is True
+    assert "3+4" in data["courseware_prompt"]
+    assert "作业批改诊断" in data["content"] and "加法巩固练习" in data["content"]
+    # Second skill received structured grading summary from step 1
+    assert lesson_inputs[0]["previous"]["completed_steps"][0]["summary"]["wrong_count"] == 1
+    # Both artifacts are independently persisted and readable
+    for art in data["artifacts"]:
+        fetched = client.get("/v1/artifacts/" + art["artifact_id"], headers=headers)
+        assert fetched.status_code == 200
+        assert fetched.json()["artifact_type"] == art["artifact_type"]
+    # Idempotent replay returns identical payload without re-running planner
+    replay = client.post("/v1/agent/turns", json=body, headers=headers)
+    assert replay.json() == data
+    assert planner_calls == [0, 1, 2]
+
+
+def test_adult_composite_early_finish_dedup_and_partial_failure(
+    client, db, monkeypatch
+):
+    from app.agent_specs.education_workspace import SkillChoice
+    from app.infrastructure.ai.errors import ModelGatewayError
+
+    adult = create_guardian(db)
+    db.commit()
+    headers = {
+        "Authorization": "Bearer "
+        + create_access_token(user_id=adult.id, role="guardian")
+    }
+    thread = client.post("/v1/conversations", headers=headers, json={}).json()[
+        "thread_id"
+    ]
+    keys = [media_prefix(adult.id) + "page1.png"]
+
+    def base_proposal(unit, payload, images=None):
+        if unit == "edu.worksheet-page":
+            return Page(
+                complete=True,
+                questions=[dict(label="1", stem="3+4", student_answer="7", legible=True)],
+            )
+        if unit == "edu.answer-compare":
+            return Comparison(verdict="correct", explanation="完全正确。")
+        raise ModelGatewayError("model_unavailable")
+
+    monkeypatch.setattr(ws, "proposal", base_proposal)
+    monkeypatch.setattr(ws, "verify", lambda stem: {"1": "7"})
+    monkeypatch.setattr(ws, "_image", lambda owner, key: key)
+    monkeypatch.setattr(
+        "app.api.v1.guardian_experience.storage.exists", lambda key: True
+    )
+
+    # 1. Early finish when all answers are correct (precondition_unmet)
+    def choose_early(**kwargs):
+        completed = kwargs.get("completed_steps") or []
+        if not completed:
+            return SkillChoice(action="run_skill", skill="edu.worksheet_grading")
+        assert completed[0]["summary"]["wrong_count"] == 0
+        return SkillChoice(
+            action="finish",
+            skill="general",
+            finish_reason="precondition_unmet",
+            answer="全部做对，无需额外错题巩固。",
+        )
+
+    monkeypatch.setattr(ws, "choose_skill", choose_early)
+    r1 = client.post(
+        "/v1/agent/turns",
+        headers=headers,
+        json={
+            "thread_id": thread,
+            "command_id": "early-finish",
+            "content": "批改并出错题巩固",
+            "mode": "guardian_explain",
+            "attachment_keys": keys,
+        },
+    )
+    assert r1.status_code == 200, r1.text
+    assert len(r1.json()["artifacts"]) == 1
+    assert r1.json()["content"] == "全部做对，无需额外错题巩固。"
+
+    # 2. Code deduplication stops repeated same-skill loop
+    monkeypatch.setattr(
+        ws,
+        "choose_skill",
+        lambda **kwargs: SkillChoice(action="run_skill", skill="edu.worksheet_grading"),
+    )
+    r2 = client.post(
+        "/v1/agent/turns",
+        headers=headers,
+        json={
+            "thread_id": thread,
+            "command_id": "dedup",
+            "content": "批改作业",
+            "mode": "guardian_explain",
+            "attachment_keys": keys,
+        },
+    )
+    assert r2.status_code == 200, r2.text
+    assert len(r2.json()["artifacts"]) == 1
+
+    # 3. Partial delivery when step 2 fails after step 1 succeeded
+    def choose_partial(**kwargs):
+        completed = kwargs.get("completed_steps") or []
+        if not completed:
+            return SkillChoice(action="run_skill", skill="edu.worksheet_grading")
+        return SkillChoice(action="run_skill", skill="edu.lesson_pack")
+
+    monkeypatch.setattr(ws, "choose_skill", choose_partial)
+    r3 = client.post(
+        "/v1/agent/turns",
+        headers=headers,
+        json={
+            "thread_id": thread,
+            "command_id": "partial-fail",
+            "content": "批改并出巩固题",
+            "mode": "guardian_explain",
+            "attachment_keys": keys,
+        },
+    )
+    assert r3.status_code == 200, r3.text
+    assert len(r3.json()["artifacts"]) == 1
+    assert r3.json()["partial_failure"] is True
+    assert "后续步骤暂不可用" in r3.json()["content"]

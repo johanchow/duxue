@@ -295,3 +295,69 @@ def test_admin_declarative_skills_keep_code_gate_and_tool_ceilings():
     grading["tools"].append("media.generate_image")
     with pytest.raises(ValueError):
         configured_skills(catalog)
+
+
+def test_orchestrator_accumulates_required_gates_across_multiple_skills():
+    from app.application.agent.gates import GateRunner
+
+    tool_reg, skill_reg = build_default_registries()
+    orch = EduAgentOrchestrator(
+        tool_registry=tool_reg,
+        skill_registry=skill_reg,
+        gates=GateRunner(
+            {
+                "artifact.verification_honesty": lambda *_: True,
+                "media.script_sandbox_prerun": lambda *_: True,
+            }
+        ),
+    )
+    ctx = ToolContext(actor_id="teacher-1", actor_role="teacher")
+
+    def planner(state):
+        if state["step_index"] == 0:
+            return OrchestratorStep(action="load_skill", skill_id="edu.worksheet_grading")
+        if state["step_index"] == 1:
+            return OrchestratorStep(action="load_skill", skill_id="edu.interactive_courseware")
+        return OrchestratorStep(action="respond", content="复合任务完成")
+
+    outcome = orch.run(ctx=ctx, message="批改并制作动态课件", planner=planner)
+    assert outcome.status == "completed"
+    assert outcome.loaded_skills == ("edu.worksheet_grading", "edu.interactive_courseware")
+    assert {
+        "artifact.verification_honesty",
+        "media.script_sandbox_prerun",
+    }.issubset(outcome.registered_gates)
+
+
+def test_declarative_tool_catalog_matches_schemas_and_enforces_code_ceilings():
+    from copy import deepcopy
+    from app.agent_specs.web_search import CONTRACT as SEARCH_CONTRACT
+    from app.application.agent.tool_catalog import bootstrap_tools, configured_tools
+
+    catalog = deepcopy(bootstrap_tools())
+    assert len(catalog) == 11
+    assert catalog["tools/web.search.json"]["input_schema"] == SEARCH_CONTRACT["input_schema"]
+
+    # Narrowing timeout and updating description is allowed
+    catalog["tools/web.search.json"]["description"] = "受控联网检索"
+    catalog["tools/web.search.json"]["timeout_ms"] = 5000
+    validated = configured_tools(catalog)
+    assert validated["tools/web.search.json"]["timeout_ms"] == 5000
+
+    # Raising timeout beyond code ceiling is rejected
+    over_timeout = deepcopy(catalog)
+    over_timeout["tools/web.search.json"]["timeout_ms"] = 9000
+    with pytest.raises(ValueError, match="timeout_ms cannot exceed code ceiling"):
+        configured_tools(over_timeout)
+
+    # Changing protected access field is rejected
+    changed_access = deepcopy(catalog)
+    changed_access["tools/web.search.json"]["access"] = "command"
+    with pytest.raises(ValueError, match="protected access changed"):
+        configured_tools(changed_access)
+
+    # Widening role ceiling is rejected
+    widened_role = deepcopy(catalog)
+    widened_role["tools/ward_context.read_summary.json"]["allowed_roles"].append("ward")
+    with pytest.raises(ValueError, match="exceed code ceiling"):
+        configured_tools(widened_role)

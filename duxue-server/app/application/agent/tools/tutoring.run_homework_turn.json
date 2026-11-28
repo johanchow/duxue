@@ -1,0 +1,26 @@
+{
+  "id": "tutoring.run_homework_turn",
+  "kind": "tool",
+  "owner_domain": "tutoring",
+  "description": "受控调用 Ward 作业启发答疑状态机与答案保护出口检查。",
+  "access": "command",
+  "allowed_roles": [
+    "teacher",
+    "coach",
+    "guardian",
+    "ward"
+  ],
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "content": {
+        "type": "string"
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object"
+  },
+  "timeout_ms": 45000,
+  "handler_id": "tutoring.run_homework_turn"
+}

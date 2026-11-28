@@ -1,0 +1,29 @@
+{
+  "id": "media.generate_image",
+  "kind": "tool",
+  "owner_domain": "infrastructure",
+  "description": "生成适龄教育插画或绘本配图。",
+  "access": "read",
+  "allowed_roles": [
+    "teacher",
+    "coach",
+    "guardian",
+    "ward"
+  ],
+  "input_schema": {
+    "type": "object",
+    "required": [
+      "prompt"
+    ],
+    "properties": {
+      "prompt": {
+        "type": "string"
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object"
+  },
+  "timeout_ms": 30000,
+  "handler_id": "media.generate_image"
+}

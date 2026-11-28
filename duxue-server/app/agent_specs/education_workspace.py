@@ -25,9 +25,17 @@ class SearchStep(Proposal):
     learning_purpose: str = Field(min_length=1, max_length=180)
 
 
-class SkillChoice(SkillSelection):
+class SkillChoiceLegacy(SkillSelection):
     search: SearchStep | None = None
     answer: str | None = Field(default=None, min_length=1, max_length=4000)
+
+
+class SkillChoice(SkillChoiceLegacy):
+    action: Literal["run_skill", "call_read_tool", "finish"] | None = None
+    sub_goal: str | None = Field(default=None, min_length=1, max_length=1000)
+    finish_reason: Literal[
+        "all_done", "precondition_unmet", "needs_clarification"
+    ] | None = None
 
 
 class Question(Proposal):
@@ -86,10 +94,16 @@ def contracts(files=None):
         # Preserve compilation of the first immutable, text-only snapshot.
         result[lesson]["accepts_images"] = False
     planner = "agents/edu.skill-planner.json"
-    if files and "search" not in files[planner]["output_schema"]["properties"]:
-        prior = SkillSelection.model_json_schema()
-        prior["title"] = "SkillChoice"
-        result[planner]["output_schema"] = prior
+    if files:
+        planner_props = files[planner]["output_schema"]["properties"]
+        if "search" not in planner_props:
+            prior = SkillSelection.model_json_schema()
+            prior["title"] = "SkillChoice"
+            result[planner]["output_schema"] = prior
+        elif "action" not in planner_props:
+            prior = SkillChoiceLegacy.model_json_schema()
+            prior["title"] = "SkillChoice"
+            result[planner]["output_schema"] = prior
     return result
 
 

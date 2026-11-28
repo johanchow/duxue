@@ -1,0 +1,26 @@
+{
+  "id": "artifact.create_or_revise",
+  "kind": "tool",
+  "owner_domain": "artifact_workspace",
+  "description": "创建或局部修订多形态可版本化教育产物（EduArtifact）。",
+  "access": "command",
+  "allowed_roles": [
+    "teacher",
+    "coach",
+    "guardian",
+    "ward"
+  ],
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "artifact_type": {
+        "type": "string"
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object"
+  },
+  "timeout_ms": 30000,
+  "handler_id": "artifact.create_or_revise"
+}

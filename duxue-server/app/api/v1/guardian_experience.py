@@ -33,7 +33,7 @@ from app.infrastructure.ai.aliyun_tts import (
     SpeechSynthesisError,
 )
 from app.infrastructure.ai.errors import ModelTimeBudgetExceeded
-from app.application.agent.selected_skill import adult_reply
+from app.application.agent.selected_skill import adult_reply, run_adult_composite_turn
 from app.application.agent.role_policy import normalize_role
 from app.infrastructure.ai.errors import ModelGatewayError
 from app.infrastructure.security.experience_tokens import unseal
@@ -169,55 +169,74 @@ def execute_turn(
             role = normalize_role(principal.role)
             thread_id = str(body.thread_id) if body.thread_id else None
             previous = previous_context
-            skill = skill_hint or "edu.homework_tutoring"
-            choice = None
-            if plan and thread_id and not state.get("handoff") and not skill_hint:
-                choice = education_workspace.choose_skill(
-                    content=body.content,
-                    keys=body.attachment_keys,
-                    previous=previous,
-                    role=role,
-                )
-                skill = choice.skill
-            document = None
+            documents = ()
+            composite = None
             answer = None
-            if skill in {"edu.worksheet_grading", "edu.lesson_pack"}:
-                document = education_workspace.prepare(
-                    owner=principal.user_id,
-                    content=body.content,
-                    keys=body.attachment_keys,
-                    skill_hint=skill,
-                    thread_id=thread_id,
-                    previous=previous,
+
+            def domain_reply():
+                return experience_turn(
+                    guardian_id=principal.user_id,
+                    content=body.content or default_prompt,
+                    attachment_keys=body.attachment_keys,
+                    state=state,
+                    mode=body.mode,
+                    bank_lookup=lookup,
+                )
+
+            if plan and thread_id and not state.get("handoff"):
+                composite = run_adult_composite_turn(
                     role=role,
+                    owner=principal.user_id,
+                    thread_id=thread_id,
+                    message=body.content,
+                    attachments=body.attachment_keys,
+                    previous=previous,
+                    invoke_domain=domain_reply,
+                    skill_hint=skill_hint,
                 )
+                documents = composite.documents
+                if not documents:
+                    if composite.reply is not None:
+                        answer = dict(composite.reply)
+                    else:
+                        answer = {
+                            "content": composite.summary_content or "",
+                            "mode": body.mode,
+                        }
+                    if composite.recommend_courseware:
+                        answer["recommend_courseware"] = True
+                        if composite.courseware_prompt:
+                            answer["courseware_prompt"] = composite.courseware_prompt
+                    if composite.partial_failure_note:
+                        answer["partial_failure"] = True
             else:
-
-                def domain_reply():
-                    return experience_turn(
-                        guardian_id=principal.user_id,
-                        content=body.content or default_prompt,
-                        attachment_keys=body.attachment_keys,
-                        state=state,
-                        mode=body.mode,
-                        bank_lookup=lookup,
-                    )
-
-                answer = (
-                    adult_reply(
-                        role=role,
+                skill = skill_hint or "edu.homework_tutoring"
+                if skill in {"edu.worksheet_grading", "edu.lesson_pack"}:
+                    doc = education_workspace.prepare(
                         owner=principal.user_id,
+                        content=body.content,
+                        keys=body.attachment_keys,
+                        skill_hint=skill,
                         thread_id=thread_id,
-                        message=body.content,
-                        attachments=body.attachment_keys,
-                        skill=skill,
-                        invoke=domain_reply,
-                        choice=choice,
                         previous=previous,
+                        role=role,
                     )
-                    if plan
-                    else domain_reply()
-                )
+                    documents = (doc,) if doc is not None else ()
+                else:
+                    answer = (
+                        adult_reply(
+                            role=role,
+                            owner=principal.user_id,
+                            thread_id=thread_id,
+                            message=body.content,
+                            attachments=body.attachment_keys,
+                            skill=skill,
+                            invoke=domain_reply,
+                            previous=previous,
+                        )
+                        if plan
+                        else domain_reply()
+                    )
             if body.thread_id:
                 with Session(bind) as writer:
                     row = thread_for(writer, principal, body.thread_id, lock=True)
@@ -228,14 +247,43 @@ def execute_turn(
                         raise HTTPException(
                             409, "conversation changed during generation"
                         )
-                    if document:
-                        answer = workspace_documents.create(
-                            writer,
-                            document,
-                            principal.user_id,
-                            row,
-                            body.attachment_keys,
-                        )
+                    if documents:
+                        created = [
+                            workspace_documents.create(
+                                writer,
+                                doc,
+                                principal.user_id,
+                                row,
+                                body.attachment_keys,
+                            )
+                            for doc in documents
+                        ]
+                        artifacts = [
+                            {
+                                "artifact_id": item["artifact_id"],
+                                "artifact_type": item["artifact_type"],
+                                "title": item["content"],
+                            }
+                            for item in created
+                        ]
+                        answer = {**created[0], "artifacts": artifacts}
+                        if composite is not None:
+                            if (
+                                len(created) > 1
+                                or composite.recommend_courseware
+                                or composite.partial_failure_note
+                                or (
+                                    composite.summary_content
+                                    and composite.summary_content != created[0]["content"]
+                                )
+                            ):
+                                answer["content"] = composite.summary_content or created[0]["content"]
+                            if composite.recommend_courseware:
+                                answer["recommend_courseware"] = True
+                                if composite.courseware_prompt:
+                                    answer["courseware_prompt"] = composite.courseware_prompt
+                            if composite.partial_failure_note:
+                                answer["partial_failure"] = True
                     if skill_hint:
                         answer = {**answer, "skill_hint": skill_hint}
                     row.version += 1

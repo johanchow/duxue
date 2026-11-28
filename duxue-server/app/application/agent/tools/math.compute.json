@@ -1,0 +1,29 @@
+{
+  "id": "math.compute",
+  "kind": "tool",
+  "owner_domain": "problem_solving",
+  "description": "执行确定性数学/理化符号计算与等价性核验。",
+  "access": "read",
+  "allowed_roles": [
+    "teacher",
+    "coach",
+    "guardian",
+    "ward"
+  ],
+  "input_schema": {
+    "type": "object",
+    "required": [
+      "op"
+    ],
+    "properties": {
+      "op": {
+        "type": "string"
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object"
+  },
+  "timeout_ms": 10000,
+  "handler_id": "math.compute"
+}

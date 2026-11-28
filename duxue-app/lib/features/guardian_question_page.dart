@@ -808,10 +808,50 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
                       : Text(snapshot.hasError ? '题图加载失败' : '正在加载题图'),
                   ),
               if (text.isNotEmpty) ChatMarkdownBody(text: text),
-              if(!mine && message['artifact_id'] is String)
-                TextButton(onPressed:()=>Navigator.push(context, MaterialPageRoute(
-                  builder:(_)=>EducationDocumentPage(id:message['artifact_id'] as String))),
-                  child:Text(message['artifact_type']=='lesson_pack'?'打开备课包':'打开批改诊断')),
+              if (!mine &&
+                  message['artifacts'] is List &&
+                  (message['artifacts'] as List).isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
+                      for (final item
+                          in (message['artifacts'] as List).whereType<Map>())
+                        if (item['artifact_id'] is String)
+                          OutlinedButton.icon(
+                            onPressed: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => EducationDocumentPage(
+                                  id: item['artifact_id'] as String,
+                                ),
+                              ),
+                            ),
+                            icon: Icon(
+                              item['artifact_type'] == 'lesson_pack'
+                                  ? Icons.menu_book_outlined
+                                  : Icons.fact_check_outlined,
+                              size: 16,
+                            ),
+                            label: Text(
+                              '${item['artifact_type'] == 'lesson_pack' ? '打开备课包' : '打开批改诊断'}${item['title'] is String && (item['title'] as String).isNotEmpty ? '：${item['title']}' : ''}',
+                            ),
+                          ),
+                    ],
+                  ),
+                )
+              else if (!mine && message['artifact_id'] is String)
+                TextButton(
+                    onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => EducationDocumentPage(
+                                id: message['artifact_id'] as String))),
+                    child: Text(message['artifact_type'] == 'lesson_pack'
+                        ? '打开备课包'
+                        : '打开批改诊断')),
               if (message['visual'] is Map)
                 Padding(
                     padding: const EdgeInsets.only(top: 12),
@@ -840,7 +880,9 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
                             initialCoursewareId: message['courseware_id'] as String?,
                             onCreated: (id) { if(mounted) setState(()=>message['courseware_id']=id); },
                             promptText:
-                                (message['source_prompt'] as String?) ?? text,
+                                (message['courseware_prompt'] as String?) ??
+                                    (message['source_prompt'] as String?) ??
+                                    text,
                             attachmentKeys:
                                 ((message['source_keys'] as List?) ?? const [])
                                     .cast<String>(),

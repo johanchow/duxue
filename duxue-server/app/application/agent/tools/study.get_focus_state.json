@@ -1,0 +1,19 @@
+{
+  "id": "study.get_focus_state",
+  "kind": "tool",
+  "owner_domain": "study",
+  "description": "只读查询 Ward 当前是否存在活跃 Sprint 专注挑战。",
+  "access": "read",
+  "allowed_roles": [
+    "ward"
+  ],
+  "input_schema": {
+    "type": "object",
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": "object"
+  },
+  "timeout_ms": 2000,
+  "handler_id": "study.get_focus_state"
+}
