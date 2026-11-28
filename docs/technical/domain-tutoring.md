@@ -69,15 +69,15 @@ Context Map 与分层图只在 [ddd-overview.md](ddd-overview.md) 维护。`Stud
 
 | 由代码负责 | 由 LLM 负责 |
 |---|---|
-| 授权（附件和数据只属于当前 Ward）、输入/输出安全审核 | 判断这一句是不是孩子的作业成果（`turn.type`），是作业时它与上一题的关系和孩子这一轮做了什么（`turn.relation`、`turn.student_move`、`turn.progress`）；非作业时是一次性查询还是自发好奇（`turn.topic`） |
+| 授权（附件和数据只属于当前 Ward）、处理模型接口拒答 | 判断这一句是不是孩子的作业成果（`turn.type`），是作业时它与上一题的关系和孩子这一轮做了什么（`turn.relation`、`turn.student_move`、`turn.progress`）；非作业时是一次性查询还是自发好奇（`turn.topic`） |
 | 计算本轮许可 `TutorPermit`，裁决题目状态 | 诊断孩子卡在哪里，选 `act`：直接回答、引导、闲聊接话、澄清、提醒、发音、安全 |
 | 预算：模型调用、工具调用、token、deadline、取消 | 看图、理解指代、识别语音转写里的错误 |
-| 三道教学出口检查与独立输出安全审核，不通过则回退固定话术 | 要不要调只读工具 |
+| 三道教学出口检查，不通过则回退固定话术 | 要不要调只读工具 |
 | 写事实、推进 `ProblemRecord`、补回任务提醒、投影发音卡 | 措辞、语气、长度 |
 
 Companion 只把本轮场景定成 `tutoring`（见 [意图路由](domain-conversation.md)）。进入答疑之后不再有单独的 `TutoringIntent`、`QuestionShape` 或 `HistoryMatch` 分类调用：它们是主调用返回里的字段，历史通过只读工具 `lookup_history` 按需取。一轮的完整流程见 [§四](#四tutoringturnloop)。
 
-已验证的界面动作 `tutoring_intent=pronunciation`（「读出发音」）只给本轮上下文加一条「期望动作 `pronounce`」的提示，不跳过模型，也不选择另一条路径。开放文本不靠关键词或正则解释。明显风险由本地预检拦截；语义风险由独立的输入/输出安全审核端口裁决，主模型的 `act=safety` 只可收紧、不能成为唯一依据。主调用失败、非法 JSON 或提供者关闭时，不猜测、不反问，回退固定话术并记录 `model_fallback`。
+已验证的界面动作 `tutoring_intent=pronunciation`（「读出发音」）只给本轮上下文加一条「期望动作 `pronounce`」的提示，不跳过模型，也不选择另一条路径。开放文本不靠关键词或正则解释。模型接口过滤或拒答时返回受控提示。主调用失败、非法 JSON 或提供者关闭时，不猜测、不反问，回退固定话术并记录 `model_fallback`。
 
 | 决策 | 选择 | 原因 | 拒绝的方案 | 验证 |
 |---|---|---|---|---|
@@ -85,9 +85,9 @@ Companion 只把本轮场景定成 `tutoring`（见 [意图路由](domain-conver
 | 红线是什么 | 只有「作业成果不被代替完成」，用 `ProblemStatus=open` 表达 | 原子知识直答能消除无意义卡壳；过程题才需要保护推理成果 | 用 L1–L4 等级压住所有回答；因处于作业会话就拒答字词释义 | `turn.type=non_work` 的 `answer` 直接回答；`relation=same|new` 的 `answer` 在 `open` 时拒绝 |
 | 谁判断本轮在问什么 | 模型随回复声明 `turn`（`answer`/`guide` 必填，`work`｜`non_work` 判别联合）；缺失时不猜，走一次结构重试；答案保护不看这个声明，归 `TutorPermitPolicy` | 语义判断属于模型；但任务容器本身不能把原子知识收紧 | 独立的分类调用；关键词改判 | “字怎么写/词义是什么”可直答；请求选项、填空、完整过程仍按作业成果校验 |
 | 谁裁决题目状态 | `TutorPermitPolicy`，按已提交的证据推进 | 教学进度不能由模型宣布；次数不是答案放行条件 | 模型自宣解锁；按 Ward 消息条数计数；N 次后给完整答案 | 本轮保护不因卡住次数而放开 |
-| 出口谁把关 | 代码，三道教学检查与独立输出安全审核每轮必经 | 能被模型跳过的检查不是红线；检查必须在输出路径上 | 把安全检查做成模型可选的工具 | 模型不调任何工具也要过检查；辅助自检工具存在与否结果相同 |
+| 出口谁把关 | 代码，三道教学检查每轮必经 | 能被模型跳过的检查不是红线；检查必须在输出路径上 | 把安全检查做成模型可选的工具 | 模型不调任何工具也要过检查；辅助自检工具存在与否结果相同 |
 | 发音是否单独成支 | 不单独成支，是同一契约里的 `act=pronounce` | 发音同样依赖原句窗口、指代和图片，单独分支会重复组装上下文 | 为发音另建 Policy、Extractor 或第二条流程 | 同一入口上下文、同一主调用；校验和投影规则见 [§4.6](#46-pronunciation-act只读) |
-| 谁确认一轮完成 | 三道教学检查和输出安全审核通过后，由 `ApplyTutorTurn` 提交 | `finish_turn` 只是候选 | 模型声明「孩子已经懂了」即成功 | 检查失败时不写 Fact、不推进 `ProblemRecord` |
+| 谁确认一轮完成 | 三道教学检查通过后，由 `ApplyTutorTurn` 提交 | `finish_turn` 只是候选 | 模型声明「孩子已经懂了」即成功 | 检查失败时不写 Fact、不推进 `ProblemRecord` |
 
 `budget_exhausted`、取消和超时由 `CompanionCoordinator` 在模型还能返回 `finish_turn` 之前终止。它们表示本轮没有得到可靠教学结果。
 
@@ -276,7 +276,7 @@ stateDiagram-v2
 | 触发 | 入口 | Use Case | 领域动作 | 本地事件 | 后续 | 幂等与失败 |
 |---|---|---|---|---|---|---|
 | 首次进入答疑 | Companion `RunInvocation` | `StartTutoringSession` | `open()` | `TutoringSessionOpened` | 可引用的 `tutoring_session_id` | 同一学习会话已有未关闭答疑时恢复，不另开 |
-| 已校验的答疑候选 | 三道教学检查和输出安全审核通过之后 | `ApplyTutorTurn` | `apply_validated_turn()`（含按 `TutorPermitPolicy.advance()` 推进 `ProblemRecord`）或 `record_hint()` | `TutorTurnRecorded` 或 `HintRecorded` | 同事务写本轮对应的互动 Fact，可多条 | 任一检查不通过时不启事务 |
+| 已校验的答疑候选 | 三道教学检查通过之后 | `ApplyTutorTurn` | `apply_validated_turn()`（含按 `TutorPermitPolicy.advance()` 推进 `ProblemRecord`）或 `record_hint()` | `TutorTurnRecorded` 或 `HintRecorded` | 同事务写本轮对应的互动 Fact，可多条 | 任一检查不通过时不启事务 |
 | `tutor_understood` | 上一轮信封中的受权动作 | `ConfirmUnderstanding` | `confirm_understanding()` | `UnderstandingConfirmed` | 互动 Fact | 模型正文里的“你懂了”不能触发 |
 | `tutor_close` | 受权关闭动作 | `CloseTutoringSession` | `close()` | `TutoringSessionClosed` | 恰好一条 `tutoring.session_closed` | 重复关闭返回原关闭结果 |
 
@@ -284,11 +284,11 @@ stateDiagram-v2
 
 安全拒绝、未通过校验的候选、Trace 和工具原文不发布 Fact。好奇心事实提交成功后，展示文案才可以说已经记下。`stable_interest` 仍由 Memory 按自己的门槛处理。
 
-输入安全审核命中，或模型声明 `act=safety` 时，本轮不再给题目提示，回复由代码换成安全话术。输出在送达 Ward 前也必须经过同一独立安全审核端口；审核端口可接统一 moderation 服务、专用安全分类模型或高风险场景的独立 Judge，但不能复用主答疑模型的自述作为唯一依据。Use Case 记录本地安全结果并请求 Guardian 通知端口；通知是否送达不改变答疑 Aggregate。模型不能声称已经通知家长。
+模型接口返回内容过滤、拒答或 act=safety 时，交付受控提示，结束本轮教学处理。
 
 ### 3.1 `ApplyTutorTurn` 时序
 
-写入只发生在三道教学出口检查和独立输出安全审核全部通过之后，并且本轮含已验证事实时。完整的读取、模型调用和检查见第四节。
+写入只发生在三道教学出口检查全部通过之后，并且本轮含已验证事实时。完整的读取、模型调用和检查见第四节。
 
 ```mermaid
 sequenceDiagram
@@ -317,7 +317,7 @@ sequenceDiagram
 | 参与者 | 标准类型 | 职责 |
 |---|---|---|
 | `CompanionCoordinator` | Process Manager | 编排这一轮；不修改 Study 的聚合 |
-| 出口检查 | Application 校验逻辑 | 结构、越权与一致性、泄露三道教学检查；输出安全审核在送达前独立执行，见 [§4.2](#42-出口检查) |
+| 出口检查 | Application 校验逻辑 | 结构、越权与一致性、泄露三道教学检查，见 [§4.2](#42-出口检查) |
 | `TutorPermitPolicy` | Domain Service | `advance()` 返回新的 `ProblemRecord` 字段 |
 | `ApplyTutorTurn` | Use Case | 授权并提交本地短事务 |
 | `TutoringSession` | Aggregate Root | 拒绝关闭后的追加和不合法的题目状态转移 |
@@ -336,7 +336,7 @@ sequenceDiagram
 
 ## 四、`TutoringTurnLoop`
 
-一轮分成三段：**入口（代码）→ 循环（LLM 驱动）→ 出口（代码）**。循环由 `CompanionCoordinator` 这个 Process Manager 编排，它不另成一种类型。它只做四件事：入口组装只读上下文并取得 `TutorPermit`；通过基础设施网关执行模型或工具调用；模型返回 `finish_turn` 后跑三道教学出口检查、输出安全审核并交给 `ApplyTutorTurn`；在预算用尽、取消或超时时停住。未实现的工具由 `ToolGateway` 返回 `tool_error`。Coordinator 不维护工具名单，也不检查 schema 版本。
+一轮分成三段：**入口（代码）→ 循环（LLM 驱动）→ 出口（代码）**。循环由 `CompanionCoordinator` 这个 Process Manager 编排，它不另成一种类型。它只做四件事：入口组装只读上下文并取得 `TutorPermit`；通过基础设施网关执行模型或工具调用；模型返回 `finish_turn` 后跑三道教学出口检查并交给 `ApplyTutorTurn`；在预算用尽、取消或超时时停住。未实现的工具由 `ToolGateway` 返回 `tool_error`。Coordinator 不维护工具名单，也不检查 schema 版本。
 
 `tutoring-turn-loop.v1` 只声明本 Run 消息窗口、循环次数和 token 预算。题目状态仍只由 `TutorPermitPolicy` 决定。
 
@@ -470,7 +470,7 @@ Application 在本轮不是作业成果、且 `StudySessionQuery` 返回活动�
 
 ### 4.2 出口检查
 
-`CompanionCoordinator` 收到 `finish_turn` 后，三道教学检查按顺序执行；最终 Ward 文本还要经独立输出安全审核。两者每轮必经，模型是否调用过任何工具都不改变结果。
+`CompanionCoordinator` 收到 `finish_turn` 后，三道教学检查按顺序执行。这些教学检查每轮执行，模型是否调用过任何工具都不改变结果。
 
 | 检查 | 逻辑 | 目的 | 不通过 |
 |---|---|---|---|
@@ -489,8 +489,8 @@ Application 在本轮不是作业成果、且 `StudySessionQuery` 返回活动�
 出口检查通过后，五项同时成立才结束本轮：
 
 1. 候选恰好有一个面向 Ward 的交互。
-2. 三道教学检查和输出安全审核通过。
-3. 预算尚未耗尽，安全审核允许放行，或已改写成规定的降级文案。
+2. 三道教学检查通过。
+3. 预算尚未耗尽，接口返回可交付结果，或已采用规定的降级文案。
 4. 若包含事实或状态变更，对应 Use Case 已提交。
 5. “已掌握”只来自 `ConfirmUnderstanding`，不来自候选文案，也不来自 `progress=submitted`。
 
@@ -663,8 +663,6 @@ sequenceDiagram
 | `LeakJudgePort` | 模型 Gateway 的一次结构化调用 | 同时判定本轮保护范围与是否泄露；超时或结果非法记审核不可用并停止展示候选（fail-closed）；与主调用分开计量 |
 | `ToolGateway` | 只读工具适配器 | 每轮至多 3 次；没有实现返回 `tool_error`；全部限于当前 Ward 的授权范围 |
 | `PronunciationLessonProjectionPort` | Read Model Adapter | 以 `run_id + turn_id + attempt` 幂等投影；物理存储和清理见 design-server |
-| `SafetyScreeningPort` | 统一 moderation 服务、专用安全分类模型，或高风险场景的独立 Judge | 输入和最终 Ward 文本均要审核；本地关键词仅作快速明显风险拦截；端口失败按现有未成年人安全政策降级，不能把主模型自述当作唯一判断 |
-| `GuardianAlertPort` | 通知适配器 | 失败只审计，不改写答疑状态；到点邀请不使用此端口 |
 | `StudySessionQuery` | Study 的受权 Query 适配器 | 超时或拒绝时本轮不追加事实，返回 `conflict` 或失败信封 |
 
 checkpoint、Trace 和 Ward 可见 journal 的存储属于 Companion。Tutoring Repository 不保存完整 transcript，也不保存帧。
@@ -801,16 +799,13 @@ When 调用模型
 Then 先解析图片目标，只有目标图作为带编号的 image_url 进入主调用；目标不明时追问
 And 文本里没有对象存储路径
 
-Given 输入安全审核命中，或模型声明 act=safety
-When 本轮处理
-Then 回复由代码换成安全话术，不给题目提示
-And 记录本地安全结果并请求 GuardianAlertPort
+Given 学生上一轮问解题方法，本轮要求直接给出同一道题的答案
+When 本轮意图判断读取当前请求与题目上下文
+Then 进入受保护答疑，给出下一步提示，候选回复经过教学泄露检查
 
-Given 主答疑模型已生成 Ward 可见文本
-When 输出安全审核命中或审核端口按未成年人安全政策拒绝放行
-Then 不向 Ward 送达该文本
-And 改送固定安全话术或可恢复失败信封
-And 不写 Fact，不推进 ProblemRecord
+Given 模型接口返回内容过滤或拒答
+When 处理本轮响应
+Then 返回受控提示，不写教学事实，不推进 ProblemRecord
 
 Given Companion 已把本轮场景定成 tutoring
 When 开放文本请求给图中的某一排单词发音
@@ -886,7 +881,7 @@ And 已完成的 Companion Run、StudySession、TutoringSession 与 ProblemRecor
 - **两层五种图型**（`answer` 与 `guide` 可选携带，`alt` 必填，能用前四种原生图就不用 `svg`）：
   1. 原生结构化图（Flutter `VisualBlock` 绘制）：`steps`（2–5 节点）、`compare`（≤3 列 ≤4 行）、`segment`（≤4 线段 ≤2 括号，`unknown=true` 不得带数值字段）、`number_line`（≤8 标记，`unknown=true` 不得带数值字段）；
   2. 受限矢量图：`svg`（固定 `viewBox="0 0 680 H"`，`40 <= H <= 1600`，标签白名单，禁止脚本/外链/事件/`<style>`，确定性 XML 清洗，作业待求量标 `?`）。
-- **门禁与投影**：结构非法、超预算、`unknown` 带数值或 SVG 违规一律丢图不连累正文；作业保护轮次由独立视觉泄露判官并行审核，图泄露先有界重画一次，仍不过仅丢图（文字泄露仍整轮回退）；所有可见文本一并过输出安全审核；通过后由 Application 投影为 `kind="text_visual"`（内联 `visual` 写入 `interaction_ref` 供历史气泡持久渲染，下一轮模型上下文不读 `interaction_ref`）。
+- **门禁与投影**：结构非法、超预算、`unknown` 带数值或 SVG 违规一律丢图不连累正文；作业保护轮次由独立视觉泄露判官并行审核，图泄露先有界重画一次，仍不过仅丢图（文字泄露仍整轮回退）；通过后由 Application 投影为 `kind="text_visual"`（内联 `visual` 写入 `interaction_ref` 供历史气泡持久渲染，下一轮模型上下文不读 `interaction_ref`）。
 
 ### 9.3 主动视觉交付闭环
 - 独立文字 Judge 返回必填三字段：`visual_need=requested|helpful|not_needed|uncertain`、`visual_adequate: bool`、`visual_evidence: str`（严禁关键词扫描）。

@@ -78,7 +78,7 @@ classDiagram
     class EduArtifact {
         +artifact_id: UUID
         +owner_id: UUID
-        +owner_role: teacher | coach | guardian | ward
+        +owner_role: guardian | ward
         +artifact_type: interactive_courseware | grading_report | lesson_pack | creative_work
         +source_thread_id: UUID?
         +title: str
@@ -216,7 +216,7 @@ sequenceDiagram
         CMD->>AGG: 挂接不可变基线（本地短事务，首段核验速览可读）
     end
 
-    PM->>RN: MathStage 脚本隔离预运行 / 生图安全审核 / 异构质量审稿（事务外）
+    PM->>RN: MathStage 脚本隔离预运行 / 异构质量审稿（事务外）
     alt 审核通过
         PM->>CMD: PublishArtifactVersion(candidate_version, expected_state_revision)
         CMD->>AGG: ArtifactInvariantPolicy + ArtifactVersionPolicy + CAS 校验并发布版本
@@ -234,7 +234,7 @@ sequenceDiagram
 | Interface (FastAPI) | Interface | 鉴权、参数校验、幂等头解析与 HTTP 202/409/403 映射 |
 | ArtifactWorkspace Commands | Command | 守卫本地短事务、CAS 乐观锁、幂等性并调用聚合与领域服务 |
 | `EduAgentOrchestrator` | Process Manager | 统一编排层（位于 Application 层）：按需调用 `ProblemSolving` Tool 获取 `VerificationBaseline` 并生成候选块/Patch，再通过本域 Command 提交；不直接改表 |
-| `ArtifactRenderPort & Judge` | Infrastructure | Headless JS 隔离预运行、生图安全审核与异构质量审稿 |
+| `ArtifactRenderPort & Judge` | Infrastructure | Headless JS 隔离预运行与异构质量审稿 |
 | `EduArtifact` | Aggregate Root | 守卫版本不可变、核验诚实不变量、并发修订槽位与终态保护 |
 
 ### 3.3 跨领域 Outbox 编排流（Ward 创作足迹发布：Command–Event–Query Flow）
@@ -255,7 +255,7 @@ sequenceDiagram
     CMD-->>IF: 200 OK {EduArtifactView}
     OB--)EV_C: 投递 CreationFootprintRecorded.v1（幂等键 artifact_id + version_no）
     OB--)MU_C: 投递 CreationFootprintRecorded.v1（幂等键 artifact_id + version_no）
-    EV_C->>EV_C: 投影晚间「好奇心与创作足迹」与自由探索时长（与作业专注分口径）
+    EV_C->>EV_C: 投影晚间「好奇心与创作足迹」
     MU_C->>MU_C: 仅写入独立 Interest Signal（严禁修改客观学业掌握度）
 ```
 
@@ -276,7 +276,7 @@ sequenceDiagram
 ```python
 class CreateEduArtifactInput(BaseModel):
     owner_id: UUID
-    owner_role: Literal["teacher", "coach", "guardian", "ward"]
+    owner_role: Literal["guardian", "ward"]
     artifact_type: Literal["interactive_courseware", "grading_report", "lesson_pack", "creative_work"]
     command_id: str
     source_thread_id: UUID | None = None
@@ -284,7 +284,7 @@ class CreateEduArtifactInput(BaseModel):
     attachment_keys: list[str] = Field(default_factory=list, max_length=8)
     target_grade_hint: str | None = None
 ```
-- **授权与前置**：校验所有者身份、`owner_role` 与 `artifact_type` 合法性（Ward 禁建 `grading_report`/`lesson_pack`）、附件前缀归属、账号级频控与输入安全预检。
+- **授权与前置**：校验所有者身份、`owner_role` 与 `artifact_type` 合法性（Ward 禁建 `grading_report`/`lesson_pack`）、附件前缀归属与账号级频控（通用色情/暴力安全直接复用上游 LLM/生图 API 过滤）。
 - **事务与幂等**：本地短事务仅创建 `drafting / temporary` 聚合并入队异步任务；幂等键 `owner_id + command_id`（同键同载返回同一 `artifact_id`，同键异载 `409`）。
 - **事件与失败**：本地事件 `EduArtifactCreated`；越权 `403`，超频 `429`。
 
@@ -434,7 +434,7 @@ class ArtifactProductionStatusView(BaseModel):
 ```python
 class ListSavedEduArtifactsQuery(BaseModel):
     owner_id: UUID
-    owner_role: Literal["teacher", "coach", "guardian", "ward"]
+    owner_role: Literal["guardian", "ward"]
     artifact_type: str | None = None
     cursor: str | None = None
     limit: int = Field(default=20, ge=1, le=50)
@@ -475,7 +475,7 @@ ArtifactWorkspace.CreationFootprintRecorded.v1   → {event_id, event_type, occu
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | `EduArtifactRepository` | `PgEduArtifactRepository` | PostgreSQL + `state_revision` 乐观锁 | 复用服务端连接池 | 短事务，无长锁 | 到期 `404`，冲突 `409`，库不可用可重试 |
 | `ArtifactRenderPort` | `HybridMathStageAdapter` + `ImageGenAdapter` + `AudioTimelineAdapter`（P1）+ `HeadlessExportAdapter`（P2） | 本地预置组件校验、无凭证禁网 Headless 预运行、生图接口、私有 OSS | 锁定本地 runtime 版本；预运行进程无业务凭证且禁网 | 预运行独立进程墙钟/内存预算外部终止；模型修复最多 1 次 | 代码/生图失败有界修复后降级静态图文，不标动态可用 |
-| `ArtifactJudgePort` | `AdminModelArtifactJudgeAdapter` | 异构 LLM API（严禁与生成同型号） | Admin 快照组件配置 | 单次 25s，打回重修最多 1 次 | 安全与防代写审核 fail-closed |
+| `ArtifactJudgePort` | `AdminModelArtifactJudgeAdapter` | 异构 LLM API（严禁与生成同型号） | Admin 快照组件配置 | 单次 25s，打回重修最多 1 次 | 教研质量与防代写审核 fail-closed（通用内容安全复用上游 API） |
 | `ArtifactOutboxPort` | `PgOutboxPublisher` | PostgreSQL Outbox 表 + Celery 投递 | 复用服务端 Outbox 通道 | 指数退避重试 + 死信告警 | 投递失败保留 Outbox 待对账重放 |
 
 ### 5.2 Entity-Relationship Diagram
@@ -527,7 +527,7 @@ erDiagram
 | Concern | Boundary / mechanism | Redaction, retention, or deletion | Evidence / metric / alert |
 | :--- | :--- | :--- | :--- |
 | Authorization | 所有读写强制校验 `owner_id + owner_role`；`ArtifactInvariantPolicy` 锁定角色可用 `artifact_type` | 跨账号一律 `403`；私有原图分角色前缀隔离 | 越权拒绝计数告警 |
-| Content & Code Safety | 输入与每版所有 `ArtifactBlock` 可见文字、插画与生成脚本标注强制过双向内容安全审核；JS 预运行无凭证禁网 | 临时产物 4h 自动到期物理清理；删除产物同步擦除原图副本与版本行 | 安全拦截率、预运行失败率、静态降级率 |
+| Content & Code Safety | 生成接口返回内容过滤或拒答时不发布被拒内容；JS 预运行无凭证禁网 | 临时产物 4h 自动到期物理清理；删除产物同步擦除原图副本与版本行 | 安全拦截率、预运行失败率、静态降级率 |
 | Trace & Operations | OpenTelemetry + Grafana + Langfuse 传播 `artifact_id`、`run_id`、`version_no` | 原始图片字节与敏感 PII 不入观测 | 分阶段耗时、`reused_block_count`、`verification_status` 分布 |
 
 ---

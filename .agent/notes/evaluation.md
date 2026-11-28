@@ -32,3 +32,5 @@
 - Companion 文档若仍写 `RecentSelfReviewsView` 未接入，以 evaluation / memory 的实现章节为准。
 
 - Guardian 新首页直接展开既有Report观察内容，报告与逐题推导分别读取；不再使用有自评门禁和全历史计数的旧guardian-story。完整ReflectionReport证据版本化引擎仍未实现，不能把当前页面读取当作该引擎完成。首页呈现事实源为 [用户PRD](../../docs/product/prd-user.md#71-核心首页报告直接呈现)。
+
+- 2026-11-28 本轮目标设计完整退场每日自述，缺少可核验答疑是正常报告结果。当前范围见[晚间客观报告](../../docs/technical/domain-evaluation.md)。

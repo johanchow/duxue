@@ -24,7 +24,7 @@
 
 | 方向 | Domain / 契约 | 集成方式 | 说明 |
 | :--- | :--- | :--- | :--- |
-| 上游 | `Identity & Relationship` | Authorization ACL | 校验 `owner_id`、`owner_role`（`teacher \| coach \| guardian \| ward`）；成人显式携带 `context_ward_id` 时强制校验 `verify_ward_access` |
+| 上游 | `Identity & Relationship` | Authorization ACL | 校验 `owner_id`、`owner_role`（`guardian \| ward`）；成人显式携带 `context_ward_id` 时强制校验 `verify_ward_access` |
 | 下游（写委派） | `Tutoring` | 强护栏 Tool 委派（`tutoring.run_homework_turn`） | Ward 作业/答疑意图委派既有 `tutoring_workflow` 执行答案保护与《独立解题凭证》 |
 | 下游（写委派） | `ArtifactWorkspace` | Application Command 调用 | 编排产出或修订多形态教育产物时调用 `Create/Publish/ReviseEduArtifact` |
 | 下游（只读） | `ProblemSolving` | Tool ACL | 求解、整页批改核验与变式出题自解自验 |
@@ -38,7 +38,7 @@
 | `ConversationThread` | 本域唯一聚合根，代表归属某账号/角色的一条独立对话线程（支持 `1:N`） | 业务学习会话（`TutoringSession`）或教育产物（`EduArtifact`） |
 | `ConversationMessage` | 线程内单条可见消息实体（含文本、私有附件引用、关闭词汇表 `interaction_envelope`） | 领域事实账本或模型原始草稿 |
 | `AgentRun` | 单次用户输入在 `EduAgentOrchestrator` 内的有界执行实例（Redis 运行态进度与取消句柄） | 新的业务 Domain 或持久化聚合根 |
-| `RolePolicy` | 代码级强制的角色能力与护栏策略，按 `teacher \| coach \| guardian \| ward` 锁定工具白名单与必经 Gates | 前端隐藏按钮或可被 Prompt 覆盖的软提示 |
+| `RolePolicy` | 代码级强制的角色能力与护栏策略，按 `guardian \| ward` 锁定工具白名单与必经 Gates | 前端隐藏按钮或可被 Prompt 覆盖的软提示 |
 | `EduSkill` | 统一声明式教育技能 SOP（元数据 + Markdown `instructions`），详细契约见 [design-agent.md §4.5](design-agent.md#45-skill-契约与渐进式激活教育通用-agent-一等对象) | 独立业务 Domain |
 | `FocusBoundaryState` | Ward 是否处于进行中 Sprint 或存在未完成受保护作业题的只读快照 | 强制锁屏或硬封禁状态 |
 
@@ -75,7 +75,7 @@ classDiagram
     class ConversationThread {
         +thread_id: UUID
         +owner_id: UUID
-        +owner_role: teacher | coach | guardian | ward
+        +owner_role: guardian | ward
         +title: str
         +context_ward_id: UUID?
         +status: active | deleted
@@ -121,7 +121,7 @@ stateDiagram-v2
 | `problem_solving.solve_and_verify` | 允许（核验结论与推导可直接展示与编排） | 仅内部私有基线，**禁止向 Ward 透出最终答案与完整解法** |
 | `edu.worksheet_grading` / `edu.lesson_pack` | 允许（批改存疑标待复核；出题强制自解自验） | **禁止（RolePolicy 硬剔除）** |
 | `ward_context.read_summary` | 仅当线程显式绑定 `context_ward_id` 且通过 `verify_ward_access` 时**严格只读** | 仅隐式读取自身答疑必要上下文 |
-| `edu.creative_studio`（画图/故事/卡片） | 允许 | 允许，但**必经 `ward.anti_ghostwriting` + `safety.input_output`**；专注态偏题先温和提醒 |
+| `edu.creative_studio`（画图/故事/卡片） | 允许 | 允许，但**必经 `ward.anti_ghostwriting`**；专注态偏题先温和提醒 |
 | `edu.interactive_courseware` | 允许（含解题动态演示） | 允许原理演示，作业上下文必经视觉防泄题检查 |
 | 写回 `Memory` 权限 | **永不自动写回**学生客观能力画像 | 仅作业答疑写教学事实；自由创作经 `ArtifactWorkspace` 写独立 `Interest Signal` |
 
@@ -138,7 +138,7 @@ sequenceDiagram
     participant PM as EduAgentOrchestrator (Process Manager)
     participant POL as RolePolicy & FocusGuard
     participant REG as SkillRegistry & ToolExecutor (Application)
-    participant GATE as Mandatory Gates (Safety / Integrity / Verify)
+    participant GATE as Mandatory Edu Gates (AnswerProtect / AntiGhostwrite / Verify)
     participant AW as ArtifactWorkspace Commands
     participant TU as Tutoring Commands
     participant CV as ConversationThread Commands
@@ -146,7 +146,7 @@ sequenceDiagram
     U->>IF: 自然语言 + 多图输入（可选 thread_id / context_ward_id）
     IF->>PM: StartAgentRun(actor, role, thread_id?, message, attachments)
     PM->>CV: 确保/加载 ConversationThread 并追加用户消息（短事务）
-    PM->>POL: 计算 RolePolicyDecision（Ward 同步查询 Study.GetWardFocusState）
+    PM->>POL: 按本轮输入与相关历史完成意图判断，计算教学策略；专注状态用于偏题提醒
     alt Ward 处于专注态且意图为偏题娱乐创作（未显式确认切换）
         PM->>CV: 追加 focus_guard_prompt 温和专注提醒
     else 正常执行（首轮仅暴露极简 Skill 目录 + 安全只读基础工具）
@@ -162,7 +162,7 @@ sequenceDiagram
             end
             REG-->>PM: 结构化 ToolResult
         end
-        PM->>GATE: 必经门禁（safety.input_output + 已登记 required_gates）
+        PM->>GATE: 必经门禁（本轮策略要求的 required_gates）
         PM->>CV: 按 expected_generation 追加助手回复与关闭词汇表信封（短事务）
     end
     PM-->>IF: SSE 流式进度 + 最终回复 + Artifact 引用卡片
@@ -177,7 +177,7 @@ sequenceDiagram
 | `EduAgentOrchestrator` | Process Manager | 事务外执行有界 Agent Loop、渐进式加载 Skill `instructions` 与受权 Tool 调度 |
 | `RolePolicy & FocusGuard` | Domain Service / ACL | 代码级裁剪工具白名单、强制 Gate 清单与 Ward 专注态检查 |
 | `SkillRegistry & ToolExecutor` | Application Infrastructure | 统一校验 Schema、角色鉴权、超时隔离与 Langfuse 树状埋点 |
-| `Mandatory Gates` | Gate (Code + Heterogeneous Judge) | 强制执行内容安全、答案保护、防代写、核验诚实与脚本预运行 |
+| `Mandatory Gates` | Gate (Code + Heterogeneous Judge) | 强制执行答案保护、防代写、核验诚实与脚本预运行 |
 | `ArtifactWorkspace Commands` | Command | 短事务创建/发布/修订 `EduArtifact` |
 | `Tutoring Commands` | Command | 短事务执行 Ward 受保护作业答疑与解题凭证 |
 | `ConversationThread Commands` | Command | 短事务管理多对话线程、消息追加与 `history_generation` 守卫 |
@@ -200,7 +200,7 @@ sequenceDiagram
 ```python
 class CreateConversationThreadInput(BaseModel):
     owner_id: UUID
-    owner_role: Literal["teacher", "coach", "guardian", "ward"]
+    owner_role: Literal["guardian", "ward"]
     command_id: str
     title: str | None = Field(default=None, max_length=80)
     context_ward_id: UUID | None = None  # 仅成人角色允许传入
@@ -216,7 +216,7 @@ class UpdateConversationThreadInput(BaseModel):
     context_ward_id: UUID | None = None
     clear_context_ward: bool = False
 ```
-- **授权与行为**：校验所有者与 `status=="active"`；更新 `context_ward_id` 前校验绑定权限；仅改变后续轮次只读上下文，不改写历史消息。
+- **授权与行为**：校验所有者与 `status=="active"`；更新 `context_ward_id` 前校验绑定权限；由用户显式指定目标学生或另开线程。指代不明时先询问；读取学情时校验目标 Ward 授权，旧消息中的学生事实不得自动归给新目标。
 
 #### 3. `DeleteConversationThread` & `ClearThreadHistory`
 ```python
@@ -235,7 +235,7 @@ class ClearThreadHistoryInput(BaseModel):
 ```python
 class StartAgentRunInput(BaseModel):
     owner_id: UUID
-    owner_role: Literal["teacher", "coach", "guardian", "ward"]
+    owner_role: Literal["guardian", "ward"]
     command_id: str
     thread_id: UUID | None = None        # 缺省自动续接最近活跃线程或新建
     message_text: str = Field(max_length=4000)
@@ -271,7 +271,7 @@ class PresentHelpOfferInput(BaseModel):
 | `workflows/guardian_experience.py`、`workflows/guardian_mentor.py`、`process_managers/mentor_courseware_orchestrator.py` | **逐步收编进 `EduAgentOrchestrator` 并下线旧编排器** | 本质即通用 Agent 下的「单题直讲」与「动态课件」Skill，避免维护多套平行顶层编排器 |
 | `workflows/tutoring_workflow.py`、`workflows/tutor_loop.py`、`contexts/tutoring/domain/` | **保留，封装为强护栏 Tool（`tutoring.run_homework_turn`）** | 保留经 1600+ 单测与 39+ 离线基准打磨的答案保护状态机、多图隔离与独立泄露裁判，零破坏复用 |
 
-#### 2. Skill / Tool 的统一规范、四层归属与通用兜底模式（详细 Schema 与 5/11/5 初始清单唯一归属 [design-agent.md §4.4–4.5](design-agent.md#44-tool-契约与统一注册演进升级)）
+#### 2. Skill / Tool 的统一规范、四层归属与通用兜底模式（详细 Schema 与 5/11/4 初始清单唯一归属 [design-agent.md §4.4–4.5](design-agent.md#44-tool-契约与统一注册演进升级)）
 
 | 归属层次 | 代码与配置位置 | 负责内容 |
 | :--- | :--- | :--- |
@@ -280,7 +280,7 @@ class PresentHelpOfferInput(BaseModel):
 | **③ 业务能力所有权（Tool 仅作薄封装）** | `app/application/tools/<domain>.py` → 各自 Domain Command / Query / Port | 求解与核验归 `ProblemSolving`；作业强护栏归 `Tutoring`；产物创建/修订归 `ArtifactWorkspace`；学情与专注态只读查询分别归 `Memory`/`Evaluation`/`Study` ACL |
 | **④ 纯无状态外部能力适配** | `duxue-server/app/infrastructure/` + `app/application/ports/` | 生图模型、搜索、Headless 预运行、OSS 读写等基础设施适配器 |
 
-- **不命中 Skill 时的通用兜底（Default General Mode）**：仅开放安全只读基础工具 + `agent.load_skill`（不默认开放写产物或重型求解工具），普通问答直接快速回复并支持后续轮次按需调用 `agent.load_skill` 升级；全场景必经 `safety.input_output`，Ward 存在受保护作业题或 Sprint 专注态时强制保留 `tutoring.answer_protection` 与专注守护。
+- **不命中 Skill 时的通用兜底（Default General Mode）**：仅开放安全只读基础工具 + `agent.load_skill`（不默认开放写产物或重型求解工具），普通问答直接快速回复并支持后续轮次按需调用 `agent.load_skill` 升级；Ward 每轮先由当轮意图判定决定教学护栏，参见 [Agent 设计](design-agent.md)。
 
 ---
 
@@ -295,7 +295,7 @@ class PresentHelpOfferInput(BaseModel):
 ```python
 class ListConversationThreadsQuery(BaseModel):
     owner_id: UUID
-    owner_role: Literal["teacher", "coach", "guardian", "ward"]
+    owner_role: Literal["guardian", "ward"]
     cursor: str | None = None
     limit: int = Field(default=20, ge=1, le=50)
 
@@ -323,16 +323,16 @@ class ConversationMessagesView(BaseModel):
 ```
 
 #### `GetAgentRunStatus`
-- **消费方**：断线重连或轮询恢复长任务进度。
-- **来源与一致性**：只读 Redis `AgentRunStorePort`，**最终一致**（毫秒至秒级）。
+- **消费方**：断线后恢复执行状态与最终结果。
+- **来源与一致性**：按当前账号、角色、线程及历史代际授权读取 PostgreSQL 的 Run 状态。启动时写入 running；成功时在同一事务写终态与最终消息引用。失败或取消也持久化终态。已删除或已清空的历史不可通过 Run 查询恢复。
 
 ```python
 class AgentRunStatusView(BaseModel):
     run_id: UUID
     thread_id: UUID
     status: Literal["running", "completed", "cancelled", "failed"]
-    active_skill_id: str | None
-    planned_steps: list[str]
+    result_message_id: UUID | None  # 完成时指向含回复或产物卡片的最终消息
+    error_code: str | None
     updated_at: datetime
 ```
 
@@ -349,6 +349,7 @@ DELETE /v1/conversations/{thread_id}             → DeleteConversationThread (2
 
 # 统一 Agent 对话与执行流
 POST   /v1/agent/turns                           → StartAgentRun (200/202，可选 thread_id，缺省续接默认对话或新建)
+GET    /v1/agent/runs/{run_id}                   → GetAgentRunStatus
 GET    /v1/agent/runs/{run_id}/events            → SSE 流式推送规划步骤、工具进度与最终交互信封
 POST   /v1/agent/runs/{run_id}/cancel            → CancelAgentRun (200 OK)
 ```
@@ -362,7 +363,7 @@ POST   /v1/agent/runs/{run_id}/cancel            → CancelAgentRun (200 OK)
 | Port owned by Domain/Application | Concrete adapter | Protocol / dependency | Configuration / secret boundary | Timeout, retry, rate limit | Error mapping / fallback |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | `ConversationThreadRepository` | `PgConversationRepository` | PostgreSQL | 复用服务端连接池 | 短事务 | 越权 `403`，不存在 `404` |
-| `AgentRunStorePort` | `RedisAgentRunStore` | Redis Pub/Sub + Hash（短 TTL） | 复用服务端 Redis | 读/写 500ms 超时 | Redis 抖动降级同步轮询 |
+| `AgentRunStorePort` | `RedisAgentRunStore` | Redis Pub/Sub + Hash（短 TTL） | 复用服务端 Redis | 读/写 500ms 超时 | 实时进度不可用时按 run_id 查询持久状态 |
 | `WardContextReadPort` | `AuthorizedWardContextAdapter` | 进程内受权 Query ACL（`Memory` + `Evaluation`） | 强校验 `verify_ward_access` | 2s 超时，无写方法 | 超时跳过只读上下文并如实提示 |
 | `WardFocusStatePort` | `StudyFocusStateAclAdapter` | 进程内受权 Query ACL（`Study`） | 进程内只读 | 1s 超时 | 查询不可用时保守提醒，不放宽作业保护 |
 | `AgentConfigPort` | `AdminBundleConfigAdapter` | Admin 不可变配置快照（[design-agent.md](design-agent.md)） | Prompt/Schema/模型归 Admin；`RolePolicy` 代码锁定 | 本地快照缓存 | 快照校验失败启动 fail-fast |
@@ -402,13 +403,13 @@ erDiagram
 
 | Aggregate / Query | Repository / Store | Tables, keys, indexes, and FK policy | Transaction owner & atomic writes | Schema migration / compatibility / rollback |
 | :--- | :--- | :--- | :--- | :--- |
-| `ConversationThread` | `PgConversationRepository` | `conversation_threads`（PK `thread_id`；列表索引 `(owner_id, owner_role, status, updated_at DESC, thread_id DESC)`）；`conversation_messages`（PK `message_id`，FK `thread_id`，分页索引 `(thread_id, history_generation, created_at ASC, message_id ASC)`） | 各 Command 持有本地短事务；消息追加与 `updated_at` 同事务提交 | 在既有 `conversation_threads`（迁移 `20261030_30` 已含 `history_generation`）增量补齐 `owner_id`、`owner_role`、`title`、`context_ward_id`、`status`，回填既有 Ward 线程；回滚保留新列不删历史消息 |
+| `ConversationThread` | `PgConversationRepository` | `conversation_threads`（PK `thread_id`；列表索引 `(owner_id, owner_role, status, updated_at DESC, thread_id DESC)`）；`conversation_messages`（PK `message_id`，FK `thread_id`，分页索引 `(thread_id, history_generation, created_at ASC, message_id ASC)`） | 各 Command 持有本地短事务；消息追加与 `updated_at` 同事务提交 | 按目标模型建表；旧测试消息无需回填或双读兼容 |
 
 ### 5.4 Async Delivery and Queries
 
 | Event / Job | Outbox / Producer owner | Consumer adapter → Receiving Command | Idempotency key | Ordering & freshness | Retry, dead-letter, reconciliation, replay |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `AgentRun` SSE 事件流 | `EduAgentOrchestrator` → Redis Pub/Sub | FastAPI SSE Endpoint | `run_id + seq` | 单 Run 严格有序；断线重连查 `GetAgentRunStatus` 补齐 | 超时自动终止并落受控错误信封 |
+| `AgentRun` SSE 事件流 | `EduAgentOrchestrator` → Redis Pub/Sub | FastAPI SSE Endpoint | `run_id + seq` | 单 Run 严格有序；进度仅在线展示；重连查 `GetAgentRunStatus`，按最终消息引用恢复结果 | 超时自动终止并落受控错误信封 |
 | `Study.HelpOfferReady.v1`（入站） | `Study` Domain Outbox | Conversation Consumer → `PresentHelpOffer` | `offer_id + version` | 过期或答疑进行中直接丢弃 | 失败按消费者重试，不阻塞正常对话 |
 | `Conversation.HelpOfferPresented.v1`（出站） | `PresentHelpOffer` 本地 Outbox | `Study` Consumer → `MarkHelpOfferPresented` | `receipt_id` | 最终一致（秒级） | 指数退避重试 + 死信对账 |
 
@@ -443,7 +444,8 @@ Given Ward 发起“帮我写一篇 400 字环保作文，明天要交”
 When EduAgentOrchestrator 执行创作链路与 ward.anti_ghostwriting Gate
 Then 独立 Judge 判定为课内作业任务，阻断整篇成品输出，切换为启发共创引导
 
-Given Ward 在有在途请求时切换至另一对话或删除当前对话
+Given Ward 在有在途请求时从对话 A 切换至对话 B
 When 旧 AgentRun 迟到返回结果
-Then 服务端按 thread_id + history_generation 丢弃迟到写入，端侧不向当前对话串台展示旧回复
+Then 服务端将结果写回 A，B 只展示自己的回复
+And 若 A 已清空或删除，按状态与 history_generation 拒收旧回调
 ```

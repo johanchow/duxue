@@ -235,12 +235,12 @@ Skill 文件的 `kind` 固定为 `skill`，存放于 Admin 配置包逻辑路径
 - **不命中已有 Skill 时的通用兜底模式（Default General Mode）**：
   - 不挂载全部 Tool，仅开放安全只读基础工具 + 元工具（`agent.load_skill`、`web.search`、`math.compute`，及成人显式绑定 Ward 时的 `ward_context.read_summary`），**不默认开放写产物或重型求解工具**；
   - 普通百科问答或交流直接快速文字直出，后续任意一轮可随时调用 `agent.load_skill` 动态升级切入专业 Skill；
-  - 全场景仍必经 `safety.input_output`，Ward 若存在受保护作业题或处于 Sprint 专注态，代码级 `RolePolicy` 依然强制挂载 `tutoring.answer_protection` 与专注守护，杜绝假借闲聊绕过红线。
+  - 通用内容过滤沿用模型接口的过滤与拒答机制。每个 Ward turn 的第一次意图/规划调用同时判断当前请求和作业保护策略，输入为本轮原话、附件与解释指代所需的历史。先取得结构化决定，再允许文本流出或执行工具；判定缺失时澄清或进入保护路径。每个新 turn 重新判定，包括正在使用某个 Skill 的续聊；作业求解进入答案保护，作业创作进入防代写。新线程首轮同样适用。Sprint 用于偏题时的专注提醒。
 
-- **初始 MVP 最小内置清单（5 Skills / 11 Tools / 5 Gates）**：
+- **初始 MVP 最小内置清单（5 Skills / 11 Tools / 4 Gates）**：
   - **5 Skills**：`edu.homework_tutoring`、`edu.worksheet_grading`、`edu.interactive_courseware`、`edu.lesson_pack`、`edu.creative_studio`；
   - **11 Tools**：`agent.load_skill`（元工具）、`problem_solving.solve_and_verify` / `math.compute`（`ProblemSolving`）、`tutoring.run_homework_turn`（`Tutoring` 强护栏状态机封装）、`artifact.create_or_revise` / `artifact.get_view`（`ArtifactWorkspace`）、`ward_context.read_summary` / `study.get_focus_state`（只读 ACL）、`image.inspect_crop` / `web.search` / `media.generate_image`（`Infrastructure`）；
-  - **5 Gates**：`safety.input_output`、`tutoring.answer_protection`、`ward.anti_ghostwriting`、`artifact.verification_honesty`、`media.script_sandbox_prerun`。
+  - **4 Gates**：`tutoring.answer_protection`、`ward.anti_ghostwriting`、`artifact.verification_honesty`、`media.script_sandbox_prerun`。
 
 ## 五、执行、领域边界与观测
 
@@ -257,5 +257,5 @@ Trace: agent.turn (session_id=thread_id, user_id=owner_id, metadata={role, conte
  ├── agent.skill: <skill_id>                     (按需加载 Skill：instructions / tools[] / required_gates[])
  │    ├── llm.request: orchestrator.step_N       (推理：澄清追问或发起工具调用)
  │    └── agent.tool: <domain.action>            (ToolExecutor 自动埋点：入参脱敏、耗时、status)
- └── agent.check: exit_gates                     (统一必经出口门禁：safety / answer_protection / verification_honesty 等)
+ └── agent.check: exit_gates                     (统一教育专属出口门禁：answer_protection / anti_ghostwriting / verification_honesty 等)
 ```

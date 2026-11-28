@@ -144,7 +144,7 @@ async def verify_ward_access(
 摄像头 → 网关采图 → OSS + Frame 元数据 → 行为分析（线下作业净专注时长）
 Ward 作业答疑（Tutoring 强护栏）──────────→ 独立解题凭证 + 客观学业事实 → Memory
 Ward 自由创作（ArtifactWorkspace）───────→ CreationFootprintRecorded.v1
-                                              ├─→ Evaluation（自由探索时长 + 创作足迹，与作业严格分口径）
+                                              ├─→ Evaluation（主动保存的作品足迹，与作业严格分口径）
                                               └─→ Memory（独立 Interest Signal，不混入学业掌握度）
 
 【主干流 B · Teacher / Coach / Guardian 教育通用 Agent 生产力闭环】
