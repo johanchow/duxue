@@ -96,10 +96,20 @@ def upgrade(record):
 
     for path in RETIRED_FILES:
         bundle["files"].pop(path, None)
-    bundle["files"]["workflows/companion.json"]["targets"] = [
+    bundle["files"].pop("gates/companion.scene-switch.json", None)
+    companion_flow = bundle["files"]["workflows/companion.json"]
+    companion_flow["targets"] = [
         "tutoring",
         "clarify",
         "safety",
+    ]
+    companion_flow["nodes"] = [
+        node for node in companion_flow["nodes"] if node["id"] != "companion.switch_confirm"
+    ]
+    companion_flow["edges"] = [
+        {"from": "START", "to": "companion.intent_route"},
+        {"from": "companion.intent_route", "to": "companion.final_route"},
+        {"from": "companion.final_route", "to": "END"},
     ]
     graph = bundle["files"]["workflows/tutoring.json"]
     if any(node["id"] == "tutoring.self_review" for node in graph["nodes"]):

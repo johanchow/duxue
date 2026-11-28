@@ -45,6 +45,8 @@ def _bindings_for_files(files):
         result = {**result, **{unit.replace(".", "-"): {"conditions": set(), "handlers": set()} for unit in education_workspace.UNITS}}
     if education_workspace.retired_configuration(files):
         result = {k:v for k,v in result.items() if k not in education_workspace.RETIRED_WORKFLOWS}
+        if "gates/companion.scene-switch.json" not in files:
+            result = {**result, "companion": {"conditions": set(), "handlers": {"decide"}}}
     return result
 
 
@@ -280,6 +282,8 @@ def compile_bundle(bundle: dict) -> CompiledBundle:
     )
     if education_workspace.retired_configuration(file_names):
         expected_files -= education_workspace.RETIRED_FILES
+        if "gates/companion.scene-switch.json" not in file_names:
+            expected_files.discard("gates/companion.scene-switch.json")
     if (
         not isinstance(bundle, dict)
         or set(bundle) != {"format_version", "compatibility", "files"}

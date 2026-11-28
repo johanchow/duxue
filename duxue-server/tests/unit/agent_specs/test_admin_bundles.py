@@ -435,3 +435,55 @@ def test_artifact_identity_and_compatibility_ignore_legacy_definition_versions(
             load_catalog().component_identity("companion.intent").unit_version
             == compiled.digest
         )
+
+
+def test_retired_companion_workflow_compiles_without_scene_switch_gate():
+    from app.agent_specs.admin_bundle import compile_bundle, contract_compatibility
+    from app.agent_specs.configuration import snapshot_bundle
+    from app.agent_specs.runtime import execute_workflow
+    from scripts.upgrade_edu_workspace import upgrade
+
+    base = snapshot_bundle()
+    intent_schema = base["files"]["agents/companion.intent.json"]["output_schema"]
+    intent_schema["properties"]["teaching_policy"] = {
+        "enum": ["homework", "pronunciation", "standard"]
+    }
+    intent_schema["required"] = [*intent_schema["required"], "teaching_policy"]
+    base["compatibility"] = contract_compatibility(base["files"])
+    upgraded = upgrade(
+        {
+            "id": "draft-1",
+            "kind": "draft",
+            "revision": 1,
+            "digest": compile_bundle(base).digest,
+            "bundle": base,
+        }
+    )
+    bundle = upgraded["bundle"]
+    assert "gates/companion.scene-switch.json" not in bundle["files"]
+    flow = bundle["files"]["workflows/companion.json"]
+    assert [node["id"] for node in flow["nodes"]] == [
+        "companion.intent_route",
+        "companion.final_route",
+    ]
+    assert flow["edges"] == [
+        {"from": "START", "to": "companion.intent_route"},
+        {"from": "companion.intent_route", "to": "companion.final_route"},
+        {"from": "companion.final_route", "to": "END"},
+    ]
+    from app.agent_specs.catalog import load_catalog
+    from app.agent_specs.definitions import use_definitions
+
+    compiled = compile_bundle(bundle)
+    seen = []
+    with use_definitions(compiled.catalog):
+        result = execute_workflow(
+            load_catalog().spec("companion"),
+            handlers={
+                "companion.intent": lambda state: seen.append("intent") or {"intent": "tutoring"},
+                "decide": lambda state: seen.append("decide") or {"target": "tutoring"},
+            },
+            conditions={},
+        )
+    assert seen == ["intent", "decide"]
+    assert result["results"]["companion.final_route"] == {"target": "tutoring"}

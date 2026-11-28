@@ -214,3 +214,5 @@
   本次将上述配置加载诊断日志与回归单独提交；配置回归24项通过，组合服务端全量1585 passed / 4 skipped、3 subtests passed。HTTP错误仍只记录类型；ValueError增加最多200字的配置校验原因。此前其他发布任务的笔记保留在工作区。
 
 - 2026-11-28，本地业务 PostgreSQL 迁移至 50。迁移 47 合并课件与绘本的根、不可变版本、写命令回执。新增批改单或教案后，回退至 46 需要先导出新类型。教育工作台的 Admin 草稿升级入口为 `duxue-server/scripts/upgrade_edu_workspace.py`，导入后须回读 digest。详见[产物领域设计](../../docs/technical/domain-artifact-workspace.md)。
+
+- 2026-11-28，Admin 工作草稿 rev21 在 8000 返回目录 200、8011 返回清单不匹配 422。8011 隔离执行器早于本轮清单变更启动；从 duxue-admin 重启 server:dev 后，两端均返回 200，已用只读访客验证 3021 页面能展示 15 个工作流。升级后验收须把同一草稿提交给 Admin 实际使用的隔离执行器。
