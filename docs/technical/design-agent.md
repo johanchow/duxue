@@ -215,6 +215,8 @@ Tool 文件的 `kind` 固定为 `tool`，统一按 `duxue-server/agent_specs/sch
 - **统一注册与执行管道（`ToolRegistry` & `ToolExecutor`）**：
   - 位于 Application 层共享装配基础设施（`duxue-server/app/application/agent/`，不属于任何业务 Domain）；各业务 Tool Handler 仍分散实现于各自领域的 `app/application/tools/<domain>.py`，于 Composition Root 启动期集中注册并校验与 Admin 快照 100% 对齐（缺实现或突破 `contracts.json` 角色上限时启动 fail-fast）；
   - 所有 Tool 调用统一经 `ToolExecutor` 中间件执行：`RolePolicy 角色与绑定校验 → JSON Schema 入参校验 → 预算与超时隔离 → 统一 OTel/Langfuse agent.tool 埋点（含敏感脱敏） → 结构化错误码翻译`。
+  - **超时执行语义**：`timeout_ms` 建立本次调用的共享截止时间，内层模型预算只能缩短、不能延长外层预算；模型请求使用剩余时间并禁用 SDK 自动重试。无数据库会话的只读 Handler 在有界线程池中执行，等待超时返回 `tool_error/tool_timeout`，丢弃迟到结果；未退出的调用继续占用容量，容量耗尽返回 `tool_capacity_exhausted`，不无限排队。上下文随调用传递，保留 trace 与预算。
+  - **事务与取消边界**：写型 Handler 以及持有 `ToolContext.db` 的只读 Handler 留在调用线程，禁止将共享 Session 放入超时后仍运行的后台任务。它们采用协作式截止时间：模型 I/O 继承剩余预算，Handler 返回前再次检查，超时不交付成功结果且编排停止；新增非模型 I/O 也必须使用剩余预算。执行器不能强杀同步函数，也不承诺回滚 Handler 已提交的写入；已提交操作的重试依赖所属 Domain 的命令幂等回执。
   - **两步渐进收口**：Phase 1 先建统一注册表与执行管道，所有新增 Tool 一律走统一注册，并将现有 `TutorToolbox` 的共享原子工具（`math.compute`、`image.inspect_crop`、`web.search`）抽入统一注册表由 `TutorToolbox` 薄委派；Phase 2 收编旧平行编排器。
 
 ### 4.5 Skill 契约与渐进式激活（教育通用 Agent 一等对象）

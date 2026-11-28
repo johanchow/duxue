@@ -6,9 +6,13 @@ Lives in Application shared runtime infrastructure (not a business Domain).
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Literal
+from threading import BoundedSemaphore
+from typing import Any, Literal
 
 from jsonschema import Draft202012Validator
 from pydantic import BaseModel, ConfigDict, Field
@@ -19,10 +23,21 @@ from app.application.agent.role_policy import (
     verify_skill_role_ceiling,
     verify_tool_role_ceiling,
 )
+from app.infrastructure.ai.client import model_time_budget, remaining_model_time
 from app.infrastructure.observability.telemetry import (
     edu_agent_span,
     set_observation_payload,
 )
+
+# Timed-out reads retain their slot until the handler actually exits. This
+# bounds both running work and queued work when an external service stalls.
+_tool_workers = ThreadPoolExecutor(max_workers=8, thread_name_prefix="edu-tool")
+_tool_slots = BoundedSemaphore(8)
+
+
+class _ToolCapacityExceeded(RuntimeError):
+    pass
+
 
 _SCHEMAS_DIR = Path(__file__).resolve().parent / "schemas"
 _TOOL_SCHEMA = json.loads((_SCHEMAS_DIR / "tool.schema.json").read_text(encoding="utf-8"))
@@ -177,6 +192,39 @@ class ToolExecutor:
     def __init__(self, registry: ToolRegistry) -> None:
         self.registry = registry
 
+    @staticmethod
+    def _invoke(spec: ToolSpec, handler: ToolHandler, args: dict, ctx: ToolContext):
+        def checked_call():
+            remaining_model_time()
+            try:
+                return handler(args, ctx)
+            finally:
+                # Includes swallowed provider timeouts and late successful
+                # results. Never let either authorize the next agent step.
+                remaining_model_time()
+
+        with model_time_budget(spec.timeout_ms / 1000):
+            remaining = remaining_model_time()
+            if spec.access == "command" or ctx.db is not None:
+                # A Session and a domain command belong to their caller.
+                # Detaching one on timeout would race rollback/commit and
+                # could leave a write running after the response is returned.
+                return checked_call()
+            slots = _tool_slots
+            if not slots.acquire(blocking=False):
+                raise _ToolCapacityExceeded
+            try:
+                work = _tool_workers.submit(copy_context().run, checked_call)
+            except Exception:
+                slots.release()
+                raise
+            work.add_done_callback(lambda _: slots.release())
+            try:
+                return work.result(timeout=remaining)
+            except TimeoutError:
+                work.cancel()
+                raise
+
     def execute(
         self,
         *,
@@ -222,14 +270,22 @@ class ToolExecutor:
                 span.set_attribute("agent.status", "tool_error")
                 return ToolResult(tool_id=tool_id, status="tool_error", error_code="handler_missing")
             try:
-                output = handler(safe_args, ctx)
+                output = self._invoke(spec, handler, safe_args, ctx)
+            except TimeoutError:
+                span.set_attribute("agent.status", "tool_error")
+                span.set_attribute("agent.error_code", "tool_timeout")
+                return ToolResult(tool_id=tool_id, status="tool_error", error_code="tool_timeout")
+            except _ToolCapacityExceeded:
+                span.set_attribute("agent.status", "tool_error")
+                span.set_attribute("agent.error_code", "tool_capacity_exhausted")
+                return ToolResult(tool_id=tool_id, status="tool_error", error_code="tool_capacity_exhausted")
             except NotImplementedError:
                 span.set_attribute("agent.status", "tool_error")
                 return ToolResult(tool_id=tool_id, status="tool_error", error_code="tool_unavailable")
             except PermissionError:
                 span.set_attribute("agent.status", "denied")
                 return ToolResult(tool_id=tool_id, status="denied", error_code="access_denied")
-            except Exception:
+            except Exception:  # noqa: BLE001 - tool failures must use the public error vocabulary
                 span.set_attribute("agent.status", "tool_error")
                 return ToolResult(tool_id=tool_id, status="tool_error", error_code="execution_failed")
 

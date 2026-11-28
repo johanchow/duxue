@@ -216,3 +216,9 @@
 - 2026-11-28，本地业务 PostgreSQL 迁移至 50。迁移 47 合并课件与绘本的根、不可变版本、写命令回执。新增批改单或教案后，回退至 46 需要先导出新类型。教育工作台的 Admin 草稿升级入口为 `duxue-server/scripts/upgrade_edu_workspace.py`，导入后须回读 digest。详见[产物领域设计](../../docs/technical/domain-artifact-workspace.md)。
 
 - 2026-11-28，Admin 工作草稿 rev21 在 8000 返回目录 200、8011 返回清单不匹配 422。8011 隔离执行器早于本轮清单变更启动；从 duxue-admin 重启 server:dev 后，两端均返回 200，已用只读访客验证 3021 页面能展示 15 个工作流。升级后验收须把同一草稿提交给 Admin 实际使用的隔离执行器。
+
+- 2026-11-28，审查 `docs/edu-general-agent-design` 至 `47529e5`：本次服务端全量 1497 passed / 4 skipped，补跑产物、Sprint、观察 PostgreSQL 专项 9 passed；Flutter 全量 196 passed。全量 Flutter 行覆盖率显示对话管理页 31.7%、资源库页 55.6%，不能据测试全绿声称所有路径覆盖。当前成人发送链路未向规划器注入关联学生摘要，复合任务仍单 Skill 交付，批改单/备课包缺重命名和删除入口，需作为后续验收缺口。只读确认业务库 `duxue-test` 为迁移 50、API 加载 Admin rev21；ADB 设备可用，但本轮未重跑 App 真机业务旅程，历史实机记录不等于当前全面验收。
+
+- 2026-11-28，用户确认成人本期统一 Guardian，不区分教师/家长；自动结合学情生成暂缓，以上审查中的该项不再作为本期缺陷，范围已写入 [PRD §3.3](../../docs/product/prd-edu-agent.md#33-受权学情上下文显式绑定只读不写)。资源库统一入口与通用 K12 助手方向已讨论，本轮未改 App 页面。
+- 2026-11-28，修复统一 Tool 执行器忽略 `timeout_ms`：先红后绿新增 15 项回归，服务端全量 1512 passed / 4 skipped，变更文件 Ruff 与 diff 检查通过。超时与事务边界见 [Tool 契约](../../docs/technical/design-agent.md#44-tool-契约与统一注册演进升级)；持有 Session 的调用与写命令不能因超时遗留到后台，内层模型预算不得延长外层截止时间。未修改 Admin 配置、数据库结构或 Android 包。
+- 2026-11-28，用户明确测试验收以 P0/P1 核心关键路径为准，不追求代码覆盖率。P0 优先验证权限、作业保护、写入/交付门禁、核验诚实性与超时；P1 验证多对话隔离、保存重开、修订/撤销/重做及 Sprint 主流程。新增 `tests/unit/agent/test_critical_paths.py` 13 项单元用例验证拒绝请求零调用、门禁失败安全、无效工具结果不交付、缺证据不判分、题目修改后旧核验失效。对应服务端单元/应用/API 专项 126 passed，Flutter 关键页面 Widget 专项 94 passed；并发与真实持久化仍由既有 PostgreSQL 集成测试补充，不称为纯单元测试。本轮仅补测试，不改生产行为，不将正在扩展的复合任务能力视作已验收。
