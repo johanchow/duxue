@@ -775,3 +775,22 @@ def test_knowledge_scope_is_turn_local_and_return_to_old_problem_stays_protected
     assert again.next_interaction['answer_protected'] is True
     assert judge.calls == 3
     assert '"answer_protected": true' in model.calls[-1]['instruction']
+
+
+def test_current_homework_turn_handles_provider_rejection_without_learning_facts(db, monkeypatch):
+    _, session = _setup(db)
+    workflow, model = _workflow(db)
+
+    def reject(**kwargs):
+        raise ModelGatewayError("content_filter")
+
+    def unexpected_screen():
+        pytest.fail("current turn must use the provider's own content filtering")
+
+    monkeypatch.setattr(model, "complete", reject)
+    monkeypatch.setattr(workflow, "_safety", unexpected_screen)
+    result = _ask(db, workflow, session, teaching_policy="homework")
+    assert result.next_interaction["model_fallback"]
+    assert result.next_interaction["answer_protected"]
+    assert db.query(TutoringProblem).count() == 0
+    assert not _events(db)

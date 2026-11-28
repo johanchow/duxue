@@ -648,10 +648,10 @@ def test_companion_messages_supports_current_thread_lookup_cursor_pagination_and
     )
     assert [m["content"] for m in older_page["messages"]] == ["新会话问题1", "请回答"]
     assert older_page["next_before_thread_version"] is None
-    assert older_page["previous_thread_id"] == first_thread_res.thread_id
+    assert older_page["previous_thread_id"] is None
 
     prev_thread_page = companion_messages(
-        older_page["previous_thread_id"],
+        first_thread_res.thread_id,
         before_thread_version=None,
         limit=2,
         principal=principal,
@@ -728,3 +728,48 @@ def test_voice_display_is_optional_and_never_replaces_source_for_workflow(db, sc
     message = db.query(CompanionMessage).filter_by(thread_id=result.thread_id, author_type="ward").one()
     assert message.content == dispatcher.invocations[0].turn["content"] == source
     assert (message.interaction_ref or {}).get("voice_display_text") == (display if scene == "tutoring" else None)
+
+
+def test_current_turn_policy_reclassifies_hinted_ward_followups(db, monkeypatch):
+    from app.agent_specs.definitions import load_definitions
+    from app.application.ports.companion import IntentProposal
+
+    import json
+    from pathlib import Path
+
+    snapshot = Path(__file__).parents[2] / "fixtures/ward-turn-policy/companion.intent.json"
+    unit = load_definitions().units["companion.intent"]
+    monkeypatch.setitem(unit.output_schema, "required", json.loads(snapshot.read_text())["output_schema"]["required"])
+    replies = iter(["homework", "homework", "pronunciation", None])
+    calls = []
+
+    class Classifier:
+        def propose(self, **kwargs):
+            calls.append(kwargs)
+            return IntentProposal(intent="tutoring", teaching_policy=next(replies))
+
+    class UnexpectedSwitch:
+        def confirm(self, **kwargs):
+            pytest.fail("a current-turn decision must not trigger a second classification")
+
+    ward = create_ward(db)
+    db.commit()
+    dispatcher = FakeWorkflowDispatcher()
+    coordinator = CompanionCoordinator(db, dispatcher=dispatcher, classifier=Classifier(),
+                                       switch_verifier=UnexpectedSwitch())
+    thread_id = None
+    version = 0
+    requests = ["第一步怎么想", "直接说选哪个", "triangle 怎么读", "没有可用判断"]
+    for content in requests:
+        result = coordinator.handle(ward_id=ward.id, thread_id=thread_id,
+                                    expected_thread_version=version, content=content,
+                                    route_hint="planning")
+        thread_id, version = result.thread_id, result.thread_version
+    assert [call["content"] for call in calls] == requests
+    assert calls[1]["recent_utterances"][0]["text"] == requests[0]
+    assert [i.agent_type for i in dispatcher.invocations] == ["tutoring"] * 3
+    assert [i.turn["teaching_policy"] for i in dispatcher.invocations] == [
+        "homework", "homework", "pronunciation",
+    ]
+    assert dispatcher.invocations[-1].turn["tutoring_intent"] == "pronunciation"
+    assert result.decision.target == "clarify"

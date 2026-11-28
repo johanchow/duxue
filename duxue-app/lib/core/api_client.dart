@@ -422,6 +422,7 @@ class ApiClient {
       Map<String, dynamic>.from((await dio.get('/ward/profile')).data as Map);
 
   Future<Map<String, dynamic>> companionTurn({
+    String? commandId,
     required String content,
     required String? threadId,
     required int? expectedThreadVersion,
@@ -434,6 +435,7 @@ class ApiClient {
   }) => _postReplyTurn(
         '/companion/turn',
         {
+          if (commandId != null) 'command_id': commandId,
           'content': content,
           'thread_id': threadId,
           'expected_thread_version': expectedThreadVersion,
@@ -447,9 +449,49 @@ class ApiClient {
         onStage: onStage,
       );
 
+  Future<List<Map<String, dynamic>>> savedWorks() async =>
+      List<Map<String, dynamic>>.from((await dio.get('/v1/creative-works')).data['items'] as List);
+
+  Future<Map<String, dynamic>> creativeWork(String id) async =>
+      Map<String, dynamic>.from((await dio.get('/v1/creative-works/$id')).data);
+
+  Future<Map<String, dynamic>> changeCreativeWork(String id, Map<String, dynamic> command) async =>
+      Map<String, dynamic>.from((await dio.post('/v1/creative-works/$id/commands', data: command,
+        options: Options(receiveTimeout: const Duration(seconds: 150)))).data);
+
+  Future<List<Map<String, dynamic>>> conversations() async {
+    final data = (await dio.get('/v1/conversations')).data;
+    return List<Map<String, dynamic>>.from(data['items'] as List);
+  }
+
+  Future<Map<String, dynamic>> createConversation() async =>
+      Map<String, dynamic>.from((await dio.post('/v1/conversations', data: {})).data);
+
+  Future<Map<String, dynamic>> conversationMessages(String id) async =>
+      Map<String, dynamic>.from((await dio.get('/v1/conversations/$id/messages')).data);
+
+  Future<Uint8List> conversationImage(String thread, String message, int index) async {
+    final response = await dio.get<List<int>>('/v1/conversations/$thread/messages/$message/images/$index',
+        options: Options(responseType: ResponseType.bytes));
+    return Uint8List.fromList(response.data!);
+  }
+
+  Future<void> deleteConversation(String id) async {
+    await dio.delete('/v1/conversations/$id');
+  }
+
+  Future<void> renameConversation(String id, String title) async {
+    await dio.patch('/v1/conversations/$id', data: {'title': title});
+  }
+
+  Future<Map<String, dynamic>> clearConversation(String id) async =>
+      Map<String, dynamic>.from((await dio.post('/v1/conversations/$id/clear')).data);
+
   Future<Map<String, dynamic>> guardianExperienceTurn({
     required String content,
     String? stateToken,
+    String? threadId,
+    String? commandId,
     List<String> attachmentKeys = const [],
     String mode = 'student_guide',
     void Function(String)? onStage,
@@ -458,6 +500,8 @@ class ApiClient {
         {
           'content': content,
           'state_token': stateToken,
+          if (threadId != null) 'thread_id': threadId,
+          if (commandId != null) 'command_id': commandId,
           'attachment_keys': attachmentKeys,
           'mode': mode,
         },

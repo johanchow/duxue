@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'dart:math';
 import 'dart:typed_data';
 
@@ -20,6 +21,8 @@ import '../shared/chat_markdown.dart';
 import '../shared/reply_progress.dart';
 import '../shared/voice_composer.dart';
 import 'home_task_card.dart';
+import 'conversation_picker.dart';
+import 'ward_creative_work.dart';
 import 'guardian_report_view.dart';
 import 'sprint_card.dart';
 import 'chat_image_viewer.dart';
@@ -188,7 +191,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   String? companionThreadId;
   int? companionThreadVersion;
   int? nextBeforeThreadVersion;
-  String? previousThreadId;
   String? historyCursorThreadId;
   bool loadingOlderMessages = false;
   String? planFeedback;
@@ -199,7 +201,8 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   final dismissedPlanSuggestions = <String>{};
   String? planDraftId;
   int? planDraftVersion;
-  String? failedPlanText;
+  String? failedPlanText, _failedCommandId;
+  bool _failedPronunciation = false;
   List<Map<String, dynamic>> pronunciationLessons = const [];
   SpeechPlayback? _speechPlayback;
   String? _voiceDisplayText;
@@ -319,7 +322,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     ref.read(telemetryProvider).recordMetric(
         'app.search_photo.visible_latency', timer.elapsedMilliseconds.toDouble());
   }
-  String? _pendingClearCommand;
 
   bool planListOpen = false;
   bool planChatOpen = false;
@@ -472,8 +474,12 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
               if (!_autoRead) unawaited(_stopSpeech());
             case 'tasks':
               _openPlanList();
-            case 'history':
+            case 'current':
               _openPlanChat();
+            case 'works':
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const WardWorksLibrary()));
+            case 'history':
+              _chooseThread();
             case 'sprint':
               _openSprint();
             case 'clear':
@@ -483,9 +489,11 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         itemBuilder: (_) => [
           CheckedPopupMenuItem(value: 'autoRead', checked: _autoRead, child: const Text('自动朗读 Agent 回复')),
           const PopupMenuItem(value: 'tasks', child: Text('作业')),
+          PopupMenuItem(value: 'current', child: Text('当前对话')),
           PopupMenuItem(value: 'history', child: Text('历史对话')),
+          PopupMenuItem(value: 'works', child: Text('我的作品')),
           PopupMenuItem(value: 'sprint', child: Text('专注挑战')),
-          PopupMenuItem(value: 'clear', child: Text('清空历史对话')),
+          PopupMenuItem(value: 'clear', child: Text('清空当前对话')),
         ],
       );
 
@@ -908,7 +916,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   }
 
   bool get _hasOlderHistory =>
-      nextBeforeThreadVersion != null || previousThreadId != null;
+      nextBeforeThreadVersion != null;
 
   Widget _planReviewCard(List<Map<String, dynamic>> items,
           {required bool active}) =>
@@ -1017,7 +1025,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
             TextButton(
                 onPressed:
                     _chatBusy ? null : () => _submitPlanInput(failedPlanText!,
-                        attachmentKeys: _failedAttachmentKeys, display: _failedVoiceDisplay),
+                        attachmentKeys: _failedAttachmentKeys, display: _failedVoiceDisplay, commandId: _failedCommandId, pronunciation: _failedPronunciation),
                 child: const Text('重试')),
           ]),
         ),
@@ -1066,13 +1074,76 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     );
   }
 
+  Future<void> _chooseThread() async {
+    if (clearingHistory) return;
+    final id = await Navigator.of(context).push<String>(MaterialPageRoute(
+      builder: (_) => ConversationPicker(api: ref.read(apiProvider), current: companionThreadId),
+    ));
+    if (!mounted || id == null) return;
+    if (id != companionThreadId) {
+      _replyAudio.clear();
+      unawaited(_stopSpeech());
+      setState(() {
+        _resetThread();
+        companionThreadId = id.isEmpty ? null : id;
+      });
+      final storage = ref.read(tokenStorageProvider);
+      if (id.isEmpty) {
+        await storage.clearCompanionThread();
+      } else {
+        await storage.saveCompanionThread(id, 0);
+      }
+      if (!mounted) return;
+      try {
+        await _refreshTranscript();
+      } catch (_) {
+        if (mounted) showMessage(context, '对话加载失败，请重新打开');
+      }
+    }
+    if (mounted) _openPlanChat();
+  }
+
+  void _resetThread() {
+    _waitingForReply = false;
+    _replyStages = const [];
+    _questionTiming?.finish('cancelled');
+    _chatGeneration++;
+    planSending = false;
+    planMessages.clear();
+    historyMessages.clear();
+    rememberedImages.clear();
+    _imageLoads.clear();
+    stagedImages.clear();
+    _failedAttachmentKeys = const [];
+    companionThreadId = null;
+    companionThreadVersion = null;
+    historyCursorThreadId = null;
+    nextBeforeThreadVersion = null;
+    loadingOlderMessages = false;
+    _userScrolledAwayFromTop = false;
+    planDraft = [];
+    planAdviceItems = [];
+    planClarificationSlots = [];
+    dismissedPlanSuggestions.clear();
+    planFeedback = null;
+    planInteractionKind = null;
+    planConfirmAction = null;
+    planSuggestionAction = null;
+    planClarifyAction = null;
+    planDraftId = null;
+    planDraftVersion = null;
+    failedPlanText = null;
+    pronunciationLessons = const [];
+    chatSubject = null;
+  }
+
   Future<void> _clearChatHistory() async {
     if (clearingHistory) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('清空历史对话？'),
-        content: const Text('清空对话列表并重新开始。已保存的任务、计划、学习记录和长期记忆会保留，历史数据仍由系统保存。'),
+        title: const Text('清空当前对话？'),
+        content: const Text('清空当前对话中的消息。其他对话和已保存的作品会保留。'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context, false),
@@ -1084,52 +1155,24 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
       ),
     );
     if (confirmed != true || !mounted || clearingHistory) return;
-    _pendingClearCommand ??=
-        List.generate(16, (_) => Random.secure().nextInt(256))
-            .map((value) => value.toRadixString(16).padLeft(2, '0'))
-            .join();
     setState(() => clearingHistory = true);
     var serverCleared = false;
     try {
-      await ref.read(apiProvider).clearCompanionHistory(_pendingClearCommand!);
+      final id = companionThreadId;
+      final result = id == null ? null : await ref.read(apiProvider).clearConversation(id);
+      final version = result?['version'] as int?;
       serverCleared = true;
       _replyAudio.clear();
       await _stopSpeech();
       if (!mounted) return;
       setState(() {
-        _questionTiming?.finish('cancelled');
-        _chatGeneration++;
-        _pendingClearCommand = null;
-        planSending = false;
-        planMessages.clear();
-        historyMessages.clear();
-        rememberedImages.clear();
-        _imageLoads.clear();
-        stagedImages.clear();
-        _failedAttachmentKeys = const [];
-        companionThreadId = null;
-        companionThreadVersion = null;
-        historyCursorThreadId = null;
-        nextBeforeThreadVersion = null;
-        previousThreadId = null;
-        loadingOlderMessages = false;
-        _userScrolledAwayFromTop = false;
-        planDraft = [];
-        planAdviceItems = [];
-        planClarificationSlots = [];
-        dismissedPlanSuggestions.clear();
-        planFeedback = null;
-        planInteractionKind = null;
-        planConfirmAction = null;
-        planSuggestionAction = null;
-        planClarifyAction = null;
-        planDraftId = null;
-        planDraftVersion = null;
-        failedPlanText = null;
-        pronunciationLessons = const [];
-        chatSubject = null;
+        _resetThread();
+        companionThreadId = id;
+        companionThreadVersion = version;
       });
-      await ref.read(tokenStorageProvider).clearCompanionThread();
+      if (id != null && version != null) {
+        await ref.read(tokenStorageProvider).saveCompanionThread(id, version);
+      }
       await _stopSpeech();
       if (mounted) showMessage(context, '对话已清空，可以重新开始');
     } catch (_) {
@@ -1304,7 +1347,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     }
   }
 
-  String _sprintCommandId() =>
+  String _newCommandId() =>
       List.generate(16, (_) => Random.secure().nextInt(256))
           .map((value) => value.toRadixString(16).padLeft(2, '0'))
           .join();
@@ -1335,7 +1378,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
       if (!_chatBusy && !sprintBusy && notice is Map) {
         try {
           await ref.read(apiProvider).sprintCommand(notice['id'] as String, {
-            'command_id': _sprintCommandId(),
+            'command_id': _newCommandId(),
             'action': 'claim_notice',
             'expected_version': notice['version']
           });
@@ -1414,7 +1457,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     if (pendingSprintRequest == null ||
         pendingSprintRequest!['topic'] != chosenTopic ||
         pendingSprintRequest!['target_minutes'] != target) {
-      pendingSprintRequest = {...data, 'command_id': _sprintCommandId()};
+      pendingSprintRequest = {...data, 'command_id': _newCommandId()};
     }
     setState(() => sprintBusy = true);
     try {
@@ -1449,7 +1492,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     setState(() => sprintBusy = true);
     try {
       await ref.read(apiProvider).sprintCommand(row['id'] as String, {
-        'command_id': _sprintCommandId(),
+        'command_id': _newCommandId(),
         'action': action,
         'expected_version': row['version']
       });
@@ -2041,19 +2084,29 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   }
 
   Future<void> _submitPlanInput(String text,
-      {required List<String> attachmentKeys, bool pronunciation = false, String? display}) async {
+      {required List<String> attachmentKeys, bool pronunciation = false, String? display, String? commandId}) async {
     if (_chatBusy) return;
     final speechGeneration = _speechGeneration;
     final timing = ref.read(conversationLatencyProvider).start('ward');
     _questionTiming = timing;
+    final sendId = commandId ?? _newCommandId();
     final photoTimer = Stopwatch()..start();
     _photoCommandId = null;
     _photoLatency = null;
     final generation = _chatGeneration;
     final onStage = _startCompanionReply();
     try {
+      if (companionThreadId == null) {
+        final created = await ref.read(apiProvider).createConversation();
+        if (!mounted || generation != _chatGeneration) return;
+        companionThreadId = created['thread_id'] as String;
+        companionThreadVersion = created['version'] as int;
+        await ref.read(tokenStorageProvider).saveCompanionThread(companionThreadId!, companionThreadVersion!);
+        if (!mounted || generation != _chatGeneration) return;
+      }
       final result = await timing.request(() => ref.read(apiProvider).companionTurn(
           content: text,
+          commandId: sendId,
           onStage: onStage,
           voiceDisplayText: display,
           threadId: companionThreadId,
@@ -2072,6 +2125,8 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         _scrollToChatBottom(onlyIfNearBottom: true);
         setState(() {
           failedPlanText = text;
+          _failedCommandId = sendId;
+          _failedPronunciation = pronunciation;
           _failedAttachmentKeys = attachmentKeys;
           _failedVoiceDisplay = display;
         });
@@ -2605,6 +2660,9 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
                     ? () => _photoVisible(message.commandId)
                     : null,
                 visual: message.visual),
+            if (message.interactionRef?['artifact_id'] case final String id)
+              OutlinedButton.icon(icon: const Icon(Icons.menu_book), label: const Text('打开绘本'),
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => WardStoryPage(id: id)))),
             if (message.readable)
               TextButton.icon(
                 onPressed: () => _readReply(message),
@@ -2727,9 +2785,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   Future<void> _loadOlderMessages() async {
     if (clearingHistory || loadingOlderMessages || !_hasOlderHistory) return;
     final generation = _chatGeneration;
-    final targetThreadId = nextBeforeThreadVersion != null
-        ? (historyCursorThreadId ?? companionThreadId)
-        : previousThreadId;
+    final targetThreadId = historyCursorThreadId ?? companionThreadId;
     final beforeVersion = nextBeforeThreadVersion;
     if (targetThreadId == null) return;
 
@@ -2761,7 +2817,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         historyMessages.insertAll(0, deduped);
         historyCursorThreadId = targetThreadId;
         nextBeforeThreadVersion = page['next_before_thread_version'] as int?;
-        previousThreadId = page['previous_thread_id'] as String?;
       });
       if (hadClients && deduped.isNotEmpty) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -2820,7 +2875,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         historyCursorThreadId = resolvedThreadId;
         nextBeforeThreadVersion =
             transcript['next_before_thread_version'] as int?;
-        previousThreadId = transcript['previous_thread_id'] as String?;
       } else {
         historyMessages
             .removeWhere((m) => m.id != null && latestIds.contains(m.id));

@@ -176,6 +176,8 @@ def guardian_mentor_explain(*, payload, recent_utterances=None, current_images=N
 
 
 BUILDERS = {
+    "ward.story_pages.context": eval_grade,
+    "ward.anti_ghostwriting.context": eval_grade,
     "behavior.visible_activity.context": eval_grade,
     "behavior.support_opportunity.context": eval_grade,
     "evals.semantic_judge.context": eval_grade,

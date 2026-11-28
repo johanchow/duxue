@@ -582,8 +582,14 @@ class SelfReviewAspect(Base):
 # checkpointer.
 class ConversationThread(Base):
     __tablename__ = "conversation_threads"
+    __table_args__ = (CheckConstraint("(ward_id IS NULL) <> (guardian_id IS NULL)", name="ck_conversation_one_owner"),)
     id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
-    ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id"), index=True)
+    ward_id: Mapped[str | None] = mapped_column(ForeignKey("user_wards.id"), index=True)
+    guardian_id: Mapped[str | None] = mapped_column(ForeignKey("user_guardians.id"), index=True)
+    title: Mapped[str] = mapped_column(String(80), default="新对话", server_default="新对话")
+    clear_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+
     # Kept as a validated reference instead of an FK to avoid a circular
     # thread/run dependency; AgentRun.thread_id remains the authoritative FK.
     focus_run_ref: Mapped[str | None] = mapped_column(String(100), nullable=True)
@@ -591,6 +597,24 @@ class ConversationThread(Base):
     version: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+
+class GuardianConversationTurn(Base):
+    __tablename__ = "guardian_conversation_turns"
+    __table_args__ = (
+        UniqueConstraint("thread_id", "command_id"),
+        UniqueConstraint("thread_id", "position"),
+    )
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
+    thread_id: Mapped[str] = mapped_column(ForeignKey("conversation_threads.id"), index=True)
+    command_id: Mapped[str] = mapped_column(String(128))
+    position: Mapped[int] = mapped_column(Integer)
+    generation: Mapped[int] = mapped_column(Integer)
+    mode: Mapped[str] = mapped_column(String(24))
+    content: Mapped[str] = mapped_column(Text)
+    attachments: Mapped[list] = mapped_column(JSON)
+    reply: Mapped[dict] = mapped_column(JSON)
+    continuation: Mapped[dict] = mapped_column(JSON)
 
 
 class AgentRun(Base):
@@ -1026,3 +1050,31 @@ class GuardianReportInbox(Base):
     version: Mapped[int] = mapped_column(Integer)
 
 from app.infrastructure.persistence import courseware_tables as _courseware_tables  # noqa: E402,F401
+
+
+class CreativeWork(Base):
+    __tablename__ = "creative_works"
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
+    ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id"), index=True)
+    source_thread_id: Mapped[str] = mapped_column(ForeignKey("conversation_threads.id"), index=True)
+    title: Mapped[str] = mapped_column(String(80))
+    saved: Mapped[bool] = mapped_column(Boolean, default=False)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    cursor: Mapped[int] = mapped_column(Integer, default=0)
+    branch: Mapped[list] = mapped_column(JSON, default=lambda: [1])
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+
+class CreativeWorkVersion(Base):
+    __tablename__ = "creative_work_versions"
+    work_id: Mapped[str] = mapped_column(ForeignKey("creative_works.id"), primary_key=True)
+    number: Mapped[int] = mapped_column(Integer, primary_key=True)
+    pages: Mapped[list] = mapped_column(JSON)
+
+
+class CreativeWorkCommand(Base):
+    __tablename__ = "creative_work_commands"
+    work_id: Mapped[str] = mapped_column(ForeignKey("creative_works.id"), primary_key=True)
+    command_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    digest: Mapped[str] = mapped_column(String(64))
+    result: Mapped[dict] = mapped_column(JSON)

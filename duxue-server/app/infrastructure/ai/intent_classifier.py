@@ -33,7 +33,10 @@ def parse_intent_payload(raw: str) -> IntentProposal:
     except json.JSONDecodeError:
         return IntentProposal(intent="unclear")
     intent = data.get("intent") if isinstance(data, dict) else None
-    if intent not in _LABELS:
+    if not isinstance(intent, str) or intent not in _LABELS:
+        return IntentProposal(intent="unclear")
+    policy = data.get("teaching_policy")
+    if policy is not None and policy not in ("homework", "pronunciation", "standard"):
         return IntentProposal(intent="unclear")
     history_image_ref = "none" if data.get("history_image_ref") == "none" else "needed"
     thinking_effort = normalize_thinking_effort(
@@ -44,6 +47,8 @@ def parse_intent_payload(raw: str) -> IntentProposal:
     return IntentProposal(
         intent=intent,  # type: ignore[arg-type]
         history_image_ref=history_image_ref,
+        teaching_policy=policy,
+        creative_work=data.get("creative_work") is True and policy == "standard" and intent == "tutoring",
         thinking_effort=thinking_effort,
     )
 

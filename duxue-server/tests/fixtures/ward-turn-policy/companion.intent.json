@@ -1,0 +1,94 @@
+{
+  "id": "companion.intent",
+  "kind": "agent",
+  "tools": [],
+  "models": [
+    {
+      "name": "qwen3.7-flash",
+      "timeout_ms": 20000,
+      "temperature": 0,
+      "component_id": "companion.intent",
+      "thinking_effort": "off",
+      "max_output_tokens": 90
+    }
+  ],
+  "prompt": {
+    "id": "companion.intent.prompt",
+    "template": "你负责学生当前这一轮的路由。输出 JSON，按以下顺序判定。\n先判断 teaching_policy。homework：学生围绕一道具体题、一份作业或待提交的创作，请求思路、求解、校验、代做、索取选项或继续前面的推导。首次只问方法也属于 homework。省略题面的追问根据 recent_utterances 找到所指的题。pronunciation：当前只想听一个词或一句话的读法。standard：当前是独立的科普、释义、闲聊或其他非作业请求。上一轮的类别不能替本轮作决定。\nintent：homework 和 pronunciation 一律 tutoring。正常学习、科普与闲聊也用 tutoring。确实无法理解用 unclear。\nhistory_image_ref：当前指代历史图片、缺少它无法理解时 needed，独立文字请求或已有本轮题图时 none。\nthinking_effort：发音、独立知识、词义、无需推导的阅读理解用 off；基础运算和常规追问 low；多步数理题 medium；复杂证明或高考综合推导 high。教学保护与推理难度分别判断。\n只输出这四个字段。不解题。"
+  },
+  "operation": "intent_proposal",
+  "risk_tier": "standard",
+  "agent_label": "planning",
+  "error_codes": [
+    "agent_execution_failed",
+    "invalid_model_candidate",
+    "model_provider_disabled",
+    "model_provider_not_configured",
+    "model_transport_error"
+  ],
+  "display_name": "对话意图路由",
+  "input_schema": {
+    "type": "object",
+    "required": [
+      "user"
+    ],
+    "properties": {
+      "user": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "array"
+          }
+        ]
+      }
+    },
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": "object",
+    "required": [
+      "intent",
+      "teaching_policy"
+    ],
+    "properties": {
+      "intent": {
+        "enum": [
+          "planning",
+          "tutoring",
+          "reflection",
+          "unclear"
+        ]
+      },
+      "teaching_policy": {
+        "enum": [
+          "homework",
+          "pronunciation",
+          "standard"
+        ]
+      },
+      "thinking_effort": {
+        "enum": [
+          "off",
+          "low",
+          "medium",
+          "high"
+        ]
+      },
+      "history_image_ref": {
+        "enum": [
+          "none",
+          "needed"
+        ]
+      }
+    },
+    "additionalProperties": false
+  },
+  "accepts_images": false,
+  "implementation": "llm",
+  "input_contract": "intent-input.v1",
+  "output_contract": "intent-proposal.v1",
+  "context_builder_id": "companion.intent.context",
+  "requires_agent_switch": true
+}

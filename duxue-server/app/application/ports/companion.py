@@ -19,7 +19,9 @@ RunStatus = Literal[
 class IntentProposal(BaseModel):
     """Untrusted semantic candidate. Code accepts only this closed label set."""
 
+    creative_work: bool = False
     intent: IntentLabel
+    teaching_policy: Literal["homework", "pronunciation", "standard"] | None = None
     history_image_ref: HistoryImageRef = "needed"
     thinking_effort: ThinkingEffort = "medium"
 

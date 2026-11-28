@@ -6,6 +6,8 @@
 
 全系统 Domain Inventory、Domain Map 与分层架构图唯一归属 [ddd-overview.md](ddd-overview.md)。本 Domain 是 **Core Domain**，负责双端所有多形态、可版本化、可对话局部修订的教育产物（`EduArtifact`）的生命周期、核验诚实与资产沉淀。
 
+当前实现覆盖成人课件和学生图文绘本。课件继续使用既有版本库，绘本通过 [作品命令](../../duxue-server/app/application/commands/creative_works.py) 保存不可变页快照。两者用来源对话关联，分别从成人「我的资源库」和学生「我的作品」重开。绘本保存和已保存作品的修改会写入创作足迹 Outbox；后文的晚间报告投影、批改诊断单和教案卷仍属目标设计。
+
 ---
 
 ## 一、边界与统一语言

@@ -265,4 +265,7 @@ celery_app.conf.task_routes = {
 def expire_temporary_coursewares():
     from app.infrastructure.persistence.pg_courseware import PgCoursewareRepository
     from app.application.commands.mentor_courseware import MentorCoursewareCommandService
-    return MentorCoursewareCommandService(PgCoursewareRepository()).expire_temporary()
+    from app.application.commands.creative_works import expire_temporary
+    with SessionLocal() as db:
+        stories = expire_temporary(db)
+    return stories + MentorCoursewareCommandService(PgCoursewareRepository()).expire_temporary()

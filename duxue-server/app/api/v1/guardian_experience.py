@@ -2,11 +2,14 @@
 import secrets
 from datetime import datetime, timezone
 from typing import Annotated
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.orm import Session
 
+from app.api.v1.conversations import thread_for
+from app.infrastructure.persistence.models import GuardianConversationTurn
 from app.api.deps import Principal, current_guardian, expose_turn_trace, get_db
 from app.api.reply_events import GUIDE_STAGES, stream_reply
 from app.api.schemas import UploadUrlRequest
@@ -37,6 +40,8 @@ router = APIRouter(prefix="/guardian/experience", tags=["guardian-experience"])
 class ExperienceTurnRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     content: str = Field(default="", max_length=2400)
+    thread_id: UUID | None = None
+    command_id: str | None = Field(default=None, min_length=1, max_length=128)
     state_token: str | None = Field(default=None, max_length=64000)
     attachment_keys: list[str] = Field(default_factory=list, max_length=4)
     mode: ExperienceMode = "student_guide"
@@ -46,6 +51,8 @@ class ExperienceTurnRequest(BaseModel):
         self.content = self.content.strip()
         if not self.content and not self.attachment_keys:
             raise ValueError("a question or image is required")
+        if self.thread_id and not self.command_id:
+            raise ValueError("a threaded turn requires command_id")
         return self
 
 
@@ -76,6 +83,26 @@ def turn(
 ):
     purpose = MENTOR_PURPOSE if body.mode == "guardian_explain" else "conversation"
     state = _state(body.state_token, principal, purpose) if body.state_token else {}
+    def replay(session, thread):
+        past = session.query(GuardianConversationTurn).filter_by(thread_id=thread.id, command_id=body.command_id).one_or_none()
+        if past is None:
+            return None
+        if (past.content != body.content or past.attachments != body.attachment_keys or
+                past.mode != body.mode or past.generation != thread.history_generation):
+            raise HTTPException(409, "turn no longer matches request")
+        return past.reply
+
+    if body.thread_id:
+        thread = thread_for(db, principal, body.thread_id)
+        version = thread.version
+        existing = replay(db, thread)
+        if existing is None:
+            previous = db.query(GuardianConversationTurn).filter_by(
+                thread_id=thread.id, generation=thread.history_generation, mode=body.mode,
+            ).order_by(GuardianConversationTurn.position.desc()).first()
+            if not state.get("handoff"):
+                state = previous.continuation if previous else {}
+
     if any(not owns_image(principal.user_id, key) or not storage.exists(key) for key in body.attachment_keys):
         raise HTTPException(400, "invalid experience attachment")
     default_prompt = (
@@ -94,7 +121,9 @@ def turn(
 
     def invoke():
         try:
-            return experience_turn(
+            if body.thread_id and existing is not None:
+                return existing
+            answer = experience_turn(
                 guardian_id=principal.user_id,
                 content=body.content or default_prompt,
                 attachment_keys=body.attachment_keys,
@@ -102,6 +131,27 @@ def turn(
                 mode=body.mode,
                 bank_lookup=lookup,
             )
+            if body.thread_id:
+                with Session(bind) as writer:
+                    row = thread_for(writer, principal, body.thread_id, lock=True)
+                    cached = replay(writer, row)
+                    if cached is not None:
+                        return cached
+                    if row.version != version:
+                        raise HTTPException(409, "conversation changed during generation")
+                    row.version += 1
+                    message_id = str(uuid4())
+                    answer = {**answer, "message_id": message_id}
+                    continuation = _state(answer["state_token"], principal, purpose) if answer.get("state_token") else state
+                    writer.add(GuardianConversationTurn(
+                        id=message_id, thread_id=row.id, generation=row.history_generation, position=row.version,
+                        command_id=body.command_id, mode=body.mode, content=body.content,
+                        attachments=body.attachment_keys, reply=answer, continuation=continuation,
+                    ))
+                    if row.title == "新对话" and body.content:
+                        row.title = body.content[:40]
+                    writer.commit()
+            return answer
         except ModelTimeBudgetExceeded as error:
             raise HTTPException(503, {"code": "mentor_timeout"}) from error
         except MentorRateLimitExceeded as error:

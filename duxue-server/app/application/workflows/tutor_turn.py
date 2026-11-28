@@ -446,6 +446,8 @@ def check_authority(candidate: TutorTurnCandidate, permit: TutorPermit) -> Verdi
     if act == "safety":
         return Verdict(True)
     if act == "pronounce":
+        if permit.homework_request:
+            return Verdict(False, "unexpected_pronunciation")
         if not candidate.lessons:
             return Verdict(False, "pronounce_without_lesson")
         for lesson in candidate.lessons:

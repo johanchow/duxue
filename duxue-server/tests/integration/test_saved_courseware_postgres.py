@@ -110,3 +110,50 @@ def verify_courseware_transactions(engine):
                 coursewares.c.courseware_id == temp.courseware_id
             )
         )
+
+
+def test_saved_courseware_survives_source_thread_deletion(migrated_engine, monkeypatch):  # noqa: F811
+    from sqlalchemy.orm import Session
+    from app.api.deps import Principal, current_guardian_or_ward, get_db
+    from app.api.v1 import conversations, guardian_courseware, guardian_experience
+    from app.infrastructure.persistence.models import Guardian, User
+
+    owner = uuid4()
+    principal = Principal(user_id=str(owner), role="guardian")
+    with Session(migrated_engine) as db:
+        db.add(User(id=str(owner), type="guardian"))
+        db.flush()
+        db.add(Guardian(id=str(owner), name="老师", email=f"{owner}@example.org", role="guardian"))
+        db.commit()
+
+    def session():
+        with Session(migrated_engine) as db:
+            yield db
+
+    client = _make_client([owner], PgCoursewareRepository(migrated_engine))
+    commands, queries, _ = client.app.dependency_overrides[guardian_courseware.get_courseware_services]()
+    monkeypatch.setattr(guardian_courseware, "_commands", commands)
+    monkeypatch.setattr(guardian_courseware, "_queries", queries)
+    client.app.include_router(conversations.router)
+    client.app.include_router(guardian_experience.router)
+    client.app.dependency_overrides[current_guardian_or_ward] = lambda: principal
+    client.app.dependency_overrides[get_db] = session
+    monkeypatch.setattr(guardian_experience, "experience_turn", lambda **kw: {"content": "画图理解通分"})
+    root = "/v1/conversations"
+    thread = client.post(root, json={}).json()["thread_id"]
+    answer = client.post("/guardian/experience/turn", json={
+        "thread_id": thread, "mode": "guardian_explain", "content": "演示通分", "command_id": "turn-a",
+    }).json()
+    courseware = client.post("/guardian/courseware", json={
+        "command_id": "turn-" + answer["message_id"], "prompt_text": "演示通分",
+    }).json()["courseware_id"]
+    view = client.get("/guardian/courseware/" + courseware).json()
+    assert view["status"] == "ready"
+    assert client.post(f"/guardian/courseware/{courseware}/save", json={
+        "command_id": "save", "expected_state_revision": view["state_revision"],
+    }).is_success
+    messages = client.get(f"{root}/{thread}/messages").json()["items"]
+    assert messages[-1]["courseware_id"] == courseware
+    assert client.delete(f"{root}/{thread}").status_code == 204
+    assert client.get(f"{root}/{thread}/messages").status_code == 404
+    assert client.get("/guardian/courseware/" + courseware).json()["retention_status"] == "saved"

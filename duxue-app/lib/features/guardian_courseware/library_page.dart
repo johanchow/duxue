@@ -88,7 +88,7 @@ class _LibraryState extends ConsumerState<CoursewareLibraryPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-      appBar: AppBar(title: const Text('我的课件')),
+      appBar: AppBar(title: const Text('我的资源库')),
       body: RefreshIndicator(
           onRefresh: load,
           child: ListView(

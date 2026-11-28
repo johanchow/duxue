@@ -26,14 +26,22 @@ class IntentRouter:
         focus_run: object | None,
         proposal: IntentProposal | None = None,
         has_image: bool = False,
+        current_turn_policy: bool = False,
         switch_allowed: bool | None = None,
     ) -> RouteDecision:
-        if self.blocks_for_safety(content):
+        if not current_turn_policy and self.blocks_for_safety(content):
             return RouteDecision(
                 target="safety",
                 mode="clarify",
                 confidence=1,
                 route_reason="safety_keyword",
+            )
+        if proposal and proposal.teaching_policy in {"homework", "pronunciation"}:
+            active = getattr(focus_run, "agent_type", None)
+            return RouteDecision(
+                target="tutoring", mode="continue" if active == "tutoring" else ("handoff" if active else "start"),
+                active_session_id=getattr(focus_run, "id", None), confidence=0.95,
+                route_reason="current_turn_teaching_policy",
             )
         if route_hint in _BUSINESS_TARGETS:
             return RouteDecision(
@@ -49,17 +57,6 @@ class IntentRouter:
         active_type = getattr(focus_run, "agent_type", None)
         active_id = getattr(focus_run, "id", None)
         if intent == "unclear":
-            # The intent component is text-only. An attached image with no
-            # explicit scene keeps its established Planning default when no
-            # other focus is active. Tutoring or reflection focus is left intact.
-            if has_image and active_type in {None, "planning"}:
-                return RouteDecision(
-                    target="planning",
-                    mode="continue" if active_type == "planning" else "start",
-                    confidence=0.7,
-                    active_session_id=active_id if active_type == "planning" else None,
-                    route_reason="image_without_explicit_intent",
-                )
             return RouteDecision(
                 target="clarify",
                 mode="clarify",

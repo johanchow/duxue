@@ -290,6 +290,7 @@ class AgentCatalog:
             registration = (
                 {'conditions': {'eligible','ineligible'} if spec.id == 'behavior-observation' else set(), 'handlers':set()}
                 if spec.id in OBSERVATION_WORKFLOWS or spec.id in GAOKAO_WORKFLOWS or spec.id in GUARDIAN_MENTOR_WORKFLOWS
+                else {"conditions": {"permitted", "denied"}, "handlers": set()} if spec.id == "ward-creative"
                 else bindings_for_release[spec.id]
             )
             if staged:
@@ -448,6 +449,8 @@ class AgentCatalog:
                 raise ValueError(f"invalid agent file {path.name}")
             specs[spec.id] = spec
         expected = set(workflow_bindings(legacy=LEGACY_LOOP in specs, legacy_review=LEGACY_REVIEW in specs))
+        if "ward.story-pages" in load_definitions().units:
+            expected.add("ward-creative")
         if "behavior.visible-activity" in load_definitions().units:
             expected |= set(OBSERVATION_WORKFLOWS)
         if "tutoring.blueprint-planner" in load_definitions().units:

@@ -45,6 +45,8 @@ def validate_output(unit: ModelUnit, payload: dict) -> None:
             RuleActivityResult.model_validate(payload)
         else:
             IDS[unit_id].model_validate(payload)
+    elif unit_id in {"ward.story-pages", "ward.anti_ghostwriting"}:
+        pass  # Validated against the registered provider schema above.
     elif unit_id in {"evals.semantic-judge", "tutoring.stem-extract", "tutoring.stem-review"}:
         pass  # The strict score/verdict/error schema above owns this contract.
     elif unit_id in {"tutoring.blueprint-planner", "tutoring.blueprint-backup"}:
@@ -106,6 +108,7 @@ def validate_output(unit: ModelUnit, payload: dict) -> None:
 
 def has_python_contract(unit_id: str) -> bool:
     return unit_id in {
+        "ward.story-pages", "ward.anti_ghostwriting",
         "behavior.visible-activity", "behavior.support-opportunity",
         "tutoring.stem-extract", "tutoring.stem-review",
         "evals.semantic-judge", "tutoring.blueprint-planner", "tutoring.blueprint-backup", "tutoring.mentor-explain",

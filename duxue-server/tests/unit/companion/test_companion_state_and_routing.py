@@ -171,32 +171,19 @@ def test_scene_switch_verifier_fails_closed_on_model_error(monkeypatch):
     ) is None
 
 
-def test_image_without_explicit_intent_starts_planning(router):
-    """图片本身没有场景词时，仍交给唯一会读图片的 Planning。"""
-    decision = router.decide(
-        content="请看这张图片。",
-        route_hint=None,
-        focus_run=None,
-        proposal=IntentProposal(intent="unclear"),
-        has_image=True,
-    )
-    assert decision.target == "planning"
-    assert decision.mode == "start"
-    assert decision.route_reason == "image_without_explicit_intent"
+@pytest.mark.parametrize("focus", [None, SimpleNamespace(agent_type="planning", id="plan")])
+def test_unclear_image_clarifies(router, focus):
+    result = router.decide(content="看图", route_hint=None, focus_run=focus,
+                           proposal=IntentProposal(intent="unclear"), has_image=True)
+    assert result.target == "clarify"
 
 
-def test_image_without_explicit_intent_continues_planning_focus(router):
-    focus_run = SimpleNamespace(agent_type="planning", id="run-plan-1")
-    decision = router.decide(
-        content="请看这张图片。",
-        route_hint=None,
-        focus_run=focus_run,
-        proposal=IntentProposal(intent="unclear"),
-        has_image=True,
-    )
-    assert decision.target == "planning"
-    assert decision.mode == "continue"
-    assert decision.active_session_id == "run-plan-1"
+def test_current_homework_policy_precedes_hint_and_focus(router):
+    proposal = parse_intent_payload('{"intent":"tutoring","teaching_policy":"homework"}')
+    result = router.decide(content="直接告诉我结果", route_hint="planning",
+                           focus_run=SimpleNamespace(agent_type="planning", id="plan"),
+                           proposal=proposal, switch_allowed=False)
+    assert result.target == "tutoring"
 
 
 def test_image_does_not_override_an_explicit_scene_or_other_focus(router):

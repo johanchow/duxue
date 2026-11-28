@@ -20,7 +20,7 @@ def lock_history(db: Session, ward_id: str) -> Ward:
 
 def visible_threads(db: Session, ward_id: str):
     return db.query(ConversationThread).join(Ward, Ward.id == ConversationThread.ward_id).filter(
-        ConversationThread.ward_id == ward_id,
+        ConversationThread.deleted.is_(False), ConversationThread.ward_id == ward_id,
         ConversationThread.history_generation == Ward.history_generation,
     )
 

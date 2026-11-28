@@ -93,7 +93,7 @@ def companion_message_image(
     message = db.get(CompanionMessage, message_id)
     if message is None or message.ward_id != principal.user_id:
         raise HTTPException(404, "companion image not found")
-    if not history_is_visible(db, principal.user_id, message.thread_id):
+    if not history_is_visible(db, principal.user_id, message.thread_id) or message.thread_version <= db.get(ConversationThread, message.thread_id).clear_version:
         raise HTTPException(404, "companion image not found")
     refs = message.attachment_refs or []
     if index < 0 or index >= len(refs):
@@ -125,7 +125,7 @@ def _readable_reply(row: CompanionMessage) -> bool:
 async def companion_message_speech(message_id: UUID, stream: bool = False, principal: Principal = Depends(current_ward),
                                    db: Session = Depends(get_db)):
     row = _chat_messages(db).filter(CompanionMessage.id == str(message_id), CompanionMessage.ward_id == principal.user_id).one_or_none()
-    if row is None or not history_is_visible(db, principal.user_id, row.thread_id):
+    if row is None or not history_is_visible(db, principal.user_id, row.thread_id) or row.thread_version <= db.get(ConversationThread, row.thread_id).clear_version:
         raise HTTPException(404, "reply unavailable")
     if not _readable_reply(row):
         raise HTTPException(404, "reply unavailable")
@@ -169,30 +169,6 @@ def _chat_messages(db: Session):
     return db.query(CompanionMessage).filter(~reminder)
 
 
-def _previous_thread_with_messages(db: Session, ward_id: str, current_thread: ConversationThread) -> ConversationThread | None:
-    candidates = (
-        visible_threads(db, ward_id)
-        .filter(
-            ConversationThread.ward_id == ward_id,
-            ConversationThread.id != current_thread.id,
-            ConversationThread.created_at <= current_thread.created_at,
-        )
-        .order_by(ConversationThread.created_at.desc(), ConversationThread.id.desc())
-        .all()
-    )
-    for item in candidates:
-        if item.created_at == current_thread.created_at and item.id >= current_thread.id:
-            continue
-        has_msg = (
-            _chat_messages(db)
-            .filter_by(thread_id=item.id, ward_id=ward_id)
-            .first()
-        )
-        if has_msg is not None:
-            return item
-    return None
-
-
 def _thread_messages_payload(
     db: Session,
     *,
@@ -201,7 +177,7 @@ def _thread_messages_payload(
     before_thread_version: int | None,
     limit: int,
 ) -> dict:
-    query = _chat_messages(db).filter_by(thread_id=thread.id, ward_id=ward_id)
+    query = _chat_messages(db).filter_by(thread_id=thread.id, ward_id=ward_id).filter(CompanionMessage.thread_version > thread.clear_version)
     if before_thread_version is not None:
         query = query.filter(CompanionMessage.thread_version < before_thread_version)
     rows = query.order_by(CompanionMessage.thread_version.desc()).limit(limit + 1).all()
@@ -209,17 +185,12 @@ def _thread_messages_payload(
     rows = rows[:limit]
     messages = [_serialize_message(row) for row in reversed(rows)]
     next_before = rows[-1].thread_version if has_more and rows else None
-    previous_thread_id: str | None = None
-    if next_before is None:
-        prev = _previous_thread_with_messages(db, ward_id, thread)
-        if prev is not None:
-            previous_thread_id = prev.id
     return {
         "thread_id": thread.id,
         "thread_version": thread.version,
         "messages": messages,
         "next_before_thread_version": next_before,
-        "previous_thread_id": previous_thread_id,
+        "previous_thread_id": None,
     }
 
 
@@ -234,7 +205,8 @@ def current_companion_messages(
         _chat_messages(db)
         .join(ConversationThread, ConversationThread.id == CompanionMessage.thread_id)
         .join(Ward, Ward.id == CompanionMessage.ward_id)
-        .filter(CompanionMessage.ward_id == principal.user_id, ConversationThread.history_generation == Ward.history_generation)
+        .filter(CompanionMessage.ward_id == principal.user_id, ConversationThread.history_generation == Ward.history_generation,
+                ConversationThread.deleted.is_(False), CompanionMessage.thread_version > ConversationThread.clear_version)
         .order_by(CompanionMessage.created_at.desc(), CompanionMessage.thread_version.desc())
         .first()
     )
@@ -391,6 +363,11 @@ def replay_companion_events(
     if run is None or run.ward_id != principal.user_id:
         raise HTTPException(404, "agent run not found")
     if not history_is_visible(db, principal.user_id, run.thread_id):
+        raise HTTPException(404, "agent run not found")
+    cutoff = db.get(ConversationThread, run.thread_id).clear_version
+    if cutoff and not db.query(CompanionMessage.id).filter(
+        CompanionMessage.run_id == run.id, CompanionMessage.thread_version > cutoff
+    ).first():
         raise HTTPException(404, "agent run not found")
     selected_attempt = attempt or run.attempt
     if selected_attempt != run.attempt:

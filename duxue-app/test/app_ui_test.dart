@@ -168,6 +168,7 @@ class _WardHomeApi extends ApiClient {
 
   @override
   Future<Map<String, dynamic>> companionTurn({
+    String? commandId,
     required String content,
     required String? threadId,
     required int? expectedThreadVersion,
@@ -179,6 +180,7 @@ class _WardHomeApi extends ApiClient {
     void Function(String)? onStage,
   }) async {
     submittedThreads.add(threadId);
+    submittedCommands.add(commandId);
     lastStructuredCommand = structuredCommand;
     lastRouteHint = routeHint;
     lastTutoringIntent = tutoringIntent;
@@ -465,14 +467,26 @@ class _WardHomeApi extends ApiClient {
     return Uint8List.fromList([9, 9, 9]);
   }
 
+  @override
+  Future<List<Map<String, dynamic>>> conversations() async => [
+    {'thread_id': 'thread-old', 'title': '以前的对话'},
+  ];
+
+  @override
+  Future<Map<String, dynamic>> conversationMessages(String id) async => {'items': <dynamic>[]};
+
+  @override
+  Future<Map<String, dynamic>> createConversation() async => {'thread_id':'thread-1', 'version':0};
+
   final clearCommands = <String>[];
   bool clearFails = false;
   Completer<Map<String, dynamic>>? delayedTurn;
   Completer<Map<String, dynamic>>? delayedHistory;
+  final submittedCommands = <String?>[];
   final submittedThreads = <String?>[];
 
   @override
-  Future<Map<String, dynamic>> clearCompanionHistory(String commandId) async {
+  Future<Map<String, dynamic>> clearConversation(String commandId) async {
     clearCommands.add(commandId);
     if (clearFails) throw StateError('offline');
     currentTranscriptOverride = {
@@ -483,7 +497,7 @@ class _WardHomeApi extends ApiClient {
       'previous_thread_id': null,
     };
     threadTranscriptOverrides.clear();
-    return {'history_generation': 1};
+    return {'version': 3};
   }
 
   Map<String, dynamic>? currentTranscriptOverride;
@@ -1388,7 +1402,7 @@ void main() {
     expect(await const TokenStorage().companionThreadId, 'kept-thread');
     await tester.tap(find.byTooltip('更多'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('历史对话'));
+    await tester.tap(find.text('当前对话'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('companion-chat-list')), findsOneWidget);
   });
@@ -1403,7 +1417,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('更多'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('历史对话'));
+    await tester.tap(find.text('当前对话'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('companion-chat-list')), findsOneWidget);
     await tester.tap(find.byTooltip('对话内专注挑战'));
@@ -1437,7 +1451,7 @@ void main() {
     expect(find.byType(TextField), findsNothing);
     await tester.tap(find.byTooltip('更多'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('历史对话'));
+    await tester.tap(find.text('当前对话'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('companion-chat-list')), findsOneWidget);
     await tester.tap(find.byTooltip('收起对话'));
@@ -1815,6 +1829,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.turns, hasLength(2));
     expect(api.turns.last.attachmentKeys, api.turns.first.attachmentKeys);
+    expect(api.submittedCommands.first, isNotNull);
+    expect(api.submittedCommands.last, api.submittedCommands.first);
     expect(find.byKey(const ValueKey('sent-chat-image-0')), findsOneWidget);
     expect(find.text('这条消息暂未送达。'), findsNothing);
   });
@@ -2404,21 +2420,21 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('说出你的任何想法、问题、安排'));
       await tester.pumpAndSettle();
-      await _wardMenu(tester, '清空历史对话');
+      await _wardMenu(tester, '清空当前对话');
       await tester.pumpAndSettle();
-      expect(find.textContaining('历史数据仍由系统保存'), findsOneWidget);
+      expect(find.textContaining('其他对话和已保存的作品会保留'), findsOneWidget);
       await tester.tap(find.text('取消'));
       await tester.pumpAndSettle();
       expect(api.clearCommands, isEmpty);
       expect(find.text('需要清空的旧回答'), findsOneWidget);
-      await _wardMenu(tester, '清空历史对话');
+      await _wardMenu(tester, '清空当前对话');
       await tester.pumpAndSettle();
       await tester.tap(find.text('清空并重新开始'));
       await tester.pumpAndSettle();
       if (failFirst) {
         expect(find.text('需要清空的旧回答'), findsOneWidget);
         api.clearFails = false;
-        await _wardMenu(tester, '清空历史对话');
+        await _wardMenu(tester, '清空当前对话');
         await tester.pumpAndSettle();
         await tester.tap(find.text('清空并重新开始'));
         await tester.pumpAndSettle();
@@ -2426,14 +2442,14 @@ void main() {
       }
       expect(find.text('需要清空的旧回答'), findsNothing);
       expect(find.byKey(const Key('load-older-messages-button')), findsNothing);
-      expect(await const TokenStorage().companionThreadId, isNull);
+      expect(await const TokenStorage().companionThreadId, 'old-thread');
       expect(find.text('数学练习册'), findsNothing);
       final send = tester
           .widget<VoiceComposer>(find.byType(VoiceComposer))
           .onVoiceFinal('新问题');
       await tester.pumpAndSettle();
       await send;
-      expect(api.submittedThreads.last, isNull);
+      expect(api.submittedThreads.last, 'old-thread');
     });
   }
 
@@ -2459,7 +2475,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('load-older-messages-button')));
     await tester.pump();
-    await _wardMenu(tester, '清空历史对话');
+    await _wardMenu(tester, '清空当前对话');
     await tester.pump();
     await tester.tap(find.text('清空并重新开始'));
     await tester.pumpAndSettle();
@@ -2499,7 +2515,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 250));
     expect(find.text('正在准备回复…'), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
-    await _wardMenu(tester, '清空历史对话');
+    await _wardMenu(tester, '清空当前对话');
     await tester.pump();
     await tester.tap(find.text('清空并重新开始'));
     await tester.pumpAndSettle();
@@ -2510,7 +2526,7 @@ void main() {
     });
     await tester.pumpAndSettle();
     await send;
-    expect(await const TokenStorage().companionThreadId, isNull);
+    expect(await const TokenStorage().companionThreadId, 'thread-1');
     expect(find.text('迟到的旧回答'), findsNothing);
     expect(find.text('正在准备回复…'), findsNothing);
     expect(tester.widget<VoiceComposer>(find.byType(VoiceComposer)).enabled,
@@ -2687,13 +2703,15 @@ void main() {
     expect(find.text('当前线程较早提问'), findsOneWidget);
     expect(find.text('当前线程较早回答'), findsOneWidget);
 
-    // Drag down to scroll back to the top; scrolling near the top triggers loading thread-old
-    await tester.drag(
-        find.byKey(const Key('companion-chat-list')), const Offset(0, 300));
+    expect(find.text('重绑前的历史提问'), findsNothing);
+    expect(find.byKey(const Key('load-older-messages-button')), findsNothing);
+    await _wardMenu(tester, '历史对话');
     await tester.pumpAndSettle();
-
-    expect(find.text('重绑前的历史提问'), findsOneWidget);
+    await tester.tap(find.text('以前的对话'));
+    await tester.pumpAndSettle();
+    expect(find.text('当前线程较早回答'), findsNothing);
     expect(find.text('重绑前的历史回答'), findsOneWidget);
+    expect(await const TokenStorage().companionThreadId, 'thread-old');
     expect(find.byKey(const Key('load-older-messages-button')), findsNothing);
   });
 
@@ -3058,7 +3076,7 @@ void main() {
             overrides: [apiProvider.overrideWithValue(api)],
             child: const MaterialApp(home: WardDayPage(wardId: 'ward-1'))));
         await tester.pumpAndSettle();
-        if (source == 'chat') await _wardMenu(tester, '历史对话');
+        if (source == 'chat') await _wardMenu(tester, '当前对话');
         await tester.tap(find.byTooltip('收起挑战'));
         await tester.pumpAndSettle();
         expect(find.byKey(const Key('active-sprint-card')), findsNothing);
@@ -3141,7 +3159,7 @@ void main() {
             .widget<Text>(find.byKey(const Key('sprint-header-countdown')))
             .data,
         '19:56');
-    await _wardMenu(tester, '历史对话');
+    await _wardMenu(tester, '当前对话');
     expect(find.byKey(const Key('sprint-header-countdown')), findsOneWidget);
     await tester.tap(find.byTooltip('对话内专注挑战'));
     await tester.pumpAndSettle();
@@ -3195,7 +3213,7 @@ void main() {
                 child: WardDayPage(wardId: 'ward-1')))));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('收起挑战'));
-    await _wardMenu(tester, '历史对话');
+    await _wardMenu(tester, '当前对话');
     expect(find.byKey(const Key('sprint-header-countdown')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

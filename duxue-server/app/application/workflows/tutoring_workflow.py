@@ -593,9 +593,11 @@ class _TutoringTurn:
         self.problem_row = self.owner._open_problem(self.tutor) if self.tutor is not None else None
         self.problem_status = self.problem_row.status if self.problem_row else None
         self.permit = TutorPermitPolicy.permit(_state(self.problem_row))
+        if self.turn.get("teaching_policy") == "homework":
+            self.permit = self.permit.protect_homework_request()
         self.task_title = self.owner._task_title(self.session.task_id if self.session else None)
         self.task_active = bool(self.session and self.session.task_id and self.session.status in {"active", "paused"})
-        if self.owner._safety().blocks_input(text=self.content):
+        if not self.turn.get("teaching_policy") and self.owner._safety().blocks_input(text=self.content):
             return "unsafe_input"
         return "confirmed" if self.directive == "understood" else "question"
 
@@ -788,8 +790,8 @@ class _TutoringTurn:
             )
             set_observation_payload(safety_span, input={"text": review_text, "skipped": self.failed})
             safety = not self.failed and (
-                self.candidate.act == "safety" or self.owner._safety().blocks_output(
-                    text=review_text,
+                self.candidate.act == "safety" or (
+                    not self.turn.get("teaching_policy") and self.owner._safety().blocks_output(text=review_text)
                 )
             )
             safety_result = "skipped" if self.failed else "blocked" if safety else "pass"

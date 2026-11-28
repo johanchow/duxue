@@ -70,9 +70,12 @@ def select_recent_utterances(
 def recent_thread_utterances(
     db: Session, *, ward_id: str, thread_id: str, exclude_turn_id: str | None,
 ) -> tuple[list[dict], int]:
+    from app.infrastructure.persistence.models import ConversationThread
     rows = (
         db.query(CompanionMessage)
         .filter_by(ward_id=ward_id, thread_id=thread_id)
+        .join(ConversationThread, ConversationThread.id == CompanionMessage.thread_id)
+        .filter(CompanionMessage.thread_version > ConversationThread.clear_version)
         .order_by(CompanionMessage.thread_version)
         .all()
     )
