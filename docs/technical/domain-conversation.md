@@ -186,14 +186,16 @@ sequenceDiagram
 | `workflows/guardian_experience.py`、`workflows/guardian_mentor.py`、`process_managers/mentor_courseware_orchestrator.py` | **逐步收编进 `EduAgentOrchestrator` 并下线旧编排器** | 本质即通用 Agent 下的「单题直讲」与「动态课件」Skill，避免维护多套平行顶层编排器 |
 | `workflows/tutoring_workflow.py`、`workflows/tutor_loop.py`、`contexts/tutoring/domain/` | **保留，下沉为强护栏 Skill（`homework_tutoring`）** | 保留经 1600+ 单测与 39+ 离线基准打磨的答案保护状态机、多图隔离与独立泄露裁判，零破坏复用 |
 
-#### 2. Skill / Tool 的四层归属（绝不新建“Skill Domain”或“Agent Domain”）
+#### 2. Skill / Tool 的统一规范、四层归属与通用兜底模式（详细 Schema 与 5/11/5 初始清单唯一归属 [design-agent.md §4.4–4.5](design-agent.md#44-tool-契约与统一注册演进升级)）
 
 | 归属层次 | 代码与配置位置 | 负责内容 |
 | :--- | :--- | :--- |
-| **① 定义、Prompt、Schema 与预算** | `duxue-server/app/agent_specs/` + `duxue-admin` | 所有 Tool / Skill / Gate 的声明、JSON Schema、Prompt 与模型槽位（唯一可编辑配置源） |
-| **② 策略与统一注册调度** | `contexts/conversation/domain/role_policy.py` + `app/application/process_managers/` | `RolePolicy` 纯规则裁剪工具白名单与强制 Gate；`Skill/Tool Registry` + `EduAgentOrchestrator` 执行有界 Loop |
-| **③ 业务能力所有权（Tool 仅作薄封装）** | 各业务 Domain（`ProblemSolving` / `Tutoring` / `ArtifactWorkspace` / `Memory` / `Evaluation` / `Study`） | 求解与核验归 `ProblemSolving`；作业启发归 `Tutoring`；产物创建/修订归 `ArtifactWorkspace`；学情与专注态只读查询分别归 `Memory`/`Evaluation`/`Study` ACL |
+| **① 声明、SOP、Schema 与预算** | `duxue-server/app/agent_specs/` + `duxue-admin` | 统一遵循 `tool.schema.json` / `skill.schema.json`；**Skill 仅有一种声明式形态（元数据 + Markdown `instructions`）**，强状态机能力统一封装为 `Tool`（如 `tutoring.run_homework_turn`） |
+| **② 策略、注册表与统一执行中间件** | `contexts/conversation/domain/role_policy.py` + `app/application/agent/` | `RolePolicy` 纯规则锁定角色上限；`ToolRegistry` / `SkillRegistry` / `ToolExecutor`（非业务 Domain）负责启动期契约校验、渐进式加载 `instructions`、鉴权、超时与统一 Langfuse 树状埋点 |
+| **③ 业务能力所有权（Tool 仅作薄封装）** | `app/application/tools/<domain>.py` → 各自 Domain Command / Query / Port | 求解与核验归 `ProblemSolving`；作业强护栏归 `Tutoring`；产物创建/修订归 `ArtifactWorkspace`；学情与专注态只读查询分别归 `Memory`/`Evaluation`/`Study` ACL |
 | **④ 纯无状态外部能力适配** | `duxue-server/app/infrastructure/` + `app/application/ports/` | 生图模型、搜索、Headless 预运行、OSS 读写等基础设施适配器 |
+
+- **不命中 Skill 时的通用兜底（Default General Mode）**：仅开放安全只读基础工具 + `agent.load_skill`（不默认开放写产物或重型求解工具），普通问答直接快速回复并支持后续轮次按需调用 `agent.load_skill` 升级；全场景必经 `safety.input_output`，Ward 存在受保护作业题或 Sprint 专注态时强制保留 `tutoring.answer_protection` 与专注守护。
 
 ---
 

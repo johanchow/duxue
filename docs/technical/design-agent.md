@@ -207,16 +207,55 @@ Gate 文件的 `kind` 固定为 `gate`。每个 Gate 均声明 `id`、`implement
 
 答案泄露检查是 `judge` Gate，其模型与 Prompt 放在该 Gate 内，并显式声明 `"tools": []`。答疑出口需要越权、答案泄露等多个 Gate 时，Workflow 分别引用它们并声明条件边；不存在综合型 Gate 定义。
 
-### 4.4 Tool 契约
+### 4.4 Tool 契约与统一注册（演进升级）
 
-Tool 文件的 `kind` 固定为 `tool`，声明 `id`、`description`、`input_schema`、`output_schema`、`handler_id` 和 `access`（`read` 或 `write`）。`llm` Agent 或 `judge` Gate 的 `tools` 数组是其唯一可调用清单；Workflow 不直接引用 Tool。`handler_id` 必须命中代码注册表，处理器负责 Ward 授权、数据范围和副作用。工具调用次数上限由 Workflow 的 `limits.tool_calls` 与代码上限共同约束，计数范围见 4.1。
+Tool 文件的 `kind` 固定为 `tool`，统一按 `duxue-server/agent_specs/schemas/tool.schema.json` 校验，声明 `id`（按领域命名空间 `<owner_domain>.<action>`）、`owner_domain`、`description`、`input_schema`、`output_schema`、`handler_id`、`access`（`read` 或 `command`，写型 Tool 只能调用所属 Domain 的 Application Command，禁止在 Tool 内直接操作 ORM）、`allowed_roles`（受代码侧 `contracts.json` 硬上限约束）与 `timeout_ms`。
 
-静态工具可额外声明 `static_result` 对象，且必须使用注册处理器 `handler_id: "tool.static_result"` 和 `access: "read"`。加载时按 `output_schema` 校验固定结果；调用时校验参数并返回独立副本。其他处理器禁止携带非空 `static_result`，避免配置正文被忽略或误用于动态查询。`tutoring.widget_guidelines` 的SVG规范以此保存，模型请求与修复预加载读取同一份结果，仍遵守原工具预算和权限。静态内容无需新增Agent；查询数据库的工具继续由领域授权的代码处理器实现。
+- **静态工具**：可额外声明 `static_result` 对象，且必须使用 `handler_id: "tool.static_result"` 和 `access: "read"`（如 `tutoring.widget_guidelines`）。
+- **统一注册与执行管道（`ToolRegistry` & `ToolExecutor`）**：
+  - 位于 Application 层共享装配基础设施（`duxue-server/app/application/agent/`，不属于任何业务 Domain）；各业务 Tool Handler 仍分散实现于各自领域的 `app/application/tools/<domain>.py`，于 Composition Root 启动期集中注册并校验与 Admin 快照 100% 对齐（缺实现或突破 `contracts.json` 角色上限时启动 fail-fast）；
+  - 所有 Tool 调用统一经 `ToolExecutor` 中间件执行：`RolePolicy 角色与绑定校验 → JSON Schema 入参校验 → 预算与超时隔离 → 统一 OTel/Langfuse agent.tool 埋点（含敏感脱敏） → 结构化错误码翻译`。
+  - **两步渐进收口**：Phase 1 先建统一注册表与执行管道，所有新增 Tool 一律走统一注册，并将现有 `TutorToolbox` 的共享原子工具（`math.compute`、`image.inspect_crop`、`web.search`）抽入统一注册表由 `TutorToolbox` 薄委派；Phase 2 收编旧平行编排器。
+
+### 4.5 Skill 契约与渐进式激活（教育通用 Agent 一等对象）
+
+Skill 文件的 `kind` 固定为 `skill`，存放于 Admin 配置包逻辑路径 `skills/<id>.json`，统一按 `duxue-server/agent_specs/schemas/skill.schema.json` 校验。**Skill 只有唯一一种声明式形态（元数据 + Markdown SOP `instructions`）**；任何强状态机或确定性代码能力均封装为受控 `Tool`（配合代码级 `RolePolicy` 与必经 `Gate` 兜底），不拆分多种 Skill 执行模式。
+
+| 字段 | 必填 | 语义与约束 |
+| :--- | :--- | :--- |
+| `id` / `kind` / `display_name` | 是 | 全局唯一业务 ID（如 `edu.lesson_pack`），`kind` 固定 `"skill"` |
+| `description` | 是 | 极简触发说明，供 `EduAgentOrchestrator` 首轮规划做渐进式路由 |
+| `allowed_roles` | 是 | 允许角色子集（受代码 `contracts.json` 与 `RolePolicy` 硬上限约束，Admin 只能收紧不能放宽） |
+| `tools` | 是 | 激活后动态挂载的 Tool ID 白名单（与 `RolePolicy` 取交集） |
+| `required_gates` | 是 | 激活后强制登记进本轮出口检查的必经 Gate ID 清单 |
+| `output_artifact_type` | 否 | 期望产出的 `EduArtifact` 类型（`interactive_courseware \| grading_report \| lesson_pack \| creative_work`） |
+| `instructions` | 是 | Markdown 教学/执行 SOP 正文：描述步骤方法论、工具配合顺序，以及**关键条件缺失/歧义时先向用户提出 1–2 个简短澄清问题（不盲猜、不强行生成产物）**的规则 |
+
+- **渐进式加载与运行归属**：`instructions` 不由业务 Domain 解析，而是由 Application 层 `EduAgentOrchestrator`（`app/application/agent/`）管理——首轮规划仅注入 `RolePolicy` 过滤后的极简 Skill 目录（`id + description`）；当模型调用元工具 `agent.load_skill(skill_id)` 时，确定性注入 `instructions`、挂载 `tools[]` 并登记 `required_gates[]`；模型随后自主决定追问澄清或依次调用具体业务 Tool，进入对应 Domain 的 Command / Port。
+- **不命中已有 Skill 时的通用兜底模式（Default General Mode）**：
+  - 不挂载全部 Tool，仅开放安全只读基础工具 + 元工具（`agent.load_skill`、`web.search`、`math.compute`，及成人显式绑定 Ward 时的 `ward_context.read_summary`），**不默认开放写产物或重型求解工具**；
+  - 普通百科问答或交流直接快速文字直出，后续任意一轮可随时调用 `agent.load_skill` 动态升级切入专业 Skill；
+  - 全场景仍必经 `safety.input_output`，Ward 若存在受保护作业题或处于 Sprint 专注态，代码级 `RolePolicy` 依然强制挂载 `tutoring.answer_protection` 与专注守护，杜绝假借闲聊绕过红线。
+
+- **初始 MVP 最小内置清单（5 Skills / 11 Tools / 5 Gates）**：
+  - **5 Skills**：`edu.homework_tutoring`、`edu.worksheet_grading`、`edu.interactive_courseware`、`edu.lesson_pack`、`edu.creative_studio`；
+  - **11 Tools**：`agent.load_skill`（元工具）、`problem_solving.solve_and_verify` / `math.compute`（`ProblemSolving`）、`tutoring.run_homework_turn`（`Tutoring` 强护栏状态机封装）、`artifact.create_or_revise` / `artifact.get_view`（`ArtifactWorkspace`）、`ward_context.read_summary` / `study.get_focus_state`（只读 ACL）、`image.inspect_crop` / `web.search` / `media.generate_image`（`Infrastructure`）；
+  - **5 Gates**：`safety.input_output`、`tutoring.answer_protection`、`ward.anti_ghostwriting`、`artifact.verification_honesty`、`media.script_sandbox_prerun`。
 
 ## 五、执行、领域边界与观测
 
-启动时校验文件 Schema、ID 唯一性、引用、Workflow 可达性、处理器白名单、模型及工具预算、条件 Gate 与安全失败策略。通用执行器从 Workflow 定义装配控制流；处理器、条件函数、授权和领域写入仍由代码负责。迁移时用现有离线评测重放模型行为，并用单元与集成测试覆盖重试次数、条件 Gate、失败安全、确认恢复和事务边界。Workflow 装配和 Agent/Gate/Tool 查找都使用同一目录；流程图也从它生成。代码契约、评测和文档通过 PR 审阅；可编辑配置变更走[管理台发布协议](design-admin.md#五发布拉取与恢复)。每轮固定一个完整快照，不引入分流规则。
+启动时校验文件 Schema、ID 唯一性、引用、Workflow 可达性、处理器白名单、模型及工具预算、条件 Gate 与安全失败策略。通用执行器从 Workflow / Skill / Tool 定义装配控制流；处理器、条件函数、授权和领域写入仍由代码负责。迁移时用现有离线评测重放模型行为，并用单元与集成测试覆盖重试次数、条件 Gate、失败安全、确认恢复和事务边界。代码契约、评测和文档通过 PR 审阅；可编辑配置变更走[管理台发布协议](design-admin.md#五发布拉取与恢复)。每轮固定一个完整快照，不引入分流规则。
 
-按项目当前 DDD 约定，Domain 是拥有业务语义、模型和规则的边界；Workflow 和 Agent 是 Application/Infrastructure 的运行角色，不是新的 Domain 或 Aggregate。Companion 只维护 Thread/Run 连续性并路由受权调用；Planning、Tutoring、Evaluation 各自裁决并写入自己的业务状态。配置目录集中的是**运行描述**，不是跨 Domain 的共享业务模型。装配器应处于应用组合层，领域模块不读取配置，也不依赖模型或工具实现。
+按项目当前 DDD 约定，Domain 是拥有业务语义、模型和规则的边界；Workflow、Orchestrator、SkillRegistry、ToolRegistry 与 ToolExecutor 是 Application/Infrastructure 的运行与装配角色，不是新的 Domain 或 Aggregate。Conversation 维护多对话线程与交互信封；Tutoring、ProblemSolving、ArtifactWorkspace、Evaluation 各自裁决并写入自己的业务状态。配置目录集中的是**运行描述**，不是跨 Domain 的共享业务模型。
 
-每条导出到 Langfuse 的 observation 都带可筛选 metadata：`kind`、`kind_id`、`kind_version`，并同时写到 span attribute `agent.unit.kind`、`agent.unit.id`、`agent.unit.version`。`kind` 是配置类别，取 `workflow`、`agent`、`gate`、`tool`、`action`；不在该目录中的模型调用（如摄像分析）记为 `external`，`kind_id` 用操作名。`kind_id` 是定义的稳定 ID：Agent、Gate、Tool 用文件里的 `id`，Workflow 用 Workflow `id`，代码步骤 `action` 用 Workflow 节点 ID，Admin运行时版本统一取完整发布包digest（action同样取当前快照）；显式本地开发模式才使用初始化定义的内部版本。同一条 observation 另有 `workflow_id` 与 `node_id`：节点 ID 和被引用的 Agent/Gate ID 可以不同，例如节点 `tutoring.review_candidate.text_leak` 引用 Gate `tutoring.leak-judge`。模型 generation 再带 `component_id`，用来区分同一 Agent 的主模型和备用模型。Prompt 变量与工具结果按现有儿童数据策略脱敏；配置、图和观测统计不能替代业务审计或学习事实。
+每条导出到 Langfuse 的 observation 都带可筛选 metadata：`kind`、`kind_id`、`kind_version`，并同时写到 span attribute `agent.unit.kind`、`agent.unit.id`、`agent.unit.version`。`kind` 取 `workflow`、`agent`、`skill`、`gate`、`tool`、`action`（新增 `agent.skill` Span，废弃旧 `planning.*` Span）；不在该目录中的模型调用（如摄像分析）记为 `external`。`session_id` 绑定 `ConversationThread.thread_id`，`user_id` 绑定 `owner_id`，自动形成如下标准嵌套 Trace 树（零业务手工埋点，延续 `telemetry.py` 脱敏与白名单策略，儿童原始图片字节不进遥测）：
+
+```text
+Trace: agent.turn (session_id=thread_id, user_id=owner_id, metadata={role, context_ward_bound, release_digest})
+ ├── agent.node: role_policy_and_focus           (角色策略裁剪 + Ward 专注态查询)
+ ├── llm.request: orchestrator.plan              (首轮规划：携带极简 Skill 目录)
+ ├── agent.skill: <skill_id>                     (按需加载 Skill：instructions / tools[] / required_gates[])
+ │    ├── llm.request: orchestrator.step_N       (推理：澄清追问或发起工具调用)
+ │    └── agent.tool: <domain.action>            (ToolExecutor 自动埋点：入参脱敏、耗时、status)
+ └── agent.check: exit_gates                     (统一必经出口门禁：safety / answer_protection / verification_honesty 等)
+```
