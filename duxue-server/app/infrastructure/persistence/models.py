@@ -586,6 +586,7 @@ class ConversationThread(Base):
     id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
     ward_id: Mapped[str | None] = mapped_column(ForeignKey("user_wards.id"), index=True)
     guardian_id: Mapped[str | None] = mapped_column(ForeignKey("user_guardians.id"), index=True)
+    context_ward_id: Mapped[str | None] = mapped_column(Uuid(as_uuid=False), nullable=True, index=True)
     title: Mapped[str] = mapped_column(String(80), default="新对话", server_default="新对话")
     clear_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")

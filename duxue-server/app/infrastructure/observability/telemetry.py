@@ -42,13 +42,14 @@ _PLANNING_STAGES = frozenset({
     "graph_compile", "graph_invoke",
 })
 _LANGFUSE_SPANS = frozenset({
-    "agent.turn", "agent.route", "agent.workflow", "agent.node", "agent.tool",
-    "agent.check", "llm.request", "agent.execution",
+    "agent.turn", "agent.route", "agent.workflow", "agent.node", "agent.skill",
+    "agent.tool", "agent.check", "llm.request", "agent.execution",
 }) | frozenset(f"planning.{stage}" for stage in _PLANNING_STAGES)
 # These attributes are generated from code-owned enums/counters. Never export
 # arbitrary event payloads from an application span to Langfuse.
 _LANGFUSE_EVENT_KEYS = frozenset({
     "agent.type", "agent.run_id", "agent.thread_id", "agent.target", "agent.mode",
+    "agent.skill_id", "agent.tool_id", "agent.role",
     "agent.route_reason", "agent.status", "agent.duration_ms", "agent.fallback",
     "input.length", "llm.operation", "llm.model", "ai.component_id",
     "ai.component_version", "output.length", "planning.stage", "planning.duration_ms",
@@ -525,7 +526,7 @@ def agent_infra_span(name: str, **attributes: Any) -> Iterator[Any]:
 @contextmanager
 def agent_step_span(kind: str, name: str, **attributes: Any) -> Iterator[Any]:
     """A named Agent step; callers attach reviewed input/output payloads."""
-    if kind not in {"route", "node", "tool", "check"}:
+    if kind not in {"route", "node", "skill", "tool", "check"}:
         raise ValueError("unknown agent step kind")
     from app.agent_specs.catalog import load_catalog
 
@@ -547,6 +548,36 @@ def agent_step_span(kind: str, name: str, **attributes: Any) -> Iterator[Any]:
                 if "langfuse.observation.output" not in (getattr(span, "attributes", None) or {}):
                     set_observation_payload(span, output={"error_type": type(error).__name__})
                 raise
+
+
+@contextmanager
+def edu_agent_span(kind: str, name: str, **attributes: Any) -> Iterator[Any]:
+    """Structured span for EduAgentOrchestrator (turn/skill/tool/check) exported to Langfuse."""
+    obs_types = {"turn": "chain", "node": "chain", "skill": "chain", "tool": "tool", "check": "guardrail"}
+    if kind not in obs_types:
+        raise ValueError("unknown edu agent span kind")
+    with trace.get_tracer("duxue.agent").start_as_current_span(
+        f"agent.{kind}",
+        attributes={
+            **_agent_context_attrs(),
+            "agent.step": name,
+            "agent.unit.kind": kind,
+            "agent.unit.id": name,
+            "langfuse.observation.metadata.step": name,
+            "langfuse.observation.metadata.kind": kind,
+            "langfuse.observation.metadata.kind_id": name,
+            "langfuse.observation.type": obs_types[kind],
+            **_attrs(**attributes),
+        },
+        record_exception=False,
+        set_status_on_exception=False,
+    ) as span:
+        try:
+            yield span
+        except Exception as error:
+            if "langfuse.observation.output" not in (getattr(span, "attributes", None) or {}):
+                set_observation_payload(span, output={"error_type": type(error).__name__})
+            raise
 
 
 def traced_agent_node(name: str):

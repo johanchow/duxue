@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://duxue.internal/schemas/tool.schema.json",
+  "title": "Duxue Unified Tool Specification",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "kind",
+    "owner_domain",
+    "description",
+    "access",
+    "allowed_roles",
+    "input_schema",
+    "output_schema",
+    "timeout_ms",
+    "handler_id"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+    },
+    "kind": {
+      "const": "tool"
+    },
+    "owner_domain": {
+      "type": "string",
+      "enum": [
+        "agent",
+        "problem_solving",
+        "tutoring",
+        "artifact_workspace",
+        "memory",
+        "evaluation",
+        "study",
+        "infrastructure"
+      ]
+    },
+    "display_name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1000
+    },
+    "access": {
+      "type": "string",
+      "enum": ["read", "command"]
+    },
+    "allowed_roles": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": ["teacher", "coach", "guardian", "ward"]
+      }
+    },
+    "input_schema": {
+      "type": "object"
+    },
+    "output_schema": {
+      "type": "object"
+    },
+    "timeout_ms": {
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 120000
+    },
+    "handler_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "static_result": {
+      "type": ["object", "null"]
+    }
+  }
+}
