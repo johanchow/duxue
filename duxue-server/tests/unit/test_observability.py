@@ -11,7 +11,6 @@ from app.infrastructure.observability.telemetry import (
     record_agent_input,
     record_companion_rejection,
     record_model_response,
-    record_planning_input_rejected,
     record_tutor_candidate_rejection,
 )
 
@@ -449,45 +448,6 @@ def test_non_production_stores_model_original_without_an_explicit_switch(tmp_pat
     assert row["metadata"]["llm.operation"] == "intent_proposal"
 
 
-def test_plan_intake_structure_log_counts_results_without_model_text(caplog, monkeypatch):
-    from app.infrastructure.observability.telemetry import (
-        record_plan_intake_structure,
-        record_planning_loop_outcome,
-    )
-
-    monkeypatch.setenv("AGENT_DEBUG_AUDIT_ENABLED", "false")
-    raw = '{"assistant_text":"孩子的作业：数学口算","operations":[]}'
-    with caplog.at_level("INFO", logger="duxue.agent.audit"):
-        record_model_response(agent_type="planning", model="qwen3-vl-flash", content=raw, operation="plan_intake")
-        record_plan_intake_structure(
-            has_image=True, operation_count=0, slot_update_count=0, clarification_required=True,
-        )
-        record_planning_loop_outcome(status="no_op", has_image=True)
-
-    metadata = "\n".join(str(getattr(record, "telemetry", {})) for record in caplog.records)
-    assert raw not in metadata
-    assert "数学口算" not in metadata
-    assert "output.sha256" in metadata
-    assert "'plan_intake.has_image': True" in metadata
-    assert "'plan_intake.operation_count': 0" in metadata
-    assert "'plan_intake.clarification_required': True" in metadata
-    assert "'plan_intake.recent_utterance_count': 0" in metadata
-    assert "plan_intake.item_count" not in metadata
-    assert "'planning.loop_status': 'no_op'" in metadata
-
-
-def test_planning_stage_span_emits_duration_breadcrumb(caplog):
-    from app.infrastructure.observability.telemetry import planning_stage_span
-
-    with caplog.at_level("INFO", logger="duxue.agent.audit"):
-        with planning_stage_span("graph_invoke", run_id="run-1"):
-            pass
-
-    assert any(record.getMessage() == "planning.stage" for record in caplog.records)
-    telemetry = next(getattr(record, "telemetry", {}) for record in caplog.records if record.getMessage() == "planning.stage")
-    assert telemetry["planning.stage"] == "graph_invoke"
-    assert telemetry["planning.duration_ms"] is not None
-    assert telemetry["run_id"] == "run-1"
 
 
 def test_companion_rejection_is_structured_and_does_not_contain_request_content(caplog):
@@ -509,21 +469,6 @@ def test_companion_rejection_is_structured_and_does_not_contain_request_content(
     }
 
 
-def test_planning_input_rejection_reports_shape_without_the_raw_value(caplog):
-    raw = "07:41"
-    with caplog.at_level("WARNING", logger="duxue.agent.audit"):
-        record_planning_input_rejected(field="start_at", code="invalid_start_at", value=raw)
-
-    record = next(item for item in caplog.records if item.getMessage() == "planning.input.rejected")
-    telemetry = getattr(record, "telemetry", {})
-    assert telemetry == {
-        "planning.field": "start_at",
-        "planning.rejection_code": "invalid_start_at",
-        "planning.value_shape": "clock",
-        "http.status_code": 400,
-    }
-    assert raw not in record.getMessage()
-    assert raw not in str(telemetry)
 
 
 def test_companion_turn_audits_validation_failure_without_ward_text(caplog, monkeypatch):
@@ -545,7 +490,7 @@ def test_companion_turn_audits_validation_failure_without_ward_text(caplog, monk
     uttered = "七点四十一分出发"
     with caplog.at_level("WARNING", logger="duxue.agent.audit"), pytest.raises(HTTPException):
         companion_turn(
-            CompanionTurnRequest(content=uttered, thread_id="thread-1", expected_thread_version=3),
+            CompanionTurnRequest(content=uttered, thread_id="1481cb5d-b6c5-4bed-a0f9-715533215174", expected_thread_version=3),
             request=Request({"type": "http", "headers": []}),
             response=Response(),
             principal=Principal("ward-1", "ward"),

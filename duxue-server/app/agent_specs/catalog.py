@@ -6,6 +6,8 @@ handlers, evaluates expressions, grants permissions or implements guardrails.
 
 from __future__ import annotations
 
+from app.agent_specs.education_workspace import UNITS as WORKSPACE_UNITS
+
 from contextvars import ContextVar
 from pathlib import Path
 from typing import Literal
@@ -290,6 +292,8 @@ class AgentCatalog:
             registration = (
                 {'conditions': {'eligible','ineligible'} if spec.id == 'behavior-observation' else set(), 'handlers':set()}
                 if spec.id in OBSERVATION_WORKFLOWS or spec.id in GAOKAO_WORKFLOWS or spec.id in GUARDIAN_MENTOR_WORKFLOWS
+                else {"conditions": {"permitted", "denied"}, "handlers": set()} if spec.id == "ward-creative"
+                else {"conditions": set(), "handlers": set()} if spec.id in {u.replace(".", "-") for u in WORKSPACE_UNITS}
                 else bindings_for_release[spec.id]
             )
             if staged:
@@ -415,6 +419,8 @@ class AgentCatalog:
             unit_kind="tool", unit_id="tutoring.unknown_tool", unit_version=tutoring.version,
         )
         for agent, checks in _REQUIRED_CHECKS.items():
+            if agent == "planning" and agent not in specs:
+                continue
             spec = self.spec(agent)
             if not checks.issubset(set(spec.required_checks)):
                 raise ValueError(f"{agent}: missing required checks {sorted(checks - set(spec.required_checks))}")
@@ -429,7 +435,7 @@ class AgentCatalog:
                     raise ValueError(f"{check}: required check binding differs")
         if set(self.spec("tutoring").limits) != set(_MAX_LIMITS):
             raise ValueError("tutoring: model and tool limits are required")
-        if set(self.spec("companion").targets) != _BUSINESS | {"clarify", "safety"}:
+        if set(self.spec("companion").targets) != (_BUSINESS & set(specs)) | {"clarify", "safety"}:
             raise ValueError("companion: route targets differ from business contexts")
         if not set(load_definitions().units["tutoring.turn"].tools).issubset({
             "tutoring.get_task_context", "tutoring.get_attempt_summary",
@@ -448,6 +454,13 @@ class AgentCatalog:
                 raise ValueError(f"invalid agent file {path.name}")
             specs[spec.id] = spec
         expected = set(workflow_bindings(legacy=LEGACY_LOOP in specs, legacy_review=LEGACY_REVIEW in specs))
+        from app.agent_specs.education_workspace import UNITS
+        if "edu.skill-planner" in load_definitions().units and "planning.intake" not in load_definitions().units:
+            from app.agent_specs.education_workspace import RETIRED_WORKFLOWS
+            expected -= RETIRED_WORKFLOWS
+        expected.update(unit.replace(".", "-") for unit in UNITS if unit in load_definitions().units)
+        if "ward.story-pages" in load_definitions().units:
+            expected.add("ward-creative")
         if "behavior.visible-activity" in load_definitions().units:
             expected |= set(OBSERVATION_WORKFLOWS)
         if "tutoring.blueprint-planner" in load_definitions().units:

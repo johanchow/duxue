@@ -13,7 +13,7 @@ from app.infrastructure.ai import components
 from app.infrastructure.ai.errors import ModelGatewayError
 from app.infrastructure.ai.thinking_policy import normalize_thinking_effort
 
-_LABELS = {"planning", "tutoring", "reflection", "unclear"}
+_LABELS = {"tutoring", "unclear"}
 _VISION_INTENT_PREFIXES = ("qwen3.", "qwen-vl", "qwen2.5-vl", "deepseek-v4")
 
 
@@ -33,7 +33,10 @@ def parse_intent_payload(raw: str) -> IntentProposal:
     except json.JSONDecodeError:
         return IntentProposal(intent="unclear")
     intent = data.get("intent") if isinstance(data, dict) else None
-    if intent not in _LABELS:
+    if not isinstance(intent, str) or intent not in _LABELS:
+        return IntentProposal(intent="unclear")
+    policy = data.get("teaching_policy")
+    if policy is not None and policy not in ("homework", "pronunciation", "standard"):
         return IntentProposal(intent="unclear")
     history_image_ref = "none" if data.get("history_image_ref") == "none" else "needed"
     thinking_effort = normalize_thinking_effort(
@@ -44,17 +47,21 @@ def parse_intent_payload(raw: str) -> IntentProposal:
     return IntentProposal(
         intent=intent,  # type: ignore[arg-type]
         history_image_ref=history_image_ref,
+        teaching_policy=policy,
+        study_control=data.get("study_control") if policy == "standard" and intent == "tutoring" else None,
+        off_sprint_topic=data.get("off_sprint_topic") is True,
+        creative_work=data.get("creative_work") is True and policy == "standard" and intent == "tutoring",
         thinking_effort=thinking_effort,
     )
 
 
 def complete_intent(
     *, content: str, focus_agent_type: str | None, recent_utterances: list[dict] | None = None,
-    current_images: list[str | None] | None = None, spec=None, settings_obj=None,
+    current_images: list[str | None] | None = None, sprint_topic: str | None = None, spec=None, settings_obj=None,
 ) -> str:
     user = build_context(
         "companion.intent", content=content, focus_agent_type=focus_agent_type,
-        recent_utterances=recent_utterances, current_images=current_images,
+        recent_utterances=recent_utterances, current_images=current_images, sprint_topic=sprint_topic,
     )
     resolved_spec = spec or load_catalog().component("companion", "intent_route")
     if (
@@ -75,12 +82,12 @@ class ModelIntentClassifier:
 
     def propose(
         self, *, content: str, focus_agent_type: str | None, recent_utterances: list[dict] | None = None,
-        current_images: list[str | None] | None = None,
+        current_images: list[str | None] | None = None, sprint_topic: str | None = None,
     ) -> IntentProposal:
         try:
             return parse_intent_payload(self._complete(
                 content=content, focus_agent_type=focus_agent_type, recent_utterances=recent_utterances,
-                current_images=current_images,
+                current_images=current_images, **({"sprint_topic": sprint_topic} if sprint_topic else {}),
             ))
         except ModelGatewayError:
             return IntentProposal(intent="unclear")

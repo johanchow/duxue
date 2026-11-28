@@ -40,6 +40,10 @@ class TutorPermit:
     answer_protected: bool
     attempt_summary: AttemptSummary
     active_subgoal: str | None = None
+    homework_request: bool = False
+
+    def protect_homework_request(self) -> TutorPermit:
+        return replace(self, answer_protected=True, homework_request=True)
 
     def as_context(self) -> dict:
         return {

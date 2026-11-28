@@ -316,6 +316,8 @@ class DefinitionCatalog:
             if unit.kind == "gate" and (unit.safety_class != "protected" or unit.on_error != "deny"):
                 raise ValueError(f"{unit_id}: unsafe Gate policy")
         for gate_id, policy in {"tutoring.authority": "deny", "planning.confirmation-gate": "abort"}.items():
+            if gate_id == "planning.confirmation-gate" and "planning.session-turn" not in self.code_agents:
+                continue
             gate = self.code_gates.get(gate_id)
             if gate is None or gate.safety_class != "protected" or gate.on_error != policy:
                 raise ValueError(f"{gate_id}: unsafe Gate policy")

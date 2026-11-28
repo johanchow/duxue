@@ -1,0 +1,29 @@
+{
+  "id": "artifact.get_view",
+  "kind": "tool",
+  "owner_domain": "artifact_workspace",
+  "description": "只读查询当前产物的版本块视图。",
+  "access": "read",
+  "allowed_roles": [
+    "teacher",
+    "coach",
+    "guardian",
+    "ward"
+  ],
+  "input_schema": {
+    "type": "object",
+    "required": [
+      "artifact_id"
+    ],
+    "properties": {
+      "artifact_id": {
+        "type": "string"
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object"
+  },
+  "timeout_ms": 5000,
+  "handler_id": "artifact.get_view"
+}

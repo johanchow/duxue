@@ -18,7 +18,7 @@
 | Context | 设计 |
 |---|---|
 | Companion 入口、Thread / Run | [domain-companion.md](../docs/technical/domain-companion.md) |
-| Planning | [domain-planning.md](../docs/technical/domain-planning.md) |
+| 主动专注挑战（Sprint） | [domain-study.md](../docs/technical/domain-study.md) |
 | Study | [domain-study.md](../docs/technical/domain-study.md) |
 | Tutoring 教学事实与答案保护 | [domain-tutoring.md](../docs/technical/domain-tutoring.md) |
 | 解题与辅导分链路 | [domain-problem-solving.md](../docs/technical/domain-problem-solving.md) |

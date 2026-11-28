@@ -9,7 +9,7 @@ from app.contexts.tutoring.domain.mentor_courseware import (
     CoursewareConflictError,
     MentorCourseware,
 )
-from app.infrastructure.persistence.courseware_tables import coursewares, versions
+from app.infrastructure.persistence.artifact_tables import artifacts as coursewares, versions
 from app.infrastructure.persistence.pg_courseware import PgCoursewareRepository
 from tests.integration.test_gateway_postgres import (  # noqa: F401
     migrated_engine,
@@ -90,7 +90,7 @@ def verify_courseware_transactions(engine):
     with engine.connect() as conn:
         assert (
             conn.scalar(
-                select(versions.c.version_no).where(versions.c.courseware_id == cid)
+                select(versions.c.version_no).where(versions.c.artifact_id == cid)
             )
             is None
         )
@@ -99,7 +99,7 @@ def verify_courseware_transactions(engine):
     with engine.begin() as conn:
         conn.execute(
             update(coursewares)
-            .where(coursewares.c.courseware_id == temp.courseware_id)
+            .where(coursewares.c.artifact_id == temp.courseware_id)
             .values(expires_at=datetime.now(timezone.utc) - timedelta(seconds=1))
         )
     assert fresh.get(temp.courseware_id) is None
@@ -107,6 +107,96 @@ def verify_courseware_transactions(engine):
     with engine.begin() as conn:
         conn.execute(
             coursewares.delete().where(
-                coursewares.c.courseware_id == temp.courseware_id
+                coursewares.c.artifact_id == temp.courseware_id
             )
         )
+
+
+def test_saved_courseware_survives_source_thread_deletion(migrated_engine, monkeypatch):  # noqa: F811
+    from sqlalchemy.orm import Session
+    from app.api.deps import Principal, current_guardian_or_ward, get_db
+    from app.api.v1 import conversations, guardian_courseware, guardian_experience
+    from app.infrastructure.persistence.models import Guardian, User
+
+    owner = uuid4()
+    principal = Principal(user_id=str(owner), role="guardian")
+    with Session(migrated_engine) as db:
+        db.add(User(id=str(owner), type="guardian"))
+        db.flush()
+        db.add(Guardian(id=str(owner), name="老师", email=f"{owner}@example.org", role="guardian"))
+        db.commit()
+
+    def session():
+        with Session(migrated_engine) as db:
+            yield db
+
+    client = _make_client([owner], PgCoursewareRepository(migrated_engine))
+    commands, queries, _ = client.app.dependency_overrides[guardian_courseware.get_courseware_services]()
+    monkeypatch.setattr(guardian_courseware, "_commands", commands)
+    monkeypatch.setattr(guardian_courseware, "_queries", queries)
+    client.app.include_router(conversations.router)
+    client.app.include_router(guardian_experience.router)
+    client.app.dependency_overrides[current_guardian_or_ward] = lambda: principal
+    client.app.dependency_overrides[get_db] = session
+    monkeypatch.setattr(guardian_experience, "experience_turn", lambda **kw: {"content": "画图理解通分"})
+    root = "/v1/conversations"
+    thread = client.post(root, json={}).json()["thread_id"]
+    answer = client.post("/guardian/experience/turn", json={
+        "thread_id": thread, "mode": "guardian_explain", "content": "演示通分", "command_id": "turn-a",
+    }).json()
+    courseware = client.post("/guardian/courseware", json={
+        "command_id": "turn-" + answer["message_id"], "prompt_text": "演示通分",
+    }).json()["courseware_id"]
+    view = client.get("/guardian/courseware/" + courseware).json()
+    assert view["status"] == "ready"
+    assert client.post(f"/guardian/courseware/{courseware}/save", json={
+        "command_id": "save", "expected_state_revision": view["state_revision"],
+    }).is_success
+    messages = client.get(f"{root}/{thread}/messages").json()["items"]
+    assert messages[-1]["courseware_id"] == courseware
+    assert client.delete(f"{root}/{thread}").status_code == 204
+    assert client.get(f"{root}/{thread}/messages").status_code == 404
+    assert client.get("/guardian/courseware/" + courseware).json()["retention_status"] == "saved"
+
+
+def test_story_source_thread_is_id_only(migrated_engine):
+    from sqlalchemy import inspect
+    from app.infrastructure.persistence.models import CreativeWork
+
+    assert not CreativeWork.__table__.c.source_thread_id.foreign_keys
+    inspector = inspect(migrated_engine)
+    constraints = inspector.get_foreign_keys("edu_artifacts")
+    assert not any("source_thread_id" in key["constrained_columns"] for key in constraints)
+    assert any(key["column_names"] == ["source_thread_id"] for key in inspector.get_indexes("edu_artifacts"))
+
+
+def test_late_ward_reply_cannot_reappear_after_an_independent_clear(migrated_engine):
+    from fastapi import HTTPException
+    from sqlalchemy.orm import Session
+    from app.application.commands.companion_history import clear_history
+    from app.application.process_managers.companion_coordinator import CompanionCoordinator
+    from app.infrastructure.persistence.models import CompanionMessage
+    from tests.support.factories import create_ward
+    from tests.support.fakes import FakeWorkflowDispatcher, StaticIntentClassifier
+
+    with Session(migrated_engine) as db:
+        ward = create_ward(db)
+        db.commit()
+        owner = ward.id
+
+        class ClearingDispatcher(FakeWorkflowDispatcher):
+            def invoke(self, invocation):
+                with Session(migrated_engine) as writer:
+                    clear_history(writer, ward_id=owner, command_id=str(uuid4()))
+                return super().invoke(invocation)
+
+        coordinator = CompanionCoordinator(db, dispatcher=ClearingDispatcher(), classifier=StaticIntentClassifier("tutoring"))
+        with pytest.raises(HTTPException) as failure:
+            coordinator.handle(ward_id=owner, content="先给我提示", thread_id=None, expected_thread_version=0, route_hint="tutoring")
+        assert failure.value.status_code == 409
+        with Session(migrated_engine) as reader:
+            from app.api.v1.companion import current_companion_messages
+            from app.api.deps import Principal
+            messages = current_companion_messages(before_thread_version=None, limit=50, principal=Principal(owner, "ward"), db=reader)
+            assert messages["messages"] == []
+            assert reader.query(CompanionMessage).filter_by(ward_id=owner, author_type="companion").count() == 0

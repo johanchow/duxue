@@ -312,25 +312,6 @@ class DailySchedule(Base):
     __mapper_args__: ClassVar[dict] = {"version_id_col": version, "version_id_generator": False}
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-class PlanDraft(Base):
-    __tablename__ = "plan_drafts"
-    __table_args__ = (Index("uq_active_plan_draft_ward_date", "ward_id", "plan_date", unique=True,
-                           postgresql_where=text("status = 'active'"), sqlite_where=text("status = 'active'")),)
-    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
-    ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id"), index=True)
-    plan_date: Mapped[date] = mapped_column(Date, index=True)
-    base_schedule_version: Mapped[int] = mapped_column(Integer, default=0)
-    items: Mapped[list] = mapped_column(JSON, default=list)
-    pending_fields: Mapped[list] = mapped_column(JSON, default=list)
-    # Durable, machine-readable dialogue state.  A short reply such as
-    # “30 分钟” can therefore be resolved against its issued task slot.
-    working_state: Mapped[dict] = mapped_column(JSON, default=dict)
-    status: Mapped[str] = mapped_column(String(24), default="active", index=True)
-    version: Mapped[int] = mapped_column(Integer, default=1)
-    __mapper_args__: ClassVar[dict] = {"version_id_col": version, "version_id_generator": False}
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
-
 class Sprint(Base):
     __tablename__ = "study_sprints"
     __table_args__ = (
@@ -541,49 +522,20 @@ class TutoringMessage(Base):
     safety_blocked: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
-class SelfReview(Base):
-    __tablename__ = "self_reviews"
-    __table_args__ = (UniqueConstraint("ward_id", "review_date"),)
-    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
-    ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id"), index=True)
-    review_date: Mapped[date] = mapped_column(Date, index=True)
-    feeling: Mapped[str] = mapped_column(String(40))
-    reflection: Mapped[str | None] = mapped_column(Text, nullable=True)
-    timeline_json: Mapped[list] = mapped_column(JSON, default=list)
-    version: Mapped[int] = mapped_column(Integer, default=1)
-    submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
-
-
-class SelfReviewVersion(Base):
-    __tablename__ = "self_review_versions"
-    __table_args__ = (UniqueConstraint("review_id", "version", name="uq_self_review_version"),)
-    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
-    review_id: Mapped[str] = mapped_column(ForeignKey("self_reviews.id"), index=True)
-    version: Mapped[int] = mapped_column(Integer)
-    raw_expression: Mapped[str] = mapped_column(Text)
-    source_message_id: Mapped[str | None] = mapped_column(Uuid(as_uuid=False), nullable=True)
-    confirmed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
-
-
-class SelfReviewAspect(Base):
-    __tablename__ = "self_review_aspects"
-    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
-    review_id: Mapped[str] = mapped_column(ForeignKey("self_reviews.id"), index=True)
-    review_version: Mapped[int] = mapped_column(Integer)
-    dimension: Mapped[str] = mapped_column(String(32), index=True)
-    statement: Mapped[str] = mapped_column(Text)
-    source_quote: Mapped[str] = mapped_column(Text)
-    task_ref: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    topic_ref: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
-
 # These tables are runtime audit and recovery metadata.  They deliberately do
 # not replace domain aggregates, learning events, or LangGraph's graph-state
 # checkpointer.
 class ConversationThread(Base):
     __tablename__ = "conversation_threads"
+    __table_args__ = (CheckConstraint("(ward_id IS NULL) <> (guardian_id IS NULL)", name="ck_conversation_one_owner"),)
     id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
-    ward_id: Mapped[str] = mapped_column(ForeignKey("user_wards.id"), index=True)
+    ward_id: Mapped[str | None] = mapped_column(ForeignKey("user_wards.id"), index=True)
+    guardian_id: Mapped[str | None] = mapped_column(ForeignKey("user_guardians.id"), index=True)
+    context_ward_id: Mapped[str | None] = mapped_column(Uuid(as_uuid=False), nullable=True, index=True)
+    title: Mapped[str] = mapped_column(String(80), default="新对话", server_default="新对话")
+    clear_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+
     # Kept as a validated reference instead of an FK to avoid a circular
     # thread/run dependency; AgentRun.thread_id remains the authoritative FK.
     focus_run_ref: Mapped[str | None] = mapped_column(String(100), nullable=True)
@@ -591,6 +543,24 @@ class ConversationThread(Base):
     version: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+
+class GuardianConversationTurn(Base):
+    __tablename__ = "guardian_conversation_turns"
+    __table_args__ = (
+        UniqueConstraint("thread_id", "command_id"),
+        UniqueConstraint("thread_id", "position"),
+    )
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
+    thread_id: Mapped[str] = mapped_column(ForeignKey("conversation_threads.id"), index=True)
+    command_id: Mapped[str] = mapped_column(String(128))
+    position: Mapped[int] = mapped_column(Integer)
+    generation: Mapped[int] = mapped_column(Integer)
+    mode: Mapped[str] = mapped_column(String(24))
+    content: Mapped[str] = mapped_column(Text)
+    attachments: Mapped[list] = mapped_column(JSON)
+    reply: Mapped[dict] = mapped_column(JSON)
+    continuation: Mapped[dict] = mapped_column(JSON)
 
 
 class AgentRun(Base):
@@ -999,8 +969,8 @@ class ObservationConsumerInbox(Base):
     ward_id: Mapped[str] = mapped_column(ForeignKey('user_wards.id'), index=True)
 
 
-class ReflectionReportRecord(Base):
-    __tablename__ = 'reflection_reports'
+class EveningReportRecord(Base):
+    __tablename__ = 'evening_reports'
     __table_args__ = (UniqueConstraint('ward_id', 'report_date'),)
     id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uid)
     ward_id: Mapped[str] = mapped_column(ForeignKey('user_wards.id'), index=True)
@@ -1010,9 +980,9 @@ class ReflectionReportRecord(Base):
     fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
-class ReflectionReportVersion(Base):
-    __tablename__ = 'reflection_report_versions'
-    report_id: Mapped[str] = mapped_column(ForeignKey('reflection_reports.id'), primary_key=True)
+class EveningReportVersion(Base):
+    __tablename__ = 'evening_report_versions'
+    report_id: Mapped[str] = mapped_column(ForeignKey('evening_reports.id'), primary_key=True)
     version: Mapped[int] = mapped_column(Integer, primary_key=True)
     content: Mapped[dict] = mapped_column(JSON)
     source_vector: Mapped[dict] = mapped_column(JSON)
@@ -1022,7 +992,59 @@ class ReflectionReportVersion(Base):
 class GuardianReportInbox(Base):
     __tablename__ = 'guardian_report_inbox'
     guardian_id: Mapped[str] = mapped_column(ForeignKey('user_guardians.id'), primary_key=True)
-    report_id: Mapped[str] = mapped_column(ForeignKey('reflection_reports.id'), primary_key=True)
+    report_id: Mapped[str] = mapped_column(ForeignKey('evening_reports.id'), primary_key=True)
     version: Mapped[int] = mapped_column(Integer)
 
-from app.infrastructure.persistence import courseware_tables as _courseware_tables  # noqa: E402,F401
+
+from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.orm import synonym
+
+from app.infrastructure.persistence.artifact_tables import artifacts, versions, receipts
+
+
+class EduArtifact(Base):
+    __table__ = artifacts
+    id = synonym("artifact_id")
+    revision = synonym("state_revision")
+    __mapper_args__ = {"polymorphic_on": artifacts.c.artifact_type}
+
+    @hybrid_property
+    def saved(self):
+        return self.retention_status == "saved"
+
+    @saved.setter
+    def saved(self, value):
+        self.retention_status = "saved" if value else "temporary"
+
+
+class CreativeWork(EduArtifact):
+    __mapper_args__ = {"polymorphic_identity": "creative_work"}
+    ward_id = synonym("owner_id")
+
+
+class InteractiveCourseware(EduArtifact):
+    __mapper_args__ = {"polymorphic_identity": "interactive_courseware"}
+
+
+class GradingReport(EduArtifact):
+    __mapper_args__ = {"polymorphic_identity": "grading_report"}
+
+
+class LessonPack(EduArtifact):
+    __mapper_args__ = {"polymorphic_identity": "lesson_pack"}
+
+
+class ArtifactVersion(Base):
+    __table__ = versions
+    work_id = synonym("artifact_id")
+    number = synonym("version_no")
+    pages = synonym("payload")
+
+
+class ArtifactCommand(Base):
+    __table__ = receipts
+    work_id = synonym("artifact_id")
+
+
+CreativeWorkVersion = ArtifactVersion
+CreativeWorkCommand = ArtifactCommand

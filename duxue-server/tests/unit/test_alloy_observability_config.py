@@ -12,9 +12,9 @@ class _Span:
 
 
 def test_langfuse_export_filter_is_an_explicit_payload_free_allow_list():
-    for name in ("agent.turn", "agent.route", "agent.workflow", "agent.node", "agent.tool", "agent.check", "llm.request", "planning.graph_invoke"):
+    for name in ("agent.turn", "agent.route", "agent.workflow", "agent.node", "agent.tool", "agent.check", "llm.request", "agent.skill"):
         assert _should_export_to_langfuse(_Span(name)) is True
-    assert _should_export_to_langfuse(_Span("planning.unregistered")) is False
+    assert _should_export_to_langfuse(_Span("planning.graph_invoke")) is False
     assert _should_export_to_langfuse(_Span("agent.workflow", scope="untrusted.integration")) is False
     assert _should_export_to_langfuse(_Span("llm.request", scope="untrusted.integration")) is False
     assert _should_export_to_langfuse(_Span("GET /agent/run")) is False

@@ -15,8 +15,6 @@ logger = logging.getLogger(__name__)
 
 GUIDE_STAGES = {
     "companion.route": "route",
-    "companion.planning": "plan",
-    "companion.reflection": "reflect",
     "tutoring.attempt": "draft",
     "tutoring.exit_gate": "check",
     "tutoring.revise": "revise",

@@ -164,7 +164,7 @@ def execute(request):
                     result.update(output=output, content=json.dumps(output, ensure_ascii=False, indent=2))
                     if solution.status == "failed":
                         result.update(status="failed", failure=solution.failure_reason)
-                elif workflow_id in {"tutoring", "reflection"}:
+                elif workflow_id == "tutoring":
                     result.update(run_domain(workflow_id, data, runtime))
                 else:
                     output = run_simple(workflow_id, data)

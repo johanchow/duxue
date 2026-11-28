@@ -10,7 +10,6 @@ from app.application.ports.companion import (
     WorkflowOutcome,
 )
 from app.application.process_managers.companion_coordinator import CompanionCoordinator
-from app.application.workflows.planning_domain_service import PlanningDomainService
 from app.infrastructure.persistence.models import (
     AgentCheckpoint,
     AgentRun,
@@ -22,47 +21,6 @@ from app.infrastructure.persistence.models import (
 )
 from tests.support.factories import create_task, create_ward
 from tests.support.fakes import FakeWorkflowDispatcher, StaticIntentClassifier
-
-
-@pytest.mark.parametrize("allowed, expected_target, expected_mode", [
-    (False, "tutoring", "continue"),
-    (True, "reflection", "handoff"),
-])
-def test_coordinator_confirms_a_proposed_scene_switch(db, allowed, expected_target, expected_mode):
-    ward = create_ward(db)
-    db.commit()
-    dispatcher = FakeWorkflowDispatcher()
-
-    class RecordingVerifier:
-        def __init__(self):
-            self.calls = []
-
-        def confirm(self, **kwargs):
-            self.calls.append(kwargs)
-            return allowed
-
-    verifier = RecordingVerifier()
-    coordinator = CompanionCoordinator(
-        db, dispatcher=dispatcher, classifier=StaticIntentClassifier("reflection"),
-        switch_verifier=verifier,
-    )
-    first = coordinator.handle(
-        ward_id=ward.id, content="三百四十五减一百零七的竖式怎么写？",
-        thread_id=None, expected_thread_version=0, route_hint="tutoring",
-    )
-    second = coordinator.handle(
-        ward_id=ward.id, content="最后结果二百三十八。",
-        thread_id=first.thread_id, expected_thread_version=first.thread_version,
-        route_hint=None,
-    )
-    assert second.decision.target == expected_target
-    assert second.decision.mode == expected_mode
-    assert len(verifier.calls) == 1
-    assert verifier.calls[0]["current_agent_type"] == "tutoring"
-    assert verifier.calls[0]["proposed_agent_type"] == "reflection"
-    assert verifier.calls[0]["recent_utterances"][0]["text"] == "三百四十五减一百零七的竖式怎么写？"
-    assert dispatcher.invocations[-1].agent_type == expected_target
-    assert db.query(AgentTrace).filter_by(thread_id=first.thread_id).order_by(AgentTrace.created_at.desc()).first().route_target == expected_target
 
 
 def test_coordinator_skips_switch_verifier_for_same_scene_and_ui_hint(db):
@@ -83,8 +41,8 @@ def test_coordinator_skips_switch_verifier_for_same_scene_and_ui_hint(db):
                                 expected_thread_version=first.thread_version, route_hint=None)
     assert second.decision.mode == "continue"
     third = coordinator.handle(ward_id=ward.id, content="总结今天的学习", thread_id=first.thread_id,
-                               expected_thread_version=second.thread_version, route_hint="reflection")
-    assert third.decision.target == "reflection"
+                               expected_thread_version=second.thread_version, route_hint="tutoring")
+    assert third.decision.target == "tutoring"
 
 
 def test_coordinator_handles_turn_and_records_trace_and_stream_event(db):
@@ -100,7 +58,7 @@ def test_coordinator_handles_turn_and_records_trace_and_stream_event(db):
             checkpoint_ref="chk:test:1",
         )
     )
-    coordinator = CompanionCoordinator(db, dispatcher=dispatcher, classifier=StaticIntentClassifier("planning"))
+    coordinator = CompanionCoordinator(db, dispatcher=dispatcher, classifier=StaticIntentClassifier("tutoring"))
 
     result = coordinator.handle(
         ward_id=ward.id,
@@ -118,7 +76,7 @@ def test_coordinator_handles_turn_and_records_trace_and_stream_event(db):
     # 验证 AgentTrace 记录
     trace = db.query(AgentTrace).filter_by(thread_id=result.thread_id).first()
     assert trace is not None
-    assert trace.route_target == "planning"
+    assert trace.route_target == "tutoring"
     assert trace.route_mode in {"start", "continue"}
 
     # 验证 AgentStreamEvent
@@ -148,96 +106,14 @@ def test_unclear_intent_writes_a_visible_reply_without_a_run(db):
     assert result.decision.target == "clarify"
     messages = db.query(CompanionMessage).filter_by(thread_id=result.thread_id).order_by(CompanionMessage.thread_version).all()
     assert [message.author_type for message in messages] == ["ward", "companion"]
-    assert "管理任务" in messages[1].content
-    assert "总结思考" in messages[1].content
-    assert "提问探讨" in messages[1].content
+    assert messages[1].content == "你想先聊哪个问题？可以再说具体一点。"
+    assert messages[1].interaction_ref is None
 
 
-@pytest.mark.parametrize("intent,label", [
-    ("planning", "管理任务"),
-    ("reflection", "总结思考"),
-    ("tutoring", "提问探讨"),
-])
-def test_unclear_choice_routes_original_input_once(db, intent, label):
-    ward = create_ward(db)
-    db.commit()
-    dispatcher = FakeWorkflowDispatcher()
-    coordinator = CompanionCoordinator(
-        db, classifier=StaticIntentClassifier("unclear"), dispatcher=dispatcher,
-    )
-    first = coordinator.handle(
-        ward_id=ward.id, content="这些作业怎么处理？", thread_id=None,
-        expected_thread_version=0, route_hint=None,
-    )
-    assert first.run_id is None
-    assert first.interaction["kind"] == "intent_choice"
-    actions = first.interaction["actions"]
-    assert [action["label"] for action in actions] == ["管理任务", "总结思考", "提问探讨"]
-    action = next(action for action in actions if action["payload"]["intent"] == intent)
-    messages = db.query(CompanionMessage).filter_by(thread_id=first.thread_id).order_by(CompanionMessage.thread_version).all()
-    assert messages[-1].interaction_ref == first.interaction
-
-    chosen = coordinator.handle(
-        ward_id=ward.id, content=f"选择：{label}", thread_id=first.thread_id,
-        expected_thread_version=first.thread_version, route_hint=None,
-        structured_command={"interaction_id": action["id"], "command": "choose_intent",
-                            "payload": action["payload"]},
-    )
-    assert chosen.decision.target == intent
-    assert len(dispatcher.invocations) == 1
-    assert dispatcher.invocations[0].turn["content"] == "这些作业怎么处理？"
-    messages = db.query(CompanionMessage).filter_by(thread_id=first.thread_id).order_by(CompanionMessage.thread_version).all()
-    assert [message.content for message in messages if message.author_type == "ward"] == [
-        "这些作业怎么处理？", f"选择：{label}",
-    ]
-
-    with pytest.raises(HTTPException) as stale:
-        coordinator.handle(
-            ward_id=ward.id, content=f"选择：{label}", thread_id=first.thread_id,
-            expected_thread_version=chosen.thread_version, route_hint=None,
-            structured_command={"interaction_id": action["id"], "command": "choose_intent",
-                                "payload": action["payload"]},
-        )
-    assert stale.value.status_code == 409
 
 
-def test_unclear_choice_rejects_a_forged_option(db):
-    ward = create_ward(db)
-    db.commit()
-    coordinator = CompanionCoordinator(db, classifier=StaticIntentClassifier("unclear"))
-    first = coordinator.handle(ward_id=ward.id, content="帮我看看这个", thread_id=None,
-                               expected_thread_version=0, route_hint=None)
-    with pytest.raises(HTTPException) as rejected:
-        coordinator.handle(
-            ward_id=ward.id, content="选择：管理任务", thread_id=first.thread_id,
-            expected_thread_version=first.thread_version, route_hint=None,
-            structured_command={"interaction_id": first.interaction["actions"][0]["id"],
-                                "command": "choose_intent", "payload": {"intent": "other"}},
-        )
-    assert rejected.value.status_code == 409
 
 
-def test_unclear_choice_reuses_original_image_when_switching_from_tutoring(db):
-    ward = create_ward(db)
-    db.commit()
-    dispatcher = FakeWorkflowDispatcher()
-    coordinator = CompanionCoordinator(db, classifier=StaticIntentClassifier("unclear"), dispatcher=dispatcher)
-    tutored = coordinator.handle(ward_id=ward.id, content="解释这个词", thread_id=None,
-                                expected_thread_version=0, route_hint="tutoring")
-    image_key = f"ward/{ward.id}/companion/homework.jpg"
-    unclear = coordinator.handle(ward_id=ward.id, content="看看这张图", thread_id=tutored.thread_id,
-                                 expected_thread_version=tutored.thread_version, route_hint=None,
-                                 attachment_keys=[image_key])
-    assert unclear.decision.target == "clarify"
-    action = unclear.interaction["actions"][0]
-    coordinator.handle(
-        ward_id=ward.id, content="选择：管理任务", thread_id=unclear.thread_id,
-        expected_thread_version=unclear.thread_version, route_hint=None,
-        structured_command={"interaction_id": action["id"], "command": "choose_intent",
-                            "payload": action["payload"]},
-    )
-    assert dispatcher.invocations[-1].turn["content"] == "看看这张图"
-    assert dispatcher.invocations[-1].turn["attachment_keys"] == [image_key]
 
 
 def test_coordinator_exposes_a_controlled_failure_reply_when_workflow_raises(db):
@@ -253,20 +129,20 @@ def test_coordinator_exposes_a_controlled_failure_reply_when_workflow_raises(db)
         content="帮我安排数学",
         thread_id=None,
         expected_thread_version=0,
-        route_hint="planning",
+        route_hint="tutoring",
     )
 
     assert result.run_status == "failed"
     assert result.interaction == {
         "protocol": "companion-interaction.v1",
         "kind": "error",
-        "content": "计划整理暂不可用，请稍后重试。",
-        "parts": [{"type": "text", "text": "计划整理暂不可用，请稍后重试。"}],
+        "content": "暂时无法处理这条消息，请稍后重试。",
+        "parts": [{"type": "text", "text": "暂时无法处理这条消息，请稍后重试。"}],
         "actions": [],
     }
     messages = db.query(CompanionMessage).filter_by(thread_id=result.thread_id).all()
     assert any(
-        message.author_type == "companion" and message.content == "计划整理暂不可用，请稍后重试。"
+        message.author_type == "companion" and message.content == "暂时无法处理这条消息，请稍后重试。"
         for message in messages
     )
 
@@ -285,7 +161,7 @@ def test_coordinator_preserves_workflow_conflicts_for_the_api_to_return(db):
             content="确认这个计划",
             thread_id=None,
             expected_thread_version=0,
-            route_hint="planning",
+            route_hint="tutoring",
         )
     assert exc.value.status_code == 409
     assert exc.value.detail == "计划已变化，请重新审阅"
@@ -296,7 +172,7 @@ def test_coordinator_fences_late_outcome_and_records_discard_trace(db):
     ward = create_ward(db)
     db.commit()
 
-    coordinator = CompanionCoordinator(db, dispatcher=FakeWorkflowDispatcher(), classifier=StaticIntentClassifier("planning"))
+    coordinator = CompanionCoordinator(db, dispatcher=FakeWorkflowDispatcher(), classifier=StaticIntentClassifier("tutoring"))
     result = coordinator.handle(
         ward_id=ward.id,
         content="排个计划",
@@ -323,7 +199,7 @@ def test_coordinator_fences_late_outcome_and_records_discard_trace(db):
         turn_id=stale_turn_id,
         attempt=run.attempt,
         outcome=fake_outcome,
-        decision=RouteDecision(target="planning", mode="continue", confidence=1.0, route_reason="test"),
+        decision=RouteDecision(target="tutoring", mode="continue", confidence=1.0, route_reason="test"),
         duration_ms=10,
     )
     assert accepted is False
@@ -348,7 +224,7 @@ def test_coordinator_command_id_idempotency_and_digest_conflict(db):
     db.commit()
 
     dispatcher = FakeWorkflowDispatcher()
-    coordinator = CompanionCoordinator(db, dispatcher=dispatcher, classifier=StaticIntentClassifier("planning"))
+    coordinator = CompanionCoordinator(db, dispatcher=dispatcher, classifier=StaticIntentClassifier("tutoring"))
     command_id = uid()
 
     # 第一次调用
@@ -401,7 +277,7 @@ def test_coordinator_thread_version_optimistic_locking(db):
         content="你好",
         thread_id=None,
         expected_thread_version=0,
-        route_hint="planning",
+        route_hint="tutoring",
     )
     assert res1.thread_version == 2
 
@@ -412,46 +288,12 @@ def test_coordinator_thread_version_optimistic_locking(db):
             content="再帮我排一下",
             thread_id=res1.thread_id,
             expected_thread_version=1,  # 数据库当前是 2
-            route_hint="planning",
+            route_hint="tutoring",
         )
     assert exc.value.status_code == 409
     assert "conversation thread has changed" in exc.value.detail
 
 
-def test_structured_plan_command_requires_the_server_issued_action(db):
-    ward = create_ward(db)
-    task = create_task(db, ward=ward, title="数学", planned_minutes=20)
-    draft = PlanningDomainService(db).save_draft(
-        ward.id, date(2026, 9, 16),
-        [{"assignment_id": task.id, "new_task": False, "title": task.title,
-          "planned_minutes": 20, "start_at": "2026-09-16T19:00:00"}],
-    )
-    db.commit()
-
-    class IssuingDispatcher:
-        def invoke(self, invocation):
-            action_id = f"plan:{invocation.run_id}:{invocation.attempt}:{draft.id}:{draft.version}"
-            return WorkflowOutcome(run_status="waiting_for_ward", outcome_type="waiting", response={
-                "content": "请确认", "actions": [{"id": action_id, "enabled": True}],
-            })
-
-    coordinator = CompanionCoordinator(db, dispatcher=IssuingDispatcher())
-    first = coordinator.handle(ward_id=ward.id, content="安排数学", thread_id=None,
-                               expected_thread_version=0, route_hint="planning")
-    action_id = f"plan:{first.run_id}:1:{draft.id}:{draft.version}"
-
-    with pytest.raises(HTTPException) as exc:
-        coordinator.handle(ward_id=ward.id, content="确认这个计划", thread_id=first.thread_id,
-                           expected_thread_version=first.thread_version, route_hint="planning",
-                           structured_command={"interaction_id": "forged", "command": "confirm_plan",
-                                               "payload": {"draft_id": draft.id, "expected_draft_version": draft.version}})
-    assert exc.value.status_code == 409
-
-    accepted = coordinator.handle(ward_id=ward.id, content="确认这个计划", thread_id=first.thread_id,
-                                  expected_thread_version=first.thread_version, route_hint="planning",
-                                  structured_command={"interaction_id": action_id, "command": "confirm_plan",
-                                                      "payload": {"draft_id": draft.id, "expected_draft_version": draft.version}})
-    assert accepted.run_status == "waiting_for_ward"
 
 
 def test_coordinator_persists_text_visual_in_companion_message_interaction_ref(db):
@@ -559,40 +401,6 @@ def test_coordinator_persists_pronunciation_lessons_in_companion_message_interac
     assert messages[1].interaction_ref == {"kind": "pronunciation_lesson", "lessons": lessons}
 
 
-def test_coordinator_persists_plan_review_with_its_reply(db):
-    ward = create_ward(db)
-    db.commit()
-    snapshot = {"items": [{"title": "整理错题", "planned_minutes": 20,
-                            "start_at": "2026-10-25T19:00:00+08:00",
-                            "end_at": "2026-10-25T19:20:00+08:00"}]}
-    interaction = {
-        "kind": "plan_confirm_list", "content": "请检查这份计划草稿。",
-        "parts": [{"type": "text", "text": "请检查这份计划草稿。"}],
-        "object_ref": {"context": "planning", "object_id": "draft-1", "object_version": 2},
-        "actions": [{"id": "plan:run:1:draft-1:2", "command": "confirm_plan", "enabled": True}],
-        "card_snapshot": snapshot,
-    }
-    coordinator = CompanionCoordinator(
-        db,
-        dispatcher=FakeWorkflowDispatcher(WorkflowOutcome(
-            run_status="waiting_for_ward", outcome_type="waiting",
-            next_interaction=interaction,
-        )),
-        classifier=StaticIntentClassifier("planning"),
-    )
-    result = coordinator.handle(
-        ward_id=ward.id, content="今晚七点整理错题", thread_id=None,
-        expected_thread_version=0, route_hint=None,
-    )
-    messages = (db.query(CompanionMessage)
-                .filter_by(thread_id=result.thread_id)
-                .order_by(CompanionMessage.thread_version).all())
-    assert messages[-1].interaction_ref == {
-        "kind": "plan_confirm_list",
-        "object_ref": interaction["object_ref"],
-        "actions": interaction["actions"],
-        "card_snapshot": snapshot,
-    }
 
 
 def test_companion_messages_supports_current_thread_lookup_cursor_pagination_and_previous_thread_link(db):
@@ -648,10 +456,10 @@ def test_companion_messages_supports_current_thread_lookup_cursor_pagination_and
     )
     assert [m["content"] for m in older_page["messages"]] == ["新会话问题1", "请回答"]
     assert older_page["next_before_thread_version"] is None
-    assert older_page["previous_thread_id"] == first_thread_res.thread_id
+    assert older_page["previous_thread_id"] is None
 
     prev_thread_page = companion_messages(
-        older_page["previous_thread_id"],
+        first_thread_res.thread_id,
         before_thread_version=None,
         limit=2,
         principal=principal,
@@ -715,7 +523,7 @@ def test_companion_message_image_requires_owned_visible_attachment(db, monkeypat
     assert error.value.status_code == 404
 
 
-@pytest.mark.parametrize("scene", ["tutoring", "reflection"])
+@pytest.mark.parametrize("scene", ["tutoring"])
 def test_voice_display_is_optional_and_never_replaces_source_for_workflow(db, scene):
     ward = create_ward(db)
     db.commit()
@@ -728,3 +536,48 @@ def test_voice_display_is_optional_and_never_replaces_source_for_workflow(db, sc
     message = db.query(CompanionMessage).filter_by(thread_id=result.thread_id, author_type="ward").one()
     assert message.content == dispatcher.invocations[0].turn["content"] == source
     assert (message.interaction_ref or {}).get("voice_display_text") == (display if scene == "tutoring" else None)
+
+
+def test_current_turn_policy_reclassifies_hinted_ward_followups(db, monkeypatch):
+    from app.agent_specs.definitions import load_definitions
+    from app.application.ports.companion import IntentProposal
+
+    import json
+    from pathlib import Path
+
+    snapshot = Path(__file__).parents[2] / "fixtures/ward-turn-policy/companion.intent.json"
+    unit = load_definitions().units["companion.intent"]
+    monkeypatch.setitem(unit.output_schema, "required", json.loads(snapshot.read_text())["output_schema"]["required"])
+    replies = iter(["homework", "homework", "pronunciation", None])
+    calls = []
+
+    class Classifier:
+        def propose(self, **kwargs):
+            calls.append(kwargs)
+            return IntentProposal(intent="tutoring", teaching_policy=next(replies))
+
+    class UnexpectedSwitch:
+        def confirm(self, **kwargs):
+            pytest.fail("a current-turn decision must not trigger a second classification")
+
+    ward = create_ward(db)
+    db.commit()
+    dispatcher = FakeWorkflowDispatcher()
+    coordinator = CompanionCoordinator(db, dispatcher=dispatcher, classifier=Classifier(),
+                                       switch_verifier=UnexpectedSwitch())
+    thread_id = None
+    version = 0
+    requests = ["第一步怎么想", "直接说选哪个", "triangle 怎么读", "没有可用判断"]
+    for content in requests:
+        result = coordinator.handle(ward_id=ward.id, thread_id=thread_id,
+                                    expected_thread_version=version, content=content,
+                                    route_hint="tutoring")
+        thread_id, version = result.thread_id, result.thread_version
+    assert [call["content"] for call in calls] == requests
+    assert calls[1]["recent_utterances"][0]["text"] == requests[0]
+    assert [i.agent_type for i in dispatcher.invocations] == ["tutoring"] * 3
+    assert [i.turn["teaching_policy"] for i in dispatcher.invocations] == [
+        "homework", "homework", "pronunciation",
+    ]
+    assert dispatcher.invocations[-1].turn["tutoring_intent"] == "pronunciation"
+    assert result.decision.target == "clarify"

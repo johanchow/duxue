@@ -839,3 +839,57 @@ def test_mentor_stream_only_exposes_stages_and_checked_terminal(client, adult, m
     assert events[:-1] == [{"type": "stage", "value": value} for value in ("read", "solve", "explain")]
     assert events[-1] == ({"type": "error", "value": {"status": 503, "detail": {"code": "mentor_timeout"}}}
                           if fail else {"type": "result", "value": {"act": "explain", "content": "已校验正文", "state_token": "signed"}})
+
+
+def test_named_threads_isolate_turns_and_survive_navigation(client, adult, model):
+    headers = adult[1]
+    def create(title):
+        response = client.post("/v1/conversations", headers=headers, json={"title": title})
+        assert response.status_code == 201, response.text
+        return response.json()["thread_id"]
+
+    a, b = create("几何"), create("分数")
+    body = {"thread_id": a, "content": "试试通分", "command_id": "retry-1"}
+    first = client.post(f"{BASE}/turn", headers=headers, json=body)
+    assert first.status_code == 200, first.text
+    assert client.post(f"{BASE}/turn", headers=headers, json=body).json() == first.json()
+    def messages(thread):
+        return client.get(f"/v1/conversations/{thread}/messages", headers=headers).json()["items"]
+    assert len(messages(a)) == 2 and messages(b) == []
+    assert client.delete(f"/v1/conversations/{a}", headers=headers).status_code == 204
+    assert client.get(f"/v1/conversations/{a}/messages", headers=headers).status_code == 404
+    assert messages(b) == []
+
+
+def test_clear_fences_model_result_even_if_response_arrives_late(client, adult, monkeypatch):
+    from app.api.v1 import guardian_experience
+    headers = adult[1]
+    root = "/v1/conversations"
+    thread = client.post(root, headers=headers, json={}).json()["thread_id"]
+    other = client.post(root, headers=headers, json={}).json()["thread_id"]
+
+    def late(**kwargs):
+        assert client.post(f"{root}/{thread}/clear", headers=headers).is_success
+        return {"content": "迟到的结果"}
+
+    monkeypatch.setattr(guardian_experience, "experience_turn", late)
+    result = client.post(f"{BASE}/turn", headers=headers, json={
+        "thread_id": thread, "mode": "guardian_explain", "command_id": "late", "content": "做一份课件"})
+    assert result.status_code == 409
+    assert all(client.get(f"{root}/{t}/messages", headers=headers).json()["items"] == [] for t in (thread, other))
+
+
+def test_thread_photo_reopens_and_clear_revokes_source_read(client, adult, monkeypatch):
+    from app.api.v1 import guardian_experience
+    from app.infrastructure.storage.object_storage import storage
+    headers = adult[1]
+    t = client.post("/v1/conversations", headers=headers, json={}).json()["thread_id"]
+    monkeypatch.setattr(storage, "exists", lambda key: True)
+    monkeypatch.setattr(storage, "read_limited", lambda key, limit: b"photo")
+    monkeypatch.setattr(guardian_experience, "experience_turn", lambda **kw: {"content":"题图讲解"})
+    r = client.post(f"{BASE}/turn", headers=headers, json={"thread_id":t, "command_id":"photo",
+        "mode":"guardian_explain", "attachment_keys":[f"guardian/{adult[0]}/experience/test.png"]})
+    url = f"/v1/conversations/{t}/messages/{r.json()['message_id']}/images/0"
+    assert client.get(url, headers=headers).content == b"photo"
+    assert client.post(f"/v1/conversations/{t}/clear", headers=headers).is_success
+    assert client.get(url, headers=headers).status_code == 404

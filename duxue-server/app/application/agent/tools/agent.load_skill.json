@@ -1,0 +1,30 @@
+{
+  "id": "agent.load_skill",
+  "kind": "tool",
+  "owner_domain": "agent",
+  "description": "按需加载指定教育 Skill 的详细 SOP 指令并解锁其专属工具。",
+  "access": "read",
+  "allowed_roles": [
+    "teacher",
+    "coach",
+    "guardian",
+    "ward"
+  ],
+  "input_schema": {
+    "type": "object",
+    "required": [
+      "skill_id"
+    ],
+    "properties": {
+      "skill_id": {
+        "type": "string"
+      }
+    },
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": "object"
+  },
+  "timeout_ms": 1000,
+  "handler_id": "agent.load_skill"
+}

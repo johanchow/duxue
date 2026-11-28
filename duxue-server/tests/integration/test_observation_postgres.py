@@ -66,7 +66,7 @@ def test_observation_migration_matches_model_columns(migrated_engine):  # noqa: 
     from app.infrastructure.persistence.models import Base
     inspector = inspect(migrated_engine)
     names = {'accepted_evidence', 'observation_settings', 'observation_windows',
-             'observation_jobs', 'observation_revisions', 'reflection_report_versions',
+             'observation_jobs', 'observation_revisions', 'evening_report_versions',
              'support_channels', 'help_offers'}
     for name in names:
         table = Base.metadata.tables[name]

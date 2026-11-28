@@ -27,6 +27,10 @@ Guardian 用邮箱验证码注册和登录，不保存读学密码。Ward 使用
 
 ## 注意
 
+- 2026-11-28 用户授权通过 Chrome DevTools MCP 开通阿里云 PNVS，登录后免费开通并刷新“功能开启”页核实：号码认证、短信认证已开启，图形认证与融合认证未开启。短信概览展示预置签名“恒创联众”、登录/注册模板100001，测试手机号列表为空。服务端凭据配置与实际短信收发尚待实施。用户已明确手机号/邮箱同等地位、任选其一注册，手机号独立开户需调整现有非空邮箱及共管邀请依赖。开通说明见[官方指引](https://help.aliyun.com/zh/pnvs/getting-started/sms-authentication-service-novice-guide)，备案义务需独立核对。
+
+- 2026-11-28 Guardian 微信登录准备调研：现有约束见 [登录 PRD](../../docs/product/prd-user.md#42-支持的登录方式)。实施前须明确新用户邮箱策略（Guardian.email 当前非空且唯一，共管邀请按邮箱匹配）、正式/调试包的微信注册配置（debug 有 .debug 后缀且签名不同）、iOS 工程与发布准备（当前无 ios/ 目录）。本轮仅分析，未选定注册策略或开工实现。微信官方文档本次抓取失败，主体资质、材料、费用与权限状态须在开放平台后台逐项确认。
+
 - 2026-11-22 release 明文例外只放行 `127.0.0.1`。`<domain>` 必须写 `includeSubdomains="false"`，否则 `lintVitalRelease` 失败；`flutter analyze` 和 debug 安装不会跑这项检查。该地址是本机朗读流 `ReplyAudioSource` 的回环 HTTP，没有下级域名。
 - 2026-11-17 用户确认 Guardian 精简方案并授权真机迭代；2026-11-18用户验收并授权commit。旧 `docs/mockups/guardian-*.html` 已加过期提示，不能作为当前导航事实源。成人会话不借用 Ward 身份/Thread；短期签名状态协议归 [Companion](../../docs/technical/domain-companion.md#guardian-问答体验2026-11-17已验收)。
 - 真机发现 Android 在问答页返回会退出 App；已先红后绿补回归，改为非孩子页先返回孩子页、多孩子详情返回列表，草稿/在途问答保留。清空推进 generation，防止上传、拍照或模型迟到回复污染新一轮。发送期间输入框不重复保留已发送文字，失败恢复草稿。
@@ -126,5 +130,7 @@ Guardian 用邮箱验证码注册和登录，不保存读学密码。Ward 使用
 - 导师课件详情只在临时课件显示有效期与保存按钮，保存后整行收起，让题目直接接在标题栏下。
 
 - 课件步骤仅用于阅读和演示。用户从底部输入框直接描述修改要求，App 已移除步骤点选与绑定。
+
+- 2026-11-28 真机发现 geometry_2d 无论收到 shapes 还是 description 都忽略内容画固定三角形；暂从端侧支持清单移除，走原有静态图文降级，禁止以无关预置图冒充生成场景。新增3项回归先红后绿，Flutter199通过、静态分析及debug构建通过。用户重新登录Guardian后覆盖安装不丢登录，同一课件保存重开、分步说明及既有3D旋转/滑块/重置真机通过；二维动态图元能力仍是P1缺口。设计边界见[产物渲染](../../docs/technical/domain-artifact-workspace.md#六端侧交互渲染底座离线-web-数理舞台duxue-mathstage-runtime)，完整证据见[验收跟进](../specs/edu-workspace-delivery.md#guardian-重新登录后的跟进)。
 
 - 2026-11-27 导师课件页落地第一刀变更感知与自适应双栏布局（`GuardianCoursewarePage` + `courseware_revision_diff.dart`）：`<860px` 保持竖屏单列，`>=860px` 自动切换左主内容+右 360px 修订侧边栏（含本轮修订记录）；修订生效时通过前后版本 `step_id`/`content_hash` 及语义区块比对展示变更回执条（摘要、新增/更新/移除胶囊、定位到改动处、一键撤销）、自动展开并滚动到首个变动步骤、加卡片左色条与区块微标，并补齐加载原话回显、`low_confidence` 诚实提示与后台修订失败提示条。`flutter analyze` 无问题，全量 202 项通过（含新增 4 项单测/组件测试）。

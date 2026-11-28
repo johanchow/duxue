@@ -9,7 +9,7 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from app.agent_specs import blueprint_steps, reminder_policy, web_search
+from app.agent_specs import education_workspace, creative_work, blueprint_steps, reminder_policy, web_search
 from app.agent_specs.configuration import code_contract
 from app.agent_specs.definitions import DefinitionCatalog
 from app.agent_specs.gaokao_contracts import FILES as GAOKAO_FILES
@@ -38,8 +38,16 @@ from app.contexts.behavior_analysis.domain.reminder_rules import ReminderPolicy
 # Every JSON is carried by the published artifact. Code owns the file whitelist
 # and protected contract; values are not filled from local defaults at load time.
 def _bindings_for_files(files):
-    return workflow_bindings(legacy=f"workflows/{LEGACY_LOOP}.json" in files,
+    result = workflow_bindings(legacy=f"workflows/{LEGACY_LOOP}.json" in files,
                              legacy_review=f"workflows/{LEGACY_REVIEW}.json" in files)
+
+    if education_workspace.FILES <= set(files):
+        result = {**result, **{unit.replace(".", "-"): {"conditions": set(), "handlers": set()} for unit in education_workspace.UNITS}}
+    if education_workspace.retired_configuration(files):
+        result = {k:v for k,v in result.items() if k not in education_workspace.RETIRED_WORKFLOWS}
+        if "gates/companion.scene-switch.json" not in files:
+            result = {**result, "companion": {"conditions": set(), "handlers": {"decide"}}}
+    return result
 
 
 def digest(value) -> str:
@@ -97,9 +105,21 @@ def _frozen(doc):
 def _intent_hints_contracts(files: dict, base_files: dict) -> dict:
     doc = files.get("agents/companion.intent.json")
     props = (doc.get("output_schema") or {}).get("properties") if isinstance(doc, dict) else None
-    if not isinstance(props, dict) or not ({"history_image_ref", "thinking", "thinking_effort"} & set(props)):
+    if not isinstance(props, dict) or not ({"teaching_policy", "history_image_ref", "thinking", "thinking_effort"} & set(props)):
         return {}
     upgraded = copy.deepcopy(base_files["agents/companion.intent.json"])
+    if "study_control" in props:
+        from app.application.ports.companion import StudyControl
+        upgraded["output_schema"]["properties"]["study_control"] = StudyControl.model_json_schema(mode="serialization")
+        upgraded["output_schema"]["properties"]["intent"] = {"enum": ["tutoring", "unclear"]}
+    if "off_sprint_topic" in props:
+        upgraded["output_schema"]["properties"]["off_sprint_topic"] = {"type": "boolean"}
+    if "creative_work" in props:
+        upgraded["output_schema"]["properties"]["creative_work"] = {"type": "boolean"}
+    if "teaching_policy" in props:
+        schema = upgraded["output_schema"]
+        schema["properties"]["teaching_policy"] = {"enum": ["homework", "pronunciation", "standard"]}
+        schema["required"] = [*schema["required"], "teaching_policy"]
     if "history_image_ref" in props:
         upgraded["output_schema"]["properties"]["history_image_ref"] = {"enum": ["none", "needed"]}
     if "thinking_effort" in props:
@@ -163,6 +183,8 @@ def contract_compatibility(files: dict) -> str:
     has_mentor = GUARDIAN_MENTOR_FILES <= set(files)
     base_with_extensions = {
         **code_contract()["files"],
+        **({**creative_work.contracts(), creative_work.WORKFLOW_FILE: creative_work.workflow()} if creative_work.FILES <= set(files) else {}),
+        **(education_workspace.contracts(files) if education_workspace.FILES <= set(files) else {}),
         **_intent_hints_contracts(files, code_contract()["files"]),
         **(web_search.upgraded_contracts(code_contract()["files"]) if web_search.FILE in files else {}),
     }
@@ -200,6 +222,17 @@ def compile_bundle(bundle: dict) -> CompiledBundle:
     has_observation = OBSERVATION_FILES <= file_names
     has_gaokao = GAOKAO_FILES <= file_names
     has_mentor = GUARDIAN_MENTOR_FILES <= file_names
+    creative = creative_work.contracts() if creative_work.FILES <= file_names else {}
+    if creative:
+        workflow_files.add(creative_work.WORKFLOW_FILE)
+        if bundle["files"][creative_work.WORKFLOW_FILE] != creative_work.workflow():
+            raise ValueError("mandatory Ward authorship gate changed")
+    workspace = education_workspace.contracts(bundle["files"]) if education_workspace.FILES <= file_names else {}
+    contracts["files"].update(workspace)
+    contracts["tool_authority"].update({doc["id"]: [] for doc in workspace.values()})
+    contracts["files"].update(creative)
+    if creative:
+        contracts["tool_authority"].update({creative_work.GATE: [], creative_work.AUTHOR: []})
     split_files = {}
     if has_gaokao and f"agents/{blueprint_steps.EXTRACT}.json" in file_names:
         split_files = blueprint_steps.contracts(bundle["files"])
@@ -236,15 +269,21 @@ def compile_bundle(bundle: dict) -> CompiledBundle:
             raise ValueError("reminder policy requires observation workflow")
         policy = ReminderPolicy.model_validate(bundle["files"][reminder_policy.FILE]).model_dump()
         contracts["files"].update(reminder_policy.upgraded_contracts(contracts["files"]))
+    from app.application.agent.skill_catalog import configured_skills
+    education_skills = configured_skills(bundle.get("files", {}))
     expected_files = (
-        set(code_contract()["files"]) | workflow_files | set(split_files)
+        set(code_contract()["files"]) | workflow_files | set(split_files) | set(creative) | set(workspace)
         | (OBSERVATION_FILES if has_observation else set())
         | (GAOKAO_FILES if has_gaokao else set())
         | (GUARDIAN_MENTOR_FILES if has_mentor else set())
         | ({reminder_policy.FILE} if policy else set())
         | ({web_search.FILE} if web_search.FILE in file_names else set())
-        | set(mentor_stage)
+        | set(mentor_stage) | set(education_skills)
     )
+    if education_workspace.retired_configuration(file_names):
+        expected_files -= education_workspace.RETIRED_FILES
+        if "gates/companion.scene-switch.json" not in file_names:
+            expected_files.discard("gates/companion.scene-switch.json")
     if (
         not isinstance(bundle, dict)
         or set(bundle) != {"format_version", "compatibility", "files"}
@@ -259,7 +298,7 @@ def compile_bundle(bundle: dict) -> CompiledBundle:
     if bundle["compatibility"] != contract_compatibility(bundle["files"]):
         raise ValueError("code compatibility mismatch; validate the complete Admin snapshot")
     for name, doc in bundle["files"].items():
-        if name == reminder_policy.FILE:
+        if name == reminder_policy.FILE or name in education_skills:
             continue
         if not isinstance(doc, dict):
             raise ValueError(f"{name}: malformed configuration")
@@ -323,6 +362,7 @@ def compile_bundle(bundle: dict) -> CompiledBundle:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(json.dumps(doc, ensure_ascii=False))
         catalog = DefinitionCatalog(root)
+        catalog.education_skills = education_skills
         catalog.observation_policy = policy
         catalog.artifact_digest = bundle_id
         from app.agent_specs.catalog import AgentCatalog

@@ -70,7 +70,7 @@ def _record_learning_evidence(
 
 MemoryType = Literal["episodic", "signal", "profile"]
 ActorRole = Literal["ward", "guardian", "system"]
-UseCase = Literal["planning", "tutoring", "reflection"]
+UseCase = Literal["tutoring"]
 
 
 class MemoryContextRequest(BaseModel):

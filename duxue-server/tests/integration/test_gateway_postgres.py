@@ -1,6 +1,7 @@
 """Real PostgreSQL migrations and concurrent idempotency, isolated from .env DBs.
 
-CI sets TEST_GATEWAY_DATABASE_URL to a disposable duxue_gateway_test_* database.
+CI sets TEST_GATEWAY_DATABASE_URL to a disposable duxue_gateway_test_* database;
+each module creates its own temporary database on that service.
 Locally, an installed PostgreSQL creates a temporary cluster instead of Docker.
 """
 
@@ -33,6 +34,7 @@ from app.infrastructure.persistence.models import (
     User,
     Ward,
 )
+from tests.support.postgres import isolated_database
 
 
 @pytest.fixture(scope="module")
@@ -43,7 +45,10 @@ def postgres_url(tmp_path_factory):
             pytest.fail(
                 "TEST_GATEWAY_DATABASE_URL must name a disposable duxue_gateway_test_* database"
             )
-        yield configured
+        # Imported module-scoped fixtures are instantiated once per importing
+        # module. Reusing this DB would rerun downgrades over earlier test data.
+        with isolated_database(configured) as isolated:
+            yield isolated
         return
     postgres = shutil.which("postgres")
     initdb = shutil.which("initdb") or (

@@ -19,7 +19,9 @@ BaselineConfidence = Literal["high", "medium", "low"]
 VisualKind = Literal["component_scene", "layered_svg", "math_stage_script"]
 PatchOp = Literal["insert", "update", "delete", "split", "replace_method"]
 
-MAX_COURSEWARE_VERSIONS = 20
+from app.contexts.artifact_workspace.domain.versions import MAX_VERSIONS, active_prefix, move_cursor
+
+MAX_COURSEWARE_VERSIONS = MAX_VERSIONS
 _VALID_VISUAL_KINDS = frozenset({"component_scene", "layered_svg", "math_stage_script"})
 _VALID_VERIFICATION_STATUSES = frozenset({"verified", "unverified_custom", "low_confidence"})
 
@@ -408,10 +410,7 @@ class CoursewareVersionPolicy:
         *,
         max_versions: int = MAX_COURSEWARE_VERSIONS,
     ) -> tuple[list[CoursewareVersion], int, int]:
-        if cursor >= 0 and cursor < len(versions) - 1:
-            trimmed = list(versions[: cursor + 1])
-        else:
-            trimmed = list(versions)
+        trimmed = active_prefix(versions, cursor)
         if len(trimmed) >= max_versions:
             raise CoursewareConflictError("version_limit_exceeded", f"单份课件版本数已达上限 {max_versions}")
 
@@ -431,15 +430,17 @@ class CoursewareVersionPolicy:
 
     @staticmethod
     def undo(versions: list[CoursewareVersion], cursor: int) -> int:
-        if not versions or cursor <= 0:
-            raise CoursewareConflictError("cursor_out_of_bounds", "当前已在最早版本，无法继续撤销")
-        return cursor - 1
+        try:
+            return move_cursor(versions, cursor, "undo")
+        except ValueError as error:
+            raise CoursewareConflictError("cursor_out_of_bounds", "当前已在最早版本，无法继续撤销") from error
 
     @staticmethod
     def redo(versions: list[CoursewareVersion], cursor: int) -> int:
-        if not versions or cursor >= len(versions) - 1:
-            raise CoursewareConflictError("cursor_out_of_bounds", "当前已在最新版本，无法继续重做")
-        return cursor + 1
+        try:
+            return move_cursor(versions, cursor, "redo")
+        except ValueError as error:
+            raise CoursewareConflictError("cursor_out_of_bounds", "当前已在最新版本，无法继续重做") from error
 
 
 class MentorCourseware:

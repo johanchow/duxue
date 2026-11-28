@@ -15,6 +15,9 @@ class GateVerdict(BaseModel):
 def normalize_judge(unit_id: str, payload: dict | None, *, phase: str = "response") -> GateVerdict:
     if payload is None:
         return GateVerdict(verdict="unknown", reason_code="judge_unavailable")
+    if unit_id == "ward.anti_ghostwriting":
+        allow = payload.get("allow_creation") is True
+        return GateVerdict(verdict="allow" if allow else "deny", reason_code="independent_creation" if allow else "authorship_unclear")
     if unit_id == "companion.scene-switch":
         if set(payload) != {"allow_switch"}:
             return GateVerdict(verdict="unknown", reason_code="invalid_judge_output")

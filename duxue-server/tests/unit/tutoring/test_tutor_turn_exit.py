@@ -2,7 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.application.workflows.tutor_turn import TutorTurnCandidate, check_authority
-from app.contexts.tutoring.domain.tutor_permit import AttemptSummary, TutorPermit
+from app.contexts.tutoring.domain.tutor_permit import AttemptSummary, TutorPermit, TutorPermitPolicy
 from tests.support.fakes import tutor_raw
 
 PERMIT = TutorPermit(False, AttemptSummary())
@@ -316,3 +316,12 @@ def test_pronounce_ignores_undeclared_extra_fields():
     assert note.segment == "syn" and not hasattr(note, "segment_note")
     assert not hasattr(candidate.pronounce.lesson, "extra_lesson_field")
     assert _verdict(raw).ok
+
+
+def test_first_turn_homework_requires_review_even_if_generator_calls_it_general_knowledge():
+    permit = TutorPermitPolicy.permit(None).protect_homework_request()
+    candidate = tutor_raw("answer", "答案是 80 度。", relation="none")
+    verdict = _verdict(candidate, permit=permit)
+    assert verdict.answer_protected and verdict.needs_leak_check
+    disguised = {"act": "pronounce", "content": "读出答案", "pronounce": {"lesson": LESSON}}
+    assert not _verdict(disguised, permit=permit).ok

@@ -90,11 +90,9 @@ class TaskExecutionService:
                 )
                 session.ended_at, session.version = now(), session.version + 1
             if action == "complete":
-                from app.application.workflows.planning_domain_service import (
-                    PlanningDomainService,
-                )
+                from app.application.commands.study_day import StudyDay
 
-                PlanningDomainService(self.db).declare_completion(
+                StudyDay(self.db).declare_completion(
                     ward_id,
                     task_id,
                     session_id=session.id if session else None,

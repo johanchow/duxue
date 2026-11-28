@@ -150,8 +150,11 @@ class MentorCoursewareCommandService:
 
     def request_revision(self, cmd: RequestCoursewareRevisionInput) -> RequestRevisionResult:
         cw = self._load_owned(cmd.courseware_id, cmd.guardian_id)
+        signature = cmd.model_dump(mode="json", exclude={"guardian_id", "courseware_id", "command_id"})
         if cmd.command_id in cw.processed_command_ids:
             saved = cw.processed_command_ids[cmd.command_id]
+            if saved.get("op") != "revision" or saved.get("request", signature) != signature:
+                raise CoursewareConflictError("idempotency_payload_mismatch", "请求编号已用于其他操作")
             return RequestRevisionResult(
                 courseware_id=cw.courseware_id,
                 revision_id=str(saved["revision_id"]),
@@ -170,7 +173,7 @@ class MentorCoursewareCommandService:
             target_step_id=cmd.target_step_id,
         )
         cw.processed_command_ids[cmd.command_id] = {
-            "op": "revision",
+            "op": "revision", "request": signature,
             "revision_id": slot.revision_id,
             "base_version_no": slot.base_version_no,
             "started_state_revision": slot.started_state_revision,
@@ -218,20 +221,26 @@ class MentorCoursewareCommandService:
     def undo(self, cmd: MoveCoursewareCursorInput) -> MentorCourseware:
         cw = self._load_owned(cmd.courseware_id, cmd.guardian_id)
         if cmd.command_id in cw.processed_command_ids:
+            receipt = cw.processed_command_ids[cmd.command_id]
+            if receipt.get("op") != "undo" or receipt.get("expected", cmd.expected_state_revision) != cmd.expected_state_revision:
+                raise CoursewareConflictError("idempotency_payload_mismatch", "请求编号已用于其他操作")
             return cw
         prev_rev = cw.state_revision
         cw.undo(expected_state_revision=cmd.expected_state_revision)
-        cw.processed_command_ids[cmd.command_id] = {"op": "undo", "state_revision": cw.state_revision}
+        cw.processed_command_ids[cmd.command_id] = {"op": "undo", "expected": cmd.expected_state_revision, "state_revision": cw.state_revision}
         self._repo.save_cas(cw, expected_state_revision=prev_rev)
         return cw
 
     def redo(self, cmd: MoveCoursewareCursorInput) -> MentorCourseware:
         cw = self._load_owned(cmd.courseware_id, cmd.guardian_id)
         if cmd.command_id in cw.processed_command_ids:
+            receipt = cw.processed_command_ids[cmd.command_id]
+            if receipt.get("op") != "redo" or receipt.get("expected", cmd.expected_state_revision) != cmd.expected_state_revision:
+                raise CoursewareConflictError("idempotency_payload_mismatch", "请求编号已用于其他操作")
             return cw
         prev_rev = cw.state_revision
         cw.redo(expected_state_revision=cmd.expected_state_revision)
-        cw.processed_command_ids[cmd.command_id] = {"op": "redo", "state_revision": cw.state_revision}
+        cw.processed_command_ids[cmd.command_id] = {"op": "redo", "expected": cmd.expected_state_revision, "state_revision": cw.state_revision}
         self._repo.save_cas(cw, expected_state_revision=prev_rev)
         return cw
 

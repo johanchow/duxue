@@ -1,8 +1,8 @@
 # 读学系统 — Memory & Understanding Bounded Context
 
-> 状态：讨论稿 · 版本：v2.4
-> 适用范围：`duxue-server` 中 Ward 学习证据、情境记忆、可校正理解与长期画像投影。
-> 关联：[DDD 系统级 Overview](ddd-overview.md) · [陪伴编排](domain-companion.md) · [Planning Context](domain-planning.md) · [Tutoring Context](domain-tutoring.md) · [Evaluation Context](domain-evaluation.md) · [服务端物理 Schema](design-server.md) · [记忆 PRD](../product/prd-memory.md)
+> 状态：已对齐教育通用 Agent 演进 · 版本：v2.5（2026-11-27）
+> 适用范围：`duxue-server` 中 Ward 客观学习证据、情境记忆、独立兴趣信号（含自由创作 `CreationFootprintRecorded.v1`）与长期画像投影；原 `Planning` 消费方与 `SelfReview` 隔离依赖随二者退场逐步清理；向成人工作台（Teacher / Coach / Guardian）提供**显式受权、严格只读**的 `MemoryBundle` 查询（严禁隐式写回）。
+> 关联：[DDD 系统级 Overview](ddd-overview.md) · [教育通用 Agent 架构](domain-conversation.md) · [陪伴编排](domain-conversation.md) · [Tutoring Context](domain-tutoring.md) · [Evaluation Context](domain-evaluation.md) · [服务端物理 Schema](design-server.md) · [记忆 PRD](../product/prd-memory.md)
 
 ## 一、边界、上下游与统一语言
 

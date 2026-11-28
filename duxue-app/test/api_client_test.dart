@@ -60,7 +60,7 @@ void main() {
       server.listen((request) async {
         await request.drain<void>();
         expect(request.uri.path,
-            isWard ? '/companion/turn' : '/guardian/experience/turn');
+            '/v1/agent/turns');
         expect(request.headers.value('accept'), 'text/event-stream');
         request.response.headers.contentType =
             ContentType('text', 'event-stream', charset: 'utf-8');
@@ -100,6 +100,30 @@ void main() {
       expect(result['content'], '校验后的回复');
     });
   }
+
+  test('断流后用同一线程和命令读取最终结果', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(server.close);
+    final paths = <String>[];
+    server.listen((req) async {
+      await req.drain<void>();
+      paths.add(req.uri.path);
+      if (req.method == 'POST') {
+        req.response.headers.contentType = ContentType('text', 'event-stream');
+        req.response.write('data: {"type":"stage","value":"read"}\n\n');
+      } else {
+        req.response.headers.contentType = ContentType.json;
+        req.response.write('{"content":"已保存"}');
+      }
+      await req.response.close();
+    });
+    final api = ApiClient(baseUrl: 'http://127.0.0.1:${server.port}',
+        tokens: _MemoryTokens(accessToken: 'adult', refreshToken: null, ward: null));
+    final reply = await api.guardianExperienceTurn(content: '解释', threadId: 't1',
+        commandId: 'c1', onStage: (_) {});
+    expect(reply['content'], '已保存');
+    expect(paths, ['/v1/agent/turns', '/v1/agent/threads/t1/results/c1']);
+  });
 
   test('guardian email code, registration and login use code without password',
       () async {

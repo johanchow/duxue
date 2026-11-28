@@ -1,0 +1,21 @@
+{
+  "id": "image.inspect_crop",
+  "kind": "tool",
+  "owner_domain": "infrastructure",
+  "description": "对授权题目图片进行局部裁剪放大核查。",
+  "access": "read",
+  "allowed_roles": [
+    "teacher",
+    "coach",
+    "guardian",
+    "ward"
+  ],
+  "input_schema": {
+    "type": "object"
+  },
+  "output_schema": {
+    "type": "object"
+  },
+  "timeout_ms": 10000,
+  "handler_id": "image.inspect_crop"
+}

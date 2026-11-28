@@ -12,7 +12,6 @@ def run_domain(workflow_id, data, runtime):
     from app.infrastructure.persistence.database import Base
     from app.infrastructure.persistence.models import (
         OutboxEvent,
-        SelfReview,
         StudySession,
         Task,
         TutoringMessage,
@@ -92,11 +91,7 @@ def run_domain(workflow_id, data, runtime):
                     math_engine=math_engine(),
                 )
             else:
-                from app.application.workflows.reflection_workflow import (
-                    ReflectionWorkflow,
-                )
-
-                workflow = ReflectionWorkflow(db)
+                raise ValueError("unknown domain workflow")
             invocation = RunInvocation(
                 run_id=uid(),
                 thread_id=uid(),
@@ -105,16 +100,6 @@ def run_domain(workflow_id, data, runtime):
                 turn={
                     "content": data.content,
                     "study_session_id": session.id,
-                    **(
-                        {
-                            "review_date": data.context.review_date.isoformat(),
-                            "review_feeling": data.context.review_feeling,
-                            "review_reflection": data.context.review_reflection
-                            or data.content,
-                        }
-                        if data.context.review_date
-                        else {}
-                    ),
                 },
             )
             outcome = workflow.invoke(invocation)
@@ -127,14 +112,6 @@ def run_domain(workflow_id, data, runtime):
                 "sandbox_effects": {
                     "learning_facts": [
                         payload(row.payload) for row in db.query(OutboxEvent).all()
-                    ],
-                    "self_reviews": [
-                        {
-                            "review_date": str(row.review_date),
-                            "feeling": row.feeling,
-                            "reflection": row.reflection,
-                        }
-                        for row in db.query(SelfReview).all()
                     ],
                     "messages": [
                         {"role": row.role, "content": row.content}
@@ -162,10 +139,6 @@ def run_domain(workflow_id, data, runtime):
 
 
 def run_simple(workflow_id, data):
-    if workflow_id == "review-aspects":
-        from app.application.queries.review_draft import propose_review_aspects
-
-        return propose_review_aspects(data.content)
     if workflow_id == "sprint-intake":
         from app.application.queries.sprint_preview import (
             SprintPreviewRequest,
@@ -173,15 +146,4 @@ def run_simple(workflow_id, data):
         )
 
         return preview_spoken_sprint(SprintPreviewRequest(content=data.content))
-    from app.api.schemas import TaskIntakeRequest
-    from app.application.commands.task_intake import TaskIntakeService
-
-    # Authorization fixtures are synthetic and confined to this call.
-    return (
-        TaskIntakeService()
-        .respond(
-            wards=[{"id": "debug-ward", "display_name": "调试孩子"}],
-            request=TaskIntakeRequest(content=data.content),
-        )
-        .model_dump(mode="json")
-    )
+    raise ValueError("unsupported debug workflow")

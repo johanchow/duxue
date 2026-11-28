@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.agent_specs.education_workspace import UNITS as WORKSPACE_UNITS
 from jsonschema import Draft202012Validator
 
 from app.agent_specs.definitions import ModelUnit
@@ -45,6 +46,10 @@ def validate_output(unit: ModelUnit, payload: dict) -> None:
             RuleActivityResult.model_validate(payload)
         else:
             IDS[unit_id].model_validate(payload)
+    elif unit_id in WORKSPACE_UNITS:
+        WORKSPACE_UNITS[unit_id].model_validate(payload)
+    elif unit_id in {"ward.story-pages", "ward.anti_ghostwriting"}:
+        pass  # Validated against the registered provider schema above.
     elif unit_id in {"evals.semantic-judge", "tutoring.stem-extract", "tutoring.stem-review"}:
         pass  # The strict score/verdict/error schema above owns this contract.
     elif unit_id in {"tutoring.blueprint-planner", "tutoring.blueprint-backup"}:
@@ -69,15 +74,9 @@ def validate_output(unit: ModelUnit, payload: dict) -> None:
     elif unit_id == "companion.scene-switch":
         if type(payload["allow_switch"]) is not bool:
             raise ValueError("invalid switch verdict")
-    elif unit_id == "planning.intake":
-        from app.application.commands.plan_intake import PlanIntakeResult
-        PlanIntakeResult.model_validate(payload)
     elif unit_id == "study.sprint-intake":
         from app.application.queries.sprint_preview import SprintVoiceCandidate
         SprintVoiceCandidate.model_validate(payload)
-    elif unit_id == "task.intake":
-        from app.application.commands.task_intake import TaskIntakeResult
-        TaskIntakeResult.model_validate(payload)
     elif unit_id == "tutoring.turn":
         if "tool" in payload:
             if not isinstance(payload["tool"], str):
@@ -105,7 +104,8 @@ def validate_output(unit: ModelUnit, payload: dict) -> None:
 
 
 def has_python_contract(unit_id: str) -> bool:
-    return unit_id in {
+    return unit_id in WORKSPACE_UNITS or unit_id in {
+        "ward.story-pages", "ward.anti_ghostwriting",
         "behavior.visible-activity", "behavior.support-opportunity",
         "tutoring.stem-extract", "tutoring.stem-review",
         "evals.semantic-judge", "tutoring.blueprint-planner", "tutoring.blueprint-backup", "tutoring.mentor-explain",

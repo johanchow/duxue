@@ -4,6 +4,7 @@ from datetime import datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from app.application.commands.behavior_observation import digest, lock, utc
+from app.application.commands.creation_footprints import list_evening_creation_footprints
 from app.application.queries.observation_day import published_day
 from app.application.queries.tutoring_evidence import evening_evidence
 from app.application.workflows.observation_workflow import observation_step
@@ -12,8 +13,8 @@ from app.infrastructure.persistence.models import (
     GuardianReportInbox,
     GuardianWard,
     ObservationSettings,
-    ReflectionReportRecord,
-    ReflectionReportVersion,
+    EveningReportRecord,
+    EveningReportVersion,
 )
 
 
@@ -58,7 +59,9 @@ class EveningReportCommands:
             }
         if teaching["missing_reason"]:
             missing.append(teaching["missing_reason"])
+        footsteps = list_evening_creation_footprints(db, ward_id=ward_id, local_date=day, tz_name=setting.timezone)
         source_vector = {
+            "creation_footprints": digest(footsteps),
             "observation": observation.revision if observation else 0,
             "tutoring": digest(teaching),
         }
@@ -82,6 +85,7 @@ class EveningReportCommands:
             "timezone": setting.timezone,
             "cutoff_at": cutoff.isoformat(),
             "observation": projection,
+            "creation_footprints": footsteps,
             "tutoring": {
                 key: value for key, value in teaching.items() if key != "source_refs"
             },
@@ -92,14 +96,14 @@ class EveningReportCommands:
         }
         fingerprint = digest({"content": content, "sources": source_vector})
         report = (
-            db.query(ReflectionReportRecord)
+            db.query(EveningReportRecord)
             .filter_by(ward_id=ward_id, report_date=day)
             .one_or_none()
         )
         if report and report.fingerprint == fingerprint:
             return report
         if report is None:
-            report = ReflectionReportRecord(
+            report = EveningReportRecord(
                 ward_id=ward_id,
                 report_date=day,
                 timezone=setting.timezone,
@@ -110,7 +114,7 @@ class EveningReportCommands:
         report.current_version += 1
         report.fingerprint = fingerprint
         db.add(
-            ReflectionReportVersion(
+            EveningReportVersion(
                 report_id=report.id,
                 version=report.current_version,
                 content=content,

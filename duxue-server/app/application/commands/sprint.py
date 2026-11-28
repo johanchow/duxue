@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, time
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.contexts.planning.domain.scheduling import local_plan_date, PLAN_TIME_ZONE
+from app.contexts.study.domain.calendar import local_day, WARD_TIME_ZONE
 from app.contexts.study.domain.sprint import running_seconds, utc
 from app.infrastructure.persistence.models import (
     Sprint,
@@ -60,7 +60,7 @@ class SprintService:
         ):
             origin = row.started_at or row.planned_start_at or row.created_at
             boundary = datetime.combine(
-                local_plan_date(origin) + timedelta(days=1), time.min, PLAN_TIME_ZONE
+                local_day(origin) + timedelta(days=1), time.min, WARD_TIME_ZONE
             )
             deadline = (
                 utc(row.active_since)
@@ -75,7 +75,7 @@ class SprintService:
                     deadline,
                     "timebox_elapsed",
                 )
-            elif local_plan_date(origin) < local_plan_date(self.at):
+            elif local_day(origin) < local_day(self.at):
                 self._close_interval(row, "day_rollover", at=boundary)
                 row.status, row.ended_at, row.end_reason = (
                     "ended",
@@ -173,7 +173,7 @@ class SprintService:
     ):
         self._lock(ward_id)
         if planned_start_at and planned_start_at.tzinfo is None:
-            planned_start_at = planned_start_at.replace(tzinfo=PLAN_TIME_ZONE)
+            planned_start_at = planned_start_at.replace(tzinfo=WARD_TIME_ZONE)
         data = {
             "action": action,
             "sprint_id": sprint_id,

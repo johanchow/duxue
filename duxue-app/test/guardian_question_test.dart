@@ -20,10 +20,19 @@ class _Api extends ApiClient {
   Completer<Map<String, dynamic>>? pending;
   void Function(String)? stageListener;
   int planReads = 0;
+  final history = <String, List<Map<String,dynamic>>>{};
+  @override
+  Future<ConversationPage> conversationPage({String? cursor}) async => (items: await conversations(), next: null);
+  @override
+  Future<List<Map<String, dynamic>>> conversations() async => [{'thread_id':'test', 'title':'备课 A'}, {'thread_id':'second', 'title':'备课 B'}];
+  @override
+  Future<Map<String, dynamic>> conversationMessages(String id) async => {'items': history[id] ?? []};
+  @override
+  Future<Map<String, dynamic>> clearConversation(String id) async => {};
   @override
   Future<Map<String, dynamic>> guardianExperienceTurn(
       {required String content,
-      String? stateToken,
+      String? stateToken, String? threadId, String? commandId, String? skillHint,
       List<String> attachmentKeys = const [],
       String mode = 'student_guide', void Function(String)? onStage}) async {
     stageListener = onStage;
@@ -82,17 +91,7 @@ class _Api extends ApiClient {
   Future<List<Map<String, dynamic>>> tutoringEvidence(
           String wardId, DateTime day) async =>
       [];
-  @override
-  Future<Map<String, dynamic>> plan(String wardId, DateTime day) async {
-    planReads++;
-    throw StateError('must not read plan');
-  }
 
-  @override
-  Future<List<dynamic>> assignments(String wardId) async {
-    planReads++;
-    throw StateError('must not read assignments');
-  }
 }
 
 Future<void> _home(WidgetTester tester, _Api api,
@@ -112,6 +111,28 @@ Future<void> _tab(WidgetTester tester, String label) async {
 }
 
 void main() {
+  testWidgets('工作台切换线程时，迟到的课件回答只显示在来源线程', (tester) async {
+    final api = _Api()..pending = Completer<Map<String,dynamic>>();
+    await _home(tester, api);
+    await _tab(tester, '问答');
+    await tester.tap(find.text('用一道示例题'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('历史对话'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('备课 B'));
+    await tester.pumpAndSettle();
+    api.pending!.complete({'mode':'guardian_explain', 'act':'explain', 'content':'只属于 A 的回复', 'message_id':'qa-source'});
+    await tester.pumpAndSettle();
+    expect(find.text('只属于 A 的回复'), findsNothing);
+    expect(find.text('用一道示例题'), findsOneWidget);
+    api.history['test'] = [{'role':'assistant', 'mode':'guardian_explain', 'act':'explain', 'content':'只属于 A 的回复', 'message_id':'qa-source'}];
+    await tester.tap(find.byTooltip('历史对话'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('备课 A'));
+    await tester.pumpAndSettle();
+    expect(find.text('只属于 A 的回复'), findsOneWidget);
+  });
+
   testWidgets('mentor stages stay with their in-flight conversation',
       (tester) async {
     final api = _Api()..pending = Completer();
@@ -431,7 +452,7 @@ void main() {
         .onVoiceFinal('孩子通分容易错哪？');
     await tester.pumpAndSettle();
     expect(api.turns.last.mode, 'guardian_explain');
-    expect(api.turns.last.state, 'mentor-state-2');
+    expect(api.turns.last.state, isNull); // The server owns the mentor thread context.
 
     await tester.tap(find.byKey(const ValueKey('mode-student_guide')));
     await tester.pumpAndSettle();

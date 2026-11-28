@@ -99,36 +99,6 @@ class _WardHomeApi extends ApiClient {
   Future<void> ensureValidAccess() async {}
 
   @override
-  Future<void> deleteAssignment(String wardId, String assignmentId) async {
-    deleted.add(assignmentId);
-  }
-
-  @override
-  Future<List<dynamic>> assignments(String wardId) async => [
-        {
-          'id': 'pool-1',
-          'title': '观察蚂蚁路线',
-          'details': '兴趣探索',
-          'status': 'open'
-        },
-      ];
-
-  @override
-  Future<Map<String, dynamic>> plan(String wardId, DateTime day) async => {
-        'status': 'confirmed',
-        'items': [
-          {
-            'id': 'plan-1',
-            'assignment_id': 'planned-1',
-            'title': '数学练习册',
-            'planned_minutes': 30,
-            'status': 'pending',
-            'session': null,
-          },
-        ],
-      };
-
-  @override
   Future<Map<String, dynamic>> wardProfile() async => {
         'id': 'ward-1',
         'display_name': '小读',
@@ -168,6 +138,7 @@ class _WardHomeApi extends ApiClient {
 
   @override
   Future<Map<String, dynamic>> companionTurn({
+    String? commandId,
     required String content,
     required String? threadId,
     required int? expectedThreadVersion,
@@ -179,6 +150,7 @@ class _WardHomeApi extends ApiClient {
     void Function(String)? onStage,
   }) async {
     submittedThreads.add(threadId);
+    submittedCommands.add(commandId);
     lastStructuredCommand = structuredCommand;
     lastRouteHint = routeHint;
     lastTutoringIntent = tutoringIntent;
@@ -373,52 +345,6 @@ class _WardHomeApi extends ApiClient {
   }
 
   @override
-  Future<Map<String, dynamic>> companionPlanDraft(String draftId) async => {
-        'draft_id': draftId,
-        'object_version': 2,
-        'items': [
-          {
-            'assignment_id': 'task-1',
-            'title': '整理错题',
-            'planned_minutes': 20,
-            if (showPlanSuggestions || showClarifyAdvice) ...{
-              'duration_suggestion': {
-                'suggested_minutes': 35,
-                'sample_count': 3,
-                'actual_median_minutes': 35,
-                'fingerprint': 'duration-sample',
-              },
-              'time_suggestion': {
-                'reason': '建议在22:00前结束',
-                'suggested_start_at':
-                    showClarifyAdvice ? null : '2026-10-22T21:25:00+08:00',
-                'suggested_end_at':
-                    showClarifyAdvice ? null : '2026-10-22T22:00:00+08:00',
-                'fingerprint': 'time-sample',
-              },
-            },
-          },
-        ],
-        if (suggestMissingDuration)
-          'clarification_batch': {
-            'slots': [
-              {
-                'slot_id': 'slot-1',
-                'field': 'planned_minutes',
-                'title': '英语阅读',
-                'duration_suggestion': {
-                  'suggested_minutes': 25,
-                  'sample_count': 3,
-                  'actual_median_minutes': 25,
-                  'fingerprint': 'clarification-sample',
-                },
-              },
-            ],
-          },
-        'confirm_enabled': true,
-      };
-
-  @override
   Future<Map<String, dynamic>> currentStartCue() async => {'status': 'none'};
 
   @override
@@ -465,14 +391,28 @@ class _WardHomeApi extends ApiClient {
     return Uint8List.fromList([9, 9, 9]);
   }
 
+  @override
+  Future<ConversationPage> conversationPage({String? cursor}) async => (items: await conversations(), next: null);
+  @override
+  Future<List<Map<String, dynamic>>> conversations() async => [
+    {'thread_id': 'thread-old', 'title': '以前的对话'},
+  ];
+
+  @override
+  Future<Map<String, dynamic>> conversationMessages(String id) async => {'items': <dynamic>[]};
+
+  @override
+  Future<Map<String, dynamic>> createConversation() async => {'thread_id':'thread-1', 'version':0};
+
   final clearCommands = <String>[];
   bool clearFails = false;
   Completer<Map<String, dynamic>>? delayedTurn;
   Completer<Map<String, dynamic>>? delayedHistory;
+  final submittedCommands = <String?>[];
   final submittedThreads = <String?>[];
 
   @override
-  Future<Map<String, dynamic>> clearCompanionHistory(String commandId) async {
+  Future<Map<String, dynamic>> clearConversation(String commandId) async {
     clearCommands.add(commandId);
     if (clearFails) throw StateError('offline');
     currentTranscriptOverride = {
@@ -483,7 +423,7 @@ class _WardHomeApi extends ApiClient {
       'previous_thread_id': null,
     };
     threadTranscriptOverrides.clear();
-    return {'history_generation': 1};
+    return {'version': 3};
   }
 
   Map<String, dynamic>? currentTranscriptOverride;
@@ -809,127 +749,6 @@ const _tinyPng = <int>[
   130,
 ];
 
-class _ActiveTaskApi extends _WardHomeApi {
-  Completer<void>? pauseGate;
-
-  @override
-  Future<List<dynamic>> assignments(String wardId) async => [
-        {
-          'id': 'pool-1',
-          'title': '观察蚂蚁路线',
-          'details': '兴趣探索',
-          'status': 'pool',
-          'session': {
-            'id': 'session-live',
-            'status': pausedSessionId == null ? 'active' : 'paused',
-            'active_seconds': 120,
-          },
-        },
-      ];
-
-  @override
-  Future<Map<String, dynamic>> pauseSession(
-      String sessionId, int seconds) async {
-    pausedSessionId = sessionId;
-    final gate = pauseGate;
-    if (gate != null) await gate.future;
-    return {
-      'id': sessionId,
-      'status': 'paused',
-      'active_seconds': seconds,
-    };
-  }
-
-  @override
-  Future<Map<String, dynamic>> plan(String wardId, DateTime day) async => {
-        'status': 'confirmed',
-        'items': const [],
-      };
-}
-
-class _PausedTaskApi extends _WardHomeApi {
-  Completer<void>? resumeGate;
-  var resumed = false;
-
-  @override
-  Future<List<dynamic>> assignments(String wardId) async => [
-        {
-          'id': 'pool-1',
-          'title': '观察蚂蚁路线',
-          'details': '兴趣探索',
-          'status': 'pool',
-          'session': {
-            'id': 'session-live',
-            'status': resumed ? 'active' : 'paused',
-            'active_seconds': 30,
-          },
-        },
-      ];
-
-  @override
-  Future<Map<String, dynamic>> plan(String wardId, DateTime day) async => {
-        'status': 'confirmed',
-        'items': const [],
-      };
-
-  @override
-  Future<Map<String, dynamic>> resumeSession(String sessionId) async {
-    resumed = true;
-    final gate = resumeGate;
-    if (gate != null) await gate.future;
-    return {'id': sessionId, 'status': 'active', 'active_seconds': 30};
-  }
-}
-
-class _MultiPlanWardHomeApi extends _WardHomeApi {
-  @override
-  Future<Map<String, dynamic>> plan(String wardId, DateTime day) async => {
-        'status': 'confirmed',
-        'items': [
-          {
-            'id': 'plan-1',
-            'assignment_id': 'planned-1',
-            'title': '数学练习册 P23–25',
-            'planned_minutes': 40,
-            'start_at': '2026-09-20T19:00:00',
-            'details': '学校作业',
-            'status': 'scheduled',
-            'session': {
-              'id': 'session-math',
-              'status': 'active',
-              'active_seconds': 60,
-            },
-          },
-          {
-            'id': 'plan-2',
-            'assignment_id': 'planned-2',
-            'title': '休息',
-            'planned_minutes': 10,
-            'status': 'pending',
-            'session': null,
-          },
-          {
-            'id': 'plan-3',
-            'assignment_id': 'planned-3',
-            'title': '英语朗读三遍',
-            'planned_minutes': 20,
-            'details': '学校作业',
-            'status': 'pending',
-            'session': null,
-          },
-          {
-            'id': 'plan-4',
-            'assignment_id': 'planned-4',
-            'title': '网课',
-            'planned_minutes': 30,
-            'details': '固定时间 · 不可移动',
-            'status': 'pending',
-            'session': null,
-          },
-        ],
-      };
-}
-
 class _FakeVoice implements VoiceTranscription {
   late TranscriptHandler onPartial;
   late TranscriptHandler onFinal;
@@ -1156,7 +975,7 @@ void main() {
         .widget<VoiceComposer>(find.byType(VoiceComposer))
         .onVoiceFinal('数学二十分钟');
     await tester.pump();
-    await tester.tap(find.text('成长'));
+    await tester.tap(find.text('作品'));
     await tester.pumpAndSettle();
     pending.complete(api.preview);
     await result;
@@ -1388,7 +1207,7 @@ void main() {
     expect(await const TokenStorage().companionThreadId, 'kept-thread');
     await tester.tap(find.byTooltip('更多'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('历史对话'));
+    await tester.tap(find.text('当前对话'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('companion-chat-list')), findsOneWidget);
   });
@@ -1403,7 +1222,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('更多'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('历史对话'));
+    await tester.tap(find.text('当前对话'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('companion-chat-list')), findsOneWidget);
     await tester.tap(find.byTooltip('对话内专注挑战'));
@@ -1437,7 +1256,7 @@ void main() {
     expect(find.byType(TextField), findsNothing);
     await tester.tap(find.byTooltip('更多'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('历史对话'));
+    await tester.tap(find.text('当前对话'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('companion-chat-list')), findsOneWidget);
     await tester.tap(find.byTooltip('收起对话'));
@@ -1499,7 +1318,7 @@ void main() {
 
   testWidgets('ordinary tasks and active sessions never pin progress to home',
       (tester) async {
-    final api = _MultiPlanWardHomeApi();
+    final api = _WardHomeApi();
     await tester.pumpWidget(ProviderScope(
         overrides: [apiProvider.overrideWithValue(api)],
         child: const MaterialApp(home: WardDayPage(wardId: 'ward-1'))));
@@ -1512,91 +1331,6 @@ void main() {
     expect(find.byTooltip('更多'), findsOneWidget);
     expect(find.text('作业'), findsNothing);
     expect(find.byTooltip('专注挑战'), findsOneWidget);
-  });
-
-  testWidgets('known assignments open on request without inventing time',
-      (tester) async {
-    await tester.pumpWidget(ProviderScope(
-        overrides: [apiProvider.overrideWithValue(_WardHomeApi())],
-        child: const MaterialApp(home: WardDayPage(wardId: 'ward-1'))));
-    await tester.pumpAndSettle();
-    await _wardMenu(tester, '作业');
-    await tester.pumpAndSettle();
-    expect(find.text('已知作业'), findsOneWidget);
-    expect(find.text('观察蚂蚁路线'), findsOneWidget);
-    expect(find.text('数学练习册'), findsOneWidget);
-    expect(find.text('未估时'), findsOneWidget);
-    expect(find.text('19:00'), findsNothing);
-  });
-
-  testWidgets('ordinary assignment still requires an explicit start',
-      (tester) async {
-    final api = _WardHomeApi();
-    await tester.pumpWidget(ProviderScope(
-        overrides: [apiProvider.overrideWithValue(api)],
-        child: const MaterialApp(home: WardDayPage(wardId: 'ward-1'))));
-    await tester.pumpAndSettle();
-    await _wardMenu(tester, '作业');
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('观察蚂蚁路线'));
-    await tester.pumpAndSettle();
-    expect(api.startedAssignment, isFalse);
-    await tester.tap(find.text('确认开始'));
-    await tester.pumpAndSettle();
-    expect(api.startedAssignment, isTrue);
-    expect(find.byKey(const Key('active-sprint-card')), findsNothing);
-  });
-
-  testWidgets('active task actions remain available in requested details',
-      (tester) async {
-    final api = _ActiveTaskApi();
-    await tester.pumpWidget(ProviderScope(
-        overrides: [apiProvider.overrideWithValue(api)],
-        child: const MaterialApp(home: WardDayPage(wardId: 'ward-1'))));
-    await tester.pumpAndSettle();
-    expect(find.text('进行中'), findsNothing);
-    await _wardMenu(tester, '作业');
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('观察蚂蚁路线'));
-    await tester.pumpAndSettle();
-    expect(find.text('这项任务正在进行'), findsOneWidget);
-    await tester.tap(find.text('暂停'));
-    await tester.pumpAndSettle();
-    expect(api.pausedSessionId, 'session-live');
-    expect(find.byKey(const Key('active-sprint-card')), findsNothing);
-  });
-
-  testWidgets('paused task can be resumed without creating a sprint',
-      (tester) async {
-    final api = _PausedTaskApi();
-    await tester.pumpWidget(ProviderScope(
-        overrides: [apiProvider.overrideWithValue(api)],
-        child: const MaterialApp(home: WardDayPage(wardId: 'ward-1'))));
-    await tester.pumpAndSettle();
-    await _wardMenu(tester, '作业');
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('观察蚂蚁路线'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('确认继续'));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('active-sprint-card')), findsNothing);
-  });
-
-  testWidgets('plan can be started from requested details without a fake clock',
-      (tester) async {
-    final api = _WardHomeApi();
-    await tester.pumpWidget(ProviderScope(
-        overrides: [apiProvider.overrideWithValue(api)],
-        child: const MaterialApp(home: WardDayPage(wardId: 'ward-1'))));
-    await tester.pumpAndSettle();
-    await _wardMenu(tester, '作业');
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('数学练习册'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('确认开始'));
-    await tester.pumpAndSettle();
-    expect(api.startedPlanItem, 'plan-1');
-    expect(find.text('19:00'), findsNothing);
   });
 
   testWidgets('read-aloud asks for pronunciation and plays the lesson',
@@ -1815,6 +1549,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.turns, hasLength(2));
     expect(api.turns.last.attachmentKeys, api.turns.first.attachmentKeys);
+    expect(api.submittedCommands.first, isNotNull);
+    expect(api.submittedCommands.last, api.submittedCommands.first);
     expect(find.byKey(const ValueKey('sent-chat-image-0')), findsOneWidget);
     expect(find.text('这条消息暂未送达。'), findsNothing);
   });
@@ -1952,7 +1688,7 @@ void main() {
     final ward = tester.getRect(find.byKey(
         const ValueKey('chat-bubble-ward-今晚先读十分钟课外书，然后再做两道数学题，看看时间够不够。')));
     final ai = tester.getRect(find
-        .byKey(const ValueKey('chat-bubble-ai-遇到问题随时问我；需要时也可以查看作业，或试一轮专注挑战。')));
+        .byKey(const ValueKey('chat-bubble-ai-遇到问题随时问我；也可以试一轮专注挑战。')));
 
     expect(ward.right, closeTo(contentRight, 1));
     expect(ward.width, lessThanOrEqualTo(contentWidth * 2 / 3 + 1));
@@ -2404,21 +2140,21 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('说出你的任何想法、问题、安排'));
       await tester.pumpAndSettle();
-      await _wardMenu(tester, '清空历史对话');
+      await _wardMenu(tester, '清空当前对话');
       await tester.pumpAndSettle();
-      expect(find.textContaining('历史数据仍由系统保存'), findsOneWidget);
+      expect(find.textContaining('其他对话和已保存的作品会保留'), findsOneWidget);
       await tester.tap(find.text('取消'));
       await tester.pumpAndSettle();
       expect(api.clearCommands, isEmpty);
       expect(find.text('需要清空的旧回答'), findsOneWidget);
-      await _wardMenu(tester, '清空历史对话');
+      await _wardMenu(tester, '清空当前对话');
       await tester.pumpAndSettle();
       await tester.tap(find.text('清空并重新开始'));
       await tester.pumpAndSettle();
       if (failFirst) {
         expect(find.text('需要清空的旧回答'), findsOneWidget);
         api.clearFails = false;
-        await _wardMenu(tester, '清空历史对话');
+        await _wardMenu(tester, '清空当前对话');
         await tester.pumpAndSettle();
         await tester.tap(find.text('清空并重新开始'));
         await tester.pumpAndSettle();
@@ -2426,14 +2162,14 @@ void main() {
       }
       expect(find.text('需要清空的旧回答'), findsNothing);
       expect(find.byKey(const Key('load-older-messages-button')), findsNothing);
-      expect(await const TokenStorage().companionThreadId, isNull);
+      expect(await const TokenStorage().companionThreadId, 'old-thread');
       expect(find.text('数学练习册'), findsNothing);
       final send = tester
           .widget<VoiceComposer>(find.byType(VoiceComposer))
           .onVoiceFinal('新问题');
       await tester.pumpAndSettle();
       await send;
-      expect(api.submittedThreads.last, isNull);
+      expect(api.submittedThreads.last, 'old-thread');
     });
   }
 
@@ -2459,7 +2195,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('load-older-messages-button')));
     await tester.pump();
-    await _wardMenu(tester, '清空历史对话');
+    await _wardMenu(tester, '清空当前对话');
     await tester.pump();
     await tester.tap(find.text('清空并重新开始'));
     await tester.pumpAndSettle();
@@ -2499,7 +2235,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 250));
     expect(find.text('正在准备回复…'), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
-    await _wardMenu(tester, '清空历史对话');
+    await _wardMenu(tester, '清空当前对话');
     await tester.pump();
     await tester.tap(find.text('清空并重新开始'));
     await tester.pumpAndSettle();
@@ -2510,7 +2246,7 @@ void main() {
     });
     await tester.pumpAndSettle();
     await send;
-    expect(await const TokenStorage().companionThreadId, isNull);
+    expect(await const TokenStorage().companionThreadId, 'thread-1');
     expect(find.text('迟到的旧回答'), findsNothing);
     expect(find.text('正在准备回复…'), findsNothing);
     expect(tester.widget<VoiceComposer>(find.byType(VoiceComposer)).enabled,
@@ -2687,13 +2423,15 @@ void main() {
     expect(find.text('当前线程较早提问'), findsOneWidget);
     expect(find.text('当前线程较早回答'), findsOneWidget);
 
-    // Drag down to scroll back to the top; scrolling near the top triggers loading thread-old
-    await tester.drag(
-        find.byKey(const Key('companion-chat-list')), const Offset(0, 300));
+    expect(find.text('重绑前的历史提问'), findsNothing);
+    expect(find.byKey(const Key('load-older-messages-button')), findsNothing);
+    await _wardMenu(tester, '历史对话');
     await tester.pumpAndSettle();
-
-    expect(find.text('重绑前的历史提问'), findsOneWidget);
+    await tester.tap(find.text('以前的对话'));
+    await tester.pumpAndSettle();
+    expect(find.text('当前线程较早回答'), findsNothing);
     expect(find.text('重绑前的历史回答'), findsOneWidget);
+    expect(await const TokenStorage().companionThreadId, 'thread-old');
     expect(find.byKey(const Key('load-older-messages-button')), findsNothing);
   });
 
@@ -2749,173 +2487,6 @@ void main() {
     expect(playback.played, hasLength(2));
   });
 
-  testWidgets('plan review card has only the confirm action', (tester) async {
-    FlutterSecureStoragePlatform.instance =
-        TestFlutterSecureStoragePlatform({});
-    final api = _WardHomeApi()..showPlanSuggestions = true;
-    final voice = _FakeVoice()..finalText = '今晚整理错题';
-    await tester.pumpWidget(ProviderScope(
-      overrides: [apiProvider.overrideWithValue(api)],
-      child: MaterialApp(
-          home: WardDayPage(
-              wardId: 'ward-1',
-              voiceFactory: (
-                      {required baseUrl,
-                      required tokens,
-                      required telemetry}) =>
-                  voice)),
-    ));
-    await tester.pumpAndSettle();
-    final gesture = await tester
-        .startGesture(tester.getCenter(find.text('说出你的任何想法、问题、安排')));
-    await tester.pump(const Duration(milliseconds: 600));
-    await gesture.up();
-    await tester.pumpAndSettle();
-
-    expect(find.textContaining('建议时段为 07:00–22:00'), findsOneWidget);
-    expect(find.textContaining('21:25–22:00'), findsOneWidget);
-    expect(find.text('确认这个计划'), findsOneWidget);
-    expect(find.text('我再改一句'), findsNothing);
-    expect(find.byKey(const Key('dismiss-plan-suggestion-duration:task-1')),
-        findsNothing);
-    expect(find.byKey(const Key('accept-plan-suggestion-time:task-1')),
-        findsNothing);
-  });
-
-  testWidgets('historical plan review stays before the next question',
-      (tester) async {
-    FlutterSecureStoragePlatform.instance =
-        TestFlutterSecureStoragePlatform({});
-    final api = _WardHomeApi()
-      ..currentTranscriptOverride = {
-        'thread_id': 'thread-1',
-        'thread_version': 4,
-        'messages': [
-          {
-            'id': 'm-1',
-            'thread_id': 'thread-1',
-            'thread_version': 1,
-            'author_type': 'ward',
-            'content': '今晚整理错题',
-          },
-          {
-            'id': 'm-2',
-            'thread_id': 'thread-1',
-            'thread_version': 2,
-            'author_type': 'companion',
-            'content': '请检查这份计划草稿。',
-            'interaction_ref': {
-              'kind': 'plan_confirm_list',
-              'card_snapshot': {
-                'items': [
-                  {
-                    'title': '整理错题',
-                    'planned_minutes': 20,
-                    'start_at': '2026-10-25T19:00:00+08:00',
-                    'end_at': '2026-10-25T19:20:00+08:00',
-                  },
-                ],
-              },
-            },
-          },
-          {
-            'id': 'm-3',
-            'thread_id': 'thread-1',
-            'thread_version': 3,
-            'author_type': 'ward',
-            'content': '再问一道题',
-          },
-          {
-            'id': 'm-4',
-            'thread_id': 'thread-1',
-            'thread_version': 4,
-            'author_type': 'companion',
-            'content': '我们一步一步看。',
-          },
-        ],
-      };
-    await tester.pumpWidget(ProviderScope(
-      overrides: [apiProvider.overrideWithValue(api)],
-      child: const MaterialApp(home: WardDayPage(wardId: 'ward-1')),
-    ));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('说出你的任何想法、问题、安排'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('已记录（待你确认）', skipOffstage: false), findsOneWidget);
-    final card = tester.getTopLeft(find.text('已记录（待你确认）', skipOffstage: false));
-    final nextQuestion = tester.getTopLeft(find
-        .byKey(const ValueKey('chat-bubble-ward-再问一道题'), skipOffstage: false));
-    expect(card.dy, lessThan(nextQuestion.dy));
-    expect(find.text('确认这个计划', skipOffstage: false), findsNothing);
-  });
-
-  testWidgets('current plan review can be confirmed after reopening chat',
-      (tester) async {
-    FlutterSecureStoragePlatform.instance =
-        TestFlutterSecureStoragePlatform({});
-    final api = _WardHomeApi()
-      ..currentTranscriptOverride = {
-        'thread_id': 'thread-1',
-        'thread_version': 2,
-        'messages': [
-          {
-            'id': 'm-1',
-            'thread_id': 'thread-1',
-            'thread_version': 1,
-            'author_type': 'ward',
-            'content': '今晚整理错题',
-          },
-          {
-            'id': 'm-2',
-            'thread_id': 'thread-1',
-            'thread_version': 2,
-            'author_type': 'companion',
-            'content': '请检查这份计划草稿。',
-            'interaction_ref': {
-              'kind': 'plan_confirm_list',
-              'object_ref': {'object_id': 'draft-1', 'object_version': 2},
-              'actions': [
-                {
-                  'id': 'plan:run:1:draft-1:2',
-                  'command': 'confirm_plan',
-                  'enabled': true
-                },
-              ],
-              'card_snapshot': {
-                'items': [
-                  {
-                    'title': '整理错题',
-                    'planned_minutes': 20,
-                    'start_at': '2026-10-25T19:00:00+08:00',
-                    'end_at': '2026-10-25T19:20:00+08:00'
-                  },
-                ],
-              },
-            },
-          },
-        ],
-      };
-    await tester.pumpWidget(ProviderScope(
-      overrides: [apiProvider.overrideWithValue(api)],
-      child: const MaterialApp(home: WardDayPage(wardId: 'ward-1')),
-    ));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('说出你的任何想法、问题、安排'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('已记录（待你确认）'), findsOneWidget);
-    expect(find.text('确认这个计划'), findsOneWidget);
-    expect(find.textContaining('19:00–19:20'), findsOneWidget);
-    await tester.tap(find.text('确认这个计划'));
-    await tester.pumpAndSettle();
-    expect(api.lastStructuredCommand?['command'], 'confirm_plan');
-    expect(api.lastStructuredCommand?['payload'], {
-      'draft_id': 'draft-1',
-      'expected_draft_version': 2,
-    });
-  });
-
   testWidgets('unclear intent shows choices and sends the issued selection',
       (tester) async {
     FlutterSecureStoragePlatform.instance =
@@ -2952,67 +2523,6 @@ void main() {
     expect(find.byKey(const Key('intent-choice-reflection')), findsNothing);
   });
 
-  testWidgets('missing duration suggestion uses the clarification action',
-      (tester) async {
-    FlutterSecureStoragePlatform.instance =
-        TestFlutterSecureStoragePlatform({});
-    final api = _WardHomeApi()..suggestMissingDuration = true;
-    final voice = _FakeVoice()..finalText = '加一个英语阅读任务';
-    await tester.pumpWidget(ProviderScope(
-      overrides: [apiProvider.overrideWithValue(api)],
-      child: MaterialApp(
-          home: WardDayPage(
-              wardId: 'ward-1',
-              voiceFactory: (
-                      {required baseUrl,
-                      required tokens,
-                      required telemetry}) =>
-                  voice)),
-    ));
-    await tester.pumpAndSettle();
-    final gesture = await tester
-        .startGesture(tester.getCenter(find.text('说出你的任何想法、问题、安排')));
-    await tester.pump(const Duration(milliseconds: 600));
-    await gesture.up();
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(
-        find.byKey(const Key('accept-plan-suggestion-clarification:slot-1')));
-    await tester.tap(
-        find.byKey(const Key('accept-plan-suggestion-clarification:slot-1')));
-    await tester.pumpAndSettle();
-    expect(api.lastStructuredCommand?['command'], 'clarify_reply');
-    final answers =
-        (api.lastStructuredCommand?['payload'] as Map)['answers'] as List;
-    expect(answers.single['value'], '25分钟');
-  });
-
-  testWidgets('clarification still shows time warning without a valid move',
-      (tester) async {
-    FlutterSecureStoragePlatform.instance =
-        TestFlutterSecureStoragePlatform({});
-    final api = _WardHomeApi()..showClarifyAdvice = true;
-    final voice = _FakeVoice()..finalText = '看看时间安排';
-    await tester.pumpWidget(ProviderScope(
-      overrides: [apiProvider.overrideWithValue(api)],
-      child: MaterialApp(
-          home: WardDayPage(
-              wardId: 'ward-1',
-              voiceFactory: (
-                      {required baseUrl,
-                      required tokens,
-                      required telemetry}) =>
-                  voice)),
-    ));
-    await tester.pumpAndSettle();
-    final gesture = await tester
-        .startGesture(tester.getCenter(find.text('说出你的任何想法、问题、安排')));
-    await tester.pump(const Duration(milliseconds: 600));
-    await gesture.up();
-    await tester.pumpAndSettle();
-    expect(find.textContaining('目前没有不冲突的调整时间'), findsOneWidget);
-    expect(find.byKey(const Key('accept-plan-suggestion-time:task-1')),
-        findsNothing);
-  });
   testWidgets(
       'sprint is visible only after explicit start and can hide without stopping',
       (tester) async {
@@ -3048,7 +2558,7 @@ void main() {
   });
 
   for (final status in ['active', 'paused']) {
-    for (final source in ['tab', 'chat', 'tasks', 'foreground']) {
+    for (final source in ['tab', 'chat', 'foreground']) {
       testWidgets('returning from $source restores a hidden $status sprint',
           (tester) async {
         final api = _SprintApi();
@@ -3058,20 +2568,17 @@ void main() {
             overrides: [apiProvider.overrideWithValue(api)],
             child: const MaterialApp(home: WardDayPage(wardId: 'ward-1'))));
         await tester.pumpAndSettle();
-        if (source == 'chat') await _wardMenu(tester, '历史对话');
+        if (source == 'chat') await _wardMenu(tester, '当前对话');
         await tester.tap(find.byTooltip('收起挑战'));
         await tester.pumpAndSettle();
         expect(find.byKey(const Key('active-sprint-card')), findsNothing);
         switch (source) {
           case 'tab':
-            await tester.tap(find.text('成长'));
+            await tester.tap(find.text('作品'));
             await tester.pumpAndSettle();
             await tester.tap(find.text('首页'));
           case 'chat':
             await tester.tap(find.byTooltip('收起对话'));
-          case 'tasks':
-            await _wardMenu(tester, '作业');
-            await tester.tap(find.byTooltip('关闭'));
           case 'foreground':
             tester.binding
                 .handleAppLifecycleStateChanged(AppLifecycleState.paused);
@@ -3096,7 +2603,7 @@ void main() {
         child: const MaterialApp(home: WardDayPage(wardId: 'ward-1'))));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('收起挑战'));
-    await tester.tap(find.text('成长'));
+    await tester.tap(find.text('作品'));
     await tester.pumpAndSettle();
     api.round = null;
     await tester.tap(find.text('首页'));
@@ -3141,7 +2648,7 @@ void main() {
             .widget<Text>(find.byKey(const Key('sprint-header-countdown')))
             .data,
         '19:56');
-    await _wardMenu(tester, '历史对话');
+    await _wardMenu(tester, '当前对话');
     expect(find.byKey(const Key('sprint-header-countdown')), findsOneWidget);
     await tester.tap(find.byTooltip('对话内专注挑战'));
     await tester.pumpAndSettle();
@@ -3195,7 +2702,7 @@ void main() {
                 child: WardDayPage(wardId: 'ward-1')))));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('收起挑战'));
-    await _wardMenu(tester, '历史对话');
+    await _wardMenu(tester, '当前对话');
     expect(find.byKey(const Key('sprint-header-countdown')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

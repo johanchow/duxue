@@ -48,6 +48,8 @@ def validate_paths(spec):
     for name, (accepts, produces) in PORTS.items():
         key = f"tutoring.{name}"
         node = nodes.get(key)
+        if name == "self_review" and node is None:
+            continue
         expected = SPECIAL_BINDINGS.get(name, ("action", key))
         if name == "model_loop" and node and node.ref == LEGACY_LOOP:
             expected = ("workflow", LEGACY_LOOP)

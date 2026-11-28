@@ -727,7 +727,7 @@ def test_new_run_without_checkpoint_abandons_leftover_open_problem_on_reused_ses
 
 def test_shown_work_turns_bind_evidence_to_the_actual_problem_and_keep_other_topics_out(db):
     from app.application.queries.tutoring_evidence import evidence_detail, list_evidence
-    from app.contexts.planning.domain.scheduling import local_plan_date
+    from app.contexts.study.domain.calendar import local_day
     from app.infrastructure.persistence.models import TutoringMessage
 
     ward, session = _setup(db)
@@ -738,7 +738,7 @@ def test_shown_work_turns_bind_evidence_to_the_actual_problem_and_keep_other_top
     rows = db.query(TutoringMessage).filter_by(problem_id=problem.id).all()
     assert len(rows) == 4
     assert {row.evidence_kind for row in rows} == {"attempt", "guide"}
-    day = local_plan_date(rows[-1].created_at)
+    day = local_day(rows[-1].created_at)
     assert [item["id"] for item in list_evidence(db, ward.id, day)["items"]] == [problem.id]
     _ask(db, workflow, session, "diamond beach 是什么意思")
     detail = evidence_detail(db, ward.id, day, problem.id)
@@ -775,3 +775,22 @@ def test_knowledge_scope_is_turn_local_and_return_to_old_problem_stays_protected
     assert again.next_interaction['answer_protected'] is True
     assert judge.calls == 3
     assert '"answer_protected": true' in model.calls[-1]['instruction']
+
+
+def test_current_homework_turn_handles_provider_rejection_without_learning_facts(db, monkeypatch):
+    _, session = _setup(db)
+    workflow, model = _workflow(db)
+
+    def reject(**kwargs):
+        raise ModelGatewayError("content_filter")
+
+    def unexpected_screen():
+        pytest.fail("current turn must use the provider's own content filtering")
+
+    monkeypatch.setattr(model, "complete", reject)
+    monkeypatch.setattr(workflow, "_safety", unexpected_screen)
+    result = _ask(db, workflow, session, teaching_policy="homework")
+    assert result.next_interaction["model_fallback"]
+    assert result.next_interaction["answer_protected"]
+    assert db.query(TutoringProblem).count() == 0
+    assert not _events(db)

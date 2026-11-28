@@ -10,8 +10,6 @@ enum ReplyStage {
   checking('正在核对这一步提示…'),
   revising('正在调整提示…'),
   rechecking('正在重新核对提示…'),
-  planning('正在整理学习安排…'),
-  reflecting('正在梳理你的学习回顾…'),
   reading('正在识别题面…'),
   solving('正在推导解题思路…'),
   explaining('正在整理导师讲解…');
@@ -25,8 +23,6 @@ enum ReplyStage {
         'check' => checking,
         'revise' => revising,
         'recheck' => rechecking,
-        'plan' => planning,
-        'reflect' => reflecting,
         'read' => reading,
         'solve' => solving,
         'explain' => explaining,

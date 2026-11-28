@@ -146,6 +146,11 @@ def test_guardian_courseware_api_end_to_end_and_auth_isolation():
         },
     )
     assert rev.status_code == 202
+    assert client.post(f"/guardian/courseware/{cid}/revisions", json={
+        "command_id":"rev-1", "instruction":"另一条指令", "base_version_no":1,
+        "expected_state_revision":v1["state_revision"], "target_step_id":"s1"}).status_code == 409
+    assert client.post(f"/guardian/courseware/{cid}/undo", json={
+        "command_id":"rev-1", "expected_state_revision":v1["state_revision"]}).status_code == 409
     v2 = client.get(f"/guardian/courseware/{cid}").json()
     assert v2["current_version"]["version_no"] == 2
     assert v2["history_controls"]["can_undo"] is True
@@ -233,11 +238,12 @@ def test_saved_courseware_survives_reopen_and_is_owner_private(monkeypatch):
     from sqlalchemy import create_engine
     from sqlalchemy.pool import StaticPool
 
-    from app.infrastructure.persistence.courseware_tables import coursewares, versions
+    from app.infrastructure.persistence.artifact_tables import artifacts as coursewares, versions, receipts
     from app.infrastructure.persistence.pg_courseware import PgCoursewareRepository
     engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
     coursewares.create(engine)
     versions.create(engine)
+    receipts.create(engine)
     repo = PgCoursewareRepository(engine)
     monkeypatch.setattr(gc_api, "_repo", repo)
     monkeypatch.setattr(gc_api, "_commands", MentorCoursewareCommandService(repo))

@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
 
+from app.agent_specs.definitions import load_definitions
 from app.agent_specs.catalog import load_catalog
 from app.agent_specs.release_runtime import configured_call
 from app.application.commands.companion_history import history_is_visible, lock_history
@@ -21,7 +22,6 @@ from app.application.ports.companion import (
     WorkflowOutcome,
 )
 from app.application.queries.run_transcript import current_turn_images
-from app.application.workflows.planning_adapter import PlanningWorkflowAdapter
 from app.contexts.companion.domain.intent_router import IntentRouter
 from app.infrastructure.ai.intent_classifier import ModelIntentClassifier
 from app.infrastructure.ai.scene_switch_verifier import ModelSceneSwitchVerifier
@@ -46,7 +46,7 @@ from app.infrastructure.persistence.models import (
     CompanionCommand,
     CompanionMessage,
     ConversationThread,
-    PlanDraft,
+    Sprint,
     now,
     uid,
 )
@@ -56,12 +56,9 @@ from app.infrastructure.persistence.workflow_dispatcher import (
 
 _ACTIVE_STATUSES = ("active", "waiting_for_ward", "paused")
 _RESUMABLE_STATUSES = ("waiting_for_ward", "paused", "failed", "timed_out")
-_CLARIFY_REPLY = (
-    "我还没确定你想做哪件事，请选择：**管理任务**、**总结思考**，还是**提问探讨**？"
-)
+_CLARIFY_REPLY = "你想先聊哪个问题？可以再说具体一点。"
 _SAFETY_REPLY = "如果你现在很难受，请立刻告诉身边的大人。"
-_VALID_HINTS = {"planning", "tutoring", "reflection"}
-_INTENT_CHOICES = (("planning", "管理任务"), ("reflection", "总结思考"), ("tutoring", "提问探讨"))
+_VALID_HINTS = {"tutoring"}
 
 
 class CompanionCoordinator:
@@ -80,7 +77,7 @@ class CompanionCoordinator:
         self.router = router or IntentRouter()
         self.classifier = classifier or ModelIntentClassifier()
         self.switch_verifier = switch_verifier or ModelSceneSwitchVerifier()
-        self.dispatcher = dispatcher or SqlAlchemyWorkflowDispatcher(db, planning_factory=PlanningWorkflowAdapter)
+        self.dispatcher = dispatcher or SqlAlchemyWorkflowDispatcher(db)
 
     @staticmethod
     def _digest(payload: dict) -> str:
@@ -97,7 +94,7 @@ class CompanionCoordinator:
             self.db.flush()
             return thread
         thread = self.db.get(ConversationThread, thread_id)
-        if thread is None or thread.ward_id != ward_id or thread.history_generation != ward.history_generation:
+        if thread is None or thread.deleted or thread.ward_id != ward_id or thread.history_generation != ward.history_generation:
             raise HTTPException(404, "conversation thread not found")
         if expected_version is not None and thread.version != expected_version:
             raise HTTPException(409, "conversation thread has changed; refresh before retrying")
@@ -112,23 +109,6 @@ class CompanionCoordinator:
         return run if run and run.status in (*_ACTIVE_STATUSES, "failed", "timed_out") else None
 
     def _start_or_resume(self, *, thread: ConversationThread, decision: RouteDecision, focus_run: AgentRun | None) -> AgentRun:
-        # A voluntary sprint can briefly use Planning without losing the
-        # paused problem's Run/checkpoint. Only a server-recorded interlude
-        # grants this return; ordinary scene switches keep their old behavior.
-        previous = self.db.query(AgentRun).filter_by(
-            thread_id=thread.id, run_ref=thread.focus_run_ref).one_or_none() if thread.focus_run_ref else None
-        return_ref = (previous.outcome or {}).get("sprint_return_ref") if previous else None
-        if decision.target == "tutoring" and previous and (previous.outcome or {}).get("sprint_interlude") and return_ref:
-            original = self.db.query(AgentRun).filter_by(
-                thread_id=thread.id, ward_id=thread.ward_id, run_ref=return_ref,
-                agent_type="tutoring", status="paused").one_or_none()
-            if original is not None:
-                original.status = "active"
-                original.last_active_at = now()
-                thread.focus_run_ref = original.run_ref
-                decision.mode = "continue"
-                decision.active_session_id = original.id
-                return original
         if decision.mode == "continue" and focus_run is not None:
             if focus_run.status not in _RESUMABLE_STATUSES:
                 raise HTTPException(409, "focus run cannot be resumed")
@@ -147,10 +127,6 @@ class CompanionCoordinator:
         if decision.target == "tutoring":
             from app.agent_specs.tutoring_paths import new_run_version
             run.graph_version = new_run_version(load_catalog().spec("tutoring"), run_id)
-        if decision.target == "planning" and focus_run and focus_run.agent_type == "tutoring":
-            run.outcome = {"sprint_return_ref": focus_run.run_ref}
-        elif decision.target == "planning" and previous and previous.agent_type == "planning" and return_ref:
-            run.outcome = {"sprint_return_ref": return_ref}
         self.db.add(run)
         self.db.flush()
         thread.focus_run_ref = run.run_ref
@@ -184,7 +160,10 @@ class CompanionCoordinator:
             raise HTTPException(409, "conversation history has been cleared")
         if command.completed_at is None:
             raise HTTPException(409, "command is already in progress")
-        return CoordinatorResult.model_validate(command.result)
+        result = CoordinatorResult.model_validate(command.result)
+        if command.thread_id and result.thread_version <= self.db.get(ConversationThread, command.thread_id).clear_version:
+            raise HTTPException(409, "conversation history has been cleared")
+        return result
 
     def _write_stream_event(self, run: AgentRun, outcome: WorkflowOutcome) -> None:
         payload = outcome.response or outcome.next_interaction or {}
@@ -218,9 +197,7 @@ class CompanionCoordinator:
             if isinstance(value, str) and value.strip():
                 return value.strip()
         if payload.get("status") == "needs_input":
-            return "我还需要一点信息，才能继续帮你安排。"
-        if payload.get("status") == "confirmed":
-            return "计划已经确认好了。"
+            return "请再说一点你想讨论的问题。"
         return None
 
     @staticmethod
@@ -235,6 +212,10 @@ class CompanionCoordinator:
     def _visible_content_ref(outcome: WorkflowOutcome) -> dict | None:
         payload = outcome.next_interaction or outcome.response or {}
         kind = payload.get("kind")
+        if kind == "creative_focus_reminder":
+            return {"kind": kind, "focus_id": payload["focus_id"]}
+        if kind == "creative_work":
+            return {"kind": kind, "artifact_id": payload["artifact_id"]}
         if kind == "text_visual":
             for part in payload.get("parts") or []:
                 if isinstance(part, dict) and part.get("type") == "visual" and isinstance(part.get("visual"), dict):
@@ -244,41 +225,16 @@ class CompanionCoordinator:
             lessons = payload.get("lessons")
             if isinstance(lessons, list) and lessons and all(isinstance(item, dict) for item in lessons):
                 return {"kind": "pronunciation_lesson", "lessons": lessons}
-        if kind == "plan_confirm_list":
-            snapshot = payload.get("card_snapshot")
-            if isinstance(snapshot, dict) and isinstance(snapshot.get("items"), list):
-                return {
-                    "kind": "plan_confirm_list",
-                    "object_ref": payload.get("object_ref"),
-                    "actions": [action for action in payload.get("actions", [])
-                                if action.get("command") == "confirm_plan"],
-                    "card_snapshot": snapshot,
-                }
         return None
-
-    @staticmethod
-    def _intent_choice_interaction(thread_id: str, command_id: str) -> dict:
-        interaction_id = f"intent:{thread_id}:{command_id}"
-        return {
-            "protocol": "companion-interaction.v1", "kind": "intent_choice",
-            "content": _CLARIFY_REPLY, "parts": [{"type": "text", "text": _CLARIFY_REPLY}],
-            "source_command_id": command_id,
-            "actions": [
-                {"id": interaction_id, "name": "select", "label": label,
-                 "command": "choose_intent", "enabled": True, "payload": {"intent": intent}}
-                for intent, label in _INTENT_CHOICES
-            ],
-        }
 
     @trace_agent_turn
     @configured_call
     def handle(
         self, *, ward_id: str, content: str, thread_id: str | None,
         expected_thread_version: int | None, route_hint: str | None,
-        command_id: str | None = None, planning_items: list[dict] | None = None,
-        planning_confirm: bool = False, study_session_id: str | None = None,
-        tutoring_directive: str | None = None, tutoring_intent: str | None = None, review_date=None,
-        review_feeling: str | None = None, review_reflection: str | None = None,
+        command_id: str | None = None,
+        study_session_id: str | None = None,
+        tutoring_directive: str | None = None, tutoring_intent: str | None = None,
         attachment_keys: list[str] | None = None,
         structured_command: dict | None = None, voice_display_text: str | None = None,
     ) -> CoordinatorResult:
@@ -287,11 +243,9 @@ class CompanionCoordinator:
         if tutoring_intent == "pronunciation" and route_hint is None:
             route_hint = "tutoring"
         turn = {
-            "planning_items": planning_items, "planning_confirm": planning_confirm,
             "study_session_id": study_session_id, "tutoring_directive": tutoring_directive,
             "tutoring_intent": tutoring_intent,
-            "content": content, "review_date": review_date.isoformat() if review_date else None,
-            "review_feeling": review_feeling, "review_reflection": review_reflection,
+            "content": content,
             "attachment_keys": attachment_keys or [],
             "structured_command": structured_command,
         }
@@ -311,63 +265,51 @@ class CompanionCoordinator:
 
         # Phase 1: persist the routing decision before invoking any target work.
         thread = self._thread(ward_id=ward_id, thread_id=thread_id, expected_version=expected_thread_version)
+        if thread.version == 0 and thread.title == "新对话" and content.strip():
+            thread.title = content.strip()[:40]
         set_agent_context(thread_id=thread.id)
         command = CompanionCommand(id=command_id, ward_id=ward_id, thread_id=thread.id, payload_digest=digest)
         self.db.add(command)
         visible_content = content
-        choice_selected = structured_command is not None and structured_command.get("command") == "choose_intent"
-        if choice_selected:
-            if (planning_items is not None or planning_confirm or study_session_id is not None
-                    or tutoring_directive is not None or tutoring_intent is not None
-                    or review_date is not None or review_feeling is not None
-                    or review_reflection is not None):
-                raise HTTPException(409, "意图选择不能同时提交其他操作")
-            interaction_id = structured_command.get("interaction_id")
-            payload = structured_command.get("payload") or {}
-            latest = (self.db.query(CompanionMessage)
-                      .filter_by(ward_id=ward_id, thread_id=thread.id, author_type="companion")
-                      .order_by(CompanionMessage.thread_version.desc()).first())
-            issued = latest.interaction_ref if latest is not None else None
-            actions = issued.get("actions", []) if isinstance(issued, dict) else []
-            matching = [action for action in actions
-                        if action.get("id") == interaction_id and action.get("command") == "choose_intent"
-                        and action.get("enabled") is True and action.get("payload") == payload]
-            if (route_hint is not None or attachment_keys or latest is None or not isinstance(issued, dict)
-                    or latest.thread_version != thread.version
-                    or issued.get("kind") != "intent_choice" or len(matching) != 1):
-                raise HTTPException(409, "意图选择已过期，请重新说明")
-            source = (self.db.query(CompanionMessage)
-                      .filter_by(ward_id=ward_id, thread_id=thread.id,
-                                 command_id=issued.get("source_command_id"), author_type="ward")
-                      .one_or_none())
-            if source is None or source.thread_version != latest.thread_version - 1:
-                raise HTTPException(409, "意图选择已过期，请重新说明")
-            route_hint = payload["intent"]
-            content = source.content
-            attachment_keys = list(source.attachment_refs or [])
-            turn["content"], turn["attachment_keys"] = content, attachment_keys
-            turn["structured_command"] = None
-            visible_content = f"选择：{matching[0]['label']}"
         focus_run = self._focus_run(thread)
         from app.agent_specs.runtime import execute_workflow, notify_node_started
+
+        intent_schema = load_definitions().units["companion.intent"].output_schema
+        study_controls = "study_control" in intent_schema["properties"]
+        if study_controls and structured_command and structured_command["command"] != "sprint_command":
+            raise HTTPException(410, "此交互已退场")
+        judge_current_turn = (
+            "teaching_policy" in intent_schema["required"]
+            and not structured_command
+            and (bool(content.strip()) or bool(attachment_keys))
+        )
 
         def classify(state):
             state["proposal"] = None
             state["switch_allowed"] = None
-            if self.router.blocks_for_safety(content) or route_hint in _VALID_HINTS:
+            if study_controls and structured_command:
+                return
+            if not judge_current_turn and (self.router.blocks_for_safety(content) or route_hint in _VALID_HINTS):
                 return
             from app.application.queries.run_transcript import load_visible_utterances
             state["recent_utterances"] = load_visible_utterances(
                 self.db, ward_id=ward_id, thread_id=thread.id, exclude_turn_id=None,
             )
             state["images"] = current_turn_images(ward_id, attachment_keys)
+            sprint = None
+            if "off_sprint_topic" in intent_schema["properties"]:
+                sprint = self.db.query(Sprint.id, Sprint.topic).filter_by(ward_id=ward_id, status="active").first()
+            state["sprint_id"] = sprint.id if sprint else None
             state["proposal"] = self.classifier.propose(
                 content=content, focus_agent_type=getattr(focus_run, "agent_type", None),
                 recent_utterances=state["recent_utterances"], current_images=state["images"],
+                **({"sprint_topic": sprint.topic} if sprint else {}),
             )
 
         def cross_scene(state):
             proposal = state["proposal"]
+            if judge_current_turn:
+                return False
             return bool(focus_run is not None and proposal is not None and proposal.intent in _VALID_HINTS
                         and proposal.intent != focus_run.agent_type)
 
@@ -387,9 +329,14 @@ class CompanionCoordinator:
                 return GateDecision("allow" if state["switch_allowed"] is True else "deny", "scene_switch")
 
         def decide(state):
+            proposal = state["proposal"]
+            if judge_current_turn and (proposal is None or proposal.teaching_policy is None):
+                proposal = None
             return self.router.decide(
-                content=content, route_hint=route_hint, focus_run=focus_run, proposal=state["proposal"],
-                has_image=bool(attachment_keys), switch_allowed=state["switch_allowed"],
+                content=content, route_hint=None if judge_current_turn else route_hint,
+                focus_run=focus_run, proposal=proposal,
+                current_turn_policy=judge_current_turn,
+                has_image=bool(attachment_keys), switch_allowed=True if judge_current_turn else state["switch_allowed"],
             )
 
         with agent_step_span("route", "intent_route") as route_span:
@@ -407,6 +354,8 @@ class CompanionCoordinator:
             proposal = routing["proposal"]
             if proposal is not None:
                 route_span.set_attribute("agent.initial_intent", proposal.intent)
+                if proposal.teaching_policy:
+                    route_span.set_attribute("agent.teaching_policy", proposal.teaching_policy)
                 route_span.set_attribute("agent.history_image_ref", proposal.history_image_ref)
                 route_span.set_attribute("agent.tutoring_thinking_effort", proposal.thinking_effort)
             route_span.set_attribute("agent.proposed_target", decision.target)
@@ -414,44 +363,14 @@ class CompanionCoordinator:
             set_observation_payload(route_span, output=decision.model_dump(mode="json"))
         if decision.mode == "start" and focus_run is not None and decision.target not in {"clarify", "safety"}:
             decision.mode = "continue" if focus_run.agent_type == decision.target else "handoff"
-        if structured_command and not choice_selected:
-            if structured_command.get("command") == "sprint_command":
-                issued = (focus_run.outcome or {}) if focus_run else {}
-                if (focus_run is None or focus_run.agent_type != "planning"
-                        or structured_command.get("interaction_id") != issued.get("issued_actions", {}).get("sprint_command")
-                        or structured_command.get("payload") != issued.get("issued_payloads", {}).get("sprint_command")):
-                    raise HTTPException(409, "挑战交互已失效，请重新查看")
-                decision.target, decision.mode = "planning", "continue"
-            else:
-                # A form reply is often intentionally content-less.  Its signed
-                # interaction, rather than lexical routing, selects Planning.
-                if focus_run is not None and focus_run.agent_type == "planning":
-                    decision.target, decision.mode = "planning", "continue"
-                if decision.target != "planning" or structured_command.get("command") not in {"confirm_plan", "clarify_reply", "accept_plan_suggestion"}:
-                    raise HTTPException(409, "当前交互不允许这个动作")
-                if focus_run is None or focus_run.agent_type != "planning":
-                    raise HTTPException(409, "计划交互已失效，请重新审阅")
-                payload = structured_command.get("payload") or {}
-                draft = self.db.get(PlanDraft, payload.get("draft_id"))
-                expected = payload.get("expected_draft_version")
-                command_name = structured_command["command"]
-                if command_name in {"confirm_plan", "accept_plan_suggestion"}:
-                    interaction_id = f"plan:{focus_run.id}:{focus_run.attempt}:{payload.get('draft_id')}:{expected}"
-                    version_valid = draft is not None and draft.version == expected
-                else:
-                    interaction_id = f"clarify:{focus_run.id}:{focus_run.attempt}:{payload.get('draft_id')}:{draft.version if draft else None}"
-                    version_valid = draft is not None
-                if (draft is None or draft.ward_id != ward_id or draft.status != "active"
-                        or not version_valid or structured_command.get("interaction_id") != interaction_id
-                        or (focus_run.outcome or {}).get("issued_actions", {}).get(
-                            command_name,
-                            (focus_run.outcome or {}).get("interaction_id")
-                            if command_name != "accept_plan_suggestion" else None,
-                        ) != interaction_id):
-                    raise HTTPException(409, "计划交互已过期，请重新审阅")
-                if (command_name == "accept_plan_suggestion"
-                        and command_name not in (focus_run.outcome or {}).get("allowed_commands", [])):
-                    raise HTTPException(409, "当前交互不允许采纳建议")
+        if structured_command:
+            issued = (focus_run.outcome or {}) if focus_run else {}
+            if (structured_command.get("command") != "sprint_command" or focus_run is None
+                    or focus_run.agent_type != "tutoring"
+                    or structured_command.get("interaction_id") != issued.get("issued_actions", {}).get("sprint_command")
+                    or structured_command.get("payload") != issued.get("issued_payloads", {}).get("sprint_command")):
+                raise HTTPException(409, "挑战交互已失效，请重新查看")
+            decision.target, decision.mode = "tutoring", "continue"
         run = None
         if decision.target not in {"clarify", "safety"}:
             run = self._start_or_resume(thread=thread, decision=decision, focus_run=focus_run)
@@ -480,25 +399,23 @@ class CompanionCoordinator:
                 thread=thread, command_id=command_id, author_type="ward", content=visible_content,
                 thread_version=version, run=run, turn_id=run.current_turn_id if run else None,
                 attempt=run.attempt if run else None,
-                attachment_refs=[] if choice_selected else attachment_keys,
+                attachment_refs=attachment_keys,
                 interaction_ref=({"voice_display_text": voice_display_text}
                                  if voice_display_text and decision.target == "tutoring"
                                  and not structured_command and not tutoring_intent else None),
             )
             terminal_reply = { "clarify": _CLARIFY_REPLY, "safety": _SAFETY_REPLY }.get(decision.target)
-            intent_choice = (self._intent_choice_interaction(thread.id, command_id)
-                             if decision.target == "clarify" else None)
             if terminal_reply is not None:
                 thread.version = version
                 version = self._advance_thread(thread)
                 self._write_transcript(
                     thread=thread, command_id=command_id, author_type="companion",
                     content=terminal_reply, thread_version=version,
-                    interaction_ref=intent_choice,
+                    interaction_ref=None,
                 )
             if run is None:
                 result = CoordinatorResult(thread_id=thread.id, thread_version=version, decision=decision,
-                                           interaction=intent_choice, command_id=command_id)
+                                           interaction=None, command_id=command_id)
                 command.result, command.completed_at = result.model_dump(), now()
                 self.db.commit()
                 if terminal_reply is not None:
@@ -525,6 +442,14 @@ class CompanionCoordinator:
                     and turn.get("tutoring_intent") != "compare_previous_image"
                 ):
                     turn["history_image_ref"] = "none"
+                if proposal.teaching_policy:
+                    turn["teaching_policy"] = proposal.teaching_policy
+                    if proposal.teaching_policy == "pronunciation":
+                        turn["tutoring_intent"] = "pronunciation"
+                    elif turn.get("tutoring_intent") == "pronunciation":
+                        turn.pop("tutoring_intent")
+                if proposal.off_sprint_topic:
+                    turn["off_topic_sprint_id"] = routing.get("sprint_id")
                 turn["thinking_effort"] = proposal.thinking_effort
                 if proposal.thinking_effort == "off":
                     turn["disable_thinking"] = True
@@ -537,7 +462,54 @@ class CompanionCoordinator:
             with agent_workflow_span(agent_type=run.agent_type, run_id=run.id, thread_id=thread.id) as workflow_span:
                 set_observation_payload(workflow_span, input=invocation.model_dump(mode="json"))
                 notify_node_started(f"companion.{run.agent_type}")
-                outcome = self.dispatcher.invoke(invocation)
+                study_action = proposal.study_control if proposal and study_controls else None
+                confirm_sprint = study_controls and (structured_command or {}).get("command") == "sprint_command"
+                if run.agent_type == "tutoring" and (study_action or confirm_sprint):
+                    from app.application.workflows.study_conversation import StudyConversation
+                    study = StudyConversation(self.db)
+                    if confirm_sprint:
+                        outcome = study.confirm(run, invocation, structured_command["payload"])
+                    else:
+                        context = study._current_sprint_context(ward_id)
+                        outcome = study.handle_action(run, invocation, study_action,
+                            expected_quiet_version=context.get("camera_hints_version"))
+                elif run.agent_type == "tutoring" and proposal and proposal.teaching_policy:
+                    from app.application.agent.selected_skill import execute_selected_skill
+                    from app.application.commands.creative_works import create_candidate
+                    creative = (proposal.creative_work and proposal.teaching_policy == "standard"
+                                and not structured_command and not attachment_keys)
+                    if creative:
+                        tool, skill = "artifact.create_or_revise", "edu.creative_studio"
+                        arguments = {"artifact_type": "creative_work"}
+                        def invoke():
+                            return create_candidate(self.db, invocation)
+                    else:
+                        tool, skill = "tutoring.run_homework_turn", "edu.homework_tutoring"
+                        arguments = {"content": turn["content"]}
+                        def invoke():
+                            return self.dispatcher.invoke(invocation)
+
+                    def authorized(phase, result):
+                        if creative and turn["teaching_policy"] != "standard":
+                            return False
+                        return phase == "write" or isinstance(result, WorkflowOutcome)
+
+                    def creative_review(phase, result):
+                        if phase == "write":
+                            return creative
+                        response = result.response or {}
+                        if response.get("kind") == "creative_work":
+                            from app.agent_specs.creative_work import Story
+                            return Story.model_validate(response["candidate"]).title == response["content"]
+                        return response.get("kind") in {"text", "creative_focus_reminder"}
+
+                    outcome = execute_selected_skill(role="ward", owner=ward_id, thread_id=thread.id,
+                        message=turn["content"], attachments=attachment_keys, skill=skill,
+                        tool=tool, arguments=arguments, invoke=invoke,
+                        gates={"tutoring.answer_protection":authorized, "ward.anti_ghostwriting":creative_review},
+                        summarize=lambda result: str((result.response or {}).get("content") or result.run_status))
+                else:
+                    outcome = self.dispatcher.invoke(invocation)
                 workflow_span.set_attribute("agent.run_status", outcome.run_status)
                 workflow_span.set_attribute("agent.outcome_type", outcome.outcome_type or "unknown")
                 set_observation_payload(workflow_span, output=outcome.model_dump(mode="json"))
@@ -552,11 +524,7 @@ class CompanionCoordinator:
             raise
         except Exception as exc:  # noqa: BLE001 - unexpected workflow failures need a visible fallback
             self.db.rollback()
-            failure_text = (
-                "计划整理暂不可用，请稍后重试。"
-                if run.agent_type == "planning"
-                else "暂时无法处理这条消息，请稍后重试。"
-            )
+            failure_text = "暂时无法处理这条消息，请稍后重试。"
             outcome = WorkflowOutcome(
                 run_status="failed", outcome_type="failure",
                 response={
@@ -603,7 +571,7 @@ class CompanionCoordinator:
         if run is None or thread is None or run.ward_id != ward_id or run.thread_id != thread.id:
             self.db.rollback()
             return False, None
-        if thread.history_generation != ward.history_generation or run.attempt != attempt or run.current_turn_id != turn_id or thread.focus_run_ref != run.run_ref:
+        if thread.deleted or thread.history_generation != ward.history_generation or run.attempt != attempt or run.current_turn_id != turn_id or thread.focus_run_ref != run.run_ref:
             self.db.rollback()
             current_thread = self.db.get(ConversationThread, thread_id)
             current_run = self.db.get(AgentRun, run_id)
@@ -620,10 +588,10 @@ class CompanionCoordinator:
         run.context_refs = outcome.context_refs
         run.failure = outcome.failure or {}
         interaction = outcome.response or outcome.next_interaction or {}
-        return_ref = (run.outcome or {}).get("sprint_return_ref")
+        if interaction.get("kind") == "creative_work":
+            from app.application.commands.creative_works import persist_candidate
+            persist_candidate(self.db, thread, interaction)
         run.outcome = {
-            "sprint_return_ref": return_ref,
-            "sprint_interlude": bool(return_ref and (interaction.get("kind") == "sprint_control" or "observation_quiet" in interaction)),
             "type": outcome.outcome_type,
             "resume_action": outcome.resume_action,
             # The issued action is persisted with its run outcome.  A later

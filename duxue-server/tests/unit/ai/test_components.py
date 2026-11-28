@@ -153,11 +153,12 @@ def test_real_generation_export_keeps_sent_messages_prompt_id_and_raw_reply(monk
 
 
 def test_dynamic_prompt_uses_only_the_snapshot_model(spans):
-    spec = COMPONENTS.get("task.intake")
-    client = _Client('{"assistant_text":"已整理。"}')
+    from dataclasses import replace
+    spec = replace(COMPONENTS.get("companion.intent"), prompt=COMPONENTS.get("task.intake").prompt)
+    client = _Client('{"intent":"unclear"}')
     invoke_json_component(
         spec=spec, user=[{"type": "text", "text": "rendered"}], client=client,
-        settings_obj=_settings(json.dumps({"task.intake": "model-x"})),
+        settings_obj=_settings(json.dumps({"companion.intent": "model-x"})),
     )
     call = client.calls[0]
     assert [m["role"] for m in call["messages"]] == ["user"]
@@ -243,20 +244,6 @@ def test_tutoring_components_keep_existing_success_and_failure_boundaries(monkey
         lambda **_kwargs: (_ for _ in ()).throw(ModelGatewayError("model_transport_error")),
     )
     assert tutor_turn_model.QwenLeakJudge().leaks(text="提示", task_title=None, problem_summary=None) is None
-
-
-def test_intake_services_map_gateway_errors_to_their_user_messages(monkeypatch):
-    from app.api.schemas import TaskIntakeRequest
-    from app.application.commands import task_intake
-
-    request = TaskIntakeRequest(content="数学作业", history=[], tasks=[])
-    for code, message in [("invalid_model_candidate", "格式异常"), ("model_transport_error", "暂不可用")]:
-        monkeypatch.setattr(
-            task_intake.components, "invoke_json_component",
-            lambda code=code, **_k: (_ for _ in ()).throw(ModelGatewayError(code)),
-        )
-        with pytest.raises(task_intake.TaskIntakeError, match=message):
-            task_intake.TaskIntakeService().respond(wards=[], request=request)
 
 
 def test_static_prompts_are_templates():

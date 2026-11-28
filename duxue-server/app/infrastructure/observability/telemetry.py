@@ -37,25 +37,18 @@ _run_id: ContextVar[str | None] = ContextVar("duxue_run_id", default=None)
 _agent_parent_span: ContextVar[Any] = ContextVar("duxue_agent_parent_span", default=None)
 _agent_turn_span: ContextVar[trace.Span | None] = ContextVar("duxue_agent_turn_span", default=None)
 _pending_subgoal: ContextVar[dict[str, Any] | None] = ContextVar("duxue_pending_subgoal", default=None)
-_PLANNING_STAGES = frozenset({
-    "checkpointer_connect", "checkpointer_setup", "context_build", "plan_intake",
-    "graph_compile", "graph_invoke",
-})
 _LANGFUSE_SPANS = frozenset({
-    "agent.turn", "agent.route", "agent.workflow", "agent.node", "agent.tool",
-    "agent.check", "llm.request", "agent.execution",
-}) | frozenset(f"planning.{stage}" for stage in _PLANNING_STAGES)
+    "agent.turn", "agent.route", "agent.workflow", "agent.node", "agent.skill",
+    "agent.tool", "agent.check", "llm.request", "agent.execution",
+})
 # These attributes are generated from code-owned enums/counters. Never export
 # arbitrary event payloads from an application span to Langfuse.
 _LANGFUSE_EVENT_KEYS = frozenset({
     "agent.type", "agent.run_id", "agent.thread_id", "agent.target", "agent.mode",
+    "agent.skill_id", "agent.tool_id", "agent.role",
     "agent.route_reason", "agent.status", "agent.duration_ms", "agent.fallback",
     "input.length", "llm.operation", "llm.model", "ai.component_id",
-    "ai.component_version", "output.length", "planning.stage", "planning.duration_ms",
-    "planning.loop_status", "planning.field", "planning.rejection_code",
-    "planning.value_shape", "plan_intake.has_image", "plan_intake.operation_count",
-    "plan_intake.slot_update_count", "plan_intake.clarification_required",
-    "plan_intake.recent_utterance_count", "tutor.act", "tutor.relation",
+    "ai.component_version", "output.length", "tutor.act", "tutor.relation",
     "tutor.topic", "tutor.depth", "tutor.student_move", "tutor.leak_retried",
     "tutor.outcome", "tutor.visual.kind", "tutor.visual.dropped",
     "tutor.visual.reason", "tutor.shape.flags", "tutor.candidate.error_type",
@@ -525,7 +518,7 @@ def agent_infra_span(name: str, **attributes: Any) -> Iterator[Any]:
 @contextmanager
 def agent_step_span(kind: str, name: str, **attributes: Any) -> Iterator[Any]:
     """A named Agent step; callers attach reviewed input/output payloads."""
-    if kind not in {"route", "node", "tool", "check"}:
+    if kind not in {"route", "node", "skill", "tool", "check"}:
         raise ValueError("unknown agent step kind")
     from app.agent_specs.catalog import load_catalog
 
@@ -547,6 +540,36 @@ def agent_step_span(kind: str, name: str, **attributes: Any) -> Iterator[Any]:
                 if "langfuse.observation.output" not in (getattr(span, "attributes", None) or {}):
                     set_observation_payload(span, output={"error_type": type(error).__name__})
                 raise
+
+
+@contextmanager
+def edu_agent_span(kind: str, name: str, **attributes: Any) -> Iterator[Any]:
+    """Structured span for EduAgentOrchestrator (turn/skill/tool/check) exported to Langfuse."""
+    obs_types = {"turn": "chain", "node": "chain", "skill": "chain", "tool": "tool", "check": "guardrail"}
+    if kind not in obs_types:
+        raise ValueError("unknown edu agent span kind")
+    with trace.get_tracer("duxue.agent").start_as_current_span(
+        f"agent.{kind}",
+        attributes={
+            **_agent_context_attrs(),
+            "agent.step": name,
+            "agent.unit.kind": kind,
+            "agent.unit.id": name,
+            "langfuse.observation.metadata.step": name,
+            "langfuse.observation.metadata.kind": kind,
+            "langfuse.observation.metadata.kind_id": name,
+            "langfuse.observation.type": obs_types[kind],
+            **_attrs(**attributes),
+        },
+        record_exception=False,
+        set_status_on_exception=False,
+    ) as span:
+        try:
+            yield span
+        except Exception as error:
+            if "langfuse.observation.output" not in (getattr(span, "attributes", None) or {}):
+                set_observation_payload(span, output={"error_type": type(error).__name__})
+            raise
 
 
 def traced_agent_node(name: str):
@@ -715,70 +738,12 @@ def record_companion_rejection(*, code: str, status_code: int, has_thread: bool,
 _CLOCK_VALUE = re.compile(r"^\d{1,2}:\d{2}(?::\d{2})?$")
 
 
-def _planning_value_shape(value: Any) -> str:
-    """Classify a rejected planning value without retaining the value itself."""
-    if isinstance(value, bool):
-        return "bool"
-    if isinstance(value, int):
-        return "int"
-    if isinstance(value, float):
-        return "float"
-    if isinstance(value, list):
-        return "list"
-    if isinstance(value, dict):
-        return "object"
-    if value is None:
-        return "empty"
-    if not isinstance(value, str):
-        return "other"
-    text = value.strip()
-    if not text:
-        return "empty"
-    if _CLOCK_VALUE.fullmatch(text):
-        return "clock"
-    try:
-        datetime.fromisoformat(text)
-    except ValueError:
-        return "text"
-    return "iso"
 
 
-def record_planning_input_rejected(*, field: str, code: str, value: Any) -> None:
-    """Audit why a planning answer was refused, keeping only a low-cardinality shape."""
-    attrs = {
-        "planning.field": field,
-        "planning.rejection_code": code,
-        "planning.value_shape": _planning_value_shape(value),
-        "http.status_code": 400,
-    }
-    _span_event("planning.input.rejected", attrs)
-    _audit_logger.warning("planning.input.rejected", extra={"telemetry": attrs})
 
 
-def record_planning_stage(*, stage: str, duration_ms: int | None = None, **extra: Any) -> None:
-    """Low-cardinality planning lifecycle breadcrumbs for locating post-LLM hangs."""
-    attrs = _attrs(**{"agent.type": "planning", "planning.stage": stage, "planning.duration_ms": duration_ms, **extra})
-    _span_event(f"planning.stage.{stage}", attrs)
-    _audit_logger.info("planning.stage", extra={"telemetry": attrs})
 
 
-@contextmanager
-def planning_stage_span(stage: str, **extra: Any) -> Iterator[None]:
-    from app.agent_specs.catalog import load_catalog
-
-    identity = load_catalog().step("stage", f"planning.{stage}")
-    started = perf_counter()
-    with trace.get_tracer("duxue.agent").start_as_current_span(
-        f"planning.{stage}",
-        attributes={**_agent_context_attrs(), "agent.type": "planning", "planning.stage": stage,
-                    **_step_unit_attrs(identity),
-                    "langfuse.observation.type": "chain", **_attrs(**extra)},
-        record_exception=False, set_status_on_exception=False,
-    ):
-        try:
-            yield
-        finally:
-            record_planning_stage(stage=stage, duration_ms=round((perf_counter() - started) * 1000), **extra)
 
 
 @contextmanager
@@ -951,32 +916,8 @@ def model_call_span(*, operation: str, model: str, agent_type: str | None = None
             span.set_attribute("llm.duration_ms", duration_ms)
 
 
-def record_plan_intake_structure(
-    *, has_image: bool, operation_count: int, slot_update_count: int, clarification_required: bool,
-    recent_utterance_count: int = 0,
-) -> None:
-    """Record how many structured proposals the intake model returned, never their text."""
-    attrs = _attrs(**{
-        "llm.operation": "plan_intake",
-        "plan_intake.has_image": has_image,
-        "plan_intake.operation_count": operation_count,
-        "plan_intake.slot_update_count": slot_update_count,
-        "plan_intake.clarification_required": clarification_required,
-        "plan_intake.recent_utterance_count": recent_utterance_count,
-    })
-    _span_event("plan_intake.structured", attrs)
-    _audit_logger.info("plan_intake.structured", extra={"telemetry": attrs})
 
 
-def record_planning_loop_outcome(*, status: str, has_image: bool) -> None:
-    """Record the deterministic planning loop status after intake is applied."""
-    attrs = _attrs(**{
-        "llm.operation": "plan_intake",
-        "plan_intake.has_image": has_image,
-        "planning.loop_status": status,
-    })
-    _span_event("planning.loop", attrs)
-    _audit_logger.info("planning.loop", extra={"telemetry": attrs})
 
 
 def record_model_response(

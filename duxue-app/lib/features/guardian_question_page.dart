@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'education_document.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -14,6 +16,7 @@ import '../shared/app_ui.dart';
 import '../shared/chat_markdown.dart';
 import '../shared/reply_progress.dart';
 import '../shared/voice_composer.dart';
+import 'conversation_picker.dart';
 import 'guardian_courseware/guardian_courseware_page.dart';
 import 'guardian_courseware/library_page.dart';
 import 'pronunciation_player.dart';
@@ -25,11 +28,12 @@ class _PerspectiveSession {
   final messages = <Map<String, dynamic>>[];
   final pictures = <_PickedPicture>[];
   String draftText = '';
-  String? stateToken, error, pendingQuestion;
+  String? stateToken, error, pendingQuestion, commandId, commandPayload;
   final stages = <ReplyStage>[];
   List<Uint8List> pendingPictures = const [];
   List<String>? retryKeys;
   String? retryStartToken;
+  String? skillHint;
   bool busy = false, expired = false;
   int generation = 0;
   ConversationTurn? timing;
@@ -41,6 +45,9 @@ class _PerspectiveSession {
     pictures.clear();
     draftText = '';
     stateToken = null;
+    commandId = null;
+    commandPayload = null;
+    skillHint = null;
     error = null;
     pendingQuestion = null;
     stages.clear();
@@ -68,10 +75,60 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
   final input = TextEditingController();
   final focus = FocusNode();
   final scroll = ScrollController();
-  final _sessions = <String, _PerspectiveSession>{
+  Map<String, _PerspectiveSession> _emptySessions() => {
     _studentMode: _PerspectiveSession(),
     _mentorMode: _PerspectiveSession(),
   };
+  late Map<String, _PerspectiveSession> _sessions = _emptySessions();
+  final _cached = <String, Map<String, _PerspectiveSession>>{};
+  String? _threadId, _threadError;
+  int _navigation = 0;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.active) unawaited(_openThread());
+  }
+
+  Future<void> _openThread([String? requested]) async {
+    final epoch = ++_navigation;
+    _cur.draftText = input.text;
+    setState(() { _loading = true; _threadError = null; });
+    try {
+      final api = ref.read(apiProvider);
+      var id = requested;
+      if (id == null || id.isEmpty) {
+        final rows = await api.conversations();
+        final row = rows.isEmpty ? await api.createConversation() : rows.first;
+        id = row['thread_id'] as String;
+      }
+      final saved = await api.conversationMessages(id);
+      if (!mounted || epoch != _navigation) return;
+      final sessions = _cached.putIfAbsent(id, _emptySessions);
+      for (final entry in sessions.entries) {
+        if (entry.value.busy || entry.key == _studentMode) continue;
+        entry.value.messages
+          ..clear()
+          ..addAll((saved['items'] as List).whereType<Map>().where((m) => m['mode'] == entry.key).map((m) => Map<String,dynamic>.from(m)));
+      }
+      setState(() {
+        _threadId = id;
+        _sessions = sessions;
+        input.text = _cur.draftText;
+        _loading = false;
+      });
+      _bottom();
+    } catch (_) {
+      if (mounted && epoch == _navigation) setState(() { _loading = false; _threadError = '对话加载失败，点击重试'; });
+    }
+  }
+
+  Future<void> _pickThread() async {
+    final id = await Navigator.push<String>(context, MaterialPageRoute(builder: (_) =>
+      ConversationPicker(api: ref.read(apiProvider), current: _threadId, adult: true)));
+    if (mounted && id != null) await _openThread(id);
+  }
   String mode = _mentorMode;
   bool keyboard = false;
   SpeechPlayback? _playback;
@@ -82,6 +139,7 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
   @override
   void didUpdateWidget(GuardianQuestionPage oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.active && !oldWidget.active && _threadId == null) unawaited(_openThread());
     if (!widget.active) {
       focus.unfocus();
       _playback?.stop();
@@ -141,12 +199,11 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
   }
 
   Future<void> _clear() async {
-    final isMentor = mode == _mentorMode;
     final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
                 title: const Text('重新开始问答？'),
-                content: Text(isMentor ? '将清空当前导师视角对话。' : '将清空本轮体验对话。'),
+                content: const Text('将清空本对话的消息，已保存的课件仍可打开。'),
                 actions: [
                   TextButton(
                       onPressed: () => Navigator.pop(context, false),
@@ -156,6 +213,15 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
                       child: const Text('重新开始')),
                 ]));
     if (!mounted || confirmed != true) return;
+    try {
+      final id = _threadId;
+      if (id == null) return;
+      if (mode == _mentorMode) await ref.read(apiProvider).clearConversation(id);
+      if (!mounted || id != _threadId) return;
+    } catch (_) {
+      if (mounted) showMessage(context, '清空失败，请重试');
+      return;
+    }
     _playback?.stop();
     setState(() {
       _cur.clear();
@@ -263,6 +329,8 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
     required bool useComposerDraft,
   }) async {
     final session = _sessions[targetMode]!;
+    final threadId = _threadId;
+    if (threadId == null) return;
     if (session.busy || (session.expired && useComposerDraft)) return;
     final timing = ref.read(conversationLatencyProvider).start('guardian');
     session.timing = timing;
@@ -301,13 +369,21 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
         attachmentKeys = [for (final picture in session.pictures) picture.key!];
       }
       if (uploadsImages) {
-        if (mode == targetMode) _bottom(onlyIfNearBottom: true);
+        if (_threadId == threadId && mode == targetMode) _bottom(onlyIfNearBottom: true);
         setState(() => session.stages.add(ReplyStage.preparing));
+      }
+      final payload = jsonEncode([content, attachmentKeys, startToken, session.skillHint]);
+      if (session.commandPayload != payload) {
+        session.commandPayload = payload;
+        session.commandId = null;
       }
       final response = await timing.request(() => api.guardianExperienceTurn(
             content: content,
-            stateToken: useComposerDraft ? session.stateToken : startToken,
+            stateToken: useComposerDraft ? (targetMode == _studentMode ? session.stateToken : null) : startToken,
+            threadId: targetMode == _mentorMode ? threadId : null,
+            commandId: session.commandId ??= DateTime.now().microsecondsSinceEpoch.toString(),
             attachmentKeys: attachmentKeys,
+            skillHint: session.skillHint,
             mode: targetMode,
             onStage: (stage) {
               final nextStage = ReplyStage.fromWire(stage);
@@ -317,14 +393,15 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
                   session.busy &&
                   nextStage != null &&
                   session.stages.last != nextStage) {
-                if (mode == targetMode) _bottom(onlyIfNearBottom: true);
+                if (_threadId == threadId && mode == targetMode) _bottom(onlyIfNearBottom: true);
                 setState(() => session.stages.add(nextStage));
               }
             },
           ));
       if (!mounted || epoch != session.generation) return;
-      if (mode == targetMode) _bottom(onlyIfNearBottom: true);
+      if (_threadId == threadId && mode == targetMode) _bottom(onlyIfNearBottom: true);
       setState(() {
+        session.skillHint = null;
         session.messages.add({
           'role': 'user',
           'turn_id': response['turn_id'],
@@ -341,8 +418,9 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
         session.stateToken = response['state_token'] as String?;
         if (useComposerDraft) {
           session.pictures.clear();
-          if (mode == targetMode) input.clear();
+          if (_threadId == threadId && mode == targetMode) input.clear();
         }
+        session.commandId = null;
         session.retryKeys = null;
         session.retryStartToken = null;
         session.expired = false;
@@ -352,7 +430,7 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
     } catch (e) {
       timing.fail(e);
       if (!mounted || epoch != session.generation) return;
-      if (mode == targetMode) _bottom(onlyIfNearBottom: true);
+      if (_threadId == threadId && mode == targetMode) _bottom(onlyIfNearBottom: true);
       final detailCode = e is DioException &&
               e.response?.data is Map &&
               (e.response!.data as Map)['detail'] is Map
@@ -361,7 +439,7 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
       setState(() {
         if (useComposerDraft) {
           session.draftText = content;
-          if (mode == targetMode) input.text = content;
+          if (_threadId == threadId && mode == targetMode) input.text = content;
         }
         session.expired = detailCode == 'experience_expired';
         if (session.expired) {
@@ -437,6 +515,9 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
   Widget build(BuildContext context) {
     final session = _cur;
     final isMentor = mode == _mentorMode;
+    if (!widget.active && _loading) return const SizedBox.shrink();
+    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_threadError != null) return Center(child: TextButton(onPressed: () => _openThread(), child: Text(_threadError!)));
     return Column(children: [
       Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
@@ -469,7 +550,8 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
                 ),
               ),
             ),
-            IconButton(tooltip:'我的课件',icon:const Icon(Icons.folder_outlined),
+            IconButton(tooltip: '历史对话', icon: const Icon(Icons.forum_outlined), onPressed: _pickThread),
+            IconButton(tooltip:'我的资源库',icon:const Icon(Icons.folder_outlined),
               onPressed:()=>Navigator.of(context).push(MaterialPageRoute<void>(builder:(_)=>const CoursewareLibraryPage()))),
             if (session.messages.isNotEmpty ||
                 session.busy ||
@@ -487,6 +569,12 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
             if (session.messages.isEmpty &&
                 !session.busy &&
                 session.error == null) ...[
+              if (isMentor)
+                Wrap(spacing: 8, children: [
+                  for (final option in const {'edu.worksheet_grading':'整页批改','edu.lesson_pack':'备课与变式题'}.entries)
+                    ChoiceChip(label: Text(option.value), selected: session.skillHint == option.key,
+                      onSelected:(selected) => setState(() {session.skillHint = selected ? option.key : null;})),
+                ]),
               const SizedBox(height: 24),
               Text(
                   isMentor
@@ -710,7 +798,60 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
                         borderRadius: BorderRadius.circular(8),
                         child: Image.memory(bytes,
                             width: 160, height: 160, fit: BoxFit.cover))),
+              if (mine && message['pictures'] == null && message['message_id'] is String)
+                for (var i = 0; i < (message['attachment_keys'] as List? ?? const []).length; i++)
+                  FutureBuilder<Uint8List>(
+                    future: (message['photo-$i'] ??= ref.read(apiProvider)
+                      .conversationImage(_threadId!, message['message_id'] as String, i)) as Future<Uint8List>,
+                    builder: (_, snapshot) => snapshot.hasData
+                      ? Image.memory(snapshot.data!, width: 160, height: 160, fit: BoxFit.cover)
+                      : Text(snapshot.hasError ? '题图加载失败' : '正在加载题图'),
+                  ),
               if (text.isNotEmpty) ChatMarkdownBody(text: text),
+              if (!mine &&
+                  message['artifacts'] is List &&
+                  (message['artifacts'] as List).isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
+                      for (final item
+                          in (message['artifacts'] as List).whereType<Map>())
+                        if (item['artifact_id'] is String)
+                          OutlinedButton.icon(
+                            onPressed: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => EducationDocumentPage(
+                                  id: item['artifact_id'] as String,
+                                ),
+                              ),
+                            ),
+                            icon: Icon(
+                              item['artifact_type'] == 'lesson_pack'
+                                  ? Icons.menu_book_outlined
+                                  : Icons.fact_check_outlined,
+                              size: 16,
+                            ),
+                            label: Text(
+                              '${item['artifact_type'] == 'lesson_pack' ? '打开备课包' : '打开批改诊断'}${item['title'] is String && (item['title'] as String).isNotEmpty ? '：${item['title']}' : ''}',
+                            ),
+                          ),
+                    ],
+                  ),
+                )
+              else if (!mine && message['artifact_id'] is String)
+                TextButton(
+                    onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => EducationDocumentPage(
+                                id: message['artifact_id'] as String))),
+                    child: Text(message['artifact_type'] == 'lesson_pack'
+                        ? '打开备课包'
+                        : '打开批改诊断')),
               if (message['visual'] is Map)
                 Padding(
                     padding: const EdgeInsets.only(top: 12),
@@ -735,10 +876,13 @@ class _GuardianQuestionPageState extends ConsumerState<GuardianQuestionPage> {
                       Navigator.of(context).push(
                         MaterialPageRoute<void>(
                           builder: (_) => GuardianCoursewarePage(
+                            sourceMessageId: message['message_id'] as String?,
                             initialCoursewareId: message['courseware_id'] as String?,
                             onCreated: (id) { if(mounted) setState(()=>message['courseware_id']=id); },
                             promptText:
-                                (message['source_prompt'] as String?) ?? text,
+                                (message['courseware_prompt'] as String?) ??
+                                    (message['source_prompt'] as String?) ??
+                                    text,
                             attachmentKeys:
                                 ((message['source_keys'] as List?) ?? const [])
                                     .cast<String>(),

@@ -104,7 +104,7 @@ def test_disabled_during_inference_cannot_publish(db):
 
 def test_published_observation_is_projected_into_report(db):
     from app.application.commands.evening_reports import EveningReportCommands
-    from app.infrastructure.persistence.models import ReflectionReportVersion
+    from app.infrastructure.persistence.models import EveningReportVersion
 
     frame, setting = setup(db)
     setting.report_enabled = True
@@ -117,10 +117,24 @@ def test_published_observation_is_projected_into_report(db):
         frame.ward_id, T.date()
     )
     db.commit()
-    content = db.get(ReflectionReportVersion, (report.id, 1)).content
+    content = db.get(EveningReportVersion, (report.id, 1)).content
     assert content["observation"]["totals"]["writing"] == 15
     assert content["status"] == "partial"
     assert "runs" not in content["observation"]
+    from uuid import uuid4
+    artifact = str(uuid4())
+    db.add(OutboxEvent(aggregate_type="EduArtifact", aggregate_id=artifact,
+        event_type="CreationFootprintRecorded.v1", created_at=T,
+        payload={"ward_id": frame.ward_id, "artifact_id": artifact, "version": 1, "title": "风车"}))
+    db.commit()
+    commands = EveningReportCommands(db, lambda: T + timedelta(days=1))
+    assert commands.publish(frame.ward_id, T.date()).current_version == 2
+    db.flush()
+    revision = db.get(EveningReportVersion, (report.id, 2))
+    assert revision.content["creation_footprints"][0]["title"] == "风车"
+    assert revision.source_vector["creation_footprints"]
+    assert commands.publish(frame.ward_id, T.date()).current_version == 2
+
 
 
 def test_expired_model_attempt_cannot_publish(db):

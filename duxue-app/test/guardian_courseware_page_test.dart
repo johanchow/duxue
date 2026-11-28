@@ -30,7 +30,7 @@ class _FakeCoursewareApi extends ApiClient {
   @override
   Future<List<String>> savedCoursewarePhotos(String id) async => [];
   @override
-  Future<Map<String, dynamic>> listSavedCourseware([String? cursor]) async => {
+  Future<Map<String, dynamic>> listSavedCourseware([String? cursor, String? type]) async => {
         'items': [
           if (saved)
             {

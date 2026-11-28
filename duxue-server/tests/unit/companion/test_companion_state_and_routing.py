@@ -42,11 +42,11 @@ def test_explicit_route_hint_takes_precedence(router):
     """已验证的 route_hint 覆盖模型提议。"""
     decision = router.decide(
         content="随便聊两句",
-        route_hint="reflection",
+        route_hint="tutoring",
         focus_run=None,
         proposal=IntentProposal(intent="tutoring"),
     )
-    assert decision.target == "reflection"
+    assert decision.target == "tutoring"
     assert decision.mode == "start"
     assert decision.route_reason == "validated_route_hint"
 
@@ -104,31 +104,11 @@ def test_different_proposal_hands_off(router):
     assert decision.active_session_id == "run-plan-1"
 
 
-def test_unconfirmed_scene_switch_keeps_tutoring_focus(router):
-    focus_run = SimpleNamespace(agent_type="tutoring", id="run-tutor-1")
-    decision = router.decide(
-        content="最后结果二百三十八。",
-        route_hint=None,
-        focus_run=focus_run,
-        proposal=IntentProposal(intent="reflection"),
-        switch_allowed=False,
-    )
-    assert decision.target == "tutoring"
-    assert decision.mode == "continue"
-    assert decision.active_session_id == "run-tutor-1"
-    assert decision.route_reason == "scene_switch_rejected"
-
-
-def test_unavailable_scene_switch_check_keeps_focus(router):
-    decision = router.decide(
-        content="总结一下今天学了什么",
-        route_hint=None,
-        focus_run=SimpleNamespace(agent_type="tutoring", id="run-tutor-1"),
-        proposal=IntentProposal(intent="reflection"),
-        switch_allowed=None,
-    )
-    assert decision.target == "tutoring"
-    assert decision.route_reason == "scene_switch_unavailable"
+@pytest.mark.parametrize("retired", ["planning", "reflection"])
+def test_retired_labels_cannot_open_a_workflow(router, retired):
+    proposal = parse_intent_payload('{"intent":"' + retired + '"}')
+    assert proposal.intent == "unclear"
+    assert router.decide(content="", route_hint=retired, focus_run=None, proposal=proposal).target == "clarify"
 
 
 @pytest.mark.parametrize("payload, expected", [
@@ -171,32 +151,19 @@ def test_scene_switch_verifier_fails_closed_on_model_error(monkeypatch):
     ) is None
 
 
-def test_image_without_explicit_intent_starts_planning(router):
-    """图片本身没有场景词时，仍交给唯一会读图片的 Planning。"""
-    decision = router.decide(
-        content="请看这张图片。",
-        route_hint=None,
-        focus_run=None,
-        proposal=IntentProposal(intent="unclear"),
-        has_image=True,
-    )
-    assert decision.target == "planning"
-    assert decision.mode == "start"
-    assert decision.route_reason == "image_without_explicit_intent"
+@pytest.mark.parametrize("focus", [None, SimpleNamespace(agent_type="planning", id="plan")])
+def test_unclear_image_clarifies(router, focus):
+    result = router.decide(content="看图", route_hint=None, focus_run=focus,
+                           proposal=IntentProposal(intent="unclear"), has_image=True)
+    assert result.target == "clarify"
 
 
-def test_image_without_explicit_intent_continues_planning_focus(router):
-    focus_run = SimpleNamespace(agent_type="planning", id="run-plan-1")
-    decision = router.decide(
-        content="请看这张图片。",
-        route_hint=None,
-        focus_run=focus_run,
-        proposal=IntentProposal(intent="unclear"),
-        has_image=True,
-    )
-    assert decision.target == "planning"
-    assert decision.mode == "continue"
-    assert decision.active_session_id == "run-plan-1"
+def test_current_homework_policy_precedes_hint_and_focus(router):
+    proposal = parse_intent_payload('{"intent":"tutoring","teaching_policy":"homework"}')
+    result = router.decide(content="直接告诉我结果", route_hint="planning",
+                           focus_run=SimpleNamespace(agent_type="planning", id="plan"),
+                           proposal=proposal, switch_allowed=False)
+    assert result.target == "tutoring"
 
 
 def test_image_does_not_override_an_explicit_scene_or_other_focus(router):

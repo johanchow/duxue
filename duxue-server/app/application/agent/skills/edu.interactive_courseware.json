@@ -1,0 +1,24 @@
+{
+  "id": "edu.interactive_courseware",
+  "kind": "skill",
+  "display_name": "深度讲题与动态交互课件",
+  "description": "需要制作交互式数理动态演示课件或对已有课件做局部修订时触发。",
+  "allowed_roles": [
+    "teacher",
+    "coach",
+    "guardian",
+    "ward"
+  ],
+  "tools": [
+    "problem_solving.solve_and_verify",
+    "math.compute",
+    "artifact.create_or_revise",
+    "artifact.get_view"
+  ],
+  "required_gates": [
+    "artifact.verification_honesty",
+    "media.script_sandbox_prerun"
+  ],
+  "output_artifact_type": "interactive_courseware",
+  "instructions": "成人完整讲解先过核验基线再灵活组织教学步骤与 MathStage 动态演示；Ward 仅限原理演示且禁泄作业答案。"
+}

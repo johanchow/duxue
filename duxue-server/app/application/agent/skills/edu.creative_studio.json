@@ -1,0 +1,24 @@
+{
+  "id": "edu.creative_studio",
+  "kind": "skill",
+  "display_name": "画图故事与知识卡片共创",
+  "description": "孩子或成人发起画图、共创绘本故事、做思维导图或知识卡片时触发。",
+  "allowed_roles": [
+    "teacher",
+    "coach",
+    "guardian",
+    "ward"
+  ],
+  "tools": [
+    "study.get_focus_state",
+    "media.generate_image",
+    "web.search",
+    "artifact.create_or_revise",
+    "artifact.get_view"
+  ],
+  "required_gates": [
+    "ward.anti_ghostwriting"
+  ],
+  "output_artifact_type": "creative_work",
+  "instructions": "Ward 端若处于活跃 Sprint 且偏题娱乐先温和提醒专注；识别为课内作文/作业时切启发共创禁代写成品；自由创作交付可局部修改的 creative_work。"
+}

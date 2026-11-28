@@ -420,7 +420,7 @@ class Verdict:
 
 def build_tutor_instruction(
     *, content: str, permit: TutorPermit, history_candidates: list[dict] | None = None,
-    tutoring_intent: str | None, self_review_aspects: list[dict] | None = None,
+    tutoring_intent: str | None,
 ) -> str:
     """The per-turn instruction JSON. Shared by the workflow and the offline evaluation."""
     from app.infrastructure.ai.prompts import render_fragment
@@ -430,9 +430,6 @@ def build_tutor_instruction(
         "student_said": content,
         "permit": permit.as_context(),
         "expected_act": "pronounce" if tutoring_intent == "pronunciation" else None,
-        **({"ward_confirmed_self_review": self_review_aspects,
-            "self_review_rule": render_fragment("tutoring.turn", "self_review")}
-           if self_review_aspects else {}),
     }, ensure_ascii=False)
 
 
@@ -446,6 +443,8 @@ def check_authority(candidate: TutorTurnCandidate, permit: TutorPermit) -> Verdi
     if act == "safety":
         return Verdict(True)
     if act == "pronounce":
+        if permit.homework_request:
+            return Verdict(False, "unexpected_pronunciation")
         if not candidate.lessons:
             return Verdict(False, "pronounce_without_lesson")
         for lesson in candidate.lessons:

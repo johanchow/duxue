@@ -1,0 +1,363 @@
+"""Unit and contract tests for Slice 1: Unified Skill/Tool Registry, RolePolicy,
+EduAgentOrchestrator, adult read-only context_ward_id, and CreationFootprintRecorded.v1.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime
+
+import pytest
+
+from app.application.agent.orchestrator import (
+    AgentRunStore,
+    EduAgentOrchestrator,
+    OrchestratorStep,
+)
+from app.application.agent.registry import ToolContext
+from app.application.agent.role_policy import evaluate_role_policy
+from app.application.commands import creative_works
+from app.application.commands.creation_footprints import (
+    consume_pending_creation_footprints,
+    list_evening_creation_footprints,
+)
+from app.application.tools.core_tools import build_default_registries
+from app.infrastructure.persistence.models import (
+    ConversationThread,
+    DerivedSignal,
+    GuardianWard,
+    LearningEvent,
+    OutboxEvent,
+)
+from app.infrastructure.security.tokens import create_access_token
+from tests.support.factories import create_guardian, create_ward
+
+
+def test_default_registries_validate_5_skills_and_11_tools():
+    tool_reg, skill_reg = build_default_registries()
+    assert len(tool_reg.list_specs()) == 11
+    adult_policy = evaluate_role_policy(role="teacher", context_ward_bound=True)
+    ward_policy = evaluate_role_policy(role="ward", context_ward_bound=False)
+    assert len(skill_reg.visible_catalog(adult_policy)) == 5
+    ward_skill_ids = {item["id"] for item in skill_reg.visible_catalog(ward_policy)}
+    assert ward_skill_ids == {
+        "edu.homework_tutoring",
+        "edu.interactive_courseware",
+        "edu.creative_studio",
+    }
+    assert "edu.worksheet_grading" not in ward_skill_ids
+    assert "edu.lesson_pack" not in ward_skill_ids
+
+
+def test_role_ceiling_rejects_widening_ward_access():
+    tool_reg, skill_reg = build_default_registries()
+    with pytest.raises(ValueError, match="exceed code ceiling"):
+        skill_reg.register_skill(
+            {
+                "id": "edu.worksheet_grading",
+                "kind": "skill",
+                "display_name": "批改",
+                "description": "批改",
+                "allowed_roles": ["guardian", "ward"],
+                "tools": ["problem_solving.solve_and_verify"],
+                "required_gates": ["artifact.verification_honesty"],
+                "instructions": "test",
+            }
+        )
+    with pytest.raises(ValueError, match="exceed code ceiling"):
+        tool_reg.register_spec(
+            {
+                "id": "problem_solving.solve_and_verify",
+                "kind": "tool",
+                "owner_domain": "problem_solving",
+                "description": "solve",
+                "access": "read",
+                "allowed_roles": ["guardian", "ward"],
+                "input_schema": {"type": "object"},
+                "output_schema": {"type": "object"},
+                "timeout_ms": 5000,
+                "handler_id": "problem_solving.solve_and_verify",
+            }
+        )
+
+
+def test_default_general_mode_blocks_write_tool_until_skill_loaded():
+    tool_reg, skill_reg = build_default_registries()
+    orch = EduAgentOrchestrator(
+        tool_registry=tool_reg, skill_registry=skill_reg, run_store=AgentRunStore()
+    )
+    ctx = ToolContext(actor_id="teacher-1", actor_role="teacher")
+
+    def planner(state):
+        if state["step_index"] == 0:
+            # Attempt write tool without loading a Skill -> must be denied
+            return OrchestratorStep(
+                action="call_tool",
+                tool_id="artifact.create_or_revise",
+                tool_args={"artifact_type": "lesson_pack"},
+            )
+        if state["step_index"] == 1:
+            return OrchestratorStep(action="load_skill", skill_id="edu.lesson_pack")
+        if state["step_index"] == 2:
+            return OrchestratorStep(
+                action="call_tool",
+                tool_id="artifact.create_or_revise",
+                tool_args={"artifact_type": "lesson_pack"},
+            )
+        return OrchestratorStep(action="respond", content="教案与变式题已生成")
+
+    outcome = orch.run(ctx=ctx, message="帮我备一节分数除法课", planner=planner)
+    assert outcome.status == "failed"
+    assert outcome.active_skill_id == "edu.lesson_pack"
+    assert "artifact.verification_honesty" in outcome.registered_gates
+    assert outcome.tool_results[0].status == "denied"
+    assert outcome.tool_results[1].status == "ok"
+    assert len(outcome.tool_results) == 2  # missing verification gate stopped the write
+
+
+def test_adult_context_ward_id_authorization_and_readonly_summary(client, db):
+    guardian = create_guardian(db)
+    bound_ward = create_ward(db)
+    unbound_ward = create_ward(db)
+    db.add(GuardianWard(guardian_id=guardian.id, ward_id=bound_ward.id))
+    db.commit()
+
+    g_headers = {
+        "Authorization": "Bearer " + create_access_token(user_id=guardian.id, role="guardian")
+    }
+    w_headers = {
+        "Authorization": "Bearer "
+        + create_access_token(user_id=bound_ward.id, role="ward", ward_session_version=1)
+    }
+
+    # Unbound ward rejected with 403
+    r_unbound = client.post(
+        "/v1/conversations",
+        headers=g_headers,
+        json={"title": "备课", "context_ward_id": unbound_ward.id},
+    )
+    assert r_unbound.status_code == 403
+
+    # Ward cannot bind context_ward_id
+    r_ward = client.post(
+        "/v1/conversations",
+        headers=w_headers,
+        json={"title": "自习", "context_ward_id": bound_ward.id},
+    )
+    assert r_ward.status_code == 403
+
+    # Bound ward succeeds and persists on thread
+    r_ok = client.post(
+        "/v1/conversations",
+        headers=g_headers,
+        json={"title": "针对性复习", "context_ward_id": bound_ward.id},
+    )
+    assert r_ok.status_code == 201
+    assert r_ok.json()["context_ward_id"] == bound_ward.id
+
+    # Read-only tool reads summary without writing any Memory records
+    tool_reg, skill_reg = build_default_registries()
+    orch = EduAgentOrchestrator(tool_registry=tool_reg, skill_registry=skill_reg)
+    before_events = db.query(LearningEvent).count()
+    ctx = ToolContext(
+        actor_id=guardian.id,
+        actor_role="guardian",
+        thread_id=r_ok.json()["thread_id"],
+        context_ward_id=bound_ward.id,
+        db=db,
+    )
+
+    def planner(state):
+        if state["step_index"] == 0:
+            return OrchestratorStep(action="call_tool", tool_id="ward_context.read_summary", tool_args={})
+        return OrchestratorStep(action="respond", content="已读取学情")
+
+    out = orch.run(ctx=ctx, message="看看孩子最近卡点", planner=planner)
+    assert out.tool_results[0].status == "ok"
+    assert out.tool_results[0].data["read_only"] is True
+    assert db.query(LearningEvent).count() == before_events
+    url = f"/v1/conversations/{ctx.thread_id}/ward-summary"
+    assert client.get(url, headers=g_headers).status_code == 200
+    client.patch(f"/v1/conversations/{ctx.thread_id}", headers=g_headers, json={"clear_context_ward": True})
+    assert client.get(url, headers=g_headers).status_code == 403
+    from app.application.tools.core_tools import handle_ward_context_read_summary
+    with pytest.raises(PermissionError):
+        handle_ward_context_read_summary({}, ctx)
+
+
+
+def test_agent_api_runs_real_adult_workflow_and_recovers_visible_results(client, db, monkeypatch):
+    guardian = create_guardian(db)
+    db.commit()
+    headers = {
+        "Authorization": "Bearer " + create_access_token(user_id=guardian.id, role="guardian")
+    }
+    cat = client.get("/v1/agent/catalog", headers=headers)
+    assert cat.status_code == 200
+    assert len(cat.json()["skills"]) == 5
+
+    turn = client.post(
+        "/v1/agent/turns",
+        headers=headers,
+        json={"message": "帮我备课", "skill_hint": "edu.lesson_pack"},
+    )
+    assert turn.status_code == 422
+    thread = client.post("/v1/conversations", json={}, headers=headers).json()["thread_id"]
+    monkeypatch.setattr("app.api.v1.guardian_experience.experience_turn",
+                        lambda **kw: {"content": "讲解结果", "mode": kw["mode"]})
+    body = {"content": "如何通分", "thread_id": thread, "command_id": "adult-test", "mode": "guardian_explain"}
+    response = client.post("/v1/agent/turns", json=body, headers=headers)
+    assert response.status_code == 200, response.text
+    assert response.json()["content"] == "讲解结果"
+    url = f"/v1/agent/threads/{thread}/results/adult-test"
+    assert client.get(url, headers=headers).json() == response.json()
+    assert client.post("/v1/agent/turns", json={**body, "context_ward_id": guardian.id}, headers=headers).status_code == 422
+    client.post(f"/v1/conversations/{thread}/clear", headers=headers)
+    assert client.get(url, headers=headers).status_code == 404
+
+
+def test_creation_footprint_consumer_idempotent_and_isolated(db, db_engine, monkeypatch):
+    from app.agent_specs.creative_work import Story
+
+    ward = create_ward(db)
+    thread = ConversationThread(ward_id=ward.id)
+    db.add(thread)
+    db.flush()
+    svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 360"><circle cx="170" cy="100" r="60" fill="gold"/></svg>'
+    story = Story.model_validate(
+        {
+            "title": "火星小狗",
+            "pages": [{"text": "出发去火星。", "illustration": {"kind": "svg", "alt": "火星", "svg": svg}}],
+        }
+    )
+    interaction = {"candidate": story.model_dump()}
+    creative_works.persist_candidate(db, thread, interaction)
+    work = db.query(creative_works.CreativeWork).filter_by(id=interaction["artifact_id"]).one()
+    saved = creative_works.apply(db, work, "save")
+    assert creative_works.apply(db, work, "save") == saved
+    creative_works.rename_saved(db, work, "新的标题")
+    db.commit()
+
+    assert db.query(OutboxEvent).filter_by(event_type="CreationFootprintRecorded.v1", status="pending").count() == 1
+    from app.workers import celery_tasks
+    from sqlalchemy.orm import sessionmaker
+    monkeypatch.setattr(celery_tasks, "SessionLocal", sessionmaker(bind=db_engine))
+    assert celery_tasks.consume_creation_footprints() == 1
+    assert consume_pending_creation_footprints(db) == 0
+
+    signals = db.query(DerivedSignal).filter_by(ward_id=ward.id).all()
+    assert len(signals) == 1
+    assert signals[0].signal_type == "interest_signal"
+    assert "火星小狗" in signals[0].statement
+
+    from zoneinfo import ZoneInfo
+    today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
+    footprints = list_evening_creation_footprints(db, ward_id=ward.id, local_date=today)
+    assert len(footprints) == 1
+    assert footprints[0]["title"] == "火星小狗"
+
+
+def test_page_cursor_survives_deletion_of_anchor(client, db):
+    adult = create_guardian(db)
+    db.commit()
+    headers = {"Authorization": "Bearer " + create_access_token(user_id=adult.id, role="guardian")}
+    url = "/v1/conversations"
+    ids = [client.post(url, headers=headers, json={"title": str(n)}).json()["thread_id"] for n in range(3)]
+    page = client.get(url, headers=headers, params={"limit": 2}).json()
+    client.delete(url + "/" + ids[1], headers=headers)
+    next_page = client.get(url, headers=headers, params={"limit": 1, "cursor": page["next_cursor"]}).json()
+    assert next_page["items"][0]["thread_id"] == ids[0]
+    assert client.get(url, headers=headers, params={"cursor": "invalid"}).status_code == 422
+
+
+def test_summary_requires_exact_thread_scope(db):
+    from app.application.tools.core_tools import handle_ward_context_read_summary
+    adult = create_guardian(db)
+    wards = [create_ward(db, guardian=adult) for _ in range(2)]
+    db.commit()
+    for bound in (None, wards[0].id):
+        ctx = ToolContext(actor_id=adult.id, actor_role="guardian", context_ward_id=bound, db=db)
+        with pytest.raises(PermissionError):
+            handle_ward_context_read_summary({"ward_id": wards[1].id}, ctx)
+
+
+def test_admin_declarative_skills_keep_code_gate_and_tool_ceilings():
+    from copy import deepcopy
+    from app.application.agent.skill_catalog import bootstrap_skills, configured_skills
+
+    catalog = deepcopy(bootstrap_skills())
+    grading = catalog["skills/edu.worksheet_grading.json"]
+    grading["instructions"] = "逐页核验，并说明存疑题。"
+    assert configured_skills(catalog)["skills/edu.worksheet_grading.json"]["instructions"] == grading["instructions"]
+    grading["required_gates"] = []
+    with pytest.raises(ValueError):
+        configured_skills(catalog)
+    grading["required_gates"] = ["artifact.verification_honesty"]
+    grading["tools"].append("media.generate_image")
+    with pytest.raises(ValueError):
+        configured_skills(catalog)
+
+
+def test_orchestrator_accumulates_required_gates_across_multiple_skills():
+    from app.application.agent.gates import GateRunner
+
+    tool_reg, skill_reg = build_default_registries()
+    orch = EduAgentOrchestrator(
+        tool_registry=tool_reg,
+        skill_registry=skill_reg,
+        gates=GateRunner(
+            {
+                "artifact.verification_honesty": lambda *_: True,
+                "media.script_sandbox_prerun": lambda *_: True,
+            }
+        ),
+    )
+    ctx = ToolContext(actor_id="teacher-1", actor_role="teacher")
+
+    def planner(state):
+        if state["step_index"] == 0:
+            return OrchestratorStep(action="load_skill", skill_id="edu.worksheet_grading")
+        if state["step_index"] == 1:
+            return OrchestratorStep(action="load_skill", skill_id="edu.interactive_courseware")
+        return OrchestratorStep(action="respond", content="复合任务完成")
+
+    outcome = orch.run(ctx=ctx, message="批改并制作动态课件", planner=planner)
+    assert outcome.status == "completed"
+    assert outcome.loaded_skills == ("edu.worksheet_grading", "edu.interactive_courseware")
+    assert {
+        "artifact.verification_honesty",
+        "media.script_sandbox_prerun",
+    }.issubset(outcome.registered_gates)
+
+
+def test_declarative_tool_catalog_matches_schemas_and_enforces_code_ceilings():
+    from copy import deepcopy
+    from app.agent_specs.web_search import CONTRACT as SEARCH_CONTRACT
+    from app.application.agent.tool_catalog import bootstrap_tools, configured_tools
+
+    catalog = deepcopy(bootstrap_tools())
+    assert len(catalog) == 11
+    assert catalog["tools/web.search.json"]["input_schema"] == SEARCH_CONTRACT["input_schema"]
+
+    # Narrowing timeout and updating description is allowed
+    catalog["tools/web.search.json"]["description"] = "受控联网检索"
+    catalog["tools/web.search.json"]["timeout_ms"] = 5000
+    validated = configured_tools(catalog)
+    assert validated["tools/web.search.json"]["timeout_ms"] == 5000
+
+    # Raising timeout beyond code ceiling is rejected
+    over_timeout = deepcopy(catalog)
+    over_timeout["tools/web.search.json"]["timeout_ms"] = 9000
+    with pytest.raises(ValueError, match="timeout_ms cannot exceed code ceiling"):
+        configured_tools(over_timeout)
+
+    # Changing protected access field is rejected
+    changed_access = deepcopy(catalog)
+    changed_access["tools/web.search.json"]["access"] = "command"
+    with pytest.raises(ValueError, match="protected access changed"):
+        configured_tools(changed_access)
+
+    # Widening role ceiling is rejected
+    widened_role = deepcopy(catalog)
+    widened_role["tools/ward_context.read_summary.json"]["allowed_roles"].append("ward")
+    with pytest.raises(ValueError, match="exceed code ceiling"):
+        configured_tools(widened_role)

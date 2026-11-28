@@ -340,7 +340,7 @@ def run_persistent_sandbox(identifier, value):
                 EveningReportCommands(db, lambda: current).publish(ward, day)
                 db.flush()
                 return {
-                    "reports": [r.content for r in db.query(m.ReflectionReportVersion)],
+                    "reports": [r.content for r in db.query(m.EveningReportVersion)],
                     "sandbox": True,
                 }
             raise ValueError("unknown observation debug target")

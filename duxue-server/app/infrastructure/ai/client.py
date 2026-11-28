@@ -51,7 +51,9 @@ def _headers_received(response: httpx.Response) -> None:
 
 @contextmanager
 def model_time_budget(seconds: float):
-    token = _model_deadline.set(monotonic() + seconds)
+    deadline = monotonic() + seconds
+    outer = _model_deadline.get()
+    token = _model_deadline.set(min(deadline, outer) if outer is not None else deadline)
     try:
         yield
     finally:

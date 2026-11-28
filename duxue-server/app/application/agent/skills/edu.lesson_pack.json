@@ -1,0 +1,22 @@
+{
+  "id": "edu.lesson_pack",
+  "kind": "skill",
+  "display_name": "备课教案与自验变式出题",
+  "description": "教师或家长要求备课、写教案讲义或按考点/错题生成巩固变式题时触发。",
+  "allowed_roles": [
+    "teacher",
+    "coach",
+    "guardian"
+  ],
+  "tools": [
+    "ward_context.read_summary",
+    "problem_solving.solve_and_verify",
+    "math.compute",
+    "artifact.create_or_revise"
+  ],
+  "required_gates": [
+    "artifact.verification_honesty"
+  ],
+  "output_artifact_type": "lesson_pack",
+  "instructions": "学段或考点不明确时先问 1-2 个关键澄清问题；若已绑定学生可只读 ward_context.read_summary；每道新出变式题交付前必须调用 problem_solving.solve_and_verify 自解自验。"
+}

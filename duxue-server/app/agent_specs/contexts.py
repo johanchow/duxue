@@ -6,6 +6,7 @@ checks; each explicit signature limits which evidence reaches a model.
 from __future__ import annotations
 
 import json
+from app.agent_specs.education_workspace import UNITS as WORKSPACE_UNITS
 
 from app.infrastructure.ai.utterance_window import (
     image_parts,
@@ -14,7 +15,7 @@ from app.infrastructure.ai.utterance_window import (
 )
 
 
-def intent(*, content, focus_agent_type, recent_utterances=None, current_images=None):
+def intent(*, content, focus_agent_type, recent_utterances=None, current_images=None, sprint_topic=None):
     """Build lightweight intent context: text-only history + current-turn images only.
 
     History utterances keep their ``image_ids`` markers so the router can still decide
@@ -28,6 +29,8 @@ def intent(*, content, focus_agent_type, recent_utterances=None, current_images=
         "focus_agent_type": focus_agent_type,
         "recent_utterances": rows,
     }
+    if sprint_topic:
+        body["active_sprint_topic"] = sprint_topic
     if current_ids:
         body["current_image_ids"] = current_ids
     return [{"type": "text", "text": json.dumps(body, ensure_ascii=False)}, *image_parts([], images)]
@@ -131,21 +134,8 @@ def image_target(*, window, content):
     return user_content({"student_said": content, "latest_image_ref": manifest[-1]["image_ref"] if manifest else None}, window)
 
 
-def review_aspects(*, raw_expression):
-    return json.dumps({"raw_expression": raw_expression}, ensure_ascii=False)
-
-
-def task_intake(*, wards, request):
-    from app.application.commands.task_intake import _data_url, _prompt
-    return [{"type": "text", "text": _prompt(wards, request) + "\n\n本轮监护人消息：\n" + request.content},
-            *({"type": "image_url", "image_url": {"url": _data_url(key)}} for key in request.attachment_keys)]
-
-
-def plan_intake(*, ward, tasks, request):
-    from app.application.commands.plan_intake import _prompt
-    from app.application.commands.task_intake import _data_url
-    return [{"type": "text", "text": _prompt(ward, tasks, request) + "\n\n本轮学生消息：\n" + request.content},
-            *image_parts(request.recent_utterances, [_data_url(key) for key in request.attachment_keys])]
+def retired_context(**_):
+    raise ValueError("此工作流已退场")
 
 
 def sprint_intake(*, request):
@@ -176,6 +166,9 @@ def guardian_mentor_explain(*, payload, recent_utterances=None, current_images=N
 
 
 BUILDERS = {
+    **{name.replace("-", "_") + ".context": eval_grade for name in WORKSPACE_UNITS},
+    "ward.story_pages.context": eval_grade,
+    "ward.anti_ghostwriting.context": eval_grade,
     "behavior.visible_activity.context": eval_grade,
     "behavior.support_opportunity.context": eval_grade,
     "evals.semantic_judge.context": eval_grade,
@@ -193,9 +186,9 @@ BUILDERS = {
     "tutoring.leak_judge.context": text_judge,
     "tutoring.visual_leak_judge.context": visual_judge,
     "tutoring.image_target.context": image_target,
-    "evaluation.review_aspects.context": review_aspects,
-    "task.intake.context": task_intake,
-    "planning.intake.context": plan_intake,
+    "evaluation.review_aspects.context": retired_context,
+    "task.intake.context": retired_context,
+    "planning.intake.context": retired_context,
 }
 
 

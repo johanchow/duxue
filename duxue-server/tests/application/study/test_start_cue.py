@@ -1,11 +1,10 @@
 from datetime import datetime, timezone
 
 from app.application.commands.start_cue import StartCueService
-from app.contexts.planning.domain.scheduling import local_plan_date
+from app.contexts.study.domain.calendar import local_day
 from app.contexts.study.domain.start_cue import SceneRead, StartCueError
 from app.infrastructure.persistence.models import (
     LearningEvent,
-    SelfReview,
     StudySession,
     StudySessionInterval,
 )
@@ -23,7 +22,7 @@ AT_NEXT = datetime(2026, 10, 6, 11, 41, tzinfo=timezone.utc)  # 19:41 Asia/Shang
 
 def _schedule(db, ward):
     schedule = create_daily_schedule(db, ward=ward, status="confirmed", version=1)
-    schedule.schedule_date = local_plan_date(AT)
+    schedule.schedule_date = local_day(AT)
     db.flush()
     return schedule
 
@@ -50,7 +49,7 @@ def test_due_task_without_a_camera_presents_one_card(db):
     assert not any(item["kind"] == "day_review" for item in view["notifications"])
 
 
-def test_completed_task_and_submitted_review_are_not_scheduled_as_notifications(db):
+def test_completed_task_is_not_scheduled_as_a_notification(db):
     ward = create_ward(db, guardian=create_guardian(db))
     schedule = _schedule(db, ward)
     done = create_task(db, ward=ward, title="数学", status="completed", schedule_id=schedule.id)
@@ -59,7 +58,6 @@ def test_completed_task_and_submitted_review_are_not_scheduled_as_notifications(
         {"slot_source": "ward_explicit", "assignment_id": done.id, "start_at": "2026-10-06T19:40:00", "end_at": "2026-10-06T20:00:00"},
         {"slot_source": "ward_explicit", "assignment_id": pending.id, "start_at": "2026-10-06T20:00:00", "end_at": "2026-10-06T20:20:00"},
     ]
-    db.add(SelfReview(ward_id=ward.id, review_date=schedule.schedule_date, feeling="还不错"))
     db.flush()
 
     view = StartCueService(db).sync(ward.id, moment=AT)

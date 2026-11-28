@@ -231,6 +231,8 @@ erDiagram
 
 现有 `_verify_milestone_anchor` 在非等价性检查中"结果非空即 verified"，不满足本表；迁移时必须改为与 `canonical_target` 做等价性比对（§八）。
 
+成人批改与出题自验中，若完整题面本身就是受限语法支持的算式，可将唯一候选终值与完整算式交给 `check_arithmetic` 独立判等；即使备用路线超时、共识为 `incomparable`，只有算子明确返回 `equal` 时才可使用该算式基准。题面争议、多终值、非算式题面及算子 `unknown` / 不等均不适用，继续保留人工复核。此证明只覆盖该完整算式，不提升原档案置信度，也不改变 Ward 答案保护。
+
 ### 4.4 置信度门禁（由代码强制，不靠提示词）
 
 | Tutoring 行为 | 允许条件 |
@@ -264,7 +266,7 @@ erDiagram
 受权 Query 与无持久化求解复用：
 - `GetProblemDossier(ward_id, dossier_id)`：校验 `scope == "bank"` 或 `owner_ward_id == ward_id` 后返回辅导只读投影（路线、里程碑、锚点、采分点、置信度，合并传入的该学生个人 `milestone_progress`），不含原始求解草稿；`TutoringProblem` 仅存 `dossier_id` 与该学生自己的 `milestone_progress`。
 - `GetProblemDossier.find_bank_ready(stem)`：按新旧指纹定位候选，用存储的题面重新计算新版指纹比对，只读查询 `scope == "bank"` 且 `status == "ready"` 的全局公共题库档案，绝不读取任何 `scope == "ward"` 的学生私有档案。
-- `solve_and_verify_problem(...) -> VerifiedSolution`：抽离在数据库事务外运行的纯求解与核验内核（T1 单路锚点核验 $\rightarrow$ 按 `DossierConfidencePolicy` 升 T2 双路异构共识与图片复读），由持久化 `ExecuteDossierSolveCommand` 与无数据库写入的 [Guardian 导师视角解析](domain-companion.md#guardian-问答体验2026-11-17-验收2026-11-18-扩展双视角) 同源复用。
+- `solve_and_verify_problem(...) -> VerifiedSolution`：抽离在数据库事务外运行的纯求解与核验内核（T1 单路锚点核验 $\rightarrow$ 按 `DossierConfidencePolicy` 升 T2 双路异构共识与图片复读），由持久化 `ExecuteDossierSolveCommand` 与无数据库写入的 [Guardian 导师视角解析](domain-conversation.md) 同源复用。
 
 ### 5.2 题组
 

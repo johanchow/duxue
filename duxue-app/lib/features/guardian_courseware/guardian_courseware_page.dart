@@ -23,9 +23,11 @@ class GuardianCoursewarePage extends ConsumerStatefulWidget {
     this.attachmentKeys = const [],
     this.initialCoursewareId,
     this.onCreated,
+    this.sourceMessageId,
     super.key,
   });
 
+  final String? sourceMessageId;
   final String promptText;
   final List<String> attachmentKeys;
   final String? initialCoursewareId;
@@ -112,7 +114,7 @@ class _GuardianCoursewarePageState
       final api = ref.read(apiProvider);
       if (_coursewareId == null) {
         final created = await api.createMentorCourseware(
-          commandId: _nextCmdId('create'),
+          commandId: widget.sourceMessageId == null ? _nextCmdId('create') : 'turn-${widget.sourceMessageId}',
           promptText: widget.promptText,
           attachmentKeys: widget.attachmentKeys,
         );
@@ -403,7 +405,7 @@ class _GuardianCoursewarePageState
         context: context,
         builder: (ctx) => AlertDialog(
                 title: const Text('保存这份课件？'),
-                content: const Text('保存后可以在「我的课件」继续查看和修改。'),
+                content: const Text('保存后可以在「我的资源库」继续查看和修改。'),
                 actions: [
                   TextButton(
                       onPressed: () => Navigator.pop(ctx, false),

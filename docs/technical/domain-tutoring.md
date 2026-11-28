@@ -2,11 +2,11 @@
 
 > 状态：讨论稿 · 版本：v3.3（目标设计；契约升为 `tutor-turn.v4`，由 v3.0 的 `domain-study.md` 拆出，实现迁移进度与兼容边界见 [§1.2](#12-现状与迁移边界)）
 >
-> 范围：启发式答疑、发音辅导、任务进行中的题外提问回任务提醒、过程事实、一次 Ward 输入内的 `TutoringTurnLoop`，以及待实现的异步视频回答（见 [视频回答专题](tutoring-video-answer.md)）与导师视角深度课件（见 [导师深度课件专题](topic-mentor-courseware.md)）。
+> 范围：启发式答疑、发音辅导、任务进行中的题外提问回任务提醒、过程事实、一次 Ward 输入内的 `TutoringTurnLoop`，以及待实现的异步视频回答（见 [视频回答专题](tutoring-video-answer.md)）与导师视角深度课件（见 [导师深度课件专题](domain-artifact-workspace.md)）。
 >
-> 关联：[系统 Context Map](ddd-overview.md) · [Study 学习执行](domain-study.md) · [Companion 编排](domain-companion.md) · [Memory Context](domain-memory.md) · [Planning](domain-planning.md) · [Server 物理设计](design-server.md) · [陪伴 PRD](../product/prd-companion.md)
+> 关联：[系统 Context Map](ddd-overview.md) · [教育通用 Agent 架构](domain-conversation.md) · [Study 学习执行](domain-study.md) · [Companion 编排](domain-conversation.md) · [Memory Context](domain-memory.md) · [Server 物理设计](design-server.md) · [教育通用 Agent PRD §4.2](../product/prd-edu-agent.md#42-作业启发答疑红线与教学方法论)
 
-Context Map 与分层图只在 [ddd-overview.md](ddd-overview.md) 维护。`StudySession`、`StartCue` 与学习计时只在 [domain-study.md](domain-study.md) 维护。Thread/Run、Harness 驱动、`WorkflowInteractionView` 和 SSE 只在 [domain-companion.md](domain-companion.md) 维护。Episode、Signal 与 Profile 只在 [domain-memory.md](domain-memory.md) 维护。物理表、留存和删除只在 [design-server.md](design-server.md) 维护。
+Context Map 与分层图只在 [ddd-overview.md](ddd-overview.md) 维护。`StudySession`、`StartCue` 与学习计时只在 [domain-study.md](domain-study.md) 维护。Thread/Run、Harness 驱动、`WorkflowInteractionView` 和 SSE 只在 [topic-edu-agent.md](domain-conversation.md) 维护。Episode、Signal 与 Profile 只在 [domain-memory.md](domain-memory.md) 维护。物理表、留存和删除只在 [design-server.md](design-server.md) 维护。
 
 > 数学工具核验扩展（代码已实现，待环境验收与真实模型评测）：见 [数学核验设计](tutoring-math.md)，定义本领域内的计算端口、证据协议和提交边界。
 
@@ -25,12 +25,12 @@ Context Map 与分层图只在 [ddd-overview.md](ddd-overview.md) 维护。`Stud
 
 ## 设计原则：教学优先
 
-产品层原则见 [陪伴 PRD §1.2 第 7 条](../product/prd-companion.md)，这里只写对技术设计的约束：
+产品层原则见 [教育通用 Agent PRD §4.2](../product/prd-edu-agent.md#42-作业启发答疑红线与教学方法论)，这里只写对技术设计的约束：
 
 1. 设计答疑能力时，文档先写“好老师会怎么做”，再写“当前技术能做到的部分”和“差距”。差距要显式记录，不能被技术方案悄悄吞掉。
 2. 代码只对**安全不变量**行使否决权：作业答案保护、内容安全、孩子端稳定。要否决一个教学做法，必须指出触发的是哪条不变量。
 3. 是否使用某种教学工具（例如配图），由模型按教学需要判断；不得用 `act`、`turn` 等内部分类作为“不该用”的理由。这些分类只用来决定**需要做哪种安全检查**。
-4. 表达层的具体设计见 [答疑表达设计](domain-tutoring-presentation.md)。
+4. 表达层的具体设计见 [答疑表达设计](domain-tutoring.md#九答疑表达结构化配图与联网检索契约)。
 
 ## 一、边界与语言
 
@@ -61,7 +61,7 @@ Context Map 与分层图只在 [ddd-overview.md](ddd-overview.md) 维护。`Stud
 | `TutoringTurnLoop` | 一次 Ward 输入内由 LLM 驱动、代码守住入口与出口的有界循环 | 跨回合的教学状态机，也不是第二个 Agent |
 | `PronunciationGuidance` | 已确认原文的易读发音提示和少量重音、连读、弱读、音变或语调说明 | 解题提示、跟读评分、音频文件、学习事实 |
 
-非目标：Tutoring 不私自发明交互 `kind`；当前已实现答疑不含视频媒体，异步视频回答为待实现扩展，见 [视频回答专题](tutoring-video-answer.md)。本期不做通用数学验证器、离线评测或 A/B 实验平台，也不做作文共创画布、实时监工、一键拍照搜题、跟读录音或发音评分。同一对话的已授权图片先按 [Companion 图片目标规则](domain-companion.md#11-threadrun-与-turn-的层级)解析，只有选定的目标图进入答疑主调用和泄露检查。到点邀请由 [Study](domain-study.md) 拥有，不属于本 Context。无任务问答与任务进行中的题外提问见 [§2.1](#21-tutoringsession)。
+非目标：Tutoring 不私自发明交互 `kind`；当前已实现答疑不含视频媒体，异步视频回答为待实现扩展，见 [视频回答专题](tutoring-video-answer.md)。本期不做通用数学验证器、离线评测或 A/B 实验平台，也不做作文共创画布、实时监工、一键拍照搜题、跟读录音或发音评分。同一对话的已授权图片先按 [Companion 图片目标规则](domain-conversation.md)解析，只有选定的目标图进入答疑主调用和泄露检查。到点邀请由 [Study](domain-study.md) 拥有，不属于本 Context。无任务问答与任务进行中的题外提问见 [§2.1](#21-tutoringsession)。
 
 ### 1.1 控制模型
 
@@ -69,15 +69,15 @@ Context Map 与分层图只在 [ddd-overview.md](ddd-overview.md) 维护。`Stud
 
 | 由代码负责 | 由 LLM 负责 |
 |---|---|
-| 授权（附件和数据只属于当前 Ward）、输入/输出安全审核 | 判断这一句是不是孩子的作业成果（`turn.type`），是作业时它与上一题的关系和孩子这一轮做了什么（`turn.relation`、`turn.student_move`、`turn.progress`）；非作业时是一次性查询还是自发好奇（`turn.topic`） |
+| 授权（附件和数据只属于当前 Ward）、处理模型接口拒答 | 判断这一句是不是孩子的作业成果（`turn.type`），是作业时它与上一题的关系和孩子这一轮做了什么（`turn.relation`、`turn.student_move`、`turn.progress`）；非作业时是一次性查询还是自发好奇（`turn.topic`） |
 | 计算本轮许可 `TutorPermit`，裁决题目状态 | 诊断孩子卡在哪里，选 `act`：直接回答、引导、闲聊接话、澄清、提醒、发音、安全 |
 | 预算：模型调用、工具调用、token、deadline、取消 | 看图、理解指代、识别语音转写里的错误 |
-| 三道教学出口检查与独立输出安全审核，不通过则回退固定话术 | 要不要调只读工具 |
+| 三道教学出口检查，不通过则回退固定话术 | 要不要调只读工具 |
 | 写事实、推进 `ProblemRecord`、补回任务提醒、投影发音卡 | 措辞、语气、长度 |
 
-Companion 只把本轮场景定成 `tutoring`（见 [意图路由](domain-companion.md#三coordinator-process-manager)）。进入答疑之后不再有单独的 `TutoringIntent`、`QuestionShape` 或 `HistoryMatch` 分类调用：它们是主调用返回里的字段，历史通过只读工具 `lookup_history` 按需取。一轮的完整流程见 [§四](#四tutoringturnloop)。
+Companion 只把本轮场景定成 `tutoring`（见 [意图路由](domain-conversation.md)）。进入答疑之后不再有单独的 `TutoringIntent`、`QuestionShape` 或 `HistoryMatch` 分类调用：它们是主调用返回里的字段，历史通过只读工具 `lookup_history` 按需取。一轮的完整流程见 [§四](#四tutoringturnloop)。
 
-已验证的界面动作 `tutoring_intent=pronunciation`（「读出发音」）只给本轮上下文加一条「期望动作 `pronounce`」的提示，不跳过模型，也不选择另一条路径。开放文本不靠关键词或正则解释。明显风险由本地预检拦截；语义风险由独立的输入/输出安全审核端口裁决，主模型的 `act=safety` 只可收紧、不能成为唯一依据。主调用失败、非法 JSON 或提供者关闭时，不猜测、不反问，回退固定话术并记录 `model_fallback`。
+已验证的界面动作 `tutoring_intent=pronunciation`（「读出发音」）只给本轮上下文加一条「期望动作 `pronounce`」的提示，不跳过模型，也不选择另一条路径。开放文本不靠关键词或正则解释。模型接口过滤或拒答时返回受控提示。主调用失败、非法 JSON 或提供者关闭时，不猜测、不反问，回退固定话术并记录 `model_fallback`。
 
 | 决策 | 选择 | 原因 | 拒绝的方案 | 验证 |
 |---|---|---|---|---|
@@ -85,9 +85,9 @@ Companion 只把本轮场景定成 `tutoring`（见 [意图路由](domain-compan
 | 红线是什么 | 只有「作业成果不被代替完成」，用 `ProblemStatus=open` 表达 | 原子知识直答能消除无意义卡壳；过程题才需要保护推理成果 | 用 L1–L4 等级压住所有回答；因处于作业会话就拒答字词释义 | `turn.type=non_work` 的 `answer` 直接回答；`relation=same|new` 的 `answer` 在 `open` 时拒绝 |
 | 谁判断本轮在问什么 | 模型随回复声明 `turn`（`answer`/`guide` 必填，`work`｜`non_work` 判别联合）；缺失时不猜，走一次结构重试；答案保护不看这个声明，归 `TutorPermitPolicy` | 语义判断属于模型；但任务容器本身不能把原子知识收紧 | 独立的分类调用；关键词改判 | “字怎么写/词义是什么”可直答；请求选项、填空、完整过程仍按作业成果校验 |
 | 谁裁决题目状态 | `TutorPermitPolicy`，按已提交的证据推进 | 教学进度不能由模型宣布；次数不是答案放行条件 | 模型自宣解锁；按 Ward 消息条数计数；N 次后给完整答案 | 本轮保护不因卡住次数而放开 |
-| 出口谁把关 | 代码，三道教学检查与独立输出安全审核每轮必经 | 能被模型跳过的检查不是红线；检查必须在输出路径上 | 把安全检查做成模型可选的工具 | 模型不调任何工具也要过检查；辅助自检工具存在与否结果相同 |
+| 出口谁把关 | 代码，三道教学检查每轮必经 | 能被模型跳过的检查不是红线；检查必须在输出路径上 | 把安全检查做成模型可选的工具 | 模型不调任何工具也要过检查；辅助自检工具存在与否结果相同 |
 | 发音是否单独成支 | 不单独成支，是同一契约里的 `act=pronounce` | 发音同样依赖原句窗口、指代和图片，单独分支会重复组装上下文 | 为发音另建 Policy、Extractor 或第二条流程 | 同一入口上下文、同一主调用；校验和投影规则见 [§4.6](#46-pronunciation-act只读) |
-| 谁确认一轮完成 | 三道教学检查和输出安全审核通过后，由 `ApplyTutorTurn` 提交 | `finish_turn` 只是候选 | 模型声明「孩子已经懂了」即成功 | 检查失败时不写 Fact、不推进 `ProblemRecord` |
+| 谁确认一轮完成 | 三道教学检查通过后，由 `ApplyTutorTurn` 提交 | `finish_turn` 只是候选 | 模型声明「孩子已经懂了」即成功 | 检查失败时不写 Fact、不推进 `ProblemRecord` |
 
 `budget_exhausted`、取消和超时由 `CompanionCoordinator` 在模型还能返回 `finish_turn` 之前终止。它们表示本轮没有得到可靠教学结果。
 
@@ -276,7 +276,7 @@ stateDiagram-v2
 | 触发 | 入口 | Use Case | 领域动作 | 本地事件 | 后续 | 幂等与失败 |
 |---|---|---|---|---|---|---|
 | 首次进入答疑 | Companion `RunInvocation` | `StartTutoringSession` | `open()` | `TutoringSessionOpened` | 可引用的 `tutoring_session_id` | 同一学习会话已有未关闭答疑时恢复，不另开 |
-| 已校验的答疑候选 | 三道教学检查和输出安全审核通过之后 | `ApplyTutorTurn` | `apply_validated_turn()`（含按 `TutorPermitPolicy.advance()` 推进 `ProblemRecord`）或 `record_hint()` | `TutorTurnRecorded` 或 `HintRecorded` | 同事务写本轮对应的互动 Fact，可多条 | 任一检查不通过时不启事务 |
+| 已校验的答疑候选 | 三道教学检查通过之后 | `ApplyTutorTurn` | `apply_validated_turn()`（含按 `TutorPermitPolicy.advance()` 推进 `ProblemRecord`）或 `record_hint()` | `TutorTurnRecorded` 或 `HintRecorded` | 同事务写本轮对应的互动 Fact，可多条 | 任一检查不通过时不启事务 |
 | `tutor_understood` | 上一轮信封中的受权动作 | `ConfirmUnderstanding` | `confirm_understanding()` | `UnderstandingConfirmed` | 互动 Fact | 模型正文里的“你懂了”不能触发 |
 | `tutor_close` | 受权关闭动作 | `CloseTutoringSession` | `close()` | `TutoringSessionClosed` | 恰好一条 `tutoring.session_closed` | 重复关闭返回原关闭结果 |
 
@@ -284,11 +284,11 @@ stateDiagram-v2
 
 安全拒绝、未通过校验的候选、Trace 和工具原文不发布 Fact。好奇心事实提交成功后，展示文案才可以说已经记下。`stable_interest` 仍由 Memory 按自己的门槛处理。
 
-输入安全审核命中，或模型声明 `act=safety` 时，本轮不再给题目提示，回复由代码换成安全话术。输出在送达 Ward 前也必须经过同一独立安全审核端口；审核端口可接统一 moderation 服务、专用安全分类模型或高风险场景的独立 Judge，但不能复用主答疑模型的自述作为唯一依据。Use Case 记录本地安全结果并请求 Guardian 通知端口；通知是否送达不改变答疑 Aggregate。模型不能声称已经通知家长。
+模型接口返回内容过滤、拒答或 act=safety 时，交付受控提示，结束本轮教学处理。
 
 ### 3.1 `ApplyTutorTurn` 时序
 
-写入只发生在三道教学出口检查和独立输出安全审核全部通过之后，并且本轮含已验证事实时。完整的读取、模型调用和检查见第四节。
+写入只发生在三道教学出口检查全部通过之后，并且本轮含已验证事实时。完整的读取、模型调用和检查见第四节。
 
 ```mermaid
 sequenceDiagram
@@ -317,7 +317,7 @@ sequenceDiagram
 | 参与者 | 标准类型 | 职责 |
 |---|---|---|
 | `CompanionCoordinator` | Process Manager | 编排这一轮；不修改 Study 的聚合 |
-| 出口检查 | Application 校验逻辑 | 结构、越权与一致性、泄露三道教学检查；输出安全审核在送达前独立执行，见 [§4.2](#42-出口检查) |
+| 出口检查 | Application 校验逻辑 | 结构、越权与一致性、泄露三道教学检查，见 [§4.2](#42-出口检查) |
 | `TutorPermitPolicy` | Domain Service | `advance()` 返回新的 `ProblemRecord` 字段 |
 | `ApplyTutorTurn` | Use Case | 授权并提交本地短事务 |
 | `TutoringSession` | Aggregate Root | 拒绝关闭后的追加和不合法的题目状态转移 |
@@ -336,7 +336,7 @@ sequenceDiagram
 
 ## 四、`TutoringTurnLoop`
 
-一轮分成三段：**入口（代码）→ 循环（LLM 驱动）→ 出口（代码）**。循环由 `CompanionCoordinator` 这个 Process Manager 编排，它不另成一种类型。它只做四件事：入口组装只读上下文并取得 `TutorPermit`；通过基础设施网关执行模型或工具调用；模型返回 `finish_turn` 后跑三道教学出口检查、输出安全审核并交给 `ApplyTutorTurn`；在预算用尽、取消或超时时停住。未实现的工具由 `ToolGateway` 返回 `tool_error`。Coordinator 不维护工具名单，也不检查 schema 版本。
+一轮分成三段：**入口（代码）→ 循环（LLM 驱动）→ 出口（代码）**。循环由 `CompanionCoordinator` 这个 Process Manager 编排，它不另成一种类型。它只做四件事：入口组装只读上下文并取得 `TutorPermit`；通过基础设施网关执行模型或工具调用；模型返回 `finish_turn` 后跑三道教学出口检查并交给 `ApplyTutorTurn`；在预算用尽、取消或超时时停住。未实现的工具由 `ToolGateway` 返回 `tool_error`。Coordinator 不维护工具名单，也不检查 schema 版本。
 
 `tutoring-turn-loop.v1` 只声明本 Run 消息窗口、循环次数和 token 预算。题目状态仍只由 `TutorPermitPolicy` 决定。
 
@@ -389,9 +389,9 @@ flowchart TD
     classDef gate fill:#ffedd5,stroke:#c2410c,color:#0f172a
 ```
 
-读取走 Query，模型与工具走 Infrastructure，题目状态走 Domain Service，写入走 Use Case 和 Aggregate Root。消息窗口、checkpoint 摘要和 `MemoryBundle` 是 Query 的返回值，不是图上的对象。图片目标解析和授权规则以 [Companion 窗口规则](domain-companion.md#11-threadrun-与-turn-的层级) 为准。
+读取走 Query，模型与工具走 Infrastructure，题目状态走 Domain Service，写入走 Use Case 和 Aggregate Root。消息窗口、checkpoint 摘要和 `MemoryBundle` 是 Query 的返回值，不是图上的对象。图片目标解析和授权规则以 [Companion 窗口规则](domain-conversation.md) 为准。
 
-本轮的答案保护不因累计卡住次数而放开。下一轮只会基于已提交的证据继续一个新的最小教学目标。具体 Run 生命周期、等待与失败状态由 [Companion](domain-companion.md) 维护；本 Context 只规定候选、出口检查和提交。
+本轮的答案保护不因累计卡住次数而放开。下一轮只会基于已提交的证据继续一个新的最小教学目标。具体 Run 生命周期、等待与失败状态由 [Companion](domain-conversation.md) 维护；本 Context 只规定候选、出口检查和提交。
 
 > **子流程精简与按因限重试（2026-11-23）**：`tutoring.model_loop` 支持精简 3 节点拓扑（`primary → repair → finish`，完全向后兼容既有 9 节点发布快照）：`primary` 通过或遇到不可自修故障（如 `math_check_failed` 校验执行器不可用、无可用候选）走 `accepted_or_terminal` 直出 `finish`；可自修失败（正文泄露、数学不一致、配图泄露、缺少必要配图）走 `needs_repair` 进入统一 `repair`（复合失败合并正文与缺图反馈一次修复；纯配图泄露严格锁住已审 `act/content/turn` 并复用正文审核；同类正文泄露重复时在 `repair` 内按需切换 `backup_model` 兜底）。当续轮已持有 `ProblemDossier(status="ready")` 时，或当本轮无图且 `companion.intent` 明确标注 `thinking="off"`（纯常识/概念/词义/闲聊）时，前台自动关闭 Thinking 降档提速；无图片轮次运行时自动剥离系统提示词中的 `[image-review.v1]` 段落（不影响启动期配置协议校验）。
 
@@ -436,7 +436,7 @@ class TutorTurnCandidate(BaseModel):
 | `turn` 其余字段 | 只有 `work` 分支携带；模型自述，只决定 `advance()` 是否推进；未知值按“未报告”，不拒绝。`progress`、`evidence` 只属于 `student_move=attempt`，其他 move 上解析时置空（否则一个误填的 `submitted` 会吞掉提示计数）；`student_move` 进 `tutor.turn.result` 观测 | 记录对当前小目标的证据 |
 | `turn.topic` | 只有 `non_work` 分支携带；`spontaneous_curiosity` 才写好奇心事实 | 区分一次性查询与自发好奇 |
 | `pronounce.lesson` / `pronounce.lessons` | 仅 `act=pronounce` 保留（归一为 1–8 条 `lessons`），缺失则拒绝；其他 `act` 带 `pronounce` 时丢弃 | 1 到多张发音卡（气泡正文取 `content` 解释词义） |
-| `visual` | 关闭词汇表（`steps`、`compare`、`segment`、`number_line`、`svg`）；结构非法、超预算、`unknown` 量带结构化数值字段、SVG 违反白名单/画布约束、`act` 不适用都**只丢图**，不拒绝候选。作业成果轮次统一经 `describe(visual)` 提取图内文字（含 SVG 全部 `<text>`/`<tspan>`）送独立图泄露判官审核，判泄露、超时或结果非法同样只丢图 | 解释性配图，设计与取舍见 [答疑表达设计](domain-tutoring-presentation.md) |
+| `visual` | 关闭词汇表（`steps`、`compare`、`segment`、`number_line`、`svg`）；结构非法、超预算、`unknown` 量带结构化数值字段、SVG 违反白名单/画布约束、`act` 不适用都**只丢图**，不拒绝候选。作业成果轮次统一经 `describe(visual)` 提取图内文字（含 SVG 全部 `<text>`/`<tspan>`）送独立图泄露判官审核，判泄露、超时或结果非法同样只丢图 | 解释性配图，设计与取舍见 [答疑表达设计](domain-tutoring.md#九答疑表达结构化配图与联网检索契约) |
 
 结构恢复只做两件事：丢弃不属于该 `act` 的子对象；把常见的错位（发音字段摊在最外层、`candidates` 摊在最外层）归位。不得生成或替换面向孩子的内容、lesson、作业状态或许可。
 
@@ -449,7 +449,7 @@ class TutorTurnCandidate(BaseModel):
 | `redirect` | `text`，并带回任务动作 |
 | `pronounce` | `pronunciation_lesson` |
 
-`kind` 和动作必须能投影为 [Companion Interaction Protocol](domain-companion.md#52-companion-interaction-protocol) 的 `WorkflowInteractionView`。图片只接受已授权 `media_ref`，由 Application 附加。视频和正文中的任意 URL 不成为可播放或可跳转媒体。
+`kind` 和动作必须能投影为 [Companion Interaction Protocol](domain-conversation.md) 的 `WorkflowInteractionView`。图片只接受已授权 `media_ref`，由 Application 附加。视频和正文中的任意 URL 不成为可播放或可跳转媒体。
 
 Application 在本轮不是作业成果、且 `StudySessionQuery` 返回活动任务时，投影必须包含回任务动作，并核对正文有提醒句，没有就补上规定句子；`act=redirect` 的正文本身就是带回任务，不再补句。该动作的 `command` 须登记在 `companion-interaction.v1` 后才能启用；Tutoring 不私自增加 `kind`。回任务不关闭 `StudySession` 或 `TutoringSession`。
 
@@ -470,7 +470,7 @@ Application 在本轮不是作业成果、且 `StudySessionQuery` 返回活动�
 
 ### 4.2 出口检查
 
-`CompanionCoordinator` 收到 `finish_turn` 后，三道教学检查按顺序执行；最终 Ward 文本还要经独立输出安全审核。两者每轮必经，模型是否调用过任何工具都不改变结果。
+`CompanionCoordinator` 收到 `finish_turn` 后，三道教学检查按顺序执行。这些教学检查每轮执行，模型是否调用过任何工具都不改变结果。
 
 | 检查 | 逻辑 | 目的 | 不通过 |
 |---|---|---|---|
@@ -489,8 +489,8 @@ Application 在本轮不是作业成果、且 `StudySessionQuery` 返回活动�
 出口检查通过后，五项同时成立才结束本轮：
 
 1. 候选恰好有一个面向 Ward 的交互。
-2. 三道教学检查和输出安全审核通过。
-3. 预算尚未耗尽，安全审核允许放行，或已改写成规定的降级文案。
+2. 三道教学检查通过。
+3. 预算尚未耗尽，接口返回可交付结果，或已采用规定的降级文案。
 4. 若包含事实或状态变更，对应 Use Case 已提交。
 5. “已掌握”只来自 `ConfirmUnderstanding`，不来自候选文案，也不来自 `progress=submitted`。
 
@@ -663,8 +663,6 @@ sequenceDiagram
 | `LeakJudgePort` | 模型 Gateway 的一次结构化调用 | 同时判定本轮保护范围与是否泄露；超时或结果非法记审核不可用并停止展示候选（fail-closed）；与主调用分开计量 |
 | `ToolGateway` | 只读工具适配器 | 每轮至多 3 次；没有实现返回 `tool_error`；全部限于当前 Ward 的授权范围 |
 | `PronunciationLessonProjectionPort` | Read Model Adapter | 以 `run_id + turn_id + attempt` 幂等投影；物理存储和清理见 design-server |
-| `SafetyScreeningPort` | 统一 moderation 服务、专用安全分类模型，或高风险场景的独立 Judge | 输入和最终 Ward 文本均要审核；本地关键词仅作快速明显风险拦截；端口失败按现有未成年人安全政策降级，不能把主模型自述当作唯一判断 |
-| `GuardianAlertPort` | 通知适配器 | 失败只审计，不改写答疑状态；到点邀请不使用此端口 |
 | `StudySessionQuery` | Study 的受权 Query 适配器 | 超时或拒绝时本轮不追加事实，返回 `conflict` 或失败信封 |
 
 checkpoint、Trace 和 Ward 可见 journal 的存储属于 Companion。Tutoring Repository 不保存完整 transcript，也不保存帧。
@@ -801,16 +799,13 @@ When 调用模型
 Then 先解析图片目标，只有目标图作为带编号的 image_url 进入主调用；目标不明时追问
 And 文本里没有对象存储路径
 
-Given 输入安全审核命中，或模型声明 act=safety
-When 本轮处理
-Then 回复由代码换成安全话术，不给题目提示
-And 记录本地安全结果并请求 GuardianAlertPort
+Given 学生上一轮问解题方法，本轮要求直接给出同一道题的答案
+When 本轮意图判断读取当前请求与题目上下文
+Then 进入受保护答疑，给出下一步提示，候选回复经过教学泄露检查
 
-Given 主答疑模型已生成 Ward 可见文本
-When 输出安全审核命中或审核端口按未成年人安全政策拒绝放行
-Then 不向 Ward 送达该文本
-And 改送固定安全话术或可恢复失败信封
-And 不写 Fact，不推进 ProblemRecord
+Given 模型接口返回内容过滤或拒答
+When 处理本轮响应
+Then 返回受控提示，不写教学事实，不推进 ProblemRecord
 
 Given Companion 已把本轮场景定成 tutoring
 When 开放文本请求给图中的某一排单词发音
@@ -873,3 +868,25 @@ And 已完成的 Companion Run、StudySession、TutoringSession 与 ProblemRecor
 - `GET /wards/{ward_id}/tutoring-evidence?date=YYYY-MM-DD` 返回当日可展示题目；`GET /wards/{ward_id}/tutoring-evidence/{problem_id}?date=...` 展开原文。当前 Guardian 必须仍绑定 Ward；只读本人孩子、上海当日边界内、同题同会话、未被安全拦截的教学消息。
 - 需要当日已有 guide 且之后出现孩子的 attempt；仅问问题、仅提示、旧计数或孩子说懂了不成立。列表不带全对话，详情仅返回该题当天关联片段，不泄露其他话题、其他题目或自述。
 - submitted 只表示孩子提交思路，abandoned 只表示换题/退出；均不映射 verified。历史关联未知保留为空，不按时间邻近猜题。真正微验证与证据版本化报告不在本轮新增能力内。
+
+---
+
+## 九、答疑表达、结构化配图与联网检索契约
+
+### 9.1 回答形状与 Markdown / TeX 不变量
+- **通用不变量**：面向孩子的短句口吻，不用标题层级，一轮只推进一件事；`answer` 先结论后 2–4 步分点说明，`guide` 回应孩子想法并只给一个最小下一步，`chat`/`clarify`/`redirect`/`pronounce`/`safety` 保持精简；`tutor_shape.lint_shape` 仅作只读观测，不触发 fallback。
+- **正文公式与配图分工**：一维常规公式（算式、分式、根号、`aligned`/`cases`、理化方程）一律以 UTF-8 Markdown + TeX（`$...$` / `$$...$$`）写在 `content` 内，由 App `ChatMarkdownBody` + `flutter_math_fork` 原生渲染；二维空间对位（竖式、几何辅助线、电路/受力、结构式）走 `visual`（`kind="svg"`）；金额写“100 元”不写 `$100`；严禁外链跳转与外部图片加载。
+
+### 9.2 结构化配图（`visual`）契约与安全门禁
+- **两层五种图型**（`answer` 与 `guide` 可选携带，`alt` 必填，能用前四种原生图就不用 `svg`）：
+  1. 原生结构化图（Flutter `VisualBlock` 绘制）：`steps`（2–5 节点）、`compare`（≤3 列 ≤4 行）、`segment`（≤4 线段 ≤2 括号，`unknown=true` 不得带数值字段）、`number_line`（≤8 标记，`unknown=true` 不得带数值字段）；
+  2. 受限矢量图：`svg`（固定 `viewBox="0 0 680 H"`，`40 <= H <= 1600`，标签白名单，禁止脚本/外链/事件/`<style>`，确定性 XML 清洗，作业待求量标 `?`）。
+- **门禁与投影**：结构非法、超预算、`unknown` 带数值或 SVG 违规一律丢图不连累正文；作业保护轮次由独立视觉泄露判官并行审核，图泄露先有界重画一次，仍不过仅丢图（文字泄露仍整轮回退）；通过后由 Application 投影为 `kind="text_visual"`（内联 `visual` 写入 `interaction_ref` 供历史气泡持久渲染，下一轮模型上下文不读 `interaction_ref`）。
+
+### 9.3 主动视觉交付闭环
+- 独立文字 Judge 返回必填三字段：`visual_need=requested|helpful|not_needed|uncertain`、`visual_adequate: bool`、`visual_evidence: str`（严禁关键词扫描）。
+- 孩子要求图或正文依赖图时判为 `requested`；必需图缺失或图文冲突时触发有界补图（主模型 1 次、备用模型最多 1 次，预加载绘图规范）并重过全部结构与答案保护检查；补图失败返回 `visual_unavailable` 明确不可用提示，不将纯文字伪装成已完成画图。
+
+### 9.4 联网资料与真实照片（`tutoring.web_search`）
+- `tutoring.web_search` 为可选只读工具（默认预算 4000ms，阿里云 IQS 网页/多模态图片检索，默认 3 条、最多补搜 1 次）；仅用于学习资料、近期事实或真实照片，纯娱乐与不适龄请求不检索。
+- 选中图片候选由服务端下载缩放重编码为 JPEG，连同图注、出处与当前问题送现有图审与安全检查，通过后存 Ward 私有附件展示；失败则明确提示找图失败。

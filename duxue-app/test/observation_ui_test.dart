@@ -25,6 +25,8 @@ class ReportApi extends ApiClient {
       'version': version ?? 2,
       'summary': '观察证据不足',
       'cutoff_at': '21:30',
+      'tutoring': {'verified_count': 0},
+      'creation_footprints': [if (version == null) {'title': '水循环绘本'}],
       'observation': {
         'totals': {'unknown': 60},
         'coverage': {'ratio': null}
@@ -72,12 +74,15 @@ void main() {
                     wardId: 'ward', date: DateTime(2026, 11, 12))))));
     await tester.pumpAndSettle();
     expect(find.text('采集覆盖率暂不可确定'), findsOneWidget);
+    expect(find.text('今日无可核验答疑'), findsOneWidget);
+    expect(find.text('水循环绘本'), findsOneWidget);
     expect(find.text('无法判断：约 1 分钟'), findsOneWidget);
     await tester.tap(find.byType(DropdownButton<int>));
     await tester.pumpAndSettle();
     await tester.tap(find.text('第 1 版').last);
     await tester.pumpAndSettle();
     expect(api.versions, [null, 1]);
+    expect(find.text('水循环绘本'), findsNothing);
     expect(find.text('晚间实况 · 第 1 版'), findsOneWidget);
   });
 

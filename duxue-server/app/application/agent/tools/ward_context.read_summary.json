@@ -1,0 +1,29 @@
+{
+  "id": "ward_context.read_summary",
+  "kind": "tool",
+  "owner_domain": "memory",
+  "description": "显式受权只读已绑定学生近期卡点与报告摘要（零写入）。",
+  "access": "read",
+  "allowed_roles": [
+    "teacher",
+    "coach",
+    "guardian"
+  ],
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "ward_id": {
+        "type": "string"
+      },
+      "limit": {
+        "type": "integer"
+      }
+    },
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": "object"
+  },
+  "timeout_ms": 3000,
+  "handler_id": "ward_context.read_summary"
+}

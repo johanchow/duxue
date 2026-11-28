@@ -70,9 +70,12 @@ def select_recent_utterances(
 def recent_thread_utterances(
     db: Session, *, ward_id: str, thread_id: str, exclude_turn_id: str | None,
 ) -> tuple[list[dict], int]:
+    from app.infrastructure.persistence.models import ConversationThread
     rows = (
         db.query(CompanionMessage)
         .filter_by(ward_id=ward_id, thread_id=thread_id)
+        .join(ConversationThread, ConversationThread.id == CompanionMessage.thread_id)
+        .filter(CompanionMessage.thread_version > ConversationThread.clear_version)
         .order_by(CompanionMessage.thread_version)
         .all()
     )
@@ -95,7 +98,7 @@ def recent_thread_utterances(
 
 
 def _default_reader(key: str) -> str:
-    from app.application.commands.task_intake import _data_url
+    from app.infrastructure.storage.image_data import data_url as _data_url
 
     return _data_url(key)
 

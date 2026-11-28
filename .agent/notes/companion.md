@@ -50,3 +50,16 @@ Ward 可见对话是 Companion 的 append-only 账本，统一走 `/companion/tu
 - 2026-11-21 Ward 语音输入与答疑朗读已实现，待真实童声和听感验收。原生润色可能吞掉孩子改口；导师、逐字引用及发音目标必须消费原始转写，整理稿仅用于学生气泡。两路 ASR 的计量及正文点读授权见[服务端设计](../../docs/technical/design-server.md#ward-实时转写与正式答复朗读)，播放器打断与指标见[端侧设计](../../docs/technical/design-app.md#3-提问转写与答疑朗读)。
 
 - 2026-11-23 排查 trace `8003fa21614623ceda33dba0ca9e9344`（纯文字科普提问“说说美国的国家体制有什么特殊的地方？”）：`IntentProposal` 新增可选闭集字段 `history_image_ref`（`none | needed`，默认 `needed`）与 `thinking`（`default | off`，默认 `default`），`admin_bundle._intent_hints_contracts` 保持对旧 Admin 发布快照的兼容。仅当无本轮新图且无 `compare_previous_image` 时透传给 `TutoringWorkflow`，避免历史图片在纯文字续聊中重复触发 OSS 拉图与 `tutoring.image-target` 多模态调用。本地测试夹具 `companion.intent.json` 保持未改；已通过 `duxue-server/scripts/upgrade_companion_intent_hints.py` 与 `npm run config:import-upgrade` 写入 `duxue-admin-test` 工作草稿并回读核对（`draft_id=d152ad53-5086-43ca-8e7c-002316801a55`，`revision 10 -> 11 -> 12`，`revision 12` 移除历史 `reflection`/`planning` 冗余说明并补充 3 个紧凑正反示例，Prompt 长度由 `1650` 缩至 `816` 字符，digest `5ad2582b49ce44d7eb86b2e15f008bda163df2a96d13bb7278a9596ee0d5d126`，仅变更 `agents/companion.intent.json`，未发布生产）。
+
+- 成人直接发起操作，Ward 每轮按当前输入决定教学保护；断线恢复最终结果。目标契约见[对话领域](../../docs/technical/domain-conversation.md)与[Agent 设计](../../docs/technical/design-agent.md)。
+
+- 2026-11-28 逐轮保护实施中。真实回复可能由旧答疑出口兜底，即使答疑正确也要单独核对每轮路由 trace 的 teaching_policy。测试草稿版本、评测和 Android 验收见[实施清单](../specs/ward-turn-homework-policy.md)。
+
+- 2026-11-28 双端按账户管理多对话。Ward 客户端只在选中线程内翻页，每次首次发送先取得线程 ID，切换时隔离迟到的 UI 更新。成人问答写回原线程前复核版本，已保存课件用来源回复的稳定 ID 关联。两类保存资产均可在删除来源对话后重开。
+- Android 真机验证了 Ward 语音新建两页绘本、指定页修改、撤销重做及冷启动重开。绘本页面块 ID 跨版本稳定，每个新版本保留完整快照。专注提醒按账户查正在进行的挑战及未完成题，作业代写判定先于绘本生成。流程和验收明细见[进行中清单](../specs/conversation-artifact-journeys.md)。
+
+- 2026-11-28 双端发送与断流恢复协议见 [Conversation §4.2](../../docs/technical/domain-conversation.md)。Sprint 偏题提示复用本轮意图模型的 `off_sprint_topic` 和当时的挑战 ID，执行前复查挑战仍活跃。与当轮教学保护各自判定。
+
+- Ward 绘本的来源对话在迁移 46 改为带索引的 UUID，跨域可见性仍由应用查询检查。后续写侧合并与旧流程退场见 [工作台验收清单](../specs/edu-workspace-delivery.md)。
+
+- 2026-11-28，Ward 同轮意图同时提供教学策略、创作意图与可选的 Study 控制提议。下一条消息重新判断；仅发起 Sprint 的明确确认可开启挑战。成人批改及备课的核验门禁检查独立求解结果和交付题目的对应关系，低置信逐题保留人工复核标记。
