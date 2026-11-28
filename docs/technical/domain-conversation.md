@@ -177,7 +177,7 @@ sequenceDiagram
 | `EduAgentOrchestrator` | Process Manager | 事务外执行有界 Agent Loop、渐进式加载 Skill `instructions` 与受权 Tool 调度 |
 | `RolePolicy & FocusGuard` | Domain Service / ACL | 代码级裁剪工具白名单、强制 Gate 清单与 Ward 专注态检查 |
 | `SkillRegistry & ToolExecutor` | Application Infrastructure | 统一校验 Schema、角色鉴权、超时隔离与 Langfuse 树状埋点 |
-| `Mandatory Gates` | Gate (Code + Heterogeneous Judge) | 强制执行答案保护、防代写、核验诚实与脚本预运行 |
+| `Mandatory Edu Gates` | Gate (Code + Heterogeneous Judge) | 强制执行答案保护、防代写、核验诚实与脚本预运行（通用色情/暴力过滤直接复用上游模型 API） |
 | `ArtifactWorkspace Commands` | Command | 短事务创建/发布/修订 `EduArtifact` |
 | `Tutoring Commands` | Command | 短事务执行 Ward 受保护作业答疑与解题凭证 |
 | `ConversationThread Commands` | Command | 短事务管理多对话线程、消息追加与 `history_generation` 守卫 |
