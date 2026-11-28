@@ -553,6 +553,8 @@ erDiagram
    - **宿主外部监测与故障原型门禁**：首帧截止时间、心跳（`HEARTBEAT` / `STAGE_ERROR`）与内容进程退出由 Flutter 宿主外部计时处理；死循环/内存溢出/WebGL 上下文丢失时直接切换静态降级并销毁重建舞台，不依赖卡死页面执行 `dispose()`；**未通过 Android/iOS 真机故障原型验收的设备禁用生成代码路径**。
 3. **后续演进（同源复用）**：P1 叠加逐 Beat TTS 音轨时间轴；P2 服务端 Headless Chromium 按同一 `render` 契约采样导出 MP4。
 
+当前 Flutter 预置 `geometry_2d` painter 只会绘制固定三角形，尚不能解释模型输出的 `payload.shapes` 或 `description` 等场景数据。因此该组件暂不列入端侧支持清单，统一走静态图文降级，使用原有 `static_fallback_svg` / `static_fallback_text` / `alt`；不得忽略场景参数后绘制无关图形，也不展示交互控制。版本切换时重新判定兼容性，受支持的既有预置组件继续交互。此保护仅确保不展示无关图形，不能视为任意图元或动态课件已实现；图元契约、渲染及图文对齐验收仍待补齐。
+
 ---
 
 ## 七、验收场景（Acceptance Scenarios）

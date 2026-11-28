@@ -131,4 +131,6 @@ Guardian 用邮箱验证码注册和登录，不保存读学密码。Ward 使用
 
 - 课件步骤仅用于阅读和演示。用户从底部输入框直接描述修改要求，App 已移除步骤点选与绑定。
 
+- 2026-11-28 真机发现 geometry_2d 无论收到 shapes 还是 description 都忽略内容画固定三角形；暂从端侧支持清单移除，走原有静态图文降级，禁止以无关预置图冒充生成场景。新增3项回归先红后绿，Flutter199通过、静态分析及debug构建通过。用户重新登录Guardian后覆盖安装不丢登录，同一课件保存重开、分步说明及既有3D旋转/滑块/重置真机通过；二维动态图元能力仍是P1缺口。设计边界见[产物渲染](../../docs/technical/domain-artifact-workspace.md#六端侧交互渲染底座离线-web-数理舞台duxue-mathstage-runtime)，完整证据见[验收跟进](../specs/edu-workspace-delivery.md#guardian-重新登录后的跟进)。
+
 - 2026-11-27 导师课件页落地第一刀变更感知与自适应双栏布局（`GuardianCoursewarePage` + `courseware_revision_diff.dart`）：`<860px` 保持竖屏单列，`>=860px` 自动切换左主内容+右 360px 修订侧边栏（含本轮修订记录）；修订生效时通过前后版本 `step_id`/`content_hash` 及语义区块比对展示变更回执条（摘要、新增/更新/移除胶囊、定位到改动处、一键撤销）、自动展开并滚动到首个变动步骤、加卡片左色条与区块微标，并补齐加载原话回显、`low_confidence` 诚实提示与后台修订失败提示条。`flutter analyze` 无问题，全量 202 项通过（含新增 4 项单测/组件测试）。

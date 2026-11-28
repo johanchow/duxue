@@ -81,11 +81,12 @@ def verify(stem):
     ):
         return dict(result.final_answers)
     # For an entire arithmetic expression, the isolated grammar can verify
-    # the final answer directly even when route milestones lack anchors.
+    # the final answer directly even when route milestones lack anchors or
+    # only one model route survives. The restricted arithmetic grammar must
+    # independently prove equality; model agreement is not the proof here.
     if (
         result
         and len(result.final_answers) == 1
-        and result.evidence.get("comparison") == "consistent"
         and not result.evidence.get("stem_disputed")
     ):
         expression = stem.strip().removesuffix("=").strip()

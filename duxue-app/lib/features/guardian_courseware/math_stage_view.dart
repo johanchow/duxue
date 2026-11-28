@@ -5,9 +5,9 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 /// P0-1 Interactive MathStage host widget for MentorCourseware.
 ///
-/// Renders the 3 preset `component_scene` types (`coord_plane_2d`,
-/// `geometry_2d`, `solid_geometry_3d`) at 60fps with drag/unfold gestures and
-/// automatically degrades a single step to verified static SVG/text on error.
+/// Renders supported preset scenes with drag/unfold gestures and degrades
+/// unsupported scenes to the supplied static SVG/text. The legacy geometry_2d
+/// painter cannot interpret generated scene data and stays disabled.
 class MathStageView extends StatefulWidget {
   const MathStageView({
     required this.visualSpec,
@@ -31,7 +31,6 @@ class _MathStageViewState extends State<MathStageView> {
 
   static const _supported = {
     'coord_plane_2d',
-    'geometry_2d',
     'solid_geometry_3d',
   };
 

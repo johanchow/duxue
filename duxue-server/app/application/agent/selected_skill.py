@@ -265,6 +265,14 @@ def run_adult_composite_turn(
             parts.append(partial_failure_note)
         return "\n".join(parts) if parts else _COURSEWARE_ACTION_TEXT
 
+    def _respond():
+        nonlocal summary_content
+        if recommend_courseware:
+            # This path prepares an editor handoff, not a generated asset.
+            # Keep the delivery description code-owned before the final gate.
+            summary_content = _default_summary()
+        return OrchestratorStep(action="respond", content=summary_content)
+
     def _merged_previous() -> dict[str, Any]:
         merged = dict(previous or {})
         if completed_steps:
@@ -327,11 +335,11 @@ def run_adult_composite_turn(
 
         if partial_failure_note is not None:
             summary_content = _default_summary()
-            return OrchestratorStep(action="respond", content=summary_content)
+            return _respond()
 
         if "edu.homework_tutoring" in executed_skills and domain_reply is not None:
             summary_content = domain_reply["content"]
-            return OrchestratorStep(action="respond", content=summary_content)
+            return _respond()
 
         if skill_hint:
             if completed_steps:
@@ -340,7 +348,7 @@ def run_adult_composite_turn(
                     if domain_reply is not None
                     else (documents[0].title if len(documents) == 1 and not recommend_courseware else _default_summary())
                 )
-                return OrchestratorStep(action="respond", content=summary_content)
+                return _respond()
             target = skill_hint
             sub_goal = message
             action = "run_skill"
@@ -348,7 +356,7 @@ def run_adult_composite_turn(
             if pending_choice is None:
                 if len(executed_skills) >= max_skills:
                     summary_content = _default_summary()
-                    return OrchestratorStep(action="respond", content=summary_content)
+                    return _respond()
                 planner_kwargs: dict[str, Any] = {
                     "content": message,
                     "keys": attachments,
@@ -376,7 +384,7 @@ def run_adult_composite_turn(
                         if len(documents) == 1 and not recommend_courseware
                         else _default_summary()
                     )
-                return OrchestratorStep(action="respond", content=summary_content)
+                return _respond()
 
             if action == "call_read_tool" and pending_choice.search and search_count < 2:
                 search_args = {**pending_choice.search.model_dump(), "mode": "web"}
@@ -394,18 +402,18 @@ def run_adult_composite_turn(
                     summary_content = domain_reply["content"]
                 else:
                     summary_content = _default_summary()
-                return OrchestratorStep(action="respond", content=summary_content)
+                return _respond()
 
         # action == "run_skill": code-enforced deduplication & preconditions.
         if target in executed_skills or len(executed_skills) >= max_skills:
             summary_content = _default_summary()
-            return OrchestratorStep(action="respond", content=summary_content)
+            return _respond()
 
         if target == "edu.worksheet_grading" and not attachments:
             if completed_steps:
                 partial_failure_note = "批改作业需要上传作业照片，已先交付其他已完成内容。"
                 summary_content = _default_summary()
-                return OrchestratorStep(action="respond", content=summary_content)
+                return _respond()
             first_failure = HTTPException(422, "请按顺序上传需要批改的作业页")
             raise first_failure
 
@@ -436,17 +444,18 @@ def run_adult_composite_turn(
                 {
                     "step": len(completed_steps) + 1,
                     "skill_id": target,
-                    "status": "completed",
+                    "status": "ready_to_generate",
                     "summary": {
                         "kind": "interactive_courseware",
                         "recommended": True,
+                        "generation_status": "not_started",
                         "prompt": sub_goal[:240],
                     },
                 }
             )
             if skill_hint or len(executed_skills) >= max_skills:
                 summary_content = _default_summary()
-                return OrchestratorStep(action="respond", content=summary_content)
+                return _respond()
             # Ask planner in the next step whether additional skills remain or to finish.
             pending_choice = ws.choose_skill(
                 content=message,
@@ -458,11 +467,11 @@ def run_adult_composite_turn(
             )
             if _effective_action(pending_choice) == "finish":
                 summary_content = pending_choice.answer or _default_summary()
-                return OrchestratorStep(action="respond", content=summary_content)
+                return _respond()
             next_target = pending_choice.skill
             if next_target in executed_skills or next_target == "general":
                 summary_content = _default_summary()
-                return OrchestratorStep(action="respond", content=summary_content)
+                return _respond()
             return OrchestratorStep(action="load_skill", skill_id=next_target)
 
         if target == "edu.homework_tutoring":
@@ -473,7 +482,7 @@ def run_adult_composite_turn(
             )
 
         summary_content = _default_summary()
-        return OrchestratorStep(action="respond", content=summary_content)
+        return _respond()
 
     def _honesty_gate(phase, candidate):
         if phase == "write":

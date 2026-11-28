@@ -357,6 +357,8 @@ GET    /v1/conversations/{thread_id}/ward-summary → 显式绑定且仍有权�
 
 当前 App 在 POST 请求中通过 SSE 接收实时进度。若传输中断，客户端按原线程和命令读取已提交结果。Ward 按清空版本、成人按会话代次控制可见性。成人工作台采用两层有界复合编排：外层由 `edu.skill-planner` 依据原始意图与前序 `completed_steps` 结构化摘要逐轮裁决 `run_skill | call_read_tool | finish`，内层各 Skill 走确定性核验管线并产出独立 `EduArtifact`；代码层强制执行 `MAX_SKILLS_PER_TURN=3` 预算、同 Skill 防重入、前置条件校验、门禁累加与部分失败优雅交付，单轮消息支持返回多份产物引用（`artifacts[]`）及聚焦课件入口。通用模式可调用只读检索并根据结果继续规划。Ward 的本轮意图提议直接驱动单主路径 Skill 选择。两端共用 `EduAgentOrchestrator`、`ToolExecutor` 和 `GateRunner`，领域执行器负责求解、创作与核验。Admin 草稿的 `skills/` 声明可以调整 SOP 并收窄角色和工具权限，服务端强制执行代码权限上限和必需门禁。
 
+当前 `edu.interactive_courseware` 在复合编排中交付的是聚焦编辑器入口，生成仍由用户打开编辑器后触发。该步骤记录 `status=ready_to_generate` 与 `generation_status=not_started`；响应摘要由代码据实际产物和入口组成，在课件尚未生成时不得透传模型声称“已制作”的结束文案。
+
 ## 五、Infrastructure Design Card
 
 ### 5.1 Ports & Adapters
