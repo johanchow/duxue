@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -9,8 +10,9 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.application.commands.companion_history import lock_history, visible_threads
-from app.infrastructure.persistence.courseware_tables import coursewares
+from app.infrastructure.persistence.artifact_tables import artifacts as coursewares
 from app.infrastructure.persistence.models import (
+    CompanionCommand,
     ConversationThread,
     GuardianConversationTurn,
     GuardianWard,
@@ -88,23 +90,20 @@ def list_threads(
         ConversationThread.updated_at.desc(), ConversationThread.id.desc()
     )
     if cursor:
-        anchor = (
-            owned_threads_query(db, actor_id=actor_id, actor_role=actor_role)
-            .filter(ConversationThread.id == cursor)
-            .one_or_none()
-        )
-        if anchor is not None:
-            query = query.filter(
-                or_(
-                    ConversationThread.updated_at < anchor.updated_at,
-                    (ConversationThread.updated_at == anchor.updated_at)
-                    & (ConversationThread.id < anchor.id),
-                )
-            )
+        try:
+            timestamp, identifier = cursor.split("|")
+            key = datetime.fromisoformat(timestamp)
+            anchor_id = str(UUID(identifier))
+        except ValueError as error:
+            raise HTTPException(422, "invalid conversation cursor") from error
+        query = query.filter(or_(
+            ConversationThread.updated_at < key,
+            (ConversationThread.updated_at == key) & (ConversationThread.id < anchor_id),
+        ))
     rows = query.limit(page_size + 1).all()
     has_more = len(rows) > page_size
     page = rows[:page_size]
-    next_cursor = page[-1].id if has_more else None
+    next_cursor = f"{page[-1].updated_at.isoformat()}|{page[-1].id}" if has_more else None
     return {"items": [thread_view(row) for row in page], "next_cursor": next_cursor}
 
 
@@ -197,9 +196,9 @@ def get_thread_messages(
 ) -> dict:
     row = thread_for(db, actor_id=actor_id, actor_role=actor_role, thread_id=thread_id)
     if actor_role == "ward":
-        from app.api.v1.companion import _thread_messages_payload
+        from app.application.queries.ward_messages import thread_messages_payload
 
-        page = _thread_messages_payload(
+        page = thread_messages_payload(
             db, ward_id=actor_id, thread=row, before_thread_version=None, limit=100
         )
         return {**thread_view(row), "items": page["messages"]}
@@ -214,8 +213,9 @@ def get_thread_messages(
     linked = (
         dict(
             db.execute(
-                select(coursewares.c.command_id, coursewares.c.courseware_id).where(
-                    coursewares.c.guardian_id == UUID(actor_id),
+                select(coursewares.c.command_id, coursewares.c.artifact_id).where(
+                    coursewares.c.artifact_type == "interactive_courseware",
+                    coursewares.c.owner_id == UUID(actor_id),
                     coursewares.c.command_id.in_(keys),
                     or_(
                         coursewares.c.retention_status == "saved",
@@ -279,3 +279,22 @@ def read_thread_source_image(
         key.rsplit(".", 1)[-1], "image/jpeg"
     )
     return storage.read_limited(key, 12 * 1024 * 1024), media_type
+
+
+def get_turn_result(db, *, actor_id, actor_role, thread_id, command_id):
+    thread = thread_for(db, thread_id=thread_id, actor_id=actor_id, actor_role=actor_role)
+    if actor_role == "ward":
+        try:
+            key = str(UUID(command_id))
+        except ValueError:
+            raise HTTPException(404, "turn result unavailable")
+        row = db.query(CompanionCommand).filter_by(id=key, thread_id=thread.id, ward_id=actor_id).first()
+        if row and row.completed_at and row.result.get("thread_version", 0) > thread.clear_version:
+            return row.result
+    else:
+        row = db.query(GuardianConversationTurn).filter_by(
+            thread_id=thread.id, generation=thread.history_generation, command_id=command_id
+        ).first()
+        if row:
+            return row.reply
+    raise HTTPException(404, "turn result unavailable")

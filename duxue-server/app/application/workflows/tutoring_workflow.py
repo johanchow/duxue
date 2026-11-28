@@ -10,9 +10,8 @@ from app.application.commands.memory import SqlAlchemyMemoryFacade
 from app.application.ports.companion import RunInvocation, WorkflowOutcome
 from app.application.ports.tutoring import SafetyScreeningPort
 from app.application.queries.context_builder import ContextBuilder
-from app.application.queries.self_reviews import get_recent_self_reviews
-from app.application.workflows.planning_adapter import planning_today
-from app.application.workflows.planning_domain_service import PlanningDomainService
+from app.contexts.study.domain.calendar import local_day
+from app.application.commands.study_day import StudyDay
 from app.application.workflows.pronunciation_guidance import (
     build_interaction,
     project_lesson,
@@ -283,7 +282,7 @@ class TutoringWorkflow:
             if session.ward_id != ward_id:
                 raise HTTPException(403, "study session does not belong to Ward")
             return session
-        PlanningDomainService(self.db).release_unfinished_tasks(ward_id, planning_today())
+        StudyDay(self.db).release_unfinished_tasks(ward_id, local_day())
         return (
             self.db.query(StudySession)
             .filter(StudySession.ward_id == ward_id, StudySession.status.in_(("active", "paused")))
@@ -416,7 +415,6 @@ class TutoringWorkflow:
             return turn.clarify_image()
         transition("tutoring", "tutoring.image_target" if has_images else "tutoring.turn",
                    "tutoring.model_loop", "resolved" if has_images else "ready")
-        turn.read_self_review()
         turn.generate()
         if turn.vetting:
             transition("tutoring", "tutoring.exit_gate", "tutoring.output_safety", "checked")
@@ -527,7 +525,6 @@ class _TutoringTurn:
     def __init__(self, owner: TutoringWorkflow, invocation: RunInvocation):
         self.owner = owner
         self.invocation = invocation
-        self.review_aspects = []
         self.ward_msg = None
         self.hint_index = None
         self.attempted = False
@@ -671,14 +668,6 @@ class _TutoringTurn:
             next_interaction={**interaction, "status": "clarification_required", "reason": "image_target_ambiguous"},
         )
 
-    def read_self_review(self):
-        self.review_aspects = get_recent_self_reviews(
-            self.owner.db, actor_id=self.invocation.ward_id, actor_role="ward",
-            ward_id=self.invocation.ward_id, use_case="tutoring", end_date=planning_today(),
-            task_ref=self.session.task_id, item_budget=4,
-        ) if self.session and self.session.task_id else []
-        return "context_ready"
-
     def generate(self):
         self.window, self.images = self.prepared.window, self.prepared.images
         self.owner._selected_image_refs[f"{self.invocation.run_id}:{self.invocation.turn_id}"] = self.prepared.refs
@@ -686,7 +675,6 @@ class _TutoringTurn:
         instruction = build_tutor_instruction(
             content=self.content, permit=self.permit, history_candidates=candidates,
             tutoring_intent=self.turn.get("tutoring_intent"),
-            self_review_aspects=self.review_aspects,
         )
         if any(row.get("shown_visual_kind") for row in self.window):
             instruction += "\n参考历史中实际展示的 shown_visual_kind。学生要求换成更直观的图时，选择能表现原理的图形，避免重复已有表格。"

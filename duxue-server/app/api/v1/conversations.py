@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -127,3 +127,21 @@ def source_image(
         media_type=media_type,
         headers={"Cache-Control": "private, no-store"},
     )
+
+
+@router.get("/{thread_id}/ward-summary")
+def ward_summary(
+    thread_id: UUID,
+    actor: Principal = Depends(current_guardian_or_ward),
+    db: Session = Depends(get_db),
+):
+    from app.application.agent.registry import ToolContext
+    from app.application.agent.role_policy import normalize_role
+    from app.application.tools.core_tools import handle_ward_context_read_summary
+    row = thread_for(db, actor, thread_id)
+    ctx = ToolContext(actor_id=actor.user_id, actor_role=normalize_role(actor.role),
+                      thread_id=row.id, context_ward_id=row.context_ward_id, db=db)
+    try:
+        return handle_ward_context_read_summary({}, ctx)
+    except PermissionError as error:
+        raise HTTPException(403, "authorized student context required") from error

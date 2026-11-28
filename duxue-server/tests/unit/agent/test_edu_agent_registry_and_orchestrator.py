@@ -4,7 +4,7 @@ EduAgentOrchestrator, adult read-only context_ward_id, and CreationFootprintReco
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 import pytest
 
@@ -106,12 +106,12 @@ def test_default_general_mode_blocks_write_tool_until_skill_loaded():
         return OrchestratorStep(action="respond", content="教案与变式题已生成")
 
     outcome = orch.run(ctx=ctx, message="帮我备一节分数除法课", planner=planner)
-    assert outcome.status == "completed"
+    assert outcome.status == "failed"
     assert outcome.active_skill_id == "edu.lesson_pack"
     assert "artifact.verification_honesty" in outcome.registered_gates
     assert outcome.tool_results[0].status == "denied"
     assert outcome.tool_results[1].status == "ok"
-    assert outcome.tool_results[2].status == "ok"
+    assert len(outcome.tool_results) == 2  # missing verification gate stopped the write
 
 
 def test_adult_context_ward_id_authorization_and_readonly_summary(client, db):
@@ -161,6 +161,7 @@ def test_adult_context_ward_id_authorization_and_readonly_summary(client, db):
     ctx = ToolContext(
         actor_id=guardian.id,
         actor_role="guardian",
+        thread_id=r_ok.json()["thread_id"],
         context_ward_id=bound_ward.id,
         db=db,
     )
@@ -174,9 +175,17 @@ def test_adult_context_ward_id_authorization_and_readonly_summary(client, db):
     assert out.tool_results[0].status == "ok"
     assert out.tool_results[0].data["read_only"] is True
     assert db.query(LearningEvent).count() == before_events
+    url = f"/v1/conversations/{ctx.thread_id}/ward-summary"
+    assert client.get(url, headers=g_headers).status_code == 200
+    client.patch(f"/v1/conversations/{ctx.thread_id}", headers=g_headers, json={"clear_context_ward": True})
+    assert client.get(url, headers=g_headers).status_code == 403
+    from app.application.tools.core_tools import handle_ward_context_read_summary
+    with pytest.raises(PermissionError):
+        handle_ward_context_read_summary({}, ctx)
 
 
-def test_agent_api_catalog_turns_sse_and_cancel(client, db):
+
+def test_agent_api_runs_real_adult_workflow_and_recovers_visible_results(client, db, monkeypatch):
     guardian = create_guardian(db)
     db.commit()
     headers = {
@@ -191,21 +200,22 @@ def test_agent_api_catalog_turns_sse_and_cancel(client, db):
         headers=headers,
         json={"message": "帮我备课", "skill_hint": "edu.lesson_pack"},
     )
-    assert turn.status_code == 200
-    payload = turn.json()
-    assert payload["active_skill_id"] == "edu.lesson_pack"
-    assert "artifact.verification_honesty" in payload["registered_gates"]
+    assert turn.status_code == 422
+    thread = client.post("/v1/conversations", json={}, headers=headers).json()["thread_id"]
+    monkeypatch.setattr("app.api.v1.guardian_experience.experience_turn",
+                        lambda **kw: {"content": "讲解结果", "mode": kw["mode"]})
+    body = {"content": "如何通分", "thread_id": thread, "command_id": "adult-test", "mode": "guardian_explain"}
+    response = client.post("/v1/agent/turns", json=body, headers=headers)
+    assert response.status_code == 200, response.text
+    assert response.json()["content"] == "讲解结果"
+    url = f"/v1/agent/threads/{thread}/results/adult-test"
+    assert client.get(url, headers=headers).json() == response.json()
+    assert client.post("/v1/agent/turns", json={**body, "context_ward_id": guardian.id}, headers=headers).status_code == 422
+    client.post(f"/v1/conversations/{thread}/clear", headers=headers)
+    assert client.get(url, headers=headers).status_code == 404
 
-    sse = client.get(f"/v1/agent/runs/{payload['run_id']}/events", headers=headers)
-    assert sse.status_code == 200
-    assert "event: skill_loaded" in sse.text
-    assert "event: completed" in sse.text
 
-    cancel = client.post(f"/v1/agent/runs/{payload['run_id']}/cancel", headers=headers)
-    assert cancel.status_code == 200
-
-
-def test_creation_footprint_consumer_idempotent_and_isolated(db):
+def test_creation_footprint_consumer_idempotent_and_isolated(db, db_engine, monkeypatch):
     from app.agent_specs.creative_work import Story
 
     ward = create_ward(db)
@@ -222,11 +232,16 @@ def test_creation_footprint_consumer_idempotent_and_isolated(db):
     interaction = {"candidate": story.model_dump()}
     creative_works.persist_candidate(db, thread, interaction)
     work = db.query(creative_works.CreativeWork).filter_by(id=interaction["artifact_id"]).one()
-    creative_works.apply(db, work, "save")
+    saved = creative_works.apply(db, work, "save")
+    assert creative_works.apply(db, work, "save") == saved
+    creative_works.rename_saved(db, work, "新的标题")
     db.commit()
 
     assert db.query(OutboxEvent).filter_by(event_type="CreationFootprintRecorded.v1", status="pending").count() == 1
-    assert consume_pending_creation_footprints(db) == 1
+    from app.workers import celery_tasks
+    from sqlalchemy.orm import sessionmaker
+    monkeypatch.setattr(celery_tasks, "SessionLocal", sessionmaker(bind=db_engine))
+    assert celery_tasks.consume_creation_footprints() == 1
     assert consume_pending_creation_footprints(db) == 0
 
     signals = db.query(DerivedSignal).filter_by(ward_id=ward.id).all()
@@ -234,7 +249,49 @@ def test_creation_footprint_consumer_idempotent_and_isolated(db):
     assert signals[0].signal_type == "interest_signal"
     assert "火星小狗" in signals[0].statement
 
-    today = datetime.now(timezone.utc).astimezone().date()
+    from zoneinfo import ZoneInfo
+    today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
     footprints = list_evening_creation_footprints(db, ward_id=ward.id, local_date=today)
     assert len(footprints) == 1
     assert footprints[0]["title"] == "火星小狗"
+
+
+def test_page_cursor_survives_deletion_of_anchor(client, db):
+    adult = create_guardian(db)
+    db.commit()
+    headers = {"Authorization": "Bearer " + create_access_token(user_id=adult.id, role="guardian")}
+    url = "/v1/conversations"
+    ids = [client.post(url, headers=headers, json={"title": str(n)}).json()["thread_id"] for n in range(3)]
+    page = client.get(url, headers=headers, params={"limit": 2}).json()
+    client.delete(url + "/" + ids[1], headers=headers)
+    next_page = client.get(url, headers=headers, params={"limit": 1, "cursor": page["next_cursor"]}).json()
+    assert next_page["items"][0]["thread_id"] == ids[0]
+    assert client.get(url, headers=headers, params={"cursor": "invalid"}).status_code == 422
+
+
+def test_summary_requires_exact_thread_scope(db):
+    from app.application.tools.core_tools import handle_ward_context_read_summary
+    adult = create_guardian(db)
+    wards = [create_ward(db, guardian=adult) for _ in range(2)]
+    db.commit()
+    for bound in (None, wards[0].id):
+        ctx = ToolContext(actor_id=adult.id, actor_role="guardian", context_ward_id=bound, db=db)
+        with pytest.raises(PermissionError):
+            handle_ward_context_read_summary({"ward_id": wards[1].id}, ctx)
+
+
+def test_admin_declarative_skills_keep_code_gate_and_tool_ceilings():
+    from copy import deepcopy
+    from app.application.agent.skill_catalog import bootstrap_skills, configured_skills
+
+    catalog = deepcopy(bootstrap_skills())
+    grading = catalog["skills/edu.worksheet_grading.json"]
+    grading["instructions"] = "逐页核验，并说明存疑题。"
+    assert configured_skills(catalog)["skills/edu.worksheet_grading.json"]["instructions"] == grading["instructions"]
+    grading["required_gates"] = []
+    with pytest.raises(ValueError):
+        configured_skills(catalog)
+    grading["required_gates"] = ["artifact.verification_honesty"]
+    grading["tools"].append("media.generate_image")
+    with pytest.raises(ValueError):
+        configured_skills(catalog)

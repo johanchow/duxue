@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Literal, Protocol
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
-AgentType = Literal["planning", "tutoring", "reflection"]
-RouteTarget = Literal["planning", "tutoring", "reflection", "clarify", "safety"]
-IntentLabel = Literal["planning", "tutoring", "reflection", "unclear"]
+AgentType = Literal["tutoring"]
+RouteTarget = Literal["tutoring", "clarify", "safety"]
+IntentLabel = Literal["tutoring", "unclear"]
 HistoryImageRef = Literal["none", "needed"]
 ThinkingEffort = Literal["off", "low", "medium", "high"]
 RunStatus = Literal[
@@ -16,9 +17,19 @@ RunStatus = Literal[
 ]
 
 
+class StudyControl(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    action: Literal["sprint_prepare","sprint_pause","sprint_resume","sprint_end","quiet_start","quiet_extend","quiet_end"]
+    target_minutes: int | None = Field(default=None, ge=1, le=180, strict=True)
+    topic: str | None = Field(default=None, max_length=300)
+    planned_start_at: datetime | None = None
+
+
 class IntentProposal(BaseModel):
     """Untrusted semantic candidate. Code accepts only this closed label set."""
 
+    off_sprint_topic: bool = False
+    study_control: StudyControl | None = None
     creative_work: bool = False
     intent: IntentLabel
     teaching_policy: Literal["homework", "pronunciation", "standard"] | None = None
@@ -29,7 +40,7 @@ class IntentProposal(BaseModel):
 class IntentClassifier(Protocol):
     def propose(
         self, *, content: str, focus_agent_type: str | None, recent_utterances: list[dict] | None = None,
-        current_images: list[str | None] | None = None,
+        current_images: list[str | None] | None = None, sprint_topic: str | None = None,
     ) -> IntentProposal:
         """Return one closed intent label. No tools and no writes.
 

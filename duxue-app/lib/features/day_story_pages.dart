@@ -20,7 +20,6 @@ import '../shared/app_ui.dart';
 import '../shared/chat_markdown.dart';
 import '../shared/reply_progress.dart';
 import '../shared/voice_composer.dart';
-import 'home_task_card.dart';
 import 'conversation_picker.dart';
 import 'ward_creative_work.dart';
 import 'guardian_report_view.dart';
@@ -29,7 +28,6 @@ import 'chat_image_viewer.dart';
 import 'pronunciation_player.dart';
 import 'start_cue_card.dart';
 import 'visual_block.dart';
-import 'task_status_dialogs.dart';
 
 const ImageSource defaultChatImageSource = ImageSource.camera;
 
@@ -155,9 +153,7 @@ class WardDayPage extends ConsumerStatefulWidget {
 
 class _WardDayPageState extends ConsumerState<WardDayPage>
     with WidgetsBindingObserver {
-  List<dynamic> tasks = [];
-  Map<String, dynamic>? plan, insight, profile, startCue;
-  String? session;
+  Map<String, dynamic>? profile, startCue;
   Map<String, dynamic>? sprint, readySprint, sprintAction;
   Map<String, dynamic>? pendingSprintNotice;
   String? hiddenSprintId;
@@ -176,11 +172,8 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   bool? recordingForSprint;
   int? recordingSetupGeneration;
   int tab = 0;
-  final watch = Stopwatch();
   List<String> _failedAttachmentKeys = const [];
   final stagedImages = <_StagedImage>[];
-  List<Map<String, dynamic>> planDraft = [];
-  List<Map<String, dynamic>> planAdviceItems = [];
   final planMessages = <_ChatLine>[];
   final historyMessages = <_ChatLine>[];
   final rememberedImages = <String, Uint8List>{};
@@ -193,14 +186,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   int? nextBeforeThreadVersion;
   String? historyCursorThreadId;
   bool loadingOlderMessages = false;
-  String? planFeedback;
-  String? planInteractionKind;
-  Map<String, dynamic>? planConfirmAction;
-  Map<String, dynamic>? planSuggestionAction, planClarifyAction;
-  List<Map<String, dynamic>> planClarificationSlots = [];
-  final dismissedPlanSuggestions = <String>{};
-  String? planDraftId;
-  int? planDraftVersion;
   String? failedPlanText, _failedCommandId;
   bool _failedPronunciation = false;
   List<Map<String, dynamic>> pronunciationLessons = const [];
@@ -323,13 +308,10 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         'app.search_photo.visible_latency', timer.elapsedMilliseconds.toDouble());
   }
 
-  bool planListOpen = false;
-  bool planChatOpen = false;
+  bool chatOpen = false;
   String? chatSubject;
-  final removedPoolTaskIds = <String>{};
   Timer? timer;
   Timer? cueRefresh;
-  int savedSeconds = 0;
   @override
   void initState() {
     super.initState();
@@ -417,7 +399,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
       body: Stack(fit: StackFit.expand, children: [
         SafeArea(child: switch (tab) {
           0 => _home(context),
-          1 => _growth(context),
+          1 => const WardWorksLibrary(),
           _ => _profile(context)
         }),
       ]),
@@ -440,7 +422,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
             NavigationDestination(
                 icon: Icon(Icons.eco_outlined),
                 selectedIcon: Icon(Icons.eco),
-                label: '成长'),
+                label: '作品'),
             NavigationDestination(
                 icon: Icon(Icons.person_outline),
                 selectedIcon: Icon(Icons.person),
@@ -450,15 +432,8 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   }
 
   Widget _home(BuildContext context) {
-    final planned = (plan?['items'] as List? ?? const []).cast<dynamic>();
     return Stack(children: [
-      if (planListOpen)
-        _planListOverlay(planned)
-      else if (planChatOpen)
-        _planChatOverlay()
-      else
-        _quietHome(),
-      if (!planListOpen)
+      if (chatOpen) _chatOverlay() else _quietHome(),
         Positioned(left: 16, right: 16, bottom: 12, child: _chatEntry()),
     ]);
   }
@@ -472,10 +447,8 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
               setState(() => _autoRead = !_autoRead);
               unawaited(ref.read(tokenStorageProvider).setAutoReadReplies(widget.wardId, _autoRead));
               if (!_autoRead) unawaited(_stopSpeech());
-            case 'tasks':
-              _openPlanList();
             case 'current':
-              _openPlanChat();
+              _openChat();
             case 'works':
               Navigator.push(context, MaterialPageRoute(builder: (_) => const WardWorksLibrary()));
             case 'history':
@@ -488,7 +461,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         },
         itemBuilder: (_) => [
           CheckedPopupMenuItem(value: 'autoRead', checked: _autoRead, child: const Text('自动朗读 Agent 回复')),
-          const PopupMenuItem(value: 'tasks', child: Text('作业')),
           PopupMenuItem(value: 'current', child: Text('当前对话')),
           PopupMenuItem(value: 'history', child: Text('历史对话')),
           PopupMenuItem(value: 'works', child: Text('我的作品')),
@@ -779,9 +751,9 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
             holdToTalkText: '说出你的任何想法、问题、安排',
             helperText: '按住说话',
             enabled: !_chatBusy && !sprintPreviewBusy && !sprintBusy,
-            onTap: sprintSetupOpen ? null : _openPlanChat,
+            onTap: sprintSetupOpen ? null : _openChat,
             onBeforeRecording: _beforeHomeRecording,
-            onPickImage: _pickPlanImage,
+            onPickImage: _pickChatImage,
             onVoiceDisplayText: sprintSetupOpen ? null : (text) => _voiceDisplayText = text,
             onVoiceFinal: _onHomeVoiceFinal),
       ]));
@@ -839,132 +811,9 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
             ]);
           }));
 
-  Widget _planListOverlay(List<dynamic> planned) {
-    final byId = <String, Map<String, dynamic>>{};
-    for (final raw in [...tasks, ...planned]) {
-      final row = Map<String, dynamic>.from(raw as Map);
-      byId[(row['assignment_id'] ?? row['id']).toString()] = row;
-    }
-    return _PlanSheetOverlay(
-        title: '已知作业',
-        subtitle: '按需查看，未确认完成不代表没做',
-        onClose: _closeHomeOverlay,
-        child: ListView(children: [
-          for (final item in byId.values)
-            ListTile(
-              title: Text(item['title'] as String? ?? '作业'),
-              subtitle: Text(_formatPlannedDuration(item)),
-              onTap: () => _taskTapped(
-                  item,
-                  planned.any((row) =>
-                      (row['assignment_id'] ?? row['id']) ==
-                      (item['assignment_id'] ?? item['id']))),
-              trailing: IconButton(
-                  tooltip: '任务操作',
-                  icon: const Icon(Icons.more_horiz),
-                  onPressed: () => _showTaskActions(item)),
-              onLongPress:
-                  item['source'] == 'ward' ? () => _removePoolTask(item) : null,
-            ),
-          if (byId.isEmpty) const ListTile(title: Text('目前没有已登记作业，可以直接学习或提问。')),
-        ]));
-  }
+  bool get _hasOlderHistory => nextBeforeThreadVersion != null;
 
-  Future<void> _showTaskActions(Map<String, dynamic> item) async {
-    final action = await showModalBottomSheet<String>(
-        context: context,
-        builder: (ctx) => SafeArea(
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-              for (final entry in const {
-                'start': '开始这项',
-                'pause': '暂停',
-                'resume': '继续',
-                'end': '这次先到这里',
-                'complete': '这项写完了',
-                'time': '查看已记录用时'
-              }.entries)
-                ListTile(
-                    title: Text(entry.value),
-                    onTap: () => Navigator.pop(ctx, entry.key)),
-            ])));
-    if (action == null) return;
-    try {
-      final result = await ref.read(apiProvider).taskCommand(
-          (item['assignment_id'] ?? item['id']).toString(), action);
-      if (mounted && action == 'time') {
-        final seconds = result['active_seconds'];
-        showMessage(
-            context,
-            seconds == null
-                ? '没有可靠执行计时记录'
-                : '显式会话计时约 ${(seconds as num) ~/ 60} 分钟，不是净专注时长');
-      }
-      await _load();
-    } catch (error) {
-      if (mounted) showMessage(context, userErrorMessage(error));
-    }
-  }
-
-  String _formatPlannedDuration(Map<String, dynamic> item) {
-    final mins = item['planned_minutes'] as num?;
-    if (mins != null && mins > 0) {
-      return item['duration_kind'] == 'timebox'
-          ? '本次打算投入 ${mins.toInt()} 分钟'
-          : '预计 ${mins.toInt()} 分钟';
-    }
-    return '未估时';
-  }
-
-  bool get _hasOlderHistory =>
-      nextBeforeThreadVersion != null;
-
-  Widget _planReviewCard(List<Map<String, dynamic>> items,
-          {required bool active}) =>
-      Padding(
-        padding: const EdgeInsets.only(top: 14),
-        child: AppCard(
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('已记录（待你确认）',
-              style: TextStyle(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 8),
-          for (final item in items) ...[
-            Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Text('• ${item['title']} · '
-                    '${_draftSlotLabel(item)} · '
-                    '${item['planned_minutes'] == null ? '未估时' : '约 ${item['planned_minutes']} 分钟'}')),
-            if (item['end_reminder_mode'] == 'scheduled')
-              const Text('按约定钟点到时提醒',
-                  style: TextStyle(color: Colors.blueGrey, fontSize: 12)),
-            if (item['end_reminder_mode'] == 'elapsed')
-              const Text('明确开始后按累计执行时长提醒，暂停不计时',
-                  style: TextStyle(color: Colors.blueGrey, fontSize: 12)),
-            if (item['end_reminder_mode'] == 'off')
-              const Text('已选择取消到时提醒，确认后生效',
-                  style: TextStyle(color: Colors.blueGrey, fontSize: 12)),
-            _planSuggestion(item, 'duration',
-                showActions: false, honorDismissal: active),
-            _planSuggestion(item, 'time',
-                showActions: false, honorDismissal: active),
-          ],
-          if (active) ...[
-            const SizedBox(height: 8),
-            SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                    onPressed: _chatBusy || planConfirmAction == null
-                        ? null
-                        : _confirmPlanDraft,
-                    child: const Text('确认这个计划'))),
-          ],
-        ])),
-      );
-
-  Widget _planChatOverlay() {
-    final canReviewDraft = planInteractionKind == 'plan_confirm_list' &&
-        planConfirmAction != null &&
-        planDraft.isNotEmpty;
+  Widget _chatOverlay() {
     final items = <Widget>[
       if (startCue?['status'] == 'presented')
         StartCueCard(
@@ -1002,7 +851,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
       const Padding(
         padding: EdgeInsets.only(top: 14),
         child:
-            _ChatBubble(label: '读学 AI', text: '遇到问题随时问我；需要时也可以查看作业，或试一轮专注挑战。'),
+            _ChatBubble(label: '读学 AI', text: '遇到问题随时问我；也可以试一轮专注挑战。'),
       ),
       for (final message in historyMessages) _chatMessage(message),
       for (final message in planMessages) _chatMessage(message),
@@ -1029,16 +878,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
                 child: const Text('重试')),
           ]),
         ),
-      if (canReviewDraft && !_currentMessageCarriesPlanReview)
-        _planReviewCard(planDraft, active: true),
-      for (final slot in planClarificationSlots)
-        if (slot['field'] == 'planned_minutes')
-          _planSuggestion(slot, 'clarification'),
-      if (planInteractionKind == 'clarify')
-        for (final item in planAdviceItems) ...[
-          _planSuggestion(item, 'duration'),
-          _planSuggestion(item, 'time'),
-        ],
       if (!_messagesCarryPronunciation)
         for (final item in pronunciationLessons)
           Padding(
@@ -1056,7 +895,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     return _HomeOverlay(
       banner: sprintSetupOpen ? _spokenSprintCard() : _activeSprintCard(),
       title: '读学',
-      subtitle: '随时提问，需要时再安排。',
+      subtitle: '问功课，也可以聊聊好奇的事。',
       bottomInset: stagedImages.isNotEmpty ? 164 : 92,
       onClose: _closeHomeOverlay,
       closeTooltip: '收起对话',
@@ -1100,7 +939,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         if (mounted) showMessage(context, '对话加载失败，请重新打开');
       }
     }
-    if (mounted) _openPlanChat();
+    if (mounted) _openChat();
   }
 
   void _resetThread() {
@@ -1121,17 +960,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     nextBeforeThreadVersion = null;
     loadingOlderMessages = false;
     _userScrolledAwayFromTop = false;
-    planDraft = [];
-    planAdviceItems = [];
-    planClarificationSlots = [];
-    dismissedPlanSuggestions.clear();
-    planFeedback = null;
-    planInteractionKind = null;
-    planConfirmAction = null;
-    planSuggestionAction = null;
-    planClarifyAction = null;
-    planDraftId = null;
-    planDraftVersion = null;
     failedPlanText = null;
     pronunciationLessons = const [];
     chatSubject = null;
@@ -1189,46 +1017,22 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     unawaited(_stopSpeech());
     setState(() {
       _discardSprintSetup();
-      planListOpen = false;
-      planChatOpen = false;
+      chatOpen = false;
       hiddenSprintId = null;
     });
     _refreshSprint();
   }
 
-  void _openPlanList() {
-    unawaited(_stopSpeech());
+  void _openChat([String? subject]) {
+    final wasOpen = chatOpen;
     setState(() {
       _discardSprintSetup();
-      planChatOpen = false;
-      planListOpen = true;
-    });
-  }
-
-  void _openPlanChat([String? subject]) {
-    final wasOpen = planChatOpen;
-    setState(() {
-      _discardSprintSetup();
-      planListOpen = false;
       chatSubject = subject;
-      planChatOpen = true;
+      chatOpen = true;
     });
     if (!wasOpen) {
       _scrollToChatBottom();
     }
-  }
-
-  String _draftSlotLabel(Map<String, dynamic> item) {
-    final start = DateTime.tryParse(item['start_at'] as String? ?? '');
-    final end = DateTime.tryParse(item['end_at'] as String? ?? '');
-    String clock(DateTime value) {
-      // Offset timestamps parse as UTC; display the agreed Shanghai clock.
-      final local = value.isUtc ? value.add(const Duration(hours: 8)) : value;
-      return '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
-    }
-
-    if (start == null) return '未排时间';
-    return end == null ? '${clock(start)} 开始' : '${clock(start)}–${clock(end)}';
   }
 
   Future<void> _sendDraft({String? spoken, String? display, bool pronunciation = false}) async {
@@ -1248,10 +1052,9 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     final content = text.isEmpty ? '请看这张图片。' : text;
     final attachments = stagedImages.where((image) => image.key != null).toList();
     final images = [for (final image in attachments) image.bytes];
-    _openPlanChat();
+    _openChat();
     setState(() {
       _anchorPronunciationLessons();
-      _anchorPlanReview();
       stagedImages.removeWhere((image) => image.key != null);
       planMessages.add(_ChatLine(label: '我', content: content, images: images));
     });
@@ -1260,40 +1063,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         attachmentKeys: [for (final image in attachments) image.key!],
         pronunciation: pronunciation, display: display);
   }
-
-  Widget _growth(BuildContext context) =>
-      ListView(padding: const EdgeInsets.all(16), children: [
-        const SectionLabel('今天'),
-        TextButton(onPressed: _review, child: const Text('说说今天的感受')),
-        if (insight == null)
-          const AppCard(
-              child: ListTile(
-                  leading: Icon(Icons.edit_note),
-                  title: Text('今天的反馈等待生成'),
-                  subtitle: Text('完成今天的自我总结后，这里会出现你的感受和观察记录的对照。')))
-        else
-          AppCard(
-              child: Padding(
-                  padding: const EdgeInsets.all(4),
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const ListTile(
-                            leading: Icon(Icons.compare_arrows),
-                            title: Text('你的感受与观察记录'),
-                            subtitle: Text('先看自己的体感，再一起发现学习节奏。')),
-                        Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                            child:
-                                Text('观察记录：${insight!['objective_timeline']}'))
-                      ]))),
-        const SectionLabel('过去的成长'),
-        const AppCard(
-            child: ListTile(
-                leading: Icon(Icons.history),
-                title: Text('历史总结与反馈'),
-                subtitle: Text('过去的成长信息始终可以查看'))),
-      ]);
 
   Widget _profile(BuildContext context) {
     final guardians =
@@ -1329,22 +1098,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
           child: Text('退出只会移除这台设备的登录凭据，不会删除学习记录或家庭关联。',
               style: TextStyle(fontSize: 12, color: Colors.blueGrey))),
     ]);
-  }
-
-  Future<void> _removePoolTask(Map<String, dynamic> item) async {
-    final id = item['id'] as String;
-    setState(() => removedPoolTaskIds.add(id));
-    try {
-      await ref.read(apiProvider).deleteAssignment(widget.wardId, id);
-      if (!mounted) return;
-      setState(() => tasks.removeWhere((row) => row['id'] == id));
-      showMessage(context, '「${item['title']}」已从任务池移除');
-    } on DioException catch (error) {
-      if (!mounted) return;
-      setState(() => removedPoolTaskIds.remove(id));
-      showMessage(context, '删除失败：${userErrorMessage(error)}');
-      await _load();
-    }
   }
 
   String _newCommandId() =>
@@ -1419,7 +1172,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     unawaited(_stopSpeech());
     final generation = ++sprintSetupGeneration;
     setState(() {
-      planListOpen = false;
       sprintSetupOpen = true;
       spokenSprintDraft = spokenSprintPreview = null;
       sprintPreviewBusy = false;
@@ -1517,7 +1269,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
           onStage: onStage,
           threadId: companionThreadId,
           expectedThreadVersion: companionThreadVersion,
-          routeHint: 'planning',
           structuredCommand: {
             'interaction_id': action['id'],
             'command': 'sprint_command',
@@ -1540,17 +1291,9 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   }
 
   Future<void> _load() async {
-    tasks = await ref.read(apiProvider).assignments(widget.wardId);
     try {
       profile = await ref.read(apiProvider).wardProfile();
     } catch (_) {}
-    try {
-      plan = await ref.read(apiProvider).plan(widget.wardId, DateTime.now());
-    } on DioException catch (error) {
-      if (error.response?.statusCode != 404) rethrow;
-      plan = null;
-    }
-    _restoreActiveSession();
     try {
       startCue = await ref.read(apiProvider).currentStartCue();
       await CueNotifications.replace(startCue?['notifications']);
@@ -1622,416 +1365,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
     if (mounted) context.go('/login');
   }
 
-  void _restoreActiveSession() {
-    if (session != null) {
-      return;
-    }
-    final candidates = <Map<String, dynamic>>[
-      ...((plan?['items'] as List? ?? const []).cast<Map<String, dynamic>>()),
-      ...tasks.cast<Map<String, dynamic>>(),
-    ];
-    final current = candidates.cast<Map<String, dynamic>?>().firstWhere(
-        (item) =>
-            item?['session'] != null && item?['session']['status'] == 'active',
-        orElse: () => null);
-    if (current == null) {
-      return;
-    }
-    final data = current['session'] as Map<String, dynamic>;
-    session = data['id'] as String;
-    savedSeconds = data['active_seconds'] as int? ?? 0;
-    watch
-      ..reset()
-      ..start();
-    timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() {});
-    });
-  }
-
-  int get _elapsedSeconds => savedSeconds + watch.elapsed.inSeconds;
-
-  Future<void> _review() async {
-    final expressionController = TextEditingController();
-    final reviewDay = DateTime.now();
-    try {
-      var prompt = '今天学了什么、哪里还不明白？有没有花时间特别久的地方？想到什么就用自己的话说出来。';
-      var expectedVersion = 0;
-      try {
-        final invitation = await ref
-            .read(apiProvider)
-            .selfReviewPrompt(widget.wardId, reviewDay);
-        prompt = invitation['prompt'] as String? ?? prompt;
-      } catch (_) {
-        // The Ward can always write a summary when supporting evidence is unavailable.
-      }
-      try {
-        final current =
-            await ref.read(apiProvider).selfReview(widget.wardId, reviewDay);
-        expressionController.text = current['raw_expression'] as String? ?? '';
-        expectedVersion = current['version'] as int? ?? 0;
-      } catch (_) {
-        // A first review has no saved expression yet.
-      }
-      if (!mounted) return;
-      final expression = await showDialog<String>(
-          context: context,
-          builder: (dialogContext) => StatefulBuilder(
-              builder: (dialogContext, updateDialog) => AlertDialog(
-                      title: const Text('说说今天的学习'),
-                      content: SizedBox(
-                          width: 460,
-                          child: SingleChildScrollView(
-                              child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                Text(prompt),
-                                const SizedBox(height: 12),
-                                TextField(
-                                    controller: expressionController,
-                                    maxLines: 5,
-                                    maxLength: 4000,
-                                    onChanged: (_) => updateDialog(() {}),
-                                    decoration: const InputDecoration(
-                                        hintText: '用自己的话记录今天的想法',
-                                        border: OutlineInputBorder())),
-                                VoiceComposer(
-                                    baseUrl: apiBaseUrl,
-                                    tokens: ref.read(tokenStorageProvider),
-                                    telemetry: ref.read(telemetryProvider),
-                                    voiceFactory: widget.voiceFactory,
-                                    holdToTalkText: '按住说总结',
-                                    showImageAction: false,
-                                    onBeforeRecording: () => ref
-                                        .read(apiProvider)
-                                        .ensureValidAccess(),
-                                    onPickImage: () async {},
-                                    onVoiceFinal: (text) async {
-                                      expressionController.text =
-                                          '${expressionController.text.trim()} $text'
-                                              .trim();
-                                      updateDialog(() {});
-                                    }),
-                              ]))),
-                      actions: [
-                        TextButton(
-                            onPressed: () => Navigator.pop(dialogContext),
-                            child: const Text('稍后再说')),
-                        FilledButton(
-                            onPressed: expressionController.text.trim().isEmpty
-                                ? null
-                                : () => Navigator.pop(dialogContext,
-                                    expressionController.text.trim()),
-                            child: const Text('整理我的总结')),
-                      ])));
-      if (expression == null || !mounted) return;
-      final draft = await ref
-          .read(apiProvider)
-          .draftSelfReview(widget.wardId, reviewDay, expression);
-      if (!mounted) return;
-      final rows = (draft['aspects'] as List? ?? const [])
-          .map((item) => Map<String, dynamic>.from(item as Map))
-          .toList();
-      const aspectLabels = {
-        'understanding': '理解与疑问',
-        'strategy': '试过的方法',
-        'time_help': '用时与求助',
-        'affect': '感受与信心',
-        'context': '学习情境',
-        'next_intent': '下次想怎么做',
-      };
-      final edits = [
-        for (final row in rows)
-          TextEditingController(text: row['statement'] as String? ?? '')
-      ];
-      final confirmed = await showDialog<List<Map<String, dynamic>>>(
-          context: context,
-          builder: (dialogContext) => StatefulBuilder(
-              builder: (dialogContext, updateDialog) => AlertDialog(
-                    title: const Text('确认你的总结'),
-                    content: SizedBox(
-                        width: 460,
-                        child: SingleChildScrollView(
-                            child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                              Text(expression),
-                              const SizedBox(height: 14),
-                              if (rows.isEmpty)
-                                const Text('暂时没有整理出条目。仍可以保存你的原话。'),
-                              for (var i = 0; i < rows.length; i++)
-                                Card(
-                                    child: Padding(
-                                        padding: const EdgeInsets.all(8),
-                                        child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Row(children: [
-                                                Expanded(
-                                                    child: Text(aspectLabels[
-                                                            rows[i][
-                                                                'dimension']] ??
-                                                        '学习想法')),
-                                                IconButton(
-                                                    tooltip: '删除这条整理',
-                                                    onPressed: () =>
-                                                        updateDialog(() {
-                                                          rows.removeAt(i);
-                                                          edits
-                                                              .removeAt(i)
-                                                              .dispose();
-                                                        }),
-                                                    icon:
-                                                        const Icon(Icons.close))
-                                              ]),
-                                              Text(
-                                                  '原话：${rows[i]['source_quote']}'),
-                                              TextField(
-                                                  controller: edits[i],
-                                                  maxLength: 300,
-                                                  onChanged: (_) =>
-                                                      updateDialog(() {}),
-                                                  decoration:
-                                                      const InputDecoration(
-                                                          labelText:
-                                                              '你可以修改这条整理'))
-                                            ])))
-                            ]))),
-                    actions: [
-                      TextButton(
-                          onPressed: () => Navigator.pop(dialogContext),
-                          child: const Text('返回')),
-                      FilledButton(
-                          onPressed:
-                              edits.any((item) => item.text.trim().isEmpty)
-                                  ? null
-                                  : () => Navigator.pop(dialogContext, [
-                                        for (var i = 0; i < rows.length; i++)
-                                          {
-                                            ...rows[i],
-                                            'statement': edits[i].text.trim()
-                                          }
-                                      ]),
-                          child: const Text('确认并保存'))
-                    ],
-                  )));
-      for (final edit in edits) {
-        edit.dispose();
-      }
-      if (confirmed == null || !mounted) return;
-      await ref.read(apiProvider).confirmSelfReview(
-          widget.wardId, reviewDay, expression, confirmed, expectedVersion);
-      await _refreshCue();
-      insight = await ref.read(apiProvider).insight(widget.wardId, reviewDay);
-      if (mounted) setState(() => tab = 2);
-    } catch (e) {
-      if (mounted) showMessage(context, '提交自我总结失败：${userErrorMessage(e)}');
-    } finally {
-      expressionController.dispose();
-    }
-  }
-
-  Future<void> _taskTapped(Map<String, dynamic> item, bool planned) async {
-    final kind = homeTaskCardKind(item);
-    final rawSession = item['session'];
-    final data =
-        rawSession is Map ? Map<String, dynamic>.from(rawSession) : null;
-    if (kind == HomeTaskCardKind.completed) {
-      return;
-    }
-    if (kind == HomeTaskCardKind.inProgress && data != null) {
-      return _showActiveActions(item, data);
-    }
-    if (kind == HomeTaskCardKind.paused && data != null) {
-      final sessionId = data['id'] as String;
-      final seconds = data['active_seconds'] as int? ?? 0;
-      return _showPausedActions(item, sessionId, seconds);
-    }
-    await _showStartTaskDialog(item, planned);
-  }
-
-  Future<void> _showStartTaskDialog(
-      Map<String, dynamic> item, bool planned) async {
-    final taskTitle = item['title'] as String? ?? '当前任务';
-    final durationText = _formatPlannedDuration(item);
-    final details = item['details'] as String?;
-    final approved = await showDialog<bool>(
-        context: context,
-        builder: (dialogContext) => StartTaskDialog(
-              taskTitle: taskTitle,
-              isPlanned: planned,
-              durationText: durationText,
-              details: details,
-            ));
-    if (approved != true) return;
-    try {
-      final result = planned
-          ? await ref.read(apiProvider).startSession(item['id'] as String)
-          : await ref
-              .read(apiProvider)
-              .startAssignmentSession(item['id'] as String);
-      final sessionId = result['id'] as String;
-      final seconds = result['active_seconds'] as int? ?? 0;
-      _patchTaskSession(item['id'] as String, {
-        'id': sessionId,
-        'status': 'active',
-        'active_seconds': seconds,
-      });
-      _trackSession(sessionId, seconds);
-      await _load();
-    } catch (error) {
-      if (mounted) showMessage(context, '操作未完成：${userErrorMessage(error)}');
-    }
-  }
-
-  int _secondsFor(Map<String, dynamic> data) {
-    final id = data['id'] as String?;
-    if (id != null && id == session) return _elapsedSeconds;
-    return data['active_seconds'] as int? ?? 0;
-  }
-
-  Future<void> _showActiveActions(
-      Map<String, dynamic> item, Map<String, dynamic> data) {
-    final taskId = item['id'] as String;
-    final taskTitle = item['title'] as String? ?? '当前任务';
-    final sessionId = data['id'] as String;
-    final seconds = _secondsFor(data);
-    final details = item['details'] as String?;
-    return showDialog<void>(
-        context: context,
-        builder: (dialogContext) => ActiveTaskDialog(
-              taskTitle: taskTitle,
-              seconds: seconds,
-              details: details,
-              onPause: () {
-                Navigator.pop(dialogContext);
-                _pauseSession(taskId, sessionId, seconds);
-              },
-              onFinish: () {
-                Navigator.pop(dialogContext);
-                _confirmFinishTask(taskTitle, taskId, sessionId, seconds);
-              },
-            ));
-  }
-
-  Future<void> _showPausedActions(
-      Map<String, dynamic> item, String sessionId, int seconds) async {
-    final taskId = item['id'] as String;
-    final taskTitle = item['title'] as String? ?? '当前任务';
-    final details = item['details'] as String?;
-    final action = await showDialog<String>(
-        context: context,
-        builder: (dialogContext) => PausedTaskDialog(
-              taskTitle: taskTitle,
-              seconds: seconds,
-              details: details,
-            ));
-    if (action == 'resume') {
-      await _resumeSession(taskId, sessionId, seconds);
-    } else if (action == 'finish') {
-      await _confirmFinishTask(taskTitle, taskId, sessionId, seconds);
-    }
-  }
-
-  Future<void> _confirmFinishTask(
-      String taskTitle, String taskId, String sessionId, int seconds) async {
-    final approved = await showDialog<bool>(
-        context: context,
-        builder: (dialogContext) => FinishTaskConfirmDialog(
-              taskTitle: taskTitle,
-              seconds: seconds,
-            ));
-    if (approved != true) return;
-    await _finishSession(taskId, sessionId, seconds, taskTitle: taskTitle);
-  }
-
-  void _patchTaskSession(String taskId, Map<String, dynamic>? session) {
-    tasks = [
-      for (final raw in tasks)
-        if (raw is Map && raw['id'] == taskId)
-          {...Map<String, dynamic>.from(raw), 'session': session}
-        else
-          raw,
-    ];
-    final items = plan?['items'];
-    if (items is List) {
-      plan = {
-        ...plan!,
-        'items': [
-          for (final raw in items)
-            if (raw is Map &&
-                (raw['id'] == taskId || raw['assignment_id'] == taskId))
-              {...Map<String, dynamic>.from(raw), 'session': session}
-            else
-              raw,
-        ],
-      };
-    }
-    setState(() {});
-  }
-
-  void _trackSession(String sessionId, int seconds) {
-    session = sessionId;
-    savedSeconds = seconds;
-    watch
-      ..reset()
-      ..start();
-    timer?.cancel();
-    timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() {});
-    });
-  }
-
-  void _clearTrackedSession(String sessionId) {
-    if (session != sessionId) return;
-    watch.stop();
-    timer?.cancel();
-    session = null;
-    savedSeconds = 0;
-  }
-
-  Future<void> _pauseSession(
-      String taskId, String sessionId, int seconds) async {
-    try {
-      final result =
-          await ref.read(apiProvider).pauseSession(sessionId, seconds);
-      if (!mounted) return;
-      _clearTrackedSession(sessionId);
-      _patchTaskSession(taskId, result);
-      await _load();
-    } catch (error) {
-      if (mounted) showMessage(context, '操作未完成：${userErrorMessage(error)}');
-    }
-  }
-
-  Future<void> _resumeSession(
-      String taskId, String sessionId, int seconds) async {
-    try {
-      final result = await ref.read(apiProvider).resumeSession(sessionId);
-      if (!mounted) return;
-      _patchTaskSession(taskId, result);
-      _trackSession(sessionId, (result['active_seconds'] as int?) ?? seconds);
-      await _load();
-    } catch (error) {
-      if (mounted) showMessage(context, '操作未完成：${userErrorMessage(error)}');
-    }
-  }
-
-  Future<void> _finishSession(String taskId, String sessionId, int seconds,
-      {String? taskTitle}) async {
-    try {
-      await ref.read(apiProvider).finishSession(sessionId, seconds);
-      if (!mounted) return;
-      _clearTrackedSession(sessionId);
-      _patchTaskSession(taskId, null);
-      showMessage(context, '已记录你声明这项作业完成。');
-      await _load();
-    } catch (error) {
-      if (mounted) showMessage(context, '操作未完成：${userErrorMessage(error)}');
-    }
-  }
-
   Future<PickedChatImage?> _defaultPickChatImage() async {
     final image = await ImagePicker().pickImage(
       source: defaultChatImageSource,
@@ -2045,7 +1378,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         bytes: await image.readAsBytes(), extension: extension);
   }
 
-  Future<void> _pickPlanImage() async {
+  Future<void> _pickChatImage() async {
     if (clearingHistory) return;
     if (sprintSetupOpen) setState(_discardSprintSetup);
     final generation = _chatGeneration;
@@ -2064,7 +1397,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
       showMessage(context, '暂只支持 JPG、PNG 或 WebP 图片');
       return;
     }
-    _openPlanChat();
+    _openChat();
     final staged = _StagedImage(bytes: image.bytes, extension: image.extension);
     setState(() => stagedImages.add(staged));
     try {
@@ -2208,14 +1541,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
         interaction['object_ref'] as Map? ?? const {});
     final actions = (interaction['actions'] as List? ?? const [])
         .map((action) => Map<String, dynamic>.from(action as Map));
-    Map<String, dynamic>? draft;
     Map<String, dynamic>? lesson;
-    if (objectRef['context'] == 'planning' &&
-        objectRef['object_id'] is String) {
-      draft = await ref
-          .read(apiProvider)
-          .companionPlanDraft(objectRef['object_id'] as String);
-    }
     if (interaction['kind'] == 'pronunciation_lesson' &&
         objectRef['object_id'] is String) {
       lesson = await ref
@@ -2223,8 +1549,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
           .pronunciationLesson(objectRef['object_id'] as String);
     }
     if (!mounted || generation != _chatGeneration) return;
-    final nextDraftId = draft?['draft_id'] as String?;
-    final nextDraftVersion = draft?['object_version'] as int?;
     setState(() {
       final quiet = interaction['observation_quiet'];
       if (quiet is Map && quiet['ward_version'] is int && quiet['ward_version'] > _quietVersion) {
@@ -2239,63 +1563,16 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
                 if (item is Map) Map<String, dynamic>.from(item),
             ]
           : (lesson != null ? [lesson] : const []);
-      planFeedback = ((interaction['parts'] as List? ?? const []).isNotEmpty)
-          ? Map<String, dynamic>.from(
-              (interaction['parts'] as List).first as Map)['text'] as String?
-          : null;
-      planConfirmAction = null;
       sprintAction = null;
-      planSuggestionAction = null;
-      planClarifyAction = null;
       for (final action in actions) {
         if (action['command'] == 'sprint_command' &&
             action['enabled'] == true) {
           sprintAction = action;
         }
-        if (action['command'] == 'confirm_plan' && action['enabled'] == true) {
-          planConfirmAction = action;
-        }
-        if (action['command'] == 'accept_plan_suggestion' &&
-            action['enabled'] == true) {
-          planSuggestionAction = action;
-        }
-        if (action['command'] == 'clarify_reply' && action['enabled'] == true) {
-          planClarifyAction = action;
-        }
       }
-      planInteractionKind = interaction['kind'] as String?;
-      final canReview = planInteractionKind == 'plan_confirm_list' &&
-          planConfirmAction != null;
-      planDraft = canReview
-          ? (draft?['items'] as List? ?? const [])
-              .map((item) => Map<String, dynamic>.from(item as Map))
-              .toList()
-          : [];
-      planAdviceItems = planInteractionKind == 'clarify'
-          ? (draft?['items'] as List? ?? const [])
-              .map((item) => Map<String, dynamic>.from(item as Map))
-              .toList()
-          : [];
-      if (planDraftId != nextDraftId || planDraftVersion != nextDraftVersion) {
-        dismissedPlanSuggestions.clear();
-      }
-      planDraftId = nextDraftId;
-      planDraftVersion = nextDraftVersion;
-      final batch = Map<String, dynamic>.from(
-          draft?['clarification_batch'] as Map? ?? const {});
-      planClarificationSlots = planInteractionKind == 'clarify'
-          ? (batch['slots'] as List? ?? const [])
-              .map((slot) => Map<String, dynamic>.from(slot as Map))
-              .toList()
-          : [];
     });
-    // RegisterTask happens inside the Planning workflow.  Reload the home
-    // projections immediately so an unscheduled task is visible in its
-    // actual task-pool home, not only in this transient chat card.
-    await _load();
-    if (!mounted || generation != _chatGeneration) return;
     await _refreshTranscript(completesReply: true, timing: timing);
-    if (!mounted || !sprintForeground || !_autoRead || tab != 0 || !planChatOpen ||
+    if (!mounted || !sprintForeground || !_autoRead || tab != 0 || !chatOpen ||
         generation != _chatGeneration || speechGeneration != _speechGeneration) {
       return;
     }
@@ -2305,237 +1582,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
       if (message.readable && message.commandId == commandId) {
         unawaited(_readReply(message));
         break;
-      }
-    }
-  }
-
-  String? _suggestedClock(dynamic value) {
-    final parsed = DateTime.tryParse(value?.toString() ?? '');
-    if (parsed == null) return null;
-    final shanghai = parsed.toUtc().add(const Duration(hours: 8));
-    return '${shanghai.hour.toString().padLeft(2, '0')}:${shanghai.minute.toString().padLeft(2, '0')}';
-  }
-
-  Widget _planSuggestion(Map<String, dynamic> target, String kind,
-      {bool showActions = true, bool honorDismissal = true}) {
-    final raw =
-        target[kind == 'time' ? 'time_suggestion' : 'duration_suggestion'];
-    if (raw is! Map) return const SizedBox.shrink();
-    final suggestion = Map<String, dynamic>.from(raw);
-    final targetId = (target['assignment_id'] ?? target['slot_id'])?.toString();
-    if (targetId == null) return const SizedBox.shrink();
-    final key = '$kind:$targetId';
-    if (honorDismissal && dismissedPlanSuggestions.contains(key)) {
-      return const SizedBox.shrink();
-    }
-    final minutes = suggestion['suggested_minutes'];
-    final start = _suggestedClock(suggestion['suggested_start_at']);
-    final end = _suggestedClock(suggestion['suggested_end_at']);
-    final text = kind == 'time'
-        ? '${suggestion['reason']} ${start == null ? '目前没有不冲突的调整时间。' : '可改为 $start–$end。'}建议时段为 07:00–22:00。'
-        : '${target['title']}：近 15 天 ${suggestion['sample_count']} 次同名任务，实际用时中位数约 ${suggestion['actual_median_minutes']} 分钟，建议预计 $minutes 分钟。';
-    final canAccept =
-        (kind == 'clarification' ? planClarifyAction : planSuggestionAction) !=
-                null &&
-            (kind != 'time' || start != null);
-    return Padding(
-      padding: const EdgeInsets.only(top: 6, bottom: 6),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(text, style: const TextStyle(fontSize: 12)),
-        if (showActions)
-          Row(children: [
-            if (canAccept)
-              TextButton(
-                key: Key('accept-plan-suggestion-$key'),
-                onPressed: _chatBusy
-                    ? null
-                    : () => _acceptPlanSuggestion(target, kind),
-                child: const Text('采用建议'),
-              ),
-            TextButton(
-              key: Key('dismiss-plan-suggestion-$key'),
-              onPressed: () =>
-                  setState(() => dismissedPlanSuggestions.add(key)),
-              child: const Text('先不改'),
-            ),
-          ]),
-      ]),
-    );
-  }
-
-  Future<void> _acceptPlanSuggestion(
-      Map<String, dynamic> target, String kind) async {
-    if (_chatBusy || planDraftId == null || planDraftVersion == null) return;
-    final action =
-        kind == 'clarification' ? planClarifyAction : planSuggestionAction;
-    if (action == null) return;
-    final payload = kind == 'clarification'
-        ? {
-            'draft_id': planDraftId,
-            'answers': [
-              {
-                'slot_id': target['slot_id'],
-                'value':
-                    '${(target['duration_suggestion'] as Map)['suggested_minutes']}分钟'
-              },
-            ],
-          }
-        : {
-            'draft_id': planDraftId,
-            'expected_draft_version': planDraftVersion,
-            'kind': kind,
-            'task_id': target['assignment_id'],
-            'expected_fingerprint':
-                (target['${kind}_suggestion'] as Map)['fingerprint'],
-          };
-    final generation = _chatGeneration;
-    final speechGeneration = _speechGeneration;
-    final onStage = _startCompanionReply();
-    try {
-      final result = await ref.read(apiProvider).companionTurn(
-        content: '采用建议',
-        onStage: onStage,
-        threadId: companionThreadId,
-        expectedThreadVersion: companionThreadVersion,
-        structuredCommand: {
-          'interaction_id': action['id'],
-          'command': action['command'],
-          'payload': payload,
-        },
-      );
-      if (!mounted || generation != _chatGeneration) return;
-      await _applyPlanTurnResult(result, speechGeneration: speechGeneration);
-    } on DioException catch (error) {
-      if (!mounted || generation != _chatGeneration) return;
-      if (error.response?.statusCode == 409) {
-        if (mounted && generation == _chatGeneration) {
-          setState(() {
-            planDraft = [];
-            planAdviceItems = [];
-            planClarificationSlots = [];
-            planSuggestionAction = null;
-            planClarifyAction = null;
-          });
-        }
-        await _load();
-        if (!mounted || generation != _chatGeneration) return;
-        await _refreshTranscript(restoreReviewAction: false);
-        if (mounted && generation == _chatGeneration) {
-          showMessage(context, '计划已变化，请重新说明或审阅。');
-        }
-      } else if (mounted && generation == _chatGeneration) {
-        showMessage(context, '采用建议失败，请稍后重试');
-      }
-    } catch (_) {
-      if (!mounted || generation != _chatGeneration) return;
-      if (mounted && generation == _chatGeneration) {
-        showMessage(context, '采用建议失败，请稍后重试');
-      }
-    } finally {
-      if (mounted && generation == _chatGeneration) {
-        setState(() => planSending = false);
-        _presentSprintNotice();
-      }
-    }
-  }
-
-  Future<void> _confirmPlanDraft() async {
-    if (planDraft.isEmpty ||
-        _chatBusy ||
-        planConfirmAction == null ||
-        planDraftId == null ||
-        planDraftVersion == null) {
-      return;
-    }
-    final generation = _chatGeneration;
-    final onStage = _startCompanionReply();
-    try {
-      final result = await ref.read(apiProvider).companionTurn(
-          content: '确认这个计划',
-          onStage: onStage,
-          threadId: companionThreadId,
-          expectedThreadVersion: companionThreadVersion,
-          structuredCommand: {
-            'interaction_id': planConfirmAction!['id'],
-            'command': 'confirm_plan',
-            'payload': {
-              'draft_id': planDraftId,
-              'expected_draft_version': planDraftVersion,
-            },
-          });
-      if (!mounted || generation != _chatGeneration) return;
-      final interaction =
-          Map<String, dynamic>.from(result['interaction'] as Map? ?? const {});
-      final confirmed = result['run_status'] == 'closed' &&
-          interaction['status'] == 'confirmed';
-      if (!confirmed) {
-        throw StateError('服务端尚未确认计划');
-      }
-      companionThreadVersion = result['thread_version'] as int?;
-      if (companionThreadId != null && companionThreadVersion != null) {
-        await ref
-            .read(tokenStorageProvider)
-            .saveCompanionThread(companionThreadId!, companionThreadVersion!);
-      }
-      if (!mounted || generation != _chatGeneration) return;
-      planDraft = [];
-      planAdviceItems = [];
-      planFeedback = null;
-      planInteractionKind = null;
-      planConfirmAction = null;
-      planSuggestionAction = null;
-      planClarifyAction = null;
-      planClarificationSlots = [];
-      dismissedPlanSuggestions.clear();
-      planDraftId = null;
-      planDraftVersion = null;
-      await _load();
-      if (!mounted || generation != _chatGeneration) return;
-      await _refreshTranscript(completesReply: true);
-      if (mounted && generation == _chatGeneration) {
-        showMessage(context, '今天计划已确认');
-      }
-    } on DioException catch (error) {
-      if (!mounted || generation != _chatGeneration) return;
-      if (error.response?.statusCode == 409) {
-        if (mounted && generation == _chatGeneration) {
-          setState(() {
-            planDraft = [];
-            planAdviceItems = [];
-            planConfirmAction = null;
-            planSuggestionAction = null;
-            planClarifyAction = null;
-            planClarificationSlots = [];
-            planDraftId = null;
-            planDraftVersion = null;
-            planInteractionKind = null;
-          });
-        }
-        // The rejected action is no longer usable. Refresh projections and
-        // the thread version best-effort; neither failure should suppress the
-        // recovery message or leave the stale card on screen.
-        try {
-          await _load();
-          if (!mounted || generation != _chatGeneration) return;
-          await _refreshTranscript(restoreReviewAction: false);
-        } catch (_) {
-          if (!mounted || generation != _chatGeneration) return;
-        }
-        if (mounted && generation == _chatGeneration) {
-          showMessage(context, '计划已变化，已刷新，请重新说明或确认。');
-        }
-      } else if (mounted && generation == _chatGeneration) {
-        showMessage(context, '确认计划失败，请稍后重试');
-      }
-    } catch (_) {
-      if (!mounted || generation != _chatGeneration) return;
-      if (mounted && generation == _chatGeneration) {
-        showMessage(context, '确认计划失败，请稍后重试');
-      }
-    } finally {
-      if (mounted && generation == _chatGeneration) {
-        setState(() => planSending = false);
-        _presentSprintNotice();
       }
     }
   }
@@ -2582,32 +1628,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   bool get _messagesCarryPronunciation =>
       historyMessages.any((message) => message.lessons.isNotEmpty) ||
       planMessages.any((message) => message.lessons.isNotEmpty);
-
-  bool get _currentMessageCarriesPlanReview =>
-      [...historyMessages, ...planMessages].any((message) =>
-          message.threadId == companionThreadId &&
-          message.threadVersion == companionThreadVersion &&
-          message.planReview != null);
-
-  void _anchorPlanReview() {
-    if (planInteractionKind != 'plan_confirm_list' ||
-        planDraft.isEmpty ||
-        _currentMessageCarriesPlanReview) {
-      return;
-    }
-    for (final lines in [planMessages, historyMessages]) {
-      for (var index = lines.length - 1; index >= 0; index--) {
-        if (lines[index].label == '我') {
-          continue;
-        }
-        lines[index] = lines[index].copyWith(interactionRef: {
-          'kind': 'plan_confirm_list',
-          'card_snapshot': {'items': planDraft},
-        });
-        return;
-      }
-    }
-  }
 
   void _anchorPronunciationLessons() {
     if (pronunciationLessons.isEmpty) return;
@@ -2691,12 +1711,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
                 padding: const EdgeInsets.only(top: 8),
                 child: _pronunciationCard(lesson),
               ),
-            if (message.planReview != null)
-              _planReviewCard(message.planReview!,
-                  active: message.threadId == companionThreadId &&
-                      message.threadVersion == companionThreadVersion &&
-                      planConfirmAction != null &&
-                      planDraft.isNotEmpty),
           ],
         ),
       );
@@ -2740,7 +1754,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
       if (!mounted ||
           revision != _chatScrollRevision ||
           generation != _chatGeneration ||
-          !planChatOpen ||
+          !chatOpen ||
           !_chatScrollController.hasClients) {
         return;
       }
@@ -2765,7 +1779,7 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   // immediately when the list first renders at pixels == 0.
   bool _userScrolledAwayFromTop = false;
   void _onChatScroll() {
-    if (!planChatOpen ||
+    if (!chatOpen ||
         loadingOlderMessages ||
         !_hasOlderHistory ||
         !_chatScrollController.hasClients) {
@@ -2842,7 +1856,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
   }
 
   Future<void> _refreshTranscript({
-    bool restoreReviewAction = true,
     bool completesReply = false,
     ConversationTurn? timing,
   }) async {
@@ -2882,32 +1895,6 @@ class _WardDayPageState extends ConsumerState<WardDayPage>
       planMessages
         ..clear()
         ..addAll(latestLines);
-      final latestReview =
-          latestLines.isNotEmpty && latestLines.last.threadVersion == version
-              ? latestLines.last
-              : null;
-      final reviewRef = latestReview?.interactionRef;
-      if (restoreReviewAction &&
-          latestReview?.planReview != null &&
-          reviewRef != null) {
-        final action = (reviewRef['actions'] as List? ?? const [])
-            .whereType<Map>()
-            .map((value) => Map<String, dynamic>.from(value))
-            .where((value) =>
-                value['command'] == 'confirm_plan' && value['enabled'] == true);
-        final objectRef = reviewRef['object_ref'] is Map
-            ? Map<String, dynamic>.from(reviewRef['object_ref'] as Map)
-            : const <String, dynamic>{};
-        if (action.isNotEmpty &&
-            objectRef['object_id'] is String &&
-            objectRef['object_version'] is int) {
-          planInteractionKind = 'plan_confirm_list';
-          planConfirmAction = action.first;
-          planDraft = latestReview!.planReview!;
-          planDraftId = objectRef['object_id'] as String;
-          planDraftVersion = objectRef['object_version'] as int;
-        }
-      }
       if (latestLines.any((message) => message.lessons.isNotEmpty)) {
         pronunciationLessons = const [];
       }
@@ -3045,16 +2032,6 @@ class _ChatLine {
   final List<Map<String, dynamic>> lessons;
   final List<Map<String, dynamic>> intentActions;
   final Map<String, dynamic>? interactionRef;
-
-  List<Map<String, dynamic>>? get planReview {
-    if (interactionRef?['kind'] != 'plan_confirm_list') return null;
-    final snapshot = interactionRef?['card_snapshot'];
-    if (snapshot is! Map || snapshot['items'] is! List) return null;
-    return [
-      for (final item in snapshot['items'] as List)
-        if (item is Map) Map<String, dynamic>.from(item),
-    ];
-  }
 
   _ChatLine copyWith(
           {List<Map<String, dynamic>>? lessons,
@@ -3203,97 +2180,4 @@ class _ChatBubble extends StatelessWidget {
                   ])));
     });
   }
-}
-
-class _PlanSheetOverlay extends StatelessWidget {
-  const _PlanSheetOverlay({
-    required this.title,
-    required this.subtitle,
-    required this.onClose,
-    required this.child,
-  });
-
-  final String title;
-  final String subtitle;
-  final VoidCallback onClose;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) => Positioned.fill(
-        child: ColoredBox(
-          color: const Color(0x660c1222),
-          child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(10, 10, 10, 82),
-              child: Material(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
-                clipBehavior: Clip.antiAlias,
-                elevation: 10,
-                shadowColor: const Color(0x2e0c1222),
-                child: Column(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 12, 12),
-                      decoration: const BoxDecoration(
-                        border: Border(
-                          bottom: BorderSide(color: Color(0x1a0f172a)),
-                        ),
-                      ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  title,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 16,
-                                    color: Color(0xff0c1222),
-                                    letterSpacing: -0.3,
-                                  ),
-                                ),
-                                const SizedBox(height: 3),
-                                Text(
-                                  subtitle,
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    color: Color(0xff5b667a),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Container(
-                            width: 32,
-                            height: 32,
-                            decoration: BoxDecoration(
-                              color: const Color(0xfff8fafc),
-                              border:
-                                  Border.all(color: const Color(0x1a0f172a)),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: IconButton(
-                              padding: EdgeInsets.zero,
-                              iconSize: 16,
-                              onPressed: onClose,
-                              tooltip: '关闭',
-                              icon: const Icon(Icons.close,
-                                  color: Color(0xff5b667a)),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Expanded(child: child),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
 }

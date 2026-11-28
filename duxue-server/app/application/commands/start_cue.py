@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
-from app.contexts.planning.domain.scheduling import SchedulingService, local_plan_date
+from app.contexts.study.domain.calendar import local_instant, local_day
 from app.contexts.study.domain.start_cue import (
     OPEN_STATUSES,
     CueDecision,
@@ -38,7 +38,7 @@ class StartCueService:
         if current.tzinfo is None:
             current = current.replace(tzinfo=timezone.utc)
         scene = scene or ABSENT_SCENE
-        schedule = self._schedule(ward_id, local_plan_date(current))
+        schedule = self._schedule(ward_id, local_day(current))
         cue = self._open_cue(ward_id)
         if schedule is None or schedule.status != "confirmed":
             if cue is not None:
@@ -81,7 +81,7 @@ class StartCueService:
         return self._with_notifications(ward_id, current, self._view(cue))
 
     def _with_notifications(self, ward_id: str, current: datetime, view: dict) -> dict:
-        schedule = self._schedule(ward_id, local_plan_date(current))
+        schedule = self._schedule(ward_id, local_day(current))
         view["notifications"] = self._upcoming(ward_id, schedule, current)
         return view
 
@@ -144,10 +144,10 @@ class StartCueService:
             task = self.db.get(Task, task_id)
             if task is None or task.ward_id != ward_id:
                 continue
-            start = SchedulingService.instant(start_raw).astimezone(timezone.utc)
+            start = local_instant(start_raw).astimezone(timezone.utc)
             end_raw = item.get("end_at")
             if end_raw:
-                end = SchedulingService.instant(end_raw).astimezone(timezone.utc)
+                end = local_instant(end_raw).astimezone(timezone.utc)
             else:
                 end = start + timedelta(minutes=int(item.get("planned_minutes") or task.planned_minutes or 15))
             rows.append({
@@ -156,7 +156,7 @@ class StartCueService:
                 "status": task.status,
                 "start": start,
                 "end": end,
-                "start_label": SchedulingService.instant(start_raw).strftime("%H:%M"),
+                "start_label": local_instant(start_raw).strftime("%H:%M"),
                 "planned_minutes": task.planned_minutes,
             })
         return rows
@@ -213,10 +213,10 @@ class StartCueService:
             start_raw = item.get("start_at")
             if not task_id or not start_raw or item.get("slot_source") != "ward_explicit":
                 continue
-            start = SchedulingService.instant(start_raw).astimezone(timezone.utc)
+            start = local_instant(start_raw).astimezone(timezone.utc)
             end_raw = item.get("end_at")
             if end_raw:
-                end = SchedulingService.instant(end_raw).astimezone(timezone.utc)
+                end = local_instant(end_raw).astimezone(timezone.utc)
             else:
                 end = start + timedelta(minutes=int(item.get("planned_minutes") or 15))
             if not (start <= current < end):
@@ -231,7 +231,7 @@ class StartCueService:
                 "title": task.title,
                 "start": start,
                 "end": end,
-                "start_label": SchedulingService.instant(start_raw).strftime("%H:%M"),
+                "start_label": local_instant(start_raw).strftime("%H:%M"),
                 "planned_minutes": task.planned_minutes,
             })
         rows.sort(key=lambda item: item["start"])
@@ -244,7 +244,7 @@ class StartCueService:
             start_raw = item.get("start_at")
             if not task_id or not start_raw or item.get("slot_source") != "ward_explicit":
                 continue
-            start = SchedulingService.instant(start_raw).astimezone(timezone.utc)
+            start = local_instant(start_raw).astimezone(timezone.utc)
             if not (start <= current and start < target_start):
                 continue
             task = self.db.get(Task, task_id)

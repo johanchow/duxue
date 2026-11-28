@@ -7,7 +7,7 @@ from app.application.ports.companion import IntentProposal, RouteDecision
 _SAFETY = re.compile(
     r"自杀|自殘|自残|伤害自己|傷害自己|伤害他人|傷害他人", re.IGNORECASE
 )
-_BUSINESS_TARGETS = {"planning", "tutoring", "reflection"}
+_BUSINESS_TARGETS = {"tutoring"}
 _PROPOSAL_LABELS = _BUSINESS_TARGETS | {"unclear"}
 
 

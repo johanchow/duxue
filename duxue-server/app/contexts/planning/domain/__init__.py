@@ -1,1 +1,0 @@
-"""Planning domain model namespace."""

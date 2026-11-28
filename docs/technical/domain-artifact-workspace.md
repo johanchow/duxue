@@ -1,5 +1,8 @@
 # 读学系统 — ArtifactWorkspace Domain Design（教育产物工作区）
 
+当前 PostgreSQL 写模型使用 `edu_artifacts`、`edu_artifact_versions` 与 `edu_artifact_commands`。四类产物共用根、不可变版本和命令回执。交互课件保留异步制作与沙箱核验流程，批改单与教案逐题调用 ProblemSolving，修订后重新核验。来源对话只存 ID。
+
+
 > 状态：目标演进设计（既有 `MentorCourseware` P0-1 与主动保存已合入 `main` 基线，本设计将其平滑泛化为双端多形态核心 Domain） · 版本 v1.1 · 2026-11-28  
 > 方法：[domain-driven-design skill](../../.cursor/skills/domain-driven-design/SKILL.md)  
 > 关联：[DDD 系统总览](ddd-overview.md) · [Conversation 与通用 Agent 编排](domain-conversation.md) · [ProblemSolving](domain-problem-solving.md) · [Tutoring](domain-tutoring.md) · [教育通用 Agent PRD](../product/prd-edu-agent.md)
@@ -7,6 +10,8 @@
 全系统 Domain Inventory、Domain Map 与分层架构图唯一归属 [ddd-overview.md](ddd-overview.md)。本 Domain 是 **Core Domain**，负责双端所有多形态、可版本化、可对话局部修订的教育产物（`EduArtifact`）的生命周期、核验诚实与资产沉淀。
 
 当前实现覆盖成人课件和学生图文绘本。课件继续使用既有版本库，绘本通过 [作品命令](../../duxue-server/app/application/commands/creative_works.py) 保存不可变页快照。两者用来源对话关联，分别从成人「我的资源库」和学生「我的作品」重开。绘本保存和已保存作品的修改会写入创作足迹 Outbox；后文的晚间报告投影、批改诊断单和教案卷仍属目标设计。
+
+双端资源库从 `GET /v1/artifacts` 读取当前账号的已保存产物，支持 `artifact_type` 和 `cursor`。当前支持读取成人课件与学生绘本。晚间报告按作品保存或已保存版本修订事件的发生日期取证，同日同一作品取最近一次；已发布报告版本保留原题名和版本。
 
 ---
 

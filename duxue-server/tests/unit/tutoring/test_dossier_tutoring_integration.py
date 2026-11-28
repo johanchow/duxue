@@ -567,7 +567,7 @@ def test_p2_ready_medium_dossier_disables_thinking_without_unlocking_verdict_gat
 
 
 def test_data_url_caches_immutable_storage_reads_and_skips_mocks(monkeypatch):
-    from app.application.commands import task_intake
+    from app.infrastructure.storage import image_data
 
     calls: list[str] = []
 
@@ -576,13 +576,13 @@ def test_data_url_caches_immutable_storage_reads_and_skips_mocks(monkeypatch):
             calls.append(key)
             return b"png-bytes"
 
-    task_intake.clear_data_url_cache()
-    monkeypatch.setattr(task_intake, "storage", FakeStorage())
-    first = task_intake._data_url("ward/w1/companion/img.png")
-    second = task_intake._data_url("ward/w1/companion/img.png")
+    image_data.clear_data_url_cache()
+    monkeypatch.setattr(image_data, "storage", FakeStorage())
+    first = image_data.data_url("ward/w1/companion/img.png")
+    second = image_data.data_url("ward/w1/companion/img.png")
     assert first == second and first.startswith("data:image/png;base64,")
     assert calls == ["ward/w1/companion/img.png"]
-    task_intake.clear_data_url_cache()
+    image_data.clear_data_url_cache()
 
 
 def test_build_tutor_instruction_omits_duplicate_history_candidates():

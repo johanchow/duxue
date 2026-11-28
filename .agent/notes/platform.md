@@ -212,3 +212,5 @@
 - 2026-11-27 本机“暂未送达”排查：3021/8011/8000均监听仍不代表业务API配置可用。旧API启动器93107下的配置目录持续503（Admin配置尚未加载），工作草稿轮询日志只显示ValueError；同一rev5草稿独立读取与API即时validate均通过。仅触发热重载未恢复；完整停止旧启动器、在duxue-server以`.venv/bin/python main.py`启动后，业务API配置目录200并实际持有草稿46cdcc97 rev5/digest90f06f7f…，手机USB反向8000存在、实机心跳/图片/遥测恢复。尚未取得用户重试消息送达确认，不将配置健康等同端到端交付成功。另补WorkingDraftRuntime的限长ValueError原因日志及回归（先红后绿），保留HTTP异常仅类型，未提交。不能仅凭Admin页面200判定整条调试链路恢复。
   收尾验证：配置持续200；诊断日志回归24项与全量tests1573通过/4跳过，Ruff F/E9及diff检查通过。未自动重发用户消息，等待手机重试确认；服务保持运行。
   本次将上述配置加载诊断日志与回归单独提交；配置回归24项通过，组合服务端全量1585 passed / 4 skipped、3 subtests passed。HTTP错误仍只记录类型；ValueError增加最多200字的配置校验原因。此前其他发布任务的笔记保留在工作区。
+
+- 2026-11-28，本地业务 PostgreSQL 迁移至 50。迁移 47 合并课件与绘本的根、不可变版本、写命令回执。新增批改单或教案后，回退至 46 需要先导出新类型。教育工作台的 Admin 草稿升级入口为 `duxue-server/scripts/upgrade_edu_workspace.py`，导入后须回读 digest。详见[产物领域设计](../../docs/technical/domain-artifact-workspace.md)。

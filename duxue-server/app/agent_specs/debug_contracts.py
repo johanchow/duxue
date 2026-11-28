@@ -14,9 +14,6 @@ class HistoryRow(BaseModel):
 
 class DebugContext(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    review_date: date | None = None
-    review_feeling: str = Field(default="", max_length=40)
-    review_reflection: str = Field(default="", max_length=4000)
     history: list[HistoryRow] = Field(default_factory=list, max_length=20)
     task_title: str = Field(default="", max_length=300)
     problem_status: Literal["open", "submitted"] = "open"
@@ -36,10 +33,9 @@ class DebugInput(BaseModel):
     context: DebugContext = Field(default_factory=DebugContext)
 
 
-WORKFLOWS = {"tutoring", "reflection", "task-intake", "review-aspects", "sprint-intake"}
+WORKFLOWS = {"tutoring", "task-intake", "sprint-intake"}
 CODE_AGENTS = {
     "tutoring.session-turn": "tutoring",
-    "reflection.session-turn": "reflection",
 }
 
 
@@ -63,7 +59,6 @@ def debug_capabilities(catalog=None):
         "limitations": {
             "eval-grading": "通过离线CLI运行完整评测；可单独调试评测裁判组件",
             "companion": "尚未接入协调器隔离调试",
-            "planning": "尚未接入计划检查点隔离调试",
             ("tutoring-vet" if catalog and "tutoring-vet" in catalog.workflow_catalog.specs
              else "tutoring.review_candidate"): "内部审核子流程，请在Tutoring执行记录中查看",
             ("tutoring-retry" if catalog and "tutoring-retry" in catalog.workflow_catalog.specs

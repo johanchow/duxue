@@ -19,8 +19,8 @@ from app.infrastructure.persistence.database import get_db
 from app.infrastructure.persistence.models import (
     Device,
     ObservationSettings,
-    ReflectionReportRecord,
-    ReflectionReportVersion,
+    EveningReportRecord,
+    EveningReportVersion,
     SupportChannel,
     now,
 )
@@ -224,7 +224,7 @@ def report(
     else:
         owned_ward(db, principal.user_id, ward_id)
     row = (
-        db.query(ReflectionReportRecord)
+        db.query(EveningReportRecord)
         .filter_by(ward_id=ward_id, report_date=day)
         .one_or_none()
     )
@@ -239,7 +239,7 @@ def report(
                 "deadline": setting.deadline if setting else None,
             },
         )
-    item = db.get(ReflectionReportVersion, (row.id, version or row.current_version))
+    item = db.get(EveningReportVersion, (row.id, version or row.current_version))
     if item is None:
         raise HTTPException(404, "report version not found")
     return {
@@ -276,14 +276,14 @@ def report_inbox(
     from app.infrastructure.persistence.models import GuardianReportInbox, GuardianWard
 
     query = (
-        db.query(GuardianReportInbox, ReflectionReportRecord)
+        db.query(GuardianReportInbox, EveningReportRecord)
         .join(
-            ReflectionReportRecord,
-            ReflectionReportRecord.id == GuardianReportInbox.report_id,
+            EveningReportRecord,
+            EveningReportRecord.id == GuardianReportInbox.report_id,
         )
         .join(
             GuardianWard,
-            (GuardianWard.ward_id == ReflectionReportRecord.ward_id)
+            (GuardianWard.ward_id == EveningReportRecord.ward_id)
             & (GuardianWard.guardian_id == principal.user_id),
         )
         .filter(GuardianReportInbox.guardian_id == principal.user_id)
@@ -293,8 +293,8 @@ def report_inbox(
             UUID(cursor)
         except ValueError:
             raise HTTPException(422, "invalid cursor")
-        query = query.filter(ReflectionReportRecord.id > cursor)
-    rows = query.order_by(ReflectionReportRecord.id).limit(limit).all()
+        query = query.filter(EveningReportRecord.id > cursor)
+    rows = query.order_by(EveningReportRecord.id).limit(limit).all()
     return {
         "items": [
             {

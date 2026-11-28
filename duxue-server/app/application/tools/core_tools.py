@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.agent_specs.web_search import CONTRACT as SEARCH_CONTRACT
+from app.application.agent.role_policy import ADULT_ROLES
 from app.application.agent.registry import SkillRegistry, ToolContext, ToolRegistry
 from app.infrastructure.persistence.models import (
+    ConversationThread,
     GuardianWard,
     LearningEvent,
-    ReflectionReportRecord,
     Sprint,
 )
 
@@ -28,9 +30,16 @@ def handle_study_get_focus_state(args: dict[str, Any], ctx: ToolContext) -> dict
 
 def handle_ward_context_read_summary(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
     """Strictly read-only summary for an explicitly bound Ward. Never writes to Memory."""
-    ward_id = args.get("ward_id") or ctx.context_ward_id
-    if not ward_id or ctx.db is None:
+    ward_id = ctx.context_ward_id
+    if args.get("ward_id", ward_id) != ward_id:
+        raise PermissionError("ward differs from conversation context")
+    if ctx.actor_role not in ADULT_ROLES or not (ward_id and ctx.db is not None and ctx.thread_id):
         raise PermissionError("bound ward_id is required")
+    bound = ctx.db.query(ConversationThread.id).filter_by(
+        id=ctx.thread_id, guardian_id=ctx.actor_id, context_ward_id=ward_id, deleted=False,
+    ).first()
+    if bound is None:
+        raise PermissionError("conversation context no longer available")
     binding = (
         ctx.db.query(GuardianWard)
         .filter_by(guardian_id=ctx.actor_id, ward_id=str(ward_id))
@@ -42,16 +51,9 @@ def handle_ward_context_read_summary(args: dict[str, Any], ctx: ToolContext) -> 
     limit = max(1, min(int(args.get("limit", 5)), 20))
     events = (
         ctx.db.query(LearningEvent)
-        .filter_by(ward_id=str(ward_id))
+        .filter_by(ward_id=str(ward_id), visibility="guardian")
         .order_by(LearningEvent.occurred_at.desc())
         .limit(limit)
-        .all()
-    )
-    recent_reports = (
-        ctx.db.query(ReflectionReportRecord)
-        .filter_by(ward_id=str(ward_id))
-        .order_by(ReflectionReportRecord.report_date.desc())
-        .limit(3)
         .all()
     )
     return {
@@ -66,14 +68,13 @@ def handle_ward_context_read_summary(args: dict[str, Any], ctx: ToolContext) -> 
             }
             for e in events
         ],
-        "recent_report_dates": [str(r.report_date) for r in recent_reports],
     }
 
 
 def handle_math_compute(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
     engine = ctx.extras.get("math_engine")
     if engine is None:
-        return {"status": "unavailable", "detail": "math_engine_not_configured"}
+        raise NotImplementedError("math engine unavailable")
     return engine.execute(args)
 
 
@@ -83,6 +84,7 @@ def handle_web_search(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
         from app.infrastructure.ai.learning_search import LearningSearch
 
         searcher = LearningSearch()
+        ctx.extras["web_search"] = searcher
     return searcher.search(args)
 
 
@@ -91,7 +93,7 @@ def _unimplemented_placeholder(name: str):
         delegate = ctx.extras.get(name)
         if callable(delegate):
             return delegate(args, ctx)
-        return {"status": "not_wired_yet", "tool": name}
+        raise NotImplementedError(name)
 
     return _handler
 
@@ -221,7 +223,7 @@ _INITIAL_TOOLS: list[dict[str, Any]] = [
         "description": "只读联网检索学习资料与真实照片。",
         "access": "read",
         "allowed_roles": ["teacher", "coach", "guardian", "ward"],
-        "input_schema": {"type": "object", "properties": {"query": {"type": "string"}, "mode": {"type": "string"}}},
+        "input_schema": SEARCH_CONTRACT["input_schema"],
         "output_schema": {"type": "object"},
         "timeout_ms": 8000,
         "handler_id": "web.search",
@@ -239,64 +241,6 @@ _INITIAL_TOOLS: list[dict[str, Any]] = [
         "handler_id": "media.generate_image",
     },
 ]
-
-_INITIAL_SKILLS: list[dict[str, Any]] = [
-    {
-        "id": "edu.homework_tutoring",
-        "kind": "skill",
-        "display_name": "作业启发答疑",
-        "description": "Ward 作业或练习求助时触发，严守答案保护红线与小步启发。",
-        "allowed_roles": ["teacher", "coach", "guardian", "ward"],
-        "tools": ["tutoring.run_homework_turn", "math.compute", "image.inspect_crop", "web.search"],
-        "required_gates": ["tutoring.answer_protection"],
-        "instructions": "识别为课内作业或解题求助时必须调用 tutoring.run_homework_turn，严禁直接泄题；条件不清时先澄清 1-2 个关键信息。",
-    },
-    {
-        "id": "edu.worksheet_grading",
-        "kind": "skill",
-        "display_name": "整页作业批改诊断",
-        "description": "成人拍照提交整页或多页作业/试卷要求批改与错因诊断时触发。",
-        "allowed_roles": ["teacher", "coach", "guardian"],
-        "tools": ["problem_solving.solve_and_verify", "image.inspect_crop", "math.compute", "artifact.create_or_revise"],
-        "required_gates": ["artifact.verification_honesty"],
-        "output_artifact_type": "grading_report",
-        "instructions": "逐题定位手写步骤并调用 problem_solving.solve_and_verify 核验；字迹模糊或低置信度项标 needs_manual_review=true，禁止硬判对错。",
-    },
-    {
-        "id": "edu.interactive_courseware",
-        "kind": "skill",
-        "display_name": "深度讲题与动态交互课件",
-        "description": "需要制作交互式数理动态演示课件或对已有课件做局部修订时触发。",
-        "allowed_roles": ["teacher", "coach", "guardian", "ward"],
-        "tools": ["problem_solving.solve_and_verify", "math.compute", "artifact.create_or_revise", "artifact.get_view"],
-        "required_gates": ["artifact.verification_honesty", "media.script_sandbox_prerun"],
-        "output_artifact_type": "interactive_courseware",
-        "instructions": "成人完整讲解先过核验基线再灵活组织教学步骤与 MathStage 动态演示；Ward 仅限原理演示且禁泄作业答案。",
-    },
-    {
-        "id": "edu.lesson_pack",
-        "kind": "skill",
-        "display_name": "备课教案与自验变式出题",
-        "description": "教师或家长要求备课、写教案讲义或按考点/错题生成巩固变式题时触发。",
-        "allowed_roles": ["teacher", "coach", "guardian"],
-        "tools": ["ward_context.read_summary", "problem_solving.solve_and_verify", "math.compute", "artifact.create_or_revise"],
-        "required_gates": ["artifact.verification_honesty"],
-        "output_artifact_type": "lesson_pack",
-        "instructions": "学段或考点不明确时先问 1-2 个关键澄清问题；若已绑定学生可只读 ward_context.read_summary；每道新出变式题交付前必须调用 problem_solving.solve_and_verify 自解自验。",
-    },
-    {
-        "id": "edu.creative_studio",
-        "kind": "skill",
-        "display_name": "画图故事与知识卡片共创",
-        "description": "孩子或成人发起画图、共创绘本故事、做思维导图或知识卡片时触发。",
-        "allowed_roles": ["teacher", "coach", "guardian", "ward"],
-        "tools": ["study.get_focus_state", "media.generate_image", "web.search", "artifact.create_or_revise", "artifact.get_view"],
-        "required_gates": ["ward.anti_ghostwriting"],
-        "output_artifact_type": "creative_work",
-        "instructions": "Ward 端若处于活跃 Sprint 且偏题娱乐先温和提醒专注；识别为课内作文/作业时切启发共创禁代写成品；自由创作交付可局部修改的 creative_work。",
-    },
-]
-
 
 def build_default_registries() -> tuple[ToolRegistry, SkillRegistry]:
     tool_reg = ToolRegistry()
@@ -319,7 +263,12 @@ def build_default_registries() -> tuple[ToolRegistry, SkillRegistry]:
     tool_reg.validate_alignment()
 
     skill_reg = SkillRegistry()
-    for spec in _INITIAL_SKILLS:
+    from app.agent_specs.definitions import active_definitions
+    from app.application.agent.skill_catalog import bootstrap_skills
+
+    active = active_definitions()
+    declarations = getattr(active, "education_skills", None) or bootstrap_skills()
+    for spec in declarations.values():
         skill_reg.register_skill(spec)
     skill_reg.validate_against_tools(tool_reg)
     return tool_reg, skill_reg

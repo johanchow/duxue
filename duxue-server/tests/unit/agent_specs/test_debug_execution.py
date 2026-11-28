@@ -111,14 +111,14 @@ def test_single_agent_debug_never_runs_judge_tools_or_backup_unless_selected(
 
 
 def test_workflow_debug_uses_real_executor_with_edge_and_node_data(monkeypatch):
-    setup_provider(monkeypatch, lambda **kwargs: {"aspects": []})
+    setup_provider(monkeypatch, lambda **kwargs: {"topic":"数学","target_minutes":10})
     result = execute(
         {
             "bundle": snapshot_bundle(),
             "input": {
                 "content": "今天我学会了乘法",
                 "target_kind": "workflow",
-                "target_id": "review-aspects",
+                "target_id": "sprint-intake",
             },
         }
     )
@@ -126,10 +126,10 @@ def test_workflow_debug_uses_real_executor_with_edge_and_node_data(monkeypatch):
     node = next(
         event
         for event in result["events"]
-        if event.get("node_id") == "review-aspects.run"
+        if event.get("node_id") == "sprint-intake.run"
     )
     assert node["input"] == {"results": {}, "visited_gates": []}
-    assert node["output"]["data"] == {"aspects": []}
+    assert node["output"]["data"]["target_minutes"] == 10
     assert (
         len([e for e in result["events"] if e["kind"] == "edge" and e["selected"]]) == 2
     )
@@ -170,27 +170,3 @@ def test_tutoring_workflow_is_isolated_and_includes_domain_and_gate_nodes(monkey
     )
     assert result["sandbox_effects"]["messages"]
     assert result["output"]["next_interaction"]["content"]
-
-
-def test_reflection_executes_confirmation_only_in_disposable_state(monkeypatch):
-    setup_provider(
-        monkeypatch,
-        lambda **kwargs: pytest.fail("reflection confirmation should not call a model"),
-    )
-    result = execute(
-        {
-            "bundle": snapshot_bundle(),
-            "input": {
-                "content": "今天我学会了乘法",
-                "target_kind": "workflow",
-                "target_id": "reflection",
-                "context": {"review_date": "2026-11-09", "review_feeling": "开心"},
-            },
-        }
-    )
-    assert result["status"] == "succeeded", result
-    assert result["output"]["run_status"] == "closed"
-    assert (
-        result["sandbox_effects"]["self_reviews"][0]["reflection"] == "今天我学会了乘法"
-    )
-    assert result["model_requests"] == 0

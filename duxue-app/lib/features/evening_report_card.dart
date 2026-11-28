@@ -67,6 +67,8 @@ class _EveningReportCardState extends ConsumerState<EveningReportCard> {
                         Text('晚间实况 · 第 $current 版',
                             style: Theme.of(context).textTheme.titleMedium),
                         Text(data['summary'] as String? ?? ''),
+                        if ((data['tutoring'] as Map?)?['verified_count'] == 0)
+                          const Text('今日无可核验答疑'),
                         Text('报告截止：${data['cutoff_at']}'),
                         Text(ratio == null
                             ? '采集覆盖率暂不可确定'
@@ -74,6 +76,12 @@ class _EveningReportCardState extends ConsumerState<EveningReportCard> {
                         for (final entry in totals.entries)
                           Text(
                               '${observationActivityNames[entry.key] ?? '其他'}：约 ${((entry.value as num) ~/ 60)} 分钟'),
+                        if ((data['creation_footprints'] as List? ?? [])
+                            .isNotEmpty)
+                          const Text('好奇心与创作足迹'),
+                        for (final work
+                            in data['creation_footprints'] as List? ?? [])
+                          Text(work['title'] as String),
                         if (data['status'] == 'partial')
                           const Text('部分证据缺失；不将缺失时段算作不专注。'),
                         if (latest > 1)

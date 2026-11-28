@@ -1,0 +1,22 @@
+{
+  "id": "edu.homework_tutoring",
+  "kind": "skill",
+  "display_name": "作业启发答疑",
+  "description": "Ward 作业或练习求助时触发，严守答案保护红线与小步启发。",
+  "allowed_roles": [
+    "teacher",
+    "coach",
+    "guardian",
+    "ward"
+  ],
+  "tools": [
+    "tutoring.run_homework_turn",
+    "math.compute",
+    "image.inspect_crop",
+    "web.search"
+  ],
+  "required_gates": [
+    "tutoring.answer_protection"
+  ],
+  "instructions": "识别为课内作业或解题求助时必须调用 tutoring.run_homework_turn，严禁直接泄题；条件不清时先澄清 1-2 个关键信息。"
+}

@@ -46,6 +46,7 @@ celery_app.conf.beat_schedule = {
     "poll-batches": {"task": "duxue.poll_batches", "schedule": crontab(minute="*/10")},
     "offline-devices": {"task": "duxue.mark_offline_devices", "schedule": crontab(minute="*")},
     "purge-expired-frames": {"task": "duxue.purge_expired_frames", "schedule": crontab(hour=3, minute=20)},
+    "consume-creation-footprints": {"task": "duxue.consume_creation_footprints", "schedule": 120.0},
     "consume-memory-facts": {"task": "duxue.consume_memory_facts", "schedule": crontab(minute="*/2")},
     "evolve-memory-signals": {"task": "duxue.evolve_memory_signals", "schedule": crontab(hour=4, minute=10)},
 }
@@ -145,6 +146,14 @@ def purge_expired_frames() -> int:
             frame.oss_key = None
         db.commit(); return len(frames)
     finally: db.close()
+
+
+@celery_app.task(name="duxue.consume_creation_footprints")
+@_observed_task
+def consume_creation_footprints(limit: int = 100) -> int:
+    from app.application.commands.creation_footprints import consume_pending_creation_footprints
+    with SessionLocal.begin() as db:
+        return consume_pending_creation_footprints(db, limit=limit)
 
 
 @celery_app.task(name="duxue.consume_memory_facts")
@@ -263,9 +272,7 @@ celery_app.conf.task_routes = {
 @celery_app.task(name="duxue.expire_temporary_coursewares")
 @_observed_task
 def expire_temporary_coursewares():
-    from app.infrastructure.persistence.pg_courseware import PgCoursewareRepository
-    from app.application.commands.mentor_courseware import MentorCoursewareCommandService
-    from app.application.commands.creative_works import expire_temporary
+    from app.application.commands.artifact_workspace import expire_temporary
+
     with SessionLocal() as db:
-        stories = expire_temporary(db)
-    return stories + MentorCoursewareCommandService(PgCoursewareRepository()).expire_temporary()
+        return expire_temporary(db)

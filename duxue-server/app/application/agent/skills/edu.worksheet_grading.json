@@ -1,0 +1,22 @@
+{
+  "id": "edu.worksheet_grading",
+  "kind": "skill",
+  "display_name": "整页作业批改诊断",
+  "description": "成人拍照提交整页或多页作业/试卷要求批改与错因诊断时触发。",
+  "allowed_roles": [
+    "teacher",
+    "coach",
+    "guardian"
+  ],
+  "tools": [
+    "problem_solving.solve_and_verify",
+    "image.inspect_crop",
+    "math.compute",
+    "artifact.create_or_revise"
+  ],
+  "required_gates": [
+    "artifact.verification_honesty"
+  ],
+  "output_artifact_type": "grading_report",
+  "instructions": "逐题定位手写步骤并调用 problem_solving.solve_and_verify 核验；字迹模糊或低置信度项标 needs_manual_review=true，禁止硬判对错。"
+}

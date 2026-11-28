@@ -12,8 +12,6 @@ from app.infrastructure.persistence.models import (
     GuardianWard,
     LearningEvent,
     OutboxEvent,
-    PlanDraft,
-    SelfReview,
     StudySession,
     Task,
     User,

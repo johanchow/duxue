@@ -248,7 +248,6 @@ def test_published_release_is_used_outside_tutoring_and_nested_pins_keep_same_ve
     from app.agent_specs import release_runtime
     from app.agent_specs.admin_bundle import compile_bundle
     from app.agent_specs.configuration import snapshot_bundle
-    from app.application.commands.plan_intake import PlanIntakeInput, _prompt
     from app.infrastructure.ai.components import COMPONENTS
 
     runtime = release_runtime.ReleaseRuntime(
@@ -260,7 +259,6 @@ def test_published_release_is_used_outside_tutoring_and_nested_pins_keep_same_ve
     first["files"]["agents/planning.intake.json"]["prompt"]["template"] += "\n计划A"
     runtime.accept({"id": "a", "digest": compile_bundle(first).digest, "bundle": first})
     assert "版本A" in COMPONENTS.get("companion.intent").prompt.text
-    assert "计划A" in _prompt({}, [], PlanIntakeInput(content="安排作业"))
     with release_runtime.pin_release():
         second = copy.deepcopy(first)
         second["files"]["agents/companion.intent.json"]["prompt"]["template"] += (

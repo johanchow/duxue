@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 class _Api extends ApiClient {
   _Api() : super(baseUrl: 'http://localhost', tokens: const TokenStorage());
+  String? title = '青蛙的船';
   String second = '故事第二页';
   bool saved = false;
   int revision = 1;
@@ -37,8 +38,12 @@ class _Api extends ApiClient {
   Future<Map<String, dynamic>> creativeWork(String id) async => doc();
   @override
   Future<List<Map<String, dynamic>>> savedWorks() async => [
-        {'artifact_id': 'w', 'title': '青蛙的船'}
+        if (title != null) {'artifact_id': 'w', 'title': title}
       ];
+  @override
+  Future<void> renameCreativeWork(String id, String name) async => title = name;
+  @override
+  Future<void> deleteCreativeWork(String id) async => title = null;
   @override
   Future<Map<String, dynamic>> changeCreativeWork(
       String id, Map<String, dynamic> cmd) async {
@@ -59,6 +64,30 @@ class _Api extends ApiClient {
 }
 
 void main() {
+  testWidgets('作品改名后刷新列表，确认删除后显示空状态', (tester) async {
+    final api = _Api();
+    await tester.pumpWidget(ProviderScope(
+        overrides: [apiProvider.overrideWithValue(api)],
+        child: const MaterialApp(home: WardWorksLibrary())));
+    await tester.pumpAndSettle();
+    for (final action in ['重命名', '删除']) {
+      await tester.tap(find.byType(PopupMenuButton<String>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(action));
+      await tester.pumpAndSettle();
+      if (action == '重命名') {
+        await tester.enterText(find.byType(TextFormField), '新标题');
+        await tester.tap(find.text('保存'));
+        await tester.pumpAndSettle();
+        expect(find.text('新标题'), findsOneWidget);
+      } else {
+        await tester.tap(find.text('删除'));
+        await tester.pumpAndSettle();
+        expect(find.text('保存的作品会出现在这里'), findsOneWidget);
+      }
+    }
+  });
+
   testWidgets('我的作品可重开，语音只修改选中页，撤销和重做恢复对应版本', (tester) async {
     await tester.binding.setSurfaceSize(const Size(480, 1100));
     addTearDown(() => tester.binding.setSurfaceSize(null));

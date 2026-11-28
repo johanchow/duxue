@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -108,49 +108,6 @@ class AnalyzeDayRequest(BaseModel):
 class WardBindRequest(BaseModel):
     invite_code: str = Field(pattern=r"^\d{6}$")
 
-class AssignmentCreate(BaseModel):
-    title: str = Field(min_length=1, max_length=300)
-    details: str | None = None
-    due_date: date | None = None
-
-
-class TaskCandidate(BaseModel):
-    ward_id: str = Field(min_length=1)
-    title: str = Field(min_length=1, max_length=300)
-    details: str | None = Field(default=None, max_length=4000)
-    due_date: date | None = None
-
-
-class TaskIntakeMessage(BaseModel):
-    role: str = Field(pattern=r"^(guardian|assistant)$")
-    content: str = Field(min_length=1, max_length=4000)
-
-
-class TaskIntakeRequest(BaseModel):
-    content: str = Field(default="", max_length=4000)
-    history: list[TaskIntakeMessage] = Field(default_factory=list, max_length=20)
-    tasks: list[TaskCandidate] = Field(default_factory=list, max_length=30)
-    attachment_keys: list[str] = Field(default_factory=list, max_length=4)
-
-    @field_validator("content")
-    @classmethod
-    def strip_content(cls, value: str) -> str:
-        return value.strip()
-
-
-class TaskIntakeConfirm(BaseModel):
-    tasks: list[TaskCandidate] = Field(min_length=1, max_length=30)
-    attachment_keys: list[str] = Field(default_factory=list, max_length=4)
-
-
-class TaskIntakeCleanup(BaseModel):
-    attachment_keys: list[str] = Field(default_factory=list, max_length=4)
-
-
-class PlanDraft(BaseModel):
-    plan_date: date
-    items: list[dict[str, Any]] = Field(min_length=1)
-
 class MessageCreate(BaseModel):
     content: str = Field(min_length=1, max_length=4000)
 
@@ -165,17 +122,18 @@ class CompanionTurnRequest(BaseModel):
     command_id: str = Field(default_factory=lambda: str(uuid4()))
     thread_id: str | None = None
     expected_thread_version: int | None = Field(default=None, ge=0)
-    route_hint: str | None = Field(default=None, pattern=r"^(planning|tutoring|reflection)$")
-    planning_items: list[dict[str, Any]] | None = Field(default=None, max_length=30)
-    planning_confirm: bool = False
+    route_hint: Literal["tutoring"] | None = None
     study_session_id: str | None = None
     tutoring_directive: str | None = Field(default=None, pattern=r"^(ask|attempt|understood|close)$")
     tutoring_intent: str | None = Field(default=None, pattern=r"^(pronunciation|compare_previous_image)$")
-    review_date: date | None = None
-    review_feeling: str | None = Field(default=None, max_length=40)
-    review_reflection: str | None = Field(default=None, max_length=2000)
     attachment_keys: list[str] = Field(default_factory=list, max_length=8)
     structured_command: StructuredWardCommand | None = None
+
+    @field_validator("command_id", "thread_id")
+    @classmethod
+    def valid_identifier(cls, value):
+        from uuid import UUID
+        return str(UUID(value)) if value is not None else None
 
     @field_validator("content")
     @classmethod
@@ -187,34 +145,12 @@ class StructuredWardCommand(BaseModel):
     """A server-issued, allow-listed action; never an arbitrary tool call."""
 
     interaction_id: str = Field(min_length=1, max_length=200)
-    command: str = Field(pattern=r"^(confirm_plan|clarify_reply|accept_plan_suggestion|choose_intent|sprint_command)$")
+    command: Literal["sprint_command"]
     payload: dict[str, Any] = Field(default_factory=dict)
 
-    @model_validator(mode="after")
-    def confirm_plan_payload(self):
-        if (self.command == "choose_intent"
-                and (set(self.payload) != {"intent"}
-                     or self.payload["intent"] not in {"planning", "reflection", "tutoring"})):
-            raise ValueError("choose_intent requires a supported intent")
-        if (self.command == "confirm_plan"
-                and (not isinstance(self.payload.get("draft_id"), str)
-                     or not isinstance(self.payload.get("expected_draft_version"), int))):
-            raise ValueError("confirm_plan requires draft_id and expected_draft_version")
-        if self.command == "clarify_reply":
-            answers = self.payload.get("answers")
-            if not isinstance(self.payload.get("draft_id"), str) or not isinstance(answers, list) or not answers:
-                raise ValueError("clarify_reply requires draft_id and answers")
-            if any(not isinstance(answer, dict) or not isinstance(answer.get("slot_id"), str)
-                   or not isinstance(answer.get("value"), str) for answer in answers):
-                raise ValueError("clarify_reply answers require slot_id and value")
-        if (self.command == "accept_plan_suggestion"
-                and (not isinstance(self.payload.get("draft_id"), str)
-                     or not isinstance(self.payload.get("expected_draft_version"), int)
-                     or self.payload.get("kind") not in {"duration", "time"}
-                     or not isinstance(self.payload.get("task_id"), str)
-                     or not isinstance(self.payload.get("expected_fingerprint"), str))):
-            raise ValueError("accept_plan_suggestion requires draft/version/kind/task_id/fingerprint")
-        return self
+
+class WardAgentTurnRequest(CompanionTurnRequest):
+    model_config = ConfigDict(extra="forbid")
 
 
 class CompanionHistoryClearRequest(BaseModel):
@@ -281,27 +217,3 @@ class SessionPause(BaseModel):
 class StartCueCommand(BaseModel):
     command: str
     expected_version: int = Field(ge=1)
-
-class SelfReviewCreate(BaseModel):
-    feeling: str = Field(min_length=1, max_length=40)
-    reflection: str | None = Field(default=None, max_length=2000)
-    timeline_json: list[dict[str, Any]] = Field(default_factory=list)
-
-
-class SelfReviewDraftRequest(BaseModel):
-    raw_expression: str = Field(min_length=1, max_length=4000)
-
-
-class SelfReviewAspectInput(BaseModel):
-    dimension: str
-    statement: str = Field(min_length=1, max_length=300)
-    source_quote: str = Field(min_length=1, max_length=4000)
-    task_ref: str | None = None
-    topic_ref: str | None = None
-
-
-class SelfReviewConfirmRequest(BaseModel):
-    raw_expression: str = Field(min_length=1, max_length=4000)
-    aspects: list[SelfReviewAspectInput] = Field(default_factory=list, max_length=18)
-    expected_version: int | None = Field(default=None, ge=0)
-    source_message_id: str | None = None

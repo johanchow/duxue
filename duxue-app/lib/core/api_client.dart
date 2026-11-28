@@ -433,7 +433,7 @@ class ApiClient {
     List<String> attachmentKeys = const [],
     void Function(String)? onStage,
   }) => _postReplyTurn(
-        '/companion/turn',
+        '/v1/agent/turns',
         {
           if (commandId != null) 'command_id': commandId,
           'content': content,
@@ -449,8 +449,24 @@ class ApiClient {
         onStage: onStage,
       );
 
-  Future<List<Map<String, dynamic>>> savedWorks() async =>
-      List<Map<String, dynamic>>.from((await dio.get('/v1/creative-works')).data['items'] as List);
+  Future<List<Map<String, dynamic>>> savedWorks() async {
+    final works = <Map<String, dynamic>>[];
+    String? cursor;
+    do {
+      final page = await _artifactPage('creative_work', cursor);
+      works.addAll(List<Map<String, dynamic>>.from(page['items'] as List));
+      cursor = page['next_cursor'] as String?;
+    } while (cursor != null);
+    return works;
+  }
+
+  Future<void> renameCreativeWork(String id, String title) async {
+    await dio.patch('/v1/creative-works/$id', data: {'title': title});
+  }
+
+  Future<void> deleteCreativeWork(String id) async {
+    await dio.delete('/v1/creative-works/$id');
+  }
 
   Future<Map<String, dynamic>> creativeWork(String id) async =>
       Map<String, dynamic>.from((await dio.get('/v1/creative-works/$id')).data);
@@ -459,10 +475,14 @@ class ApiClient {
       Map<String, dynamic>.from((await dio.post('/v1/creative-works/$id/commands', data: command,
         options: Options(receiveTimeout: const Duration(seconds: 150)))).data);
 
-  Future<List<Map<String, dynamic>>> conversations() async {
-    final data = (await dio.get('/v1/conversations')).data;
-    return List<Map<String, dynamic>>.from(data['items'] as List);
+  Future<ConversationPage> conversationPage({String? cursor}) async {
+    final data = (await dio.get('/v1/conversations', queryParameters: {
+      if (cursor != null) 'cursor': cursor,
+    })).data;
+    return (items: List<Map<String, dynamic>>.from(data['items'] as List), next: data['next_cursor'] as String?);
   }
+
+  Future<List<Map<String, dynamic>>> conversations() async => (await conversationPage()).items;
 
   Future<Map<String, dynamic>> createConversation() async =>
       Map<String, dynamic>.from((await dio.post('/v1/conversations', data: {})).data);
@@ -475,6 +495,15 @@ class ApiClient {
         options: Options(responseType: ResponseType.bytes));
     return Uint8List.fromList(response.data!);
   }
+
+  Future<void> setConversationWard(String thread, String? ward) async {
+    await dio.patch('/v1/conversations/$thread', data: {
+      if (ward == null) 'clear_context_ward': true else 'context_ward_id': ward,
+    });
+  }
+
+  Future<Map<String, dynamic>> conversationWardSummary(String thread) async =>
+      Map<String, dynamic>.from((await dio.get('/v1/conversations/$thread/ward-summary')).data as Map);
 
   Future<void> deleteConversation(String id) async {
     await dio.delete('/v1/conversations/$id');
@@ -492,14 +521,16 @@ class ApiClient {
     String? stateToken,
     String? threadId,
     String? commandId,
+    String? skillHint,
     List<String> attachmentKeys = const [],
     String mode = 'student_guide',
     void Function(String)? onStage,
   }) => _postReplyTurn(
-        '/guardian/experience/turn',
+        '/v1/agent/turns',
         {
           'content': content,
           'state_token': stateToken,
+          if (skillHint != null) 'skill_hint': skillHint,
           if (threadId != null) 'thread_id': threadId,
           if (commandId != null) 'command_id': commandId,
           'attachment_keys': attachmentKeys,
@@ -515,6 +546,27 @@ class ApiClient {
     required Duration receiveTimeout,
     required void Function(String)? onStage,
   }) async {
+    try {
+      return await _sendReplyTurn(path, data, receiveTimeout, onStage);
+    } catch (error) {
+      final thread = data['thread_id'];
+      final command = data['command_id'];
+      if (thread is! String || command is! String ||
+          (error is DioException && (error.response != null || error.type == DioExceptionType.cancel))) {
+        rethrow;
+      }
+      // A disconnected response can still have committed on the server.
+      try {
+        final result = await dio.get('/v1/agent/threads/$thread/results/${Uri.encodeComponent(command)}');
+        return Map<String, dynamic>.from(result.data as Map);
+      } on DioException {
+        throw error;
+      }
+    }
+  }
+
+  Future<Map<String, dynamic>> _sendReplyTurn(String path,
+      Map<String, dynamic> data, Duration receiveTimeout, void Function(String)? onStage) async {
     final stream = onStage != null;
     late final Response response;
     try {
@@ -610,13 +662,6 @@ class ApiClient {
     return Uint8List.fromList(response.data ?? const []);
   }
 
-  Future<Map<String, dynamic>> companionPlanDraft(String draftId) async =>
-      Map<String, dynamic>.from(
-          (await dio.get('/companion/planning/drafts/$draftId')).data as Map);
-
-  /// Keeps the server's thread version together with its transcript.  The
-  /// version is the concurrency token for the next companion turn, so callers
-  /// must not discard it while refreshing the visible messages.
   Future<Map<String, dynamic>> companionMessages(
     String threadId, {
     int? beforeThreadVersion,
@@ -673,23 +718,6 @@ class ApiClient {
     return Uint8List.fromList(response.data!);
   }
 
-  Future<List<dynamic>> assignments(String wardId) async =>
-      (await dio.get('/wards/$wardId/assignments',
-              queryParameters: {'include_completed': true}))
-          .data as List<dynamic>;
-  Future<void> deleteAssignment(String wardId, String assignmentId) =>
-      dio.delete('/wards/$wardId/assignments/$assignmentId');
-  Future<Map<String, dynamic>> savePlan(String wardId, DateTime day,
-          List<Map<String, dynamic>> items) async =>
-      Map<String, dynamic>.from((await dio.put(
-              '/wards/$wardId/plans/${_day(day)}',
-              data: {'plan_date': _day(day), 'items': items}))
-          .data);
-  Future<void> confirmPlan(String wardId, DateTime day) =>
-      dio.post('/wards/$wardId/plans/${_day(day)}/confirm');
-  Future<Map<String, dynamic>> plan(String wardId, DateTime day) async =>
-      Map<String, dynamic>.from(
-          (await dio.get('/wards/$wardId/plans/${_day(day)}')).data);
   Future<Map<String, dynamic>> currentSprint() async =>
       (await dio.get('/sprints/current')).data as Map<String, dynamic>;
 
@@ -741,43 +769,6 @@ class ApiClient {
       .data['content'] as String;
   Future<void> finishSession(String sessionId, int seconds) => dio
       .post('/sessions/$sessionId/finish', data: {'active_seconds': seconds});
-  Future<void> review(String wardId, DateTime day, String feeling) =>
-      dio.post('/wards/$wardId/reviews/${_day(day)}',
-          data: {'feeling': feeling, 'timeline_json': []});
-  Future<Map<String, dynamic>> draftSelfReview(
-          String wardId, DateTime day, String expression) async =>
-      Map<String, dynamic>.from((await dio.post(
-              '/wards/$wardId/reviews/${_day(day)}/draft',
-              data: {'raw_expression': expression}))
-          .data);
-  Future<Map<String, dynamic>> selfReviewPrompt(
-          String wardId, DateTime day) async =>
-      Map<String, dynamic>.from(
-          (await dio.get('/wards/$wardId/reviews/${_day(day)}/prompt')).data);
-  Future<Map<String, dynamic>> confirmSelfReview(
-          String wardId,
-          DateTime day,
-          String expression,
-          List<Map<String, dynamic>> aspects,
-          int expectedVersion) async =>
-      Map<String, dynamic>.from(
-          (await dio.put('/wards/$wardId/reviews/${_day(day)}/confirm', data: {
-        'raw_expression': expression,
-        'aspects': aspects,
-        'expected_version': expectedVersion
-      }))
-              .data);
-  Future<Map<String, dynamic>> selfReview(String wardId, DateTime day) async =>
-      Map<String, dynamic>.from(
-          (await dio.get('/wards/$wardId/reviews/${_day(day)}')).data);
-  Future<Map<String, dynamic>> insight(String wardId, DateTime day) async =>
-      Map<String, dynamic>.from(
-          (await dio.get('/wards/$wardId/reviews/${_day(day)}/insight')).data);
-  Future<Map<String, dynamic>> guardianStory(
-          String wardId, DateTime day) async =>
-      Map<String, dynamic>.from(
-          (await dio.get('/wards/$wardId/guardian-story/${_day(day)}')).data);
-
   Future<Map<String, dynamic>> createMentorCourseware({
     required String commandId,
     required String promptText,
@@ -795,9 +786,19 @@ class ApiClient {
             .data as Map,
       );
 
-  Future<Map<String, dynamic>> listSavedCourseware([String? cursor]) async =>
-      Map<String,dynamic>.from((await dio.get('/guardian/courseware',queryParameters: {
-        'saved': true, if(cursor != null) 'cursor': cursor,
+  Future<Map<String,dynamic>> educationDocument(String id) async =>
+      Map<String,dynamic>.from((await dio.get('/v1/artifacts/$id')).data as Map);
+
+  Future<Map<String,dynamic>> changeEducationDocument(String id, Map<String,dynamic> body) async =>
+      Map<String,dynamic>.from((await dio.post('/v1/artifacts/$id/commands', data:body,
+        options: Options(receiveTimeout: const Duration(minutes:5)))).data as Map);
+
+  Future<Map<String, dynamic>> listSavedCourseware([String? cursor, String? type]) async =>
+      _artifactPage(type, cursor);
+
+  Future<Map<String, dynamic>> _artifactPage(String? type, String? cursor) async =>
+      Map<String, dynamic>.from((await dio.get('/v1/artifacts', queryParameters: {
+        if (type != null) 'artifact_type': type, if (cursor != null) 'cursor': cursor,
       })).data as Map);
 
   Future<List<String>> savedCoursewarePhotos(String id) async =>
@@ -877,3 +878,5 @@ class ApiClient {
 
   String _day(DateTime value) => value.toIso8601String().substring(0, 10);
 }
+
+typedef ConversationPage = ({List<Map<String, dynamic>> items, String? next});

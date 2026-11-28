@@ -223,6 +223,9 @@ class ToolExecutor:
                 return ToolResult(tool_id=tool_id, status="tool_error", error_code="handler_missing")
             try:
                 output = handler(safe_args, ctx)
+            except NotImplementedError:
+                span.set_attribute("agent.status", "tool_error")
+                return ToolResult(tool_id=tool_id, status="tool_error", error_code="tool_unavailable")
             except PermissionError:
                 span.set_attribute("agent.status", "denied")
                 return ToolResult(tool_id=tool_id, status="denied", error_code="access_denied")
@@ -230,6 +233,9 @@ class ToolExecutor:
                 span.set_attribute("agent.status", "tool_error")
                 return ToolResult(tool_id=tool_id, status="tool_error", error_code="execution_failed")
 
+            if not isinstance(output, dict) or not Draft202012Validator(spec.output_schema).is_valid(output):
+                span.set_attribute("agent.status", "tool_error")
+                return ToolResult(tool_id=tool_id, status="tool_error", error_code="invalid_tool_output")
             span.set_attribute("agent.status", "ok")
             set_observation_payload(span, output={"status": "ok", "keys": sorted(output.keys())})
             return ToolResult(tool_id=tool_id, status="ok", data=output)

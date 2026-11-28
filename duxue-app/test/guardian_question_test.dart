@@ -22,6 +22,8 @@ class _Api extends ApiClient {
   int planReads = 0;
   final history = <String, List<Map<String,dynamic>>>{};
   @override
+  Future<ConversationPage> conversationPage({String? cursor}) async => (items: await conversations(), next: null);
+  @override
   Future<List<Map<String, dynamic>>> conversations() async => [{'thread_id':'test', 'title':'备课 A'}, {'thread_id':'second', 'title':'备课 B'}];
   @override
   Future<Map<String, dynamic>> conversationMessages(String id) async => {'items': history[id] ?? []};
@@ -30,7 +32,7 @@ class _Api extends ApiClient {
   @override
   Future<Map<String, dynamic>> guardianExperienceTurn(
       {required String content,
-      String? stateToken, String? threadId, String? commandId,
+      String? stateToken, String? threadId, String? commandId, String? skillHint,
       List<String> attachmentKeys = const [],
       String mode = 'student_guide', void Function(String)? onStage}) async {
     stageListener = onStage;
@@ -89,17 +91,7 @@ class _Api extends ApiClient {
   Future<List<Map<String, dynamic>>> tutoringEvidence(
           String wardId, DateTime day) async =>
       [];
-  @override
-  Future<Map<String, dynamic>> plan(String wardId, DateTime day) async {
-    planReads++;
-    throw StateError('must not read plan');
-  }
 
-  @override
-  Future<List<dynamic>> assignments(String wardId) async {
-    planReads++;
-    throw StateError('must not read assignments');
-  }
 }
 
 Future<void> _home(WidgetTester tester, _Api api,

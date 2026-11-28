@@ -16,12 +16,12 @@ def erase_observation(db, ward_id):
     windows = db.query(m.ObservationWindowRecord.id).filter_by(ward_id=ward_id)
     days = db.query(m.ObservationDayRecord.id).filter_by(ward_id=ward_id)
     offers = db.query(m.HelpOfferRecord.id).filter_by(ward_id=ward_id)
-    reports = db.query(m.ReflectionReportRecord.id).filter_by(ward_id=ward_id)
+    reports = db.query(m.EveningReportRecord.id).filter_by(ward_id=ward_id)
     for model, column, query in (
         (m.ObservationInterpretation, m.ObservationInterpretation.window_id, windows),
         (m.ObservationRevisionRecord, m.ObservationRevisionRecord.day_id, days),
         (m.SupportReceipt, m.SupportReceipt.offer_id, offers),
-        (m.ReflectionReportVersion, m.ReflectionReportVersion.report_id, reports),
+        (m.EveningReportVersion, m.EveningReportVersion.report_id, reports),
         (m.GuardianReportInbox, m.GuardianReportInbox.report_id, reports),
     ):
         db.query(model).filter(column.in_(query)).delete(synchronize_session=False)
@@ -37,6 +37,6 @@ def erase_observation(db, ward_id):
         m.SupportChannel,
         m.SupportAssessment,
         m.ObservationConsumerInbox,
-        m.ReflectionReportRecord,
+        m.EveningReportRecord,
     ):
         db.query(model).filter_by(ward_id=ward_id).delete(synchronize_session=False)

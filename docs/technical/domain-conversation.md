@@ -349,12 +349,13 @@ DELETE /v1/conversations/{thread_id}             → DeleteConversationThread (2
 
 # 统一 Agent 对话与执行流
 POST   /v1/agent/turns                           → StartAgentRun (200/202，可选 thread_id，缺省续接默认对话或新建)
-GET    /v1/agent/runs/{run_id}                   → GetAgentRunStatus
-GET    /v1/agent/runs/{run_id}/events            → SSE 流式推送规划步骤、工具进度与最终交互信封
-POST   /v1/agent/runs/{run_id}/cancel            → CancelAgentRun (200 OK)
+GET    /v1/agent/threads/{thread_id}/results/{command_id} → 获取当前可见线程已提交的最终结果
+GET    /v1/conversations/{thread_id}/ward-summary → 显式绑定且仍有权限的成人读取摘要
 ```
 
 ---
+
+当前 App 在 POST 请求中通过 SSE 接收实时进度。若传输中断，客户端按原线程和命令读取已提交结果。Ward 按清空版本、成人按会话代次控制可见性。成人本轮由 edu.skill-planner 选择 Skill。通用模式可调用只读检索并根据结果继续规划。Ward 的本轮意图提议直接驱动 Skill 选择。两端共用 EduAgentOrchestrator、ToolExecutor 和 GateRunner，领域执行器负责求解、创作与核验。Admin 草稿的 skills/ 声明可以调整 SOP 并收窄角色和工具权限，服务端强制执行代码权限上限和必需门禁。
 
 ## 五、Infrastructure Design Card
 

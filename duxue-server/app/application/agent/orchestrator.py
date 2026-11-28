@@ -6,12 +6,14 @@ Skill disclosure via `agent.load_skill`, emitting nested OTel/Langfuse spans.
 
 from __future__ import annotations
 
+from contextlib import ExitStack
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable, Literal
 from uuid import uuid4
 
+from app.application.agent.gates import GateRunner
 from app.application.agent.registry import (
     SkillRegistry,
     SkillSpec,
@@ -121,11 +123,13 @@ class EduAgentOrchestrator:
         skill_registry: SkillRegistry,
         run_store: AgentRunStore | None = None,
         max_steps: int = 6,
+        gates: GateRunner | None = None,
     ) -> None:
         self.tool_registry = tool_registry
         self.skill_registry = skill_registry
         self.executor = ToolExecutor(tool_registry)
         self.run_store = run_store or AgentRunStore()
+        self.gates = gates or GateRunner()
         self.max_steps = max_steps
 
     def run(
@@ -155,7 +159,7 @@ class EduAgentOrchestrator:
             "turn",
             "edu_agent_orchestrator",
             **{"agent.run_id": record.run_id, "agent.role": policy.role},
-        ) as turn_span:
+        ) as turn_span, ExitStack() as skill_scope:
             set_observation_payload(
                 turn_span,
                 input={"message_len": len(message), "attachment_count": len(attachments or [])},
@@ -209,40 +213,49 @@ class EduAgentOrchestrator:
                             )
                         )
                         continue
-                    with edu_agent_span(
+                    skill_scope.close()
+                    skill_span = skill_scope.enter_context(edu_agent_span(
                         "skill",
                         skill.id,
                         **{"agent.skill_id": skill.id, "agent.role": policy.role},
-                    ) as skill_span:
-                        active_skill = skill
-                        record.active_skill_id = skill.id
-                        unlocked = set(skill.tools) & policy.all_permitted_tools
-                        active_tools |= unlocked
-                        registered_gates |= set(skill.required_gates)
-                        set_observation_payload(
-                            skill_span,
-                            output={
+                    ))
+                    active_skill = skill
+                    record.active_skill_id = skill.id
+                    unlocked = set(skill.tools) & policy.all_permitted_tools
+                    active_tools = set(policy.base_tools) | unlocked
+                    registered_gates = set(policy.mandatory_gates) | set(skill.required_gates)
+                    set_observation_payload(
+                        skill_span,
+                        output={
+                            "skill_id": skill.id,
+                            "unlocked_tools": sorted(unlocked),
+                            "required_gates": sorted(skill.required_gates),
+                        },
+                    )
+                    tool_results.append(
+                        ToolResult(
+                            tool_id="agent.load_skill",
+                            status="ok",
+                            data={
                                 "skill_id": skill.id,
+                                "instructions": skill.instructions,
                                 "unlocked_tools": sorted(unlocked),
-                                "required_gates": sorted(skill.required_gates),
                             },
                         )
-                        tool_results.append(
-                            ToolResult(
-                                tool_id="agent.load_skill",
-                                status="ok",
-                                data={
-                                    "skill_id": skill.id,
-                                    "instructions": skill.instructions,
-                                    "unlocked_tools": sorted(unlocked),
-                                },
-                            )
-                        )
-                        self.run_store.push_event(
-                            record.run_id,
-                            {"event": "skill_loaded", "skill_id": skill.id},
-                        )
+                    )
+                    self.run_store.push_event(
+                        record.run_id,
+                        {"event": "skill_loaded", "skill_id": skill.id},
+                    )
                     continue
+
+                spec = self.tool_registry.get_spec(step.tool_id) if step.action == "call_tool" else None
+                phase = "respond" if step.action == "respond" else "write" if spec and spec.access == "command" and step.tool_id in active_tools else None
+                if phase and not self.gates.allows(registered_gates, phase=phase, candidate=step):
+                    record.status = "failed"
+                    self.run_store.push_event(record.run_id, {"event": "failed", "reason": "gate_denied"})
+                    return AgentRunOutcome(record.run_id, "failed", "本轮核验未通过。", "text",
+                        active_skill.id if active_skill else None, frozenset(registered_gates), tuple(tool_results))
 
                 if step.action == "call_tool" and step.tool_id:
                     res = self.executor.execute(
@@ -257,6 +270,14 @@ class EduAgentOrchestrator:
                         record.run_id,
                         {"event": "tool_called", "tool_id": step.tool_id, "status": res.status},
                     )
+                    if res.status == "tool_error":
+                        record.status = "failed"
+                        self.run_store.push_event(record.run_id, {"event": "failed", "reason": res.error_code})
+                        return AgentRunOutcome(
+                            run_id=record.run_id, status="failed", content="工具暂不可用，请稍后重试。",
+                            interaction_kind="text", active_skill_id=active_skill.id if active_skill else None,
+                            registered_gates=frozenset(registered_gates), tool_results=tuple(tool_results),
+                        )
                     continue
 
                 if step.action == "respond":
@@ -305,6 +326,3 @@ class EduAgentOrchestrator:
                 registered_gates=frozenset(registered_gates),
                 tool_results=tuple(tool_results),
             )
-
-
-default_run_store = AgentRunStore()

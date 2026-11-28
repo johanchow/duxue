@@ -27,6 +27,10 @@ Guardian 用邮箱验证码注册和登录，不保存读学密码。Ward 使用
 
 ## 注意
 
+- 2026-11-28 用户授权通过 Chrome DevTools MCP 开通阿里云 PNVS，登录后免费开通并刷新“功能开启”页核实：号码认证、短信认证已开启，图形认证与融合认证未开启。短信概览展示预置签名“恒创联众”、登录/注册模板100001，测试手机号列表为空。服务端凭据配置与实际短信收发尚待实施。用户已明确手机号/邮箱同等地位、任选其一注册，手机号独立开户需调整现有非空邮箱及共管邀请依赖。开通说明见[官方指引](https://help.aliyun.com/zh/pnvs/getting-started/sms-authentication-service-novice-guide)，备案义务需独立核对。
+
+- 2026-11-28 Guardian 微信登录准备调研：现有约束见 [登录 PRD](../../docs/product/prd-user.md#42-支持的登录方式)。实施前须明确新用户邮箱策略（Guardian.email 当前非空且唯一，共管邀请按邮箱匹配）、正式/调试包的微信注册配置（debug 有 .debug 后缀且签名不同）、iOS 工程与发布准备（当前无 ios/ 目录）。本轮仅分析，未选定注册策略或开工实现。微信官方文档本次抓取失败，主体资质、材料、费用与权限状态须在开放平台后台逐项确认。
+
 - 2026-11-22 release 明文例外只放行 `127.0.0.1`。`<domain>` 必须写 `includeSubdomains="false"`，否则 `lintVitalRelease` 失败；`flutter analyze` 和 debug 安装不会跑这项检查。该地址是本机朗读流 `ReplyAudioSource` 的回环 HTTP，没有下级域名。
 - 2026-11-17 用户确认 Guardian 精简方案并授权真机迭代；2026-11-18用户验收并授权commit。旧 `docs/mockups/guardian-*.html` 已加过期提示，不能作为当前导航事实源。成人会话不借用 Ward 身份/Thread；短期签名状态协议归 [Companion](../../docs/technical/domain-companion.md#guardian-问答体验2026-11-17已验收)。
 - 真机发现 Android 在问答页返回会退出 App；已先红后绿补回归，改为非孩子页先返回孩子页、多孩子详情返回列表，草稿/在途问答保留。清空推进 generation，防止上传、拍照或模型迟到回复污染新一轮。发送期间输入框不重复保留已发送文字，失败恢复草稿。

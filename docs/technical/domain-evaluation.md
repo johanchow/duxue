@@ -74,12 +74,12 @@ GetGuardianReportInbox(actor, after_cursor?, limit)
 
 ### 9.4 物理映射与 Infrastructure Design Card
 
-图源：本文 §9.4，描述客观报告的目标持久化结构。
+当前版本在 evening_report_versions.source_vector 保存证据引用。下图中的 evening_report_evidence 表示目标结构中的独立证据明细。
 
 ```mermaid
 erDiagram
-    evening_reports ||--|{ reflection_report_versions : "Root 与不可变版本"
-    reflection_report_versions ||--o{ reflection_report_evidence : "锁定外域来源"
+    evening_reports ||--|{ evening_report_versions : "Root 与不可变版本"
+    evening_report_versions ||--o{ evening_report_evidence : "锁定外域来源"
     evening_reports ||--o{ guardian_report_inbox : "可重建 Query"
     evening_reports {
       uuid id PK
@@ -88,7 +88,7 @@ erDiagram
       string timezone
       int current_version
     }
-    reflection_report_versions {
+    evening_report_versions {
       uuid report_id PK,FK
       int version PK
       string fingerprint
@@ -96,7 +96,7 @@ erDiagram
       timestamp cutoff_at
       timestamp published_at
     }
-    reflection_report_evidence {
+    evening_report_evidence {
       uuid report_id PK,FK
       int report_version PK,FK
       string source_ref PK

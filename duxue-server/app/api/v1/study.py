@@ -2,7 +2,6 @@ from fastapi.responses import Response
 
 from app.application.commands.start_cue import StartCueService
 from app.application.queries.pronunciation_speech import PronunciationLessonQuery
-from app.application.workflows.planning_domain_service import PlanningDomainService
 from app.contexts.study.domain.execution import can_finish
 from app.contexts.study.domain.start_cue import StartCueError
 
@@ -191,12 +190,12 @@ def task_execution(assignment_id: str, body: TaskExecutionAction, principal: Pri
 
 
 from app.application.queries.sprint_preview import SprintPreviewRequest, preview_spoken_sprint
-from app.application.commands.task_intake import TaskIntakeError
+from app.application.queries.sprint_preview import SprintPreviewError
 
 
 @router.post("/sprints/preview")
 def sprint_preview(body: SprintPreviewRequest, principal: Principal = Depends(current_ward)):
     try:
         return preview_spoken_sprint(body)
-    except TaskIntakeError as error:
+    except SprintPreviewError as error:
         raise HTTPException(502, str(error)) from error

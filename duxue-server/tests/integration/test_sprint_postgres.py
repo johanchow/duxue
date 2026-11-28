@@ -73,45 +73,8 @@ def test_postgres_same_command_returns_one_round_and_rollback_is_atomic(
         assert db.query(SprintCommand).filter_by(ward_id=other).count() == 0
 
 
-def test_migration_preserves_tasks_and_invalidates_old_review_cards(migrated_engine):  # noqa: F811 - imported pytest fixture
-    import importlib.util
-    from pathlib import Path
-    from alembic.migration import MigrationContext
-    from alembic.operations import Operations
-    from sqlalchemy import text
-    from app.infrastructure.persistence.models import Task, PlanDraft
-
-    factory = sessionmaker(bind=migrated_engine, expire_on_commit=False)
-    with factory() as db:
-        ward = create_ward(db)
-        task = Task(ward_id=ward.id, title="历史作业", source="ward")
-        from datetime import date
-
-        draft = PlanDraft(
-            ward_id=ward.id, plan_date=date(2026, 11, 3), status="active", version=7
-        )
-        db.add_all([task, draft])
-        db.commit()
-        task_id, draft_id = task.id, draft.id
-    path = (
-        Path(__file__).resolve().parents[2]
-        / "migrations/versions/20261103_32_study_sprints.py"
-    )
-    spec = importlib.util.spec_from_file_location("sprint_migration", path)
-    migration = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(migration)
-    with migrated_engine.begin() as connection:
-        with Operations.context(MigrationContext.configure(connection)):
-            migration.downgrade()
-            migration.upgrade()
-        assert (
-            connection.execute(
-                text("SELECT title FROM tasks WHERE id=:id"), {"id": task_id}
-            ).scalar_one()
-            == "历史作业"
-        )
-        state = connection.execute(
-            text("SELECT status,version FROM plan_drafts WHERE id=:id"),
-            {"id": draft_id},
-        ).one()
-        assert tuple(state) == ("superseded", 8)
+def test_planning_storage_is_retired_while_sprint_is_available(migrated_engine):
+    from sqlalchemy import inspect
+    names = set(inspect(migrated_engine).get_table_names())
+    assert "study_sprints" in names
+    assert names.isdisjoint({"plan_drafts", "self_reviews", "self_review_aspects", "self_review_versions"})

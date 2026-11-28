@@ -6,18 +6,29 @@ evening creation footprints (Evaluation) without touching academic mastery.
 
 from __future__ import annotations
 
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
+from uuid import UUID
+
+from pydantic import BaseModel, Field, ValidationError
 
 from sqlalchemy.orm import Session
 
+from app.application.commands.behavior_observation import lock, utc
 from app.application.commands.memory import _record_learning_evidence
 from app.infrastructure.persistence.models import (
-    CreativeWork,
     DerivedSignal,
     OutboxEvent,
+    ObservationSettings,
     now,
 )
+
+
+class Footprint(BaseModel):
+    artifact_id: UUID
+    ward_id: UUID
+    version: int = Field(ge=1)
+    title: str = Field(min_length=1, max_length=80)
 
 
 def ingest_creation_interest_signal(
@@ -70,8 +81,12 @@ def ingest_creation_interest_signal(
             status="active",
         )
         db.add(existing)
-    else:
-        existing.value = {"artifact_id": artifact_id, "version": version, "title": title}
+    elif version > existing.value["version"]:
+        existing.value = {
+            "artifact_id": artifact_id,
+            "version": version,
+            "title": title,
+        }
         existing.statement = f"自由创作作品：《{title}》"
         existing.last_evaluated_at = ts
     db.flush()
@@ -83,28 +98,57 @@ def consume_pending_creation_footprints(db: Session, *, limit: int = 100) -> int
     pending = (
         db.query(OutboxEvent)
         .filter_by(event_type="CreationFootprintRecorded.v1", status="pending")
-        .order_by(OutboxEvent.created_at.asc())
+        .filter(OutboxEvent.available_at <= now())
+        .order_by(OutboxEvent.created_at, OutboxEvent.id)
+        .with_for_update(skip_locked=True)
         .limit(limit)
         .all()
     )
+    # Stabilize lock order when workers consume different versions concurrently.
+    ward_keys = {
+        row.payload.get("ward_id")
+        for row in pending
+        if isinstance(row.payload, dict) and isinstance(row.payload.get("ward_id"), str)
+    }
+    for key in sorted(ward_keys):
+        lock(db, f"observation-ward:{key}")
     processed = 0
     for row in pending:
-        payload = row.payload or {}
-        ward_id = payload.get("ward_id")
-        artifact_id = payload.get("artifact_id")
-        version = int(payload.get("version") or 1)
-        title = str(payload.get("title") or "未命名作品")
-        if ward_id and artifact_id:
-            ingest_creation_interest_signal(
-                db,
-                ward_id=str(ward_id),
-                artifact_id=str(artifact_id),
-                version=version,
-                title=title,
-                occurred_at=row.created_at,
+        try:
+            with db.begin_nested():
+                footprint = Footprint.model_validate(row.payload)
+                ward_id = str(footprint.ward_id)
+                ingest_creation_interest_signal(
+                    db,
+                    ward_id=ward_id,
+                    artifact_id=str(footprint.artifact_id),
+                    version=footprint.version,
+                    title=footprint.title,
+                    occurred_at=row.created_at,
+                )
+                setting = db.get(ObservationSettings, ward_id)
+                if setting and setting.report_enabled:
+                    from app.application.commands.evening_reports import (
+                        EveningReportCommands,
+                    )
+
+                    day = (
+                        utc(row.created_at)
+                        .astimezone(ZoneInfo(setting.timezone))
+                        .date()
+                    )
+                    EveningReportCommands(db).publish(ward_id, day)
+                row.status = "published"
+                row.published_at = now()
+            processed += 1
+        except Exception:
+            row.last_error = "creation_footprint_delivery_failed"
+            row.available_at = now() + timedelta(
+                seconds=min(600, 5 * 2 ** min(row.attempts, 7))
             )
-        row.status = "processed"
-        processed += 1
+            if row.attempts >= 7:
+                row.status = "failed"
+        row.attempts += 1
     db.flush()
     return processed
 
@@ -121,22 +165,29 @@ def list_evening_creation_footprints(
     start_utc = datetime.combine(local_date, time.min, tz).astimezone(timezone.utc)
     end_utc = datetime.combine(local_date, time.max, tz).astimezone(timezone.utc)
     rows = (
-        db.query(CreativeWork)
+        db.query(OutboxEvent)
         .filter(
-            CreativeWork.ward_id == ward_id,
-            CreativeWork.saved.is_(True),
-            CreativeWork.updated_at >= start_utc,
-            CreativeWork.updated_at <= end_utc,
+            OutboxEvent.event_type == "CreationFootprintRecorded.v1",
+            OutboxEvent.payload["ward_id"].as_string() == ward_id,
+            OutboxEvent.created_at >= start_utc,
+            OutboxEvent.created_at <= end_utc,
         )
-        .order_by(CreativeWork.updated_at.desc())
+        .order_by(OutboxEvent.created_at.desc(), OutboxEvent.id.desc())
         .all()
     )
-    return [
-        {
-            "artifact_id": row.id,
-            "title": row.title,
-            "version": row.branch[row.cursor],
-            "updated_at": row.updated_at.isoformat() if row.updated_at else None,
-        }
-        for row in rows
-    ]
+    works = {}
+    for row in rows:
+        try:
+            payload = Footprint.model_validate(row.payload).model_dump(mode="json")
+        except ValidationError:
+            continue
+        works.setdefault(
+            payload["artifact_id"],
+            {
+                "artifact_id": payload["artifact_id"],
+                "title": payload["title"],
+                "version": payload["version"],
+                "updated_at": utc(row.created_at).isoformat(),
+            },
+        )
+    return list(works.values())

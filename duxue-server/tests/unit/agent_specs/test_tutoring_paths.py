@@ -138,29 +138,18 @@ def test_changing_rollout_only_affects_new_runs(db, migrated):
         assert dispatcher.invocations[-1].turn["tutoring_graph_version"] == "turn_graph"
 
 
-def test_path_controls_optional_self_review_lookup_without_changing_checks(
+def test_historical_context_node_can_be_bypassed_without_changing_checks(
     db, migrated, monkeypatch
 ):
-    from app.application.workflows import tutoring_workflow
-
-    reads = []
-
-    def read(*args, **kwargs):
-        reads.append(kwargs["task_ref"])
-        return []
-
-    monkeypatch.setattr(tutoring_workflow, "get_recent_self_reviews", read)
     bundle = migrated["bundle"]
     for include_context in (True, False):
         if not include_context:
             change_target(bundle, "image_target", "tutoring.model_loop", "resolved")
         _, session = _setup(db)
-        reads.clear()
         trace = Recorder()
         with use_definitions(compile_bundle(bundle).catalog), trace.capture():
             workflow, model = _workflow(db, KNOWLEDGE)
             _ask(db, workflow, session)
-        assert bool(reads) == include_context
         assert len(model.calls) == 1
         chosen = [
             e["to"]

@@ -14,6 +14,7 @@ from app.application.commands import creative_works as works
 from app.application.commands.companion_history import visible_threads
 from app.infrastructure.ai.errors import ModelGatewayError, ModelTimeBudgetExceeded
 from app.infrastructure.persistence.models import (
+    now,
     CompanionMessage,
     ConversationThread,
     CreativeWork,
@@ -38,7 +39,7 @@ def owned(db, actor, work_id, lock=False):
         .filter(
             or_(
                 CreativeWork.saved.is_(True),
-                CreativeWork.updated_at > works.temporary_cutoff(),
+                CreativeWork.expires_at > now(),
             )
         )
     )

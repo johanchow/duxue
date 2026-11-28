@@ -23,7 +23,7 @@ def execute_turn(spec, turn):
         "reject_media": turn.reject_media,
         "image_target": turn.select_images,
         "clarify_image": turn.clarify_image,
-        "self_review": turn.read_self_review,
+        "self_review": lambda: "context_ready",
         "model_loop": turn.generate,
         "output_safety": turn.screen,
         "apply_problem": turn.apply_work,

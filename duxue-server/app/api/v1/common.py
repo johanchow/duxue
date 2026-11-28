@@ -19,7 +19,7 @@ from app.api.deps import Principal, _bearer, current_device, current_guardian, c
 from app.infrastructure.persistence.models import (
     AnalysisProfile, BehaviorLabelConfig, BehaviorSegment, Device, Frame, FramePrediction,
     Guardian, GuardianWard, EmailAuthChallenge, EmailAuthFailure, RefreshToken, WardRefreshToken, Report, User, Ward, WardCredential, WardInvite,
-    Task, DailySchedule, PlanDraft, StudySession, StudySessionInterval, TutoringSession, TutoringMessage, PronunciationLesson, SelfReview, SelfReviewAspect, SelfReviewVersion,
+    Task, DailySchedule, StudySession, StudySessionInterval, TutoringSession, TutoringMessage, PronunciationLesson,
     AgentRun, AgentStreamEvent, AgentCheckpoint, AgentTrace, CompanionCommand, CompanionMessage, ConversationThread,
     LearningEvent, EpisodicMemory, EpisodicMemoryEvent, DerivedSignal, DerivedSignalEvent, LongTermProfile, OutboxEvent,
     now,
@@ -27,14 +27,13 @@ from app.infrastructure.persistence.models import (
 from app.api.schemas import (
     AnalyzeDayRequest, DeviceBind, EmailCodeRequest, FrameCreate, LabelCreate, LoginRequest, ProfileCreate,
     ProfilePatch, RefreshRequest, RegisterRequest, TokenPair, UploadUrlRequest, WardCreate,
-    WardOut, WardPatch, WardBindRequest, AssignmentCreate, PlanDraft,
-    MessageCreate, SessionFinish, SessionPause, StartCueCommand, SelfReviewCreate, TaskIntakeCleanup, TaskIntakeConfirm,
-    TaskIntakeRequest, CompanionTurnRequest, AgentRunCancelRequest, SignalChallengeRequest, ClientTelemetryBatch,
+    WardOut, WardPatch, WardBindRequest,
+    MessageCreate, SessionFinish, SessionPause, StartCueCommand,
+    CompanionTurnRequest, AgentRunCancelRequest, SignalChallengeRequest, ClientTelemetryBatch,
 )
 from app.infrastructure.security.tokens import create_access_token, random_token, token_hash
 from app.application.commands.legacy_services import analyze_and_generate, corrected_time, make_invite_code, owned_ward, utc_bounds
 from app.infrastructure.storage.object_storage import LocalStorage, camera_storage, storage
-from app.application.commands.task_intake import TaskIntakeError, TaskIntakeService
 from app.infrastructure.messaging.outbox import publish_learning_fact
 from app.application.process_managers.companion_coordinator import CompanionCoordinator
 from app.application.commands.memory import MemoryAccessDenied, SqlAlchemyMemoryCommandService

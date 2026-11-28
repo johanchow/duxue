@@ -46,11 +46,11 @@ def test_run_invocation_and_outcome_contracts():
         run_id=uid(),
         thread_id=uid(),
         ward_id=uid(),
-        agent_type="planning",
-        turn={"content": "开始排程"},
+        agent_type="tutoring",
+        turn={"content": "请给我一个提示"},
     )
     assert invocation.attempt == 1
-    assert invocation.agent_type == "planning"
+    assert invocation.agent_type == "tutoring"
 
     outcome = WorkflowOutcome(
         run_status="waiting_for_ward",

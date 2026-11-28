@@ -6,9 +6,13 @@ from app.agent_specs.catalog import load_catalog
 from app.agent_specs.contexts import build_context
 from app.agent_specs.release_runtime import configured_call
 from app.agent_specs.runtime import execute_workflow
-from app.application.commands.task_intake import TaskIntakeError
+
 from app.infrastructure.ai import components
 from app.infrastructure.ai.errors import ModelGatewayError
+
+
+class SprintPreviewError(RuntimeError):
+    pass
 
 
 class SprintSpokenDraft(BaseModel):
@@ -45,7 +49,7 @@ def preview_spoken_sprint(request: SprintPreviewRequest) -> dict:
             state["results"]["sprint-intake.run"].unwrap()
         )
     except (ModelGatewayError, ValidationError) as error:
-        raise TaskIntakeError("挑战整理暂不可用，请再说一次") from error
+        raise SprintPreviewError("挑战整理暂不可用，请再说一次") from error
     if proposal.cancelled:
         return {
             "status": "cancelled",

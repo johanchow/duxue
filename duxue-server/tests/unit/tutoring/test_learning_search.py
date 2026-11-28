@@ -138,7 +138,7 @@ def test_reviewed_attachment_is_readable_only_on_owners_message(db, bundle, prov
     from app.infrastructure.persistence import workflow_dispatcher
 
     monkeypatch.setattr(workflow_dispatcher, "tutoring_workflow", lambda db: workflow)
-    dispatcher = workflow_dispatcher.SqlAlchemyWorkflowDispatcher(db, planning_factory=None)
+    dispatcher = workflow_dispatcher.SqlAlchemyWorkflowDispatcher(db)
     coordinator = CompanionCoordinator(db, dispatcher=dispatcher, classifier=StaticIntentClassifier("tutoring"))
     result = coordinator.handle(ward_id=ward.id, content="找一张深圳APEC会议照片", thread_id=None,
                                 expected_thread_version=0, route_hint="tutoring")

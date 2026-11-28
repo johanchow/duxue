@@ -108,7 +108,7 @@ def evaluate_role_policy(
     base_tools = set(SAFE_BASE_TOOLS & all_permitted_tools)
     if is_adult and context_ward_bound:
         base_tools.add("ward_context.read_summary")
-    elif not is_adult:
+    else:
         all_permitted_tools = all_permitted_tools - {"ward_context.read_summary"}
     mandatory_gates: set[str] = set()
     if normalized == "ward":

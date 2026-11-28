@@ -98,7 +98,7 @@ def recent_thread_utterances(
 
 
 def _default_reader(key: str) -> str:
-    from app.application.commands.task_intake import _data_url
+    from app.infrastructure.storage.image_data import data_url as _data_url
 
     return _data_url(key)
 

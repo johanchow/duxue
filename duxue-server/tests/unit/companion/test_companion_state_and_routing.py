@@ -42,11 +42,11 @@ def test_explicit_route_hint_takes_precedence(router):
     """已验证的 route_hint 覆盖模型提议。"""
     decision = router.decide(
         content="随便聊两句",
-        route_hint="reflection",
+        route_hint="tutoring",
         focus_run=None,
         proposal=IntentProposal(intent="tutoring"),
     )
-    assert decision.target == "reflection"
+    assert decision.target == "tutoring"
     assert decision.mode == "start"
     assert decision.route_reason == "validated_route_hint"
 
@@ -104,31 +104,11 @@ def test_different_proposal_hands_off(router):
     assert decision.active_session_id == "run-plan-1"
 
 
-def test_unconfirmed_scene_switch_keeps_tutoring_focus(router):
-    focus_run = SimpleNamespace(agent_type="tutoring", id="run-tutor-1")
-    decision = router.decide(
-        content="最后结果二百三十八。",
-        route_hint=None,
-        focus_run=focus_run,
-        proposal=IntentProposal(intent="reflection"),
-        switch_allowed=False,
-    )
-    assert decision.target == "tutoring"
-    assert decision.mode == "continue"
-    assert decision.active_session_id == "run-tutor-1"
-    assert decision.route_reason == "scene_switch_rejected"
-
-
-def test_unavailable_scene_switch_check_keeps_focus(router):
-    decision = router.decide(
-        content="总结一下今天学了什么",
-        route_hint=None,
-        focus_run=SimpleNamespace(agent_type="tutoring", id="run-tutor-1"),
-        proposal=IntentProposal(intent="reflection"),
-        switch_allowed=None,
-    )
-    assert decision.target == "tutoring"
-    assert decision.route_reason == "scene_switch_unavailable"
+@pytest.mark.parametrize("retired", ["planning", "reflection"])
+def test_retired_labels_cannot_open_a_workflow(router, retired):
+    proposal = parse_intent_payload('{"intent":"' + retired + '"}')
+    assert proposal.intent == "unclear"
+    assert router.decide(content="", route_hint=retired, focus_run=None, proposal=proposal).target == "clarify"
 
 
 @pytest.mark.parametrize("payload, expected", [

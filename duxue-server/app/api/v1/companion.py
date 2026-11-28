@@ -1,14 +1,40 @@
+from app.application.queries.ward_messages import chat_messages, readable_reply, thread_messages_payload
 from app.api.deps import expose_turn_trace
 from app.api.reply_events import GUIDE_STAGES, stream_reply
-from .common import *
+from .common import (
+    APIRouter,
+    AgentRun,
+    AgentRunCancelRequest,
+    AgentStreamEvent,
+    CompanionCoordinator,
+    CompanionMessage,
+    CompanionTurnRequest,
+    ConversationThread,
+    Depends,
+    HTTPException,
+    Principal,
+    Query,
+    Request,
+    Response,
+    Session,
+    StreamingResponse,
+    UploadUrlRequest,
+    Ward,
+    current_ward,
+    datetime,
+    get_db,
+    json,
+    secrets,
+    settings,
+    storage,
+    timezone,
+)
 from app.api.schemas import CompanionHistoryClearRequest
 from app.application.commands.companion_history import clear_history, history_is_visible, visible_threads
 from contextlib import aclosing
 import re
 from uuid import UUID
 from app.infrastructure.ai.speech_task import tutor_audio, tutor_audio_frames
-from app.infrastructure.persistence.models import PlanDraft
-from app.application.workflows.planning_domain_service import PlanningDomainService
 from app.infrastructure.observability.telemetry import record_companion_rejection
 
 router = APIRouter(tags=["companion"])
@@ -116,18 +142,13 @@ def companion_message_image(
     return Response(content=content, media_type=media_types[suffix], headers={"Cache-Control": "private, max-age=300"})
 
 
-def _readable_reply(row: CompanionMessage) -> bool:
-    return (row.author_type == "companion" and bool(row.content.strip())
-            and (row.interaction_ref or {}).get("kind") != "pronunciation_lesson")
-
-
 @router.get("/companion/messages/{message_id}/speech")
 async def companion_message_speech(message_id: UUID, stream: bool = False, principal: Principal = Depends(current_ward),
                                    db: Session = Depends(get_db)):
-    row = _chat_messages(db).filter(CompanionMessage.id == str(message_id), CompanionMessage.ward_id == principal.user_id).one_or_none()
+    row = chat_messages(db).filter(CompanionMessage.id == str(message_id), CompanionMessage.ward_id == principal.user_id).one_or_none()
     if row is None or not history_is_visible(db, principal.user_id, row.thread_id) or row.thread_version <= db.get(ConversationThread, row.thread_id).clear_version:
         raise HTTPException(404, "reply unavailable")
-    if not _readable_reply(row):
+    if not readable_reply(row):
         raise HTTPException(404, "reply unavailable")
     text = row.content
     db.rollback()  # Release the read transaction before waiting on synthesis.
@@ -150,50 +171,6 @@ async def companion_message_speech(message_id: UUID, stream: bool = False, princ
     return Response(content=audio, media_type="audio/mpeg", headers={"Cache-Control": "no-store"})
 
 
-def _serialize_message(row: CompanionMessage) -> dict:
-    return {
-        "id": row.id, "thread_id": row.thread_id, "run_id": row.run_id,
-        "turn_id": row.turn_id, "attempt": row.attempt, "command_id": row.command_id,
-        "thread_version": row.thread_version, "author_type": row.author_type,
-        "content": row.content, "can_read_aloud": _readable_reply(row), "attachment_refs": row.attachment_refs,
-        "interaction_ref": row.interaction_ref, "created_at": row.created_at,
-    }
-
-
-def _chat_messages(db: Session):
-    # Older clients persisted support receipts as ordinary companion messages.
-    reminder = db.query(CompanionCommand.id).filter(
-        CompanionCommand.id == CompanionMessage.command_id,
-        CompanionCommand.payload_digest == "support.invitation.v1",
-    ).exists()
-    return db.query(CompanionMessage).filter(~reminder)
-
-
-def _thread_messages_payload(
-    db: Session,
-    *,
-    ward_id: str,
-    thread: ConversationThread,
-    before_thread_version: int | None,
-    limit: int,
-) -> dict:
-    query = _chat_messages(db).filter_by(thread_id=thread.id, ward_id=ward_id).filter(CompanionMessage.thread_version > thread.clear_version)
-    if before_thread_version is not None:
-        query = query.filter(CompanionMessage.thread_version < before_thread_version)
-    rows = query.order_by(CompanionMessage.thread_version.desc()).limit(limit + 1).all()
-    has_more = len(rows) > limit
-    rows = rows[:limit]
-    messages = [_serialize_message(row) for row in reversed(rows)]
-    next_before = rows[-1].thread_version if has_more and rows else None
-    return {
-        "thread_id": thread.id,
-        "thread_version": thread.version,
-        "messages": messages,
-        "next_before_thread_version": next_before,
-        "previous_thread_id": None,
-    }
-
-
 @router.get("/companion/threads/current/messages")
 def current_companion_messages(
     before_thread_version: int | None = Query(default=None, ge=1),
@@ -202,7 +179,7 @@ def current_companion_messages(
     db: Session = Depends(get_db),
 ):
     latest_msg = (
-        _chat_messages(db)
+        chat_messages(db)
         .join(ConversationThread, ConversationThread.id == CompanionMessage.thread_id)
         .join(Ward, Ward.id == CompanionMessage.ward_id)
         .filter(CompanionMessage.ward_id == principal.user_id, ConversationThread.history_generation == Ward.history_generation,
@@ -225,7 +202,7 @@ def current_companion_messages(
             "next_before_thread_version": None,
             "previous_thread_id": None,
         }
-    return _thread_messages_payload(
+    return thread_messages_payload(
         db,
         ward_id=principal.user_id,
         thread=thread,
@@ -245,7 +222,7 @@ def companion_messages(
     thread = visible_threads(db, principal.user_id).filter(ConversationThread.id == thread_id).first()
     if thread is None:
         raise HTTPException(404, "conversation thread not found")
-    return _thread_messages_payload(
+    return thread_messages_payload(
         db,
         ward_id=principal.user_id,
         thread=thread,
@@ -283,14 +260,9 @@ def companion_turn(
                 expected_thread_version=body.expected_thread_version,
                 route_hint=body.route_hint,
                 command_id=body.command_id,
-                planning_items=body.planning_items,
-                planning_confirm=body.planning_confirm,
                 study_session_id=body.study_session_id,
                 tutoring_directive=body.tutoring_directive,
                 tutoring_intent=body.tutoring_intent,
-                review_date=body.review_date,
-                review_feeling=body.review_feeling,
-                review_reflection=body.review_reflection,
                 attachment_keys=body.attachment_keys,
                 structured_command=body.structured_command.model_dump() if body.structured_command else None,
             )
@@ -317,15 +289,6 @@ def companion_turn(
 
         return stream_reply(invoke_stream, response, stages=GUIDE_STAGES, error_code="companion_error")
     return invoke(db)
-
-@router.get("/companion/planning/drafts/{draft_id}")
-def companion_plan_draft(draft_id: str, principal: Principal = Depends(current_ward), db: Session = Depends(get_db)):
-    """Target Context query used by a plan_confirm_list interaction."""
-    draft = db.get(PlanDraft, draft_id)
-    if draft is None or draft.ward_id != principal.user_id:
-        raise HTTPException(404, "计划草稿不存在")
-    return PlanningDomainService(db).plan_draft_view(principal.user_id, draft_id)
-
 
 @router.post("/companion/runs/{run_id}/cancel")
 def cancel_companion_run(

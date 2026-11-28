@@ -1,4 +1,5 @@
 """Authenticated adult experience, isolated from every Ward aggregate."""
+
 import secrets
 from datetime import datetime, timezone
 from typing import Annotated
@@ -9,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.orm import Session
 
 from app.api.v1.conversations import thread_for
+from app.agent_specs.release_runtime import configured_call
 from app.infrastructure.persistence.models import GuardianConversationTurn
 from app.api.deps import Principal, current_guardian, expose_turn_trace, get_db
 from app.api.reply_events import GUIDE_STAGES, stream_reply
@@ -31,6 +33,9 @@ from app.infrastructure.ai.aliyun_tts import (
     SpeechSynthesisError,
 )
 from app.infrastructure.ai.errors import ModelTimeBudgetExceeded
+from app.application.agent.selected_skill import adult_reply
+from app.application.agent.role_policy import normalize_role
+from app.infrastructure.ai.errors import ModelGatewayError
 from app.infrastructure.security.experience_tokens import unseal
 from app.infrastructure.storage.object_storage import storage
 
@@ -81,29 +86,66 @@ def turn(
     principal: Annotated[Principal, Depends(current_guardian)],
     db: Annotated[Session, Depends(get_db)],
 ):
+    return execute_turn(body, request, response, principal, db)
+
+
+def execute_turn(
+    body, request, response, principal, db, *, plan=False, skill_hint=None
+):
+    from app.application.commands import workspace_documents
+    from app.application.workflows import education_workspace
+
     purpose = MENTOR_PURPOSE if body.mode == "guardian_explain" else "conversation"
     state = _state(body.state_token, principal, purpose) if body.state_token else {}
+
     def replay(session, thread):
-        past = session.query(GuardianConversationTurn).filter_by(thread_id=thread.id, command_id=body.command_id).one_or_none()
+        past = (
+            session.query(GuardianConversationTurn)
+            .filter_by(thread_id=thread.id, command_id=body.command_id)
+            .one_or_none()
+        )
         if past is None:
             return None
-        if (past.content != body.content or past.attachments != body.attachment_keys or
-                past.mode != body.mode or past.generation != thread.history_generation):
+        if (
+            past.content != body.content
+            or past.attachments != body.attachment_keys
+            or past.mode != body.mode
+            or past.reply.get("skill_hint") != skill_hint
+            or past.generation != thread.history_generation
+        ):
             raise HTTPException(409, "turn no longer matches request")
         return past.reply
 
+    previous_context = None
     if body.thread_id:
         thread = thread_for(db, principal, body.thread_id)
         version = thread.version
         existing = replay(db, thread)
         if existing is None:
-            previous = db.query(GuardianConversationTurn).filter_by(
-                thread_id=thread.id, generation=thread.history_generation, mode=body.mode,
-            ).order_by(GuardianConversationTurn.position.desc()).first()
+            previous = (
+                db.query(GuardianConversationTurn)
+                .filter_by(
+                    thread_id=thread.id,
+                    generation=thread.history_generation,
+                    mode=body.mode,
+                )
+                .order_by(GuardianConversationTurn.position.desc())
+                .first()
+            )
+            if previous:
+                previous_context = {
+                    "request": previous.content,
+                    "reply": str(previous.reply.get("content") or "")[:2000],
+                }
+                if previous.reply.get("artifact_type"):
+                    previous_context["artifact_type"] = previous.reply["artifact_type"]
             if not state.get("handoff"):
                 state = previous.continuation if previous else {}
 
-    if any(not owns_image(principal.user_id, key) or not storage.exists(key) for key in body.attachment_keys):
+    if (not body.thread_id or existing is None) and any(
+        not owns_image(principal.user_id, key) or not storage.exists(key)
+        for key in body.attachment_keys
+    ):
         raise HTTPException(400, "invalid experience attachment")
     default_prompt = (
         "请看这张图片，给出完整破题思路、核验结论与常见易错点解析。"
@@ -119,18 +161,63 @@ def turn(
         with Session(bind) as reader:
             return GetProblemDossierQuery(reader).find_bank_ready(stem=stem)
 
+    @configured_call
     def invoke():
         try:
             if body.thread_id and existing is not None:
                 return existing
-            answer = experience_turn(
-                guardian_id=principal.user_id,
-                content=body.content or default_prompt,
-                attachment_keys=body.attachment_keys,
-                state=state,
-                mode=body.mode,
-                bank_lookup=lookup,
-            )
+            role = normalize_role(principal.role)
+            thread_id = str(body.thread_id) if body.thread_id else None
+            previous = previous_context
+            skill = skill_hint or "edu.homework_tutoring"
+            choice = None
+            if plan and thread_id and not state.get("handoff") and not skill_hint:
+                choice = education_workspace.choose_skill(
+                    content=body.content,
+                    keys=body.attachment_keys,
+                    previous=previous,
+                    role=role,
+                )
+                skill = choice.skill
+            document = None
+            answer = None
+            if skill in {"edu.worksheet_grading", "edu.lesson_pack"}:
+                document = education_workspace.prepare(
+                    owner=principal.user_id,
+                    content=body.content,
+                    keys=body.attachment_keys,
+                    skill_hint=skill,
+                    thread_id=thread_id,
+                    previous=previous,
+                    role=role,
+                )
+            else:
+
+                def domain_reply():
+                    return experience_turn(
+                        guardian_id=principal.user_id,
+                        content=body.content or default_prompt,
+                        attachment_keys=body.attachment_keys,
+                        state=state,
+                        mode=body.mode,
+                        bank_lookup=lookup,
+                    )
+
+                answer = (
+                    adult_reply(
+                        role=role,
+                        owner=principal.user_id,
+                        thread_id=thread_id,
+                        message=body.content,
+                        attachments=body.attachment_keys,
+                        skill=skill,
+                        invoke=domain_reply,
+                        choice=choice,
+                        previous=previous,
+                    )
+                    if plan
+                    else domain_reply()
+                )
             if body.thread_id:
                 with Session(bind) as writer:
                     row = thread_for(writer, principal, body.thread_id, lock=True)
@@ -138,45 +225,91 @@ def turn(
                     if cached is not None:
                         return cached
                     if row.version != version:
-                        raise HTTPException(409, "conversation changed during generation")
+                        raise HTTPException(
+                            409, "conversation changed during generation"
+                        )
+                    if document:
+                        answer = workspace_documents.create(
+                            writer,
+                            document,
+                            principal.user_id,
+                            row,
+                            body.attachment_keys,
+                        )
+                    if skill_hint:
+                        answer = {**answer, "skill_hint": skill_hint}
                     row.version += 1
                     message_id = str(uuid4())
                     answer = {**answer, "message_id": message_id}
-                    continuation = _state(answer["state_token"], principal, purpose) if answer.get("state_token") else state
-                    writer.add(GuardianConversationTurn(
-                        id=message_id, thread_id=row.id, generation=row.history_generation, position=row.version,
-                        command_id=body.command_id, mode=body.mode, content=body.content,
-                        attachments=body.attachment_keys, reply=answer, continuation=continuation,
-                    ))
+                    continuation = (
+                        _state(answer["state_token"], principal, purpose)
+                        if answer.get("state_token")
+                        else state
+                    )
+                    writer.add(
+                        GuardianConversationTurn(
+                            id=message_id,
+                            thread_id=row.id,
+                            generation=row.history_generation,
+                            position=row.version,
+                            command_id=body.command_id,
+                            mode=body.mode,
+                            content=body.content,
+                            attachments=body.attachment_keys,
+                            reply=answer,
+                            continuation=continuation,
+                        )
+                    )
                     if row.title == "新对话" and body.content:
                         row.title = body.content[:40]
                     writer.commit()
             return answer
         except ModelTimeBudgetExceeded as error:
             raise HTTPException(503, {"code": "mentor_timeout"}) from error
+        except ModelGatewayError as error:
+            raise HTTPException(503, {"code": "model_unavailable"}) from error
         except MentorRateLimitExceeded as error:
             raise HTTPException(429, {"code": "mentor_rate_limited"}) from error
 
     if "text/event-stream" in request.headers.get("accept", ""):
         mentor = body.mode == "guardian_explain"
         return stream_reply(
-            invoke, response, stages=_MENTOR_STAGES if mentor else GUIDE_STAGES,
+            invoke,
+            response,
+            stages=_MENTOR_STAGES if mentor else GUIDE_STAGES,
             error_code="mentor_error" if mentor else "experience_error",
         )
     return invoke()
 
 
 @router.post("/attachments/upload-url")
-def upload_url(body: UploadUrlRequest, request: Request, principal: Annotated[Principal, Depends(current_guardian)]):
+def upload_url(
+    body: UploadUrlRequest,
+    request: Request,
+    principal: Annotated[Principal, Depends(current_guardian)],
+):
     extension = body.extension.lower().lstrip(".")
-    mime = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}
+    mime = {
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "png": "image/png",
+        "webp": "image/webp",
+    }
     if mime.get(extension) != body.content_type:
         raise HTTPException(400, "unsupported experience attachment")
     key = f"{media_prefix(principal.user_id)}{secrets.token_hex(16)}.{extension}"
-    base_url = str(request.base_url) if settings.storage_backend == "local" else settings.public_base_url
+    base_url = (
+        str(request.base_url)
+        if settings.storage_backend == "local"
+        else settings.public_base_url
+    )
     url, expires, headers = storage.upload_url(key, base_url, body.content_type)
-    return {"upload_url": url, "oss_key": key,
-            "expires_at": datetime.fromtimestamp(expires, timezone.utc), "headers": headers}
+    return {
+        "upload_url": url,
+        "oss_key": key,
+        "expires_at": datetime.fromtimestamp(expires, timezone.utc),
+        "headers": headers,
+    }
 
 
 class SpeechRequest(BaseModel):
@@ -186,13 +319,19 @@ class SpeechRequest(BaseModel):
 
 
 @router.post("/speech")
-def speech(body: SpeechRequest, principal: Annotated[Principal, Depends(current_guardian)]):
+def speech(
+    body: SpeechRequest, principal: Annotated[Principal, Depends(current_guardian)]
+):
     lesson = _state(body.speech_ref, principal, "speech")
     rate = canonical_rate(body.rate)
     if rate is None:
         raise HTTPException(400, "unsupported speech rate")
     try:
-        audio = AliyunSpeechSynthesizer().synthesize(text=lesson["source_text"], locale=lesson["locale"], rate=rate)
+        audio = AliyunSpeechSynthesizer().synthesize(
+            text=lesson["source_text"], locale=lesson["locale"], rate=rate
+        )
     except SpeechSynthesisError as error:
         raise HTTPException(503, {"code": "tts_error", "reason": error.code}) from error
-    return Response(content=audio, media_type="audio/mpeg", headers={"Cache-Control": "no-store"})
+    return Response(
+        content=audio, media_type="audio/mpeg", headers={"Cache-Control": "no-store"}
+    )

@@ -317,13 +317,6 @@ def delete_ward_data(ward_id: str, principal: Principal = Depends(current_guardi
     if session_ids:
         db.query(StudySessionInterval).filter(StudySessionInterval.study_session_id.in_(session_ids)).delete(synchronize_session=False)
     db.query(StudySession).filter(StudySession.ward_id == ward_id).delete(synchronize_session=False)
-    review_ids = [row[0] for row in db.query(SelfReview.id).filter_by(ward_id=ward_id).all()]
-    if review_ids:
-        db.query(SelfReviewAspect).filter(SelfReviewAspect.review_id.in_(review_ids)).delete(synchronize_session=False)
-        db.query(SelfReviewVersion).filter(SelfReviewVersion.review_id.in_(review_ids)).delete(synchronize_session=False)
-    db.query(SelfReview).filter(SelfReview.ward_id == ward_id).delete(synchronize_session=False)
-    from app.infrastructure.persistence.models import PlanDraft as PlanDraftRecord
-    db.query(PlanDraftRecord).filter(PlanDraftRecord.ward_id == ward_id).delete(synchronize_session=False)
     db.query(Task).filter(Task.ward_id == ward_id).delete(synchronize_session=False)
     db.query(DailySchedule).filter(DailySchedule.ward_id == ward_id).delete(synchronize_session=False)
     db.query(WardInvite).filter(WardInvite.ward_id == ward_id).delete(synchronize_session=False)

@@ -12,7 +12,6 @@ from app.agent_specs.catalog import load_catalog
 from app.agent_specs.definitions import load_definitions
 from app.agent_specs.results import completed
 from app.application.ports.companion import RunInvocation, WorkflowOutcome
-from app.application.workflows.reflection_workflow import ReflectionWorkflow
 from app.bootstrap.math_engine import tutoring_workflow
 from app.infrastructure.persistence.models import AgentRun
 
@@ -20,18 +19,15 @@ from app.infrastructure.persistence.models import AgentRun
 class SqlAlchemyWorkflowDispatcher:
     """Transitional composition adapter for the modular monolith."""
 
-    def __init__(self, db: Session, *, planning_factory: Callable[[Session], object]):
+    def __init__(self, db: Session):
         self.db = db
-        self.planning_factory = planning_factory
 
     def invoke(self, invocation: RunInvocation) -> WorkflowOutcome:
         run = self.db.get(AgentRun, invocation.run_id)
         if run is None or run.thread_id != invocation.thread_id or run.ward_id != invocation.ward_id:
             raise HTTPException(404, "agent run not found")
         factories = {
-            "planning": self.planning_factory,
             "tutoring": tutoring_workflow,
-            "reflection": ReflectionWorkflow,
         }
         workflow = load_catalog().spec(invocation.agent_type)
         agent = load_definitions().code_agents[workflow.invocation_agent]

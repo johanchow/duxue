@@ -17,6 +17,53 @@ class _LibraryState extends ConsumerState<WardWorksLibrary> {
   late Future<List<Map<String, dynamic>>> rows =
       ref.read(apiProvider).savedWorks();
 
+  bool changing = false;
+
+  Future<void> edit(Map<String, dynamic> row, String action) async {
+    if (changing) return;
+    final deleting = action == 'delete';
+    var title = row['title'] as String;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(deleting ? '删除《$title》？' : '重命名作品'),
+        content: deleting
+            ? null
+            : TextFormField(
+                initialValue: title,
+                autofocus: true,
+                maxLength: 80,
+                onChanged: (value) => title = value.trim()),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(deleting ? '删除' : '保存')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted || title.isEmpty) return;
+    setState(() => changing = true);
+    try {
+      final api = ref.read(apiProvider);
+      final id = row['artifact_id'] as String;
+      if (deleting) {
+        await api.deleteCreativeWork(id);
+      } else {
+        await api.renameCreativeWork(id, title);
+      }
+      if (mounted) setState(() => rows = api.savedWorks());
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('作品更新失败，请重试')));
+      }
+    } finally {
+      if (mounted) setState(() => changing = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
       appBar: AppBar(title: const Text('我的作品')),
@@ -44,6 +91,14 @@ class _LibraryState extends ConsumerState<WardWorksLibrary> {
                 ListTile(
                     leading: const Icon(Icons.menu_book),
                     title: Text(row['title'] as String),
+                    trailing: PopupMenuButton<String>(
+                        enabled: !changing,
+                        onSelected: (value) => edit(row, value),
+                        itemBuilder: (_) => const [
+                              PopupMenuItem(
+                                  value: 'rename', child: Text('重命名')),
+                              PopupMenuItem(value: 'delete', child: Text('删除')),
+                            ]),
                     onTap: () => Navigator.push(
                         context,
                         MaterialPageRoute(

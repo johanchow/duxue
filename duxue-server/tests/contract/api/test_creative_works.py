@@ -54,8 +54,11 @@ def test_storybook_turn_versions_retries_and_saved_library(client, db, monkeypat
         "expected_thread_version": 0,
         "command_id": str(uuid4()),
     }
-    r = client.post("/companion/turn", headers=h, json=body)
+    r = client.post("/v1/agent/turns", headers=h, json=body)
     assert r.is_success, r.text
+    result_url = f"/v1/agent/threads/{thread}/results/{body['command_id']}"
+    assert client.get(result_url, headers=h).json() == r.json()
+    assert client.get(result_url, headers=other).status_code == 404
     reply = r.json()["interaction"]
     assert reply["kind"] == "creative_work"
     assert (
@@ -64,6 +67,7 @@ def test_storybook_turn_versions_retries_and_saved_library(client, db, monkeypat
     )
     path = root + "/" + reply["artifact_id"]
     assert client.get(path, headers=other).status_code == 404
+    assert client.get("/v1/artifacts", headers=h).json() == {"items": [], "next_cursor": None}
     assert client.get(root, headers=h).json()["items"] == []
     ref = client.get("/v1/conversations/" + thread + "/messages", headers=h).json()[
         "items"
@@ -117,6 +121,11 @@ def test_storybook_turn_versions_retries_and_saved_library(client, db, monkeypat
         client.get(root, headers=h).json()["items"][0]["artifact_id"]
         == reply["artifact_id"]
     )
+    assert client.get(result_url, headers=h).status_code == 404
+    library = client.get("/v1/artifacts", headers=h, params={"artifact_type": "creative_work"}).json()
+    assert library["items"][0]["artifact_id"] == reply["artifact_id"]
+    assert library["items"][0]["artifact_type"] == "creative_work"
+    assert not client.get("/v1/artifacts", headers=other).json()["items"]
     assert client.get(path, headers=h).json()["saved"]
     assert (
         db.query(OutboxEvent)
@@ -146,11 +155,13 @@ def test_focus_reminder_follows_active_sprint_into_new_thread(db):
         ]
     )
     db.flush()
+    assert creative_works.focus_reminder(db, SimpleNamespace(ward_id=ward.id, thread_id=a.id, turn={})) is None
+    turn = {"off_topic_sprint_id": db.query(Sprint).filter_by(ward_id=ward.id).one().id}
     first = creative_works.focus_reminder(
-        db, SimpleNamespace(ward_id=ward.id, thread_id=a.id)
+        db, SimpleNamespace(ward_id=ward.id, thread_id=a.id, turn=turn)
     )
     second = creative_works.focus_reminder(
-        db, SimpleNamespace(ward_id=ward.id, thread_id=b.id)
+        db, SimpleNamespace(ward_id=ward.id, thread_id=b.id, turn=turn)
     )
     assert first == second and second["kind"] == "creative_focus_reminder"
 
@@ -173,14 +184,15 @@ def test_expiry_removes_only_temporary_story_versions(db):
             ward_id=ward.id,
             source_thread_id=thread.id,
             title="月亮",
-            updated_at=now() - timedelta(hours=5),
+            expires_at=None if saved else now() - timedelta(hours=1),
             saved=saved,
         )
         db.add(work)
         db.flush()
         db.add(CreativeWorkVersion(work_id=work.id, number=1, pages=[]))
     db.commit()
-    assert creative_works.expire_temporary(db) == 1
+    from app.application.commands.artifact_workspace import expire_temporary
+    assert expire_temporary(db) == 1
     assert db.query(CreativeWork).one().saved
     assert db.query(CreativeWorkVersion).count() == 1
 
@@ -280,4 +292,4 @@ def test_focus_reminder_only_triggers_for_active_sprint(db):
     db.flush()
     db.add(TutoringProblem(tutoring_session_id=sess.id, status="open", summary="1+1"))
     db.flush()
-    assert creative_works.focus_reminder(db, SimpleNamespace(ward_id=ward.id, thread_id=thread.id)) is None
+    assert creative_works.focus_reminder(db, SimpleNamespace(ward_id=ward.id, thread_id=thread.id, turn={})) is None
