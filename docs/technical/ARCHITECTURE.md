@@ -79,7 +79,7 @@ graph TB
     %% 编排与核验
     API_AGENT --> WORKER_PS & WORKER_TUT & WORKER_RENDER
     API_AGENT -.->|显式受权只读| MEMORY_ENGINE & API_EVAL
-    API_AW --> WORKER_PS & WORKER_RENDER
+    API_AW --> WORKER_RENDER
 
     %% 持久化与异步观察
     API_AUTH & API_DEV & API_AGENT & API_AW & API_EVAL --> PG & REDIS

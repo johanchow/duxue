@@ -19,7 +19,7 @@
   5. 维护交互式数理演示的端侧离线 Web 渲染与安全隔离契约（`Duxue MathStage Runtime`）。
 - **非目标**：
   - 不负责多轮聊天上下文、通用 Agent 规划循环或角色路由（归 [Conversation](domain-conversation.md)）；
-  - 不自建客观求解器或确定性数学/理化引擎（通过 ACL 调用 [ProblemSolving](domain-problem-solving.md)）；
+  - **不直接调用求解器或确定性数学/理化引擎**（客观求解、整页批改核验与出题自验由 `EduAgentOrchestrator` 调度 [ProblemSolving](domain-problem-solving.md) Tool 完成后，将只读 `VerificationBaseline` 值对象经本域 Command 传入）；
   - 不承担 Ward 作业答疑的答案保护状态机与《独立解题凭证》（归 [Tutoring](domain-tutoring.md)）；
   - 成人产物绝不写入学生 `Memory` 或 `TutoringSession`。
 
@@ -28,8 +28,7 @@
 | 方向 | Domain / 契约 | 集成方式 | 说明 |
 | :--- | :--- | :--- | :--- |
 | 上游 | `Identity & Relationship` | Authorization ACL | 校验 `owner_id`、`owner_role` 与私有附件所有权 |
-| 上游 | `ProblemSolving` | ACL / Port（无状态求解核验 + 只读题库） | 获取不可变 `VerificationBaseline`（课件解题基线、整页批改核验基线、变式出题自解自验结果） |
-| 上游 | `Conversation`（`EduAgentOrchestrator`） | Application Command 调用 | 编排层产出候选块或局部 Patch 后，经本域 Command 校验提交；对话与产物仅通过 `source_thread_id` 松耦合 |
+| 上游 | `Conversation`（`EduAgentOrchestrator`） | Application Command 调用 | 唯一上游编排方：负责按需调用 `ProblemSolving` Tool 取得 `VerificationBaseline` 并生成候选块或局部 Patch，再经本域 Command 校验提交；对话与产物仅通过 `source_thread_id` 松耦合 |
 | 下游 | `Evaluation` & `Memory` | Integration Event（Outbox：`CreationFootprintRecorded.v1`） | 仅当 `owner_role == "ward"` 且为自由创作产物保存/更新时发布，向晚间报告投影「好奇心与创作足迹」并向 `Memory` 写入独立 `Interest Signal`（**绝不混入作业专注时长与学业掌握度**） |
 
 ### 1.3 统一语言
@@ -194,37 +193,35 @@ stateDiagram-v2
 | 用户确认删除 | User/API intent | `DELETE /v1/artifacts/{id}` | `DeleteEduArtifact` | `EduArtifact.delete()` | `EduArtifactDeleted` | 事务内删聚合与素材副本，作废在途任务 | 本地短事务；幂等返回 `204` |
 | 定时清理器检查到期 | Scheduled job | Infrastructure Scheduler | `ExpireTemporaryArtifact` | `EduArtifact.expire()` | `TemporaryArtifactExpired` | 级联清理到期临时记录 | 本地短事务；仅到期 `temporary`（4h），重复扫描无副作用 |
 
-### 3.2 异步创建与局部修订时序图（Async Production & Revision Flow）
+### 3.2 异步创建与局部修订时序图（由 `EduAgentOrchestrator` 驱动，本域与 `ProblemSolving` 零直接依赖）
 
 ```mermaid
 sequenceDiagram
     actor U as Teacher / Coach / Guardian / Ward
     participant IF as Interface (FastAPI)
     participant CMD as ArtifactWorkspace Commands
-    participant WK as Async Production Worker (Infrastructure)
-    participant PS as ProblemSolving (ACL Port)
-    participant AI as Director / Renderer / Judge (Infrastructure)
+    participant PM as EduAgentOrchestrator (Application Process Manager)
+    participant RN as ArtifactRenderPort & Judge (Infrastructure)
     participant AGG as EduArtifact (Aggregate Root)
 
-    U->>IF: 发起产物创建或局部修订请求
+    U->>IF: 在对话中创建产物 或 从「我的资源库」发起局部修订
     IF->>CMD: CreateEduArtifact / RequestArtifactRevision
     CMD->>AGG: 校验权限与 CAS，创建 drafting 或锁定 active_revision_id（本地短事务）
     CMD-->>IF: 202 Accepted {artifact_id, state_revision}
-    CMD--)WK: 投递异步生产 / Patch 任务
+    CMD--)PM: 触发异步编排 / 局部修订任务
 
-    opt 新产物需核验 或 修订触发 requires_reverify=true
-        WK->>PS: solve_and_verify / batch_verify / variant_self_verify（事务外）
-        PS-->>WK: VerificationBaseline（路线·锚点·置信度）
-        WK->>CMD: AttachVerificationBaseline
+    Note over PM: 若需核验/批改/出题自验，由 EduAgentOrchestrator 调用 ProblemSolving Tool 获取 VerificationBaseline
+    opt 取得新的 VerificationBaseline
+        PM->>CMD: AttachVerificationBaseline(artifact_id, baseline)
         CMD->>AGG: 挂接不可变基线（本地短事务，首段核验速览可读）
     end
 
-    WK->>AI: 编排/局部 Patch + MathStage/生图预运行 + 异构安全与质量 Judge（事务外）
+    PM->>RN: MathStage 脚本隔离预运行 / 生图安全审核 / 异构质量审稿（事务外）
     alt 审核通过
-        WK->>CMD: PublishArtifactVersion(candidate_version, expected_state_revision)
+        PM->>CMD: PublishArtifactVersion(candidate_version, expected_state_revision)
         CMD->>AGG: ArtifactInvariantPolicy + ArtifactVersionPolicy + CAS 校验并发布版本
     else 有界重试耗尽
-        WK->>CMD: FailArtifactProduction(reason_code)
+        PM->>CMD: FailArtifactProduction(reason_code)
         CMD->>AGG: mark_failed 或释放修订槽位保留旧版
     end
 ```
@@ -233,12 +230,11 @@ sequenceDiagram
 
 | Participant | Canonical type | Owned responsibility |
 | :--- | :--- | :--- |
-| Teacher / Coach / Guardian / Ward | Actor | 发起产物创建、对话局部修订或查看进度 |
+| Teacher / Coach / Guardian / Ward | Actor | 发起产物创建、对话局部修订或从资源库重开修订 |
 | Interface (FastAPI) | Interface | 鉴权、参数校验、幂等头解析与 HTTP 202/409/403 映射 |
 | ArtifactWorkspace Commands | Command | 守卫本地短事务、CAS 乐观锁、幂等性并调用聚合与领域服务 |
-| Async Production Worker | Infrastructure | 事务外执行长耗时编排、重试与超时控制；仅通过 Command 写回状态，不直接改表 |
-| ProblemSolving (ACL Port) | Infrastructure (ACL) | 调用客观求解、批改核验与出题自验内核，翻译为只读 `VerificationBaseline` |
-| Director / Renderer / Judge | Infrastructure | 模型编排、Headless JS 隔离预运行、生图安全审核与异构质量审稿 |
+| `EduAgentOrchestrator` | Process Manager | 统一编排层（位于 Application 层）：按需调用 `ProblemSolving` Tool 获取 `VerificationBaseline` 并生成候选块/Patch，再通过本域 Command 提交；不直接改表 |
+| `ArtifactRenderPort & Judge` | Infrastructure | Headless JS 隔离预运行、生图安全审核与异构质量审稿 |
 | `EduArtifact` | Aggregate Root | 守卫版本不可变、核验诚实不变量、并发修订槽位与终态保护 |
 
 ### 3.3 跨领域 Outbox 编排流（Ward 创作足迹发布：Command–Event–Query Flow）
@@ -478,7 +474,6 @@ ArtifactWorkspace.CreationFootprintRecorded.v1   → {event_id, event_type, occu
 | Port owned by Domain/Application | Concrete adapter | Protocol / dependency | Configuration / secret boundary | Timeout, retry, rate limit | Error mapping / fallback |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | `EduArtifactRepository` | `PgEduArtifactRepository` | PostgreSQL + `state_revision` 乐观锁 | 复用服务端连接池 | 短事务，无长锁 | 到期 `404`，冲突 `409`，库不可用可重试 |
-| `ProblemVerificationPort` | `ProblemSolvingAclAdapter` | 进程内受权调用 `ProblemSolving` + 确定性算子容器 | 复用 `ProblemSolving` Admin 配置与 Unix socket | 阶段 1 共享 60s 预算 | 超时或失败标 `confidence="low"`，绝不伪装 `verified` |
 | `ArtifactRenderPort` | `HybridMathStageAdapter` + `ImageGenAdapter` + `AudioTimelineAdapter`（P1）+ `HeadlessExportAdapter`（P2） | 本地预置组件校验、无凭证禁网 Headless 预运行、生图接口、私有 OSS | 锁定本地 runtime 版本；预运行进程无业务凭证且禁网 | 预运行独立进程墙钟/内存预算外部终止；模型修复最多 1 次 | 代码/生图失败有界修复后降级静态图文，不标动态可用 |
 | `ArtifactJudgePort` | `AdminModelArtifactJudgeAdapter` | 异构 LLM API（严禁与生成同型号） | Admin 快照组件配置 | 单次 25s，打回重修最多 1 次 | 安全与防代写审核 fail-closed |
 | `ArtifactOutboxPort` | `PgOutboxPublisher` | PostgreSQL Outbox 表 + Celery 投递 | 复用服务端 Outbox 通道 | 指数退避重试 + 死信告警 | 投递失败保留 Outbox 待对账重放 |

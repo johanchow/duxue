@@ -25,8 +25,8 @@
 | 2 | Device & Ingestion | Supporting | CameraRegistration、AcceptedFrame、采集归属与健康；不解释学习行为 | Identity → 本域；向 Behavior 提供受权证据 Query；既有采集事实向 Memory 入账 |
 | 3 | Study | Core | 轻量主动专注挑战（`Sprint`）、执行区间与观察触发求助邀请（`HelpOffer`）；不拥有任务池、图片解释或题目 | Behavior Query 与事件 → 本域；`GetWardFocusState` ACL → EduAgent；`HelpOfferReady.v1` → Conversation |
 | 4 | Tutoring | Core | **Ward 作业受保护教学域**：`TutoringSession`、`ProblemRecord`、答案保护状态机（`TutorPermitPolicy`）、独立泄露裁判、微验证、结构化配图（`visual`）与发音；作为通用 Agent 下的强护栏 Skill 被委派；不拥有通用对话路由或自由创作产物 | Study/Memory 受权 Query → 本域；ProblemSolving ACL；教学事实 → Memory；凭证 Query → Evaluation |
-| 5 | ProblemSolving | Core | `ProblemDossier`：结构化题面、多路共识解题路线、确定性算子核验锚点、采分点与置信度；统一服务答疑、整页批改核验、动态课件基线与出题自验 | Tutoring / EduAgent / ArtifactWorkspace → 本域；`GetProblemDossier` 受权 Query |
-| 6 | ArtifactWorkspace（目标新增） | Core | `EduArtifact`（泛化既有 `MentorCourseware`）、不可变 `ArtifactVersion`、`ArtifactBlock`/`Patch`、核验诚实状态、Undo/Redo 与资产保留生命周期；承载动态课件、批改单、教案变式卷与 Ward 创意作品 | Identity → 本域；ProblemSolving 核验基线 ACL；Ward 创作发布 `CreationFootprintRecorded.v1` → Evaluation & Memory |
+| 5 | ProblemSolving | Core | `ProblemDossier`：结构化题面、多路共识解题路线、确定性算子核验锚点、采分点与置信度；统一服务答疑、整页批改核验、动态课件基线与出题自验 | Tutoring / EduAgent → 本域；`GetProblemDossier` 受权 Query |
+| 6 | ArtifactWorkspace（目标新增） | Core | `EduArtifact`（泛化既有 `MentorCourseware`）、不可变 `ArtifactVersion`、`ArtifactBlock`/`Patch`、核验诚实状态、Undo/Redo 与资产保留生命周期；承载动态课件、批改单、教案变式卷与 Ward 创意作品 | Identity / EduAgent Commands → 本域（与 ProblemSolving 零直接依赖）；Ward 创作发布 `CreationFootprintRecorded.v1` → Evaluation & Memory |
 | 7 | Behavior Analysis | Supporting | ObservationWindow、ObservationDay、物理活动与被动学段；不判断主观感受、作业完成或掌握 | Device Query → 本域；`ObservationRevisionPublished.v1` + Query ACL → Study/Evaluation |
 | 8 | Evaluation | Core | 晚间客观汇总报告（分口径时长：作业专注 vs 自由探索、独立解题凭证、好奇心与创作足迹）；原 Ward `SelfReview` 自述已退场；不反写画像 | Behavior/Study/Tutoring/ArtifactWorkspace → 本域；授权报告 Query → Guardian/Coach 与成人工作台（只读） |
 | 9 | Memory & Understanding | Core | LearningEvidence、EpisodicMemory、`Interest Signal`（含自由创作足迹）与长期客观画像；不拥有 Runtime Working Memory；严禁成人工作台隐式写回 | 已确认客观事实与兴趣信号 → 本域；`MemoryBundle` Query ACL → Tutoring/Evaluation 及显式受权成人工作台（严格只读） |
@@ -62,7 +62,6 @@ flowchart LR
     CV -->|目标 Create/Revise/Save Command| AW
     CV -->|求解 / 批改 / 出题自验 ACL| PS
     TU -->|RequestSolve / GetProblemDossier ACL| PS
-    AW -->|目标 核验基线 ACL| PS
     TU -->|教学事实 / 凭证 Query ACL| EV
     TU -->|LearningFactRecorded.v1| MU
     AW -->|目标 CreationFootprintRecorded.v1| EV & MU
@@ -90,7 +89,7 @@ flowchart LR
 | `GetObservationDay` / `GetSupportCandidates` / `SceneWindow`（目标） | Behavior → Evaluation/Study | 物理观察、来源版本、freshness；不暴露家长实时图像 |
 | `GetStudySession` / `GetWardFocusState`（目标） | Study → Tutoring / EduAgent | 返回 Sprint 专注态与会话状态，支撑 Ward 专注态软边界 |
 | 教学证据与凭证 Query | Tutoring → Evaluation | 原题、启发、微验证与明确状态；缺失不是通过 |
-| `GetProblemDossier` / 无状态求解核验 | ProblemSolving → Tutoring / EduAgent / ArtifactWorkspace | 私有解投影与置信度；Ward 侧永不解除答案保护 |
+| `GetProblemDossier` / 无状态求解核验 | ProblemSolving → Tutoring / EduAgent | 私有解投影与置信度；Ward 侧永不解除答案保护 |
 | `MemoryBundle` | Memory → Tutoring / Evaluation / 成人工作台（显式受权只读） | 校验 `verify_ward_access`；成人工作台只读不写回 |
 | `GetRecentReportSummary`（目标） | Evaluation → 成人工作台（显式受权只读） | 仅在显式关联绑定 Ward 时返回摘要，不反写历史报告 |
 
